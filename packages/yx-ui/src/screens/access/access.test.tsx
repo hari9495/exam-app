@@ -162,7 +162,11 @@ function profile(over: Partial<ProfileScreenProps> = {}) {
     onCancelRequest: ok(),
     ...over,
   };
-  render(<ProfileScreen {...props} />);
+  render(
+    <ToastProvider>
+      <ProfileScreen {...props} />
+    </ToastProvider>,
+  );
   return props;
 }
 
@@ -171,6 +175,18 @@ describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
     profile({ profile: null, people: [], onPickPerson: vi.fn(), requests: [] });
     expect(screen.getByText('No profiles to show')).toBeInTheDocument();
     expect(screen.queryByText('Pick a person')).toBeNull();
+  });
+
+  it('saving personal details sends only what changed and says so in a toast', async () => {
+    const p = profile();
+    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    const phone = within(dialog).getByRole('textbox', { name: /Personal phone/ });
+    await ue.clear(phone);
+    await ue.type(phone, '+91 98450 22233');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(p.onSavePersonal).toHaveBeenCalledTimes(1));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
   });
 
   it('a manager sees neither Personal nor identity details, and no pay', () => {
