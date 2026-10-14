@@ -222,7 +222,7 @@ export function ProfileScreen(props: ProfileScreenProps) {
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load this profile." description="It may not be yours to see, or the connection dropped." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy="HR" what="this profile" />}
-      {state === 'ready' && !p && <EmptyState title="Pick a person" description="Choose whose profile to open." />}
+      {state === 'ready' && !p && (people?.length ? <EmptyState title="Pick a person" description="Choose whose profile to open." /> : <EmptyState title="No profiles to show" description="You can open the profiles of the people your roles cover. Right now that is no one." />)}
       {state === 'ready' && p && (
         <>
           <Card title="Personal details" actions={p.can.editPersonal && p.personal ? <Button size="sm" onClick={() => setEditing(true)}>Edit</Button> : undefined}>

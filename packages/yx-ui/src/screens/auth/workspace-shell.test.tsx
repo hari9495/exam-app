@@ -26,6 +26,13 @@ describe('WorkspaceShell', () => {
     expect(within(panel).getByRole('link', { name: 'Org chart' })).toHaveAttribute('aria-current', 'page');
   });
 
+  it('a page off their menu (a "no access" page) highlights no link', () => {
+    shell({ active: undefined });
+    const panel = screen.getByRole('navigation', { name: 'Menu' });
+    expect(within(panel).getByRole('link', { name: 'My security' })).not.toHaveAttribute('aria-current');
+    expect(panel.querySelector('[aria-current="page"]')).toBeNull();
+  });
+
   it('rail has one area per group, the open one active; no bottom tab bar of every page', () => {
     shell();
     const rail = screen.getByRole('navigation', { name: 'Areas' });

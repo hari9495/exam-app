@@ -8,7 +8,8 @@ import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
-import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
+import { useToast } from '../../components/notify';
+import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
@@ -44,7 +45,10 @@ type View = 'people' | 'waiting' | 'roles';
 const userLabel = (u: AccessUser) => `${u.name ? `${u.name} · ${u.email}` : u.email}${isSystemAdmin(u) ? ' · System Admin' : ''}`;
 const SCOPE_TYPES = Object.keys(SCOPE_LABEL) as ScopeType[];
 const scopeText = (g: Grant) => (g.scope.name ? `${SCOPE_LABEL[g.scope.type]}: ${g.scope.name}` : SCOPE_LABEL[g.scope.type]);
-const period = (g: Grant) => (g.validTo ? `${dateLabel(g.validFrom)} to ${dateLabel(g.validTo)}` : `From ${dateLabel(g.validFrom)}`);
+const period = (g: Grant) => {
+  const end = g.revokedAt ? dayKey(new Date(g.revokedAt)) : g.validTo;
+  return end ? `${dateLabel(g.validFrom)} to ${dateLabel(end)}` : `From ${dateLabel(g.validFrom)}`;
+};
 
 function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant'> & { userId: string | null; onClose: () => void }) {
   const [user, setUser] = useState<string | null>(userId);
@@ -81,13 +85,22 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       title="Give access"
       description="A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."
       preventClose={busy}
+      // Above the buttons, never scrolled out of sight (founder review 14 Oct 2026).
+      notice={
+        (risk || error) && (
+          <>
+            {risk && <InlineAlert tone="warning" title="Check before you continue">{risk}</InlineAlert>}
+            {error && <InlineAlert tone="danger" title={error} />}
+          </>
+        )
+      }
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button variant="primary" loading={busy} disabled={!ready} onClick={send}>
-            {risk ? 'Give access anyway' : picked?.confidential ? 'Send for approval' : 'Give access'}
+            {risk ? (picked?.confidential ? 'Send for approval anyway' : 'Give access anyway') : picked?.confidential ? 'Send for approval' : 'Give access'}
           </Button>
         </>
       }
@@ -98,7 +111,7 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       <FormField id="ga-role" label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
         <Select aria-label="Role" value={role} onChange={(v) => (setRole(v), setRisk(null))} options={roles.map((r) => ({ value: r.id, label: r.confidential ? `${r.name} (Confidential)` : r.name }))} />
       </FormField>
-      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `This role has permissions that work only for the whole company: ${picked.companyWideOnly.join(', ')}.` : undefined}>
+      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
         <Select aria-label="Over" value={scopeType} onChange={(v) => (setScopeType(v), setTarget(null), setRisk(null))} options={SCOPE_TYPES.map((t) => ({ value: t, label: SCOPE_LABEL[t] }))} />
       </FormField>
       {targetList && (
@@ -115,8 +128,6 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       <FormField id="ga-reason" label="Reason" required helper="Kept on the record.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
-      {risk && <InlineAlert tone="warning" title="Check before you continue">{risk}</InlineAlert>}
-      {error && <InlineAlert tone="danger" title={error} />}
     </Dialog>
   );
 }
@@ -215,7 +226,7 @@ function SystemAdminCard({ user, admins, onChange }: { user: AccessUser; admins:
     <Card
       title={<span className="yx-ppl2__row">System Admin{admin && <SystemAdminBadge />}</span>}
       actions={
-        <Button size="sm" variant={admin ? 'secondary' : 'primary'} onClick={onChange}>
+        <Button size="sm" variant="secondary" onClick={onChange}>
           {admin ? 'Remove System Admin' : 'Make System Admin'}
         </Button>
       }
@@ -247,20 +258,20 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
     <Card title="What they can do today">
       {error && <InlineAlert tone="danger" title={error} />}
       {!data && !error && <Skeleton height={80} />}
-      {data && (
-        <ul className="yx-acc__list">
-          {data.keys.map((k) => (
-            <li key={k.key}>
-              <Text>{k.label}</Text>
-              <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>
-            </li>
-          ))}
-        </ul>
-      )}
       {data && !data.hasEmployeeRecord && (
-        <Text as="p" tone="secondary" size="sm">
+        <Text as="p" tone="secondary" size="sm" className="yx-acc__note">
           No employee record, so no team of their own.
         </Text>
+      )}
+      {data && (
+        <div className="yx-acc__facts">
+          <DescriptionList
+            items={data.keys.map((k) => ({
+              label: k.label,
+              value: <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>,
+            }))}
+          />
+        </div>
       )}
     </Card>
   );
@@ -280,6 +291,14 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  // Wraps an action so a toast says what happened once it succeeds; a failure still shows in the dialog that ran it.
+  const said =
+    <A extends unknown[]>(run: (...a: A) => Promise<void>, text: (...a: A) => string) =>
+    async (...a: A) => {
+      await run(...a);
+      toast({ tone: 'success', title: text(...a) });
+    };
   const waiting = grants.filter((g) => g.status === 'pending');
   const mine = grants.filter((g) => g.userId === userId);
   const approve = async (g: Grant) => {
@@ -287,6 +306,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
     setError(null);
     try {
       await props.onApprove(g.id);
+      toast({ tone: 'success', title: 'Approved.' });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -306,7 +326,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   ];
   const roleColumns: TableColumn<AccessRole>[] = [
     { key: 'name', header: 'Role', value: (r) => r.name, render: (r) => <span className="yx-ppl2__row"><Text>{r.name}</Text>{r.confidential && <ConfidentialBadge />}</span>, width: 260, hideable: false },
-    { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length}`, width: 120, type: 'number' },
+    { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length} ${r.permissions.length === 1 ? 'permission' : 'permissions'}`, width: 140 }, // worded like Held by: a right-aligned bare number ran into it ("14 1 person")
     { key: 'holders', header: 'Held by', value: (r) => r.grants + r.assignedUsers, render: (r) => `${r.grants + r.assignedUsers} ${r.grants + r.assignedUsers === 1 ? 'person' : 'people'}`, width: 140 },
   ];
   return (
@@ -387,10 +407,10 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
           )}
         </>
       )}
-      {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={props.onGrant} onClose={() => setGiving(false)} />}
-      {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={props.onFromTemplate} onClose={() => setFromTemplate(false)} />}
-      {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={props.onSystemAdmin} onClose={() => setAdminAsk(null)} />}
-      {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={props.onRevoke} onReject={props.onReject} />}
+      {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={said(props.onGrant, () => 'Access saved.')} onClose={() => setGiving(false)} />}
+      {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={said(props.onFromTemplate, (_key, name) => `Role "${name}" created.`)} onClose={() => setFromTemplate(false)} />}
+      {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={said(props.onSystemAdmin, () => 'System Admins saved.')} onClose={() => setAdminAsk(null)} />}
+      {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={said(props.onRevoke, () => 'Revoked.')} onReject={said(props.onReject, () => 'Rejected.')} />}
     </div>
   );
 }

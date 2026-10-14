@@ -166,7 +166,7 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                 person
                 photoUrl={null}
                 name={view.employee.name}
-                secondary={a ? [a.designation?.name, a.department?.name].filter(Boolean).join(' · ') : 'No assignment on this date'}
+                secondary={a ? [a.designation?.name, a.department?.name].filter(Boolean).join(' · ') : asOf < view.employee.joinedOn ? `Joins on ${dateLabel(view.employee.joinedOn)}` : 'No assignment on this date'}
                 status={view.status ? <Badge tone={view.status.status === 'probation' ? 'warning' : 'neutral'}>{STATUS_LABEL[view.status.status]}</Badge> : undefined}
                 facts={[
                   { label: 'Employee code', value: view.employee.employeeCode },
@@ -227,7 +227,12 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                     <dd>{range(a.validFrom, a.validTo)}</dd>
                   </dl>
                 ) : (
-                  <EmptyState compact title="Not employed on this date." description={`Joined on ${dateLabel(view.employee.joinedOn)}.`} />
+                  // Before the first day, say so in the future tense and offer that day (founder review 14 Oct 2026).
+                  asOf < view.employee.joinedOn ? (
+                    <EmptyState compact title="Not joined yet on this date." description={`Joins on ${dateLabel(view.employee.joinedOn)}.`} action={<Button onClick={() => onAsOf(view.employee.joinedOn)}>See the first day</Button>} />
+                  ) : (
+                    <EmptyState compact title="Not employed on this date." description={`Joined on ${dateLabel(view.employee.joinedOn)}.`} />
+                  )
                 )}
               </Card>
               {serviceDates !== undefined && (

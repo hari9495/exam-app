@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite';
 import '../src/styles/index.css';
 import './preview.css';
+import { ToastProvider } from '../src/components/notify';
 
 // The widths every screen must fit with no sideways scroll (R4).
 const VIEWPORTS = {
@@ -30,7 +31,9 @@ const preview: Preview = {
       document.body.classList.add('yx-body');
       return (
         <div className="yx-root" style={{ padding: 24, minHeight: '100vh' }}>
-          <Story />
+          <ToastProvider>
+            <Story />
+          </ToastProvider>
         </div>
       );
     },

@@ -18,7 +18,8 @@ export interface WorkspaceLink {
 }
 
 export interface WorkspaceShellProps {
-  active: WorkspacePage;
+  /** The page shown; none when it is not one of their links (a "no access" page), so nothing is highlighted. */
+  active?: WorkspacePage;
   /** Only the pages this person may open. */
   links: WorkspaceLink[];
   /** Company shown in the top bar. */
@@ -57,7 +58,8 @@ export function readThemeChoice(): ThemeChoice {
  */
 export function WorkspaceShell({ active, links, company, hiringHref, profileHref, name, email, onSignOut, onNavigate, children }: WorkspaceShellProps) {
   const groups = GROUPS.filter((g) => links.some((l) => l.group === g));
-  const activeGroup = links.find((l) => l.id === active)?.group;
+  // Off-menu pages still open the Me area, without highlighting a page they are not on.
+  const activeGroup = (links.find((l) => l.id === active) ?? links.find((l) => l.id === 'me'))?.group;
   // The OS setting unless the person chose light or dark here; the choice is kept per browser and the host's
   // sign-in pages read the same key before they paint (apps/web lib/theme-script).
   const [theme, setTheme] = useState<ThemeChoice>('system');
