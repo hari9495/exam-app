@@ -12,6 +12,13 @@ describe('select.css', () => {
   });
 });
 
+describe('data.css', () => {
+  it('in a table row that opens something, the person reads as a link before any hover', () => {
+    const data = readFileSync(join(__dirname, 'data.css'), 'utf8');
+    expect(data).toMatch(/^\.yx-table tbody tr\[data-clickable\] \.yx-person__name \{[^}]*color: var\(--yx-color-link\);[^}]*text-decoration: underline;/m);
+  });
+});
+
 describe('forms.css', () => {
   it('every Segment option looks like a button before a choice: a control border, not transparent', () => {
     const option = rule('.yx-segment > button');

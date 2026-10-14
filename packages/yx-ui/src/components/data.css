@@ -229,6 +229,8 @@
 .yx-table tbody tr:hover > td { background: var(--yx-color-bg-page); }
 /* A row that opens something tints clearly on hover, not the faint page tint (affordance, founder review 8 Oct 2026). */
 .yx-table tbody tr[data-clickable]:hover > td { background: var(--yx-color-bg-subtle); }
+/* …and says so before any hover: the person in a row that opens is a link (as on Job changes; founder review 14 Oct 2026). */
+.yx-table tbody tr[data-clickable] .yx-person__name { color: var(--yx-color-link); text-decoration: underline; text-decoration-thickness: var(--yx-border-width); text-underline-offset: var(--yx-space-half); }
 .yx-table tbody tr:focus-visible { outline: none; }
 .yx-table tbody tr:focus-visible > td { background: var(--yx-color-bg-selected); box-shadow: inset 0 var(--yx-focus-width) 0 var(--yx-color-focus-ring), inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-focus-ring); }
 .yx-table tbody tr:has([role="checkbox"][data-state="checked"]) > td,
