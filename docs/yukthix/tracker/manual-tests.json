@@ -1620,7 +1620,7 @@
     "steps": [
       "Click \"Add person\". Set Joins on to a date last month."
     ],
-    "expected": "A field \"Reason for the past date\" appears and must be filled before saving.",
+    "expected": "A field \"Reason for the past date\" (optional) appears right under Joins on. It is required only when the date is before the company limit for past-dated changes; then the API refuses the save without it. Saving with the general Reason empty lists \"Enter the reason for adding them, e.g. the offer\".",
     "stories": [
       "US-A-085"
     ],
