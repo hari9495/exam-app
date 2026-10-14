@@ -98,6 +98,15 @@ describe('ImpactPanel (YX-HIS-11, YX-HIS-06, R1)', () => {
 });
 
 describe('PersonHistoryScreen (P06 §4.7, §7)', () => {
+  it('before the first day: future tense and a button to that day', async () => {
+    const onAsOf = vi.fn();
+    render(<History onAsOf={onAsOf} view={{ ...AS_OF, assignment: null, employee: { ...AS_OF.employee, joinedOn: '2099-01-04' } }} />);
+    expect(screen.getByText('Not joined yet on this date.')).toBeInTheDocument();
+    expect(screen.getAllByText('Joins on 4 Jan 2099').length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'See the first day' }));
+    expect(onAsOf).toHaveBeenCalledWith('2099-01-04');
+  });
+
   it('shows the facts in force, the changes and the corrected records; pay only after Show pay (R1)', async () => {
     const onShowPay = ok();
     render(<History onShowPay={onShowPay} />);
