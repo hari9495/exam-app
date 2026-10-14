@@ -82,6 +82,15 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       title="Give access"
       description="A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."
       preventClose={busy}
+      // Above the buttons, never scrolled out of sight (founder review 14 Oct 2026).
+      notice={
+        (risk || error) && (
+          <>
+            {risk && <InlineAlert tone="warning" title="Check before you continue">{risk}</InlineAlert>}
+            {error && <InlineAlert tone="danger" title={error} />}
+          </>
+        )
+      }
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
@@ -116,8 +125,6 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       <FormField id="ga-reason" label="Reason" required helper="Kept on the record.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
-      {risk && <InlineAlert tone="warning" title="Check before you continue">{risk}</InlineAlert>}
-      {error && <InlineAlert tone="danger" title={error} />}
     </Dialog>
   );
 }
