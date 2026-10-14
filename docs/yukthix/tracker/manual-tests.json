@@ -1654,7 +1654,7 @@
     "steps": [
       "Sign in as panel@ (Divya). Open People > Profile."
     ],
-    "expected": "You see \"My profile\": Personal details, Identity and bank (PAN, Aadhaar, UAN, salary account, all masked with last 4 digits), Pay (\"Pay is visible only with pay access.\" + \"Open job history\") and Changes waiting for approval (the reimbursement account request).",
+    "expected": "You see \"My profile\": Personal details (Edit), Identity and bank marked Confidential (PAN, UAN, Aadhaar \"Never shown in full\", salary account, all masked to the last 4), Changes waiting for approval (the reimbursement account request, Withdraw) and Pay (\"Pay is on Job history, behind Show pay\" + Open job history).",
     "stories": [
       "US-A-115",
       "US-A-116"
