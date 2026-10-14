@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 
 // Recruitment batch AT1 on the seeded demo (founder D1): the older jobs list redirects to Hiring › Jobs; a new job is
-// created there and opens in its existing workspace.
+// created there and opens in its workspace (YukthiX since AT5).
 
 test('the jobs list moved to Hiring › Jobs: redirect, create, open', async ({ page }) => {
   test.setTimeout(180_000);
@@ -21,6 +21,6 @@ test('the jobs list moved to Hiring › Jobs: redirect, create, open', async ({ 
   const row = page.getByRole('row', { name: new RegExp(title) });
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.getByRole('button', { name: 'Open' }).click();
-  await page.waitForURL(/\/v2\/jobs\/[0-9a-f-]+$/, { timeout: 30_000 });
+  await page.waitForURL(/\/yx\/hiring\/jobs\/[0-9a-f-]+$/, { timeout: 30_000 }); // AT5: the YukthiX job workspace
   await expect(page.getByText(title).first()).toBeVisible({ timeout: 30_000 });
 });

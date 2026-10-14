@@ -98,8 +98,8 @@ describe('PipelineController', () => {
   });
 
   it('getPipeline delegates to the service with the job id', async () => {
-    await controller.getPipeline(tenant, 'org_admin', 'job-1');
-    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin');
+    await controller.getPipeline(tenant, 'org_admin', 'user-1', 'job-1');
+    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin', 'user-1');
   });
 
   it('addEntry delegates to the service with the actor, job id, and dto', async () => {

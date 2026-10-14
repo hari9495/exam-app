@@ -50,7 +50,7 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   // M10 AT2: headcount plans.
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
-const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs'];
+const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

@@ -47,6 +47,8 @@ const PIPS: WorkspaceLink = { id: 'pips', label: 'Improvement plans', href: '/yx
 const HIRING_JOBS: WorkspaceLink = { id: 'hiring-jobs', label: 'Jobs', href: '/yx/hiring/jobs', group: 'Hiring' };
 const HIRING_PLANS: WorkspaceLink = { id: 'hiring-plans', label: 'Headcount plans', href: '/yx/hiring/plans', group: 'Hiring' };
 const HIRING_APPROVALS: WorkspaceLink = { id: 'hiring-approvals', label: 'Hiring approvals', href: '/yx/hiring/approval-routes', group: 'Hiring' };
+const HIRING_INTERVIEWS: WorkspaceLink = { id: 'hiring-interviews', label: 'My interviews', href: '/yx/hiring/interviews', group: 'Hiring' };
+const HIRING_SCORECARDS: WorkspaceLink = { id: 'hiring-scorecards', label: 'Interview scorecards', href: '/yx/hiring/scorecards', group: 'Hiring' };
 const HIRING_CANDIDATES: WorkspaceLink = { id: 'hiring-candidates', label: 'Candidates', href: '/yx/hiring/candidates', group: 'Hiring' };
 const HIRING_POOLS: WorkspaceLink = { id: 'hiring-pools', label: 'Talent pools', href: '/yx/hiring/pools', group: 'Hiring' };
 const HIRING_RETENTION: WorkspaceLink = { id: 'hiring-retention', label: 'Candidate data retention', href: '/yx/hiring/retention', group: 'Hiring' };
@@ -365,7 +367,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   // M10 AT1: hiring, for holders of the hiring keys (older or ats.*, founder D2); never in a support session (D14).
   const hiring = support
     ? []
-    : [...(perms.has('pipeline:manage') || perms.has('results:view') ? [HIRING_JOBS] : []), ...(perms.has('candidate:manage') || perms.has('candidate:view') ? [HIRING_CANDIDATES, HIRING_POOLS] : []), ...(perms.has('ats.headcount.manage') ? [HIRING_PLANS] : []), ...(perms.has('approvals:configure') ? [HIRING_APPROVALS] : []), ...(perms.has('org:manage_settings') ? [HIRING_CAREERS, HIRING_BOARDS] : []), ...(perms.has('candidate:data_rights') ? [HIRING_RETENTION] : [])];
+    : [...(perms.has('pipeline:manage') || perms.has('results:view') ? [HIRING_JOBS] : []), ...(perms.has('candidate:manage') || perms.has('candidate:view') ? [HIRING_CANDIDATES, HIRING_POOLS] : []), ...(perms.has('interview:view_assigned') || perms.has('pipeline:manage') ? [HIRING_INTERVIEWS] : []), ...(perms.has('pipelines:configure') ? [HIRING_SCORECARDS] : []), ...(perms.has('ats.headcount.manage') ? [HIRING_PLANS] : []), ...(perms.has('approvals:configure') ? [HIRING_APPROVALS] : []), ...(perms.has('org:manage_settings') ? [HIRING_CAREERS, HIRING_BOARDS] : []), ...(perms.has('candidate:data_rights') ? [HIRING_RETENTION] : [])];
   const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...hiring, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_EWA, MY_EQUITY, MY_INCENTIVES, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
