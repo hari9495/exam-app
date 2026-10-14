@@ -199,7 +199,7 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
     if (type === 'salary_revision' && !payload.compensation && !errors.some((e) => e.fieldId === 'ch-pay')) errors.push({ fieldId: 'ch-pay', message: 'Enter the new pay' });
     if (!payload.assignment && !payload.status && !payload.compensation && type !== 'salary_revision' && !errors.some((e) => e.fieldId === 'ch-hours')) errors.push({ fieldId: 'ch-values', message: 'Choose at least one new value' });
   }
-  if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Say why, in a few words' });
+  if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Enter the reason for this change' });
   const date = d.effectiveDate ? dayKey(d.effectiveDate) : null;
   const beforeLimit = Boolean(date && date < o.retroLimit);
   if (beforeLimit && d.overrideReason.trim().length < 10) errors.push({ fieldId: 'ch-override', message: 'Explain why this goes back before the limit (10 characters or more)' });

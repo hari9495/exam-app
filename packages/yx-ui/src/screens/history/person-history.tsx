@@ -61,7 +61,7 @@ export function serviceDatesInput(d: { mode: 'rule' | 'date'; date: Date | null;
   const date = d.date ? dayKey(d.date) : null;
   if (d.mode === 'date' && !date) errors.push({ fieldId: 'sd-date', message: 'Choose the date continuous service counts from' });
   if (d.mode === 'date' && date && date > employerStart) errors.push({ fieldId: 'sd-date', message: `Choose a date on or before ${dateLabel(employerStart)}` });
-  if (d.reason.trim().length < 3) errors.push({ fieldId: 'sd-reason', message: 'Say why, in a few words' });
+  if (d.reason.trim().length < 3) errors.push({ fieldId: 'sd-reason', message: 'Enter the reason for the new dates' });
   if (errors.length) return { input: null, errors };
   return { input: { continuousServiceFrom: d.mode === 'date' ? date : null, reason: d.reason.trim() }, errors };
 }

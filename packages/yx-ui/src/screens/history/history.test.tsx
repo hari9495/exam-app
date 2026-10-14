@@ -316,9 +316,9 @@ describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit continuous service' }));
     // No red error while typing: the reason is asked for only on save.
     await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'A');
-    expect(screen.queryByText('Say why, in a few words')).not.toBeInTheDocument();
+    expect(screen.queryByText('Enter the reason for the new dates')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect((await screen.findAllByText('Say why, in a few words')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Enter the reason for the new dates')).length).toBeGreaterThan(0);
     await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'cquired company');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ continuousServiceFrom: null, reason: 'Acquired company' }));
