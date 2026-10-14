@@ -346,7 +346,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
           {error && <InlineAlert tone="danger" title={error} />}
           {view === 'people' && (
             <>
-              <FormField id="ra-user" label="Person" className="yx-acc__person">
+              <FormField id="ra-user" label="Person">
                 <Select aria-label="Person" value={userId} onChange={setUserId} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
               </FormField>
               {person && <SystemAdminCard user={person} admins={admins} onChange={() => setAdminAsk(person)} />}
