@@ -12,7 +12,8 @@ For a new session that continues the founder's manual testing. The building sess
 ## Where we are
 - Done: Areas 1–4 (MT-4-20 passed 12 Oct; its email-text fix is PR #153).
 - **Test app moved to latest `main` on 12 Oct** (branch `test/yukthix-main` in the org worktree, `examapp_org` rebuilt from zero + seeded, Redis db 4 cleared). The founder must set up passkey, authenticator and mobile number again.
-- **Next: Area 5 Access (MT-5-1).**
+- Area 5 Access done 14 Oct (13/13 passed); its fixes are PR #171 (branch fix/yukthix-access-effective-card, which the org worktree is on until it merges). Rules from it: toasts for "done", Select max form width, Segment options bordered, Dialog `notice` slot.
+- **Next: Area 6 People (MT-6-01).**
 - Then Areas **5 Access (13 tests), 6 People (14), 7 Changes (19), 8 Privacy (11)**.
 
 ## The test app
