@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
+import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 import { ProfileScreen, type ProfileScreenProps } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
@@ -45,6 +46,12 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  it('a revoked grant shows when it ended', async () => {
+    const mine = GRANTS.find((g) => g.userId === 'u-anitha')!;
+    roles({ grants: [{ ...mine, status: 'revoked', revokedAt: '2026-10-14T09:30:00Z' }] });
+    expect(await screen.findByText(`${dateLabel(mine.validFrom)} to 14 Oct 2026`)).toBeInTheDocument();
+  });
+
   it('a new role from a template says it was created', async () => {
     const p = roles();
     await ue.click(screen.getByRole('radio', { name: 'Roles' }));

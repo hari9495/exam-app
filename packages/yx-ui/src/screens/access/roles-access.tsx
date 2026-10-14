@@ -45,7 +45,10 @@ type View = 'people' | 'waiting' | 'roles';
 const userLabel = (u: AccessUser) => `${u.name ? `${u.name} · ${u.email}` : u.email}${isSystemAdmin(u) ? ' · System Admin' : ''}`;
 const SCOPE_TYPES = Object.keys(SCOPE_LABEL) as ScopeType[];
 const scopeText = (g: Grant) => (g.scope.name ? `${SCOPE_LABEL[g.scope.type]}: ${g.scope.name}` : SCOPE_LABEL[g.scope.type]);
-const period = (g: Grant) => (g.validTo ? `${dateLabel(g.validFrom)} to ${dateLabel(g.validTo)}` : `From ${dateLabel(g.validFrom)}`);
+const period = (g: Grant) => {
+  const end = g.revokedAt ? dayKey(new Date(g.revokedAt)) : g.validTo;
+  return end ? `${dateLabel(g.validFrom)} to ${dateLabel(end)}` : `From ${dateLabel(g.validFrom)}`;
+};
 
 function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant'> & { userId: string | null; onClose: () => void }) {
   const [user, setUser] = useState<string | null>(userId);
