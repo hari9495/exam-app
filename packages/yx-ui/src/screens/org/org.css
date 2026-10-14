@@ -18,3 +18,6 @@
 .yx-org__group-desc { margin: 0 0 var(--yx-space-3); }
 .yx-org__rules > * + * { padding-top: var(--yx-space-4); margin-top: var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-org__now { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-org__acts { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+/* Cards as wide as their rows, so Change sits at the card's edge instead of floating mid-page. */
+.yx-org__group { max-inline-size: 52rem; }

@@ -8,6 +8,7 @@ import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
+import { useToast } from '../../components/notify';
 import { Card } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
@@ -117,6 +118,8 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
   };
   return (
     <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
+      {/* A company-only setting has nothing to choose here: no empty "Applies to" heading (founder review 14 Oct 2026). */}
+      {(scopes.length > 1 || draft.scopeType !== 'tenant') && (
       <FormSection title="Applies to">
         {scopes.length > 1 && (
           <FormField id="set-scope" label="Applies to" helper="The most specific value wins: a grade over an employment type, an entity over the company.">
@@ -133,8 +136,9 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
           </FormField>
         )}
       </FormSection>
+      )}
       <FormSection title="Value">
-        <FormField id="set-value" label={def.label} required error={errorOf('set-value')}>
+        <FormField id="set-value" label="New value" required error={errorOf('set-value')}>
           {isPickOne(def.values.length) ? (
             <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
           ) : (
@@ -165,6 +169,8 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
 }) {
   const { value, row } = companyValue(def, rows, today);
   const source = row ? (row.validFrom ? `Set for your company from ${dateLabel(row.validFrom)}` : 'Set for your company') : null;
+  // One company-wide value and no dates: the line above already says it, so no table (founder review 14 Oct 2026).
+  const companyOnly = !def.dated && rows.every((r) => r.scopeType === 'tenant');
   const inForce = (r: SettingOverride) => def.dated && r.validFrom !== null && r.validFrom <= today;
   const columns: TableColumn<SettingOverride>[] = [
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
@@ -185,9 +191,16 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
           </span>
           {blockedReason && <Text as="p" tone="secondary" size="sm">{blockedReason}</Text>}
         </span>
-        {blockedReason ? <Button size="sm" disabled>Change</Button> : canEdit ? <Button size="sm" onClick={onEdit}>Change</Button> : undefined}
+        {blockedReason ? (
+          <Button size="sm" disabled>Change</Button>
+        ) : canEdit ? (
+          <span className="yx-org__acts">
+            {companyOnly && row && <Button size="sm" onClick={() => onRemove(row)}>Use starter value</Button>}
+            <Button size="sm" onClick={onEdit}>Change</Button>
+          </span>
+        ) : undefined}
       </div>
-      {rows.length > 0 && (
+      {rows.length > 0 && !companyOnly && (
         <DataTable
           label={`${def.label}: values set`}
           columns={columns}
@@ -224,6 +237,7 @@ export interface CompanySettingsScreenProps {
 export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
   const [editing, setEditing] = useState<{ key: string; n: number } | null>(null);
   const [dialog, ask] = useConfirm();
+  const { toast } = useToast();
   const access = props.section === 'access';
   const name = (r: SettingOverride) => (r.scopeType === 'tenant' ? 'Whole company' : (props.choices[r.scopeType]?.find((c) => c.value === r.scopeId)?.label ?? 'Archived record'));
   const editDef = editing ? props.registry[editing.key] : null;
@@ -264,7 +278,10 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
                         consequence: r.scopeType === 'tenant' ? `The company goes back to the starter value, ${valueLabel(k, def.default)}.` : 'It takes the value set above it again.',
                         confirmLabel: 'Remove',
                         destructive: true,
-                        action: () => props.onRemove(r.id),
+                        action: async () => {
+                          await props.onRemove(r.id);
+                          toast({ tone: 'success', title: r.scopeType === 'tenant' ? 'Back to the starter value.' : 'Removed.' });
+                        },
                       })
                     }
                   />
@@ -275,7 +292,10 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
         );
       })}
       {dialog}
-      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} choices={props.choices} today={props.today} onClose={() => setEditing(null)} onSave={props.onSave} />}
+      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} choices={props.choices} today={props.today} onClose={() => setEditing(null)} onSave={async (input) => {
+        await props.onSave(input);
+        toast({ tone: 'success', title: 'Saved.' });
+      }} />}
     </OrgPage>
   );
 }
