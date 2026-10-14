@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { EmptyState, ErrorState, NoAccessState, Skeleton } from '../../components/feedback';
@@ -24,9 +24,11 @@ export interface TeamScreenProps {
   onOpenHistory: (id: string) => void;
   /** request.raise_on_behalf: raise promotions, transfers and manager changes for the team. */
   raise?: { options: ChangeOptions; onPreview: (input: ChangeInput) => Promise<Impact>; onSubmit: (input: ChangeInput) => Promise<void> };
+  /** Shown under the page heading, above the team (Joining soon). */
+  aside?: ReactNode;
 }
 
-export function TeamScreen({ state, onRetry, members, today, onOpenHistory, raise }: TeamScreenProps) {
+export function TeamScreen({ state, onRetry, members, today, onOpenHistory, raise, aside }: TeamScreenProps) {
   const [raisingFor, setRaisingFor] = useState<string | null | undefined>(undefined);
   const columns: TableColumn<TeamMember>[] = [
     { key: 'name', header: 'Member', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: refName(r.designation) }), width: 250, hideable: false },
@@ -70,6 +72,8 @@ export function TeamScreen({ state, onRetry, members, today, onOpenHistory, rais
         description="Everyone who reports to you, directly or through someone in your team, and people who have you as a dotted-line manager."
         actions={state === 'ready' && raise && members.some(canRaiseFor) ? <Button variant="primary" onClick={() => setRaisingFor(null)}>Raise a change</Button> : undefined}
       />
+      {/* Under the heading, above the team: e.g. Joining soon (founder review 14 Oct 2026). */}
+      {aside}
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load your team." description="Check your connection and try again." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy="HR" what="your team" />}
