@@ -88,7 +88,7 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
             Cancel
           </Button>
           <Button variant="primary" loading={busy} disabled={!ready} onClick={send}>
-            {risk ? 'Give access anyway' : picked?.confidential ? 'Send for approval' : 'Give access'}
+            {risk ? (picked?.confidential ? 'Send for approval anyway' : 'Give access anyway') : picked?.confidential ? 'Send for approval' : 'Give access'}
           </Button>
         </>
       }
@@ -99,7 +99,7 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       <FormField id="ga-role" label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
         <Select aria-label="Role" value={role} onChange={(v) => (setRole(v), setRisk(null))} options={roles.map((r) => ({ value: r.id, label: r.confidential ? `${r.name} (Confidential)` : r.name }))} />
       </FormField>
-      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `This role has permissions that work only for the whole company: ${picked.companyWideOnly.join(', ')}.` : undefined}>
+      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
         <Select aria-label="Over" value={scopeType} onChange={(v) => (setScopeType(v), setTarget(null), setRisk(null))} options={SCOPE_TYPES.map((t) => ({ value: t, label: SCOPE_LABEL[t] }))} />
       </FormField>
       {targetList && (

@@ -135,7 +135,7 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Quarter close');
     await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
     expect(await within(dialog).findByText(/120 people/)).toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Give access anyway' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval anyway' })); // still waits for a second admin: Payroll Admin is Confidential
     await waitFor(() => expect(onGrant).toHaveBeenCalledTimes(2));
     expect(onGrant.mock.calls[0][0]).toMatchObject({ userId: 'u-anitha', permissionProfileId: 'r-pay', scopeType: 'tenant', reason: 'Quarter close' });
     expect(onGrant.mock.calls[0][0].confirmRisk).toBeUndefined();
