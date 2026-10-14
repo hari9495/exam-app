@@ -1515,7 +1515,7 @@
       "Sign in as plant-hr@demo-org.test.",
       "Open People > Job history and open the person list."
     ],
-    "expected": "Only Kavya Reddy (Hosur plant) is in the list. Bengaluru people (Divya, Arjun, Meera, Lakshmi) are not.",
+    "expected": "Only Hosur plant people are in the list (6 in the demo data: Anbu Mani, Karthik Raja, Kavya Reddy, Murugan Selvam, Revathi Kumar, Selvi Arun). Bengaluru people (Divya, Arjun, Meera, Lakshmi) are not.",
     "stories": [
       "US-A-112",
       "US-A-114"
