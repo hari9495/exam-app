@@ -92,7 +92,7 @@ describe('LegalEntitiesScreen (P01 §4.1)', () => {
     await userEvent.clear(name);
     await userEvent.type(name, 'Kaveri Foods Private Limited');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith('le-kfpl', { name: 'Kaveri Foods Private Limited', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, registeredAddress: ENTITIES[0].registeredAddress }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('le-kfpl', { name: 'Kaveri Foods Private Limited', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, employeeCodePrefix: null, registeredAddress: ENTITIES[0].registeredAddress }));
   });
 
   it('company rules say where the value comes from and save only what changed (YX-ORG-12)', async () => {
@@ -265,8 +265,10 @@ describe('StructureScreen (P01 §4.3)', () => {
 
 describe('rules without a screen', () => {
   it('entity input: short name and currency shapes; an address is all or nothing', () => {
-    const d = { name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, address: addressDraft(null) };
-    expect(entityInput(d).input).toEqual({ name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, registeredAddress: null });
+    const d = { name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, codePrefix: '', address: addressDraft(null) };
+    expect(entityInput({ ...d, codePrefix: 'KF-' }).input?.employeeCodePrefix).toBe('KF-');
+    expect(entityInput({ ...d, codePrefix: '-KF' }).errors[0].fieldId).toBe('le-code-prefix');
+    expect(entityInput(d).input).toEqual({ name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, employeeCodePrefix: null, registeredAddress: null });
     expect(entityInput({ ...d, shortName: '-bad' }).errors[0].fieldId).toBe('le-short');
     expect(entityInput({ ...d, address: { ...addressDraft(null), city: 'Hosur' } }).errors.map((e) => e.fieldId)).toEqual(['le-addr-lines', 'le-addr-state']);
   });

@@ -90,6 +90,7 @@ export function legalEntityView(r: EntityRow) {
     country: r.country,
     currency: r.currency,
     fyStartMonth: r.fyStartMonth,
+    employeeCodePrefix: r.employeeCodePrefix,
     registeredAddress: r.registeredAddress,
     dataRegion: r.dataRegion,
     isDefault: r.isDefault,
@@ -227,6 +228,7 @@ export class OrgStructureService {
           country,
           currency,
           fyStartMonth: dto.fyStartMonth ?? 4,
+          employeeCodePrefix: dto.employeeCodePrefix ?? null,
           registeredAddress,
           dataRegion,
           isDefault: first,
@@ -251,6 +253,7 @@ export class OrgStructureService {
         shortName: clean(dto.shortName),
         currency: dto.currency,
         fyStartMonth: dto.fyStartMonth,
+        employeeCodePrefix: dto.employeeCodePrefix,
         registeredAddress: dto.registeredAddress === null ? Prisma.DbNull : dto.registeredAddress ? checkAddress(dto.registeredAddress) : undefined,
       };
       const updated = await tx.legalEntity.update({ where: { id }, data });

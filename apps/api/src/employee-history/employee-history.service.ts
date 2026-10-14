@@ -1338,7 +1338,7 @@ export class EmployeeHistoryService {
       const scope = resolveSetting(SETTINGS['employee_code.scope'], scopeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value;
       const codeScopeKey = scope === 'tenant' ? c.organizationId : entity.id;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-code:${c.organizationId}:${codeScopeKey}`}))`;
-      const employeeCode = dto.employeeCode ?? (await this.nextCode(tx, c, codeScopeKey));
+      const employeeCode = dto.employeeCode ?? (await this.nextCode(tx, c, codeScopeKey, entity.employeeCodePrefix));
       const e = await tx.employment.create({
         data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), rehireOf, createdBy: c.userId },
       });
@@ -1407,11 +1407,13 @@ export class EmployeeHistoryService {
     throw new ForbiddenException(`Your ${key} grant does not cover that legal entity, location or department.`);
   }
 
-  private async nextCode(tx: Tx, c: CompanyContext, scopeKey: string): Promise<string> {
+  /** The next code in the entity's series: its prefix (default E) and one more than the highest number after it. */
+  private async nextCode(tx: Tx, c: CompanyContext, scopeKey: string, prefix: string | null): Promise<string> {
+    const p = prefix ?? 'E'; // only A-Z, 0-9, - and / (DTO and DB check), so no regex metacharacters
     const [{ n }] = await tx.$queryRaw<{ n: number | null }[]>`
-      SELECT max(substring(employee_code::text FROM '^E([0-9]{1,9})$')::int) AS n
+      SELECT max(substring(employee_code::text FROM ('^' || ${p} || '([0-9]{1,9})$'))::int) AS n
       FROM employments WHERE organization_id = ${c.organizationId}::uuid AND code_scope_key = ${scopeKey}::uuid`;
-    return `E${String((n ?? 0) + 1).padStart(4, '0')}`;
+    return `${p}${String((n ?? 0) + 1).padStart(4, '0')}`;
   }
 
   // ================= the daily job (YX-HIS-04 / 05) =================

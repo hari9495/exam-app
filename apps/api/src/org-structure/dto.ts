@@ -82,6 +82,11 @@ export class LegalEntityDto {
   @Max(12)
   fyStartMonth?: number;
 
+  /** YX-ORG-16: codes made for new people start with this (KF-0001); null goes back to E0001. */
+  @Nullable()
+  @Matches(/^[A-Z0-9][A-Z0-9/-]{0,11}$/, { message: 'The code prefix is up to 12 capital letters, digits, - or /' })
+  employeeCodePrefix?: string | null;
+
   @Nullable()
   @ValidateNested()
   @Type(() => AddressDto)
