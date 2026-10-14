@@ -8,9 +8,10 @@ import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
+import { Card } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
-import { EditorDrawer, OrgPage, SectionHead, dateLabel, useConfirm, useRun } from './org-kit';
+import { EditorDrawer, OrgPage, dateLabel, useConfirm, useRun } from './org-kit';
 import type { LoadState, SettingDef, SettingInput, SettingOverride, SettingScope, SettingScopeChoices } from './types';
 
 // Settings › company rules (P01 §4.6): every registered key with the value in force, where it comes from
@@ -163,7 +164,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
   onRemove: (r: SettingOverride) => void;
 }) {
   const { value, row } = companyValue(def, rows, today);
-  const source = row ? (row.validFrom ? `Set for your company from ${dateLabel(row.validFrom)}` : 'Set for your company') : 'YukthiX starter, not changed yet';
+  const source = row ? (row.validFrom ? `Set for your company from ${dateLabel(row.validFrom)}` : 'Set for your company') : null;
   const inForce = (r: SettingOverride) => def.dated && r.validFrom !== null && r.validFrom <= today;
   const columns: TableColumn<SettingOverride>[] = [
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
@@ -174,11 +175,18 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
   ];
   return (
     <div className="yx-auth__stack yx-org__rule">
-      <SectionHead
-        title={def.label}
-        description={`${valueLabel(settingKey, value)} · ${source}${blockedReason ? `. ${blockedReason}` : ''}`}
-        action={blockedReason ? <Button size="sm" disabled>Change</Button> : canEdit ? <Button size="sm" onClick={onEdit}>Change</Button> : undefined}
-      />
+      {/* The value reads first, in bold; where it comes from is a quiet tag (founder review 14 Oct 2026). */}
+      <div className="yx-org__head">
+        <span className="yx-auth__item-main">
+          <Text as="p" weight="medium">{def.label}</Text>
+          <span className="yx-org__now">
+            <Text weight="semibold">{valueLabel(settingKey, value)}</Text>
+            {source ? <Text tone="secondary" size="sm">{source}</Text> : <Badge>Starter value</Badge>}
+          </span>
+          {blockedReason && <Text as="p" tone="secondary" size="sm">{blockedReason}</Text>}
+        </span>
+        {blockedReason ? <Button size="sm" disabled>Change</Button> : canEdit ? <Button size="sm" onClick={onEdit}>Change</Button> : undefined}
+      </div>
       {rows.length > 0 && (
         <DataTable
           label={`${def.label}: values set`}
@@ -233,8 +241,9 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
         const keys = s.keys.filter((k) => props.registry[k]);
         if (!keys.length) return null;
         return (
-          <section key={s.title} className="yx-auth__stack" aria-label={s.title}>
-            <FormSection title={s.title} description={s.description}>
+          <Card key={s.title} title={s.title} className="yx-org__group">
+            {s.description && <Text as="p" tone="secondary" size="sm" className="yx-org__group-desc">{s.description}</Text>}
+            <div className="yx-org__rules">
               {keys.map((k) => {
                 const def = props.registry[k];
                 const guard = def.guard && !props.heldGuards.includes(def.guard);
@@ -261,8 +270,8 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
                   />
                 );
               })}
-            </FormSection>
-          </section>
+            </div>
+          </Card>
         );
       })}
       {dialog}

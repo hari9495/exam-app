@@ -175,7 +175,7 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     const del = jest.fn().mockResolvedValue(undefined);
     route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-1', value: '3', validFrom: null }] }, 'DELETE /org/settings/s-1': del, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
     wrap(<YxCompanyRulesPage />);
-    expect(await screen.findByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
+    expect((await screen.findAllByText('Starter value')).length).toBeGreaterThan(0);
     const table = screen.getByRole('table', { name: /Probation lasts/ });
     expect(within(table).getByText('Kaveri Foods Pvt Ltd')).toBeInTheDocument();
     await userEvent.click(within(table).getAllByRole('button').at(-1)!);
@@ -192,7 +192,7 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     unmount();
     route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
     wrap(<YxCompanyRulesPage />);
-    await screen.findByText('6 · YukthiX starter, not changed yet');
+    await screen.findAllByText('Starter value');
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 

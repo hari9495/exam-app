@@ -315,8 +315,9 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     // A company value starting later is not in force yet.
     expect(companyValue(def, [{ id: 'x', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'o', value: 'timesheet', validFrom: '2026-12-01' }], TODAY_ISO)).toEqual({ value: 'punch', row: null });
     render(<CompanySettingsScreen {...base} />);
-    expect(screen.getByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
-    expect(screen.getByText('Punch in and out · Set for your company from 1 Apr 2026')).toBeInTheDocument();
+    expect(screen.getAllByText('Starter value').length).toBeGreaterThan(0); // unchanged settings carry a quiet tag; the value itself is bold
+    expect(screen.getByText('Set for your company from 1 Apr 2026')).toBeInTheDocument();
+    expect(screen.getAllByText('Punch in and out').length).toBeGreaterThan(0);
     expect(screen.getByText('Hosur plant')).toBeInTheDocument();
     expect(screen.getByText('Scheduled')).toBeInTheDocument();
   });
