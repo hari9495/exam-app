@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DirectoryScreen, type DirectoryPage, type DirectoryQuery, type OrgChartData, type PersonRecord, type Ref } from '@yukthix/ui/workforce';
 import type { HireInput } from '@yukthix/ui/history';
 import type { LegalEntity } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, usePeopleRead, usePeopleWrite } from '../../../../../lib/yx-people';
+import { useScope } from '../../../../../lib/yx-shell';
 
 const id = encodeURIComponent;
 const START: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
@@ -19,7 +20,12 @@ const distinct = (refs: (Ref | null)[]) => [...new Map(refs.filter((r): r is Ref
 export default function YxDirectoryPage() {
   const router = useRouter();
   const perms = useYxPermissions();
-  const [query, setQuery] = useState(START);
+  // A search result opens the directory at that name (?q=); the company comes from the top-bar scope.
+  const q = useSearchParams()?.get('q') ?? '';
+  const { scope } = useScope();
+  const [query, setQuery] = useState<DirectoryQuery>({ ...START, q, legalEntityId: scope.entity });
+  useEffect(() => setQuery((cur) => ({ ...cur, q, offset: 0 })), [q]);
+  useEffect(() => setQuery((cur) => ({ ...cur, legalEntityId: scope.entity, offset: 0 })), [scope.entity]);
   const params = new URLSearchParams({ limit: '50', offset: String(query.offset), ...(query.q ? { q: query.q } : {}), ...(query.legalEntityId ? { legalEntityId: query.legalEntityId } : {}), ...(query.departmentId ? { departmentId: query.departmentId } : {}), ...(query.locationId ? { locationId: query.locationId } : {}) });
   const page = usePeople<DirectoryPage>(`/directory?${params}`, { keepPrevious: true });
   const chart = usePeople<OrgChartData>('/org-chart');

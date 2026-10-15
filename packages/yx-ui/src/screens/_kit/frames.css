@@ -60,3 +60,6 @@ body:has(.yx-phone) .yx-sheet { max-width: calc(var(--yx-space-16) * 6 + var(--y
 @media (max-width: 1023px) { .yx-screen > .yx-page-header .yx-page-header__actions { margin-left: 0; width: 100%; } }
 
 .yx-portal__nav a:hover:not([aria-current="page"]) { color: var(--yx-color-text); box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-border-input); }
+
+/* Live frame (design audit step 1): the frame's Area › Page trail stands in only where the page header has none of its own. */
+.yx-screen:has(.yx-page-header .yx-crumbs, .yx-object-header .yx-crumbs) > .yx-crumbs { display: none; }

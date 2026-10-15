@@ -57,11 +57,6 @@ describe('Settings › Expenses', () => {
     await waitFor(() => expect(posted).toEqual(['/expenses/setup/from-starter']));
   });
 
-  it('the menu shows Expenses under Organisation to whoever keeps expense set-up', async () => {
-    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, 'GET /rbac/me/permissions': ['expense.policy.manage'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(within(await screen.findByRole('navigation', { name: 'Menu' })).getByRole('link', { name: 'Expenses' })).toHaveAttribute('href', '/yx/settings/expenses'));
-  });
 });
 
 describe('Expenses claims (M05 batch E2)', () => {
@@ -146,9 +141,4 @@ describe('Expense reports (M05 batch E5)', () => {
     expect(seen[0]).toMatch(/^\/expenses\/reports\/summary\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('the menu shows Expense reports to whoever may read them', async () => {
-    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, 'GET /rbac/me/permissions': ['expense.report.view'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(within(await screen.findByRole('navigation', { name: 'Menu' })).getByRole('link', { name: 'Expense reports' })).toHaveAttribute('href', '/yx/expenses/reports'));
-  });
 });

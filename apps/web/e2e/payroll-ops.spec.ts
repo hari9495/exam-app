@@ -72,7 +72,7 @@ test('declarations and proofs, an advance, a payment mode, registers and advisor
   await suresh.goto('/yx/payroll/payment-modes');
   await suresh.getByRole('button', { name: 'Ask for a payment mode' }).click();
   await suresh.getByRole('textbox', { name: /Find person/ }).fill('Arjun');
-  await suresh.getByRole('button', { name: 'Search' }).click();
+  await suresh.getByRole('button', { name: 'Search', exact: true }).click();
   await suresh.getByRole('button', { name: /Arjun/ }).first().click();
   await suresh.getByLabel(/^From/).fill(`${next}-01`);
   await suresh.getByRole('textbox', { name: /Why/ }).fill('Bank account frozen');

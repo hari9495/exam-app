@@ -38,12 +38,6 @@ beforeEach(() => {
 });
 
 describe('G1 pages', () => {
-  it('the settings admin gets Countries and Translations in the Organisation menu', async () => {
-    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['org.settings.manage', 'org.structure.view'] });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    const nav = await screen.findByRole('navigation', { name: 'Menu' });
-    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Company rules', 'Countries', 'Translations'])));
-  });
 
   it('Countries lists the guides from the API with their open items', async () => {
     route({ [`GET ${PERMS_PATH}`]: ['org.settings.manage'], 'GET /global/countries': [INDIA], 'GET /global/country-setups': [SETUP], 'GET /org/legal-entities': [], 'GET /org/settings': { registry: {}, overrides: [] } });

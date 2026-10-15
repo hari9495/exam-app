@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkspaceShell, type WorkspaceLink, type WorkspacePage } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { HelpCentreScreen, HelpDrawer, MyTicketScreen } from './help';
 import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { TicketScreen } from './ticket';
@@ -18,17 +18,17 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 400) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'desk-help', label: 'Help centre', href: '#help', group: 'Service desk' },
   { id: 'desk-tickets', label: 'Tickets', href: '#tickets', group: 'Service desk' },
   { id: 'desk-setup', label: 'Desk set-up', href: '#setup', group: 'Service desk' },
   { id: 'desk-customers', label: 'Customers', href: '#customers', group: 'Service desk' },
   { id: 'me', label: 'My security', href: '#me', group: 'Me' },
 ];
-const shell = (active: WorkspacePage, children: React.ReactNode) => (
-  <WorkspaceShell active={active} links={LINKS} company="Kaveri Foods" profileHref="#" name="Suresh Pillai" email="it-agent@kaveri.test" onSignOut={() => {}}>
+const shell = (active: string, children: React.ReactNode) => (
+  <LinksFrame active={active} links={LINKS}>
     <div className="yx-auth__page">{children}</div>
-  </WorkspaceShell>
+  </LinksFrame>
 );
 const noop = () => wait();
 

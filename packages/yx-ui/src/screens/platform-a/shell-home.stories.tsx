@@ -3,6 +3,15 @@ import { d } from './platform-data';
 import {
   AccessStatePhone, AccessStateScreen, AppShellScreen, CommandPaletteScreen, MobileSearchScreen, RoleHomeScreen, SearchResultsScreen, SettingsHomeScreen, type HomeData, type SearchHit,
 } from './shell-home';
+import { ShieldCheck, UserRound } from 'lucide-react';
+import { CommandPalette, ProfileMenu } from '../../components/shell';
+import { NotificationCentre } from '../../components/notify';
+import { InlineAlert } from '../../components/feedback';
+import { Button } from '../../components/button';
+import { PageHeader } from '../../components/shell';
+import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
+import { peoplePanel } from '../people/people-kit';
+import { TODAY } from '../_kit/data';
 
 const meta: Meta = { title: 'Screens/Platform/Shell & homes', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -10,6 +19,34 @@ type S = StoryObj;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
 
 /* PLT-01 */
+// Slots the live app needs (design audit step 1): banners above every page, breadcrumbs below the top level, Me and
+// My security in the account menu, and server search that says it is searching.
+const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
+  <DesktopFrame
+    area="people"
+    panelTitle="People"
+    panel={peoplePanel('Directory')}
+    railItems={SCREEN_RAIL.filter((r) => ['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'settings'].includes(r.id))}
+    live={{
+      onNavigate: () => {},
+      onSearch: () => {},
+      onHelp: () => {},
+      notifications: <NotificationCentre items={[]} onMarkAllRead={() => {}} settingsHref="#notification-preferences" now={TODAY} />,
+      profile: <ProfileMenu name="Lakshmi Venkatesan" email="lakshmi.v@kaverifoods.in" links={[{ label: 'Me', icon: UserRound, onSelect: () => {} }, { label: 'My security', icon: ShieldCheck, onSelect: () => {} }]} />,
+      banner: (
+        <InlineAlert tone="warning" title="Support session in Kaveri Foods until 15 Oct, 6:00 pm" actions={<Button size="sm">Leave the company</Button>}>
+          Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
+        </InlineAlert>
+      ),
+      breadcrumbs: [{ label: 'People', href: '#people' }, { label: 'Directory' }],
+      overlays: over.paletteOpen ? <CommandPalette groups={[]} onSelect={() => {}} defaultOpen defaultSearch="Lakshmi" loading /> : undefined,
+    }}
+  >
+    <PageHeader title="Directory" description="Everyone in Kaveri Foods you can see." />
+  </DesktopFrame>
+);
+export const PLT01LiveSlots: S = { name: 'PLT-01 · App shell · live slots (banner, breadcrumbs, Me menu)', render: () => liveFrame() };
+export const PLT01Searching: S = { name: 'PLT-01 · App shell · search waiting for the server', render: () => liveFrame({ paletteOpen: true }) };
 export const PLT01Shell: S = { name: 'PLT-01 · App shell · HR (all entities, period)', render: () => <AppShellScreen persona="hr" /> };
 export const PLT01Employee: S = { name: 'PLT-01 · App shell · employee rail', render: () => <AppShellScreen persona="employee" /> };
 export const PLT01Entity: S = { name: 'PLT-01 · App shell · one entity, locked period', render: () => <AppShellScreen persona="finance" entity="kf-tn" period="2026-08" /> };

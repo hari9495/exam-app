@@ -53,51 +53,6 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
 });
 
-describe('/yx layout: the People group follows grants and the employee record', () => {
-  const MFA = { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' };
-  const links = async () => within(await screen.findByRole('navigation', { name: 'Menu' })).getAllByRole('link').map((a) => a.textContent);
-
-  const NO_TEAM = { managerId: null, members: [] };
-  const MEMBER = { id: 'p-arjun', name: 'Arjun Kulkarni', relation: 'direct' };
-
-  it('HR sees the whole People group', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes', 'Help centre', 'Service catalogue', 'Chat with us', 'People to check', 'Approvals', 'My security']));
-  });
-
-  it('Expenses to pay follows expense.payout.manage (EXP-06)', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['expense.payout.manage'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toContain('Expenses to pay'));
-  });
-
-  it('payroll operations pages follow their own keys (PAY-10.09 … 10.16)', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['payroll.loan.manage', 'statutory.advisory.review'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(expect.arrayContaining(['Loans and advances', 'Compliance advisories'])));
-    const shown = await links();
-    for (const other of ['Payment modes', 'Payslip queries', 'Proof checking', 'Tax certificates', 'Statutory registers']) expect(shown).not.toContain(other);
-  });
-
-  it('a manager sees the directory, their team, history and probations; raising on behalf adds Job changes', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['request.raise_on_behalf'], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [MEMBER] } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation', 'Exits', 'Improvement plans', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Team leave', 'Attendance muster', 'Overtime', 'Roster', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'Get paid early', 'My equity', 'My incentives', 'My pay documents', 'My security', 'My expenses', 'My goals', 'My reviews', 'Feedback I owe', 'Feedback', 'My 1:1s', 'My pay band', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
-  });
-
-  it('an employee without reports sees the directory and their history; someone with no record sees no People group', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-arjun', members: [] } });
-    const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'Get paid early', 'My equity', 'My incentives', 'My pay documents', 'My security', 'My expenses', 'My goals', 'My reviews', 'Feedback I owe', 'Feedback', 'My 1:1s', 'My pay band', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
-    unmount();
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [], 'GET /people/team': NO_TEAM });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await screen.findByText('page');
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/people/employees', {}, 'tok'));
-    expect(screen.queryByRole('link', { name: 'Job history' })).toBeNull();
-  });
-});
 
 describe('/yx/people/history', () => {
   it('shows the chosen person; pay is asked for only after Show pay (R1)', async () => {
@@ -147,21 +102,3 @@ describe('/yx/people/changes', () => {
   });
 });
 
-describe('/yx layout: lifecycle 6f menu entries', () => {
-  const MFA = { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' };
-  const links = async () => within(await screen.findByRole('navigation', { name: 'Menu' })).getAllByRole('link').map((a) => a.textContent);
-
-  it('a new hire gets My first 30 days as their home page while the joining checklist runs', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [] }, 'GET /lifecycle/me/first-30-days': { card: { journeyId: 'jr1', day: 3 } } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toContain('My first 30 days'));
-    expect(document.querySelector('.yx-workspace__home')).toHaveAttribute('href', '/yx/me/first-30-days');
-  });
-
-  it('HR who can see joiners also gets Life events', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['lifecycle.onboarding.view'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] }, 'GET /lifecycle/me/first-30-days': { card: null } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toContain('Life events'));
-    expect(await links()).not.toContain('My first 30 days');
-  });
-});

@@ -526,6 +526,8 @@ export interface ProfileMenuProps {
   density?: DensityChoice;
   onDensityChange?: (d: DensityChoice) => void;
   defaultOpen?: boolean;
+  /** More of the person's own pages after My profile, e.g. Me and My security. */
+  links?: { label: string; icon?: IconComponent; onSelect: () => void }[];
 }
 
 function RadioItem({ value, children }: { value: string; children: ReactNode }) {
@@ -554,6 +556,7 @@ export function ProfileMenu({
   density,
   onDensityChange,
   defaultOpen,
+  links = [],
 }: ProfileMenuProps) {
   return (
     <Menu defaultOpen={defaultOpen} modal={false}>
@@ -571,6 +574,11 @@ export function ProfileMenu({
         <MenuItem icon={User} onSelect={onProfile}>
           My profile
         </MenuItem>
+        {links.map((l) => (
+          <MenuItem key={l.label} icon={l.icon} onSelect={l.onSelect}>
+            {l.label}
+          </MenuItem>
+        ))}
         <MenuItem icon={SlidersHorizontal} onSelect={onPreferences}>
           Preferences
         </MenuItem>
@@ -637,6 +645,10 @@ export interface CommandPaletteProps {
   onAsk?: (query: string) => void;
   /** Recent items are cleared (shared and kiosk computers). */
   onClearRecent?: () => void;
+  /** The search text as typed, for groups the host fetches from the server (they are still filtered here). */
+  onQueryChange?: (query: string) => void;
+  /** Server results are on their way: says "Searching" instead of "No results". */
+  loading?: boolean;
 }
 
 /** Global search and actions, opened with Ctrl/Cmd+K (see useCommandPaletteShortcut). */
@@ -651,9 +663,15 @@ export function CommandPalette({
   onSearchAll,
   onAsk,
   onClearRecent,
+  onQueryChange,
+  loading = false,
 }: CommandPaletteProps) {
   const [open, setOpen] = useControlled(openProp, defaultOpen, onOpenChange);
-  const [q, setQ] = useState(defaultSearch);
+  const [q, setQState] = useState(defaultSearch);
+  const setQ = (v: string) => {
+    setQState(v);
+    onQueryChange?.(v);
+  };
   const [recentCleared, setRecentCleared] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -736,7 +754,12 @@ export function CommandPalette({
                 )}
               </div>
             )}
-            {shown.length === 0 && (
+            {shown.length === 0 && loading && (
+              <div className="yx-palette__empty">
+                <p role="status">Searching for “{q.trim()}”…</p>
+              </div>
+            )}
+            {shown.length === 0 && !loading && (
               <div className="yx-palette__empty">
                 <p role="status">No results for “{q.trim()}”. Check the spelling or try a name, employee ID or action.</p>
                 {(onSearchAll || onAsk) && q.trim() && (
@@ -1510,7 +1533,7 @@ export function EntityPicker({ entities, placeholder = 'Select legal entity', ..
     <Select
       {...rest}
       placeholder={placeholder}
-      options={entities.map((e) => ({ value: e.id, label: e.name, description: `GSTIN ${e.gstin} · ${e.state}`, keywords: [e.gstin, e.state] }))}
+      options={entities.map((e) => ({ value: e.id, label: e.name, description: [e.gstin && `GSTIN ${e.gstin}`, e.state].filter(Boolean).join(' · ') || undefined, keywords: [e.gstin, e.state].filter(Boolean) }))}
     />
   );
 }

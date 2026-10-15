@@ -409,7 +409,7 @@ export function DashboardGrid({
       <div className="yx-dashboard__grid">
         {pinned.map((w) => render(w, null))}
         {ids.map((id, i) => render(byId.get(id)!, i))}
-        {ids.length === 0 && (
+        {customisable && ids.length === 0 && (
           <div className="yx-dashboard__empty">
             <EmptyState title="No widgets on your home yet." description="Add the numbers and trends you check most." action={addMenu} />
           </div>

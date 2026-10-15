@@ -145,7 +145,7 @@ describe('SsoCallbackPage', () => {
     atCallback('code=abc123');
     (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u2', role: 'panel' }) }).mockResolvedValueOnce(['employee.profile.view']).mockRejectedValueOnce(new Error('You have no employee record in this company.'));
     render(<SsoCallbackPage />);
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
   });
 
   it('sends a YukthiX sign-in that must enrol to the YukthiX set-up page', async () => {

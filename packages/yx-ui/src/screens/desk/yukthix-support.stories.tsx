@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { YukthixSupportScreen } from './yukthix-support';
 import { YX_ROWS, YX_TICKET } from './yukthix-support-data';
 
@@ -9,7 +9,7 @@ export default meta;
 type S = StoryObj;
 
 const wait = () => new Promise<void>((r) => setTimeout(r, 400));
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'support-access', label: 'Support access', href: '#access', group: 'Security' },
   { id: 'yukthix-support', label: 'Contact YukthiX', href: '#support', group: 'Security' },
 ];
@@ -17,7 +17,7 @@ const LINKS: WorkspaceLink[] = [
 function Page({ empty }: { empty?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
   return (
-    <WorkspaceShell active="yukthix-support" links={LINKS} company="Godavari Agro" profileHref="#" name="Sunita Rao" email="sunita@godavari.test" onSignOut={() => {}}>
+    <LinksFrame active="yukthix-support" links={LINKS}>
       <div className="yx-auth__page">
         <YukthixSupportScreen
           state="ready"
@@ -32,7 +32,7 @@ function Page({ empty }: { empty?: boolean }) {
           supportAccessHref="#access"
         />
       </div>
-    </WorkspaceShell>
+    </LinksFrame>
   );
 }
 

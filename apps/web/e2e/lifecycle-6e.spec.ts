@@ -64,7 +64,7 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await add.getByRole('checkbox', { name: new RegExp(first) }).click();
   await add.getByRole('button', { name: 'Add joiners' }).click();
   await expect(card.getByText(new RegExp(first))).toBeVisible();
-  await card.getByRole('button', { name: 'Change' }).click();
+  await card.getByRole('button', { name: 'Change', exact: true }).click();
   const ch = hr.getByRole('dialog');
   await ch.getByRole('textbox', { name: 'Joining day' }).fill(ddMmmYyyy(addDays(today, 35)));
   await ch.getByRole('textbox', { name: 'Joining day' }).press('Tab');

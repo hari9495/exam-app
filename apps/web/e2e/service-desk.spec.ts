@@ -39,7 +39,9 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   // 2. Suresh (IT agent) finds it, takes it, adds a note and replies.
   const agent = await (await browser.newContext()).newPage();
   await signIn(agent, 'it-agent@demo-org.test', PASSWORD);
-  await agent.waitForURL(/\/yx\/desk\/tickets/);
+  // Agents land on Home (design audit step 1); the queue is one click away.
+  await agent.waitForURL(/\/yx\/home/);
+  await agent.goto('/yx/desk/tickets');
   await agent.getByRole('button', { name: /View:/ }).click();
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(number);
@@ -85,7 +87,9 @@ test('SLA: a ticket near its breach is listed and its timeline shows', async ({ 
   await dueWithinAnHour('Payroll export keeps timing out');
   const agent = await (await browser.newContext()).newPage();
   await signIn(agent, 'it-agent@demo-org.test', PASSWORD);
-  await agent.waitForURL(/\/yx\/desk\/tickets/);
+  // Agents land on Home (design audit step 1); the queue is one click away.
+  await agent.waitForURL(/\/yx\/home/);
+  await agent.goto('/yx/desk/tickets');
   await agent.getByRole('button', { name: /View:/ }).click();
   await agent.getByRole('menuitemradio', { name: 'Breaching soon' }).or(agent.getByRole('menuitem', { name: 'Breaching soon' })).click();
   await agent.getByText('Payroll export keeps timing out').first().click();

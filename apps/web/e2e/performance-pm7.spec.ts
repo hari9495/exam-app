@@ -36,7 +36,7 @@ test('comp review: start a cycle, open it, and a change outside the matrix needs
 
   await page.getByRole('button', { name: 'Open for proposals' }).click();
   await expect(page.getByRole('button', { name: 'Open for proposals' })).toBeHidden({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Change' }).first().click();
+  await page.getByRole('button', { name: 'Change', exact: true }).first().click();
   const sheet = page.getByRole('dialog');
   const merit = sheet.getByRole('textbox', { name: /Merit increase/ });
   await merit.fill('40');

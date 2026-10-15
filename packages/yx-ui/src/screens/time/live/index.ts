@@ -2,7 +2,7 @@
 // leave balances, and HR set-up. Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
-export { MyAttendanceScreen, type MyAttendanceScreenProps, type Pin } from './my-attendance';
+export { MyAttendanceScreen, TodayCard, type MyAttendanceScreenProps, type Pin } from './my-attendance';
 export { TeamLeaveScreen, MusterScreen, LeaveBalancesScreen, type TeamLeaveScreenProps, type MusterScreenProps, type LeaveBalancesScreenProps } from './team';
 export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
