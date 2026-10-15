@@ -644,7 +644,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           </div>
         ) : null}
       </div>
-      <DashboardGrid label="Your home" widgets={widgets} defaultValue={widgets.map((w) => w.id)} />
+      <DashboardGrid label="Your home" widgets={widgets} defaultValue={widgets.map((w) => w.id)} customisable={false} />
     </>
   );
 }
