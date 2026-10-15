@@ -177,10 +177,10 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return { id: r.id, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
   }
 
-  async list(ctx: TenantContext, user: ScopeUser, month?: string) {
+  async list(ctx: TenantContext, user: ScopeUser, month?: string, entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())];
+      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())].filter((id) => !entityId || id === entityId);
       await payScope(tx, ids);
       const rows = await tx.payrollRun.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) }, orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }], take: 200 });
       return rows.map((r) => this.view(r));

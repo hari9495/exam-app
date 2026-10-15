@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
+import { employeesInEntity } from '../access/scope';
 import { EmployeeHistoryService, type RequestUser } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -100,18 +101,7 @@ export class WorkspaceService {
     }
     if (keys.has('lifecycle.exit.view') || keys.has('lifecycle.exit.manage')) {
       const rows = (await this.service(ExitsService).list(ctx, user)).rows.filter((k) => inWeek(k.lastDay));
-      const ids = rows.map((r) => r.employeeId);
-      const inEntity =
-        entityId && rows.length
-          ? new Set(
-              (
-                await inCompany(this.tenantPrisma, ctx, (tx, c) =>
-                  tx.$queryRaw<{ id: string }[]>(Prisma.sql`SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
-                    WHERE a.organization_id = ${c.organizationId}::uuid AND a.superseded_at IS NULL AND a.legal_entity_id = ${entityId}::uuid AND a.employee_id = ANY(${ids}::uuid[])`),
-                )
-              ).map((r) => r.id),
-            )
-          : null;
+      const inEntity = entityId ? await inCompany(this.tenantPrisma, ctx, (tx, c) => employeesInEntity(tx, c, entityId, rows.map((r) => r.employeeId))) : null;
       out.leavers = rows.filter((k) => !inEntity || inEntity.has(k.employeeId)).map((k) => ({ id: k.id, name: k.name, on: k.lastDay, clearanceOpen: k.clearance.open }));
     }
     if (!support && keys.has('desk.ticket.work')) {

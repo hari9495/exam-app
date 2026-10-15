@@ -50,7 +50,7 @@ export class Payroll5cController {
   @Get('runs')
   @RequireAnyPermission(...RUN_VIEW)
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RunListDto) {
-    return this.runs.list(ctx, this.user(req), q.month);
+    return this.runs.list(ctx, this.user(req), q.month, q.legalEntityId);
   }
 
   @Get('runs/:id')

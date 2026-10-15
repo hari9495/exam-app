@@ -177,11 +177,13 @@ export class ExpensePaymentsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ To pay (EXP-06)
 
-  async toPay(ctx: TenantContext, user: ScopeUser) {
+  async toPay(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const { ids, me } = await this.requirePayer(tx, org, v);
+      const payer = await this.requirePayer(tx, org, v);
+      const { me } = payer;
+      const ids = payer.ids.filter((id) => !entityId || id === entityId);
       // Paid claims stay on the list for a year.
       const since = new Date(Date.now() - 365 * 86_400_000);
       const claims = await tx.expenseClaim.findMany({

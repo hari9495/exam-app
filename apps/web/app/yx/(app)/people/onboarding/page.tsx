@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import { OnboardingBoardScreen, type ImportResult, type JoinerBoard } from '@yukthix/ui/lifecycle';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // People › Onboarding (PPL-11; M01 §3.5, LIFE-1.07): joiners before day one with their checklist progress. HR adds or
 // imports joiners; a joiner becomes an employee on the joining day (founder D2). The API decides who sees whom.
 export default function YxOnboardingPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
-  const board = useLife<JoinerBoard>('/lifecycle/joiners');
+  const board = useLife<JoinerBoard>(withParams('/lifecycle/joiners', sp.entity));
   const places = useJoinerPlaces(perms.has('lifecycle.onboarding.manage'));
   const write = useLifeWrite();
   return (

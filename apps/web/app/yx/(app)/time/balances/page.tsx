@@ -2,12 +2,14 @@
 
 import { LeaveBalancesScreen, type HrBalances, type LedgerRow } from '@yukthix/ui/time';
 import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 const id = encodeURIComponent;
 
 // HR › Leave balances (TIM-21 / TIM-30 basic): leave.view in scope; adjusting needs leave.balance.adjust and a reason.
 export default function YxLeaveBalancesPage() {
-  const balances = useTime<HrBalances>('/hr/balances');
+  const sp = useScopeParams();
+  const balances = useTime<HrBalances>(withParams('/hr/balances', sp.entity));
   const read = useTimeRead();
   const write = useTimeWrite();
   return (

@@ -74,11 +74,11 @@ export class PeriodsService {
   // ------------------------------------------------------------------------------------------ periods
 
   /** The year's months per legal entity the viewer may lock, with their stage. */
-  async periods(ctx: TenantContext, user: ScopeUser, year: string) {
+  async periods(ctx: TenantContext, user: ScopeUser, year: string, entityId?: string | null) {
     const v = await this.viewer(user);
     if (!has(v, 'attendance.lock')) throw new ForbiddenException('Locking attendance needs attendance.lock.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
+      const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
       const locks = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
       const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: locks.map((l) => l.changedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
       // PAY-1.02: "unlock" asks to reopen; a month with a request waiting shows it.

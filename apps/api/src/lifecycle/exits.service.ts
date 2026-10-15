@@ -770,11 +770,13 @@ export class ExitsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ lists and the workspace
 
-  async list(ctx: TenantContext, user: ScopeUser) {
+  async list(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const rows = await tx.exitCase.findMany({ where: { organizationId: org, status: { notIn: ['withdrawn', 'rejected'] } }, orderBy: { createdAt: 'desc' }, take: 500 });
+      // The switcher: the employment the case ends belongs to the chosen legal entity.
+      const inEntity = entityId ? { employmentId: { in: (await tx.employment.findMany({ where: { organizationId: org, legalEntityId: entityId }, select: { id: true } })).map((e) => e.id) } } : {};
+      const rows = await tx.exitCase.findMany({ where: { organizationId: org, status: { notIn: ['withdrawn', 'rejected'] }, ...inEntity }, orderBy: { createdAt: 'desc' }, take: 500 });
       // Company-wide HR sees every case without a per-case scope check; anyone else is checked case by case.
       const own = await ownOf(tx, c, v);
       const wide = !v.actingForOther && (tenantWide(v, 'lifecycle.exit.view') || tenantWide(v, 'lifecycle.exit.manage'));

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min, ValidateNested, IsUUID } from 'class-validator';
 
 // Expenses batch E4 request bodies (M05-BUILD-DESIGN §18 "Trips", "Advances"). Amounts travel as decimal strings.
 
@@ -171,10 +171,20 @@ export class TripListDto {
   @IsOptional()
   @IsIn(['mine', 'approvals', 'scope', 'desk'])
   view?: 'mine' | 'approvals' | 'scope' | 'desk';
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class AdvanceListDto {
   @IsOptional()
   @IsIn(['mine', 'approvals', 'scope', 'payout'])
   view?: 'mine' | 'approvals' | 'scope' | 'payout';
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }

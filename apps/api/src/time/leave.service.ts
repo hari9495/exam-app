@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { employeeLanguage, translated } from '../global/global-data';
-import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
+import { Viewer, buildViewer, has, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
@@ -580,7 +580,7 @@ export class LeaveService implements OnModuleInit {
   }
 
   /** Team leave calendar (TIM-20, YX-AT-14): opens on the viewer's widest scope (team; HR: everyone in leave.view scope). */
-  async teamCalendar(ctx: TenantContext, user: ScopeUser, from: string, to: string) {
+  async teamCalendar(ctx: TenantContext, user: ScopeUser, from: string, to: string, entityId?: string | null) {
     if (to < from || daysBetween(from, to) > 62) throw new BadRequestException('Choose up to 62 days.');
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -592,6 +592,7 @@ export class LeaveService implements OnModuleInit {
         JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND m.exited_on IS NULL
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`e.id`, today)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length
@@ -621,7 +622,7 @@ export class LeaveService implements OnModuleInit {
   }
 
   /** HR: balances of everyone in leave.view scope (TIM-30 balances matrix, basic). */
-  async hrBalances(ctx: TenantContext, user: ScopeUser) {
+  async hrBalances(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
     const v = await this.viewer(user);
     if (!has(v, 'leave.view')) throw new ForbiddenException('You need leave.view for this.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -632,6 +633,7 @@ export class LeaveService implements OnModuleInit {
         JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND m.exited_on IS NULL
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`e.id`, today, false)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${today}::date`)}
         ORDER BY e.given_name LIMIT 500`;
       const adjustable = has(v, 'leave.balance.adjust');
       const rows = [];

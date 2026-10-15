@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UploadedFile, UseGuards, UseInterceptors, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RequireStepUp } from '../auth/step-up.decorator';
@@ -16,6 +16,7 @@ import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LifeEventsService } from './life-events.service';
+import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // M01 lifecycle batch 6a (M01-LIFECYCLE-BUILD-DESIGN §13). Keys (P02 YX-SEC-01), checked again per joiner / person:
 //   lifecycle.onboarding.view             the onboarding board and joiners in scope (planned entity / location / dept)
@@ -75,8 +76,8 @@ export class LifecycleController {
 
   @Get('joiners')
   @RequireAnyPermission('lifecycle.onboarding.view', 'lifecycle.onboarding.manage')
-  board(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.joiners.board(ctx, this.user(req));
+  board(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityFilterDto) {
+    return this.joiners.board(ctx, this.user(req), q.legalEntityId);
   }
 
   @Post('joiners')

@@ -256,7 +256,7 @@ export class ExpenseTripsService implements OnModuleInit {
     return this.getTrip(ctx, user, id);
   }
 
-  async listTrips(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'scope' | 'desk' = 'mine') {
+  async listTrips(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'scope' | 'desk' = 'mine', entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -276,6 +276,7 @@ export class ExpenseTripsService implements OnModuleInit {
           if (view === 'desk' ? a.desk : a.scope) trips.push(r);
         }
       }
+      if (entityId && view !== 'mine') trips = trips.filter((t) => t.legalEntityId === entityId);
       const people = await this.names(tx, org, trips.map((t) => t.employeeId));
       return { trips: trips.map((t) => this.tripSummary(t, people.get(t.employeeId) ?? '')) };
     });
@@ -645,7 +646,7 @@ export class ExpenseTripsService implements OnModuleInit {
     return this.getAdvance(ctx, user, id);
   }
 
-  async listAdvances(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'scope' | 'payout' = 'mine') {
+  async listAdvances(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'scope' | 'payout' = 'mine', entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -665,6 +666,7 @@ export class ExpenseTripsService implements OnModuleInit {
           if (view === 'payout' ? a.payout && !a.own : a.scope) rows.push(r);
         }
       }
+      if (entityId && view !== 'mine') rows = rows.filter((r) => r.legalEntityId === entityId);
       const people = await this.names(tx, org, rows.map((r) => r.employeeId));
       const out = [];
       for (const r of rows) out.push({ ...(await this.advanceSummary(tx, org, r)), person: people.get(r.employeeId) ?? '' });

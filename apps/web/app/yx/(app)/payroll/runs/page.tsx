@@ -5,12 +5,14 @@ import { PayRunsScreen, type PayGroupRef, type PayRun, type SetupEntity } from '
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { todayIndia } from '../../../../../lib/yx-time';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Payroll › Runs (PAY-10.01, PAY-01): each month's payroll and the off-cycle runs.
 export default function YxPayRunsPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
-  const runs = usePay<PayRun[]>('/runs');
+  const runs = usePay<PayRun[]>(withParams('/runs', `month=${sp.month}`, sp.entity));
   const groups = usePay<PayGroupRef[]>('/pay-groups');
   const entities = usePay<SetupEntity[]>('/setup/entities');
   // Groups are named with their legal entity: two entities may each have a "Monthly staff".

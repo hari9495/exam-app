@@ -42,14 +42,15 @@ export class ExpenseReportsService {
     private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
-  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string): Promise<Report> {
+  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string, entityId?: string | null): Promise<Report> {
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['expense.report.view']);
     if (!v.grants.has('expense.report.view') || v.actingForOther) throw new ForbiddenException('You cannot see expense reports.');
     const end = to ?? todayIst();
     const start = from ?? `${end.slice(0, 8)}01`;
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const entities = tenantWide(v, 'expense.report.view') ? (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id) : (v.scopes.get('expense.report.view') ?? []).filter((s) => s.type === 'legal_entity' && s.id).map((s) => s.id as string);
+      const reach = tenantWide(v, 'expense.report.view') ? (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id) : (v.scopes.get('expense.report.view') ?? []).filter((s) => s.type === 'legal_entity' && s.id).map((s) => s.id as string);
+      const entities = reach.filter((id) => !entityId || id === entityId);
       const base = { kind, from: start, to: end };
       const range = { gte: asDate(start), lt: new Date(asDate(end).getTime() + 86_400_000) };
       const claims = { organizationId: org, legalEntityId: { in: entities } };

@@ -233,4 +233,25 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     expect(await mine('adminA')).toEqual([]);
     expect(JSON.stringify(await mine('adminB'))).not.toContain(ids.reqOwn);
   });
+
+  // Lists that follow the company switcher (design audit step 2): the chosen entity narrows them, never widens them.
+  it('lists narrow to the chosen legal entity; a bad id is refused', async () => {
+    const month = todayIst().slice(0, 7);
+    const other = (await tenantPrisma.forTenant(ctx('A'), (tx) => tx.legalEntity.create({ data: { organizationId: org.A.id, name: `Entity A3 ${runId}`, shortName: 'EA3' } }))).id;
+    const get = async (path: string) => (await api('adminA', 'get', path).expect(200)).body;
+    const musterA = await get(`/time/muster?month=${month}&legalEntityId=${ids.leA}`);
+    expect(musterA.people.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([ids.zA, ids.arjun]));
+    expect((await get(`/time/muster?month=${month}&legalEntityId=${other}`)).people).toEqual([]);
+    expect((await get(`/time/muster?month=${month}`)).people.length).toBe(musterA.people.length);
+    // Another company's entity id finds nothing (RLS), and never errors into someone else's data.
+    expect((await get(`/time/muster?month=${month}&legalEntityId=${ids.leB}`)).people).toEqual([]);
+    for (const path of ['/time/hr/balances', '/lifecycle/exits', '/lifecycle/joiners', `/payroll/runs?month=${month}`, '/performance/reviews?view=scope', '/performance/pips?view=scope', '/expenses/claims?view=scope']) {
+      const sep = path.includes('?') ? '&' : '?';
+      const res = await api('adminA', 'get', `${path}${sep}legalEntityId=${other}`);
+      expect([200, 403]).toContain(res.status);
+      if (res.status === 200) expect(JSON.stringify(res.body)).not.toContain(ids.zA);
+      // Where the person may open the list, a bad id is a 400; otherwise the key check answers first (403).
+      await api('adminA', 'get', `${path}${sep}legalEntityId=not-a-uuid`).expect(res.status === 200 ? 400 : 403);
+    }
+  });
 });

@@ -234,7 +234,7 @@ export class AttendanceService implements OnModuleInit {
     });
   }
 
-  async muster(ctx: TenantContext, user: ScopeUser, month: string) {
+  async muster(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
     const { from, to } = monthRange(month);
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -246,6 +246,7 @@ export class AttendanceService implements OnModuleInit {
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${from}::date)
         JOIN locations l ON l.organization_id = e.organization_id AND l.id = a.location_id
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
