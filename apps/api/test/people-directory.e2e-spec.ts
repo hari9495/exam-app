@@ -182,8 +182,15 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     const all = (await api('hrA', 'post', '/people/workforce/export').send({ columns: ['name', 'phone'], ids: [ids.arjun, ids.konFirm] }).expect(200)).text;
     expect(all.split('\r\n')).toEqual(['"Name","Phone"', '"Arjun Kulkarni","+919845012345"', `"'=SUM(1,2) Advisory",""`]);
     await api('hrA', 'post', '/people/workforce/export').send({ columns: ['salary'] }).expect(400);
+    const xlsx = await api('hrA', 'post', '/people/workforce/export').send({ columns: ['name'], format: 'xlsx' }).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (d: Buffer) => chunks.push(d));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    }).expect(200);
+    expect(xlsx.headers['content-type']).toMatch(/spreadsheetml/);
+    expect((xlsx.body as Buffer).subarray(0, 2).toString()).toBe('PK'); // a zip: the workbook
     const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'people.directory.exported' } }));
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
   });
 
   it('saved views: mine and shared; another person sees only the shared ones and cannot delete them', async () => {

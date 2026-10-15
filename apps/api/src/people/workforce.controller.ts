@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -29,6 +29,10 @@ export class WorkforceExportDto {
   @ArrayMaxSize(EXPORT_COLUMNS.length)
   @IsIn(EXPORT_COLUMNS, { each: true })
   columns!: ExportColumn[];
+
+  @IsOptional()
+  @IsIn(['csv', 'xlsx'])
+  format?: 'csv' | 'xlsx';
 }
 
 export class SavedViewDto {
@@ -56,12 +60,17 @@ export class WorkforceController {
   }
 
   @Post('export')
-  @HttpCode(200)
-  @Header('Content-Type', 'text/csv; charset=utf-8')
-  @Header('Content-Disposition', 'attachment; filename="directory.csv"')
-  @Header('Cache-Control', 'no-store')
-  export(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WorkforceExportDto) {
-    return this.workforce.export(ctx, req.user as RequestUser, dto);
+  async export(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WorkforceExportDto, @Res() res: Response) {
+    const body = await this.workforce.export(ctx, req.user as RequestUser, dto);
+    const xlsx = dto.format === 'xlsx';
+    res
+      .status(200)
+      .set({
+        'Content-Type': xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="directory.${xlsx ? 'xlsx' : 'csv'}"`,
+        'Cache-Control': 'no-store',
+      })
+      .send(body);
   }
 
   @Get('views')

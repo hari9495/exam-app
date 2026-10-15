@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isoDate, todayIst } from '../org-structure/org-validation';
@@ -207,7 +208,7 @@ export class WorkforceService {
   }
 
   /** CSV of the rows the person can see (all, or the selected ones), with only the fields they can see; recorded. */
-  export(ctx: TenantContext, user: RequestUser, dto: { legalEntityId?: string | null; ids?: string[]; columns: ExportColumn[] }) {
+  export(ctx: TenantContext, user: RequestUser, dto: { legalEntityId?: string | null; ids?: string[]; columns: ExportColumn[]; format?: 'csv' | 'xlsx' }): Promise<Buffer> {
     return this.history.viewer(user).then((v) =>
       this.history.run(ctx, async (tx, c) => {
         if (!has(v, 'employee.profile.view')) throw new ForbiddenException('Exporting the directory is for HR.');
@@ -229,12 +230,20 @@ export class WorkforceService {
           phone: (r) => r.phone ?? '',
         };
         const HEAD: Record<ExportColumn, string> = { name: 'Name', designation: 'Designation', department: 'Department', location: 'Location', legalEntity: 'Legal entity', manager: 'Manager', email: 'Work email', code: 'ID', joined: 'Joined', status: 'Status', phone: 'Phone' };
-        // Quote every cell, and neutralise spreadsheet formulas (CSV injection, OWASP).
-        // A plain number (a +91 phone) is not a formula and stays as it is.
-        const esc = (s: string) => `"${(/^[=+\-@\t\r]/.test(s) && !/^[+-]?\d[\d .]*$/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
-        const csv = [dto.columns.map((k) => esc(HEAD[k])).join(','), ...rows.map((r) => dto.columns.map((k) => esc(cell[k](r))).join(','))].join('\r\n');
-        await audit(tx, c, 'people.directory.exported', 'directory', 'people.directory', { rows: rows.length, columns: dto.columns, legalEntityId: entity, selected: Boolean(dto.ids) });
-        return csv;
+        await audit(tx, c, 'people.directory.exported', 'directory', 'people.directory', { rows: rows.length, columns: dto.columns, legalEntityId: entity, selected: Boolean(dto.ids), format: dto.format ?? 'csv' });
+        if (dto.format === 'xlsx') {
+          // Cells are written as text values, never formulas.
+          const book = new ExcelJS.Workbook();
+          const sheet = book.addWorksheet('Directory');
+          sheet.addRow(dto.columns.map((k) => HEAD[k]));
+          for (const r of rows) sheet.addRow(dto.columns.map((k) => cell[k](r)));
+          sheet.getRow(1).font = { bold: true };
+          return Buffer.from(await book.xlsx.writeBuffer());
+        }
+        // Quote every cell, and neutralise spreadsheet formulas (CSV injection, OWASP). A plain number (a +91 phone) is
+        // not a formula and stays as it is.
+        const esc = (v: string) => `"${(/^[=+\-@\t\r]/.test(v) && !/^[+-]?\d[\d .]*$/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`;
+        return Buffer.from([dto.columns.map((k) => esc(HEAD[k])).join(','), ...rows.map((r) => dto.columns.map((k) => esc(cell[k](r))).join(','))].join('\r\n'), 'utf8');
       }),
     );
   }
