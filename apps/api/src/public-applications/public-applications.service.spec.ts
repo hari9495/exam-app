@@ -1,7 +1,8 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 // Mocked so parseResume's PDF→text step is deterministic without a real PDF binary.
 import pdfParse from 'pdf-parse';
+import { EmailService } from '../email/email.service';
 import { PublicApplicationsService } from './public-applications.service';
 import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
@@ -35,6 +36,8 @@ describe('PublicApplicationsService', () => {
   let integrationEvents: { emit: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   let quota: { assertWithinLimit: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let emailService: any;
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
 
   const openJob = {
@@ -58,6 +61,7 @@ describe('PublicApplicationsService', () => {
     integrationEvents = { emit: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn() };
     quota = { assertWithinLimit: jest.fn() };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     crypto = {
       encrypt: jest.fn().mockImplementation((s: string) => `enc(${s})`),
       decrypt: jest.fn().mockImplementation((s: string) => s.replace(/^enc\((.*)\)$/, '$1')),
@@ -75,9 +79,13 @@ describe('PublicApplicationsService', () => {
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
         { provide: QuotaService, useValue: quota },
         { provide: OrgSecretsCryptoService, useValue: crypto },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
     service = moduleRef.get(PublicApplicationsService);
+    // M10 AT3: no versioned notices unless a test sets them (the legacy org consent text still applies).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(service as any, 'notices').mockResolvedValue([]);
   });
 
   // getPublicJob makes a second forTenant call (after resolveJob's) to load apply-visible
@@ -133,6 +141,7 @@ describe('PublicApplicationsService', () => {
         orgLogo: 'logos/acme.png?sig=abc',
         applyConsentText: null,
         applyConsentVersion: 1,
+        consents: [],
         customFields: [],
       });
     });
@@ -232,7 +241,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-generated' }) },
       });
       tenantPrisma.forTenant
@@ -283,7 +292,9 @@ describe('PublicApplicationsService', () => {
         expect.stringContaining('cand-1'),
         'user-1',
       );
-      expect(out).toEqual({ statusToken: 'tok-generated', portalToken: 'ptok-1' });
+      expect(out).toEqual({ received: true });
+      // The links go only to the given address (no enumeration through the response).
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@x.com', html: expect.stringContaining('/application/tok-generated') }));
       // A brand-new candidate (existingCandidate was null) is a new applicant.
       expect(integrationEvents.emit).toHaveBeenCalledWith(
         'org-1',
@@ -304,7 +315,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
       };
       tenantPrisma.forTenant
@@ -316,7 +327,8 @@ describe('PublicApplicationsService', () => {
       const pdf = Buffer.from('%PDF-1.7 hello again').toString('base64');
       const out = await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf });
 
-      expect(out).toEqual({ statusToken: 'existing-token', portalToken: 'ptok-1' });
+      expect(out).toEqual({ received: true });
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('/application/existing-token') }));
     });
 
     it('resolves statusId from the first ACTIVE-category stage (not merely stages[0]) when the job has a pipeline', async () => {
@@ -327,7 +339,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         // Two stages, deliberately with 'rejected' FIRST and 'active' SECOND, to prove the code
         // picks the first active-category stage's first status -- not stages[0] -- and not the
         // rejected stage's status either.
@@ -368,7 +380,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Real Name', phone: '555-0000' }),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
       };
       tenantPrisma.forTenant
@@ -403,7 +415,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue(existingCandidate),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-1' }) },
       });
     }
@@ -423,6 +435,51 @@ describe('PublicApplicationsService', () => {
         ...(consentAccepted === undefined ? {} : { consentAccepted }),
       });
     }
+
+    const notice = { id: 'n-app', purpose: 'application', version: 2, text: 'We keep your data for hiring.' };
+    const poolNotice = { id: 'n-pool', purpose: 'talent_pool', version: 1, text: 'Keep me for other roles.' };
+
+    it('a filled honeypot gets the same answer and stores nothing', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      const out = await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: 'x', website: 'http://spam' });
+      expect(out).toEqual({ received: true });
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('records each accepted notice at its version, with the IP only as a hash', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).notices.mockResolvedValue([notice, poolNotice]);
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: notice.text, applyConsentVersion: 2 });
+      const writeTx = { ...buildWriteTx(null), candidateConsent: { createMany: jest.fn() } };
+      const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn(bootstrapTx)).mockImplementationOnce((_c, fn) => fn(writeTx));
+      blobStorage.upload.mockResolvedValue('candidates/org-1/x.pdf');
+      await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: Buffer.from('%PDF-1.7 x').toString('base64'), consents: [{ purpose: 'application', version: 2 }, { purpose: 'talent_pool', version: 1 }] }, '1.2.3.4');
+      const data = writeTx.candidateConsent.createMany.mock.calls[0][0].data;
+      expect(data.map((d: { noticeId: string; version: number }) => [d.noticeId, d.version])).toEqual([['n-app', 2], ['n-pool', 1]]);
+      expect(data[0].ipHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(data)).not.toContain('1.2.3.4');
+      // The legacy stamp follows the versioned application consent.
+      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ consentVersion: 2 }) }));
+    });
+
+    it('a stale notice version is a 409 and a missing application consent is a 400, before any upload', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).notices.mockResolvedValue([notice]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      const pdf = Buffer.from('%PDF-1.7 x').toString('base64');
+      await expect(service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf, consents: [{ purpose: 'application', version: 1 }] })).rejects.toThrow(ConflictException);
+      await expect(service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf, consents: [{ purpose: 'talent_pool', version: 1 }] })).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('never replaces a résumé already on file from the public page', async () => {
+      const writeTx = buildWriteTx({ id: 'cand-1', name: 'Real Name' });
+      writeTx.candidateProfile.findUnique.mockResolvedValue({ resumePath: 'candidates/org-1/original.pdf' });
+      await callApply(writeTx);
+      expect(writeTx.candidateProfile.upsert).not.toHaveBeenCalled();
+    });
 
     it('stamps a NEW candidate with consentedAt/version when the org requires consent and it is accepted', async () => {
       prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree to X', applyConsentVersion: 3 });
@@ -477,7 +534,7 @@ describe('PublicApplicationsService', () => {
 
       const out = await callApply(writeTx);
 
-      expect(out.statusToken).toBe('tok-1');
+      expect(out).toEqual({ received: true });
       const create = writeTx.candidate.upsert.mock.calls[0][0].create;
       expect(create.consentedAt).toBeUndefined();
       expect(create.consentVersion).toBeUndefined();
@@ -489,7 +546,7 @@ describe('PublicApplicationsService', () => {
 
       const out = await callApply(writeTx);
 
-      expect(out.statusToken).toBe('tok-1');
+      expect(out).toEqual({ received: true });
       const create = writeTx.candidate.upsert.mock.calls[0][0].create;
       expect(create.consentedAt).toBeUndefined();
       expect(create.consentVersion).toBeUndefined();
@@ -513,7 +570,7 @@ describe('PublicApplicationsService', () => {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
-        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-1' }) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue(applyVisibleDefs) },
       });
@@ -581,7 +638,7 @@ describe('PublicApplicationsService', () => {
       const writeTx = buildWriteTx([]);
       const out = await callApply(writeTx, undefined);
 
-      expect(out.statusToken).toBe('tok-1');
+      expect(out).toEqual({ received: true });
       expect(writeTx.customFieldValue.upsert).not.toHaveBeenCalled();
     });
   });
@@ -645,6 +702,7 @@ describe('PublicApplicationsService', () => {
             candidateProfile: {
               findUnique: jest.fn().mockResolvedValue({ resumePath: 'candidates/org-1/resume.pdf', parseStatus: 'parsed' }),
             },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -669,6 +727,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -704,6 +763,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'New Name', email: 'a@x.com', phone: '555-1111' }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -785,6 +845,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         ); // getPortal's own read tx
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -838,6 +899,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -914,139 +976,78 @@ describe('PublicApplicationsService', () => {
       accentColor: '#222222',
       textColor: '#333333',
     };
+    const at = new Date('2026-08-01T00:00:00.000Z');
     const listedJobs = [
-      {
-        applyToken: 'tok-1',
-        title: 'Backend Engineer',
-        location: 'Remote',
-        employmentType: 'FULL_TIME',
-        department: 'Engineering',
-        salaryMin: 100000,
-        salaryMax: 150000,
-        salaryCurrency: 'USD',
-        createdAt: new Date('2026-08-01T00:00:00.000Z'),
-      },
-      {
-        applyToken: 'tok-2',
-        title: 'Product Designer',
-        location: 'Bengaluru',
-        employmentType: 'FULL_TIME',
-        department: 'Design',
-        salaryMin: null,
-        salaryMax: null,
-        salaryCurrency: null,
-        createdAt: new Date('2026-08-02T00:00:00.000Z'),
-      },
+      { id: 'j1', slug: 'backend-engineer-remote-aaaaaa', applyToken: 'tok-1', title: 'Backend Engineer', description: '<b>Build</b>', location: 'Remote', employmentType: 'FULL_TIME', department: 'Engineering', salaryMin: 100000, salaryMax: 150000, salaryCurrency: 'USD', showSalary: true, createdAt: at, publishedAt: null, closedAt: null, legalEntityId: 'le-1' },
+      { id: 'j2', slug: 'designer-bengaluru-bbbbbb', applyToken: 'tok-2', title: 'Designer', description: 'x', location: 'Bengaluru', employmentType: 'FULL_TIME', department: 'Design', salaryMin: 90000, salaryMax: 95000, salaryCurrency: 'INR', showSalary: false, createdAt: at, publishedAt: at, closedAt: null, legalEntityId: 'le-2' },
     ];
+    const pages = [{ organizationId: 'org-1', legalEntityId: 'le-1', slug: 'acme-labs', headline: 'Labs', intro: null, primaryColor: 'red;}' }];
+    const entities = [{ id: 'le-1', name: 'Acme Labs' }, { id: 'le-2', name: 'Acme Retail' }];
+    function careersTx(org: unknown, jobs = listedJobs) {
+      const tx = {
+        organization: { findFirst: jest.fn().mockResolvedValue(org) },
+        job: { findMany: jest.fn().mockResolvedValue(jobs) },
+        careersEntityPage: { findMany: jest.fn().mockResolvedValue(pages) },
+        legalEntity: { findMany: jest.fn().mockResolvedValue(entities) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      return tx;
+    }
 
-    it('returns branding + listed jobs, mapped to the response shape, with signed logo/banner URLs', async () => {
-      const findFirst = jest.fn().mockResolvedValue(enabledOrg);
-      const findMany = jest.fn().mockResolvedValue(listedJobs);
-      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
-        fn({ organization: { findFirst }, job: { findMany } }),
-      );
+    it('returns branding + listed jobs with the 4-condition filter, signed images, and salary only when shown', async () => {
+      const tx = careersTx(enabledOrg);
       blobStorage.signIfOurs.mockImplementation(async (path: string) => `${path}?sig=abc`);
 
       const result = await service.getCareers('acme');
 
-      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
-        { organizationId: '00000000-0000-0000-0000-000000000000', isSuperAdmin: true },
-        expect.any(Function),
-      );
-      expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: 'acme' } }));
-      expect(findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            organizationId: 'org-1',
-            status: 'open',
-            publicApplyEnabled: true,
-            listOnCareers: true,
-            applyToken: { not: null },
-          },
-        }),
-      );
-      expect(result).toEqual({
-        orgName: 'Acme',
-        headline: 'Join us',
-        intro: 'We build things',
-        assistantEnabled: true,
-        logoUrl: 'logos/acme.png?sig=abc',
-        bannerUrl: 'banners/acme.png?sig=abc',
-        primaryColor: '#111111',
-        accentColor: '#222222',
-        textColor: '#333333',
-        jobs: [
-          {
-            applyToken: 'tok-1',
-            title: 'Backend Engineer',
-            location: 'Remote',
-            employmentType: 'FULL_TIME',
-            department: 'Engineering',
-            salaryMin: 100000,
-            salaryMax: 150000,
-            salaryCurrency: 'USD',
-          },
-          {
-            applyToken: 'tok-2',
-            title: 'Product Designer',
-            location: 'Bengaluru',
-            employmentType: 'FULL_TIME',
-            department: 'Design',
-            salaryMin: null,
-            salaryMax: null,
-            salaryCurrency: null,
-          },
-        ],
-      });
+      expect(tx.organization.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: 'acme', careersEnabled: true } }));
+      expect(tx.job.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { organizationId: 'org-1', status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null },
+      }));
+      expect(result).toMatchObject({ orgName: 'Acme', companyName: null, headline: 'Join us', logoUrl: 'logos/acme.png?sig=abc', bannerUrl: 'banners/acme.png?sig=abc', primaryColor: '#111111', companies: [{ slug: 'acme-labs', name: 'Acme Labs' }] });
+      expect(result.jobs[0]).toMatchObject({ slug: 'backend-engineer-remote-aaaaaa', salaryMin: 100000, company: { name: 'Acme Labs', slug: 'acme-labs' }, postedAt: at.toISOString() });
+      expect(result.jobs[1]).toMatchObject({ salaryMin: null, salaryMax: null, salaryCurrency: null, company: { name: 'Acme Retail', slug: null } });
+      expect(JSON.stringify(result)).not.toContain('<b>');
     });
 
-    it('throws NotFoundException when the org slug is unknown', async () => {
-      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
-        fn({ organization: { findFirst: jest.fn().mockResolvedValue(null) }, job: { findMany: jest.fn() } }),
-      );
+    it('an entity page shows only that entity, with its own headline, and an unsafe colour falls back to nothing', async () => {
+      careersTx(enabledOrg);
+      const result = await service.getCareers('acme', 'acme-labs');
+      expect(result).toMatchObject({ companyName: 'Acme Labs', headline: 'Labs', intro: 'We build things', primaryColor: null });
+      expect(result.jobs.map((j) => j.applyToken)).toEqual(['tok-1']);
+    });
+
+    it('throws NotFound for an unknown org, a malformed slug, or an unknown entity page', async () => {
+      careersTx(null);
       await expect(service.getCareers('unknown')).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws NotFoundException when the org has careersEnabled: false', async () => {
-      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
-        fn({
-          organization: { findFirst: jest.fn().mockResolvedValue({ ...enabledOrg, careersEnabled: false }) },
-          job: { findMany: jest.fn() },
-        }),
-      );
-      await expect(service.getCareers('acme')).rejects.toThrow(NotFoundException);
-    });
-
-    it('excludes a job that is listOnCareers but not publicApplyEnabled (filter is applied in the query, never leaks)', async () => {
-      // The query itself filters this out server-side; findMany here returns only what a
-      // correct `where` clause would -- this test locks in that the 4-condition where above
-      // is exactly what's sent, so such a job could never come back.
-      const findMany = jest.fn().mockResolvedValue([]);
-      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
-        fn({ organization: { findFirst: jest.fn().mockResolvedValue(enabledOrg) }, job: { findMany } }),
-      );
-
-      const result = await service.getCareers('acme');
-
-      expect(findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ publicApplyEnabled: true, listOnCareers: true }),
-        }),
-      );
-      expect(result.jobs).toEqual([]);
+      careersTx(enabledOrg);
+      await expect(service.getCareers('Bad Slug!')).rejects.toThrow(NotFoundException);
+      await expect(service.getCareers('acme', 'nope')).rejects.toThrow(NotFoundException);
+      await expect(service.getCareers('acme', '../x')).rejects.toThrow(NotFoundException);
     });
 
     it('returns null logoUrl/bannerUrl and skips signing when the paths are null', async () => {
-      const orgNoBranding = { ...enabledOrg, logoPath: null, careersBannerPath: null };
-      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
-        fn({ organization: { findFirst: jest.fn().mockResolvedValue(orgNoBranding) }, job: { findMany: jest.fn().mockResolvedValue([]) } }),
-      );
-
+      careersTx({ ...enabledOrg, logoPath: null, careersBannerPath: null }, []);
       const result = await service.getCareers('acme');
-
       expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
       expect(result.logoUrl).toBeNull();
       expect(result.bannerUrl).toBeNull();
+    });
+
+    it('getCareersJob finds a listed job by slug with its description; an unlisted one is not found', async () => {
+      const tx = careersTx(enabledOrg, [listedJobs[0]]);
+      const job = await service.getCareersJob('acme', 'backend-engineer-remote-aaaaaa');
+      expect(tx.job.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ slug: 'backend-engineer-remote-aaaaaa', listOnCareers: true, status: 'open' }) }));
+      expect(job).toMatchObject({ title: 'Backend Engineer', description: '<b>Build</b>', orgName: 'Acme' });
+      careersTx(enabledOrg, []);
+      await expect(service.getCareersJob('acme', 'closed-job')).rejects.toThrow(NotFoundException);
+      await expect(service.getCareersJob('acme', '<script>')).rejects.toThrow(NotFoundException);
+    });
+
+    it('getCareersSitemap lists listed job slugs and entity pages', async () => {
+      careersTx(enabledOrg);
+      const map = await service.getCareersSitemap('acme');
+      expect(map).toEqual({ jobs: [{ slug: listedJobs[0].slug, updatedAt: at.toISOString() }, { slug: listedJobs[1].slug, updatedAt: at.toISOString() }], companies: ['acme-labs'] });
     });
   });
 
@@ -1411,12 +1412,12 @@ describe('PublicApplicationsService', () => {
 
     it('verifies the secret, normalizes, and funnels into apply()', async () => {
       configuredOrg('sekret');
-      const applySpy = jest.spyOn(service, 'apply').mockResolvedValue({ statusToken: 't', portalToken: 'p' });
+      const applySpy = jest.spyOn(service, 'apply').mockResolvedValue({ received: true });
       const payload = { applyToken: 'tok-abc', applicant: { name: 'Jane Doe', email: 'jane@x.com', phone: '555' }, resumeBase64: 'AA==' };
 
       const out = await service.easyApplyIngest('acme', 'indeed', 'sekret', payload);
 
-      expect(out).toEqual({ statusToken: 't', portalToken: 'p' });
+      expect(out).toEqual({ received: true });
       expect(applySpy).toHaveBeenCalledWith('tok-abc', expect.objectContaining({ name: 'Jane Doe', email: 'jane@x.com', phone: '555', resumeBase64: 'AA==' }));
     });
 

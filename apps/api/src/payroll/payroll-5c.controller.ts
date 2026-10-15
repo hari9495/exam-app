@@ -44,7 +44,7 @@ export class Payroll5cController {
   @Post('runs')
   @RequireAnyPermission('payroll.run.prepare', 'payroll.offcycle.prepare')
   create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RunCreateDto) {
-    return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month, dto.offcycleKind ?? null);
+    return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month, dto.offcycleKind ?? null, dto.subPeriod ?? null);
   }
 
   @Get('runs')
@@ -156,7 +156,7 @@ export class Payroll5cController {
   @Put('lop-inputs/:month')
   @RequirePermissions('payroll.input.manage')
   saveLop(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('month') month: string, @Body() dto: LopInputsDto) {
-    return this.inputs.saveLop(ctx, this.user(req), parseMonth(month), dto.rows, dto.source);
+    return this.inputs.saveLop(ctx, this.user(req), parseMonth(month), dto.rows, dto.source, dto.periodStart);
   }
 
   @Get('one-time-pays')

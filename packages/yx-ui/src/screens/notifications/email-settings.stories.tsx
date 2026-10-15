@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { EmailEditor, EmailSettingsScreen } from './email-settings';
 import { EMAIL_OVERVIEW, EMAIL_PREVIEW_HTML } from './data';
 
@@ -7,7 +7,7 @@ const meta: Meta = { title: 'Screens/Notifications/Email', parameters: { layout:
 export default meta;
 type S = StoryObj;
 
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'emails', label: 'Emails', href: '#emails', group: 'Security' },
   { id: 'me', label: 'My security', href: '#me', group: 'Me' },
 ];
@@ -15,9 +15,9 @@ const ok = async () => {};
 const preview = async () => ({ subject: 'Reset your Kaveri Foods password', html: EMAIL_PREVIEW_HTML, fromName: 'Kaveri Foods via YukthiX', to: 'arjun.k@kaverifoods.in' });
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
-  <WorkspaceShell active="emails" links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+  <LinksFrame active="emails" links={LINKS}>
     {children}
-  </WorkspaceShell>
+  </LinksFrame>
 );
 
 export const List: S = {

@@ -5,6 +5,7 @@ import { CreatePipelineDto } from './dto/create-pipeline.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { BlueprintRule, parseRules, validateBlueprintRules } from './blueprint-rules';
+import { DEFAULT_PIPELINE_STAGES } from './default-stage-map';
 
 export type PipelineWithStages = Pipeline & { stages: (PipelineStage & { statuses: PipelineStatus[] })[] };
 
@@ -50,8 +51,22 @@ export class PipelinesService {
     const pipeline = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.pipeline.findFirst({ where: { organizationId: context.organizationId as string, isDefault: true }, include: STAGE_INCLUDE }),
     );
-    if (!pipeline) throw new NotFoundException('Default pipeline not found');
-    return pipeline as PipelineWithStages;
+    if (pipeline) return pipeline as PipelineWithStages;
+    // M10 AT1: a company that never had the hiring product (every new YukthiX company) gets the standard pipeline the
+    // first time it needs one, instead of being unable to create a job.
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
+      const again = await tx.pipeline.findFirst({ where: { organizationId, isDefault: true }, include: STAGE_INCLUDE });
+      if (again) return again as PipelineWithStages;
+      const created = await tx.pipeline.create({ data: { organizationId, name: 'Standard', isDefault: true } });
+      // Every stage needs a status: an application sits on a status, never on a bare stage (M10 AT5 fix).
+      for (const [i, st] of DEFAULT_PIPELINE_STAGES.entries()) {
+        const name = st.key[0].toUpperCase() + st.key.slice(1);
+        const stage = await tx.pipelineStage.create({ data: { organizationId, pipelineId: created.id, name, category: st.category, position: i } });
+        await tx.pipelineStatus.create({ data: { organizationId, stageId: stage.id, name, position: 0 } });
+      }
+      return (await tx.pipeline.findFirstOrThrow({ where: { id: created.id }, include: STAGE_INCLUDE })) as PipelineWithStages;
+    });
   }
 
   async createPipeline(context: TenantContext, actorUserId: string, dto: CreatePipelineDto): Promise<Pipeline> {

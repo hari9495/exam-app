@@ -145,7 +145,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Choose your company' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: CASTINGS.name }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(api).toHaveBeenCalledWith('/auth/staff/select-company', { method: 'POST', body: JSON.stringify({ selectionToken: 't'.repeat(43), organizationId: 'c-2' }) });
   });
 
@@ -213,11 +213,11 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await typeIdentifier('hr@demo-org.test');
     await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(push).not.toHaveBeenCalledWith(expect.stringMatching(/^\/v2/));
   });
 
-  it('without the directory either, lands on My security', async () => {
+  it('without the directory either, lands on Home', async () => {
     route({
       'GET /auth/remembered-company': { company: null },
       'POST /auth/identify': { next: 'password', providers: [] },
@@ -228,7 +228,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await typeIdentifier('someone@demo-org.test');
     await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/me/security'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
   });
 
   it('the sign-in throttle (not the account lock) says to wait a minute', async () => {
@@ -791,27 +791,72 @@ describe('/yx/settings/identity-providers', () => {
   });
 });
 
+
+// The designed app frame (design audit step 1): rail by product area, the open area's panel, search, bell, Help and the
+// account menu. Which links show for which keys is unit-tested in lib/yx-nav.test.ts.
 describe('/yx layout', () => {
-  it('only shows the pages the role can open', async () => {
+  const PLAIN = { 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': [] };
+  it('someone with no keys gets Home and the Helpdesk; nothing unbuilt, and no older hiring app', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
-    route({ 'GET /auth/mfa': MFA });
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    route({ ...PLAIN, 'GET /rbac/me/permissions': ['exam:manage'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    const nav = screen.getByRole('navigation', { name: 'Menu' });
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My security']);
+    const rail = screen.getByRole('navigation', { name: 'Areas' });
+    expect(within(rail).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Home', 'Helpdesk']);
+    const home = screen.getByRole('navigation', { name: 'Home' });
+    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'My security']);
+    expect(within(home).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
   });
 
-  it('offers the hiring app only to people with exam/ATS permissions', async () => {
-    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
-    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['exam:manage'] });
-    const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByRole('link', { name: 'Hiring and assessments' })).toHaveAttribute('href', '/v2/today');
-    unmount();
-    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
-    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view'] });
+  it('shows the side-menu counts from the workspace API', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/approvals');
+    route({ ...PLAIN, 'GET /workspace/counts': { approvals: 4, notifications: 0 } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await screen.findByRole('link', { name: 'Directory' });
-    expect(screen.queryByRole('link', { name: /Hiring/ })).toBeNull();
-    expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
+    const home = screen.getByRole('navigation', { name: 'Home' });
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('4'));
+  });
+
+  it('breadcrumbs below the top level: Area › Page', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/people/profile-requests');
+    route({ ...PLAIN, 'GET /rbac/me/permissions': ['employee.profile.view', 'employee.identity.approve'] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    const panel = await screen.findByRole('navigation', { name: 'People' });
+    expect(within(panel).getByRole('link', { name: 'Identity and bank changes' })).toHaveAttribute('aria-current', 'page');
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/yx/people/directory');
+    expect(crumbs).toHaveTextContent('Identity and bank changes');
+  });
+
+  it('Ctrl K opens search; results come from the server and open their page', async () => {
+    const push = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    route({ ...PLAIN, 'GET /workspace/search': { people: [{ id: 'p1', label: 'Meera Iyer', secondary: 'Analyst', href: '/yx/people/directory?q=Meera%20Iyer' }], requests: [], candidates: [], tickets: [] } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const box = await screen.findByRole('combobox');
+    await userEvent.type(box, 'meera');
+    await userEvent.click(await screen.findByRole('option', { name: /Meera Iyer/ }, { timeout: 3000 }));
+    expect(push).toHaveBeenCalledWith('/yx/people/directory?q=Meera%20Iyer');
+    expect(api).toHaveBeenCalledWith('/workspace/search?q=meera', {}, 'tok');
+  });
+
+  it('the bell lists the person own notifications; Help opens the help drawer; the account menu has My security', async () => {
+    const push = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    route({ ...PLAIN, 'GET /notifications': [{ id: 'n1', type: 'approval.requested', actorUserId: 'u2', actorName: 'Lakshmi V', entityType: 'wf_request', entityId: 'r1', contextText: 'Casual leave', linkPath: '/yx/approvals', readAt: null, createdAt: NOW }], 'GET /desk/my/desks': [], 'GET /desk/my/tickets': [], 'GET /desk/my/banners': [] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    expect(await screen.findByText('Lakshmi V needs your approval on Casual leave')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Help' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Divya Raghunathan' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'My security' }));
+    expect(push).toHaveBeenCalledWith('/yx/me/security');
   });
 
   it('tells an admin past the grace period to set up a second step', async () => {
@@ -827,15 +872,6 @@ describe('/yx layout', () => {
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByText(/Set it up by 21 Oct 2099/)).toBeInTheDocument();
     expect(screen.getByText('page')).toBeInTheDocument();
-  });
-
-  it('marks Identity and bank changes, not My profile, on /yx/people/profile-requests', async () => {
-    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
-    (usePathname as jest.Mock).mockReturnValue('/yx/people/profile-requests');
-    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view', 'employee.identity.approve'] });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByRole('link', { name: 'Identity and bank changes' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'My profile' })).not.toHaveAttribute('aria-current');
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {

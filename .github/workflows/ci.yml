@@ -76,7 +76,8 @@ jobs:
 
       - name: Migrate and seed database
         working-directory: apps/api
-        run: npx prisma migrate deploy && npx prisma db seed
+        # Seeded twice: the README promises the seed can be re-run on an existing database.
+        run: npx prisma migrate deploy && npx prisma db seed && npx prisma db seed
 
       # Proves tenant isolation in PostgreSQL itself, connected as the app role: no context =>
       # zero rows, cross-tenant reads/writes rejected, no context leak across pooled connections,
@@ -100,6 +101,9 @@ jobs:
       # feature -- exactly the defect this job now guards against.
       - name: Run apps/web unit tests
         run: npm run test:web
+
+      - name: Run packages/yx-ui unit tests
+        run: npm run test --workspace=packages/yx-ui
 
       # Things you can click must look clickable (founder review 7 Oct 2026): builds the yx-ui Storybook and checks a
       # representative story set (list in packages/yx-ui/scripts/check-affordance.mjs) in light and dark for text controls
@@ -204,3 +208,224 @@ jobs:
       - name: API e2e suites (shard ${{ matrix.shard }}/4)
         working-directory: apps/api
         run: npx jest --config ./test/jest-e2e.json --shard=${{ matrix.shard }}/4
+
+  # A fresh database takes every migration in order, and Prisma then reports it up to date (no failed, missing or
+  # edited migrations). The diff guard fails when schema.prisma has a table, column or index no migration creates.
+  # It ignores what the migrations add on purpose beyond the Prisma schema (tenant foreign keys, RLS, raw-SQL
+  # defaults and index names), which Prisma reports as removals or changes, never as additions.
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: examapp
+          POSTGRES_PASSWORD: ci-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Provision database roles
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ci-throwaway
+          POSTGRES_USER: postgres
+          POSTGRES_DB: examapp
+        run: |
+          owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
+          echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
+          APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+
+      - name: Deploy every migration to an empty database
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Migration status reports no drift
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+      - name: No model or column without a migration
+        working-directory: apps/api
+        run: |
+          npx prisma migrate diff --from-url "$MIGRATION_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma > schema-diff.txt
+          if grep -E '^\s*\[\+\]' schema-diff.txt; then
+            echo "::error::schema.prisma has the additions above that no migration creates. Run prisma migrate dev to add one."
+            exit 1
+          fi
+          echo "No additions: every model, column and index in schema.prisma comes from a migration."
+
+  # yx-ui Storybook: a screenshot of every story in light and dark (visual.spec.ts; Linux baselines in
+  # packages/yx-ui/tests/__screenshots__/linux, Git LFS) and a WCAG 2.2 AA axe scan of each (a11y.spec.ts).
+  # Refreshing the Linux baselines after an intended UI change: packages/yx-ui/tests/README.md.
+  yx-ui:
+    name: yx-ui ${{ matrix.suite }} (shard ${{ matrix.shard }}/${{ matrix.of }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: visual, shard: 1, of: 1 }
+          - { suite: a11y, shard: 1, of: 4 }
+          - { suite: a11y, shard: 2, of: 4 }
+          - { suite: a11y, shard: 3, of: 4 }
+          - { suite: a11y, shard: 4, of: 4 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: ${{ matrix.suite == 'visual' }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native dependencies
+        run: npm rebuild
+
+      - name: Build Storybook
+        working-directory: packages/yx-ui
+        run: npx storybook build --quiet
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Storybook ${{ matrix.suite }} tests (shard ${{ matrix.shard }}/${{ matrix.of }})
+        working-directory: packages/yx-ui
+        run: npx playwright test tests/${{ matrix.suite }}.spec.ts --shard=${{ matrix.shard }}/${{ matrix.of }}
+
+      - name: Upload the results on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: yx-ui-${{ matrix.suite }}-${{ matrix.shard }}
+          # test-results has the diffs; __screenshots__/linux has any baseline Playwright wrote because it was missing.
+          path: |
+            packages/yx-ui/test-results
+            packages/yx-ui/tests/__screenshots__/linux
+          retention-days: 7
+
+  # The apps/web Playwright walk-throughs against the built API, exam runtime and web app (scripts/e2e-stack.sh)
+  # on a freshly migrated and seeded database with Redis. Each shard is its own job with its own database.
+  web-e2e:
+    name: web-e2e (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: examapp
+          POSTGRES_PASSWORD: ci-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      E2E_WEB_PORT: 3620
+      E2E_API_PORT: 3621
+      E2E_RUNTIME_PORT: 3623
+      WEB_BASE_URL: http://localhost:3620
+      NEXT_PUBLIC_API_BASE: http://localhost:3621/api/v1
+      NEXT_PUBLIC_EXAM_RUNTIME_API_BASE: http://localhost:3623/api/v1
+      E2E_API_BASE: http://localhost:3621/api/v1
+      E2E_API_ORIGIN: http://localhost:3621
+      E2E_REDIS_URL: redis://localhost:6379
+      E2E_DEV_DNS: /tmp/yx-desk-e2e-dns.json
+      E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      - name: Rebuild native dependencies
+        run: npm rebuild
+
+      - name: Build packages/shared
+        run: npm run build --workspace=packages/shared
+
+      - name: Provision database roles
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ci-throwaway
+          POSTGRES_USER: postgres
+          POSTGRES_DB: examapp
+        run: |
+          owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
+          echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
+          APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "E2E_DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          for name in ORG_SECRETS_ENCRYPTION_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET CANDIDATE_JWT_ACCESS_SECRET CANDIDATE_JWT_REFRESH_SECRET INTERNAL_SERVICE_SECRET; do
+            value=$(openssl rand -hex 32); echo "::add-mask::$value"; echo "$name=$value" >> "$GITHUB_ENV"
+          done
+
+      - name: Migrate and seed database
+        working-directory: apps/api
+        run: npx prisma migrate deploy && npx prisma db seed
+
+      - name: Build the API, exam runtime and web app
+        run: |
+          npm run build --workspace=apps/api
+          npm run build --workspace=apps/exam-runtime
+          npm run build --workspace=apps/web
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the stack
+        run: sh scripts/e2e-stack.sh
+
+      - name: Walk-throughs (shard ${{ matrix.shard }}/4)
+        working-directory: apps/web
+        run: npx playwright test --shard=${{ matrix.shard }}/4
+
+      - name: Upload logs and traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-e2e-${{ matrix.shard }}
+          path: |
+            e2e-logs
+            apps/web/test-results
+          retention-days: 7

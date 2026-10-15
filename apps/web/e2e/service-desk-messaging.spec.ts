@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { signIn } from './fixtures/sign-in';
+import { writeInEditor } from './fixtures/editor';
 
 // M14 Service Desk, phase 3b-2 batch 3 (SD-2.21, and the founder decision of 9 Oct 2026 on signing) on the seeded Kaveri
 // Foods demo:
@@ -23,7 +24,9 @@ const run = randomUUID().slice(0, 6);
 
 function apiEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const line of readFileSync(join(API_DIR, '.env'), 'utf8').split(/\r?\n/)) {
+  // apps/api/.env on a laptop; in CI the API's settings are already in the environment.
+  const file = join(API_DIR, '.env');
+  for (const line of existsSync(file) ? readFileSync(file, 'utf8').split(/\r?\n/) : []) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     if (m && env[m[1]] === undefined) env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
   }
@@ -67,8 +70,7 @@ test('an employee writes on WhatsApp → a request → the agent replies → the
   await expect(farah.getByRole('heading', { name: words })).toBeVisible();
   const ticketId = /\/yx\/desk\/tickets\/([0-9a-f-]{36})/.exec(farah.url())![1];
   await farah.getByRole('tab', { name: /Reply to/ }).click();
-  await farah.locator('.ProseMirror').click();
-  await farah.keyboard.type('Please try another USB-C port; I am sending a new dock.');
+  await writeInEditor(farah, 'Please try another USB-C port; I am sending a new dock.');
   await farah.getByRole('button', { name: 'Send reply' }).click();
   await expect(farah.getByText('I am sending a new dock').first()).toBeVisible();
 

@@ -34,6 +34,7 @@ import { PreboardingPortalService } from './portal.service';
   imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
   controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService],
-  exports: [LifecycleJourneysService],
+  // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
+  exports: [LifecycleJourneysService, ExitsService],
 })
 export class LifecycleModule {}

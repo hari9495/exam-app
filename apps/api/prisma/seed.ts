@@ -198,6 +198,24 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'expense.payout.manage',
     // E5: expense reports, including GST input.
     'expense.report.view',
+    // M06 performance PM1: rating scales, review templates, competencies and the skills library.
+    'perf.setup.manage',
+    // PM2: goals of people in scope; goal periods, company and team goals.
+    'perf.goal.view',
+    'perf.goal.manage',
+    // PM3: sealing a feedback item that reports a concern.
+    'perf.concern.seal',
+    // PM4: review cycles and reviews of people in scope.
+    'perf.cycle.manage',
+    'perf.review.view',
+    // PM6: calibration sessions and reports.
+    'perf.calibration.facilitate',
+    'perf.report.view',
+    // PM7: comp review.
+    'perf.comp.manage',
+    'perf.comp.approve',
+    // PM8: improvement plans.
+    'perf.pip.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -380,6 +398,8 @@ async function main() {
       // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
       const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, exitRules, anand.id, reviewer.id);
+      // Batch 5i: the UAE and US country packs (verify), by the same flow.
+      for (const pack of ['ae.json', 'us.json']) await loadRuleSets(tx, (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', pack), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {

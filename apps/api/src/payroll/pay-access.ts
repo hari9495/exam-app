@@ -70,6 +70,12 @@ export const PAY_KEYS = [
   'payroll.writeoff.approve',
   // 5j-D2.
   'payroll.notice.waive',
+  // Batch 5h.
+  'consultant.manage',
+  'consultant.invoice.approve',
+  'payroll.special.manage',
+  'payroll.ewa.manage',
+  'payroll.equity.manage',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 

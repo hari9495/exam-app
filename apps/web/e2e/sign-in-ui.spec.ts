@@ -21,7 +21,7 @@ test.describe('phone touch targets', () => {
     expect((await email.locator('xpath=..').boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await email.fill('touch.target@demo-org.test');
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    const change = page.getByRole('button', { name: 'Change' });
+    const change = page.getByRole('button', { name: 'Change', exact: true });
     await expect(change).toBeVisible();
     expect((await change.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect((await page.getByLabel(/^Password/).locator('xpath=..').boundingBox())!.height).toBeGreaterThanOrEqual(44);

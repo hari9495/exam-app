@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { basename, join } from 'path';
 import { signWebhook } from '../src/service-desk/mail-adapters';
 import { DEV_MAILBOXES } from '../prisma/seed-service-desk-channels';
@@ -23,7 +23,8 @@ const arg = (k: string, d = '') => {
 
 async function main() {
   // apps/api/.env (variables already set win, e.g. REDIS_URL for the e2e servers).
-  process.loadEnvFile?.(join(__dirname, '../.env'));
+  // apps/api/.env on a laptop; in CI the settings are already in the environment.
+  if (existsSync(join(__dirname, '../.env'))) process.loadEnvFile?.(join(__dirname, '../.env'));
   const box = DEV_MAILBOXES[(arg('to', 'care') as 'it' | 'care')] ?? DEV_MAILBOXES.care;
   const from = arg('from', 'new.customer@example-shop.test');
   const name = arg('name', from.split('@')[0]);

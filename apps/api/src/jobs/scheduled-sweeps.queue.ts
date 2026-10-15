@@ -1,4 +1,4 @@
-import { logBullErrors } from './redis-connection';
+import { logBullErrors, bullOpts } from './redis-connection';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -11,7 +11,7 @@ export const SCHEDULED_SWEEPS_QUEUE = 'SCHEDULED_SWEEPS_QUEUE';
 export const SCHEDULED_SWEEPS_QUEUE_NAME = 'scheduled-sweeps';
 
 export function createScheduledSweepsQueue(connection: Redis): Queue {
-  return logBullErrors(new Queue(SCHEDULED_SWEEPS_QUEUE_NAME, { connection }), SCHEDULED_SWEEPS_QUEUE_NAME);
+  return logBullErrors(new Queue(SCHEDULED_SWEEPS_QUEUE_NAME, bullOpts(connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
 }
 
 export interface SweepDefinition {
@@ -44,4 +44,8 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'probations', cron: '7 * * * *' },
   // W-006: verified company email domains, re-checked against DNS (daily by default; DOMAIN_RECHECK_CRON).
   { id: 'domain-verification-recheck', cron: process.env.DOMAIN_RECHECK_CRON?.trim() || '30 5 * * *' },
+  // M10 AT4: candidate retention (renewal emails, then anonymisation), daily at 03:15 IST.
+  { id: 'candidate-retention', cron: '45 21 * * *' },
+  // M10 AT5: due rejection messages and scorecard reminders, every 5 minutes.
+  { id: 'hiring-due', cron: '*/5 * * * *' },
 ];

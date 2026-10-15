@@ -9,6 +9,7 @@ import { PLATFORM_CHAIN, ZERO_HASH, checkBatch, type ChainRow } from '../src/pay
 import { monthRange, todayIn } from '../src/time/time-core';
 import { addDays } from '../src/time/time-maths';
 import { readFileSync } from 'fs';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { join } from 'path';
 import { PAY_VARIABLES, checkFormula } from '../src/rules-engine/expressions';
 import type { RuleSet } from '../src/statutory/evaluator';
@@ -69,7 +70,7 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.payment_mode.approve', description: 'Approve a cash or cheque payment mode asked for by someone else' },
   // Batch 5e (also in the payroll_5e migration).
   { key: 'tax.workspace.view', description: "See employees' tax workspaces, declarations and tax sheets for the legal entities in scope" },
-  { key: 'tax.proof.verify', description: "Verify tax proofs line by line, record PAN status and perquisites (never one's own)" },
+  { key: 'tax.proof.verify', description: "Verify tax proofs line by line, record PAN status and perquisites (never one’s own)" },
   // Batch 5f (also in the payroll_5f migration).
   { key: 'statutory.filing.view', description: 'See the statutory hub, filings, challans, returns and registers of the legal entities in scope' },
   { key: 'statutory.filing.generate', description: 'Generate PF, ESI, PT and LWF files, supplementary filings and TDS returns' },
@@ -84,12 +85,18 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.offcycle.prepare', description: 'Prepare off-cycle runs (bonus, arrears, correction, payment) and their items' },
   { key: 'payroll.arrears.approve', description: 'Make, confirm and approve arrears worksheets, and accept or dismiss arrears proposals after a past-dated rule change' },
   { key: 'payroll.fnf.manage', description: 'Manage full and final settlements: items, held items, payees and the second run' },
+  { key: 'consultant.manage', description: 'The consultant register, their invoices, TDS and payments, Form 140 rows and Form 131 (never one’s own)' },
+  { key: 'consultant.invoice.approve', description: 'Approve consultant invoices for payment (never one’s own upload)' },
+  { key: 'payroll.special.manage', description: 'Special pay: piece-rate, incentives and commission, tips, on-call, union dues, settlements, lay-off and VRS, sent to payroll for approval' },
+  { key: 'payroll.ewa.manage', description: 'Earned wage access: the policy, draws and their payment and recovery' },
+  { key: 'payroll.equity.manage', description: 'Equity plans: valuations, grants, vesting, exercises and the cap table' },
   { key: 'payroll.notice.waive', description: 'Waive the recovery of an unserved notice period for one leaver, with a reason' },
   { key: 'payroll.writeoff.approve', description: 'Write off the rest of an overpayment raised by someone else, with a reason (needs a fresh second sign-in step)' },
 ];
-export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve'];
-export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
-export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'];
+export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve', 'consultant.invoice.approve'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive', 'consultant.manage', 'payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
+// The Finance Approver template as it is today (payroll approvals, bank file release, paying expense claims).
+export const FINANCE_APPROVER = ['org:view', ...ROLE_TEMPLATES.find((t) => t.key === 'finance_approver')!.permissions];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
@@ -285,11 +292,12 @@ export async function seedPay5b(tx: Tx, organizationId: string) {
 // return), and Kavya Rao (compliance@demo-org.test) files statutory returns. Nothing is calculated here: the founder runs it.
 export async function seedPay5j(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
-  if (await tx.compensationPackage.findFirst({ where: org })) return;
   const crypto = new OrgSecretsCryptoService();
   const kfpl = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL' } });
   const tn = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL-TN' } });
   await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${kfpl.id},${tn.id}}`}, true)`;
+  // After set_config: RLS hides compensation packages outside app.pay_entities, so checking earlier always saw none.
+  if (await tx.compensationPackage.findFirst({ where: org })) return;
   const suresh = (await tx.user.findFirstOrThrow({ where: { ...org, email: 'payroll@demo-org.test' } })).id;
   const t = await tx.salaryTemplate.findFirstOrThrow({ where: { ...org, name: STARTER_TEMPLATE.name } });
   const ver = await tx.salaryTemplateVersion.findFirstOrThrow({ where: { ...org, templateId: t.id }, orderBy: { version: 'desc' } });

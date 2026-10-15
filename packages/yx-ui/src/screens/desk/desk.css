@@ -31,5 +31,4 @@
 .yx-desk-portal__brand { display: flex; flex-direction: column; min-width: 0; }
 .yx-desk-portal__company { font-weight: var(--yx-weight-medium); overflow-wrap: anywhere; }
 .yx-desk-portal__main { max-width: calc(var(--yx-space-16) * 14); margin-inline: auto; padding: var(--yx-space-4); display: flex; flex-direction: column; gap: var(--yx-space-4); }
-.yx-desk-help-fab { position: fixed; inset-block-end: var(--yx-space-4); inset-inline-end: var(--yx-space-4); z-index: var(--yx-z-sticky); }
 .yx-desk-plain { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); margin: 0; padding: var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); max-height: 60vh; overflow: auto; }

@@ -73,7 +73,10 @@ export class AccessService {
   async fromTemplate(ctx: TenantContext, actorUserId: string, templateKey: string, name: string | undefined) {
     const t = ROLE_TEMPLATES.find((x) => x.key === templateKey);
     if (!t) throw new NotFoundException('No such role template');
-    return this.profiles.create(ctx, actorUserId, { name: name?.trim() || t.name, permissions: [...t.permissions] });
+    const role = await this.profiles.create(ctx, actorUserId, { name: name?.trim() || t.name, permissions: [...t.permissions] });
+    // It follows the template: keys the template gains later reach it until someone edits its keys (template-sync).
+    await this.tenantPrisma.forTenant(ctx, (tx) => tx.permissionProfile.update({ where: { id: role.id }, data: { templateKey: t.key, templateSet: JSON.stringify([...new Set(t.permissions)].sort()) } }));
+    return role;
   }
 
   /** The company's roles with how many people hold each (base assignment or grant). */

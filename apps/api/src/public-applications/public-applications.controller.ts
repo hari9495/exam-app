@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Headers, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
@@ -9,7 +9,7 @@ import { QuickApplyDto } from './dto/quick-apply.dto';
 import { UnsubscribeDto } from './dto/unsubscribe.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
-import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
+import { STRICT_WALK_IN_THROTTLE, PUBLIC_APPLY_THROTTLE } from '../rate-limit-tiers';
 
 // Deliberately NOT behind JwtAuthGuard -- candidates apply and check status without an
 // account. The app-wide IP-keyed FailOpenThrottlerGuard (APP_GUARD) still applies in front of
@@ -29,9 +29,20 @@ export class PublicApplicationsController {
   }
 
   // Distinct segment from jobs/:applyToken -- no route collision.
+  // M10 AT3: ?company= picks a legal entity's page; slugs are checked before any lookup.
   @Get('careers/:orgSlug')
-  getCareers(@Param('orgSlug') orgSlug: string) {
-    return this.service.getCareers(orgSlug);
+  getCareers(@Param('orgSlug') orgSlug: string, @Query('company') company?: string) {
+    return this.service.getCareers(orgSlug, company);
+  }
+
+  @Get('careers/:orgSlug/jobs/:slug')
+  getCareersJob(@Param('orgSlug') orgSlug: string, @Param('slug') slug: string) {
+    return this.service.getCareersJob(orgSlug, slug);
+  }
+
+  @Get('careers/:orgSlug/sitemap')
+  getCareersSitemap(@Param('orgSlug') orgSlug: string) {
+    return this.service.getCareersSitemap(orgSlug);
   }
 
   // Public careers AI assistant. Triggers an AI call, so it stays under the strict walk-in throttle
@@ -54,8 +65,9 @@ export class PublicApplicationsController {
   }
 
   @Post('jobs/:applyToken/apply')
-  apply(@Param('applyToken') applyToken: string, @Body() dto: ApplyDto) {
-    return this.service.apply(applyToken, dto);
+  @Throttle(PUBLIC_APPLY_THROTTLE)
+  apply(@Param('applyToken') applyToken: string, @Body() dto: ApplyDto, @Ip() ip: string) {
+    return this.service.apply(applyToken, dto, ip);
   }
 
   // Best-effort résumé → contact prefill for the apply form. Under the controller-level strict
@@ -98,6 +110,19 @@ export class PublicApplicationsController {
 
   // Returning-candidate one-click re-apply: the org's other open roles, and applying to one reusing
   // the candidate's saved details + résumé. Both scoped by the candidate's own portal token.
+  // M10 AT4: the retention renewal email's link, and withdrawing talent-pool consent.
+  @Post('portal/:portalToken/stay')
+  @HttpCode(200)
+  renewRetention(@Param('portalToken') portalToken: string) {
+    return this.service.renewRetention(portalToken);
+  }
+
+  @Post('portal/:portalToken/talent-pool/withdraw')
+  @HttpCode(200)
+  withdrawTalentPool(@Param('portalToken') portalToken: string) {
+    return this.service.withdrawTalentPool(portalToken);
+  }
+
   @Get('portal/:portalToken/open-jobs')
   portalOpenJobs(@Param('portalToken') portalToken: string) {
     return this.service.getPortalOpenJobs(portalToken);

@@ -1,9 +1,11 @@
 // Shared frames for product screens (APX-D templates). Every screen story renders inside one of these
 // so all 423 screens look like one product. Owned by the lead; builders use, never edit.
-import { useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react';
 import { Bell, DoorOpen, FolderKanban, HardHat, MessageCircleQuestionMark, MessagesSquare, ShieldCheck } from 'lucide-react';
 import {
   AppShell,
+  Breadcrumbs,
+  type Crumb,
   ScopePicker,
   type ScopePeriod,
   MobileTabBar,
@@ -55,6 +57,8 @@ export interface PanelItem {
   label: string;
   count?: number;
   active?: boolean;
+  /** Where the link goes (live app); stories leave it out. */
+  href?: string;
 }
 export interface PanelSection {
   label?: string;
@@ -84,10 +88,51 @@ export interface DesktopFrameProps {
   allEntities?: boolean;
   /** Legal entity shown in the entity button (ENTITIES id). Default: the first entity. */
   entityId?: string;
+  /** The live app's data and handlers. Stories leave it out and keep their sample data. */
+  live?: LiveFrame;
+}
+
+/** What the live app gives the frame (design audit step 1): the same frame, real data. */
+export interface LiveFrame {
+  /** Client-side navigation for every same-site link in the frame and the page (plain links keep working without it). */
+  onNavigate: (href: string) => void;
+  /** Opens the host's search (render its <CommandPalette> in `overlays`). */
+  onSearch: () => void;
+  /** <NotificationCentre> with the person's own feed. */
+  notifications?: ReactNode;
+  /** <ScopePicker>, only for people who see more than one company. */
+  scope?: ReactNode;
+  /** <ProfileMenu>. */
+  profile: ReactNode;
+  onHelp?: () => void;
+  /** Notices above every page, e.g. a support session or "Secure your account". */
+  banner?: ReactNode;
+  /** Below the top level: Area › Page. */
+  breadcrumbs?: Crumb[];
+  panelCollapsed?: boolean;
+  onPanelCollapsedChange?: (collapsed: boolean) => void;
+  /** Phone tabs and where each goes; tabs without a page are left out. */
+  tabs?: Partial<Record<'home' | 'time' | 'requests' | 'pay' | 'me', string>>;
+  /** Dialogs and drawers the frame opens: the search palette, help. */
+  overlays?: ReactNode;
+}
+
+/** Set inside a live frame: a designed screen's own <DesktopFrame> then renders just its content (design audit step 0). */
+const InLiveFrame = createContext(false);
+
+const ownLink = (e: MouseEvent<HTMLElement>): string | null => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+  const a = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+  const href = a?.getAttribute('href');
+  if (!a || !href || a.target || a.hasAttribute('download') || !href.startsWith('/') || href.startsWith('//')) return null;
+  return href;
 }
 
 /** T1–T7 desktop frame: rail + panel + top bar. Content area gets 24 px page padding. */
-export function DesktopFrame({ area, panelTitle, panel, children, railItems = SCREEN_RAIL, panelCollapsed, user = ME, scope, allEntities, entityId = ENTITIES[0].id }: DesktopFrameProps) {
+export function DesktopFrame({ area, panelTitle, panel, children, railItems = SCREEN_RAIL, panelCollapsed, user = ME, scope, allEntities, entityId = ENTITIES[0].id, live }: DesktopFrameProps) {
+  const nested = useContext(InLiveFrame);
+  if (nested) return <>{children}</>;
+  if (live) return <LiveDesktopFrame {...{ area, panelTitle, panel, railItems, live }}>{children}</LiveDesktopFrame>;
   const selfService = panel.some((sec) => sec.items.some((it) => it.active && (sec.label === 'Me' || /^My /.test(it.label))));
   const shown = scope ?? (selfService ? 'none' : 'entity');
   // Phone tabs follow the role-filtered rail (no Time tab for finance), and Settings has no bottom tab of its own.
@@ -124,6 +169,53 @@ export function DesktopFrame({ area, panelTitle, panel, children, railItems = SC
     >
       <div className="yx-screen">{children}</div>
     </AppShell>
+  );
+}
+
+function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }: Required<Pick<DesktopFrameProps, 'area' | 'panelTitle' | 'panel' | 'railItems' | 'live'>> & { children: ReactNode }) {
+  const go = (href: string | undefined) => href && live.onNavigate(href);
+  const tabs = live.tabs ?? {};
+  const mobileTabs = MOBILE_TABS.filter((t) => tabs[t.id as keyof typeof tabs]);
+  const mobileActive = area === 'time' || area === 'pay' || area === 'home' ? area : undefined;
+  return (
+    // One click handler for the frame and the page: same-site links move without a reload (Next's own <Link>s handle theirs).
+    <div
+      className="yx-frame-live"
+      onClick={(e) => {
+        const href = ownLink(e);
+        if (!href) return;
+        e.preventDefault();
+        live.onNavigate(href);
+      }}
+    >
+      <AppShell
+        rail={<SideRail items={railItems} activeId={area} logo={<Monogram size="sm" />} />}
+        panel={
+          <SidePanel title={panelTitle}>
+            {panel.map((sec, i) => (
+              <PanelGroup key={sec.label ?? i} label={sec.label}>
+                {sec.items.map((it) => (
+                  <PanelLink key={it.label} href={it.href} active={it.active} count={it.count}>
+                    {it.label}
+                  </PanelLink>
+                ))}
+              </PanelGroup>
+            ))}
+          </SidePanel>
+        }
+        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} profile={live.profile} />}
+        mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
+        panelCollapsed={live.panelCollapsed}
+        onPanelCollapsedChange={live.onPanelCollapsedChange}
+      >
+        <div className="yx-screen">
+          {live.banner}
+          {live.breadcrumbs && live.breadcrumbs.length > 1 && <Breadcrumbs items={live.breadcrumbs} />}
+          <InLiveFrame.Provider value={true}>{children}</InLiveFrame.Provider>
+        </div>
+      </AppShell>
+      {live.overlays}
+    </div>
   );
 }
 

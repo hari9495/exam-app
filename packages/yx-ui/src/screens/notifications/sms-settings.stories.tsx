@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { SmsAccountEditor, SmsSettingsScreen, type SmsSettingsScreenProps } from './sms-settings';
 import { ACCOUNTS, DELIVERIES, OVERVIEW, OVERVIEW_AT_LIMIT, OVERVIEW_PLATFORM, OVERVIEW_SHARED_ONLY } from './data';
 
@@ -9,7 +9,7 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
   { id: 'sms', label: 'Text messages', href: '#sms', group: 'Security' },
   { id: 'me', label: 'My security', href: '#me', group: 'Me' },
@@ -18,7 +18,7 @@ const LINKS: WorkspaceLink[] = [
 function Screen(over: Partial<SmsSettingsScreenProps>) {
   const [overview, setOverview] = useState(over.overview === undefined ? OVERVIEW : over.overview);
   return (
-    <WorkspaceShell active="sms" links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+    <LinksFrame active="sms" links={LINKS}>
       <SmsSettingsScreen
         state="ready"
         deliveries={DELIVERIES}
@@ -41,7 +41,7 @@ function Screen(over: Partial<SmsSettingsScreenProps>) {
         {...over}
         overview={overview}
       />
-    </WorkspaceShell>
+    </LinksFrame>
   );
 }
 

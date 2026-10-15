@@ -60,6 +60,23 @@ describe('notification catalog', () => {
       'payroll.overpayment.consent',
       'expense.trip.update',
       'expense.advance.update',
+      'expense.payment.update',
+      'perf.goal.checkin_due',
+      'perf.feedback.received',
+      'perf.feedback.requested',
+      'perf.one_on_one.reminder',
+      'perf.cycle.launched',
+      'perf.review.stage_due',
+      'perf.review.released',
+      'perf.review.disagreed',
+      'perf.nomination.proposed',
+      'perf.feedback.task',
+      'perf.feedback.author_revealed',
+      'perf.calibration.signed_off',
+      'perf.pip.started',
+      'perf.pip.warning',
+      'perf.pip.checkin_missed',
+      'perf.pip.handed_over',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

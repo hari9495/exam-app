@@ -443,8 +443,11 @@ describe('Service Desk 3b-2 batch 2', () => {
       await api('adminA', 'post', '/desk/recurring').send({ deskId: ids.it, name: 'Bad', rrule: 'FREQ=MINUTELY', timeZone: 'Asia/Kolkata', startsAt: new Date().toISOString(), template: { subject: 'x', bodyHtml: '<p>x</p>' } }).expect(400);
       await api('agent', 'post', '/desk/recurring').send({ deskId: ids.it, name: 'Bad', rrule: 'FREQ=DAILY', timeZone: 'Asia/Kolkata', startsAt: new Date().toISOString(), template: { subject: 'x', bodyHtml: '<p>x</p>' } }).expect(403);
       const r = (await api('adminA', 'post', '/desk/recurring').send({ deskId: ids.it, name: 'Server room check', rrule: 'FREQ=DAILY', timeZone: 'Asia/Kolkata', startsAt: '2026-01-01T03:30:00.000Z', template: { subject: 'Check the server room', bodyHtml: '<p>Temperature and alarms.</p>', groupId: ids.itTeam } }).expect(201)).body;
-      // As if the server was down for three days.
-      const now = new Date();
+      // As if the server was down for three days. The clock is fixed at noon UTC, far from the 03:30 UTC run: with
+      // the real clock, a run between 03:30 and 03:45 UTC saw today's run as on time (late is over 15 minutes).
+      // Four days ahead, every time this test sets stays in the future, so the background sweep never takes it.
+      const today = new Date();
+      const now = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 4, 12));
       await system((tx) => tx.sdRecurring.update({ where: { id: r.id }, data: { lastRunAt: new Date(now.getTime() - 3 * 86_400_000 - 60_000), nextRunAt: new Date(now.getTime() - 3 * 86_400_000) } }));
       expect(await recurring.tick(now)).toBe(3);
       expect(await recurring.tick(now)).toBe(0);

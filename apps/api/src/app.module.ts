@@ -1,6 +1,7 @@
 import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost } from '@nestjs/core';
+import { SupportMaskInterceptor } from './hiring/support-mask.interceptor';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -60,6 +61,8 @@ import { OffersModule } from './offers/offers.module';
 import { InterviewsModule } from './interviews/interviews.module';
 import { AiModule } from './ai/ai.module';
 import { CandidateSearchModule } from './candidate-search/candidate-search.module';
+import { TalentModule } from './talent/talent.module';
+import { InterviewingModule } from './interviewing/interviewing.module';
 import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
 import { BillingModule } from './billing/billing.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -71,6 +74,7 @@ import { EmployeeHistoryModule } from './employee-history/employee-history.modul
 import { GlobalModule } from './global/global.module';
 import { AccessModule } from './access/access.module';
 import { PeopleModule } from './people/people.module';
+import { WorkspaceModule } from './workspace/workspace.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { RemindersModule } from './reminders/reminders.module';
@@ -89,6 +93,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { DocumentsModule } from './documents/documents.module';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { PerformanceModule } from './performance/performance.module';
 import { StatutoryModule } from './statutory/statutory.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
@@ -155,6 +160,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     InterviewsModule,
     AiModule,
     CandidateSearchModule,
+    TalentModule,
+    InterviewingModule,
     CandidateFitModule,
     BillingModule,
     IntegrationsModule,
@@ -185,11 +192,15 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     DocumentsModule,
     LifecycleModule,
     ExpensesModule,
+    PerformanceModule,
     StatutoryModule,
+    WorkspaceModule,
   ],
   controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
+    // M10 AT1 (D14): candidate contact details masked in hiring responses during a YukthiX support session.
+    { provide: APP_INTERCEPTOR, useClass: SupportMaskInterceptor },
     {
       provide: SentryReporter,
       useFactory: () => {

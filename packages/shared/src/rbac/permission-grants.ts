@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { GrantScope, GrantScopeType, TENANT_SCOPE, grantScopesFor } from '../record-visibility/record-visibility';
 import { isGrantOnlyKey } from '../field-permissions/employee-fields';
+import { LEGACY_ALIASES, withAliasSources } from './ats-keys';
 
 export interface PermissionSubject {
   role: string;
@@ -36,7 +37,7 @@ export async function resolveScopedGrants(
     if (!list.some((s) => s.type === scope.type && s.id === scope.id)) list.push(scope);
     out.set(key, list);
   };
-  for (const key of await baseGrants(prisma, tenantPrisma, subject, keys)) add(key, TENANT_SCOPE);
+  for (const key of await baseGrants(prisma, tenantPrisma, subject, withAliasSources(keys))) add(key, TENANT_SCOPE);
 
   const organizationId = subject.organizationId ?? null;
   if (organizationId && subject.userId) {
@@ -54,6 +55,11 @@ export async function resolveScopedGrants(
     for (const g of grants) {
       for (const key of JSON.parse(g.permissions_json) as string[]) add(key, { type: g.scope_type, id: g.target });
     }
+  }
+  // Founder D2 (M10): an older hiring key is held when a company-wide `ats.*` key that stands in for it is held. The older
+  // endpoints are not scope-aware, so a narrower `ats.*` grant never confers them.
+  for (const [legacy, sources] of Object.entries(LEGACY_ALIASES)) {
+    if (sources.some((k) => out.get(k)?.some((s) => s.type === 'tenant'))) add(legacy, TENANT_SCOPE);
   }
   return out;
 }

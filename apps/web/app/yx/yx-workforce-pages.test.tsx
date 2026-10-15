@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxDirectoryPage from './(app)/people/directory/page';
+import { ScopeProvider } from '../../lib/yx-shell';
 import YxTeamPage from './(app)/people/team/page';
 import YxProbationPage from './(app)/people/probation/page';
 import YxBulkChangesPage from './(app)/people/bulk-changes/page';
@@ -47,6 +48,22 @@ beforeEach(() => {
 });
 
 describe('/yx/people/directory', () => {
+  it('opens at the name a search result gave (?q=) and lists only the company chosen in the top bar', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('q=Arjun'));
+    window.localStorage.setItem('yx-scope', JSON.stringify({ entity: 'le-1', period: '2026-10' }));
+    try {
+      route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] }, 'GET /people/org-chart': CHART });
+      wrap(
+        <ScopeProvider>
+          <YxDirectoryPage />
+        </ScopeProvider>,
+      );
+      await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&q=Arjun&legalEntityId=le-1', {}, 'tok'));
+    } finally {
+      window.localStorage.removeItem('yx-scope');
+    }
+  });
+
   it('searches on the server and filters from the org chart; colleagues see no codes', async () => {
     route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] }, 'GET /people/org-chart': CHART });
     wrap(<YxDirectoryPage />);

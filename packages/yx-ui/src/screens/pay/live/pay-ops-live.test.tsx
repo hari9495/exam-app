@@ -100,6 +100,12 @@ describe('payroll operations screens', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(LOANS[0], { kind: 'reschedule', emi: '15000', reason: 'Asked to repay faster' }));
   });
 
+  it('an expense loan is shown as the recovery of an expense advance, not a salary advance', () => {
+    render(<LoansScreen state="ready" loans={[{ ...LOANS[0], id: 'l9', loanType: 'expense' }]} nameOf={nameOf} can={{ manage: true }} onSearch={search} onRequest={fn()} onChange={fn()} />);
+    expect(screen.getByText('Expense advance recovery')).toBeInTheDocument();
+    expect(screen.queryByText('Salary advance')).not.toBeInTheDocument();
+  });
+
   it('my loans: only mine, and no person to choose', async () => {
     render(<LoansScreen state="ready" loans={LOANS} nameOf={nameOf} mine can={{ manage: false }} onRequest={fn()} onChange={fn()} />);
     expect(screen.getAllByRole('row')).toHaveLength(2);

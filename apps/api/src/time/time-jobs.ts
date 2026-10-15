@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { AttendanceService } from './attendance.service';
 import { LeaveService } from './leave.service';
 
@@ -24,11 +24,11 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
     private readonly leave: LeaveService,
     private readonly attendance: AttendanceService,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name, job.data as Record<string, string>), { connection: this.connection }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name, job.data as Record<string, string>), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('time-accrue', { every: 6 * 3_600_000 }, { name: 'accrue', data: {} });
     await this.queue.upsertJobScheduler('time-evaluate', { every: 3_600_000 }, { name: 'evaluate', data: {} });
   }

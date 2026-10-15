@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
@@ -13,7 +14,8 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 
 async function main() {
   // apps/api/.env (variables already set win, e.g. REDIS_URL for the e2e servers).
-  process.loadEnvFile?.(join(__dirname, '../.env'));
+  // apps/api/.env on a laptop; in CI the settings are already in the environment.
+  if (existsSync(join(__dirname, '../.env'))) process.loadEnvFile?.(join(__dirname, '../.env'));
   const [email = 'asha@annapurna-stores.test', orgSlug = 'demo-org', portalSlug = 'care'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   if (process.env.NODE_ENV === 'production') throw new Error('Laptops only.');
   const prisma = new PrismaClient();

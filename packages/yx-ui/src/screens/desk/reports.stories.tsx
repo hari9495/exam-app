@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { ReportsScreen, WallScreen, type ReportsScreenProps, type ReportsTab } from './reports';
 import { WALL, reportsProps } from './report-data';
 
@@ -8,7 +8,7 @@ const meta: Meta = { title: 'Screens/Service desk/Reports (HLP-05)', parameters:
 export default meta;
 type S = StoryObj;
 
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'desk-tickets', label: 'Tickets', href: '#tickets', group: 'Service desk' },
   { id: 'desk-reports', label: 'Reports', href: '#reports', group: 'Service desk' },
 ];
@@ -17,11 +17,11 @@ function Live({ start, ...over }: Partial<ReportsScreenProps> & { start: Reports
   const [tab, setTab] = useState<ReportsTab>(start);
   const [period, setPeriod] = useState(reportsProps().period);
   return (
-    <WorkspaceShell active="desk-reports" links={LINKS} company="Kaveri Foods" profileHref="#" name="Suresh Pillai" email="it-lead@kaveri.test" onSignOut={() => {}}>
+    <LinksFrame active="desk-reports" links={LINKS}>
       <div className="yx-auth__page">
         <ReportsScreen {...reportsProps({ ...over, tab, onTab: setTab, period, onPeriod: setPeriod })} />
       </div>
-    </WorkspaceShell>
+    </LinksFrame>
   );
 }
 

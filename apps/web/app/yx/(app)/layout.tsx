@@ -1,180 +1,59 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { WorkspaceShell, type MfaStatus, type WorkspaceLink, type WorkspacePage } from '@yukthix/ui/auth';
-import { Button, InlineAlert, Spinner, ToastProvider } from '@yukthix/ui';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileText, Languages, ShieldCheck, UserRound } from 'lucide-react';
+import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
+import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
+import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import type { LegalEntity } from '@yukthix/ui/org';
+import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
-import { roleToLandingPath } from '../../../lib/staff-routing';
+import { useNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../lib/hooks/useNotifications';
+import { notificationText } from '../../../lib/notification-text';
 import { decodeJwtPayload } from '../../../lib/jwt';
-import { useLanding } from '../../../lib/yx-landing';
 import { withNextHere } from '../../../lib/safe-next';
-import { useOrgBranding } from '../../../lib/hooks/useBranding';
-import { useYxPermissions } from '../../../lib/yx-org';
+import { useOrg, useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
-import type { TeamMember } from '@yukthix/ui/workforce';
-import { DeskHelpButton } from './desk-help';
+import { ME_SECURITY, activeLink, buildNav, type NavArea } from '../../../lib/yx-nav';
+import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts, useWorkspaceSearch } from '../../../lib/yx-shell';
+import { DeskHelp } from './desk-help';
 
-const ME: WorkspaceLink = { id: 'me', label: 'My security', href: '/yx/me/security', group: 'Me' };
-const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity', group: 'Security' };
-const SETTINGS: WorkspaceLink = { id: 'settings', label: 'Security settings', href: '/yx/settings/security', group: 'Security' };
-const IDPS: WorkspaceLink = { id: 'identity-providers', label: 'Single sign-on providers', href: '/yx/settings/identity-providers', group: 'Security' };
-const SMS: WorkspaceLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms', group: 'Security' };
-const SUPPORT: WorkspaceLink = { id: 'support-access', label: 'Support access', href: '/yx/settings/support-access', group: 'Security' };
-// SD-1.31: the System Admin writes to YukthiX support (never on a support session).
-const CONTACT_YX: WorkspaceLink = { id: 'yukthix-support', label: 'Contact YukthiX', href: '/yx/support', group: 'Security' };
-const EMAILS: WorkspaceLink = { id: 'emails', label: 'Emails', href: '/yx/settings/emails', group: 'Security' };
-const ORG: WorkspaceLink[] = [
-  { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
-  { id: 'locations', label: 'Locations', href: '/yx/settings/locations', group: 'Organisation' },
-  { id: 'structure', label: 'Structure', href: '/yx/settings/structure', group: 'Organisation' },
-];
-const COMPANY_RULES: WorkspaceLink = { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' };
-// Batch G1: the "Add a country" guide, the company's words in Hindi / Tamil / Telugu, and the person's language.
-const COUNTRIES: WorkspaceLink = { id: 'countries', label: 'Countries', href: '/yx/settings/countries', group: 'Organisation' };
-const TRANSLATIONS: WorkspaceLink = { id: 'translations', label: 'Translations', href: '/yx/settings/translations', group: 'Organisation' };
-const MY_LANGUAGE: WorkspaceLink = { id: 'my-language', label: 'Language', href: '/yx/me/language', group: 'Me' };
-const DIRECTORY: WorkspaceLink = { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' };
-const ORG_CHART: WorkspaceLink = { id: 'org-chart', label: 'Org chart', href: '/yx/people/org-chart', group: 'People' };
-const TEAM: WorkspaceLink = { id: 'team', label: 'My team', href: '/yx/people/team', group: 'People' };
-const HISTORY: WorkspaceLink = { id: 'job-history', label: 'Job history', href: '/yx/people/history', group: 'People' };
-const CHANGES: WorkspaceLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
-const PROBATION: WorkspaceLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
-const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
-// M01 lifecycle batch 6a: joiners and checklists, checklist tasks for their owners, documents to verify, templates.
-const ONBOARDING: WorkspaceLink = { id: 'onboarding', label: 'Onboarding', href: '/yx/people/onboarding', group: 'People' };
-const MY_TASKS: WorkspaceLink = { id: 'my-tasks', label: 'My checklist tasks', href: '/yx/people/my-tasks', group: 'People' };
-const DOC_QUEUE: WorkspaceLink = { id: 'documents-verify', label: 'Documents to verify', href: '/yx/people/documents', group: 'People' };
-const LETTERS: WorkspaceLink = { id: 'letters', label: 'Letters', href: '/yx/people/letters', group: 'People' };
-const READY: WorkspaceLink = { id: 'ready-to-onboard', label: 'Ready to onboard', href: '/yx/people/ready-to-onboard', group: 'People' };
-const LETTER_TEMPLATES: WorkspaceLink = { id: 'letter-templates', label: 'Letter templates', href: '/yx/settings/letters', group: 'Organisation' };
-const MY_LETTERS: WorkspaceLink = { id: 'my-letters', label: 'My letters', href: '/yx/me/letters', group: 'Me' };
-// Lifecycle 6c: exits, clearance, assets; Me › Resign, my assets, my exit interview.
-const EXITS: WorkspaceLink = { id: 'exits', label: 'Exits', href: '/yx/people/exits', group: 'People' };
-const CLEARANCE: WorkspaceLink = { id: 'clearance', label: 'Clearance', href: '/yx/people/clearance', group: 'People' };
-const ASSETS: WorkspaceLink = { id: 'assets', label: 'Assets', href: '/yx/people/assets', group: 'People' };
-const RESIGN: WorkspaceLink = { id: 'resign', label: 'Resign', href: '/yx/me/resignation', group: 'Me' };
-const MY_ASSETS: WorkspaceLink = { id: 'my-assets', label: 'My assets', href: '/yx/me/assets', group: 'Me' };
-// Lifecycle 6d: my documents and the instant employment certificate.
-// Lifecycle 6e: campus batches, absconding, retirements and contract ends, retrenchment and VRS.
-const BATCHES: WorkspaceLink = { id: 'batches', label: 'Campus batches', href: '/yx/people/batches', group: 'People' };
-const ABSCONDING: WorkspaceLink = { id: 'absconding', label: 'Absconding', href: '/yx/people/absconding', group: 'People' };
-const UPCOMING_EXITS: WorkspaceLink = { id: 'upcoming-exits', label: 'Retirements and contracts', href: '/yx/people/upcoming-exits', group: 'People' };
-const RETRENCHMENT: WorkspaceLink = { id: 'retrenchment', label: 'Retrenchment and VRS', href: '/yx/people/retrenchment', group: 'People' };
-const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents', href: '/yx/me/documents', group: 'Me' };
-// Lifecycle 6f: a new hire's first 30 days (first in the menu, so their home page) and HR's life-event checklists.
-const FIRST_30: WorkspaceLink = { id: 'first-30', label: 'My first 30 days', href: '/yx/me/first-30-days', group: 'Me' };
-const LIFE_EVENTS: WorkspaceLink = { id: 'life-events', label: 'Life events', href: '/yx/people/life-events', group: 'People' };
-const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
-// M05 expenses E1: categories, limits, rates and GST registrations.
-// M05 expenses E2: claims (my own, waiting for me, finance's check).
-const MY_EXPENSES: WorkspaceLink = { id: 'expenses', label: 'My expenses', href: '/yx/expenses', group: 'Me' };
-const EXPENSE_REPORTS: WorkspaceLink = { id: 'expense-reports', label: 'Expense reports', href: '/yx/expenses/reports', group: 'Organisation' };
-const EXPENSE_SETUP: WorkspaceLink = { id: 'expense-setup', label: 'Expenses', href: '/yx/settings/expenses', group: 'Organisation' };
-const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
-const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
-const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
-const ACCESS_SETTINGS: WorkspaceLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
-const PRIVACY: WorkspaceLink = { id: 'privacy', label: 'Who accessed my data', href: '/yx/me/privacy', group: 'Me' };
-// M14 Service Desk (3b-1): everyone raises tickets; desk members work them; desk admins set desks up.
-const DESK_HELP: WorkspaceLink = { id: 'desk-help', label: 'Help centre', href: '/yx/desk/help', group: 'Service desk' };
-const DESK_TICKETS: WorkspaceLink = { id: 'desk-tickets', label: 'Tickets', href: '/yx/desk/tickets', group: 'Service desk' };
-const DESK_SETUP: WorkspaceLink = { id: 'desk-setup', label: 'Desk set-up', href: '/yx/desk/setup', group: 'Service desk' };
-const DESK_CALENDAR: WorkspaceLink = { id: 'desk-calendar', label: 'My calendar', href: '/yx/desk/calendar', group: 'Service desk' };
-const DESK_PEOPLE: WorkspaceLink = { id: 'desk-people', label: 'People to check', href: '/yx/desk/people', group: 'Service desk' };
-const DESK_CUSTOMERS: WorkspaceLink = { id: 'desk-customers', label: 'Customers', href: '/yx/desk/customers', group: 'Service desk' };
-const DESK_PEOPLE_LIST: WorkspaceLink = { id: 'desk-people-list', label: 'People list', href: '/yx/desk/people-list', group: 'Service desk' };
-const DESK_PRIVACY: WorkspaceLink = { id: 'desk-privacy', label: 'Privacy requests', href: '/yx/desk/privacy', group: 'Service desk' };
-const DESK_KNOWN_ISSUES: WorkspaceLink = { id: 'desk-known-issues', label: 'Known issues', href: '/yx/desk/known-issues', group: 'Service desk' };
-const DESK_KNOWLEDGE: WorkspaceLink = { id: 'desk-knowledge', label: 'Knowledge', href: '/yx/desk/knowledge', group: 'Service desk' };
-const DESK_REPORTS: WorkspaceLink = { id: 'desk-reports', label: 'Reports', href: '/yx/desk/reports', group: 'Service desk' };
-// 3b-2 batch 1: everyone orders from the catalogue and answers the approvals waiting for them (P03, implicit).
-const DESK_CATALOG: WorkspaceLink = { id: 'desk-catalog', label: 'Service catalogue', href: '/yx/desk/catalog', group: 'Service desk' };
-const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/yx/approvals', group: 'Me' };
-// 3b-2 batch 2: everyone chats with a desk; agents with the chat key take chats and log calls.
-const DESK_CHAT: WorkspaceLink = { id: 'desk-chat', label: 'Chat with us', href: '/yx/desk/chat', group: 'Service desk' };
-const DESK_LIVE_CHAT: WorkspaceLink = { id: 'desk-live-chat', label: 'Live chat', href: '/yx/desk/live-chat', group: 'Service desk' };
-const DESK_TEAM: WorkspaceLink = { id: 'desk-team', label: 'Team and shifts', href: '/yx/desk/team', group: 'Service desk' };
-// Step 4 time and leave (M02): everyone with an employee record has their own leave and attendance; managers see
-// their team, HR its people in scope; set-up for the leave set-up key.
-const MY_LEAVE: WorkspaceLink = { id: 'my-leave', label: 'My leave', href: '/yx/time/leave', group: 'Time' };
-const MY_ATTENDANCE: WorkspaceLink = { id: 'my-attendance', label: 'My attendance', href: '/yx/time/attendance', group: 'Time' };
-const TEAM_LEAVE: WorkspaceLink = { id: 'team-leave', label: 'Team leave', href: '/yx/time/team', group: 'Time' };
-const MUSTER: WorkspaceLink = { id: 'muster', label: 'Attendance muster', href: '/yx/time/muster', group: 'Time' };
-const BALANCES: WorkspaceLink = { id: 'leave-balances', label: 'Leave balances', href: '/yx/time/balances', group: 'Time' };
-const TIME_SETUP: WorkspaceLink = { id: 'time-setup', label: 'Leave set-up', href: '/yx/time/setup', group: 'Time' };
-// Batch 2: shifts and swaps, overtime and timesheets for everyone; the roster for managers and roster.manage; HR's
-// overtime review, registers and payroll feed (attendance.view), set-up and attendance periods (attendance.lock).
-const MY_SHIFTS: WorkspaceLink = { id: 'my-shifts', label: 'My shifts', href: '/yx/time/shifts', group: 'Time' };
-const MY_OVERTIME: WorkspaceLink = { id: 'my-overtime', label: 'My overtime', href: '/yx/time/overtime', group: 'Time' };
-const MY_TIMESHEET: WorkspaceLink = { id: 'my-timesheet', label: 'My timesheet', href: '/yx/time/timesheet', group: 'Time' };
-const ROSTER: WorkspaceLink = { id: 'roster', label: 'Roster', href: '/yx/time/roster', group: 'Time' };
-const OT_REVIEW: WorkspaceLink = { id: 'overtime-review', label: 'Overtime', href: '/yx/time/overtime-review', group: 'Time' };
-const SHIFTS_SETUP: WorkspaceLink = { id: 'shifts-setup', label: 'Shifts set-up', href: '/yx/time/shifts-setup', group: 'Time' };
-const PERIODS: WorkspaceLink = { id: 'periods', label: 'Attendance periods', href: '/yx/time/periods', group: 'Time' };
-const REGISTERS: WorkspaceLink = { id: 'registers', label: 'Registers', href: '/yx/time/registers', group: 'Time' };
-const PAYROLL_FEED: WorkspaceLink = { id: 'payroll-feed', label: 'Payroll feed', href: '/yx/time/payroll-feed', group: 'Time' };
-// M03 payroll batch 5a: pay periods (payroll.period.*), reopen requests, pay documents, payroll files and the audit log.
-const PAY_PERIODS: WorkspaceLink = { id: 'pay-periods', label: 'Pay periods', href: '/yx/payroll/periods', group: 'Payroll' };
-const REOPEN_REQUESTS: WorkspaceLink = { id: 'reopen-requests', label: 'Reopen requests', href: '/yx/payroll/reopen-requests', group: 'Payroll' };
-const PAY_DOCUMENTS: WorkspaceLink = { id: 'pay-documents', label: 'Pay documents', href: '/yx/payroll/documents', group: 'Payroll' };
-const PAY_FILES: WorkspaceLink = { id: 'pay-files', label: 'Payroll files', href: '/yx/payroll/files', group: 'Payroll' };
-const PAY_AUDIT: WorkspaceLink = { id: 'pay-audit', label: 'Audit log', href: '/yx/payroll/audit', group: 'Payroll' };
-// Batch 5b: set-up (payroll.setup.manage / payroll.statutory.setup), structures, compensation and imports.
-const PAY_SETUP: WorkspaceLink = { id: 'pay-setup', label: 'Payroll set-up', href: '/yx/payroll/setup', group: 'Payroll' };
-const PAY_GROUPS: WorkspaceLink = { id: 'pay-groups', label: 'Pay groups', href: '/yx/payroll/pay-groups', group: 'Payroll' };
-const PAY_COMPONENTS: WorkspaceLink = { id: 'pay-components', label: 'Component library', href: '/yx/payroll/components', group: 'Payroll' };
-const PAY_TEMPLATES: WorkspaceLink = { id: 'pay-templates', label: 'Salary templates', href: '/yx/payroll/templates', group: 'Payroll' };
-const PAY_COMPENSATION: WorkspaceLink = { id: 'pay-compensation', label: 'Compensation', href: '/yx/payroll/compensation', group: 'Payroll' };
-const PAY_LAYOUT: WorkspaceLink = { id: 'pay-layout', label: 'Payslip layout', href: '/yx/payroll/payslip-layout', group: 'Payroll' };
-const PAY_RULES: WorkspaceLink = { id: 'pay-rules', label: 'Statutory rules', href: '/yx/payroll/statutory-rules', group: 'Payroll' };
-const PAY_COVERAGE: WorkspaceLink = { id: 'pay-coverage', label: 'Statutory coverage', href: '/yx/payroll/coverage', group: 'Payroll' };
-const PAY_IMPORTS: WorkspaceLink = { id: 'pay-imports', label: 'Import old payroll', href: '/yx/payroll/imports', group: 'Payroll' };
-// Batch 5j: runs, inputs, statutory filings, F&F and arrears; the employee's payslips and tax.
-const PAY_RUNS: WorkspaceLink = { id: 'pay-runs', label: 'Payroll runs', href: '/yx/payroll/runs', group: 'Payroll' };
-const PAY_INPUTS: WorkspaceLink = { id: 'pay-inputs', label: 'Payroll inputs', href: '/yx/payroll/inputs', group: 'Payroll' };
-const PAY_STATUTORY: WorkspaceLink = { id: 'pay-statutory', label: 'Statutory filings', href: '/yx/payroll/statutory', group: 'Payroll' };
-const PAY_FNF: WorkspaceLink = { id: 'pay-fnf', label: 'Full and final', href: '/yx/payroll/fnf', group: 'Payroll' };
-const PAY_ARREARS: WorkspaceLink = { id: 'pay-arrears', label: 'Arrears and recoveries', href: '/yx/payroll/arrears', group: 'Payroll' };
-const PAY_GO_LIVE: WorkspaceLink = { id: 'pay-go-live', label: 'Go-live readiness', href: '/yx/payroll/go-live', group: 'Payroll' };
-const PAY_MODES: WorkspaceLink = { id: 'pay-modes', label: 'Payment modes', href: '/yx/payroll/payment-modes', group: 'Payroll' };
-const PAY_LOANS: WorkspaceLink = { id: 'pay-loans', label: 'Loans and advances', href: '/yx/payroll/loans', group: 'Payroll' };
-const PAY_QUERIES: WorkspaceLink = { id: 'pay-queries', label: 'Payslip queries', href: '/yx/payroll/payslip-queries', group: 'Payroll' };
-const PAY_PROOFS: WorkspaceLink = { id: 'pay-proofs', label: 'Proof checking', href: '/yx/payroll/proofs', group: 'Payroll' };
-const PAY_CERTIFICATES: WorkspaceLink = { id: 'pay-certificates', label: 'Tax certificates', href: '/yx/payroll/certificates', group: 'Payroll' };
-const PAY_REGISTERS: WorkspaceLink = { id: 'pay-registers', label: 'Statutory registers', href: '/yx/payroll/registers', group: 'Payroll' };
-const PAY_ADVISORIES: WorkspaceLink = { id: 'pay-advisories', label: 'Compliance advisories', href: '/yx/payroll/advisories', group: 'Payroll' };
-const MY_LOANS: WorkspaceLink = { id: 'my-loans', label: 'My loans', href: '/yx/me/loans', group: 'Me' };
-const MY_DECLARATIONS: WorkspaceLink = { id: 'my-declarations', label: 'My tax declarations', href: '/yx/me/tax-declarations', group: 'Me' };
-const MY_PAYSLIPS: WorkspaceLink = { id: 'my-payslips', label: 'My payslips', href: '/yx/me/payslips', group: 'Me' };
-const MY_TAX: WorkspaceLink = { id: 'my-tax', label: 'My tax', href: '/yx/me/tax', group: 'Me' };
-const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
-
-// Links follow the role; the API still checks every permission (audit:view, org:manage_users,
-// org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
-// platform console (/staff), where the YukthiX shared SMS account now lives.
-function linksFor(role: string | null, acting: boolean): WorkspaceLink[] {
-  if (acting || role === 'org_admin') return [ACTIVITY, SETTINGS, IDPS, SMS, ME];
-  // The shared SMS account moved to the platform console (step 3).
-  if (role === 'super_admin') return [ME];
-  if (role === 'auditor') return [ACTIVITY, ME];
-  return [ME];
-}
+// Pages outside the menu (a record, a sub-page) still light up their area.
+const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
+const COLLAPSE_KEY = 'yx-panel-collapsed';
+const SEARCH_GROUPS = [
+  ['people', 'People', '@'],
+  ['requests', 'Requests', '#'],
+  ['tickets', 'Tickets', '#'],
+  ['candidates', 'Candidates', '@'],
+] as const;
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ScopeProvider>
+      <Frame>{children}</Frame>
+    </ScopeProvider>
+  );
+}
+
+// The YukthiX app frame (design audit step 1): the designed DesktopFrame with the live menu, search, bell, scope,
+// help and account menu. Links follow the person's grants; the API still checks every call and pages show "no access"
+// on a 403. Platform staff outside any company use the platform console (/staff).
+function Frame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
+  const qc = useQueryClient();
   const { accessToken, role, actingSuperAdmin, actingOrgName, isLoading, signedOut, logout, switchOutOfOrg } = useAuth();
   const me = useCurrentUser();
   const perms = useYxPermissions();
-  // The hiring and assessment app (/v2) is offered only to people who hold its permissions.
-  const access = useLanding();
-  const branding = useOrgBranding();
+  const appearance = useAppearance();
+  const { scope, setScope } = useScope();
   // Job history is for HR, and for anyone with an employee record (themselves and their team, P02 §4.3).
   const people = usePeople<unknown[]>('/employees');
   // My team and team probations appear for managers (P02 Q2, M01 §3.10).
@@ -183,12 +62,57 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
+  const counts = useWorkspaceCounts();
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
-  // A sensitive role with no second step: a reminder during the grace period, a pause after it.
-  const mfaMissing = Boolean(mfa.data?.required && mfa.data.factors.length === 0);
-  const mfaOverdue = mfaMissing && new Date(mfa.data!.enrolmentDueAt) <= new Date();
-  const mfaDue = mfa.data ? new Date(mfa.data.enrolmentDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const search = useWorkspaceSearch(paletteOpen ? typed : '');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const notifications = useNotifications();
+  const markRead = useMarkNotificationRead();
+  const markAll = useMarkAllNotificationsRead();
+  const [collapsed, setCollapsedState] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsedState(window.localStorage.getItem(COLLAPSE_KEY) === '1');
+    } catch {
+      /* private window */
+    }
+  }, []);
+  const setCollapsed = (c: boolean) => {
+    setCollapsedState(c);
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, c ? '1' : '0');
+    } catch {
+      /* private window: this visit only */
+    }
+  };
+  useCommandPaletteShortcut(() => setPaletteOpen((o) => !o));
+
+  const support = actingSuperAdmin;
+  const employee = Boolean(team.data?.managerId);
+  const nav = useMemo(
+    () =>
+      buildNav({
+        has: (k) => perms.has(k as never),
+        role,
+        support,
+        employee,
+        manager: Boolean(team.data?.members.length),
+        history: Boolean(people.data?.length),
+        clearance: Boolean(myClearance.data?.rows.length),
+        tasks: Boolean(myTasks.data?.tasks.length),
+        firstDays: Boolean(firstDays.data?.card),
+      }),
+    // perms.data drives perms.has
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data],
+  );
+  // Company / period button: people who read the structure, when there is more than one entity; the period for pay.
+  const seesEntities = perms.has('org.structure.view') || perms.has('org.settings.manage');
+  const entities = useOrg<LegalEntity[]>('/legal-entities', seesEntities);
+  const payPeriods = !support && (perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve'));
 
   useEffect(() => {
     // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).
@@ -203,166 +127,157 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // Organisation pages follow the person's grants (a Payroll Admin profile may hold them without an admin role).
-  // Settings are read with the structure (GET /org/settings), not with pay-range access alone.
-  // Admin menus only for people who can change them (founder review 7 Oct 2026): a manager may READ the structure
-  // (department and location pickers use it) but gets no Organisation / Access settings in the menu.
-  // YukthiX staff on a support session (P02 Q8) see the company's pages read-only; the API refuses every change.
-  const support = actingSuperAdmin;
-  const settingsAdmin = perms.has('org.settings.manage');
-  const hr = support || perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
-  // HR reads the structure it hires into (read-only pages; changes stay with org.settings.manage). A manager who
-  // only reads it for pickers still gets no Organisation menu (founder review 8 Oct 2026).
-  const org = settingsAdmin || perms.has('pay.range.view') || support || (hr && perms.has('org.structure.view')) ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES, COUNTRIES, TRANSLATIONS] : [])] : [];
-  const employee = Boolean(team.data?.managerId);
-  const manager = Boolean(team.data?.members.length);
-  const bulk = perms.has('employee.change.manage') || perms.has('employee.change.approve');
-  // P02 §4.4–4.5: one's own profile (or HR's view of others); the identity / bank queue for those who raise or decide.
-  const idDesk = perms.has('employee.identity.approve') || perms.has('employee.identity.manage');
-  const staff = [
-    ...(hr || employee ? [PROFILE] : []),
-    ...(hr || employee ? [DIRECTORY, ORG_CHART] : []),
-    ...(manager ? [TEAM] : []),
-    ...(hr || people.data?.length ? [HISTORY] : []),
-    ...(hr || perms.has('request.raise_on_behalf') ? [CHANGES] : []),
-    ...(hr || manager ? [PROBATION] : []),
-    ...(bulk ? [BULK] : []),
-    ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
-    ...(perms.has('lifecycle.onboarding.manage') ? [READY] : []),
-    ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [LIFE_EVENTS] : []),
-    ...(perms.has('letter.issue') ? [LETTERS] : []),
-    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') || manager ? [EXITS] : []),
-    ...(myClearance.data?.rows.length || perms.has('lifecycle.exit.manage') ? [CLEARANCE] : []),
-    ...(perms.has('asset.view') ? [ASSETS] : []),
-    ...(perms.has('lifecycle.onboarding.manage') ? [BATCHES] : []),
-    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') ? [UPCOMING_EXITS] : []),
-    ...(perms.has('lifecycle.exit.manage') ? [ABSCONDING, RETRENCHMENT] : []),
-    ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
-    ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
-    ...(idDesk ? [ID_CHANGES] : []),
-    ...org,
-    ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
-    ...(perms.has('expense.policy.manage') ? [EXPENSE_SETUP] : []),
-    ...(perms.has('expense.report.view') ? [EXPENSE_REPORTS] : []),
-    ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
-    ...(perms.has('access.role.manage') ? [ACCESS] : []),
-    // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
-    ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
-  ];
-  // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
-  const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
+  const hit = activeLink(nav, pathname);
+  const areaId: AreaId = hit?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
+  const area: NavArea = nav.find((a) => a.id === areaId) ?? nav[0];
+  const first = (a: NavArea) => a.sections[0].items[0];
+  const rail = SCREEN_RAIL.flatMap((r) => {
+    const a = nav.find((x) => x.id === r.id);
+    return a ? [{ ...r, href: first(a).href }] : [];
+  });
+  const panel = area.sections.map((s) => ({
+    label: s.label,
+    items: s.items.map((l) => ({ label: l.label, href: l.href, active: l.id === hit?.link.id, count: l.count ? counts.data?.[l.count] : undefined })),
+  }));
+  // Breadcrumbs below the top level (founder decision 15 Oct 2026): Area › Page.
+  const crumbs = hit && (hit.link.id !== first(hit.area).id || pathname !== hit.link.href) ? [{ label: hit.area.title, href: first(hit.area).href }, { label: hit.link.label }] : undefined;
+  const go = (href: string) => router.push(href);
+
+  const mfaMissing = Boolean(mfa.data?.required && mfa.data.factors.length === 0);
+  const mfaOverdue = mfaMissing && new Date(mfa.data!.enrolmentDueAt) <= new Date();
+  const mfaDue = mfa.data ? new Date(mfa.data.enrolmentDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
-  const desk = support
-    ? []
-    : [
-        DESK_HELP,
-        DESK_CATALOG,
-        DESK_CHAT,
-        ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
-        ...(perms.has('desk.chat.work') ? [DESK_LIVE_CHAT] : []),
-        // 3b-2 batch 3: presence, shifts, forecast, my mailbox (agents and leads).
-        ...(perms.has('desk.ticket.work') || perms.has('desk.report.view') ? [DESK_TEAM] : []),
-        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') || perms.has('desk.catalog.manage') || perms.has('desk.rule.manage') || perms.has('desk.lifecycle.manage') || perms.has('desk.channel.manage') ? [DESK_SETUP] : []),
-        // Batch 3: customer admins, and agents (the API lets only Customer support desk agents read).
-        ...(perms.has('desk.customer.manage') || perms.has('desk.ticket.view') ? [DESK_CUSTOMERS] : []),
-        // Batch 4: knowledge, for those who read, write or publish articles.
-        ...(perms.has('desk.kb.view_internal') || perms.has('desk.kb.author') || perms.has('desk.kb.publish') ? [DESK_KNOWLEDGE] : []),
-        // Batch 4: reports, wall screens, NPS surveys.
-        ...(perms.has('desk.report.view') || perms.has('desk.survey.manage') ? [DESK_REPORTS] : []),
-        // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-        ...(perms.has('employee.change.manage') ? [DESK_PEOPLE] : []),
-        // Batch 4: standalone people list, privacy requests, and the agents' own Known issues page (8 Oct 2026).
-        ...(perms.has('desk.ticket.view') ? [DESK_KNOWN_ISSUES] : []),
-        ...(perms.has('desk.directory.manage') ? [DESK_PEOPLE_LIST] : []),
-        ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
-      ];
-  const time = [
-    ...(employee && !support ? [MY_LEAVE, MY_ATTENDANCE, MY_SHIFTS, MY_OVERTIME, MY_TIMESHEET] : []),
-    ...(manager || perms.has('leave.view') ? [TEAM_LEAVE] : []),
-    ...(manager || perms.has('attendance.view') ? [MUSTER, OT_REVIEW] : []),
-    ...(manager || perms.has('roster.manage') ? [ROSTER] : []),
-    ...(perms.has('leave.view') ? [BALANCES] : []),
-    ...(perms.has('attendance.view') ? [REGISTERS, PAYROLL_FEED] : []),
-    ...(perms.has('attendance.lock') ? [PERIODS] : []),
-    ...(perms.has('leave.settings.manage') ? [TIME_SETUP, SHIFTS_SETUP] : []),
+  const banner = (
+    <>
+      {support && (
+        <InlineAlert
+          tone="warning"
+          title={`Support session in ${actingOrgName ?? 'this company'}${supportEndsAt ? ` until ${new Date(supportEndsAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}`}
+          actions={
+            <Button size="sm" onClick={() => void switchOutOfOrg().then(() => router.push('/staff/support'))}>
+              Leave the company
+            </Button>
+          }
+        >
+          Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
+        </InlineAlert>
+      )}
+      {/* Everywhere except My security itself, where it is set up. */}
+      {mfaMissing && pathname !== ME_SECURITY && (
+        <InlineAlert
+          tone="warning"
+          title="Secure your account"
+          actions={
+            <Button asChild size="sm">
+              <Link href={ME_SECURITY}>Set it up now</Link>
+            </Button>
+          }
+        >
+          {mfaOverdue
+            ? 'Your role needs a passkey or an authenticator app. Admin pages are paused until you add one.'
+            : `Your role needs a passkey or an authenticator app. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
+        </InlineAlert>
+      )}
+    </>
+  );
+
+  // Search: the server's people, requests, tickets and candidates (each only what the person may open), and every page
+  // in their menu as an action.
+  const hrefs = new Map<string, string>();
+  const groups: PaletteGroup[] = [
+    ...SEARCH_GROUPS.flatMap(([key, heading, prefix]) => {
+      const hits = search.data?.[key] ?? [];
+      return hits.length ? [{ heading, prefix, items: hits.map((h) => (hrefs.set(`${key}:${h.id}`, h.href), { id: `${key}:${h.id}`, label: h.label, secondary: h.secondary, keywords: [typed.replace(/^[@#>?]\s*/, '')] })) }] : [];
+    }),
+    {
+      heading: 'Go to',
+      prefix: '>',
+      items: nav.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => (hrefs.set(`go:${l.href}`, l.href), { id: `go:${l.href}`, label: l.label, secondary: a.title, keywords: [s.label ?? ''] })))),
+    },
   ];
-  // No payroll for YukthiX staff in a support session (P02 Q8): the API and the database refuse it too.
-  const periodKeys = perms.has('payroll.period.view') || perms.has('payroll.period.reopen') || perms.has('payroll.period.reopen.approve');
-  const payroll = support
-    ? []
-    : [...(perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('payroll.offcycle.prepare') ? [PAY_RUNS] : []),
-        ...(perms.has('payroll.input.manage') ? [PAY_INPUTS] : []),
-        ...(perms.has('statutory.filing.view') ? [PAY_STATUTORY] : []),
-        ...(perms.has('payroll.fnf.manage') || perms.has('payroll.notice.waive') ? [PAY_FNF] : []),
-        ...(perms.has('payroll.arrears.approve') || perms.has('payroll.writeoff.approve') ? [PAY_ARREARS] : []),
-        ...(perms.has('payroll.run.prepare') || perms.has('payroll.setup.manage') ? [PAY_GO_LIVE] : []),
-        ...(perms.has('payroll.payment.record') ? [PAY_MODES] : []),
-        ...(perms.has('payroll.loan.manage') ? [PAY_LOANS] : []),
-        ...(perms.has('payroll.query.handle') ? [PAY_QUERIES] : []),
-        ...(perms.has('tax.proof.verify') ? [PAY_PROOFS] : []),
-        ...(perms.has('payroll.document.issue') ? [PAY_CERTIFICATES] : []),
-        ...(perms.has('statutory.filing.view') ? [PAY_REGISTERS] : []),
-        ...(perms.has('statutory.advisory.review') ? [PAY_ADVISORIES] : []),
-        ...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
-        ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
-        ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),
-        ...(perms.has('payroll.component.manage') ? [PAY_COMPONENTS] : []),
-        ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
-        ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
-        ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_PAY_DOCUMENTS] : []), ...security];
-  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
-  const active: WorkspacePage | undefined = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id;
-  // Toasts (§25) say "done" after an action; a message that must stay visible remains an inline alert.
+  const entityList = entities.data?.filter((e) => !e.archivedAt) ?? [];
+  const scopePicker =
+    entityList.length > 1 || payPeriods ? (
+      <ScopePicker
+        entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: '', state: e.registeredAddress?.state ?? '' }))] : []}
+        entity={scope.entity ?? 'all'}
+        onEntityChange={(id) => setScope({ ...scope, entity: !id || id === 'all' ? null : id })}
+        periods={payPeriods ? recentMonths() : undefined}
+        period={scope.period}
+        onPeriodChange={(p) => p && setScope({ ...scope, period: p })}
+      />
+    ) : undefined;
+  const meHref = (id: string) => nav.flatMap((a) => a.sections.flatMap((s) => s.items)).find((l) => l.id === id)?.href;
+  const accountLinks = [
+    ...(meHref('my-documents') ? [{ label: 'Documents & letters', icon: FileText, onSelect: () => go(meHref('my-documents')!) }] : []),
+    ...(meHref('my-data') ? [{ label: 'My data', icon: UserRound, onSelect: () => go(meHref('my-data')!) }] : []),
+    ...(meHref('my-language') ? [{ label: 'Language', icon: Languages, onSelect: () => go(meHref('my-language')!) }] : []),
+    { label: 'My security', icon: ShieldCheck, onSelect: () => go(ME_SECURITY) },
+  ];
+  const profileHref = meHref('profile') ?? '/profile';
+
   return (
-    <ToastProvider>
-    <WorkspaceShell
-      active={active}
-      links={links}
-      company={branding.data?.name || undefined}
-      hiringHref={access.examAts && !support ? roleToLandingPath(role ?? undefined) : undefined}
-      // The account menu's "My profile" is the same page as the menu link, where the person has it.
-      profileHref={links.includes(PROFILE) ? PROFILE.href : '/profile'}
-      name={me.data?.name || me.data?.email || 'Your account'}
-      email={me.data?.email}
-      onNavigate={(href) => router.push(href)}
-      onSignOut={() => void logout().then((to) => router.push(to))}
+    <DesktopFrame
+      area={area.id}
+      panelTitle={area.title}
+      panel={panel}
+      railItems={rail}
+      live={{
+        onNavigate: go,
+        onSearch: () => setPaletteOpen(true),
+        onHelp: support ? undefined : () => setHelpOpen(true),
+        scope: scopePicker,
+        notifications: (
+          <NotificationCentre
+            items={(notifications.data ?? []).map((n) => ({ id: n.id, actor: { name: n.actorName ?? 'YukthiX' }, text: notificationText(n), at: new Date(n.createdAt), read: Boolean(n.readAt), href: n.linkPath }))}
+            loading={notifications.isLoading}
+            onMarkAllRead={() => markAll.mutate(undefined, { onSuccess: () => void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }) })}
+            onOpenItem={(it) => !it.read && markRead.mutate(it.id)}
+            settingsHref="/profile"
+          />
+        ),
+        profile: (
+          <ProfileMenu
+            name={me.data?.name || me.data?.email || 'Your account'}
+            email={me.data?.email}
+            onProfile={() => go(profileHref)}
+            onPreferences={() => go('/profile')}
+            links={accountLinks}
+            onSignOut={() => void logout().then((to) => router.push(to))}
+            theme={appearance.theme}
+            onThemeChange={appearance.setTheme}
+            density={appearance.density}
+            onDensityChange={appearance.setDensity}
+          />
+        ),
+        banner,
+        breadcrumbs: crumbs,
+        panelCollapsed: collapsed,
+        onPanelCollapsedChange: setCollapsed,
+        tabs: { home: '/yx/home', ...(support ? {} : { requests: '/yx/approvals' }), ...(employee && !support ? { time: '/yx/time/attendance', pay: '/yx/me/payslips' } : {}), me: profileHref },
+        overlays: (
+          <>
+            <CommandPalette
+              groups={groups}
+              open={paletteOpen}
+              onOpenChange={(o) => {
+                setPaletteOpen(o);
+                if (!o) setTyped('');
+              }}
+              onQueryChange={setTyped}
+              loading={search.loading}
+              placeholder={PALETTE_PLACEHOLDER}
+              onSelect={(item: PaletteItem) => {
+                const href = hrefs.get(item.id);
+                if (href) go(href);
+              }}
+            />
+            {!support && <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />}
+          </>
+        ),
+      }}
     >
-      <div className="yx-auth__page">
-        {support && (
-          <InlineAlert
-            tone="warning"
-            title={`Support session in ${actingOrgName ?? 'this company'}${supportEndsAt ? ` until ${new Date(supportEndsAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}`}
-            actions={
-              <Button size="sm" onClick={() => void switchOutOfOrg().then(() => router.push('/staff/support'))}>
-                Leave the company
-              </Button>
-            }
-          >
-            Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
-          </InlineAlert>
-        )}
-        {/* Everywhere except My security itself, where it is set up (pages outside the menu fall back to 'me'). */}
-        {mfaMissing && pathname !== ME.href && (
-          <InlineAlert
-            tone="warning"
-            title="Secure your account"
-            actions={
-              <Button asChild size="sm">
-                <Link href={ME.href}>Set it up now</Link>
-              </Button>
-            }
-          >
-            {mfaOverdue
-              ? 'Your role needs a passkey or an authenticator app. Admin pages are paused until you add one.'
-              : `Your role needs a passkey or an authenticator app. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
-          </InlineAlert>
-        )}
-        {children}
-        {!support && <DeskHelpButton />}
-      </div>
-    </WorkspaceShell>
-    </ToastProvider>
+      {children}
+    </DesktopFrame>
   );
 }

@@ -15,9 +15,9 @@ import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
 // release is done by a second person (maker ≠ checker, also enforced by the database) after a fresh second step.
 
 const LINK_SECONDS = 60;
-const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'journal', 'register', 'inspection', 'wps'] as const;
+const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'journal', 'register', 'inspection', 'wps', 'f1099nec', 'census'] as const;
 export type FileKind = (typeof KINDS)[number];
-const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form24q: 'Form 24Q (TDS return)', form140: 'Form 140', inspection: 'Inspection pack', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file' };
+const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form24q: 'Form 24Q (TDS return)', form140: 'Form 140', inspection: 'Inspection pack', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file', f1099nec: '1099-NEC data', census: 'Actuarial census' };
 const STATUTORY_KINDS = new Set<FileKind>(['ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'register', 'inspection']);
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 

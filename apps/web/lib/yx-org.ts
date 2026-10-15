@@ -128,12 +128,46 @@ export const YX_KEYS = [
   // Payroll operations screens (PAY-10.09 … 10.16).
   'payroll.payment.record',
   'payroll.loan.manage',
+  'consultant.manage',
+  'consultant.invoice.approve',
+  'payroll.special.manage',
+  'payroll.ewa.manage',
+  'payroll.equity.manage',
+  'payroll.journal.export',
   'payroll.query.handle',
   'payroll.document.issue',
   'tax.proof.verify',
   'statutory.filing.download',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // M06 performance PM1.
+  'perf.setup.manage',
+  'perf.goal.view',
+  'perf.goal.manage',
+  'perf.concern.seal',
+  'perf.cycle.manage',
+  'perf.review.view',
+  'perf.feedback.investigate',
+  'perf.calibration.facilitate',
+  'perf.report.view',
+  'perf.comp.manage',
+  'perf.comp.approve',
+  'perf.pip.manage',
+  // M10 AT1: hiring (the older keys answer for the new ones too, founder D2).
+  'pipeline:manage',
+  'results:view',
+  // AT2: headcount plans and the hiring approval routes.
+  'ats.headcount.manage',
+  'approvals:configure',
+  // AT3: the careers site, consent notices and job boards (company settings).
+  'org:manage_settings',
+  // AT4: candidates (list, profile, merge, lists) and data rights (legal hold, erase, retention).
+  'candidate:manage',
+  'candidate:view',
+  'candidate:data_rights',
+  // AT5: interviews (panellists) and scorecard templates.
+  'interview:view_assigned',
+  'pipelines:configure',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

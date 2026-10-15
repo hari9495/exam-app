@@ -27,3 +27,5 @@ export const PUBLIC_API_THROTTLE = { default: { limit: isTest ? 10_000 : 60, ttl
 // signed per mailbox and each sender is limited (20 in 10 minutes), so this only caps raw volume per provider address.
 export const INBOUND_MAIL_THROTTLE = { default: { limit: isTest ? 10_000 : 1200, ttl: seconds(60) } };
 export const STRICT_WALK_IN_THROTTLE = { default: { limit: isTest ? 10_000 : 20, ttl: seconds(60) } };
+// M10 AT3: public job applications per IP (with the honeypot, the bot protection; no third-party CAPTCHA).
+export const PUBLIC_APPLY_THROTTLE = { default: { limit: isTest ? 10_000 : 5, ttl: seconds(60) } };

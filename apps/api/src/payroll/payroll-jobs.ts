@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { PayAuditService } from './audit.service';
 import { PayDocumentsService } from './documents.service';
 import { PaySetupService } from './setup.service';
@@ -24,11 +24,11 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     private readonly setup: PaySetupService,
     private readonly fnf: FnfService,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), { connection: this.connection }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('payroll-audit-verify', { every: DAY }, { name: 'audit-verify', data: {} });
     await this.queue.upsertJobScheduler('payroll-audit-archive', { every: DAY }, { name: 'audit-archive', data: {} });
     await this.queue.upsertJobScheduler('payroll-document-retention', { every: DAY }, { name: 'document-retention', data: {} });

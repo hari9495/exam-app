@@ -34,6 +34,15 @@ export function logBullErrors<T>(emitter: T, name: string): T {
   return emitter;
 }
 
+/**
+ * Options for every BullMQ queue and worker. BULLMQ_PREFIX unset keeps BullMQ's own key prefix ("bull"), so production
+ * is unchanged; the e2e bootstrap sets one per test file so parallel test apps never take each other's jobs.
+ */
+export function bullOpts(connection: Redis): { connection: Redis; prefix?: string } {
+  const prefix = process.env.BULLMQ_PREFIX;
+  return prefix ? { connection, prefix } : { connection };
+}
+
 export function createRedisConnection(): Redis {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
   // BullMQ's blocking commands require maxRetriesPerRequest: null on the underlying

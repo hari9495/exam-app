@@ -41,6 +41,8 @@ describe('PipelineService', () => {
   let candidateWhatsapp: { sendWhatsapp: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let hiring: any;
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
   let fieldPerms: { getHiddenFields: jest.Mock; getLockedFields: jest.Mock };
@@ -88,7 +90,9 @@ describe('PipelineService', () => {
     drip = { enrolOnStageChange: jest.fn().mockResolvedValue(undefined), exitCandidate: jest.fn().mockResolvedValue(undefined) };
     // Survey trigger hook is best-effort + inert by default (no-op) in these tests.
     surveys = { triggerOnStageChange: jest.fn().mockResolvedValue(undefined) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any);
+    // M10 AT2: requisitions run on P03 through the hiring service (its own e2e covers the route).
+    hiring = { startsAsDraft: jest.fn(async () => (await approvals.getChains()).requisition.enabled), submit: jest.fn(), withdraw: jest.fn().mockResolvedValue(false), summaries: jest.fn().mockResolvedValue(new Map()), checkLinks: jest.fn() };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any, hiring as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -439,33 +443,14 @@ describe('PipelineService', () => {
   });
 
   describe('submitRequisition', () => {
-    it('submits and leaves the job pending when approval is required', async () => {
-      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+    it('a draft requisition is handed to the hiring service (P03, M10 AT2)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }) } };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-      approvals.submit.mockResolvedValue({ status: 'pending_approval', requestId: 'req-1' });
+      hiring.submit.mockResolvedValue({ status: 'pending_approval', requestId: 'req-1' });
 
-      const result = await service.submitRequisition(context, 'user-1', 'job-1');
-
-      expect(result).toEqual({ status: 'pending_approval', requestId: 'req-1' });
-      expect(approvals.submit).toHaveBeenCalledWith(context, 'requisition', 'job-1', 'user-1');
-      expect(tx.job.updateMany).toHaveBeenCalledWith({
-        where: { id: 'job-1', organizationId: 'org-1' },
-        data: { status: 'pending_approval' },
-      });
-    });
-
-    it('submits and opens the job immediately when the chain auto-passes', async () => {
-      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-      approvals.submit.mockResolvedValue({ status: 'approved' });
-
-      const result = await service.submitRequisition(context, 'user-1', 'job-1');
-
-      expect(result).toEqual({ status: 'approved' });
-      expect(tx.job.updateMany).toHaveBeenCalledWith({
-        where: { id: 'job-1', organizationId: 'org-1' },
-        data: { status: 'open' },
-      });
+      expect(await service.submitRequisition(context, 'user-1', 'job-1')).toEqual({ status: 'pending_approval', requestId: 'req-1' });
+      expect(hiring.submit).toHaveBeenCalledWith(context, 'user-1', 'job-1');
+      expect(approvals.submit).not.toHaveBeenCalled();
     });
 
     it('refuses to submit a job that is not a draft', async () => {
@@ -1505,7 +1490,7 @@ describe('PipelineService', () => {
       // The flat pipeline_entries.stage column is gone -- statusId is the only source of truth now.
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
+        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null, stageEnteredAt: expect.any(Date) },
       });
       expect(entry.statusId).toBe('st-int');
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
@@ -1692,7 +1677,7 @@ describe('PipelineService', () => {
       });
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-rej', rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date), archivedAt: null },
+        data: { statusId: 'st-rej', rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date), archivedAt: null, stageEnteredAt: expect.any(Date) },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.rejected', entityId: 'en1' }));
     });

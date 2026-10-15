@@ -239,7 +239,7 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
   });
 
   it('YX-ORG-27: a possible match is linked only after HR confirms it is the same person', async () => {
-    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const u = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: this test fills the whole form and ran past 5 s under full-suite load
     const onSubmit = vi
       .fn()
       .mockRejectedValueOnce(Object.assign(new Error('match'), { code: 'POSSIBLE_SAME_PERSON', body: { personIds: ['person-9'] } }))

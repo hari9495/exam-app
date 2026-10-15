@@ -1,0 +1,42 @@
+name: yx-ui visual baselines
+
+# Run by hand after an intended change to how design-system stories look (Actions › yx-ui visual baselines › Run
+# workflow, pick the branch). It takes new Linux screenshots on the same runner image CI compares on and uploads them;
+# commit them as packages/yx-ui/tests/README.md says.
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native dependencies
+        run: npm rebuild
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Take new baselines
+        working-directory: packages/yx-ui
+        run: npm run test:visual:update
+
+      - name: Upload the baselines
+        uses: actions/upload-artifact@v7
+        with:
+          name: yx-ui-visual-baselines-linux
+          path: packages/yx-ui/tests/__screenshots__/linux
+          retention-days: 7

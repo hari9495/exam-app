@@ -40,6 +40,12 @@ const GUARD = [
   'screens-platform-shell-homes--plt-01', 'screens-hiring-hir-12', 'screens-portals-t9-06',
   // M05 expenses E1 (12 Oct 2026): the wired set-up screen, its limits matrix inputs and selects.
   'screens-expenses-live',
+  // M06 performance, wired (PM1 onwards).
+  'screens-performance-live',
+  // M03 payroll, wired (5a onwards, consultants 5h and special pay 5i included).
+  'screens-pay-live',
+  // M10 recruitment, wired (AT1 onwards).
+  'screens-hiring-live',
 ];
 
 // Documented exceptions: [story id prefix or '*', selector, reason, rules skipped (all when omitted)].

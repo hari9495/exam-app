@@ -36,6 +36,8 @@ export const TENANT_SCOPE: GrantScope = Object.freeze({ type: 'tenant', id: null
 export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Reading the structure masters is Public / Internal configuration every HR screen needs, whatever the scope.
   if (key.startsWith('employee.') || key === 'request.raise_on_behalf' || key === 'org.structure.view') return GRANT_SCOPE_TYPES;
+  // M10 AT1: hiring keys are company-wide until their endpoints become scope-aware (M10-BUILD-DESIGN §17).
+  if (key.startsWith('ats.')) return ['tenant'];
   // M02 leave and attendance of people: scoped like employee records. The leave set-up is company configuration: it
   // may be granted per legal entity like org.settings.manage, but changing it needs the company-wide grant.
   if (key === 'leave.settings.manage') return ['tenant', 'legal_entity'];
@@ -54,13 +56,24 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
   // M05 expenses E2: claims are about people, scoped like their records; finance checks them per legal entity.
   if (key === 'expense.claim.view') return GRANT_SCOPE_TYPES;
+  // M06 PM2: goals are about people, scoped like their records; periods and company goals are company-wide.
+  if (key === 'perf.goal.view') return GRANT_SCOPE_TYPES;
+  // PM4: reviews are about people, scoped like their records; cycles are company-wide for now.
+  if (key === 'perf.review.view') return GRANT_SCOPE_TYPES;
+  // PM6: reports show people in scope; calibration is company-wide like cycles.
+  if (key === 'perf.report.view') return GRANT_SCOPE_TYPES;
+  // PM7: comp cycles are run and approved per legal entity, like payroll.
+  if (key === 'perf.comp.manage' || key === 'perf.comp.approve') return ['tenant', 'legal_entity'];
+  // PM8: improvement plans are about people, scoped like their records.
+  if (key === 'perf.pip.manage') return GRANT_SCOPE_TYPES;
   if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
   // E4: the travel desk books for people in scope; advances are paid per legal entity.
   if (key === 'travel.booking.manage') return GRANT_SCOPE_TYPES;
   if (key === 'expense.payout.manage' || key === 'expense.report.view') return ['tenant', 'legal_entity'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
-  if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
+  // Batch 5h: consultants are registered and paid per legal entity like payroll.
+  if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key.startsWith('consultant.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];
   return ['tenant'];
 }

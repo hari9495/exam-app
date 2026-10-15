@@ -106,6 +106,24 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.arrears.approve',
   'payroll.fnf.manage',
   'payroll.writeoff.approve',
+  // M06 PM3: sealing a concern reads feedback text that no one else may see (M06-BUILD-DESIGN §15.3).
+  'perf.concern.seal',
+  // PM4: ratings before release, and starting or changing a review cycle.
+  'perf.review.view',
+  'perf.cycle.manage',
+  // PM5: revealing who wrote an anonymous answer.
+  'perf.feedback.investigate',
+  // PM6: moving ratings in calibration.
+  'perf.calibration.facilitate',
+  // PM7: pay changes and their approval.
+  'perf.comp.manage',
+  // PM8: improvement plans and the exit link.
+  'perf.pip.manage',
+  // M10: offer pay, candidate data rights and headcount budgets.
+  'ats.offer.compensation.view',
+  'ats.candidate.data_rights',
+  'ats.headcount.manage',
+  'perf.comp.approve',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

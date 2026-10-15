@@ -189,8 +189,10 @@ describe('/yx layout: access and privacy links follow the grants', () => {
         <p>page</p>
       </YxAppLayout>,
     );
-    const nav = await screen.findByRole('navigation', { name: 'Menu' });
-    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Identity and bank changes', 'Roles & access'])));
-    expect(within(nav).queryByRole('link', { name: 'Who accessed my data' })).toBeNull();
+    // The designed frame: Settings is the open area with Roles & access current; People holds the identity queue.
+    const panel = await screen.findByRole('navigation', { name: 'Settings' });
+    await waitFor(() => expect(within(panel).getByRole('link', { name: 'Roles & access' })).toHaveAttribute('aria-current', 'page'));
+    expect(within(screen.getByRole('navigation', { name: 'Areas' })).getByRole('link', { name: 'People' })).toHaveAttribute('href', '/yx/people/profile-requests');
+    expect(screen.queryByRole('link', { name: 'My data' })).toBeNull();
   });
 });

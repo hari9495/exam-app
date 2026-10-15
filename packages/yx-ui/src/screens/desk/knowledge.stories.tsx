@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { KnowledgeScreen } from './knowledge';
 import { KB_ARTICLE, kbProps } from './kb-data';
 
@@ -8,14 +8,14 @@ const meta: Meta = { title: 'Screens/Service desk/HLP-04 Knowledge', parameters:
 export default meta;
 type S = StoryObj;
 
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'desk-tickets', label: 'Tickets', href: '#tickets', group: 'Service desk' },
   { id: 'desk-knowledge', label: 'Knowledge', href: '#knowledge', group: 'Service desk' },
 ];
 const shell = (children: React.ReactNode) => (
-  <WorkspaceShell active="desk-knowledge" links={LINKS} company="Kaveri Foods" profileHref="#" name="Suresh Pillai" email="it-agent@kaveri.test" onSignOut={() => {}}>
+  <LinksFrame active="desk-knowledge" links={LINKS}>
     <div className="yx-auth__page">{children}</div>
-  </WorkspaceShell>
+  </LinksFrame>
 );
 
 function Live() {

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { signIn } from './fixtures/sign-in';
+import { dueWithinAnHour } from './fixtures/desk-db';
+import { writeInEditor } from './fixtures/editor';
 
 // M14 Service Desk, phase 3b-1 batches 1 and 2. Main flow on the seeded Kaveri Foods demo: an employee raises a ticket in the
 // Help centre; an IT agent takes it, replies and resolves it; the employee sees the reply and the new status, and never
@@ -37,7 +39,9 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   // 2. Suresh (IT agent) finds it, takes it, adds a note and replies.
   const agent = await (await browser.newContext()).newPage();
   await signIn(agent, 'it-agent@demo-org.test', PASSWORD);
-  await agent.waitForURL(/\/yx\/desk\/tickets/);
+  // Agents land on Home (design audit step 1); the queue is one click away.
+  await agent.waitForURL(/\/yx\/home/);
+  await agent.goto('/yx/desk/tickets');
   await agent.getByRole('button', { name: /View:/ }).click();
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(number);
@@ -48,14 +52,16 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await expect(agent.getByRole('combobox', { name: 'Owner', exact: true })).toContainText('Suresh Pillai (me)');
 
   await agent.getByRole('tab', { name: 'Internal note' }).click();
-  await agent.locator('.ProseMirror').click();
-  await agent.keyboard.type('Checked the proxy logs: her account is not in the intranet group.');
+  await writeInEditor(agent, 'Checked the proxy logs: her account is not in the intranet group.');
   await agent.getByRole('button', { name: 'Add note' }).click();
   await expect(agent.getByText('Internal note: Divya never sees it').last()).toBeVisible();
+  // The note shows (from the refresh) before sending has finished; when it finishes the composer clears and its editor
+  // is replaced. Typing the reply before then lost it, or met a button still busy with the note.
+  await expect(agent.getByRole('button', { name: 'Add note' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 30_000 });
+  await expect(agent.locator('.ProseMirror')).toHaveText('');
 
   await agent.getByRole('tab', { name: /Reply to Divya/ }).click();
-  await agent.locator('.ProseMirror').click();
-  await agent.keyboard.type('Hi Divya, I have added you to the intranet group. Please try again.');
+  await writeInEditor(agent, 'Hi Divya, I have added you to the intranet group. Please try again.');
   await agent.getByRole('button', { name: 'Send reply' }).click();
   await expect(agent.getByText('I have added you to the intranet group')).toBeVisible();
 
@@ -77,9 +83,13 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
 // workspace draws the response-target timeline with the time used and when it is due (or that it was missed).
 test('SLA: a ticket near its breach is listed and its timeline shows', async ({ browser }) => {
   test.setTimeout(120_000);
+  // Outside office hours its 48 business minutes reach past 4 hours: fix the clock-dependent part, keep the check.
+  await dueWithinAnHour('Payroll export keeps timing out');
   const agent = await (await browser.newContext()).newPage();
   await signIn(agent, 'it-agent@demo-org.test', PASSWORD);
-  await agent.waitForURL(/\/yx\/desk\/tickets/);
+  // Agents land on Home (design audit step 1); the queue is one click away.
+  await agent.waitForURL(/\/yx\/home/);
+  await agent.goto('/yx/desk/tickets');
   await agent.getByRole('button', { name: /View:/ }).click();
   await agent.getByRole('menuitemradio', { name: 'Breaching soon' }).or(agent.getByRole('menuitem', { name: 'Breaching soon' })).click();
   await agent.getByText('Payroll export keeps timing out').first().click();

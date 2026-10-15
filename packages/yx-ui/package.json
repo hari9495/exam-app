@@ -23,6 +23,9 @@
     "./pay": "./src/screens/pay/live/index.ts",
     "./lifecycle": "./src/screens/people/live/index.ts",
     "./expenses": "./src/screens/expenses/live/index.ts",
+    "./performance": "./src/screens/performance/live/index.ts",
+    "./hiring": "./src/screens/hiring/live/index.ts",
+    "./frame": "./src/screens/_kit/live.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },

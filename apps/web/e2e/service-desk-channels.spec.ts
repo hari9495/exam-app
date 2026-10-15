@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { signIn } from './fixtures/sign-in';
+import { writeInEditor } from './fixtures/editor';
 
 // M14 Service Desk, phase 3b-1 batch 3 on the seeded Kaveri Foods demo:
 //   1. an outside customer (Asha Menon, Annapurna Stores) signs in to the Customer Care portal with a one-time code,
@@ -26,7 +27,9 @@ const run = randomUUID().slice(0, 6);
 /** apps/api/.env plus the e2e Redis, for the two laptop scripts. */
 function apiEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const line of readFileSync(join(API_DIR, '.env'), 'utf8').split(/\r?\n/)) {
+  // apps/api/.env on a laptop; in CI the API's settings are already in the environment.
+  const file = join(API_DIR, '.env');
+  for (const line of existsSync(file) ? readFileSync(file, 'utf8').split(/\r?\n/) : []) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     if (m && env[m[1]] === undefined) env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
   }
@@ -85,8 +88,7 @@ test('outside customer: portal sign-in → raise → agent replies → customer 
   await expect(agent.getByRole('heading', { name: subject })).toBeVisible();
   await expect(agent.getByText('Annapurna Stores').first()).toBeVisible();
   await agent.getByRole('tab', { name: /Reply to/ }).click();
-  await agent.locator('.ProseMirror').click();
-  await agent.keyboard.type('Hello Asha, new packets leave our warehouse today.');
+  await writeInEditor(agent, 'Hello Asha, new packets leave our warehouse today.');
   await agent.getByRole('button', { name: 'Send reply' }).click();
   await expect(agent.getByText('new packets leave our warehouse today')).toBeVisible();
 

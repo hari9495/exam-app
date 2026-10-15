@@ -50,8 +50,28 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.finance_audit': { label: 'Expenses: finance check of claims', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'flagged_only', 'all', 'sample_10pct'], default: 'flagged_only' },
   'expense.claim_window_days': { label: 'Expenses: bills older than this many days need the finance check', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '60', '90', '180'], default: '60' },
   'expense.cc_owner_above': { label: 'Expenses: the cost-centre owner also approves claims above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '10000', '25000', '50000', '100000'], default: 'off' },
+  // Batch E3 (M05 §10.1 – §10.2, §11.3): how approved claims are paid, the payroll cut-off, and recovering overdue advances.
+  'expense.route.default': { label: 'Expenses: approved claims are paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['payroll', 'payout'], default: 'payroll' },
+  'expense.route.payout_above': { label: 'Expenses: pay by bank transfer instead of payroll when a claim is above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '5000', '10000', '25000', '50000', '100000'], default: 'off' },
+  'expense.payroll_cutoff_day': { label: 'Expenses: claims approved after this day of the month go to the next payroll', scopes: ['tenant', 'legal_entity'], dated: false, values: ['15', '20', '23', '25', '28'], default: '23' },
+  'expense.advance.recovery_instalments': { label: 'Expenses: an overdue advance is recovered from salary in this many instalments', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
+  // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
+  'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
+  'perf.self_review.visible_to_manager': { label: 'Performance: the manager reads the self review', scopes: ['tenant'], dated: false, values: ['after_manager_draft', 'immediately'], default: 'after_manager_draft' },
+  'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
+  'perf.anonymity.min_responses': { label: 'Performance: fewest answers before anonymous feedback is shown (never below 3)', scopes: ['tenant'], dated: false, values: ['3', '4', '5'], default: '3' },
+  'perf.report.min_cell': { label: 'Performance: smallest group shown in distributions and reports', scopes: ['tenant'], dated: false, values: ['5', '10'], default: '5' },
+  'perf.comp.budget_overrun': { label: 'Performance: a comp proposal over budget', scopes: ['tenant', 'legal_entity'], dated: false, values: ['extra_approval', 'block'], default: 'extra_approval' },
+  'perf.pay_band.visible': { label: 'Performance: employees see their own pay band', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
+  'perf.pay_equity.flag_pct': { label: 'Performance: flag pay below the grade-and-role median by more than (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
+  'perf.pip.lengths': { label: 'Performance: improvement plans run for (days)', scopes: ['tenant'], dated: false, values: ['30,60,90', '30,60', '60,90', '90'], default: '30,60,90' },
+  // M10 AT2 (D5): requisitions against the headcount plan: not used, shown (outside-plan needs the extra approver), or required.
+  'ats.headcount_plan': { label: 'Hiring: requisitions and the headcount plan', scopes: ['tenant'], dated: false, values: ['off', 'advisory', 'required'], default: 'advisory' },
+  // M10 AT4 (Q6, YX-ATS-53): months without activity before a non-hired candidate is anonymised.
+  'ats.retention_months': { label: 'Hiring: keep candidate details for (months without activity)', scopes: ['tenant'], dated: false, values: ['6', '9', '12', '18', '24', '36'], default: '12' },
+  'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
   // change any option for one rehire with a reason.

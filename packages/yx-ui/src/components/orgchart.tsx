@@ -118,6 +118,9 @@ const VIEWS: { id: OrgView; label: string }[] = [
 ];
 const MIN = 0.4;
 const MAX = 1.6;
+// Fitting never goes below 60 %: the collapse buttons (40 px) stay 24 px targets (WCAG 2.5.8). A wider tree scrolls;
+// zooming out further is still there for whoever wants the whole shape.
+const FIT_MIN = 0.6;
 const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
 const team = (n: number) => (n === 1 ? '1 person in team' : `${n} people in team`);
 
@@ -277,7 +280,7 @@ export function OrgChart({
     if (!vp || !ct || !ct.scrollWidth) return;
     const w = ct.scrollWidth / scale;
     const h = ct.scrollHeight / scale;
-    setScale(Math.max(MIN, Math.min(1, Math.floor(Math.min(vp.clientWidth / w, vp.clientHeight / h) * 10) / 10)));
+    setScale(Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(vp.clientWidth / w, vp.clientHeight / h) * 10) / 10)));
   };
   const onZoomKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;

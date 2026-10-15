@@ -47,7 +47,7 @@ test('Suresh checks the set-up, then works out a salary from a CTC and sends it 
   // Arjun's salary from a CTC: the breakup cites the PF rule; it goes for approval.
   await page.goto('/yx/payroll/compensation');
   await page.getByRole('textbox', { name: 'Find a person' }).fill('Arjun');
-  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.getByRole('button', { name: /Arjun Kulkarni/ }).click();
   await expect(page.getByText('Salary in force')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('combobox', { name: 'Template' }).click();

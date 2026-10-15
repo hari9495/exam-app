@@ -101,8 +101,13 @@ export class InterviewsService {
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
-      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId } });
+      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId }, include: { job: { select: { scorecardTemplateId: true } } } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // M10 AT5: the scorecard panellists fill -- the one picked, else the job's default; it must be the company's.
+      const scorecardTemplateId = dto.scorecardTemplateId ?? entry.job?.scorecardTemplateId ?? null;
+      if (dto.scorecardTemplateId && !(await tx.scorecardTemplate.findFirst({ where: { id: dto.scorecardTemplateId, organizationId: orgId, archivedAt: null }, select: { id: true } }))) {
+        throw new BadRequestException('That scorecard is not available');
+      }
 
       if (dto.panelistUserIds.length) {
         const found = await tx.user.findMany({
@@ -123,6 +128,7 @@ export class InterviewsService {
           location: dto.location,
           timeZone: dto.timeZone,
           recruiterNote: dto.recruiterNote ?? null,
+          scorecardTemplateId,
           bookingMode: isSelfBook ? 'self_book' : 'proposed',
           bookingWindowStart: isSelfBook ? new Date(dto.bookingWindowStart!) : null,
           bookingWindowEnd: isSelfBook ? new Date(dto.bookingWindowEnd!) : null,

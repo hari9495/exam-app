@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength, IsBoolean, IsNumber, Matches } from 'class-validator';
 
 // schema.org / Google-for-Jobs employmentType enum (the values a valid JobPosting accepts).
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACTOR', 'TEMPORARY', 'INTERN', 'VOLUNTEER', 'PER_DIEM', 'OTHER'] as const;
@@ -34,9 +34,51 @@ export class CreateJobDto {
   @IsOptional() @IsString()
   salaryCurrency?: string;
 
+  /** M10 AT3: show the salary range on the careers site and in Google for Jobs. */
+  @IsOptional() @IsBoolean()
+  showSalary?: boolean;
+
   @IsOptional() @IsUUID()
   pipelineId?: string;
 
   @IsOptional() @IsObject()
   customFields?: Record<string, string | number | null>;
+
+  /** M10 AT1: the P01 masters (YukthiX screens); each must belong to the company. */
+  @IsOptional() @IsUUID()
+  legalEntityId?: string | null;
+
+  @IsOptional() @IsUUID()
+  departmentId?: string | null;
+
+  @IsOptional() @IsUUID()
+  designationId?: string | null;
+
+  @IsOptional() @IsUUID()
+  gradeId?: string | null;
+
+  @IsOptional() @IsUUID()
+  locationId?: string | null;
+
+  /** M10 AT2: the requisition's plan facts (checked on submit against the headcount plan). */
+  @IsOptional() @IsUUID()
+  headcountPlanLineId?: string | null;
+
+  @IsOptional() @IsBoolean()
+  outsidePlan?: boolean;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  outsidePlanReason?: string | null;
+
+  @IsOptional() @IsIn(['new', 'replacement'])
+  requisitionReason?: 'new' | 'replacement' | null;
+
+  @IsOptional() @IsUUID()
+  replacementOfEmployeeId?: string | null;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  budgetAmount?: number | null;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  targetStart?: string | null;
 }

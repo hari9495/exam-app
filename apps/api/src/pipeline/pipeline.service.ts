@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
+import { Job, PipelineEntry, PipelineFeedback, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import {
@@ -32,6 +32,8 @@ import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { HrisExportService } from '../hris/hris-export.service';
 import { DripService } from '../drip/drip.service';
 import { SurveysService } from '../surveys/surveys.service';
+import { HiringRequisitionsService } from '../hiring/requisitions.service';
+import { jobSlug } from '../hiring/careers-rules';
 
 export interface FeedbackRow {
   id: string;
@@ -63,6 +65,7 @@ export interface BoardRow {
   enteredVia: string;
   rejectedReason: string | null;
   examResults: EntryExamResult[];
+  stageEnteredAt: Date;
   avgRating: number | null;
   feedbackCount: number;
   fitScore: number | null;
@@ -166,6 +169,19 @@ const JOB_DEFINITION_SELECT = {
   required: true,
 } as const;
 
+/** M10 AT2: the requisition columns a job create / update sets (only what the caller sent). */
+function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null }) {
+  const out: Record<string, unknown> = {};
+  if (dto.headcountPlanLineId !== undefined) out.headcountPlanLineId = dto.headcountPlanLineId;
+  if (dto.outsidePlan !== undefined) out.outsidePlan = dto.outsidePlan;
+  if (dto.outsidePlanReason !== undefined) out.outsidePlanReason = dto.outsidePlanReason?.trim() || null;
+  if (dto.requisitionReason !== undefined) out.requisitionReason = dto.requisitionReason;
+  if (dto.replacementOfEmployeeId !== undefined) out.replacementOfEmployeeId = dto.replacementOfEmployeeId;
+  if (dto.budgetAmount !== undefined) out.budgetAmount = dto.budgetAmount;
+  if (dto.targetStart !== undefined) out.targetStart = dto.targetStart ? new Date(`${dto.targetStart}T00:00:00Z`) : null;
+  return out;
+}
+
 @Injectable()
 export class PipelineService {
   private readonly logger = new Logger(PipelineService.name);
@@ -188,6 +204,7 @@ export class PipelineService {
     private readonly hrisExport: HrisExportService,
     private readonly drip: DripService,
     private readonly surveys: SurveysService,
+    private readonly hiring: HiringRequisitionsService,
   ) {}
 
   async createJob(
@@ -204,27 +221,50 @@ export class PipelineService {
       salaryMin?: number;
       salaryMax?: number;
       salaryCurrency?: string;
+      showSalary?: boolean;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
+      legalEntityId?: string | null;
+      departmentId?: string | null;
+      designationId?: string | null;
+      gradeId?: string | null;
+      locationId?: string | null;
+      headcountPlanLineId?: string | null;
+      outsidePlan?: boolean;
+      outsidePlanReason?: string | null;
+      requisitionReason?: 'new' | 'replacement' | null;
+      replacementOfEmployeeId?: string | null;
+      budgetAmount?: number | null;
+      targetStart?: string | null;
     },
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
     // but only when the org has actually turned the gate on -- an org with no chain configured
     // keeps today's behavior of jobs opening immediately.
-    const chains = await this.approvals.getChains(context);
-    const status = chains.requisition.enabled ? 'draft' : 'open';
+    // M10 AT2: a new job is a draft requisition when the company's requisition chain is on or the plan is required.
+    const status = (await this.hiring.startsAsDraft(context)) ? 'draft' : 'open';
     const pipelineId = await this.resolvePipelineId(context, dto.pipelineId);
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
+      const m = await this.masters(tx, organizationId, dto);
+      await this.hiring.checkLinks(tx, organizationId, dto);
+      const id = randomUUID();
+      const location = dto.location ?? m.locationName;
       const created = await tx.job.create({
         data: {
+          id,
+          // M10 AT3: the readable careers URL; fixed at creation so shared links keep working after a rename.
+          slug: jobSlug(dto.title, location, id),
+          showSalary: dto.showSalary ?? false,
           organizationId,
           title: dto.title,
           description: dto.description,
-          location: dto.location,
+          location,
           employmentType: dto.employmentType,
-          department: dto.department,
+          department: dto.department ?? m.departmentName,
+          ...m.links,
+          ...requisitionData(dto),
           hiringManagerId: dto.hiringManagerId,
           headcount: dto.headcount,
           salaryMin: dto.salaryMin,
@@ -255,6 +295,27 @@ export class PipelineService {
       });
       return { ...created, customFields: serializeCustomFieldValues(rows, defs) };
     });
+  }
+
+  /**
+   * M10 AT1: checks the P01 master links belong to the company (never a 500 from the foreign key) and returns them with
+   * the department and location names, kept in the older free-text columns so the older screens still show them.
+   */
+  private async masters(tx: Prisma.TransactionClient, organizationId: string, dto: { legalEntityId?: string | null; departmentId?: string | null; designationId?: string | null; gradeId?: string | null; locationId?: string | null }) {
+    const one = async (label: string, id: string | null | undefined, find: (id: string) => Promise<{ name: string } | null>) => {
+      if (!id) return null;
+      const row = await find(id);
+      if (!row) throw new BadRequestException(`Choose a ${label} of this company.`);
+      return row.name;
+    };
+    const where = (id: string) => ({ where: { organizationId, id }, select: { name: true } });
+    await one('legal entity', dto.legalEntityId, (id) => tx.legalEntity.findFirst(where(id)));
+    const departmentName = await one('department', dto.departmentId, (id) => tx.department.findFirst(where(id)));
+    await one('designation', dto.designationId, (id) => tx.designation.findFirst(where(id)));
+    await one('grade', dto.gradeId, (id) => tx.grade.findFirst(where(id)));
+    const locationName = await one('location', dto.locationId, (id) => tx.location.findFirst(where(id)));
+    const pick = <K extends keyof typeof dto>(k: K) => (dto[k] === undefined ? {} : { [k]: dto[k] ?? null });
+    return { departmentName: departmentName ?? undefined, locationName: locationName ?? undefined, links: { ...pick('legalEntityId'), ...pick('departmentId'), ...pick('designationId'), ...pick('gradeId'), ...pick('locationId') } };
   }
 
   // Resolves the pipeline a new job should use: the caller's requested pipeline, but only if it
@@ -318,6 +379,7 @@ export class PipelineService {
 
     // One batched call for the whole list, not one per job -- avoids N+1.
     const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
+    for (const [k, v] of await this.hiring.summaries(context, jobs.map((j) => j.id))) approvalByJobId.set(k, v);
     const result = jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactMany(result, hiddenJ);
@@ -365,7 +427,7 @@ export class PipelineService {
         jobBoardIds: publications.map((p: { jobBoardId: string }) => p.jobBoardId),
       };
     });
-    const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
+    const approval = (await this.hiring.summaries(context, [jobId])).get(jobId) ?? (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactFields({ ...job, linkedExams, customFields, approval, jobBoardIds }, hiddenJ);
   }
@@ -380,6 +442,7 @@ export class PipelineService {
       status?: 'open' | 'closed';
       publicApplyEnabled?: boolean;
       listOnCareers?: boolean;
+      showSalary?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
@@ -392,6 +455,18 @@ export class PipelineService {
       salaryCurrency?: string;
       customFields?: Record<string, string | number | null>;
       jobBoardIds?: string[];
+      legalEntityId?: string | null;
+      departmentId?: string | null;
+      designationId?: string | null;
+      gradeId?: string | null;
+      locationId?: string | null;
+      headcountPlanLineId?: string | null;
+      outsidePlan?: boolean;
+      outsidePlanReason?: string | null;
+      requisitionReason?: 'new' | 'replacement' | null;
+      replacementOfEmployeeId?: string | null;
+      budgetAmount?: number | null;
+      targetStart?: string | null;
     },
     // The caller's role, for field-level write enforcement (read-only/hidden governed fields can't
     // be changed). Optional: undefined skips enforcement (internal callers / ungoverned roles like
@@ -439,6 +514,8 @@ export class PipelineService {
         closedAt?: Date | null;
         publicApplyEnabled?: boolean;
         listOnCareers?: boolean;
+        publishedAt?: Date;
+        showSalary?: boolean;
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
@@ -482,7 +559,10 @@ export class PipelineService {
       }
       if (dto.listOnCareers !== undefined) {
         data.listOnCareers = dto.listOnCareers;
+        // M10 AT3: the Google for Jobs datePosted is the first time the job went on the careers site.
+        if (dto.listOnCareers && !job.publishedAt) data.publishedAt = new Date();
       }
+      if (dto.showSalary !== undefined) data.showSalary = dto.showSalary;
       if (dto.fitCriteria !== undefined) {
         data.fitCriteria = dto.fitCriteria?.trim() || null;
       }
@@ -518,6 +598,13 @@ export class PipelineService {
           await tx.jobBoardPublication.createMany({ data: toAdd.map((jobBoardId) => ({ jobBoardId, jobId, organizationId })) });
         }
       }
+      // M10 AT1: master links (checked) and, when a department / location is linked, its name in the older column.
+      const m = await this.masters(tx, organizationId, dto);
+      Object.assign(data, m.links);
+      await this.hiring.checkLinks(tx, organizationId, dto);
+      Object.assign(data, requisitionData(dto));
+      if (dto.departmentId && dto.department === undefined) data.department = m.departmentName;
+      if (dto.locationId && dto.location === undefined) data.location = m.locationName;
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {
         actorUserId,
@@ -602,19 +689,16 @@ export class PipelineService {
     if (!job) throw new NotFoundException(`Job ${jobId} not found`);
     if (job.status !== 'draft') throw new ConflictException('Only a draft requisition can be submitted');
 
-    const result = await this.approvals.submit(context, 'requisition', jobId, actorUserId);
-    if (result.status === 'approved') {
-      await this.markRequisitionApproved(context, jobId);
-    } else {
-      await this.setJobStatus(context, jobId, 'pending_approval');
-    }
-    return result;
+    // M10 AT2 (D3): requisitions run on P03; the company's chain is the route, the plan may add a step.
+    return this.hiring.submit(context, actorUserId, jobId);
   }
 
   // Cancels the job's open approval request (permission-checked by ApprovalsService.cancel via
   // isConfigurer) and puts the requisition back in draft so it can be edited and resubmitted.
   async cancelRequisitionApproval(context: TenantContext, actorUserId: string, jobId: string): Promise<void> {
     const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
+    // A P03 request is withdrawn there; one still in the older engine is cancelled there (requests finish where they began).
+    if (await this.hiring.withdraw(context, actorUserId, jobId, isConfigurer)) return;
     await this.approvals.cancelForSubject(context, 'job', jobId, actorUserId, isConfigurer);
     await this.markRequisitionDraft(context, jobId);
   }
@@ -669,7 +753,8 @@ export class PipelineService {
     return { success: true };
   }
 
-  async getBoard(context: TenantContext, jobId: string, role: string): Promise<Board> {
+  /** viewerUserId (M10 AT5, rule J13): an internal applicant's current manager does not see the application before the offer stage, nor ever its test results. */
+  async getBoard(context: TenantContext, jobId: string, role: string, viewerUserId?: string): Promise<Board> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, organizationId: context.organizationId as string },
@@ -727,8 +812,14 @@ export class PipelineService {
 
       const stages = job.pipeline?.stages ?? [];
       const columns: Record<string, BoardRow[]> = Object.fromEntries(stages.map((s: { id: string }) => [s.id, [] as BoardRow[]]));
+      const internalIds = [...new Set(entries.filter((e) => e.enteredVia === 'internal' && e.referrerUserId).map((e) => e.referrerUserId as string))];
+      const managed = viewerUserId && internalIds.length
+        ? new Set((await tx.user.findMany({ where: { id: { in: internalIds }, managerId: viewerUserId }, select: { id: true } })).map((u) => u.id))
+        : new Set<string>();
       for (const e of entries) {
         if (!e.status) continue; // no status resolved yet (pre-migration edge case) -- can't place on a dynamic column
+        const managersOwn = e.enteredVia === 'internal' && e.referrerUserId ? managed.has(e.referrerUserId) : false;
+        if (managersOwn && !['offer', 'hired'].includes(e.status.stage.category)) continue;
         const row: BoardRow = {
           entryId: e.id,
           candidateId: e.candidateId,
@@ -739,7 +830,8 @@ export class PipelineService {
           category: e.status.stage.category as StageCategory,
           enteredVia: e.enteredVia,
           rejectedReason: e.rejectedReason,
-          examResults: deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
+          examResults: managersOwn ? [] : deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
+          stageEnteredAt: e.stageEnteredAt,
           avgRating: averageRating(e.feedback.map((f: { rating: number | null }) => f.rating)),
           feedbackCount: e.feedback.length,
           fitScore: e.fitAssessment?.overallScore ?? null,
@@ -842,7 +934,8 @@ export class PipelineService {
     });
   }
 
-  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+  /** opts.skipComms: the caller sends the candidate message itself (M10 AT5 delayed rejection). */
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean } = {}): Promise<PatchEntryResult> {
     let didHire = false;
     // The stage a template's triggerStageId is matched against for the post-commit comms hook.
     let commsStageId: string | null = null;
@@ -855,7 +948,8 @@ export class PipelineService {
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       const previousCategory = existing.status?.stage.category;
 
-      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
+      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null; stageEnteredAt?: Date };
+      const currentStage = existing.status?.stageId ?? existing.status?.stage?.id ?? null;
       let action: string;
       if (dto.statusId !== undefined) {
         const resolved = await this.pipelines.resolveStatus(context, dto.statusId);
@@ -869,6 +963,7 @@ export class PipelineService {
           rejectedReason: category === 'rejected' ? (dto.reason ?? null) : null,
           rejectedAt: category === 'rejected' ? new Date() : null,
           archivedAt: category === 'archived' ? new Date() : null,
+          ...(resolved.stage.id !== currentStage ? { stageEnteredAt: new Date() } : {}),
         };
         action = 'entry.stage_changed';
         didHire = category === 'hired' && previousCategory !== 'hired';
@@ -925,6 +1020,7 @@ export class PipelineService {
           rejectedReason: dto.reason ?? null,
           rejectedAt: new Date(),
           archivedAt: null,
+          ...(rejectStageId && rejectStageId !== currentStage ? { stageEnteredAt: new Date() } : {}),
         };
         action = 'entry.rejected';
         commsStageId = rejectStageId ?? null;
@@ -1008,7 +1104,7 @@ export class PipelineService {
     let pendingSmsMessage: PendingSmsMessage | undefined;
     let pendingWhatsappMessage: PendingWhatsappMessage | undefined;
 
-    if (commsStageId) {
+    if (commsStageId && !opts.skipComms) {
       try {
         const tpl = await this.templates.resolveForStage(context, commsStageId);
         if (tpl?.triggerMode === 'auto') {

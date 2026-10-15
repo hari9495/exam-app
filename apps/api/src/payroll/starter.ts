@@ -65,6 +65,20 @@ export const MODULE_COMPONENTS: StarterComponent[] = [
   { code: 'exp_reimb', name: 'Expense reimbursement', kind: 'reimbursement', taxable: false, prorated: false, inCtc: false },
   { code: 'exp_taxable', name: 'Taxable expense reimbursement', kind: 'earning', prorated: false, inCtc: false },
   { code: 'perf_bonus', name: 'Performance bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  // Batch 5i special pay (YX-PAY-59 … 63): piece wages count as wages; incentives, tips and on-call pay are outside the
+  // Code wage like overtime; the company changes the flags when its policy or P07 says otherwise.
+  { code: 'piece_pay', name: 'Piece-rate pay', kind: 'earning', ...wage, prorated: false, inCtc: false },
+  { code: 'min_wage_topup', name: 'Minimum wage top-up', kind: 'earning', ...wage, prorated: false, inCtc: false },
+  { code: 'incentive', name: 'Incentive or commission', kind: 'earning', esiWage: true, ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  { code: 'incentive_clawback', name: 'Incentive clawback', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
+  { code: 'tips', name: 'Tips and service charge', kind: 'earning', esiWage: true, ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  { code: 'standby_allowance', name: 'Standby allowance', kind: 'earning', esiWage: true, ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  { code: 'callout_pay', name: 'Call-out pay', kind: 'earning', esiWage: true, ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  { code: 'union_dues', name: 'Union dues', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
+  { code: 'settlement_arrears', name: 'Settlement arrears', kind: 'earning', esiWage: true, ptWage: true, prorated: false, inCtc: false },
+  { code: 'layoff_comp', name: 'Lay-off compensation', kind: 'earning', ptWage: true, prorated: false, inCtc: false },
+  { code: 'vrs_exempt', name: 'VRS compensation (exempt)', kind: 'earning', taxable: false, prorated: false, inCtc: false },
+  { code: 'vrs_taxable', name: 'VRS compensation (taxable)', kind: 'earning', prorated: false, inCtc: false },
 ];
 
 /** The starter template: an editable split of the CTC; Special allowance balances it. */

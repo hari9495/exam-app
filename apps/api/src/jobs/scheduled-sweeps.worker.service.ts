@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION, logBullErrors } from './redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from './redis-connection';
 import { SCHEDULED_SWEEPS_QUEUE, SCHEDULED_SWEEPS_QUEUE_NAME, SWEEP_SCHEDULE } from './scheduled-sweeps.queue';
 import { RemindersService } from '../reminders/reminders.service';
 import { ScheduledReportsService } from '../scheduled-reports/scheduled-reports.service';
@@ -15,6 +15,9 @@ import { DripService } from '../drip/drip.service';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { IdentityProvidersService } from '../auth/identity-providers.service';
+import { CandidateRetentionService } from '../talent/retention.service';
+import { HiringBoardService } from '../interviewing/hiring-board.service';
+import { ScorecardsService } from '../interviewing/scorecards.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -44,6 +47,9 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     employeeHistory: EmployeeHistoryService,
     people: PeopleService,
     identityProviders: IdentityProvidersService,
+    candidateRetention: CandidateRetentionService,
+    hiringBoard: HiringBoardService,
+    scorecards: ScorecardsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -60,8 +66,12 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.
       probations: () => people.probationSweep(),
       'domain-verification-recheck': () => identityProviders.recheckDomains(),
+      // M10 AT4 (YX-ATS-53): candidate renewal emails and anonymisation after the company's period.
+      'candidate-retention': () => candidateRetention.sweep(),
+      // M10 AT5: rejection messages after their undo window, and scorecard reminders at 24 h / 48 h.
+      'hiring-due': () => Promise.all([hiringBoard.sendDue(), scorecards.remind()]),
     };
-    this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection }), SCHEDULED_SWEEPS_QUEUE_NAME);
+    this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));
   }
 

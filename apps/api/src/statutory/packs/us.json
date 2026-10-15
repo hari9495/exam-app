@@ -1,0 +1,52 @@
+{
+  "ruleSets": [
+    {
+      "statute": "US.PAYROLL",
+      "jurisdiction": "US",
+      "version": "2026-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "US-IRC",
+      "verify": true,
+      "source": "YukthiX US country pack (M03 C4, YX-PAY-45): reporting only. Contractors paid through the consultant register get 1099-NEC data; no US withholding, W-2 payroll or state filing is done. The payer's EIN is the set-up it needs.",
+      "values": {
+        "kind": "pack_manifest",
+        "country": "US",
+        "currency": "USD",
+        "requires": ["US.1099"],
+        "settings": [{ "key": "ein", "label": "Payer EIN (9 digits)", "pattern": "^\\d{9}$" }]
+      },
+      "golden": [{ "name": "the manifest lists its rule sets", "fn": "pack_manifest", "input": {}, "expected": { "requires": "US.1099" } }]
+    },
+    {
+      "statute": "US.1099",
+      "jurisdiction": "US",
+      "version": "TY2025",
+      "validFrom": "2025-01-01",
+      "validTo": "2025-12-31",
+      "lawVersion": "US-IRC",
+      "verify": true,
+      "source": "26 U.S.C. 6041A(a): Form 1099-NEC for nonemployee compensation of $600 or more paid in the calendar year.",
+      "values": { "kind": "f1099", "threshold": "600" },
+      "golden": [
+        { "name": "$600 is reported", "fn": "f1099_due", "input": { "paid": "600" }, "expected": { "due": true } },
+        { "name": "$599.99 is not", "fn": "f1099_due", "input": { "paid": "599.99" }, "expected": { "due": false } }
+      ]
+    },
+    {
+      "statute": "US.1099",
+      "jurisdiction": "US",
+      "version": "TY2026",
+      "validFrom": "2026-01-01",
+      "validTo": null,
+      "lawVersion": "US-IRC",
+      "verify": true,
+      "source": "26 U.S.C. 6041A as amended by Public Law 119-21 (2025), s.70433: from payments made after 31 December 2025 the 1099-NEC threshold is $2,000 (indexed for inflation after 2026).",
+      "values": { "kind": "f1099", "threshold": "2000" },
+      "golden": [
+        { "name": "$2,000 is reported", "fn": "f1099_due", "input": { "paid": "2000" }, "expected": { "due": true } },
+        { "name": "$1,999 is not", "fn": "f1099_due", "input": { "paid": "1999" }, "expected": { "due": false } }
+      ]
+    }
+  ]
+}

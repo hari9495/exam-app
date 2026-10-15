@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HiringModule } from '../hiring/hiring.module';
 import { CandidateEmailsModule } from '../candidate-emails/candidate-emails.module';
 import { CandidateSmsModule } from '../candidate-sms/candidate-sms.module';
 import { CandidateWhatsappModule } from '../candidate-whatsapp/candidate-whatsapp.module';
@@ -24,7 +25,7 @@ import { PipelinesService } from './pipelines.service';
   // circular import, each only imports its own provider module.
   // JobBoardsModule -> JobBoardPosterService, to push a job to the org's paid boards when it goes
   // live and retract it when it closes (no circular import; JobBoardsModule imports only CryptoModule).
-  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule, JobBoardsModule, HrisModule, DripModule, SurveysModule],
+  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule, JobBoardsModule, HrisModule, DripModule, SurveysModule, HiringModule],
   controllers: [PipelineController, PipelinesConfigController],
   providers: [PipelineService, PipelinesService],
   exports: [PipelineService, PipelinesService],

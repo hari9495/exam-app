@@ -7,7 +7,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { damages, due, inForce, penalty, type RuleSet } from '../statutory/evaluator';
 import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
-import { ETDS_FORMAT, checkFvu, etdsFile } from '../statutory/etds';
+import { ETDS_FORMAT, checkFvu, etdsFile, type Deductor } from '../statutory/etds';
 import { FvuRunner, FvuUnavailable, type FvuOutcome } from '../statutory/fvu';
 import { sha256 } from './pay-file-store';
 import { asDate, dateOf, monthRange } from '../time/time-core';
@@ -26,11 +26,40 @@ import { lawVersionFor, taxForms, taxYearOf } from './tax';
 
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const ZERO = D(0);
+/** The salary returns this service files; the non-salary ones (26Q / 140) are the consultants service's (batch 5h). */
+const SALARY_FORMS = ['24Q', '138'];
 const KIND: Record<string, FileKind> = { 'IN.PF': 'ecr', 'IN.ESI': 'esi', 'IN.PT': 'pt', 'IN.LWF': 'lwf' };
 const LABEL: Record<string, string> = { 'IN.PF': 'PF (ECR)', 'IN.ESI': 'ESI contributions', 'IN.PT': 'Professional tax', 'IN.LWF': 'Labour welfare fund' };
 const CAL: Record<string, string> = { 'IN.PF': 'pf_ecr', 'IN.ESI': 'esi' };
 const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
-const quarterMonths = (taxYear: string, q: number) => {
+/** The deductor of an e-TDS return (salary or non-salary), adding what is missing to `problems`. */
+export async function etdsDeductor(tx: Tx, org: string, entityId: string, problems: string[]): Promise<Deductor | null> {
+  const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: entityId }, select: { name: true, pan: true, tan: true, registeredAddress: true } });
+  const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: entityId, statute: 'IN.TDS' } });
+  const tan = e.tan ?? reg?.registrationNo ?? null;
+  const addr = (e.registeredAddress ?? reg?.address ?? null) as { lines?: string[]; city?: string; state?: string; postalCode?: string | null } | null;
+  const before = problems.length;
+  if (!tan) problems.push('The TAN of the legal entity is missing (Payroll set-up › Registrations).');
+  if (!e.pan) problems.push('The PAN of the legal entity is missing.');
+  if (!reg?.responsiblePerson) problems.push('The person responsible for deducting tax is missing on the TDS registration.');
+  if (!addr?.state || !addr?.postalCode) problems.push('The registered address (with state and PIN) of the legal entity is missing.');
+  if (problems.length > before) return null;
+  return {
+    tan: tan!,
+    pan: e.pan!,
+    name: e.name,
+    address: [...(addr!.lines ?? []), addr!.city ?? ''].filter(Boolean),
+    state: addr!.state!,
+    pin: addr!.postalCode!,
+    email: '',
+    responsibleName: reg!.responsiblePerson!,
+    responsibleDesignation: reg!.responsibleDesignation ?? '',
+    responsiblePan: null,
+    mobile: '',
+  };
+}
+
+export const quarterMonths = (taxYear: string, q: number) => {
   const y = Number(taxYear.slice(0, 4));
   return [0, 1, 2].map((i) => {
     const m = 4 + (q - 1) * 3 + i;
@@ -74,14 +103,31 @@ export class StatutoryFilingsService {
 
   /** The month's approved payslips (every run) with their lines and the people. */
   private async month(tx: Tx, org: string, entityId: string, month: string) {
-    const slips: Slip[] = await tx.payslip.findMany({
+    const all = await tx.payslip.findMany({
       where: { organizationId: org, legalEntityId: entityId, periodStart: asDate(`${month}-01`), status: 'approved' },
-      select: { id: true, employeeId: true, employmentId: true, gross: true, ruleVersions: true, version: true },
+      select: { id: true, employeeId: true, employmentId: true, gross: true, ruleVersions: true, version: true, subPeriod: true },
     });
-    const lines: Line[] = await tx.payslipLine.findMany({
-      where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) } },
-      select: { payslipId: true, componentCode: true, amount: true, quantity: true, rule: true },
-    });
+    // PAY-9.01: a weekly or fortnightly group pays a person once per period; the month's returns see them once, their
+    // periods' payslips added together (lines re-pointed to the first one). Off-cycle payslips stay separate as before.
+    const alias = new Map<string, string>();
+    const slips: Slip[] = [];
+    for (const x of all) {
+      const first = x.subPeriod > 0 ? slips.find((y) => y.employmentId === x.employmentId && alias.get(y.id) === y.id && all.find((z) => z.id === y.id)!.subPeriod > 0) : undefined;
+      if (first) {
+        first.gross = first.gross.add(x.gross);
+        alias.set(x.id, first.id);
+      } else {
+        const { subPeriod: _s, ...slip } = x;
+        slips.push(slip);
+        alias.set(x.id, x.id);
+      }
+    }
+    const lines: Line[] = (
+      await tx.payslipLine.findMany({
+        where: { organizationId: org, payslipId: { in: all.map((x) => x.id) } },
+        select: { payslipId: true, componentCode: true, amount: true, quantity: true, rule: true },
+      })
+    ).map((l) => ({ ...l, payslipId: alias.get(l.payslipId)! }));
     const comps = await tx.payComponent.findMany({ where: { organizationId: org, statutory: { not: null } }, select: { code: true, statutory: true } });
     const codes = (key: string) => new Set([key, ...comps.filter((x) => x.statutory === key).map((x) => x.code)]);
     const people = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true, exitedOn: true } });
@@ -689,7 +735,7 @@ export class StatutoryFilingsService {
       const org = c.organizationId;
       await this.entity(tx, c, v, 'statutory.filing.generate', entityId);
       const law = lawVersionFor(taxYear);
-      const old = await tx.tdsReturn.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear, quarter, kind: 'original' } });
+      const old = await tx.tdsReturn.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear, quarter, kind: 'original', formCode: { in: SALARY_FORMS } } });
       if (old?.status === 'filed') throw new ConflictException('This return is filed. A change goes in a correction return.');
       const rows = this.mask(await this.tdsRows(tx, org, entityId, taxYear, quarter));
       const data = { rows: rows as unknown as Prisma.InputJsonValue, reconciliation: Prisma.DbNull, status: 'draft', exchangeFileId: null };
@@ -706,7 +752,7 @@ export class StatutoryFilingsService {
   private async returnFor(tx: Tx, c: CompanyContext, v: Viewer, id: string, key: PayKey) {
     const ids = await entitiesFor(tx, c, v, key);
     await payScope(tx, ids);
-    const r = await tx.tdsReturn.findFirst({ where: { organizationId: c.organizationId, id } });
+    const r = await tx.tdsReturn.findFirst({ where: { organizationId: c.organizationId, id, formCode: { in: SALARY_FORMS } } });
     if (!r || !ids.includes(r.legalEntityId)) throw new NotFoundException('Not found');
     return r;
   }
@@ -757,14 +803,7 @@ export class StatutoryFilingsService {
       if (!['reconciled', 'validated'].includes(r.status)) throw new ConflictException('Reconcile the return with the challans first (the difference must be zero).');
       const rows = await this.tdsRows(tx, org, r.legalEntityId, r.taxYear, r.quarter);
       const problems = rows.filter((x) => x.pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(x.pan)).map((x) => `${x.employeeCode}: the PAN on file is not valid.`);
-      const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: r.legalEntityId }, select: { name: true, pan: true, tan: true, registeredAddress: true } });
-      const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: r.legalEntityId, statute: 'IN.TDS' } });
-      const tan = e.tan ?? reg?.registrationNo ?? null;
-      const addr = (e.registeredAddress ?? reg?.address ?? null) as { lines?: string[]; city?: string; state?: string; postalCode?: string | null } | null;
-      if (!tan) problems.push('The TAN of the legal entity is missing (Payroll set-up › Registrations).');
-      if (!e.pan) problems.push('The PAN of the legal entity is missing.');
-      if (!reg?.responsiblePerson) problems.push('The person responsible for deducting tax is missing on the TDS registration.');
-      if (!addr?.state || !addr?.postalCode) problems.push('The registered address (with state and PIN) of the legal entity is missing.');
+      const deductor = await etdsDeductor(tx, org, r.legalEntityId, problems);
       if (problems.length) throw new BadRequestException({ statusCode: 400, message: 'Fix these before the return file is made.', problems });
       const months = [...new Set(rows.map((x) => x.month))].sort();
       const challans = await tx.tdsChallan.findMany({
@@ -775,19 +814,7 @@ export class StatutoryFilingsService {
         taxYear: r.taxYear,
         quarter: r.quarter,
         createdOn: localDate(new Date(), await entityTimeZone(tx, org, r.legalEntityId)),
-        deductor: {
-          tan: tan!,
-          pan: e.pan!,
-          name: e.name,
-          address: [...(addr!.lines ?? []), addr!.city ?? ''].filter(Boolean),
-          state: addr!.state!,
-          pin: addr!.postalCode!,
-          email: '',
-          responsibleName: reg!.responsiblePerson!,
-          responsibleDesignation: reg!.responsibleDesignation ?? '',
-          responsiblePan: null,
-          mobile: '',
-        },
+        deductor: deductor!,
         challans: months.map((m) => {
           const ch = challans.find((x) => dateOf(x.depositMonth).slice(0, 7) === m)!;
           const end = monthRange(m).to;
@@ -957,7 +984,7 @@ export class StatutoryFilingsService {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, 'statutory.filing.view', entityId);
-      return (await tx.tdsReturn.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: [{ taxYear: 'desc' }, { quarter: 'desc' }, { createdAt: 'desc' }] })).map(
+      return (await tx.tdsReturn.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId, formCode: { in: SALARY_FORMS } }, orderBy: [{ taxYear: 'desc' }, { quarter: 'desc' }, { createdAt: 'desc' }] })).map(
         (r) => {
           const { deductees: _d, ...rest } = this.returnView(r);
           return rest;

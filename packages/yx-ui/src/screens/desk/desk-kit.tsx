@@ -101,7 +101,7 @@ export function DeskPage({ title, description, actions, state, onRetry, what, gr
     <div className="yx-auth__page yx-desk">
       {title && <PageHeader title={title} description={description} actions={state === 'ready' ? actions : undefined} />}
       {state === 'loading' && (
-        <div className="yx-ops-stack" aria-busy="true" aria-label={`Loading ${what}`}>
+        <div className="yx-ops-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}>
           <Skeleton height={48} />
           <Skeleton height={240} />
         </div>

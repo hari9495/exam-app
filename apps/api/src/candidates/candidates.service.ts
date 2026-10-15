@@ -209,6 +209,8 @@ export class CandidatesService {
     const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId as string,
+        // M10 AT4: a merged-away candidate is a tombstone; it lives on only behind its kept candidate.
+        mergedIntoId: null,
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.globalStage ? { globalStage: filters.globalStage } : {}),
         ...(filters.search ? { OR: [{ name: { contains: filters.search, mode: 'insensitive' as const } }, { email: { contains: filters.search, mode: 'insensitive' as const } }] } : {}),
@@ -515,6 +517,8 @@ export class CandidatesService {
       const profile = await tx.candidateProfile.findFirst({
         where: { candidateId, organizationId: context.organizationId as string },
       });
+      // M10 AT3: a résumé from the public apply page is handed out only once the virus check passed.
+      if (profile?.resumePath && profile.resumeScan !== 'clean') throw new ConflictException(profile.resumeScan === 'infected' ? 'This résumé was blocked by the virus check.' : 'This résumé is waiting for the virus check.');
       return profile?.resumePath ?? null;
     });
     if (!resumePath) throw new NotFoundException(`No résumé on file for candidate ${candidateId}`);
@@ -627,7 +631,12 @@ export class CandidatesService {
     return exportPayload;
   }
 
-  async erase(context: TenantContext, actorUserId: string, candidateId: string): Promise<{ id: string; erasedAt: Date }> {
+  /**
+   * Erase on request (data rights) or by the retention sweep (M10 AT4, reason 'retention'). Idempotent: an erased
+   * candidate is left as it is. A candidate under legal hold is never erased. Funnel facts stay (applications, stages,
+   * sources, dates, scores); personal data and free text go.
+   */
+  async erase(context: TenantContext, actorUserId: string | null, candidateId: string, reason: 'request' | 'retention' = 'request'): Promise<{ id: string; erasedAt: Date }> {
     const { erasedAt, didErase, evidenceUrls } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const candidate = await tx.candidate.findFirst({
         where: { id: candidateId, organizationId: context.organizationId as string },
@@ -638,6 +647,7 @@ export class CandidatesService {
       if (candidate.erasedAt) {
         return { erasedAt: candidate.erasedAt, didErase: false, evidenceUrls: [] as string[] };
       }
+      if (candidate.legalHoldAt) throw new ConflictException('This candidate is under legal hold, so nothing can be erased. Lift the hold first.');
 
       const invitations = await tx.invitation.findMany({ where: { candidateId }, select: { id: true } });
       const invitationIds = invitations.map((invitation) => invitation.id);
@@ -696,6 +706,10 @@ export class CandidatesService {
         where: { id: candidateId },
         data: { name: 'Redacted', email: `erased-${candidateId}@redacted.invalid`, phone: null, erasedAt: now },
       });
+      // M10 AT4: messages, the résumé embedding and pool memberships are personal data too.
+      await tx.candidateSms.updateMany({ where: { candidateId, organizationId: context.organizationId as string }, data: { toPhone: 'erased', renderedBody: 'Redacted', errorDetail: null } });
+      await tx.candidateWhatsapp.updateMany({ where: { candidateId, organizationId: context.organizationId as string }, data: { toPhone: 'erased', renderedBody: 'Redacted', errorDetail: null } });
+      await tx.talentPoolMember.deleteMany({ where: { candidateId, organizationId: context.organizationId as string } });
       await tx.attempt.updateMany({ where: { id: { in: attemptIds } }, data: { deviceFingerprint: null } });
       await tx.candidateMessage.updateMany({ where: { attemptId: { in: attemptIds } }, data: { body: '[redacted]' } });
       await tx.proctoringEvent.updateMany({ where: { attemptId: { in: attemptIds } }, data: { metadataJson: null } });
@@ -719,6 +733,10 @@ export class CandidatesService {
           parsedTitle: null,
           parsedYearsExperience: null,
           parseStatus: 'unavailable',
+          embeddingJson: null,
+          embeddingHash: null,
+          embeddingModel: null,
+          embeddedAt: null,
         },
       });
       // Scrub AI fit-assessment narrative PII the same way as the parsed profile above.
@@ -764,6 +782,7 @@ export class CandidatesService {
         action: 'candidate.erased',
         entityType: 'candidate',
         entityId: candidateId,
+        metadata: { reason },
       });
 
       // Deleting the blobs is outside the transaction on purpose: a failed remote delete

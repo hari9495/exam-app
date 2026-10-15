@@ -249,6 +249,30 @@ export function exitExempt(rs: RuleSet, i: { code: string; amount: Prisma.Decima
  * noticeMonths when notice is paid in lieu, the employer's re-skilling fund of reskillingDays of the last wage, and
  * whether the establishment needs the government's permission first (at permissionThreshold workers or more).
  */
+/** End-of-service gratuity (UAE pack, YX-PAY-44): days of basic per year of service (fewer in the first years), capped. */
+export function eosg(rs: RuleSet, i: { basicMonthly: Prisma.Decimal.Value; years: Prisma.Decimal.Value }) {
+  const v = need(rs, 'eosg') as { firstYears: number; daysFirst: number; daysAfter: number; monthDays: number; capMonths: number; minYears: number };
+  const years = D(i.years);
+  if (years.lt(v.minYears)) return { amount: ZERO, citation: cite(rs) };
+  const daily = D(i.basicMonthly).div(v.monthDays);
+  const first = Prisma.Decimal.min(years, v.firstYears);
+  const after = Prisma.Decimal.max(ZERO, years.sub(v.firstYears));
+  const due = daily.mul(first.mul(v.daysFirst).add(after.mul(v.daysAfter)));
+  return { amount: money(Prisma.Decimal.min(due, D(i.basicMonthly).mul(v.capMonths))), citation: cite(rs) };
+}
+
+/** US 1099-NEC (YX-PAY-45): a contractor paid at least the threshold in the calendar year gets a form. */
+export function f1099Due(rs: RuleSet, i: { paid: Prisma.Decimal.Value }) {
+  const v = need(rs, 'f1099') as { threshold: string };
+  return { due: D(i.paid).gte(v.threshold), threshold: v.threshold, citation: cite(rs) };
+}
+
+/** Lay-off compensation (IR Code s.67, YX-PAY-63): the rule's share of the basic and DA for the lay-off days. */
+export function layoff(rs: RuleSet, i: { basicDaMonthly: Prisma.Decimal.Value; days: number; monthDays: number }) {
+  const v = need(rs, 'layoff');
+  return { amount: money(D(i.basicDaMonthly).div(i.monthDays).mul(i.days).mul(D(v.share as string))), share: String(v.share), citation: cite(rs) };
+}
+
 export function retrenchment(rs: RuleSet, i: { averagePay: Prisma.Decimal.Value; lastWage: Prisma.Decimal.Value; joined: string; lastDay: string; noticePaid: boolean; workers: number }) {
   const v = need(rs, 'retrenchment');
   const y = serviceYears(i.joined, i.lastDay);
@@ -479,6 +503,22 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
     for (const k of ['landlordPanAbove', 'leaveEncashmentMax', 'vrsMax'] as const) if (!amount(t[k])) problems.push(`${k} is whole rupees`);
     if (!Array.isArray(t.newRegimeKeys) || t.newRegimeKeys.some((k) => !(k in (t.caps ?? {})))) problems.push('newRegimeKeys lists keys of caps');
   }
+  if (rs.values.kind === 'layoff') rate((rs.values as V).share, 'share');
+  if (rs.values.kind === 'tds_nonsalary') {
+    const t = rs.values as unknown as TdsNonSalary;
+    const amount = (x: unknown) => x === null || (typeof x === 'string' && /^\d{1,10}$/.test(x));
+    rate(t.noPanRate, 'noPanRate');
+    if (!t.sections || !Object.keys(t.sections).length) problems.push('A non-salary TDS rule set lists its sections');
+    for (const [k, sec] of Object.entries(t.sections ?? {})) {
+      if (!sec.label || !sec.returnCode) problems.push(`Section ${k} has a label and a return code`);
+      if (sec.rate !== undefined) rate(sec.rate, `${k}.rate`);
+      else {
+        rate(sec.rateIndividual, `${k}.rateIndividual`);
+        rate(sec.rateOther, `${k}.rateOther`);
+      }
+      if (!amount(sec.single) || !amount(sec.aggregate)) problems.push(`Section ${k}: thresholds are whole rupees or null`);
+    }
+  }
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -489,7 +529,62 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, exit_exempt: exitExempt, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+
+// Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
+interface NonSalarySection {
+  label: string;
+  returnCode: string;
+  rate?: string;
+  rateIndividual?: string;
+  rateOther?: string;
+  single: string | null;
+  aggregate: string | null;
+}
+interface TdsNonSalary {
+  sections: Record<string, NonSalarySection>;
+  noPanRate: string;
+}
+
+/**
+ * TDS on one invoice: on the taxable value excluding GST. A section's thresholds (one payment, and the tax year's total
+ * per payee) decide whether tax is due; the invoice that takes the year's total over the limit also carries the tax on
+ * the earlier invoices of the year (none was deducted on them). No or inoperative PAN: the higher of the section rate and
+ * the no-PAN rate (s.206AA). A s.197 certificate applies its rate only to what is left of its limit; the rest at the
+ * normal rate. Rounded to the rupee.
+ */
+export function tdsNonSalary(
+  rs: RuleSet,
+  i: { section: string; amount: Prisma.Decimal.Value; priorInYear: Prisma.Decimal.Value; pan: 'ok' | 'missing' | 'inoperative'; payee: 'individual' | 'other'; certificate?: { rate: string; remaining: Prisma.Decimal.Value } | null },
+) {
+  const v = need(rs, 'tds_nonsalary') as unknown as TdsNonSalary;
+  const sec = v.sections[i.section];
+  if (!sec) throw new StatutoryError(`No section ${i.section} in ${rs.statute} ${rs.version}`);
+  const amount = D(i.amount);
+  const prior = D(i.priorInYear);
+  const after = prior.add(amount);
+  const overSingle = sec.single !== null && amount.gt(D(sec.single));
+  const wasOver = sec.aggregate !== null && prior.gt(D(sec.aggregate));
+  const nowOver = sec.aggregate === null || after.gt(D(sec.aggregate));
+  // Below both limits: nothing. Crossing the year's limit now: this invoice and the earlier ones of the year.
+  const base = overSingle || wasOver ? amount : nowOver ? after : ZERO;
+  const normal = D(sec.rate ?? (i.payee === 'individual' ? sec.rateIndividual! : sec.rateOther!));
+  let rate = normal;
+  let reason = base.isZero() ? 'below_threshold' : 'normal';
+  let tax = ZERO;
+  let certificateUsed = ZERO;
+  if (base.gt(0) && i.pan !== 'ok') {
+    rate = Prisma.Decimal.max(normal, D(v.noPanRate));
+    reason = 'no_pan';
+    tax = base.mul(rate);
+  } else if (base.gt(0) && i.certificate) {
+    certificateUsed = Prisma.Decimal.max(ZERO, Prisma.Decimal.min(base, D(i.certificate.remaining)));
+    tax = certificateUsed.mul(D(i.certificate.rate)).add(base.sub(certificateUsed).mul(normal));
+    reason = certificateUsed.isZero() ? 'normal' : certificateUsed.lt(base) ? 'certificate_partly' : 'certificate';
+    rate = certificateUsed.lt(base) || certificateUsed.isZero() ? normal : D(i.certificate.rate);
+  } else tax = base.mul(normal);
+  return { tds: round(tax, 'nearest'), base: money(base), rate: rate.toString(), reason, certificateUsed: money(certificateUsed), returnCode: sec.returnCode, citation: cite(rs) };
+}
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

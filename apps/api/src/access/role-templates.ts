@@ -42,6 +42,11 @@ const COMPLIANCE_5F = ['statutory.filing.view', 'statutory.filing.generate', 'st
 // Batch 5g: off-cycle runs, arrears worksheets and F&F settlements; approvers also approve arrears and write off overpayments.
 const PAY_ADMIN_5G = ['payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
 const PAY_APPROVER_5G = ['payroll.arrears.approve', 'payroll.writeoff.approve'];
+// Batch 5h: the consultant register and invoices (payroll); approving consultant invoices (approvers, finance).
+const PAY_ADMIN_5H = ['consultant.manage'];
+const PAY_APPROVER_5H = ['consultant.invoice.approve'];
+// Batch 5i: special pay sent to payroll, earned wage access and equity plans (payroll); approvers approve postings with payroll.run.approve.
+const PAY_ADMIN_5I = ['payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -56,7 +61,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     key: 'hr_executive',
@@ -72,7 +77,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
     cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
@@ -80,7 +85,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Checks and approves pay changes, bank account changes and payroll files prepared by others; the first check of a request to reopen a locked month.',
     cannot: 'Prepare pay changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G],
+    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
   },
   {
     key: 'finance',
@@ -96,7 +101,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'The final approval to reopen a locked pay month; releases payroll files prepared by others.',
     cannot: 'Prepare pay, or see individual tax workspaces.',
-    permissions: ['expense.finance.review', 'expense.payout.manage', 'expense.report.view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
+    permissions: ['expense.finance.review', 'expense.payout.manage', 'expense.report.view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release', 'consultant.invoice.approve'],
   },
   {
     key: 'expense_setup',
@@ -113,6 +118,48 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Adds tickets and hotel bookings to the approved trips of people in scope (M05).',
     cannot: 'Approve trips, or see claims and advances.',
     permissions: ['travel.booking.manage'],
+  },
+  {
+    key: 'performance_setup',
+    name: 'Performance set-up',
+    typicalScope: 'tenant',
+    summary: 'Rating scales, review templates, competencies, the company skills library, goal periods and company and team goals (M06).',
+    cannot: 'See anyone’s goals, reviews or ratings.',
+    permissions: ['perf.setup.manage', 'perf.goal.manage', 'perf.cycle.manage', 'perf.calibration.facilitate'],
+  },
+  // M10 AT1 (founder D2): hiring roles on the scoped ats.* keys. Company-wide for now: the hiring screens become
+  // scope-aware batch by batch (M10-BUILD-DESIGN §17).
+  {
+    key: 'recruiter',
+    name: 'Recruiter',
+    typicalScope: 'tenant',
+    summary: 'Jobs, pipelines, candidates, interviews, assessments and offers; hiring reports (M10).',
+    cannot: 'See offer pay, erase candidate data, or set headcount budgets.',
+    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view'],
+  },
+  {
+    key: 'hiring_manager',
+    name: 'Hiring manager',
+    typicalScope: 'tenant',
+    summary: 'Raises requisitions and follows the candidates and assessment results of the hiring (M10).',
+    cannot: 'Change jobs or pipelines, or see offer pay.',
+    permissions: ['ats.requisition.raise', 'ats.candidate.view', 'ats.assessment.view'],
+  },
+  {
+    key: 'interview_coordinator',
+    name: 'Interview coordinator',
+    typicalScope: 'tenant',
+    summary: 'Schedules interviews and panels and sees the candidates being interviewed (M10).',
+    cannot: 'Move candidates, or see assessment results or offers.',
+    permissions: ['ats.interview.schedule', 'ats.candidate.view'],
+  },
+  {
+    key: 'hiring_admin',
+    name: 'Hiring admin',
+    typicalScope: 'tenant',
+    summary: 'Headcount plans and budgets, offer pay, referral rewards, agencies, hiring reports and candidate data rights (M10).',
+    cannot: 'Change payroll or employee records.',
+    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights'],
   },
   {
     key: 'compliance_owner',

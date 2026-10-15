@@ -68,7 +68,7 @@ function Failed({ error }: { error: string | null }) {
 }
 
 /** A drawer with a form: errors show only after Save is pressed (no red while typing). */
-function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
   const { busy, error, run } = useRun();
   const save = useSaveErrors(errors);
   return (
@@ -457,6 +457,9 @@ function ModeDrawer({ onSearch, onClose, onSave }: { onSearch: PaymentModesScree
 
 // ------------------------------------------------------------------------------------------ loans (PAY-17, PAY-18)
 
+// An 'expense' loan recovers an overdue expense advance from salary (M05 §11.3), never a salary advance.
+export const LOAN_TYPE: Record<string, string> = { advance: 'Salary advance', loan: 'Loan', expense: 'Expense advance recovery' };
+
 const LOAN_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   requested: { label: 'Waiting for approval', tone: 'warning' },
   active: { label: 'Being repaid', tone: 'info' },
@@ -516,7 +519,7 @@ export function LoansScreen(p: LoansScreenProps) {
             {rows.map((l) => (
               <tr key={l.id}>
                 {!p.mine && <th scope="row">{p.nameOf(l.employeeId)}</th>}
-                <td>{l.loanType === 'loan' ? 'Loan' : 'Salary advance'}</td>
+                <td>{LOAN_TYPE[l.loanType] ?? l.loanType}</td>
                 <td>{rupees(l.principal)}</td>
                 <td>{rupees(l.emi)}</td>
                 <td>{rupees(l.outstanding)}</td>
@@ -644,7 +647,7 @@ function LoanChangeDrawer({ loan, who, onClose, onSave }: { loan: LoanView; who:
   ];
   return (
     <FormDrawer
-      title={`Change ${who}'s ${loan.loanType === 'loan' ? 'loan' : 'advance'}`}
+      title={`Change ${who}'s ${(LOAN_TYPE[loan.loanType] ?? 'loan').toLowerCase()}`}
       subtitle={`${rupees(loan.outstanding)} left, ${rupees(loan.emi)} a month`}
       confirm="Save change"
       errors={errors}

@@ -42,7 +42,7 @@ let seq = 0;
 
 /** Drag-and-drop or browse; type and size shown up front; per-file progress, scan status, retry (§31). */
 export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multiple = true, onItemsChange, disabled, id, defaultItems = [] }: FileUploadProps) {
-  const { controlProps } = useFieldControl({ id, disabled });
+  const { ctx, controlProps } = useFieldControl({ id, disabled });
   const inputRef = useRef<HTMLInputElement>(null);
   const hintId = useId();
   const [items, setItems] = useState<UploadItem[]>(defaultItems);
@@ -131,6 +131,8 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
           className="yx-visually-hidden"
           tabIndex={-1}
           aria-describedby={cxIds(hintId, controlProps['aria-describedby'])}
+          // A FormField (or a label pointing at `id`) names it; used on its own, it still needs a name (WCAG 4.1.2).
+          aria-label={ctx || id ? undefined : 'Choose files to upload'}
           multiple={multiple}
           accept={accept?.join(',')}
           disabled={disabled}

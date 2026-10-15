@@ -66,6 +66,7 @@ export class PermissionProfilesService {
             name: dto.name,
             permissionsJson: JSON.stringify(dto.permissions),
             fieldPermissionsJson: fieldPermissions ? JSON.stringify(fieldPermissions) : null,
+            templateChecked: true,
           },
         }),
       );
@@ -108,7 +109,11 @@ export class PermissionProfilesService {
 
         const data: Prisma.PermissionProfileUpdateInput = {};
         if (dto.name !== undefined) data.name = dto.name;
-        if (dto.permissions !== undefined) data.permissionsJson = JSON.stringify(dto.permissions);
+        if (dto.permissions !== undefined) {
+          data.permissionsJson = JSON.stringify(dto.permissions);
+          const same = JSON.stringify([...new Set(dto.permissions)].sort()) === JSON.stringify([...new Set(JSON.parse(existing.permissionsJson) as string[])].sort());
+          if (!same) data.templateKey = null;
+        }
         // undefined = leave field rules untouched; {} clears them to null (inherit role).
         if (fieldPermissions !== undefined) {
           data.fieldPermissionsJson = Object.keys(fieldPermissions).length ? JSON.stringify(fieldPermissions) : null;
