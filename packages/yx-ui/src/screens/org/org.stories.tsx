@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
@@ -11,7 +11,7 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
   { id: 'me', label: 'My security', href: '#me', group: 'Me' },
   { id: 'entities', label: 'Legal entities', href: '#entities', group: 'Organisation' },
@@ -20,10 +20,10 @@ const LINKS: WorkspaceLink[] = [
   { id: 'company-rules', label: 'Company rules', href: '#rules', group: 'Organisation' },
   { id: 'access-settings', label: 'Access and privacy', href: '#privacy', group: 'Access' },
 ];
-const Frame = ({ active, children }: { active: WorkspaceLink['id']; children: React.ReactNode }) => (
-  <WorkspaceShell active={active} links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+const Frame = ({ active, children }: { active: StoryLink['id']; children: React.ReactNode }) => (
+  <LinksFrame active={active} links={LINKS}>
     {children}
-  </WorkspaceShell>
+  </LinksFrame>
 );
 
 export const LegalEntities: S = {

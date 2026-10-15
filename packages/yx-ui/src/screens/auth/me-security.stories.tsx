@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { MeSecurityScreen, type HistoryFilter, type MeSecurityScreenProps } from './me-security';
-import { WorkspaceShell, type WorkspaceLink } from './shell';
+import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, RECOVERY_CODES, TOTP_SETUP } from './data';
 
 const meta: Meta = { title: 'Screens/Security/My security', parameters: { layout: 'fullscreen' } };
@@ -10,7 +10,7 @@ type S = StoryObj;
 
 const wait = (ms = 500) => new Promise<void>((r) => setTimeout(r, ms));
 
-const LINKS: WorkspaceLink[] = [
+const LINKS: StoryLink[] = [
   { id: 'directory', label: 'Directory', href: '#directory', group: 'People' },
   { id: 'activity', label: 'Login activity', href: '#activity', group: 'Security' },
   { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
@@ -21,7 +21,7 @@ function Page(over: Partial<MeSecurityScreenProps>) {
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const history = filter === 'all' ? MY_HISTORY : { ...MY_HISTORY, data: MY_HISTORY.data.filter((e) => (filter === 'success' ? e.result === 'success' : e.result !== 'success')) };
   return (
-    <WorkspaceShell active="me" links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Divya Raghunathan" email="divya.r@kaverifoods.in" onSignOut={() => {}}>
+    <LinksFrame active="me" links={LINKS}>
       <MeSecurityScreen
         state="ready"
         mfa={MFA_ENROLLED}
@@ -45,7 +45,7 @@ function Page(over: Partial<MeSecurityScreenProps>) {
         now={NOW}
         {...over}
       />
-    </WorkspaceShell>
+    </LinksFrame>
   );
 }
 

@@ -586,6 +586,67 @@ export interface RoleHomeScreenProps {
   widgetStates?: Record<string, 'loading' | 'slow' | 'error'>;
   /** Widgets the company layout leaves off (they can be added back in Edit home). */
   defaultHidden?: string[];
+  /** The live app: real data, and only the widgets that have it (the sample widgets stay in stories). */
+  live?: LiveHome;
+}
+
+/** Home in the live app (design audit step 1). Widgets without live data yet are left out, not faked. */
+export interface LiveHome {
+  /** First name for the greeting. */
+  firstName: string;
+  company: string;
+  today: Date;
+  approvalsHref: string;
+  onApprove?: (item: ActionItem) => void;
+  onReview?: (item: ActionItem) => void;
+  /** The person's check-in card; left out for people with no attendance. */
+  clock?: ReactNode;
+  stats?: { id: string; title: string; label: string; value: number; unit?: string; drill: { label: string; href: string } }[];
+  quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
+}
+
+const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
+const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
+
+function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScreenProps['persona']; data: HomeData; loading: boolean; live: LiveHome }) {
+  const widgets: DashboardWidget[] = [
+    {
+      id: 'actions',
+      title: 'Needs your action',
+      size: live.clock ? 8 : 12,
+      pinned: true,
+      bare: true,
+      content: <NeedsActionList items={data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
+    },
+    ...(live.clock ? [{ id: 'clock', pinned: true, bare: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
+    ...(live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} drill={x.drill} />)),
+  ];
+  const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
+  return (
+    <>
+      <div className="yx-plt-row" data-justify="between">
+        <div className="yx-plt-greet">
+          <Heading level={1}>{`Good ${partOfDay(live.today)}, ${live.firstName}`}</Heading>
+          <p className="yx-plt-muted">
+            {formatDate(live.today)} · {greeting}
+          </p>
+        </div>
+        {live.quickActions?.length ? (
+          <div className="yx-plt-row" role="group" aria-label="Quick actions">
+            {live.quickActions.map((a) => (
+              <Button key={a.href} asChild>
+                <a href={a.href}>
+                  <Icon icon={QUICK_ICON[a.kind]} />
+                  <span className="yx-button__label">{a.label}</span>
+                </a>
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <DashboardGrid label="Your home" widgets={widgets} defaultValue={widgets.map((w) => w.id)} />
+    </>
+  );
 }
 
 const GREETING: Record<RoleHomeScreenProps['persona'], string> = {
@@ -596,7 +657,7 @@ const GREETING: Record<RoleHomeScreenProps['persona'], string> = {
 };
 
 // PLT-02 · Role homes (employee / manager / HR / finance). APX-D §1.1 Home.
-export function RoleHomeScreen({ persona, data, loading = false, editing, firstRun, customisable = false, payOnHome = false, defaultHideAmounts, widgetStates, defaultHidden = [] }: RoleHomeScreenProps) {
+export function RoleHomeScreen({ persona, data, loading = false, editing, firstRun, customisable = false, payOnHome = false, defaultHideAmounts, widgetStates, defaultHidden = [], live }: RoleHomeScreenProps) {
   const [hideMoney, setHideMoney] = useState(() => persona === 'finance' && (defaultHideAmounts ?? readHideAmounts()));
   const toggleHide = () => {
     setHideMoney(!hideMoney);
@@ -612,6 +673,7 @@ export function RoleHomeScreen({ persona, data, loading = false, editing, firstR
   const panel = newJoiner ? homePanel('Home').map((sec) => ({ ...sec, items: sec.items.map((it) => ({ ...it, count: undefined })) })) : homePanel('Home');
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={panel} railItems={railFor(persona)} user={persona === 'hr' ? HR_ADMIN : persona === 'finance' ? PAYROLL_ADMIN : ME} scope={persona === 'hr' || persona === 'finance' ? 'full' : 'none'}>
+      {live ? <LiveHomeBody persona={persona} data={data} loading={loading} live={live} /> : <>
       <div className="yx-plt-row" data-justify="between">
         <div className="yx-plt-greet">
           <Heading level={1}>{newJoiner ? 'Welcome to Kaveri Foods, Divya' : `Good morning, ${persona === 'hr' ? 'Lakshmi' : persona === 'finance' ? 'Suresh' : 'Divya'}`}</Heading>
@@ -638,6 +700,7 @@ export function RoleHomeScreen({ persona, data, loading = false, editing, firstR
         </InlineAlert>
       )}
       <DashboardGrid label="Your home" widgets={widgets} defaultValue={widgets.map((w) => w.id).filter((id) => !defaultHidden.includes(id))} defaultEditing={editing} customisable={Boolean(customisable || editing)} />
+      </>}
     </DesktopFrame>
   );
 }

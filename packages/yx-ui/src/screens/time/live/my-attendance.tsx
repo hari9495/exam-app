@@ -58,7 +58,7 @@ export function MyAttendanceScreen(p: MyAttendanceScreenProps) {
     <LivePage title="My attendance" description={d ? `${MODE_TEXT[d.mode]} · ${d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${clock(d.shift.start)} to ${clock(d.shift.end)}`}` : undefined} state={p.state} onRetry={p.onRetry} what="your attendance">
       {d && (
         <>
-          <Today data={d} getLocation={p.getLocation} onPunch={p.onPunch} />
+          <TodayCard data={d} getLocation={p.getLocation} onPunch={p.onPunch} />
           <Card
             title={monthText(p.month)}
             actions={
@@ -83,7 +83,7 @@ export function MyAttendanceScreen(p: MyAttendanceScreenProps) {
   );
 }
 
-function Today({ data, getLocation, onPunch }: { data: MyAttendance; getLocation: MyAttendanceScreenProps['getLocation']; onPunch: MyAttendanceScreenProps['onPunch'] }) {
+export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; getLocation: MyAttendanceScreenProps['getLocation']; onPunch: MyAttendanceScreenProps['onPunch'] }) {
   const [result, setResult] = useState<PunchResult | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { busy, error, run } = useRun();

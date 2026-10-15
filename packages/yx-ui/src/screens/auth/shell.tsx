@@ -1,44 +1,5 @@
-import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, Gauge, Target, MessageSquareHeart, Handshake, Banknote, Landmark, DoorOpen, Globe, Languages, Laptop, BookOpen, FileCheck, ListTodo, UserPlus, UserCog, BookUser, Briefcase, Building2, CalendarClock, CalendarDays, CalendarRange, ChartColumn, CheckCheck, CircleHelp, ClipboardCheck, ClipboardList, Clock, Contact, Eye, FileStack, FileText, Fingerprint, GitFork, Headphones, Headset, History, IdCard, KeyRound, LifeBuoy, ListChecks, Lock, LockKeyhole, Mail, MapPin, Megaphone, MessageSquare, MessagesSquare, Network, Scale, ScrollText, Settings, ShieldAlert, ShieldCheck, ShoppingBag, SlidersHorizontal, Table2, Ticket, Timer, UserRound, UserSearch, Users, Wallet } from 'lucide-react';
-import { Logo, Monogram } from '../../components/brand';
-import { ColorIcon, type ColorIconName } from '../../components/color-icon';
-import type { IconComponent } from '../../components/foundations';
-import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
-
-export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'identity-providers' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'yukthix-support' | 'emails' | 'desk-help' | 'desk-tickets' | 'desk-setup' | 'desk-calendar' | 'desk-people' | 'desk-customers' | 'desk-reports' | 'desk-knowledge' | 'desk-people-list' | 'desk-privacy' | 'desk-known-issues' | 'desk-catalog' | 'desk-chat' | 'desk-live-chat' | 'approvals' | 'my-leave' | 'my-attendance' | 'team-leave' | 'muster' | 'leave-balances' | 'time-setup' | 'my-shifts' | 'my-overtime' | 'my-timesheet' | 'roster' | 'overtime-review' | 'shifts-setup' | 'periods' | 'registers' | 'payroll-feed' | 'pay-periods' | 'reopen-requests' | 'pay-audit' | 'pay-documents' | 'pay-files' | 'my-pay-documents' | 'onboarding' | 'my-tasks' | 'documents-verify' | 'checklists' | 'letters' | 'ready-to-onboard' | 'letter-templates' | 'my-letters' | 'exits' | 'clearance' | 'assets' | 'resign' | 'my-assets' | 'exit-interview' | 'my-documents' | 'batches' | 'absconding' | 'upcoming-exits' | 'retrenchment' | 'pay-setup' | 'pay-groups' | 'pay-components' | 'pay-templates' | 'pay-compensation' | 'pay-layout' | 'pay-rules' | 'pay-coverage' | 'pay-imports' | 'desk-team' | 'first-30' | 'life-events' | 'countries' | 'translations' | 'my-language' | 'pay-runs' | 'pay-inputs' | 'pay-statutory' | 'pay-fnf' | 'pay-arrears' | 'my-payslips' | 'my-tax' | 'pay-go-live' | 'pay-modes' | 'pay-loans' | 'pay-queries' | 'pay-proofs' | 'pay-certificates' | 'pay-registers' | 'pay-advisories' | 'my-loans' | 'my-declarations' | 'expense-setup' | 'expenses' | 'expense-reports' | 'expense-to-pay' | 'performance-setup' | 'goals' | 'goal-map' | 'feedback' | 'one-on-ones' | 'reviews' | 'review-cycles' | 'feedback-tasks' | 'reviewer-blocks' | 'pay-consultants' | 'pay-consultant-tds' | 'pay-special' | 'pay-ewa' | 'pay-equity' | 'pay-actuarial' | 'pay-country-packs' | 'my-ewa' | 'my-equity' | 'my-incentives' | 'calibration' | 'perf-reports' | 'comp-review' | 'pay-band' | 'pips' | 'hiring-jobs' | 'hiring-plans' | 'hiring-approvals' | 'hiring-careers' | 'hiring-boards' | 'hiring-candidates' | 'hiring-pools' | 'hiring-retention' | 'hiring-interviews' | 'hiring-scorecards';
-/** Sidebar groups, in this order. */
-export type WorkspaceGroup = 'People' | 'Hiring' | 'Time' | 'Payroll' | 'Service desk' | 'Organisation' | 'Access' | 'Security' | 'Me';
-const GROUPS: WorkspaceGroup[] = ['People', 'Hiring', 'Time', 'Payroll', 'Service desk', 'Organisation', 'Access', 'Security', 'Me'];
-
-export interface WorkspaceLink {
-  id: WorkspacePage;
-  label: string;
-  href: string;
-  group: WorkspaceGroup;
-}
-
-export interface WorkspaceShellProps {
-  active: WorkspacePage;
-  /** Only the pages this person may open. */
-  links: WorkspaceLink[];
-  /** Company shown in the top bar. */
-  company?: string;
-  /** The hiring and assessment app, only for people who hold its permissions. */
-  hiringHref?: string;
-  /** Profile and notification preferences. */
-  profileHref: string;
-  name: string;
-  email?: string;
-  onSignOut: () => void;
-  /** Client-side navigation; plain links when omitted. */
-  onNavigate?: (href: string) => void;
-  children: ReactNode;
-}
-
-const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, 'identity-providers': Fingerprint, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, 'yukthix-support': Headset, emails: Mail, 'desk-help': CircleHelp, 'desk-tickets': Ticket, 'desk-setup': SlidersHorizontal, 'desk-calendar': CalendarDays, 'desk-people': UserSearch, 'desk-customers': Briefcase, 'desk-reports': ChartColumn, 'desk-knowledge': BookOpen, 'desk-people-list': Contact, 'desk-privacy': ShieldAlert, 'desk-known-issues': Megaphone, 'desk-catalog': ShoppingBag, 'desk-chat': MessagesSquare, 'desk-live-chat': Headphones, approvals: CheckCheck, 'my-leave': CalendarDays, 'my-attendance': Clock, 'team-leave': CalendarRange, muster: Table2, 'leave-balances': Scale, 'time-setup': SlidersHorizontal, 'my-shifts': CalendarClock, 'my-overtime': Timer, 'my-timesheet': ClipboardList, roster: CalendarRange, 'overtime-review': Timer, 'shifts-setup': SlidersHorizontal, periods: Lock, registers: FileStack, 'payroll-feed': Table2, 'pay-periods': Lock, 'reopen-requests': CheckCheck, 'pay-audit': ScrollText, 'pay-documents': FileText, 'pay-files': FileStack, 'my-pay-documents': FileText, onboarding: UserPlus, 'my-tasks': ListTodo, 'documents-verify': FileCheck, checklists: ListChecks, letters: FileText, 'ready-to-onboard': UserPlus, 'letter-templates': FileText, 'my-letters': FileText, exits: DoorOpen, clearance: ListChecks, assets: Laptop, resign: DoorOpen, 'my-assets': Laptop, 'exit-interview': MessageSquare, 'my-documents': FileText, batches: Users, absconding: CalendarClock, 'upcoming-exits': CalendarRange, retrenchment: ScrollText, 'pay-setup': ListChecks, 'pay-groups': Users, 'pay-components': Table2, 'pay-templates': SlidersHorizontal, 'pay-compensation': Scale, 'pay-layout': FileText, 'pay-rules': BookOpen, 'pay-coverage': ShieldCheck, 'pay-imports': FileStack, 'desk-team': UserCog, 'first-30': CalendarDays, 'life-events': GitFork, countries: Globe, translations: Languages, 'my-language': Languages, 'pay-runs': Banknote, 'pay-inputs': ClipboardList, 'pay-statutory': Landmark, 'pay-fnf': DoorOpen, 'pay-arrears': Scale, 'my-payslips': Banknote, 'my-tax': Landmark, 'pay-go-live': ListChecks, 'pay-modes': Banknote, 'pay-loans': Scale, 'pay-queries': MessageSquare, 'pay-proofs': FileCheck, 'pay-certificates': FileText, 'pay-registers': FileStack, 'pay-advisories': BookOpen, 'my-loans': Scale, 'my-declarations': FileCheck, 'expense-setup': Wallet, expenses: Wallet, 'expense-reports': ChartColumn, 'expense-to-pay': Banknote, 'performance-setup': Gauge, goals: Target, 'goal-map': Network, feedback: MessageSquareHeart, 'one-on-ones': Handshake, reviews: ClipboardCheck, 'review-cycles': CalendarClock, 'feedback-tasks': MessageSquare, 'reviewer-blocks': ShieldAlert, 'pay-consultants': Briefcase, 'pay-consultant-tds': Landmark, 'pay-special': Wallet, 'pay-ewa': Banknote, 'pay-equity': ChartColumn, 'pay-actuarial': ScrollText, 'pay-country-packs': Globe, 'my-ewa': Banknote, 'my-equity': ChartColumn, 'my-incentives': Target, calibration: Scale, 'perf-reports': ChartColumn, 'comp-review': Banknote, 'pay-band': Scale, pips: ClipboardList, 'hiring-jobs': Briefcase, 'hiring-plans': ClipboardList, 'hiring-approvals': CheckCheck, 'hiring-careers': Globe, 'hiring-boards': Megaphone, 'hiring-candidates': Users, 'hiring-pools': UserPlus, 'hiring-retention': Scale, 'hiring-interviews': CalendarClock, 'hiring-scorecards': ClipboardCheck };
-const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Hiring: Briefcase, Time: Clock, Payroll: Wallet, 'Service desk': Headset, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
-// The rail draws colour icons (§8); the panel's page links stay Lucide outline.
-const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people', Hiring: 'area.hiring', Time: 'area.time', Payroll: 'area.payroll', 'Service desk': 'area.serviceDesk', Organisation: 'orgUnit', Access: 'area.access', Security: 'area.security', Me: 'area.me' };
+import { useEffect, useState } from 'react';
+import type { DensityChoice, ThemeChoice } from '../../components/shell';
 
 /** localStorage key of an explicit light / dark choice; absent = follow the OS. */
 export const THEME_STORAGE_KEY = 'yx-theme';
@@ -52,21 +13,17 @@ export function readThemeChoice(): ThemeChoice {
 }
 
 /**
- * Product frame for the YukthiX workspace pages: rail with one area per group, a side panel with that area's pages
- * (the menu sheet on phones lists every area, since there is no rail), top bar with the company and the account menu.
+ * Theme and density for the account menu (<ProfileMenu theme density>): the OS setting unless the person chose light or
+ * dark, kept per browser; the host's sign-in pages read the same key before they paint (apps/web lib/theme-script).
  */
-export function WorkspaceShell({ active, links, company, hiringHref, profileHref, name, email, onSignOut, onNavigate, children }: WorkspaceShellProps) {
-  const groups = GROUPS.filter((g) => links.some((l) => l.group === g));
-  const activeGroup = links.find((l) => l.id === active)?.group;
-  // The OS setting unless the person chose light or dark here; the choice is kept per browser and the host's
-  // sign-in pages read the same key before they paint (apps/web lib/theme-script).
-  const [theme, setTheme] = useState<ThemeChoice>('system');
+export function useAppearance() {
+  const [theme, setThemeState] = useState<ThemeChoice>('system');
   const [density, setDensity] = useState<DensityChoice>('comfortable');
   useEffect(() => {
-    setTheme(readThemeChoice());
+    setThemeState(readThemeChoice());
   }, []);
-  const chooseTheme = (t: ThemeChoice) => {
-    setTheme(t);
+  const setTheme = (t: ThemeChoice) => {
+    setThemeState(t);
     try {
       if (t === 'system') window.localStorage.removeItem(THEME_STORAGE_KEY);
       else window.localStorage.setItem(THEME_STORAGE_KEY, t);
@@ -79,73 +36,5 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
     root.dataset.theme = theme === 'system' ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
     root.dataset.density = density;
   }, [theme, density]);
-  const open = (href: string) => (onNavigate ? onNavigate(href) : window.location.assign(href));
-  const go = (href: string) => (e: MouseEvent) => {
-    if (!onNavigate || e.metaKey || e.ctrlKey || e.shiftKey) return;
-    e.preventDefault();
-    onNavigate(href);
-  };
-  const rail: RailItem[] = [
-    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : g === 'Service desk' ? 'Desk' : undefined, icon: GROUP_ICONS[g], art: <ColorIcon name={GROUP_ART[g]} size={20} />, href: links.find((l) => l.group === g)!.href })),
-    // M10 AT1: with the YukthiX Hiring area present, the older hiring app is the "Hiring app" next to it.
-    ...(hiringHref ? [{ id: 'hiring', label: groups.includes('Hiring') ? 'Hiring app' : 'Hiring', icon: Briefcase, art: <ColorIcon name="area.hiring" size={20} />, href: hiringHref }] : []),
-  ];
-  const home = links[0]?.href ?? profileHref;
-  return (
-    <AppShell
-      rail={<SideRail items={rail} activeId={activeGroup} logo={<Monogram />} />}
-      panel={
-        <SidePanel title="Menu">
-          {groups.map((group) => (
-            // Desktop panel: only the area picked in the rail (§12). The phone sheet keeps every area (no rail there).
-            <div key={group} className="yx-workspace__area" data-other-area={group !== activeGroup || undefined}>
-            <PanelGroup label={group}>
-              {links
-                .filter((l) => l.group === group)
-                .map((l) => (
-                  <PanelLink key={l.id} href={l.href} icon={ICONS[l.id]} active={l.id === active} onClick={go(l.href)}>
-                    {l.label}
-                  </PanelLink>
-                ))}
-            </PanelGroup>
-            </div>
-          ))}
-          {hiringHref && (
-            <div className="yx-workspace__area" data-other-area>
-            <PanelGroup label="Other apps">
-              <PanelLink href={hiringHref} icon={Briefcase}>
-                Hiring and assessments
-              </PanelLink>
-            </PanelGroup>
-            </div>
-          )}
-        </SidePanel>
-      }
-      topBar={
-        <TopBar
-          start={
-            <a href={home} className="yx-workspace__home" onClick={go(home)}>
-              <Logo size="md" />
-              {company && <span className="yx-workspace__company">{company}</span>}
-            </a>
-          }
-          profile={
-            <ProfileMenu
-              name={name}
-              email={email}
-              onSignOut={onSignOut}
-              onProfile={() => open(profileHref)}
-              onPreferences={() => open(profileHref)}
-              theme={theme}
-              onThemeChange={chooseTheme}
-              density={density}
-              onDensityChange={setDensity}
-            />
-          }
-        />
-      }
-    >
-      {children}
-    </AppShell>
-  );
+  return { theme, setTheme, density, setDensity };
 }
