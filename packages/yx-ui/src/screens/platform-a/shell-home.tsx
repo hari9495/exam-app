@@ -10,7 +10,7 @@ import { Monogram } from '../../components/brand';
 import { NotificationCentre, type NotificationItem } from '../../components/notify';
 import { Select } from '../../components/select';
 import { Button, IconButton, Link } from '../../components/button';
-import { Badge, PersonLabel } from '../../components/display';
+import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { DashboardGrid, NeedsActionList, type ActionItem, type DashboardWidget } from '../../components/dashboard';
 import { LineChart, StatCard } from '../../components/charts';
@@ -603,6 +603,11 @@ export interface LiveHome {
   clock?: ReactNode;
   stats?: { id: string; title: string; label: string; value: number; unit?: string; drill: { label: string; href: string } }[];
   quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
+  /** "Due dates" (HR): what must be done by when, e.g. locking last month's attendance or probation confirmations. */
+  due?: { id: string; text: string; href: string; badge?: { label: string; tone: BadgeTone }; note?: string; action?: string }[];
+  /** "Joiners and leavers this week"; an empty list says so, an absent one hides the widget. */
+  moves?: { id: string; name: string; secondary: string; badges: { label: string; tone: BadgeTone }[] }[];
+  movesHref?: string;
 }
 
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
@@ -620,6 +625,62 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     },
     ...(live.clock ? [{ id: 'clock', pinned: true, bare: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
     ...(live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} drill={x.drill} />)),
+    ...(live.due?.length
+      ? [{
+          id: 'due',
+          title: 'Due dates',
+          size: 6 as const,
+          content: (
+            <ul className="yx-plt-list">
+              {live.due.map((d) => (
+                <li key={d.id}>
+                  {d.action ? (
+                    <>
+                      <span className="yx-plt-list__main">
+                        {d.text}
+                        {(d.badge || d.note) && (
+                          <span className="yx-plt-row">
+                            {d.badge && <Badge tone={d.badge.tone}>{d.badge.label}</Badge>}
+                            {d.note && <span className="yx-plt-muted">{d.note}</span>}
+                          </span>
+                        )}
+                      </span>
+                      <Button size="sm" asChild>
+                        <a href={d.href}>
+                          <Icon icon={Lock} />
+                          <span className="yx-button__label">{d.action}</span>
+                        </a>
+                      </Button>
+                    </>
+                  ) : (
+                    <Link href={d.href}>{d.text}</Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ),
+        }]
+      : []),
+    ...(live.moves
+      ? [{
+          id: 'moves',
+          title: 'Joiners and leavers this week',
+          size: 6 as const,
+          actions: live.movesHref ? <Link href={live.movesHref}>Onboarding board</Link> : undefined,
+          content: live.moves.length ? (
+            <ul className="yx-plt-list">
+              {live.moves.map((m) => (
+                <li key={m.id}>
+                  <span className="yx-plt-list__main"><PersonLabel name={m.name} secondary={m.secondary} /></span>
+                  <span className="yx-plt-row">{m.badges.map((b) => <Badge key={b.label} tone={b.tone}>{b.label}</Badge>)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-plt-muted">No one joins or leaves this week.</p>
+          ),
+        }]
+      : []),
   ];
   const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
   return (
@@ -644,7 +705,8 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           </div>
         ) : null}
       </div>
-      <DashboardGrid label="Your home" widgets={widgets} defaultValue={widgets.map((w) => w.id)} customisable={false} />
+      {/* Controlled: live widgets arrive as their data loads, and the live home is not customisable. */}
+      <DashboardGrid label="Your home" widgets={widgets} value={widgets.map((w) => w.id)} customisable={false} />
     </>
   );
 }
@@ -977,7 +1039,10 @@ export interface SearchHit {
   subtitle: string;
   snippet?: string;
   entity: string;
-  updated: Date;
+  /** Left out by the live search, which has no dates yet: the column goes with it. */
+  updated?: Date;
+  /** Where the result opens (live app). */
+  href?: string;
 }
 
 /** What each role may find (founder review 30 Sep 2026), the same rule as the command palette: a manager finds their
@@ -1025,7 +1090,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-const searchColumns = (query: string, withEntity: boolean, withSource: boolean): TableColumn<SearchHit>[] => [
+const searchColumns = (query: string, withEntity: boolean, withSource: boolean, withUpdated = true): TableColumn<SearchHit>[] => [
   {
     key: 'title',
     header: 'Result',
@@ -1048,7 +1113,7 @@ const searchColumns = (query: string, withEntity: boolean, withSource: boolean):
     ),
   },
   ...(withEntity ? ([{ key: 'entity', header: 'Company', value: (r: SearchHit) => r.entity, width: 240 }] as TableColumn<SearchHit>[]) : []),
-  { key: 'updated', header: 'Updated', value: (r) => r.updated.getTime(), render: (r) => formatDate(r.updated), width: 140 },
+  ...(withUpdated ? ([{ key: 'updated', header: 'Updated', value: (r: SearchHit) => r.updated?.getTime() ?? 0, render: (r: SearchHit) => (r.updated ? formatDate(r.updated) : ''), width: 140 }] as TableColumn<SearchHit>[]) : []),
 ];
 
 function SaveSearchDialog({ query, onClose }: { query: string; onClose: () => void }) {
@@ -1078,14 +1143,21 @@ function SaveSearchDialog({ query, onClose }: { query: string; onClose: () => vo
   );
 }
 
+/** The live app (design audit step 2): the server already returns only what the person may open. Saving a search, the
+ * date and company filters and Ask AI wait for their backend and are left out. */
+export interface LiveSearchResults {
+  onOpen: (hit: SearchHit) => void;
+  onRetry?: () => void;
+}
+
 // PLT-21 · Search results page: tabs by type, only what you may open, the match in bold.
-export function SearchResultsScreen({ query, hits, state = 'ready', persona = 'manager' }: { query: string; hits: SearchHit[]; state?: 'ready' | 'loading' | 'error'; persona?: Persona }) {
-  const mine = explainedHits(searchableFor(persona, hits), query);
+export function SearchResultsScreen({ query, hits, state = 'ready', persona = 'manager', live }: { query: string; hits: SearchHit[]; state?: 'ready' | 'loading' | 'error'; persona?: Persona; live?: LiveSearchResults }) {
+  const mine = explainedHits(live ? hits : searchableFor(persona, hits), query);
   const [tab, setTab] = useState('all');
   const [saving, setSaving] = useState(false);
   const sources = [...new Set(mine.map((h) => h.source))];
   const rows = tab === 'all' ? mine : mine.filter((h) => h.source === tab);
-  const many = multiEntity(persona);
+  const many = !live && multiEntity(persona);
   const looksLikeCode = /^[a-z]{2,4}-?\d{3,}$/i.test(query.trim());
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Search')} scope={many ? 'entity' : 'none'}>
@@ -1094,19 +1166,22 @@ export function SearchResultsScreen({ query, hits, state = 'ready', persona = 'm
         description="You only see results you're allowed to open."
         facts={`${mine.length} result${mine.length === 1 ? '' : 's'}`}
         actions={
-          <Button icon={Bookmark} onClick={() => setSaving(true)}>
-            Save search
-          </Button>
+          live ? undefined : (
+            <Button icon={Bookmark} onClick={() => setSaving(true)}>
+              Save search
+            </Button>
+          )
         }
         tabs={mine.length ? [{ id: 'all', label: 'All', count: mine.length }, ...sources.map((s) => ({ id: s, label: s, count: mine.filter((h) => h.source === s).length }))] : undefined}
         tab={tab}
         onTabChange={setTab}
         label="Search results"
-        columns={searchColumns(query, many, tab === 'all')}
+        columns={searchColumns(query, many, tab === 'all', !live)}
         rows={rows}
         getRowId={(r) => r.id}
-        onRowClick={() => {}}
-        filters={many ? [{ key: 'entity', label: 'Company', type: 'multi', options: ENTITIES.map((e) => ({ value: e.name, label: e.name })) }, { key: 'updated', label: 'Date', type: 'date' }] : [{ key: 'updated', label: 'Date', type: 'date' }]}
+        onRowClick={live ? live.onOpen : () => {}}
+        onRetry={live?.onRetry}
+        filters={live ? [] : many ? [{ key: 'entity', label: 'Company', type: 'multi', options: ENTITIES.map((e) => ({ value: e.name, label: e.name })) }, { key: 'updated', label: 'Date', type: 'date' }] : [{ key: 'updated', label: 'Date', type: 'date' }]}
         defaultSearch=""
         searchPlaceholder="Refine within results"
         state={state}
@@ -1119,10 +1194,12 @@ export function SearchResultsScreen({ query, hits, state = 'ready', persona = 'm
                 : 'Check the spelling, or try an employee code, request reference or a shorter name.'
             }
             action={
-              <div className="yx-plt-row">
-                {many && <Button icon={Search}>Search all my companies</Button>}
-                <Button icon={MessageCircleQuestionMark}>Ask AI</Button>
-              </div>
+              live ? undefined : (
+                <div className="yx-plt-row">
+                  {many && <Button icon={Search}>Search all my companies</Button>}
+                  <Button icon={MessageCircleQuestionMark}>Ask AI</Button>
+                </div>
+              )
             }
           />
         }

@@ -807,7 +807,7 @@ describe('/yx layout', () => {
     const rail = screen.getByRole('navigation', { name: 'Areas' });
     expect(within(rail).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Home', 'Helpdesk']);
     const home = screen.getByRole('navigation', { name: 'Home' });
-    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'My security']);
+    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
     expect(within(home).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
   });

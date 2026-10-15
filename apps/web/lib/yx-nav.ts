@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
 
 export interface NavLink {
   id: string;
@@ -62,11 +62,21 @@ export function buildNav(n: NavInput): NavArea[] {
     id: 'home',
     title: 'Home',
     sections: [
-      ...sec(undefined, [L('home', 'Home', '/yx/home'), ...when(!support, L('approvals', 'Approvals', '/yx/approvals', 'approvals'))]),
+      // The designed Home panel (PLT-01): Home · Approvals · Notifications · Search · My requests.
+      ...sec(undefined, [
+        L('home', 'Home', '/yx/home'),
+        ...when(!support, L('approvals', 'Approvals', '/yx/approvals', 'approvals')),
+        ...when(!support, L('notifications', 'Notifications', '/yx/notifications', 'notifications')),
+        L('search', 'Search', '/yx/search'),
+        ...when(!support, L('my-requests', 'My requests', '/yx/me/requests')),
+      ]),
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-letters', 'My letters', '/yx/me/letters'), L('my-data', 'My data', '/yx/me/privacy'), L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language'), L('resign', 'Resign', '/yx/me/resignation')),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-letters', 'My letters', '/yx/me/letters')),
+        ...when(!support, L('delegation', 'Delegation', '/yx/me/delegation')),
+        ...when(!support, L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
+        ...when(employee, L('my-data', 'My data', '/yx/me/privacy'), L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language'), L('resign', 'Resign', '/yx/me/resignation')),
         L('me', 'My security', ME_SECURITY),
       ]),
     ],

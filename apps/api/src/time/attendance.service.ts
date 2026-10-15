@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { Viewer, buildViewer, tenantWide, has, type ScopeUser } from '../access/scope';
+import { Viewer, buildViewer, inEntitySql, inScopeSql, tenantWide, has, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { PunchDto, RegulariseDto } from './dto';
@@ -215,6 +215,25 @@ export class AttendanceService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ the muster (TIM-02)
 
   /** Days of everyone the viewer may see (YX-AT-14: team for a manager, attendance.view scope for HR), read-only. */
+  /**
+   * Home (PLT-02 "Attendance exceptions"): days in `month` with a missing punch or timesheet among the people the
+   * explicit attendance.view grant reaches (a manager's own team stays on the muster). Null without the key.
+   */
+  async exceptionCount(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null): Promise<number | null> {
+    const v = await this.viewer(user);
+    if (!has(v, 'attendance.view') || (v.actingForOther && !tenantWide(v, 'attendance.view'))) return null;
+    const { from, to } = monthRange(month);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      const [r] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM attendance_days d
+        WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')
+          AND ${inScopeSql(c, v, 'attendance.view', Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`, own)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`)}`;
+      return r?.n ?? 0;
+    });
+  }
+
   async muster(ctx: TenantContext, user: ScopeUser, month: string) {
     const { from, to } = monthRange(month);
     const v = await this.viewer(user);

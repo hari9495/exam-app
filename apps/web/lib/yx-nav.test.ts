@@ -12,7 +12,7 @@ describe('buildNav: areas', () => {
   it('someone with no keys and no record: Home (Home, Approvals, My security) and the Helpdesk; nothing unbuilt', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
-    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'My security']);
+    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
     expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Service catalogue', 'Chat with us']);
   });
 
@@ -58,7 +58,7 @@ describe('buildNav: People', () => {
   });
 
   it('a new hire gets My first 30 days first in Me; others do not', () => {
-    expect(labels(nav([], { employee: true, firstDays: true }), 'home')[2]).toBe('My first 30 days');
+    expect(labels(nav([], { employee: true, firstDays: true }), 'home')[5]).toBe('My first 30 days');
     expect(labels(nav(['lifecycle.onboarding.view']), 'home')).not.toContain('My first 30 days');
   });
 
@@ -96,7 +96,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
-    expect(labels(s, 'home')).toEqual(['Home', 'Profile', 'Documents & letters', 'My letters', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'My letters', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
     expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
@@ -132,6 +132,6 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('Me pages for the account menu', () => {
-    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
   });
 });

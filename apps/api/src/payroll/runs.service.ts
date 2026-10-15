@@ -187,6 +187,29 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Home (PLT-02 "Not ready for payroll"): people in the month's open regular runs who still have a blocking check
+   * (unwaived), as the last readiness check or calculation left them; this never re-runs the checks. Null without
+   * payroll.run.prepare or when no run is open for the month.
+   */
+  async notReady(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null): Promise<{ notReady: number; people: number; runId: string | null } | null> {
+    const v = await this.viewer(user);
+    if (!v.grants.has('payroll.run.prepare') || v.actingForOther) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = (await entitiesFor(tx, c, v, 'payroll.run.prepare')).filter((id) => !entityId || id === entityId);
+      await payScope(tx, ids);
+      const runs = await tx.payrollRun.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, runType: 'regular', periodStart: asDate(`${month}-01`), status: { in: ['draft', 'calculated', 'in_review', 'reopened'] } } });
+      if (!runs.length) return null;
+      let people = 0;
+      const blocked = new Set<string>();
+      for (const run of runs) {
+        people += (await this.members(tx, c.organizationId, run)).length;
+        for (const x of await this.current(tx, c.organizationId, run)) if (x.severity === 'block' && !x.waivedBy && x.employeeId) blocked.add(`${run.id}:${x.employeeId}`);
+      }
+      return { notReady: blocked.size, people, runId: runs.length === 1 ? runs[0].id : null };
+    }, RUN_TX);
+  }
+
   /** One run; while it waits for approval, whether the viewer decides it now and the phrase to type (batch 5j screens). */
   async get(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);

@@ -100,6 +100,28 @@ export class PeriodsService {
     });
   }
 
+  /**
+   * Home (PLT-02 "Due dates"): last month's attendance per legal entity the viewer may lock, while it is still open,
+   * with what stops the lock today. Null without attendance.lock.
+   */
+  async dueLocks(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
+    const v = await this.viewer(user);
+    if (!has(v, 'attendance.lock') || v.actingForOther) return null;
+    const today = todayIst();
+    const month = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
+      const locked = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, payGroupId: null, periodStart: asDate(`${month}-01`), stage: { not: 'open' } }, select: { legalEntityId: true } });
+      const out = [];
+      for (const e of entities.filter((x) => !locked.some((l) => l.legalEntityId === x.id))) {
+        const pre = await this.preflightIn(tx, c, e.id, month);
+        if (!pre.people) continue;
+        out.push({ month, entityId: e.id, entityName: e.name, lockableFrom: this.lockableFrom(month), exceptions: pre.exceptions, waiting: pre.pending.reduce((n, x) => n + x.count, 0) });
+      }
+      return out;
+    });
+  }
+
   /** A month can be locked from the 2nd of the next month (so a night shift of its last day has ended). */
   private lockableFrom(month: string) {
     return addDays(monthRange(month).to, 2);

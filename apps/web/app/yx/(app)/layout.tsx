@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Languages, ShieldCheck, UserRound } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import type { LegalEntity } from '@yukthix/ui/org';
@@ -37,7 +37,10 @@ const SEARCH_GROUPS = [
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ScopeProvider>
-      <Frame>{children}</Frame>
+      {/* "Done" messages are the design system's toasts (5 s); errors stay until closed. */}
+      <ToastProvider>
+        <Frame>{children}</Frame>
+      </ToastProvider>
     </ScopeProvider>
   );
 }
@@ -233,7 +236,8 @@ function Frame({ children }: { children: React.ReactNode }) {
             loading={notifications.isLoading}
             onMarkAllRead={() => markAll.mutate(undefined, { onSuccess: () => void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }) })}
             onOpenItem={(it) => !it.read && markRead.mutate(it.id)}
-            settingsHref="/profile"
+            settingsHref="/yx/me/notifications"
+            allHref="/yx/notifications"
           />
         ),
         profile: (
@@ -270,6 +274,10 @@ function Frame({ children }: { children: React.ReactNode }) {
               onSelect={(item: PaletteItem) => {
                 const href = hrefs.get(item.id);
                 if (href) go(href);
+              }}
+              onSearchAll={(q) => {
+                setPaletteOpen(false);
+                go(`/yx/search?q=${encodeURIComponent(q.trim().replace(/^[@#>?]\s*/, ''))}`);
               }}
             />
             {!support && <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />}

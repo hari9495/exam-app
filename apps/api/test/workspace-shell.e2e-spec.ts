@@ -206,4 +206,31 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     expect(b.approvals).toBe(0);
     expect(b.notifications).toBe(0);
   });
+
+  // Home widgets (design audit step 2): counts from the owning modules' own rules, following the company switcher.
+  it('home: attendance exceptions only for an attendance.view holder, in their company and the chosen entity', async () => {
+    const month = todayIst().slice(0, 7);
+    const day = `${month}-01`;
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: ids.zA, workOn: new Date(`${day}T00:00:00Z`), mode: 'punch', status: 'missing_out' } }));
+    const other = (await tenantPrisma.forTenant(ctx('A'), (tx) => tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'Entity A2', shortName: 'EA2' } }))).id;
+    const home = async (who: Who, q = '') => (await api(who, 'get', `/workspace/home?month=${month}${q}`).expect(200)).body;
+    expect((await home('adminA')).attendanceExceptions).toBe(1);
+    expect((await home('adminA', `&legalEntityId=${ids.leA}`)).attendanceExceptions).toBe(1);
+    expect((await home('adminA', `&legalEntityId=${other}`)).attendanceExceptions).toBe(0);
+    expect((await home('adminB')).attendanceExceptions).toBe(0);
+    // No attendance key: no widget at all (not a zero).
+    const arjun = await home('arjunA');
+    expect(arjun).toEqual({ month });
+    await api('adminA', 'get', '/workspace/home?month=2026-13').expect(400);
+    await api('adminA', 'get', '/workspace/home?legalEntityId=not-a-uuid').expect(400);
+    await request(server()).get('/api/v1/workspace/home').expect(401);
+  });
+
+  it('my requests (PLT-06): only what the person asked for, in their company', async () => {
+    const mine = async (who: Who) => ((await api(who, 'get', '/workflow/approvals/mine').expect(200)).body as { requestId: string }[]).map((r) => r.requestId).sort();
+    expect(await mine('arjunA')).toEqual([ids.reqOwn]);
+    expect(await mine('hrA')).toEqual([ids.reqTask, ids.reqOther].sort());
+    expect(await mine('adminA')).toEqual([]);
+    expect(JSON.stringify(await mine('adminB'))).not.toContain(ids.reqOwn);
+  });
 });
