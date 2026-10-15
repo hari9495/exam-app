@@ -1,5 +1,31 @@
 [
  {
+  "id": "SI-01",
+  "area": "0 Sign-in design parity",
+  "screen": "Sign-in page matches the YukthiX design",
+  "url": "http://localhost:3000/yx/sign-in",
+  "account": "(signed out)",
+  "steps": [
+   "Open the sign-in page signed out, at desktop size.",
+   "Compare it side by side with the designed sign-in pattern (Storybook: Partner portal PTR-01 sign-in, Portals T9-01 sign-in)."
+  ],
+  "expected": "Same layout and parts as the design: header band with company and product, a short helper line, passkey as the main button, the other sign-in options, language picker, and the legal footer (privacy notice, terms, accessibility, grievance officer, open-source notices) with \"Powered by YukthiX\".",
+  "stories": [],
+  "note": "Added 15 Oct 2026 after the founder asked for a side-by-side check.",
+  "status": "Fail",
+  "runs": [
+   {
+    "date": "2026-10-15",
+    "result": "Fail",
+    "findings": "1) The main desktop sign-in has no design in the design library (only phone MOB-01 and portal sign-ins exist), so it was never checked against one. 2) Compared with the portal sign-in pattern, live lacks: legal footer links (needed for DPDP / go-live), language picker, header band with company and product, helper line; passkey is not the main button. Screenshots: scratchpad/signin/live-signin.png and design-partner-signin.png.",
+    "fixedIn": ""
+   }
+  ],
+  "ideas": [
+   "Design SEC-01 main sign-in (and its states: code sent, wrong code, locked, SSO, forgot password) in the design library first, then make it live."
+  ]
+ },
+ {
   "account": "admin@demo-org.test / DevAdmin123!, then hr@ and arjun@ (Passw0rd!2026)",
   "stories": [],
   "note": "",
