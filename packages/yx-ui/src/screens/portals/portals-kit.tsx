@@ -41,12 +41,14 @@ export const PORTAL_LANGUAGES = [
   { value: 'te', label: 'తెలుగు (Telugu)' },
 ];
 
-export function LanguageSwitcher({ defaultValue = 'en', size = 'sm' }: { defaultValue?: string; size?: 'sm' | 'md' }) {
-  const [lang, setLang] = useState<string | null>(defaultValue);
+/** Uncontrolled in the portal stories; pass `value` and `onChange` where the choice is kept (the live sign-in). */
+export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void }) {
+  const [own, setOwn] = useState<string | null>(defaultValue);
+  const lang = value ?? own;
   return (
     <div className="yx-lang">
       <Icon icon={Globe2} />
-      <Select aria-label="Language" size={size} options={PORTAL_LANGUAGES} value={lang} onChange={setLang} />
+      <Select aria-label="Language" size={size} options={PORTAL_LANGUAGES} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
     </div>
   );
 }
@@ -62,14 +64,18 @@ export interface FooterNotices {
   cookies?: boolean;
   /** Terms variant: acceptable use (G-16) or candidate terms (G-29). */
   terms?: string;
+  /** Where each notice lives; the stories leave them out (#). */
+  hrefs?: Partial<Record<FooterNotice, string>>;
 }
 
-export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use' }: FooterNotices) {
-  const links = [privacy, terms, 'Accessibility statement', ...(cookies ? ['Cookie notice'] : []), 'Grievance officer', 'Open-source notices'];
+export type FooterNotice = 'privacy' | 'terms' | 'accessibility' | 'cookies' | 'grievance' | 'openSource';
+
+export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {} }: FooterNotices) {
+  const links: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
   return (
     <nav className="yx-portal-notices" aria-label="Legal notices">
-      {links.map((l) => (
-        <a key={l} href="#">
+      {links.map(([k, l]) => (
+        <a key={k} href={hrefs[k] ?? '#'}>
           {l}
         </a>
       ))}
@@ -92,7 +98,7 @@ export type PortalAccess =
 export interface TenantPortalProps {
   tenant: string;
   portal: string;
-  nav?: { label: string; active?: boolean }[];
+  nav?: { label: string; active?: boolean; href?: string }[];
   /** Tenant accent as hex (with or without #). Used only if it reaches 4.5:1 on white (§38). */
   accent?: string;
   whiteLabel?: boolean;
@@ -103,10 +109,12 @@ export interface TenantPortalProps {
   /** Narrow single-column content (forms, sign-in). */
   narrow?: boolean;
   language?: string;
+  /** Keeps the language choice (the live sign-in); without it the switcher is uncontrolled. */
+  onLanguageChange?: (lang: string) => void;
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, language = 'en', children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, language = 'en', onLanguageChange, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
@@ -115,7 +123,7 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
       <PortalFrame tenant={tenant} portal={portal} nav={nav} user={user} whiteLabel={whiteLabel}>
         <div className="yx-tportal__bar">
           <AccessNote access={access} />
-          <LanguageSwitcher defaultValue={language} />
+          <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />
         </div>
         <div className="yx-tportal__content">{children}</div>
         {pinned && <div className="yx-tportal__pinned">{pinned}</div>}

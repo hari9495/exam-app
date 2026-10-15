@@ -2,9 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen } from './mfa';
+import { AuthLanguageContext } from './kit';
 import { COMPANIES, NOW, ORG_NAME, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 
-const meta: Meta = { title: 'Screens/Security/Sign in', parameters: { layout: 'fullscreen' } };
+// SEC-01 · Sign in (design audit SI-01, 15 Oct 2026): the portal sign-in pattern (PTR-01, T9-01) in YukthiX colours.
+// Header band with the company and product, the helper line, passkey first, the language picker and the legal notices.
+const meta: Meta = { title: 'Screens/Security/SEC-01 · Sign in', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
@@ -60,7 +63,7 @@ export const Remembered: S = { name: 'Sign in · remembered company', render: ()
 export const Password: S = { name: 'Sign in · password', render: () => <SignIn step="password" start={DIVYA} /> };
 export const PasswordNoEmailCode: S = { name: 'Sign in · password, email codes off', render: () => <SignIn step="password" company={KAVERI} options={{ ...ALL_WAYS, emailCode: false }} start={DIVYA} /> };
 export const CodeSent: S = { name: 'Sign in · code sent', render: () => <SignIn step="code" start={DIVYA} /> };
-export const Redirecting: S = { name: 'Sign in · going to single sign-on', render: () => <SignIn step="redirecting" start={DIVYA} /> };
+export const Redirecting: S = { name: 'Sign in · SSO required (going to the company sign-in page)', render: () => <SignIn step="redirecting" company={KAVERI} start={DIVYA} /> };
 export const ChooseCompany: S = { name: 'Sign in · choose your company', render: () => <SignIn step="choose-company" start={DIVYA} /> };
 export const Loading: S = { name: 'Sign in · signing in', render: () => <SignIn step="password" busy start={{ ...DIVYA, password: 'correct horse battery' }} /> };
 export const Error: S = {
@@ -135,3 +138,30 @@ export const EnrolError: S = {
 export const EnrolPhone: S = { name: 'First sign-in · phone', globals: { viewport: { value: 'phone' } }, render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} /> };
 export const EnrolAppOnly: S = { name: 'First sign-in · company allows authenticator apps only', render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} allowedFactors={['totp']} /> };
 export const IdentifyNoPasskey: S = { name: 'Sign in · company does not allow passkeys', render: () => <SignIn company={KAVERI} options={{ ...ALL_WAYS, passkey: false }} /> };
+
+/* SEC-01 states added with the design (15 Oct 2026). The error words are the live ones (apps/web lib/yx-auth-messages). */
+export const PasskeyWaiting: S = { name: 'Sign in · passkey prompt open', render: () => <SignIn company={KAVERI} busy /> };
+export const PasskeyFailed: S = {
+  name: 'Sign in · passkey refused',
+  render: () => <SignIn company={KAVERI} error="We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email." />,
+};
+export const MobileWrongCode: S = {
+  name: 'Sign in · mobile code, wrong code',
+  render: () => <SignIn step="mobile-code" codeChannel="sms" start={{ ...MOBILE, code: '482910' }} error="That code didn't work. Check it and try again." />,
+};
+export const MobileLocked: S = {
+  name: 'Sign in · mobile code, locked after too many tries',
+  render: () => <SignIn step="mobile-code" codeChannel="whatsapp" start={{ ...MOBILE, code: '111111' }} error="Too many tries. Try again in 14 min 32 sec." />,
+};
+export const PasswordLocked: S = {
+  name: 'Sign in · password, locked after too many tries',
+  render: () => <SignIn step="password" company={KAVERI} start={{ ...DIVYA, password: 'not the password' }} error="Too many tries. Try again in 4 min 59 sec." />,
+};
+export const Hindi: S = {
+  name: 'Sign in · language picked (हिन्दी)',
+  render: () => (
+    <AuthLanguageContext.Provider value={{ value: 'hi', onChange: () => {} }}>
+      <SignIn company={KAVERI} />
+    </AuthLanguageContext.Provider>
+  ),
+};

@@ -1,11 +1,7 @@
 /* Sign-in and security screens (P12 §7). Tokens only; no sticky bars (R8); fits 390 px phones without sideways scroll (R4, R5). */
 
-/* sign-in frame */
-.yx-auth { box-sizing: border-box; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-4); padding: var(--yx-space-8) var(--yx-space-4); background: var(--yx-color-bg-page); }
-.yx-auth__card { box-sizing: border-box; width: 100%; max-width: calc(var(--yx-space-16) * 7); display: flex; flex-direction: column; gap: var(--yx-space-6); padding: var(--yx-space-8); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
-@media (max-width: 480px) { .yx-auth { justify-content: flex-start; padding: var(--yx-space-4); } .yx-auth__card { padding: var(--yx-space-5); } }
-.yx-auth__head { display: flex; flex-direction: column; gap: var(--yx-space-1); }
-.yx-auth__sub { margin: 0; }
+/* sign-in frame: AuthFrame is the SEC-01 portal-style frame (portals.css .yx-signin); these are the steps inside it */
+.yx-auth { box-sizing: border-box; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--yx-space-8) var(--yx-space-4); background: var(--yx-color-bg-page); } /* loading screens */
 .yx-auth__foot { display: flex; justify-content: center; }
 .yx-auth__form { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-auth__form > p { margin: 0; }
@@ -65,3 +61,11 @@
 /* §12 two-tier sidebar: the desktop panel shows only the area chosen in the rail; the phone sheet shows all. */
 .yx-shell__panel .yx-workspace__area[data-other-area] { display: none; }
 .yx-auth__url { overflow-wrap: anywhere; min-width: 0; }
+
+/* SEC-02 legal notices: one readable column in the sign-in frame */
+.yx-legal { display: flex; flex-direction: column; gap: var(--yx-space-5); width: 100%; max-width: calc(var(--yx-space-16) * 11); margin: 0 auto; padding: var(--yx-space-6); box-sizing: border-box; background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
+.yx-legal__section { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-legal__section p, .yx-legal > p { margin: 0; line-height: var(--yx-leading-body); }
+.yx-legal__h2 { margin: 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); }
+.yx-legal__list { margin: 0; padding-left: var(--yx-space-5); display: flex; flex-direction: column; gap: var(--yx-space-1); }
+@media (max-width: 767px) { .yx-legal { padding: var(--yx-space-4); } }

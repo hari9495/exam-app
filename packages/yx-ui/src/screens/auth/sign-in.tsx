@@ -115,18 +115,18 @@ export function SignInScreen(props: SignInScreenProps) {
   const companyButtons = providers.map((p) => (
     <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
-  const otherWays = (passkeyOn || mobileOn || googleOn || microsoftOn || providers.length > 0) && (
-    <>
-      <div className="yx-auth__divider" role="separator"><span>or</span></div>
-      <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
-        {passkeyOn && <Button fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>}
-        {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile}>Continue with mobile</Button>}
-        {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')}>Continue with Microsoft</Button>}
-        {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')}>Continue with Google</Button>}
-        {companyButtons}
-      </div>
-    </>
+  const passkeyButton = passkeyOn && (
+    <Button variant="primary" fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>
   );
+  const ways = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
+    <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
+      {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile}>Continue with mobile</Button>}
+      {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')}>Continue with Microsoft</Button>}
+      {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')}>Continue with Google</Button>}
+      {companyButtons}
+    </div>
+  );
+  const or = <div className="yx-auth__divider" role="separator"><span>or</span></div>;
   const optionsFailedLine = props.optionsFailed && props.onRetryOptions && (
     <Text as="p" size="sm" tone="secondary" className="yx-auth__options-failed" role="status">
       Couldn&apos;t load other sign-in methods ·{' '}
@@ -137,12 +137,19 @@ export function SignInScreen(props: SignInScreenProps) {
   );
 
   const title = step === 'choose-company' ? 'Choose your company' : 'Sign in';
-  const subtitle =
-    step === 'choose-company' ? 'Your sign-in works for more than one company. Pick the one you want now.' : step === 'mobile' ? 'We send a 6-digit code to your mobile number.' : undefined;
+  const subtitle: Record<SignInStep, string | undefined> = {
+    identify: passkeyOn ? 'Use your passkey, or start with your work email.' : 'Start with your work email. We take you to the right way in for your company.',
+    mobile: 'We send a 6-digit code to your mobile number.',
+    redirecting: props.redirectingTo ? undefined : 'Your company signs in with single sign-on, so there is no YukthiX password.',
+    password: 'Your company lets you sign in with a password.',
+    code: undefined,
+    'mobile-code': undefined,
+    'choose-company': 'Your sign-in works for more than one company. Pick the one you want now.',
+  };
   const channelName = props.codeChannel === 'whatsapp' ? 'WhatsApp' : 'SMS';
 
   return (
-    <AuthFrame title={title} subtitle={subtitle}>
+    <AuthFrame title={title} subtitle={subtitle[step]} company={company?.name}>
       {company && step !== 'choose-company' && (
         <div className="yx-auth__row yx-auth__company-line">
           <span aria-hidden="true"><Avatar name={company.name} src={company.logoUrl} size={24} /></span>
@@ -181,12 +188,21 @@ export function SignInScreen(props: SignInScreenProps) {
         <form className="yx-auth__form" onSubmit={submit} noValidate>
           {step === 'identify' && (
             <>
+              {/* SEC-01: where passkeys are on, the passkey is the main way in (the PTR-01 pattern); the work email follows. */}
+              {passkeyButton}
+              {passkeyOn && ways}
+              {passkeyOn && or}
               <FormField label="Work email" required>
                 <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" spellCheck={false} autoCapitalize="none" />
               </FormField>
               {alert}
-              <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>
-              {otherWays}
+              <Button type="submit" variant={passkeyOn ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>
+              {!passkeyOn && ways && (
+                <>
+                  {or}
+                  {ways}
+                </>
+              )}
               {optionsFailedLine}
             </>
           )}
@@ -274,7 +290,7 @@ export function StaffSignInScreen({ email, password, onEmailChange, onPasswordCh
     onSubmit();
   };
   return (
-    <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready.">
+    <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready." note="YukthiX staff only · security key required">
       <form className="yx-auth__form" onSubmit={submit} noValidate>
         <FormField label="Staff email" required>
           <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />

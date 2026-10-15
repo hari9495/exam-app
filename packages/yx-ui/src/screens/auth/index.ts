@@ -6,5 +6,6 @@ export { MeSecurityScreen, type HistoryFilter, type MeSecurityScreenProps } from
 export { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, FAILED_SPIKE_AT, type LoginActivityFilters, type LoginActivityScreenProps } from './login-activity';
 export { SecuritySettingsScreen, SESSION_DEFAULTS, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 export { THEME_STORAGE_KEY, readThemeChoice, useAppearance } from './shell';
-export { deviceLabel, errorText } from './kit';
+export { AuthFrame, AuthLanguageContext, LEGAL_LINKS, deviceLabel, errorText, type AuthFrameProps } from './kit';
+export { LegalNoticeScreen, type LegalDoc, type LegalNoticeScreenProps, type OpenSourceComponent } from './legal';
 export { IdentityProvidersScreen, IDP_TYPE_LABEL, idpDraftOf, idpInput, type IdentityProvidersScreenProps, type IdpDraft } from './identity-providers';

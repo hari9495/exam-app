@@ -279,7 +279,8 @@ export interface PortalFrameProps {
   tenant: string;
   /** Portal name, e.g. "Candidate portal", "Client portal". */
   portal: string;
-  nav?: { label: string; active?: boolean }[];
+  /** `href` where the page is live; the stories leave it out (#). */
+  nav?: { label: string; active?: boolean; href?: string }[];
   user?: string;
   children: ReactNode;
   whiteLabel?: boolean;
@@ -294,7 +295,7 @@ export function PortalFrame({ tenant, portal, nav = [], user, children, whiteLab
         <span className="yx-portal__name">{portal}</span>
         <nav className="yx-portal__nav" aria-label={portal}>
           {nav.map((n) => (
-            <a key={n.label} href="#" aria-current={n.active ? 'page' : undefined}>
+            <a key={n.label} href={n.href ?? '#'} aria-current={n.active ? 'page' : undefined}>
               {n.label}
             </a>
           ))}
