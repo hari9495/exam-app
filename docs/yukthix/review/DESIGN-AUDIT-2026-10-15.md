@@ -555,3 +555,14 @@ Total: about 14 to 18 weeks. Batches 0 to 2 give the biggest visible change in a
 5. **Where Expenses and Performance live:** the design puts Expenses under Pay and Performance as its own area; live puts both under Me and People.
 6. **Icons:** colour rail icons (live) or outline icons (design)?
 7. **Breadcrumbs:** on every page, or nowhere (the design mostly uses none)?
+
+### Founder decisions (accepted 15 Oct 2026)
+1. **Menu model:** the designed product areas plus **Home**. **Me** moves to the avatar menu.
+2. **Pages with no design (the 33 D pages):** design each one first, as a designed story in the yx-ui library in the YukthiX style, then make that design live.
+3. **Hiring:** YukthiX Hiring is the only hiring app.
+4. **Modules that are not built:** hide them (no "coming soon").
+5. **Expenses** go under **Pay**. **Performance** is its own area.
+6. **Icons:** exactly as designed (Lucide outline icons in the rail).
+7. **Breadcrumbs:** below the top level of each area.
+
+**Working rule from now on:** make the existing designed screen live by adapting it to real data; never build a second version. A page with no design is designed first. Match the design exactly before handing over. One step at a time: build, the founder tests, then the next step.
