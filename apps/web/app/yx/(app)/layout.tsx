@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Languages, ShieldCheck, UserRound } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import type { LegalEntity } from '@yukthix/ui/org';
@@ -37,7 +37,10 @@ const SEARCH_GROUPS = [
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ScopeProvider>
-      <Frame>{children}</Frame>
+      {/* Success after an action is a toast (YukthiX house rule). */}
+      <ToastProvider>
+        <Frame>{children}</Frame>
+      </ToastProvider>
     </ScopeProvider>
   );
 }
