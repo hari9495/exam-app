@@ -1,5 +1,5 @@
 // PPL-01 Employee directory · PPL-02 Org chart · PPL-08 Team page (M01 §3.2, §3.10; P02 Q4 directory fields; P01 YX-ORG-26).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Download, Mail, Phone, Plus, Upload, UserPlus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
@@ -164,6 +164,9 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const [quick, setQuick] = useState<Quick | null>(null);
   const [columns, setColumns] = useState<ColumnState | undefined>(undefined);
+  const [selected, setSelected] = useState<string[]>([]);
+  // Columns kept for one persona never carry over to another (HR adds Status and ID after Name).
+  useEffect(() => setColumns(undefined), [persona]);
   // A saved view's columns are applied by remounting the table with them as its starting state.
   const [tableKey, setTableKey] = useState(0);
   const me = live ? live.me ?? undefined : ME;
@@ -244,7 +247,8 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
         <ErrorState title="We couldn't load the directory" description="Check your connection and retry. Your filters are kept." onRetry={live ? live.onRetry : () => {}} reference={live ? undefined : 'REF-PPL01-7F2A'} />
       ) : (
         <DataTable
-          key={tableKey}
+          // Remount on a saved view (its columns) or a change of persona (HR's columns), never keeping a stale order.
+          key={`${tableKey}-${persona}`}
           label={FILTER_LABEL[kind]}
           columns={cols}
           rows={shown}
@@ -260,6 +264,8 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
           defaultColumnState={columns ?? { hidden: ['joined'] }}
           onColumnStateChange={setColumns}
           selectable={persona === 'hr'}
+          selectedIds={selected}
+          onSelectedChange={setSelected}
           bulkActions={
             persona === 'hr'
               ? (ids) => {

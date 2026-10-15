@@ -140,7 +140,8 @@ export default function YxDirectoryPage() {
     },
     onRetry: () => void data.refetch(),
   };
-  const state = data.isError ? 'error' : d ? 'ready' : 'loading';
+  // Wait for the grants too: the columns depend on them.
+  const state = data.isError ? 'error' : d && (perms.isSuccess || perms.isError) ? 'ready' : 'loading';
 
   return (
     <>

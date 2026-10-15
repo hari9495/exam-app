@@ -88,3 +88,23 @@ describe('DirectoryPhone live', () => {
     expect(await screen.findByRole('dialog', { name: first.name })).toBeInTheDocument();
   });
 });
+
+describe('DirectoryScreen selection', () => {
+  it('HR picks people and Issue letter gets the employee records only', async () => {
+    const onIssueLetter = vi.fn();
+    const rows = ROWS.slice(0, 3);
+    render(<DirectoryScreen persona="hr" rows={rows} live={live({ onIssueLetter })} />);
+    await userEvent.click(screen.getByRole('checkbox', { name: `Select ${rows[0].name}` }));
+    await userEvent.click(screen.getByRole('button', { name: 'Issue letter' }));
+    expect(onIssueLetter).toHaveBeenCalledWith([rows[0].id]);
+  });
+});
+
+describe('DirectoryScreen persona change', () => {
+  it('HR columns come in the designed order even when the page first showed the colleague view', () => {
+    const { rerender } = render(<DirectoryScreen persona="emp" rows={ROWS} live={live()} />);
+    rerender(<DirectoryScreen persona="hr" rows={ROWS} live={live()} />);
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent?.replace(/[^A-Za-z ]/g, '').trim()).filter(Boolean);
+    expect(heads.slice(0, 3)).toEqual(['Name', 'Status', 'ID']);
+  });
+});
