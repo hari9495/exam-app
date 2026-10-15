@@ -1,18 +1,14 @@
 'use client';
 
-import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { CircleHelp } from 'lucide-react';
-import { Button } from '@yukthix/ui';
 import { HelpDrawer, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useDesk, useDeskWrite } from '../../../lib/yx-desk';
 
-// The in-app Help button (US-B-100), on every page of the workspace: known issues, raise a ticket that remembers the
-// page it came from, and my open tickets. Loads only when opened.
-export function DeskHelpButton() {
-  const [open, setOpen] = useState(false);
+// In-app Help (US-B-100), opened from Help in the top bar on every page: known issues, raise a ticket that remembers
+// the page it came from, and my open tickets. Loads only when opened.
+export function DeskHelp({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
   const desks = useDesk<RaiseDesk[]>(open ? '/my/desks' : null);
   const tickets = useDesk<MyTicketRow[]>(open ? '/my/tickets' : null);
@@ -23,14 +19,11 @@ export function DeskHelpButton() {
   const screen = (pathname ?? '').replace(/[^A-Za-z0-9\-./_ ]/g, '').slice(0, 100);
   return (
     <>
-      <Button className="yx-desk-help-fab" icon={CircleHelp} onClick={() => setOpen(true)}>
-        Help
-      </Button>
       {open && (
         <HelpDrawer
           key={desks.data ? 'ready' : 'loading'}
           open
-          onOpenChange={setOpen}
+          onOpenChange={onOpenChange}
           desks={desks.data ?? []}
           tickets={tickets.data ?? []}
           banners={banners.data ?? []}

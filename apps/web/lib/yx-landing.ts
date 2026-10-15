@@ -15,27 +15,24 @@ const YX_SETTINGS_KEYS = ['org.settings.manage', 'org.structure.view', 'access.r
 /** A Service Desk agent lands on their ticket queue (M14). */
 const DESK_KEY = 'desk.ticket.view';
 const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_KEYS];
+export const YX_HOME = '/yx/home';
 
 /**
- * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR permission lands in
- * YukthiX (Directory if they may read it, else their own Profile); exam / hiring stays one click away
- * ("Hiring and assessments"). Only exam/ATS accounts with no employee record (and platform staff)
+ * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR or desk permission lands on
+ * the YukthiX Home (design audit step 1, PLT-02). Only exam/ATS accounts with no employee record (and platform staff)
  * keep their role's console. A new hire in their first 30 days lands on that page (lifecycle 6f, design §7.6).
  */
 export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false, firstDays = false): string {
   if (role === 'super_admin') return roleToLandingPath(role);
   if (firstDays) return '/yx/me/first-30-days';
-  if (granted.includes(DIRECTORY_KEY)) return '/yx/people/directory';
-  if (granted.includes(DESK_KEY)) return '/yx/desk/tickets';
-  if (isEmployee) return '/yx/people/profile';
-  if (YX_SETTINGS_KEYS.some((k) => granted.includes(k))) return '/yx/settings/legal-entities';
+  if (isEmployee || [DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_KEYS].some((k) => granted.includes(k))) return YX_HOME;
   if (EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);
-  return '/yx/me/security';
+  return YX_HOME;
 }
 
 const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`/rbac/me/permissions?keys=${LANDING_KEYS.join(',')}`, {}, token);
 
-/** Landing after a YukthiX sign-in. If the permissions cannot be read, the safe default is My security. */
+/** Landing after a YukthiX sign-in. If the permissions cannot be read, the safe default is Home. */
 export async function yxLandingPath(accessToken: string, role: string | undefined): Promise<string> {
   try {
     const [granted, isEmployee, firstDays] = await Promise.all([
@@ -48,7 +45,7 @@ export async function yxLandingPath(accessToken: string, role: string | undefine
     ]);
     return landingFor(role, granted, isEmployee, firstDays);
   } catch {
-    return '/yx/me/security';
+    return YX_HOME;
   }
 }
 

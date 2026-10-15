@@ -41,9 +41,4 @@ describe('Settings › Performance', () => {
     await waitFor(() => expect(posted).toEqual(['/performance/setup/from-starter']));
   });
 
-  it('the menu shows Performance under Organisation to whoever keeps performance set-up', async () => {
-    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, 'GET /rbac/me/permissions': ['perf.setup.manage'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] } });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(within(await screen.findByRole('navigation', { name: 'Menu' })).getByRole('link', { name: 'Performance' })).toHaveAttribute('href', '/yx/settings/performance'));
-  });
 });

@@ -1533,7 +1533,7 @@ export function EntityPicker({ entities, placeholder = 'Select legal entity', ..
     <Select
       {...rest}
       placeholder={placeholder}
-      options={entities.map((e) => ({ value: e.id, label: e.name, description: `GSTIN ${e.gstin} · ${e.state}`, keywords: [e.gstin, e.state] }))}
+      options={entities.map((e) => ({ value: e.id, label: e.name, description: [e.gstin && `GSTIN ${e.gstin}`, e.state].filter(Boolean).join(' · ') || undefined, keywords: [e.gstin, e.state].filter(Boolean) }))}
     />
   );
 }
