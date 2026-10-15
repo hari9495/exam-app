@@ -12,7 +12,8 @@
 .yx-text[data-tone="success"] { color: var(--yx-color-success-text); }
 .yx-text[data-tone="warning"] { color: var(--yx-color-warning-text); }
 .yx-text[data-mono] { font-family: var(--yx-font-mono); }
-p.yx-text { margin: 0; }
+/* Lowest specificity, so a screen class can space a paragraph (p.yx-text used to beat it and silently drop the margin). */
+:where(p.yx-text) { margin: 0; }
 
 .yx-heading { margin: 0; font-weight: var(--yx-weight-semibold); color: var(--yx-color-text); }
 .yx-heading[data-level="1"] { font-size: var(--yx-text-2xl); line-height: var(--yx-leading-2xl); }

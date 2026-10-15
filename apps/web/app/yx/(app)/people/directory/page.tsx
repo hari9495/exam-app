@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DirectoryScreen, type DirectoryPage, type DirectoryQuery, type OrgChartData, type PersonRecord, type Ref } from '@yukthix/ui/workforce';
 import type { HireInput } from '@yukthix/ui/history';
-import type { LegalEntity } from '@yukthix/ui/org';
+import type { LegalEntity, MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, usePeopleRead, usePeopleWrite } from '../../../../../lib/yx-people';
 import { useScope } from '../../../../../lib/yx-shell';
@@ -31,10 +31,19 @@ export default function YxDirectoryPage() {
   const chart = usePeople<OrgChartData>('/org-chart');
   const read = usePeopleRead();
   const isHr = perms.has('employee.profile.view');
+  // Whoever may read the structure picks from every department, parents included: filtering a parent
+  // (Operations) covers its whole subtree, but nobody sits in it directly, so the org chart never lists it.
+  // shortcut: a label names only the nearest parent (Operations › Quality); show the full path if trees get deeper.
+  const masters = useOrg<MasterRecord[]>('/masters/departments', perms.has('org.structure.view'));
   const choices = useMemo(() => {
     const nodes = chart.data?.nodes ?? [];
-    return { legalEntities: distinct(nodes.map((n) => n.legalEntity)), departments: distinct(nodes.map((n) => n.department)), locations: distinct(nodes.map((n) => n.location)) };
-  }, [chart.data]);
+    const live = (masters.data ?? []).filter((d) => !d.archivedAt);
+    const nameOf = new Map(live.map((d) => [d.id, d.name]));
+    const departments = live.length
+      ? live.map((d) => ({ id: d.id, name: d.parentId && nameOf.has(d.parentId) ? `${nameOf.get(d.parentId)} › ${d.name}` : d.name })).sort((a, b) => a.name.localeCompare(b.name))
+      : distinct(nodes.map((n) => n.department));
+    return { legalEntities: distinct(nodes.map((n) => n.legalEntity)), departments, locations: distinct(nodes.map((n) => n.location)) };
+  }, [chart.data, masters.data]);
   // Add person (P01 §4.4, PPL-36): HR who may raise changes; the API checks the grant reaches the entity,
   // location or department, and pay needs the salary grant there too (R1).
   const canHire = perms.has('employee.change.manage');

@@ -37,6 +37,8 @@ export interface DialogProps extends OpenProps {
   title: ReactNode;
   description?: ReactNode;
   children?: ReactNode;
+  /** A warning or error about the action: shown above the buttons, outside the scrolling body, so it is never hidden. */
+  notice?: ReactNode;
   /** Buttons in order: secondary Cancel first, primary / danger last (right-most, §15, §17). */
   footer?: ReactNode;
   /** sm 480 px (confirmations) · md 640 px (short decisions). */
@@ -48,7 +50,7 @@ export interface DialogProps extends OpenProps {
 }
 
 /** Centred dialog for short decisions only, never long forms (§17). */
-export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title, description, children, footer, size = 'sm', destructive, preventClose }: DialogProps) {
+export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title, description, children, notice, footer, size = 'sm', destructive, preventClose }: DialogProps) {
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const returnTo = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
@@ -97,6 +99,7 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title
           </header>
           {description && <RD.Description className="yx-dialog__desc">{description}</RD.Description>}
           {children && <div className="yx-dialog__body">{children}</div>}
+          {notice && <div className="yx-dialog__notice">{notice}</div>}
           {footer && <footer className="yx-dialog__foot">{footer}</footer>}
         </RD.Content>
         </PopoverPortalContext.Provider>

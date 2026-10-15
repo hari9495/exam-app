@@ -6,6 +6,7 @@ import { LocationsScreen, locationInput, timeZoneOptions, type LocationsScreenPr
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
 import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
+import { ToastProvider } from '../../components/notify';
 import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
@@ -91,7 +92,7 @@ describe('LegalEntitiesScreen (P01 §4.1)', () => {
     await userEvent.clear(name);
     await userEvent.type(name, 'Kaveri Foods Private Limited');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith('le-kfpl', { name: 'Kaveri Foods Private Limited', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, registeredAddress: ENTITIES[0].registeredAddress }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('le-kfpl', { name: 'Kaveri Foods Private Limited', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, employeeCodePrefix: null, registeredAddress: ENTITIES[0].registeredAddress }));
   });
 
   it('company rules say where the value comes from and save only what changed (YX-ORG-12)', async () => {
@@ -264,8 +265,10 @@ describe('StructureScreen (P01 §4.3)', () => {
 
 describe('rules without a screen', () => {
   it('entity input: short name and currency shapes; an address is all or nothing', () => {
-    const d = { name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, address: addressDraft(null) };
-    expect(entityInput(d).input).toEqual({ name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, registeredAddress: null });
+    const d = { name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, codePrefix: '', address: addressDraft(null) };
+    expect(entityInput({ ...d, codePrefix: 'KF-' }).input?.employeeCodePrefix).toBe('KF-');
+    expect(entityInput({ ...d, codePrefix: '-KF' }).errors[0].fieldId).toBe('le-code-prefix');
+    expect(entityInput(d).input).toEqual({ name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', currency: 'INR', fyStartMonth: 4, employeeCodePrefix: null, registeredAddress: null });
     expect(entityInput({ ...d, shortName: '-bad' }).errors[0].fieldId).toBe('le-short');
     expect(entityInput({ ...d, address: { ...addressDraft(null), city: 'Hosur' } }).errors.map((e) => e.fieldId)).toEqual(['le-addr-lines', 'le-addr-state']);
   });
@@ -314,9 +317,10 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(companyValue(def, SETTING_OVERRIDES.filter((r) => r.key === 'attendance.mode'), TODAY_ISO).value).toBe('punch');
     // A company value starting later is not in force yet.
     expect(companyValue(def, [{ id: 'x', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'o', value: 'timesheet', validFrom: '2026-12-01' }], TODAY_ISO)).toEqual({ value: 'punch', row: null });
-    render(<CompanySettingsScreen {...base} />);
-    expect(screen.getByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
-    expect(screen.getByText('Punch in and out · Set for your company from 1 Apr 2026')).toBeInTheDocument();
+    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
+    expect(screen.getAllByText('Starter value').length).toBeGreaterThan(0); // unchanged settings carry a quiet tag; the value itself is bold
+    expect(screen.getByText('Set for your company from 1 Apr 2026')).toBeInTheDocument();
+    expect(screen.getAllByText('Punch in and out').length).toBeGreaterThan(0);
     expect(screen.getByText('Hosur plant')).toBeInTheDocument();
     expect(screen.getByText('Scheduled')).toBeInTheDocument();
   });
@@ -330,9 +334,31 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'off', validFrom: null }).input).toEqual({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' });
   });
 
+  it('a company-only setting: no repeated table, "Use starter value", no empty Applies to, and a toast on save', async () => {
+    const onSave = ok();
+    const onRemove = ok();
+    const overrides = [{ id: 's-risk', key: 'access.risk.confidential_threshold', scopeType: 'tenant' as const, scopeId: 'o', value: '5', validFrom: null }];
+    render(<ToastProvider><CompanySettingsScreen {...base} section="access" overrides={overrides} onSave={onSave} onRemove={onRemove} /></ToastProvider>);
+    const block = screen.getByText('Warn when a grant opens Confidential data of more than (people)').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Set for your company')).toBeInTheDocument();
+    expect(within(block).queryByRole('table')).toBeNull(); // the line above already says "5 · Set for your company"
+    await userEvent.click(within(block).getByRole('button', { name: 'Use starter value' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-risk'));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Back to the starter value.')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('Applies to')).toBeNull();
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Warn when a grant opens Confidential data of more than (people)' }));
+    await userEvent.click(await screen.findByRole('option', { name: '10' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'access.risk.confidential_threshold', scopeType: 'tenant', value: '10' }));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+  });
+
   it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
     const onRemove = ok();
-    render(<CompanySettingsScreen {...base} onRemove={onRemove} />);
+    render(<ToastProvider><CompanySettingsScreen {...base} onRemove={onRemove} /></ToastProvider>);
     const table = screen.getByRole('table', { name: /Attendance mode/ });
     const rows = within(table).getAllByRole('row');
     const blr = rows.find((r) => within(r).queryByText('Bengaluru head office'))!;
@@ -345,18 +371,18 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
   });
 
   it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
-    const { unmount } = render(<CompanySettingsScreen {...base} section="access" heldGuards={[]} />);
+    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
     const buttons = screen.getAllByRole('button', { name: 'Change' });
     expect(buttons).toHaveLength(4);
     buttons.forEach((b) => expect(b).toBeDisabled());
     expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);
     unmount();
-    render(<CompanySettingsScreen {...base} canManage={false} />);
+    render(<ToastProvider><CompanySettingsScreen {...base} canManage={false} /></ToastProvider>);
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 
   it('a single choice of 2-4 options is the Segment control; longer lists stay a dropdown', async () => {
-    const { unmount } = render(<CompanySettingsScreen {...base} />);
+    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
     const block = (label: string) => screen.getAllByText(label).map((el) => el.closest('.yx-org__rule')).find(Boolean) as HTMLElement;
     const attendance = block('Attendance mode');
     await userEvent.click(within(attendance).getByRole('button', { name: 'Change' }));
@@ -367,7 +393,7 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     await userEvent.click(within(dialog).getByRole('radio', { name: 'Timesheet' }));
     expect(within(dialog).getByRole('radio', { name: 'Timesheet' })).toHaveAttribute('aria-checked', 'true');
     unmount();
-    render(<CompanySettingsScreen {...base} />);
+    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
     const confirm = block('Confirm automatically after the end date');
     await userEvent.click(within(confirm).getByRole('button', { name: 'Change' }));
     dialog = await screen.findByRole('dialog');
@@ -379,7 +405,7 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
 
   it('the editor refuses to save without a value', async () => {
     const onSave = ok();
-    render(<CompanySettingsScreen {...base} onSave={onSave} />);
+    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
     const block = screen.getByText('Probation review reminder (days before the end)').closest('.yx-auth__stack') as HTMLElement;
     await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
     const dialog = await screen.findByRole('dialog');

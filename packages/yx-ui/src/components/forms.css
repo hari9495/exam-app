@@ -216,7 +216,8 @@
 
 /* Segment: joined pick-one control (R11). Wraps to full-width rows on narrow screens rather than scrolling. */
 .yx-segment { align-self: flex-start; justify-self: start; display: inline-flex; flex-wrap: wrap; gap: var(--yx-space-half); max-width: 100%; padding: var(--yx-space-half); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
-.yx-segment > button { flex: 1 1 auto; min-height: max(var(--yx-control-md), var(--yx-target-min)); padding: 0 var(--yx-space-4); border: var(--yx-border-width) solid transparent; border-radius: var(--yx-radius-control); background: transparent; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); cursor: pointer; white-space: nowrap; }
-.yx-segment > button:hover { background: var(--yx-color-bg-selected); color: var(--yx-color-text); }
-.yx-segment > button[aria-checked='true'] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border-input); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
+.yx-segment > button { flex: 1 1 auto; min-height: max(var(--yx-control-md), var(--yx-target-min)); padding: 0 var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text); cursor: pointer; white-space: nowrap; }
+.yx-segment > button:hover { border-color: var(--yx-color-text-secondary); }
+/* Each option is a bordered button even before a choice (founder review 14 Oct 2026); the chosen one is blue-bordered and tinted. */
+.yx-segment > button[aria-checked='true'] { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
 .yx-segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }

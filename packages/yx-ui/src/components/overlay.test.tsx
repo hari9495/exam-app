@@ -82,6 +82,13 @@ describe('Toasts', () => {
 /* ---------- Dialogs ---------- */
 
 describe('Dialogs', () => {
+  it('a notice sits above the buttons, outside the scrolling body, so it is never hidden', () => {
+    render(<Dialog open title="Give access" notice={<p>Check before you continue</p>} footer={<Button>Send</Button>}><p>Long form</p></Dialog>);
+    const note = screen.getByText('Check before you continue');
+    expect(note.closest('.yx-dialog__body')).toBeNull();
+    expect(note.closest('.yx-dialog__notice')?.nextElementSibling).toHaveClass('yx-dialog__foot');
+  });
+
   it('non-destructive dialog closes on Esc and returns focus to the trigger', async () => {
     const u = userEvent.setup();
     render(<Dialog title="Change reporting manager?" trigger={<Button>Change manager</Button>} footer={<Button>Cancel</Button>} />);

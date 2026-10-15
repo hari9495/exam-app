@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
+import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 import { ProfileScreen, type ProfileScreenProps } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
@@ -8,7 +10,7 @@ import { AccessLogScreen } from './access-log';
 import { ACCESS_LOG, EFFECTIVE, GRANTS, PROFILE_MANAGER, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
-const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
 const ok = () => vi.fn().mockResolvedValue(undefined);
 const coded = (code: string, message: string) => Object.assign(new Error(message), { code });
 
@@ -31,7 +33,11 @@ function roles(over: Partial<RolesAccessScreenProps> = {}) {
     onSystemAdmin: ok(),
     ...over,
   };
-  render(<RolesAccessScreen {...props} />);
+  render(
+    <ToastProvider>
+      <RolesAccessScreen {...props} />
+    </ToastProvider>,
+  );
   return props;
 }
 const pick = async (label: string, option: string) => {
@@ -40,6 +46,41 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  it('a revoked grant shows when it ended', async () => {
+    const mine = GRANTS.find((g) => g.userId === 'u-anitha')!;
+    roles({ grants: [{ ...mine, status: 'revoked', revokedAt: '2026-10-14T09:30:00Z' }] });
+    expect(await screen.findByText(`${dateLabel(mine.validFrom)} to 14 Oct 2026`)).toBeInTheDocument();
+  });
+
+  it('a new role from a template says it was created', async () => {
+    const p = roles();
+    await ue.click(screen.getByRole('radio', { name: 'Roles' }));
+    await ue.click(screen.getByRole('button', { name: 'New role from a template' }));
+    await pick('Template', 'HR Executive');
+    const name = screen.getByRole('textbox', { name: /Role name/ });
+    await ue.clear(name);
+    await ue.type(name, 'Chennai HR');
+    await ue.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() => expect(p.onFromTemplate).toHaveBeenCalledWith('hr_executive', 'Chennai HR'));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Role "Chennai HR" created.')).toBeInTheDocument(); // a toast, not a page-wide bar
+  });
+
+  it('roles list: permissions are worded like Held by, so the two counts never read as one', async () => {
+    roles();
+    await ue.click(screen.getByRole('radio', { name: 'Roles' }));
+    const hr = screen.getByText('HR Admin').closest('tr') as HTMLElement;
+    expect(within(hr).getByText('3 permissions')).toBeInTheDocument();
+    expect(within(hr).getByText('1 person')).toBeInTheDocument();
+  });
+
+  it('what they can do today: each count sits beside its label, the no-team note heads the card', async () => {
+    roles();
+    const salary = (await screen.findByText('See salary')).closest('.yx-dl__row') as HTMLElement;
+    expect(within(salary).getByText('0 people')).toBeInTheDocument(); // label and count in one row of the shared DescriptionList
+    const note = screen.getByText('No employee record, so no team of their own.');
+    expect(note.compareDocumentPosition(salary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // about the card, not the last row
+  });
+
   it("shows a person's grants and what they can do today", async () => {
     const p = roles();
     expect((await screen.findAllByText('42 people')).length).toBe(2);
@@ -101,7 +142,7 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Quarter close');
     await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
     expect(await within(dialog).findByText(/120 people/)).toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Give access anyway' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval anyway' })); // still waits for a second admin: Payroll Admin is Confidential
     await waitFor(() => expect(onGrant).toHaveBeenCalledTimes(2));
     expect(onGrant.mock.calls[0][0]).toMatchObject({ userId: 'u-anitha', permissionProfileId: 'r-pay', scopeType: 'tenant', reason: 'Quarter close' });
     expect(onGrant.mock.calls[0][0].confirmRisk).toBeUndefined();
@@ -121,11 +162,33 @@ function profile(over: Partial<ProfileScreenProps> = {}) {
     onCancelRequest: ok(),
     ...over,
   };
-  render(<ProfileScreen {...props} />);
+  render(
+    <ToastProvider>
+      <ProfileScreen {...props} />
+    </ToastProvider>,
+  );
   return props;
 }
 
 describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
+  it('with no one in scope, says so instead of "Pick a person"', () => {
+    profile({ profile: null, people: [], onPickPerson: vi.fn(), requests: [] });
+    expect(screen.getByText('No profiles to show')).toBeInTheDocument();
+    expect(screen.queryByText('Pick a person')).toBeNull();
+  });
+
+  it('saving personal details sends only what changed and says so in a toast', async () => {
+    const p = profile();
+    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    const phone = within(dialog).getByRole('textbox', { name: /Personal phone/ });
+    await ue.clear(phone);
+    await ue.type(phone, '+91 98450 22233');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(p.onSavePersonal).toHaveBeenCalledTimes(1));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+  });
+
   it('a manager sees neither Personal nor identity details, and no pay', () => {
     profile({ profile: PROFILE_MANAGER, requests: [] });
     expect(screen.getByText('Personal details are for the person and HR with personal-data access.')).toBeInTheDocument();

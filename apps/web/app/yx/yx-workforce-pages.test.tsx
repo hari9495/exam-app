@@ -74,6 +74,27 @@ describe('/yx/people/directory', () => {
     expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();
   });
 
+  it('with structure access, the department filter offers parents too (Operations covers its subtree)', async () => {
+    route({
+      [`GET ${PERMS_PATH}`]: ['org.structure.view'],
+      'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] },
+      'GET /people/org-chart': CHART,
+      'GET /org/masters/departments': [
+        { id: 'd-ops', name: 'Operations', code: 'OPS', archivedAt: null, parentId: null },
+        { id: 'd-q', name: 'Quality', code: 'QA', archivedAt: null, parentId: 'd-ops' },
+        { id: 'd-old', name: 'Old', code: 'OLD', archivedAt: '2026-01-01T00:00:00Z', parentId: null },
+      ],
+    });
+    wrap(<YxDirectoryPage />);
+    await screen.findAllByText('Arjun Kulkarni');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Department' }));
+    expect(await screen.findByRole('option', { name: 'Operations' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Operations › Quality' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Old' })).toBeNull(); // archived
+    await userEvent.click(screen.getByRole('option', { name: 'Operations' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&departmentId=d-ops', {}, 'tok'));
+  });
+
   it('HR adds a person (the entities come from the org API) and opens a profile from the directory', async () => {
     route({
       [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'],

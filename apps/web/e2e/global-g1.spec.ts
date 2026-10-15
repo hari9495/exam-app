@@ -74,7 +74,7 @@ test('Add a country → translations → my language → hours and service dates
   await hr.getByRole('button', { name: 'Edit continuous service', exact: true }).click();
   const sd = hr.getByRole('dialog');
   await sd.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(sd.getByText('Say why, in a few words').first()).toBeVisible();
+  await expect(sd.getByText('Enter the reason for the new dates').first()).toBeVisible();
   await sd.getByRole('textbox', { name: /Reason/ }).fill(`Checked ${tag}`);
   await sd.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(sd).toHaveCount(0);

@@ -19,6 +19,7 @@ interface Draft {
   shortName: string;
   currency: string;
   fyStartMonth: number;
+  codePrefix: string;
   address: AddressDraft;
 }
 
@@ -27,10 +28,11 @@ export function entityInput(d: Draft): { input: LegalEntityInput | null; errors:
   if (!d.name.trim()) errors.push({ fieldId: 'le-name', message: 'Enter the registered name' });
   if (!/^[A-Za-z0-9][A-Za-z0-9 &.-]{0,29}$/.test(d.shortName.trim())) errors.push({ fieldId: 'le-short', message: 'Short name: up to 30 letters, digits, spaces, & . or -' });
   if (!/^[A-Z]{3}$/.test(d.currency)) errors.push({ fieldId: 'le-currency', message: 'Currency is a 3-letter code such as INR' });
+  if (d.codePrefix && !/^[A-Z0-9][A-Z0-9/-]{0,11}$/.test(d.codePrefix)) errors.push({ fieldId: 'le-code-prefix', message: 'Code prefix: up to 12 capital letters, digits, - or /' });
   const address = addressEmpty(d.address) ? { address: null, errors: [] } : addressInput(d.address, 'le-addr');
   errors.push(...address.errors);
   if (errors.length) return { input: null, errors };
-  return { input: { name: d.name.trim(), shortName: d.shortName.trim(), currency: d.currency, fyStartMonth: d.fyStartMonth, registeredAddress: address.address }, errors };
+  return { input: { name: d.name.trim(), shortName: d.shortName.trim(), currency: d.currency, fyStartMonth: d.fyStartMonth, employeeCodePrefix: d.codePrefix || null, registeredAddress: address.address }, errors };
 }
 
 function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity | null; states: StateOption[]; onClose: () => void; onSave: (input: LegalEntityInput) => Promise<void> }) {
@@ -39,6 +41,7 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
     shortName: entity?.shortName ?? '',
     currency: entity?.currency ?? 'INR',
     fyStartMonth: entity?.fyStartMonth ?? 4,
+    codePrefix: entity?.employeeCodePrefix ?? '',
     address: addressDraft(entity?.registeredAddress),
   });
   const [dirty, setDirty] = useState(false);
@@ -73,6 +76,9 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
         </FormField>
         <FormField id="le-short" label="Short name" required helper="Shown in lists and filters, e.g. KFPL." error={errorOf('le-short')}>
           <TextField value={draft.shortName} onChange={(shortName) => set({ shortName })} maxLength={30} />
+        </FormField>
+        <FormField id="le-code-prefix" label="Employee code prefix" optional helper={`New people get codes like ${draft.codePrefix || 'E'}0001. HR can still type a code by hand.`} error={errorOf('le-code-prefix')}>
+          <TextField value={draft.codePrefix} onChange={(v) => set({ codePrefix: v.toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 12) })} placeholder="E" />
         </FormField>
         <FormField id="le-fy" label="Financial year starts in">
           <Select value={String(draft.fyStartMonth)} onChange={(v) => v && set({ fyStartMonth: Number(v) })} options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))} aria-label="Financial year starts in" />
