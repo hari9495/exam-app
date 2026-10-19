@@ -128,6 +128,8 @@ export class NotificationsService {
     type: string,
     target: MentionTarget,
     email: { subject: string; html: string },
+    /** The person the notice is about, for the bell row's avatar (never the recipient themselves). */
+    aboutUserId: string | null = null,
   ): Promise<void> {
     const ids = [...new Set(recipientUserIds)].filter((id) => Boolean(id));
     if (ids.length === 0) return;
@@ -143,7 +145,7 @@ export class NotificationsService {
           data: {
             organizationId: context.organizationId as string,
             recipientUserId: u.id,
-            actorUserId: null,
+            actorUserId: aboutUserId && aboutUserId !== u.id ? aboutUserId : null,
             type,
             entityType: target.entityType,
             entityId: target.entityId,

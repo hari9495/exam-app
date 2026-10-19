@@ -1,15 +1,18 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ExpensesHomeScreen, type ClaimSummary, type ExpenseHome } from '@yukthix/ui/expenses';
 import { loadState } from '../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../lib/yx-expenses';
 import { useScopeParams, withParams } from '../../../../lib/yx-shell';
 
 // Expenses home (EXP-01, M05 batch E2): my claims with what I will receive, claims waiting for me, and finance's check.
-export default function YxExpensesPage() {
+function ExpensesHome() {
   const sp = useScopeParams();
   const router = useRouter();
+  // ?new=1: the "New expense claim" action (Ctrl K, N E) opens the new-claim sheet at once.
+  const startNew = useSearchParams()?.get('new') === '1';
   const home = useExp<ExpenseHome>('/me/home');
   const approvals = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=approvals', sp.entity), Boolean(home.data?.waitingForMe));
   const review = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=review', sp.entity), home.data?.toReview !== null && home.data?.toReview !== undefined);
@@ -28,6 +31,15 @@ export default function YxExpensesPage() {
       onOpen={(id) => router.push(`/yx/expenses/claims/${encodeURIComponent(id)}`)}
       onTrips={() => router.push('/yx/expenses/trips')}
       onAdvances={() => router.push('/yx/expenses/advances')}
+      startNew={startNew}
     />
+  );
+}
+
+export default function YxExpensesPage() {
+  return (
+    <Suspense>
+      <ExpensesHome />
+    </Suspense>
   );
 }

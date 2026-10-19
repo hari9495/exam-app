@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, setUnauthorizedHandler, signInPath, STAFF_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
+import { clearAllRecent } from './yx-recent';
 
 interface AuthContextValue {
   accessToken: string | null;
@@ -263,6 +264,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
       window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
+    // Ctrl K's Recent list (pages and records this person opened) goes with them.
+    clearAllRecent();
     // Every cached answer belonged to the person who left (their permissions, two-step status, records):
     // the next person to sign in on this tab must not see or be routed by any of it.
     queryClient.clear();

@@ -287,6 +287,8 @@ function ReasonPopover({ trigger, label, submitLabel, onSubmit, children, valida
 export interface NotificationItem {
   id: string;
   actor: { name: string; src?: string | null };
+  /** A notice from YukthiX itself (a reminder, a sweep): a neutral bell instead of someone's initials. */
+  system?: boolean;
   /** "Divya Raghunathan applied for 3 days of casual leave" */
   text: ReactNode;
   at: Date;
@@ -352,7 +354,15 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
           <h3 className="yx-notif__day">{g.label}</h3>
           <ul className="yx-notif__list">
             {g.items.map((it) => (
-              <NotificationRow key={it.id} item={it} onOpen={onOpenItem} />
+              <NotificationRow
+                key={it.id}
+                item={it}
+                // Opening an item navigates away, so the panel closes (founder review 19 Oct 2026).
+                onOpen={(i) => {
+                  onOpenItem?.(i);
+                  setOpen(false);
+                }}
+              />
             ))}
           </ul>
         </section>
@@ -407,8 +417,14 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
           </RT.Content>
         </RT.Root>
         <footer className="yx-notif__foot">
-          {allHref && <Link href={allHref}>See all notifications</Link>}
-          <Link href={settingsHref}>Notification settings</Link>
+          {allHref && (
+            <Link href={allHref} onClick={() => setOpen(false)}>
+              See all notifications
+            </Link>
+          )}
+          <Link href={settingsHref} onClick={() => setOpen(false)}>
+            Notification settings
+          </Link>
         </footer>
       </PopoverContent>
     </Popover>
@@ -427,7 +443,13 @@ function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen?: (i
   };
   return (
     <li className="yx-notif__item" data-unread={!item.read || undefined}>
-      <Avatar name={item.actor.name} src={item.actor.src} size={32} />
+      {item.system ? (
+        <span className="yx-notif__system" aria-hidden="true">
+          <Icon icon={Bell} />
+        </span>
+      ) : (
+        <Avatar name={item.actor.name} src={item.actor.src} size={32} />
+      )}
       <div className="yx-notif__main">
         {item.href ? (
           <a className="yx-notif__text" href={item.href} onClick={() => onOpen?.(item)}>

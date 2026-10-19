@@ -675,7 +675,11 @@ export function CommandPalette({
   const [recentCleared, setRecentCleared] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!open) setQ('');
+    if (!open) {
+      setQ('');
+      // The host has cleared its list by now; items opened later must show again next time.
+      setRecentCleared(false);
+    }
   }, [open]);
 
   // Prefix scopes: only when groups declare them (otherwise the text is searched as typed).
