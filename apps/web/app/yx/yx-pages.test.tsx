@@ -356,6 +356,15 @@ describe('/yx/sign-in (email first, no company code)', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Taking you to Google');
   });
 
+  it('an error goes away as soon as the email is changed (it was about the old one)', async () => {
+    route({ 'GET /auth/remembered-company': { company: null }, 'POST /auth/identify': new Error('No account for that email') });
+    render(<YxSignInPage />);
+    await typeIdentifier('nobody@demo-org.test');
+    expect(await screen.findByText('No account for that email')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Work email/), 'x');
+    expect(screen.queryByText('No account for that email')).toBeNull();
+  });
+
   it('no ways answered (or not set up): only the work email', async () => {
     route({ 'GET /auth/remembered-company': { company: null } });
     render(<YxSignInPage />);
