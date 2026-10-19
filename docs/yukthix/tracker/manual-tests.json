@@ -3846,8 +3846,15 @@
   "url": "http://localhost:3000/yx/sign-in",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "'Wrong email or password. Try again.' shown; page stayed usable.",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "SI-03",
   "screen": "Wrong password",
