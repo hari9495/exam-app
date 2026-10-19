@@ -390,6 +390,12 @@
     "result": "Fail",
     "findings": "1) The panel stays open after clicking a notification (founder). 2) Every avatar shows 'Y' instead of the person. 3) Vague repeated texts ('An absconding timeline step is due' x6) without the person. 4) No Approve / View buttons on approval notifications. 5) Footer links glued: 'See all notificationsNotification settings'.",
     "fixedIn": "In progress: search builder also fixing the bell"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "In progress",
+    "findings": "Grey bell icons and separate footer links fixed. Old notices made before the fix keep their old text (stored). HR got no email for Arjun's leave: correct, the approver is his manager (panel@). The approval email subject read 'Leave: Manager: Arjun Kulkarni: Casual leave, 21 Oct (1 day)'.",
+    "fixedIn": "PR #192: subjects now 'Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)', 'Still waiting for your approval: …', 'Escalated to you: …', 'Approved: your request for …' (unit test)"
    }
   ],
   "ideas": [],
