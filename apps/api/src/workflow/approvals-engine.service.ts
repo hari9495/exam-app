@@ -94,6 +94,20 @@ export interface SubmitInput {
   risk?: 'high';
 }
 
+/**
+ * The email subject of an approval notice in plain words: who asks, and for what (founder review 19 Oct 2026), never the
+ * step's internal name ("Leave: Manager: …"). `who` is the person the request is from; a title that already starts with
+ * their name ("Arjun Kulkarni: Casual leave, 21 Oct (1 day)") is not repeated.
+ */
+export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
+  const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
+  const asks = who ? `${who} asks for ${what}` : `A request waits for you: ${what}`;
+  if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
+  if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
+  if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;
+  return `${n.text}: ${n.title}`;
+}
+
 export interface Notice {
   to: string[];
   requestId: string;
@@ -103,6 +117,8 @@ export interface Notice {
   text: string;
   /** The person the request is from, shown on the bell row (founder review 19 Oct 2026); the approver sees them anyway. */
   actor?: string | null;
+  /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
+  toRequester?: string;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
@@ -383,7 +399,7 @@ export class ApprovalsEngine {
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
     await this.type(req.requestType).onDecided(tx, after, outcome);
-    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved' });
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId });
     return after;
   }
 
@@ -735,7 +751,10 @@ export class ApprovalsEngine {
       try {
         const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
         const url = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}${n.link}`;
-        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, { subject: `${n.text}: ${n.title}`.slice(0, 150), html: `<p>${esc(n.text)}: <strong>${esc(n.title)}</strong></p><p><a href="${esc(url)}">Open in YukthiX</a></p>` }, n.actor ?? null);
+        const from = n.actor ?? n.toRequester ?? null;
+        const who = from ? ((await this.tenantPrisma.forTenant(ctx, (tx) => this.names(tx, ctx.organizationId as string, [from]))).get(from) ?? null) : null;
+        const subject = approvalSubject(n, who, Boolean(n.toRequester));
+        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, { subject: subject.slice(0, 150), html: `<p>${esc(n.text)}: <strong>${esc(n.title)}</strong></p><p><a href="${esc(url)}">Open in YukthiX</a></p>` }, n.actor ?? null);
       } catch (e) {
         this.logger.warn(`approval notice not sent: ${(e as Error).message}`);
       }
