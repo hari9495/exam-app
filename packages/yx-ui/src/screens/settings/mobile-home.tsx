@@ -28,7 +28,7 @@ import { Button, IconButton } from '../../components/button';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { TextArea, TextField } from '../../components/inputs';
+import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { PageBanner } from '../../components/notify';
 import { formatDate, formatINR } from '../../lib/format';
 import { COMPANY, ME } from '../_kit/data';
@@ -66,7 +66,7 @@ export function MobileFirstRunScreen({ step = 'otp', otpError, restricted }: { s
             <TextField value="98•••• 4521" prefix="+91" readOnly />
           </FormField>
           <FormField label="One-time code" required error={otpError ? 'That code did not match. Check the SMS and enter the 6 digits again.' : undefined}>
-            <TextField className="yx-m-otp" inputMode="numeric" autoComplete="one-time-code" defaultValue={otpError ? '482915' : ''} placeholder="6 digits" />
+            <CodeField className="yx-m-otp" defaultValue={otpError ? '482915' : ''} placeholder="6 digits" />
           </FormField>
           <MPin>
             <Button variant="primary" fullWidth>

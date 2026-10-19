@@ -1,6 +1,11 @@
 // Indian identifier checks for MaskedField (§16). Each returns an error
 // message telling the user what to do (§34), or null when valid.
 
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
+
+/** A mobile number the sign-in can text: Indian without a country code, else with +country (the API checks it again). */
+export const isPhoneNumber = (value: string) => Boolean(parsePhoneNumberFromString(value.trim(), 'IN')?.isValid());
+
 /** A complete email address: something@domain.tld, no spaces (the API checks it again). */
 export const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 

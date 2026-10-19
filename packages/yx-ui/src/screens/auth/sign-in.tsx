@@ -5,8 +5,8 @@ import { Avatar } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Spinner, Text } from '../../components/foundations';
-import { PasswordField, TextField } from '../../components/inputs';
-import { isEmail } from '../../lib/validators';
+import { CodeField, PasswordField, TextField } from '../../components/inputs';
+import { isEmail, isPhoneNumber } from '../../lib/validators';
 import { AuthFrame } from './kit';
 import { GoogleMark, MicrosoftMark } from './marks';
 import type { SignInOptions, SsoProviderOption } from './types';
@@ -86,14 +86,16 @@ export function providerButtonLabel(p: SsoProviderOption): string {
 
 export const isMobileIdentifier = (value: string) => value.trim() !== '' && !value.includes('@');
 
-/** An email box that says what is wrong once the person leaves it or presses Enter, never while they type. */
-function EmailField({ label, value, onChange, autoComplete }: { label: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
+/** A box that says what is wrong once the person leaves it or presses Enter, never while they type. */
+function CheckedField({ label, value, onChange, autoComplete, mobile, helper }: { label: string; value: string; onChange: (v: string) => void; autoComplete: string; mobile?: boolean; helper?: string }) {
   const [left, setLeft] = useState(false);
-  const wrong = left && value.trim() !== '' && !isEmail(value);
+  const wrong = left && value.trim() !== '' && !(mobile ? isPhoneNumber(value) : isEmail(value));
+  const message = mobile ? 'Enter your full mobile number, like 98450 12345' : 'Enter your full email, like name@company.com';
   return (
-    <FormField label={label} required error={wrong ? 'Enter your full email, like name@company.com' : undefined}>
+    <FormField label={label} required helper={helper} error={wrong ? message : undefined}>
       <TextField
-        type="email"
+        type={mobile ? 'tel' : 'email'}
+        {...(mobile ? { inputMode: 'tel' as const } : {})}
         value={value}
         onChange={(v) => {
           setLeft(false);
@@ -223,7 +225,7 @@ export function SignInScreen(props: SignInScreenProps) {
               {passkeyButton}
               {passkeyOn && ways}
               {passkeyOn && or}
-              <EmailField label="Work email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" />
+              <CheckedField label="Work email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" />
               {alert}
               <Button type="submit" variant={passkeyOn && !typed ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy} disabled={!typed}>Continue</Button>
               {!passkeyOn && ways && (
@@ -238,16 +240,14 @@ export function SignInScreen(props: SignInScreenProps) {
 
           {step === 'mobile' && (
             <>
-              <FormField label="Mobile number" required helper="Add the country code if it isn't an Indian number.">
-                <TextField type="tel" value={fields.mobile} onChange={(v) => set('mobile', v)} autoComplete="tel" inputMode="tel" />
-              </FormField>
+              <CheckedField mobile label="Mobile number" helper="Add the country code if it isn't an Indian number." value={fields.mobile} onChange={(v) => set('mobile', v)} autoComplete="tel" />
               {alert}
-              {options?.sms && <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!mobile}>Text me a code</Button>}
+              {options?.sms && <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!isPhoneNumber(mobile)}>Text me a code</Button>}
               {options?.whatsapp &&
                 (options.sms ? (
-                  <Button fullWidth disabled={busy || !mobile} onClick={() => props.onSendCode('whatsapp')}>Send a code on WhatsApp</Button>
+                  <Button fullWidth disabled={busy || !isPhoneNumber(mobile)} onClick={() => props.onSendCode('whatsapp')}>Send a code on WhatsApp</Button>
                 ) : (
-                  <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!mobile}>Send a code on WhatsApp</Button>
+                  <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!isPhoneNumber(mobile)}>Send a code on WhatsApp</Button>
                 ))}
               <Button disabled={busy} onClick={props.onRestart}>Use my work email instead</Button>
             </>
@@ -284,7 +284,7 @@ export function SignInScreen(props: SignInScreenProps) {
                   : `If ${mobile} can sign in by code, we sent it a 6-digit code by ${channelName}. It expires in 5 minutes.`}
               </Text>
               <FormField label="6-digit code" required>
-                <TextField value={fields.code} onChange={(v) => set('code', v)} autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
+                <CodeField value={fields.code} onChange={(v) => set('code', v)} />
               </FormField>
               {alert}
               <Button type="submit" variant="primary" fullWidth loading={busy} disabled={fields.code.trim().length < 6}>Sign in</Button>
@@ -321,7 +321,7 @@ export function StaffSignInScreen({ email, password, onEmailChange, onPasswordCh
   return (
     <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready." note="YukthiX staff only · security key required">
       <form className="yx-auth__form" onSubmit={submit} noValidate>
-        <EmailField label="Staff email" value={email} onChange={onEmailChange} autoComplete="username" />
+        <CheckedField label="Staff email" value={email} onChange={onEmailChange} autoComplete="username" />
         <FormField label="Password" required>
           <PasswordField value={password} onChange={onPasswordChange} autoComplete="current-password" />
         </FormField>
@@ -358,7 +358,7 @@ export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, bus
         </div>
       ) : (
         <form className="yx-auth__form" onSubmit={submit} noValidate>
-          <EmailField label="Work email" value={email} onChange={onEmailChange} autoComplete="username" />
+          <CheckedField label="Work email" value={email} onChange={onEmailChange} autoComplete="username" />
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!isEmail(email)}>Email me a reset link</Button>
           <Link href={signInHref}>Back to sign in</Link>

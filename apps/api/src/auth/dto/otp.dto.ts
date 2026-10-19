@@ -19,7 +19,7 @@ export class OtpVerifyDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(100) organizationSlug?: string;
   @IsString() @MinLength(3) @MaxLength(320) identifier!: string;
   @Matches(TOKEN) otpToken!: string;
-  @Matches(SIX_DIGITS, { message: 'code must be the 6-digit code we sent you' }) code!: string;
+  @Matches(SIX_DIGITS, { message: 'Enter the 6-digit code we sent you.' }) code!: string;
 }
 
 // Fallback second factor: send a code for a pending sign-in (SMS / WhatsApp only, YX-IAM-03).
@@ -34,5 +34,5 @@ export class MobileNumberDto {
 }
 
 export class MobileCodeDto {
-  @Matches(SIX_DIGITS, { message: 'code must be the 6-digit code we sent you' }) code!: string;
+  @Matches(SIX_DIGITS, { message: 'Enter the 6-digit code we sent you.' }) code!: string;
 }
