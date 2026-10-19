@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { DEFAULT_PIPELINE_STAGES } from '../src/pipeline/default-stage-map';
 
 // Recruiter demo for the YukthiX Home (founder decision 19 Oct 2026): gives Neha (recruiter@demo-org.test) two open jobs
 // she created and manages, five candidates at different stages (one waiting 10 days), an interview today with her on
@@ -40,10 +41,21 @@ async function main() {
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_org', ${orgId}, true), set_config('app.is_super_admin', 'off', true), set_config('app.current_user_id', ${nehaId}, true)`;
       const o = { organizationId: orgId };
-      const pipeline = await tx.pipeline.findFirst({
-        where: { ...o, isDefault: true },
-        include: { stages: { where: { category: { not: 'rejected' } }, orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
-      });
+      const findPipeline = () =>
+        tx.pipeline.findFirst({
+          where: { ...o, isDefault: true },
+          include: { stages: { where: { category: { not: 'rejected' } }, orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
+        });
+      // A company that never hired has no pipeline until its first job: make the standard one, as PipelinesService does.
+      if (!(await findPipeline())) {
+        const created = await tx.pipeline.create({ data: { ...o, name: 'Standard', isDefault: true } });
+        for (const [i, st] of DEFAULT_PIPELINE_STAGES.entries()) {
+          const name = st.key[0].toUpperCase() + st.key.slice(1);
+          const stage = await tx.pipelineStage.create({ data: { ...o, pipelineId: created.id, name, category: st.category, position: i } });
+          await tx.pipelineStatus.create({ data: { ...o, stageId: stage.id, name, position: 0 } });
+        }
+      }
+      const pipeline = await findPipeline();
       if (!pipeline || pipeline.stages.length < 4) throw new Error('demo-org has no default hiring pipeline: open Hiring › Jobs once, or seed it first.');
 
       const jobIds: string[] = [];
