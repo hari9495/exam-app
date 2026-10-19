@@ -42,11 +42,18 @@
   "steps": [
    "Find someone on probation, someone on notice and someone on leave today."
   ],
-  "expected": "Status shows Probation, Notice period, On leave or Active correctly for each.",
+  "expected": "Status shows Probation, Notice period, On leave or Active correctly for each. A resignation HR has not accepted yet shows Active; Notice period starts once it is accepted. Each company counts \"today\" in its own time zone.",
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Code review (before manual test)",
+    "findings": "A resignation only submitted (not accepted) showed as Notice period. Every company used India's date, so a non-India site could show joiners and leave a day early or late.",
+    "fixedIn": "PR #179 (85afd5f5)"
+   }
+  ],
   "ideas": []
  },
  {
@@ -61,7 +68,7 @@
    "Hide one column.",
    "Save this as a view, reload the page, choose the view."
   ],
-  "expected": "Each works. Saving shows a toast. The saved view brings back the same filter, grouping and columns.",
+  "expected": "Each works. Saving shows a toast. The saved view brings back the same filter, grouping and columns. HR sees a \"Share with the team\" box when saving.",
   "stories": [],
   "note": "",
   "status": "Not run",
@@ -111,13 +118,21 @@
   "account": "arjun@demo-org.test",
   "steps": [
    "Open People > Directory.",
-   "Try the quick chips Everyone, My team, My department, My location."
+   "Try the quick chips Everyone, My team, My department, My location.",
+   "Click View, then Save as new view."
   ],
-  "expected": "No ID, status, phone or joining date. No Export. Chips filter correctly. Search box says \"Search name or email\".",
+  "expected": "No ID, status, phone or joining date. No Export. Chips filter correctly. Search box says \"Search name or email\". Saving a view has no \"Share with the team\" box (only HR can share).",
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Code review (before manual test)",
+    "findings": "Any employee could share a saved view into everyone's View menu.",
+    "fixedIn": "PR #179 (API refuses it) + PR #180 (box hidden)"
+   }
+  ],
   "ideas": []
  },
  {
