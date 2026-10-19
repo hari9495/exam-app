@@ -3940,8 +3940,15 @@
   "url": "http://localhost:3000/yx/sign-in",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "Neutral 'if ... has an account' message; designed reset email (15 minutes, once, ignore line, plain link); 'Password changed' signs out every device. plant-hr@ password is now the new one the founder set.",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "SI-06",
   "screen": "Forgot your password",
