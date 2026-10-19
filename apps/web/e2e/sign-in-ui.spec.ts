@@ -8,7 +8,7 @@ test.describe('OS dark mode', () => {
   test('the sign-in page is dark when the OS is, before anyone can open the account menu', async ({ page }) => {
     await page.goto('/yx/sign-in');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    const bg = await page.locator('.yx-auth').evaluate((el) => getComputedStyle(el).backgroundColor);
+    const bg = await page.locator('.yx-portal').evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).toBe('rgb(11, 18, 32)'); // --yx-slate-900
   });
 });

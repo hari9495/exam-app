@@ -63,6 +63,26 @@ export function inScopeSql(c: CompanyContext, v: Viewer, key: string, emp: Prism
   return Prisma.sql`((${grantMultirange(c, v, key, emp, own)}) @> ${date})`;
 }
 
+/**
+ * The company / period switcher (design audit step 2): employee `emp` belonged to legal entity `entityId` on some day
+ * of [from, to]. Only narrows a list: RLS and the grant check still decide what the person may see. No entity: TRUE.
+ */
+export function inEntitySql(c: CompanyContext, entityId: string | null | undefined, emp: Prisma.Sql, from: Prisma.Sql, to: Prisma.Sql = from): Prisma.Sql {
+  if (!entityId) return Prisma.sql`TRUE`;
+  return Prisma.sql`EXISTS (SELECT 1 FROM employee_assignments ea WHERE ea.organization_id = ${c.organizationId}::uuid AND ea.employee_id = ${emp}
+    AND ea.superseded_at IS NULL AND ea.legal_entity_id = ${entityId}::uuid AND daterange(ea.valid_from, ea.valid_to, '[]') && daterange(${from}, ${to}, '[]'))`;
+}
+
+/** The switcher for lists read through Prisma: which of `employeeIds` ever belonged to legal entity `entityId`. */
+export async function employeesInEntity(tx: Tx, c: CompanyContext, entityId: string, employeeIds: readonly string[]): Promise<Set<string>> {
+  const ids = [...new Set(employeeIds)];
+  if (!ids.length) return new Set();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT DISTINCT ea.employee_id::text AS id FROM employee_assignments ea
+    WHERE ea.organization_id = ${c.organizationId}::uuid AND ea.superseded_at IS NULL AND ea.legal_entity_id = ${entityId}::uuid AND ea.employee_id = ANY(${ids}::uuid[])`;
+  return new Set(rows.map((r) => r.id));
+}
+
 async function periodsOf(tx: Tx, range: Prisma.Sql): Promise<Period[]> {
   const rows = await tx.$queryRaw<{ from: string | null; to: string | null }[]>`
     SELECT lower(r)::text AS "from", (upper(r) - 1)::text AS "to" FROM unnest((${range})::datemultirange) AS r ORDER BY 1 NULLS FIRST`;

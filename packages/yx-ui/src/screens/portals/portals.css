@@ -30,7 +30,7 @@
   .yx-tportal__pinned .yx-button { flex: 1; }
 }
 .yx-portal-notices { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--yx-space-2) var(--yx-space-4); font-size: var(--yx-text-sm); padding-top: var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
-.yx-portal-notices a { color: var(--yx-color-text-secondary); }
+.yx-portal-notices a { color: var(--yx-color-text-secondary); text-decoration: underline; }
 .yx-lang { display: inline-flex; align-items: center; gap: var(--yx-space-2); color: var(--yx-color-text-secondary); min-width: calc(var(--yx-space-16) * 2.5); }
 .yx-lang .yx-select, .yx-lang > :last-child { flex: 1; }
 

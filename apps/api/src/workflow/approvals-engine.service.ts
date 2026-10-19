@@ -591,7 +591,7 @@ export class ApprovalsEngine {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const rows = await tx.wfDelegation.findMany({ where: { organizationId: ctx.organizationId, revokedAt: null, endsOn: { gte: new Date(`${todayIst()}T00:00:00Z`) }, OR: [{ userId }, { delegateUserId: userId }] }, orderBy: { startsOn: 'asc' } });
       const names = await this.names(tx, ctx.organizationId, rows.flatMap((r) => [r.userId, r.delegateUserId]));
-      return rows.map((r) => ({ id: r.id, mine: r.userId === userId, person: names.get(r.userId) ?? '', delegate: names.get(r.delegateUserId) ?? '', startsOn: r.startsOn.toISOString().slice(0, 10), endsOn: r.endsOn.toISOString().slice(0, 10), source: r.source, requestTypes: r.requestTypes }));
+      return rows.map((r) => ({ id: r.id, mine: r.userId === userId, person: names.get(r.userId) ?? '', delegate: names.get(r.delegateUserId) ?? '', delegateUserId: r.delegateUserId, startsOn: r.startsOn.toISOString().slice(0, 10), endsOn: r.endsOn.toISOString().slice(0, 10), source: r.source, requestTypes: r.requestTypes }));
     });
   }
 
@@ -689,6 +689,34 @@ export class ApprovalsEngine {
         decided: decided.map((t) => ({ requestId: t.requestId, title: reqs.get(t.requestId)?.title ?? '', type: this.types.get(reqs.get(t.requestId)?.requestType ?? '')?.label ?? '', decision: t.status, at: t.decidedAt, requestStatus: reqs.get(t.requestId)?.status ?? '' })),
         sent: mine.map((r) => ({ requestId: r.id, title: r.title, type: this.types.get(r.requestType)?.label ?? r.requestType, status: r.status, submittedAt: r.submittedAt, decidedAt: r.decidedAt })),
       };
+    });
+  }
+
+  /**
+   * PLT-06 My requests: what the person asked for (also when HR or a manager raised it for them), newest first, with
+   * where each one is: the step it waits on and who holds it.
+   */
+  async mine(ctx: CompanyContext, userId: string) {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const rows = await tx.wfRequest.findMany({ where: { organizationId: org, requesterUserId: userId }, orderBy: { submittedAt: 'desc' }, take: 200 });
+      const open = await tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: rows.filter((r) => r.status === 'pending').map((r) => r.id) }, status: 'open' }, select: { requestId: true, step: true, assigneeUserId: true } });
+      const names = await this.names(tx, org, [...rows.map((r) => r.raisedByUserId), ...open.map((t) => t.assigneeUserId)]);
+      return rows.map((r) => {
+        const steps = r.steps as unknown as FrozenStep[];
+        const step = r.status === 'pending' ? steps[r.currentStep] : undefined;
+        return {
+          requestId: r.id,
+          type: this.types.get(r.requestType)?.label ?? r.requestType,
+          title: r.title,
+          status: r.status,
+          submittedAt: r.submittedAt,
+          decidedAt: r.decidedAt,
+          step: step ? { name: step.name, index: r.currentStep + 1, of: steps.length } : null,
+          waitingOn: open.filter((t) => t.requestId === r.id && t.step === r.currentStep).map((t) => names.get(t.assigneeUserId) ?? '').filter(Boolean),
+          raisedBy: r.raisedByUserId && r.raisedByUserId !== userId ? (names.get(r.raisedByUserId) ?? null) : null,
+        };
+      });
     });
   }
 

@@ -370,7 +370,7 @@ export class PerformanceReviewsService {
     return { stage: r.stage, label: STAGE_LABEL[r.stage] ?? r.stage, owner: owner ?? null, dueOn: due };
   }
 
-  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'team' | 'scope' = 'mine', cycleId?: string) {
+  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'team' | 'scope' = 'mine', cycleId?: string, entityId?: string | null) {
     const v = await this.viewer(user);
     return this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -384,7 +384,7 @@ export class PerformanceReviewsService {
         if (!v.grants.has('perf.review.view')) throw new ForbiddenException('Reviews of people in scope need perf.review.view.');
         ids = await tx.$queryRaw`SELECT r.id::text FROM reviews r WHERE r.organization_id = ${org}::uuid ${cycleSql} AND ${inScopeSql(c, v, 'perf.review.view', Prisma.sql`r.employee_id`, Prisma.sql`${today}::date`, me)} LIMIT 2000`;
       }
-      const rows = await tx.review.findMany({ where: { organizationId: org, id: { in: ids.map((x) => x.id) } }, orderBy: { createdAt: 'desc' } });
+      const rows = await tx.review.findMany({ where: { organizationId: org, id: { in: ids.map((x) => x.id) }, ...(entityId && view !== 'mine' ? { legalEntityId: entityId } : {}) }, orderBy: { createdAt: 'desc' } });
       const cycles = new Map((await tx.reviewCycle.findMany({ where: { organizationId: org, id: { in: [...new Set(rows.map((r) => r.cycleId))] } } })).map((x) => [x.id, x]));
       const people = await this.names(tx, org, rows.flatMap((r) => [r.employeeId, r.managerEmployeeId]));
       return rows.map((r) => {

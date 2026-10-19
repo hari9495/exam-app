@@ -11,7 +11,7 @@ import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { FormField, FieldRow } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { FileUpload } from '../../components/upload';
-import { Select, PersonPicker } from '../../components/select';
+import { Select, PersonPicker, type PersonOption } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
@@ -29,10 +29,10 @@ import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type Plat
 
 const CATEGORIES: (NotifCategory | 'All')[] = ['All', 'Approvals', 'Leave & time', 'Pay', 'Tasks', 'Hiring', 'From YukthiX'];
 
-function groupNotifs(items: PlatformNotification[]) {
+function groupNotifs(items: PlatformNotification[], today: Date = TODAY) {
   const out: { label: string; items: PlatformNotification[] }[] = [];
   for (const n of [...items].sort((a, b) => b.at.getTime() - a.at.getTime())) {
-    const label = dayLabel(n.at, TODAY);
+    const label = dayLabel(n.at, today);
     const last = out[out.length - 1];
     if (last?.label === label) last.items.push(n);
     else out.push({ label, items: [n] });
@@ -45,10 +45,26 @@ export interface NotificationsInboxProps {
   defaultCategory?: NotifCategory | 'All';
   defaultUnreadOnly?: boolean;
   state?: 'ready' | 'loading' | 'error';
+  /**
+   * The live app (design audit step 2): items come from the server and every change goes back to it. Controls with no
+   * backend yet (approve from here, mark as unread, remind me tomorrow, stop notifying) are left out.
+   */
+  live?: LiveInbox;
 }
 
-function NotificationList({ items: initial, defaultCategory = 'All', defaultUnreadOnly = false, state = 'ready', compact }: NotificationsInboxProps & { compact?: boolean }) {
-  const [items, setItems] = useState(initial);
+export interface LiveInbox {
+  /** Marks it read and goes to its page. */
+  onOpen: (n: PlatformNotification) => void;
+  onMarkRead: (ids: string[]) => void;
+  onMarkAllRead: () => void;
+  preferencesHref: string;
+  onRetry?: () => void;
+}
+
+function NotificationList({ items: initial, defaultCategory = 'All', defaultUnreadOnly = false, state = 'ready', compact, live: server }: NotificationsInboxProps & { compact?: boolean }) {
+  const [own, setItems] = useState(initial);
+  // Live: the server's list is the truth; the design's local edits are for the stories.
+  const items = server ? initial : own;
   const [cat, setCat] = useState<string>(defaultCategory);
   const [unreadOnly, setUnreadOnly] = useState(defaultUnreadOnly);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -64,9 +80,11 @@ function NotificationList({ items: initial, defaultCategory = 'All', defaultUnre
     setLive(ns.length === 1 ? `Approved. ${ns[0].actor} will be notified.` : `${ns.length} requests approved. Each person will be notified.`);
   };
   const actions: RowActions = {
-    open: (n) => update([n.id], { read: true }),
+    live: Boolean(server),
+    open: (n) => (server ? server.onOpen(n) : update([n.id], { read: true })),
     approve: (n) => approve([n]),
     toggleRead: (n) => {
+      if (server) return server.onMarkRead([n.id]);
       update([n.id], { read: !n.read });
       setLive(n.read ? 'Marked as unread.' : 'Marked as read.');
     },
@@ -102,7 +120,7 @@ function NotificationList({ items: initial, defaultCategory = 'All', defaultUnre
         </TabsList>
         <div className="yx-plt-row">
           <Switch label="Unread only" checked={unreadOnly} onChange={setUnreadOnly} />
-          <Button size="sm" icon={CheckCheck} disabled={unread === 0} onClick={() => mapAll((x) => ({ ...x, read: true }))}>
+          <Button size="sm" icon={CheckCheck} disabled={unread === 0} onClick={() => (server ? server.onMarkAllRead() : mapAll((x) => ({ ...x, read: true })))}>
             Mark all read
           </Button>
         </div>
@@ -114,7 +132,8 @@ function NotificationList({ items: initial, defaultCategory = 'All', defaultUnre
             size="sm"
             icon={CheckCheck}
             onClick={() => {
-              update([...selected], { read: true });
+              if (server) server.onMarkRead([...selected]);
+              else update([...selected], { read: true });
               setLive(`${selected.size} marked as read.`);
               setSelected(new Set());
             }}
@@ -153,6 +172,7 @@ function NotificationList({ items: initial, defaultCategory = 'All', defaultUnre
                 setCat('All');
                 setUnreadOnly(false);
               }}
+              onRetry={server?.onRetry}
               actions={actions}
             />
           )}
@@ -163,6 +183,7 @@ function NotificationList({ items: initial, defaultCategory = 'All', defaultUnre
 }
 
 interface RowActions {
+  live?: boolean;
   open: (n: PlatformNotification) => void;
   approve: (n: PlatformNotification) => void;
   toggleRead: (n: PlatformNotification) => void;
@@ -185,7 +206,7 @@ function NotificationRow({ n, actions, nested }: { n: PlatformNotification; acti
       <Avatar name={n.actor} size={32} />
       <div className="yx-plt-notif__main">
         <a
-          href="#"
+          href={n.href ?? '#'}
           className="yx-plt-notif__text"
           onClick={(e) => {
             e.preventDefault();
@@ -224,34 +245,42 @@ function NotificationRow({ n, actions, nested }: { n: PlatformNotification; acti
             </Button>
           </>
         )}
-        <Menu>
-          <MenuTrigger asChild>
-            <IconButton icon={MoreHorizontal} label={`More for: ${n.text}`} size="sm" />
-          </MenuTrigger>
-          <MenuContent align="end">
-            <MenuItem icon={n.read ? MailOpen : Mail} onSelect={() => actions.toggleRead(n)}>
-              {n.read ? 'Mark as unread' : 'Mark as read'}
-            </MenuItem>
-            <MenuItem icon={Clock} onSelect={() => actions.snooze(n)}>
-              Remind me tomorrow, 9:00 am
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem icon={BellOff} onSelect={() => actions.mute(n)}>
-              Stop notifying me about {n.category.toLowerCase()}
-            </MenuItem>
-          </MenuContent>
-        </Menu>
+        {/* Live: only "Mark as read" exists server-side, so a read row has no menu. */}
+        {!(actions.live && n.read) && (
+          <Menu>
+            <MenuTrigger asChild>
+              <IconButton icon={MoreHorizontal} label={`More for: ${n.text}`} size="sm" />
+            </MenuTrigger>
+            <MenuContent align="end">
+              <MenuItem icon={n.read ? MailOpen : Mail} onSelect={() => actions.toggleRead(n)}>
+                {n.read ? 'Mark as unread' : 'Mark as read'}
+              </MenuItem>
+              {!actions.live && (
+                <>
+                  <MenuItem icon={Clock} onSelect={() => actions.snooze(n)}>
+                    Remind me tomorrow, 9:00 am
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem icon={BellOff} onSelect={() => actions.mute(n)}>
+                    Stop notifying me about {n.category.toLowerCase()}
+                  </MenuItem>
+                </>
+              )}
+            </MenuContent>
+          </Menu>
+        )}
       </div>
     </li>
   );
 }
 
-function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, actions }: {
+function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, onRetry, actions }: {
   state: NotificationsInboxProps['state'];
   shown: PlatformNotification[];
   unreadOnly: boolean;
   cat: string;
   onShowAll: () => void;
+  onRetry?: () => void;
   actions: RowActions;
 }) {
   return (
@@ -263,7 +292,7 @@ function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, actions }:
           ))}
         </div>
       ) : state === 'error' ? (
-        <ErrorState title="Notifications didn't load" description="Check your connection and try again. Your approvals are safe." onRetry={() => {}} reference="NTF-2291" />
+        <ErrorState title="Notifications didn't load" description="Check your connection and try again. Your approvals are safe." onRetry={onRetry ?? (() => {})} reference={onRetry ? undefined : 'NTF-2291'} />
       ) : shown.length === 0 ? (
         <EmptyState
           title={unreadOnly || cat !== 'All' ? 'Nothing here for this filter.' : 'No notifications yet.'}
@@ -271,7 +300,7 @@ function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, actions }:
           action={unreadOnly || cat !== 'All' ? <Button onClick={onShowAll}>Show all</Button> : undefined}
         />
       ) : (
-        groupNotifs(shown).map((g) => (
+        groupNotifs(shown, actions.live ? new Date() : TODAY).map((g) => (
           <section key={g.label} aria-label={g.label} className="yx-plt-stack" data-gap="sm">
             <h2 className="yx-plt-h">{g.label}</h2>
             <ul className="yx-plt-notifs">
@@ -295,7 +324,18 @@ export function NotificationsInboxScreen(props: NotificationsInboxProps) {
         title="Notifications"
         facts={`${unread} unread`}
         description="Updates about your requests, approvals, pay and tasks."
-        actions={<Button icon={SettingsIcon}>Notification preferences</Button>}
+        actions={
+          props.live ? (
+            <Button asChild>
+              <a href={props.live.preferencesHref}>
+                <Icon icon={SettingsIcon} />
+                <span className="yx-button__label">Notification preferences</span>
+              </a>
+            </Button>
+          ) : (
+            <Button icon={SettingsIcon}>Notification preferences</Button>
+          )
+        }
       />
       <NotificationList {...props} />
     </DesktopFrame>
@@ -1248,9 +1288,16 @@ const myButton = (r: MyRequest, act: (a: MyAction) => void) =>
     <Button size="sm" onClick={() => act({ kind: 'cancel', id: r.id })}>Cancel leave</Button>
   ) : null;
 
+/** The live app (design audit step 2): requests from the approvals engine. "New request", withdraw and cancel wait for
+ * a request sheet that reaches every module, so they are left out; each request is withdrawn from its own page. */
+export interface LiveMyRequests {
+  onRetry?: () => void;
+}
+
 // PLT-06 · My requests: In progress / Completed, what needs you first, where each request is. Personal page: no company button.
-export function MyRequestsScreen({ rows, state = 'ready', withdrawId }: { rows: MyRequest[]; state?: 'ready' | 'loading' | 'error'; withdrawId?: string }) {
-  const [items, setItems] = useState(() => byNeed(rows));
+export function MyRequestsScreen({ rows, state = 'ready', withdrawId, live }: { rows: MyRequest[]; state?: 'ready' | 'loading' | 'error'; withdrawId?: string; live?: LiveMyRequests }) {
+  const [own, setItems] = useState(() => byNeed(rows));
+  const items = live ? byNeed(rows) : own;
   const [tab, setTab] = useState('open');
   const [action, setAction] = useState<MyAction>(withdrawId ? { kind: 'withdraw', id: withdrawId } : null);
   const open = items.filter(inProgress);
@@ -1263,7 +1310,7 @@ export function MyRequestsScreen({ rows, state = 'ready', withdrawId }: { rows: 
         title="My requests"
         description="Everything you asked for, and requests HR or your manager raised on your behalf."
         facts={`${sentBack ? `${sentBack} sent back to you · ` : ''}${pending} pending`}
-        actions={<Button variant="primary">New request</Button>}
+        actions={live ? undefined : <Button variant="primary">New request</Button>}
         tabs={[
           { id: 'open', label: 'In progress', count: open.length },
           { id: 'done', label: 'Completed', count: done.length },
@@ -1282,12 +1329,13 @@ export function MyRequestsScreen({ rows, state = 'ready', withdrawId }: { rows: 
         state={state}
         empty={
           tab === 'open' ? (
-            <EmptyState title="Nothing in progress." description="Requests waiting for approval, or sent back to you, show here." action={<Button variant="primary">New request</Button>} />
+            <EmptyState title="Nothing in progress." description="Requests waiting for approval, or sent back to you, show here." action={live ? undefined : <Button variant="primary">New request</Button>} />
           ) : (
             <EmptyState title="No completed requests yet." description="Approved, rejected and withdrawn requests move here." />
           )
         }
-        rowButtons={(r) => myButton(r, setAction)}
+        rowButtons={live ? undefined : (r) => myButton(r, setAction)}
+        onRetry={live?.onRetry}
       >
         <MyRequestConfirm
           action={action}
@@ -1368,6 +1416,32 @@ export interface DelegationProps {
   defaultDelegate?: string | null;
   active?: boolean;
   showErrors?: boolean;
+  /** The live app (design audit step 2), on the P03 approvals engine's delegations. */
+  live?: LiveDelegation;
+}
+
+/**
+ * Live delegation. The engine delegates every request type (choosing types and telling the team wait for their
+ * backend, so those controls are left out) and never chains: a delegate's own delegation is not followed.
+ */
+export interface LiveDelegation {
+  meId: string;
+  meName: string;
+  today: Date;
+  /** People matching the last search (and the chosen one). */
+  people: PersonOption[];
+  onFindPeople: (q: string) => void;
+  /** My delegation that is running or scheduled. */
+  current: { id: string; delegateId: string; from: Date; to: Date } | null;
+  /** Approvals waiting for me now. */
+  waiting: number;
+  onSave: (input: { delegateId: string; from: Date; to: Date }) => Promise<void>;
+  onEnd: (id: string) => Promise<void>;
+  /** People who delegated to me. */
+  delegatedToYou: { id: string; person: string; from: Date; to: Date }[];
+  approvalsHref: string;
+  /** "Done" messages (toasts in the live app). */
+  onDone?: (text: string) => void;
 }
 
 /** Your approved leave, offered as one-click dates (same leave as My requests). */
@@ -1386,26 +1460,47 @@ const DELEGATE_OPTIONS = PEOPLE.filter((p) => p.id !== 'e1' && p.id !== 'p5').ma
 
 const dayMonth = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
-export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDelegate = null, active, showErrors }: DelegationProps) {
-  const [from, setFrom] = useState<Date | null>(defaultFrom);
-  const [to, setTo] = useState<Date | null>(defaultTo);
-  const [delegate, setDelegate] = useState<string | null>(defaultDelegate);
+export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDelegate = null, active, showErrors, live }: DelegationProps) {
+  const [from, setFrom] = useState<Date | null>(live?.current?.from ?? defaultFrom);
+  const [to, setTo] = useState<Date | null>(live?.current?.to ?? defaultTo);
+  const [delegate, setDelegate] = useState<string | null>(live?.current?.delegateId ?? defaultDelegate);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const run = async (task: () => Promise<void>) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await task();
+      return true;
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
   const [scope, setScope] = useState('all');
   const [types, setTypes] = useState<string[]>(['Leave', 'Timesheet']);
   const [handOver, setHandOver] = useState(true);
   const [tellTeam, setTellTeam] = useState(true);
   const [tried, setTried] = useState(Boolean(showErrors));
-  const [saved, setSaved] = useState(Boolean(active));
+  const [savedOwn, setSaved] = useState(Boolean(active));
+  // Live: the delegation on the server decides whether the summary or the form shows (until "Change").
+  const [editing, setEditing] = useState(false);
+  const saved = live ? Boolean(live.current) && !editing : savedOwn;
   const [ending, setEnding] = useState(false);
   const [ended, setEnded] = useState(false);
   const errors = useMemo(
-    () => validateDelegation({ from, to, delegateId: delegate, meId: 'e1', delegateDelegatesTo: delegate === 'p6' ? 'p1' : null, today: TODAY }),
-    [from, to, delegate],
+    () => validateDelegation({ from, to, delegateId: delegate, meId: live?.meId ?? 'e1', delegateDelegatesTo: !live && delegate === 'p6' ? 'p1' : null, today: live?.today ?? TODAY }),
+    [from, to, delegate, live],
   );
-  const person = PEOPLE.find((p) => p.id === delegate);
+  const options = live ? live.people : DELEGATE_OPTIONS;
+  const person = (live ? live.people : PEOPLE).find((p) => p.id === delegate);
   const name = person?.name;
+  const waiting = live ? live.waiting : WAITING_FOR_ME;
+  const today = live?.today ?? TODAY;
   const first = name?.split(' ')[0];
-  const sameAsLeave = from?.getTime() === MY_LEAVE.from.getTime() && to?.getTime() === MY_LEAVE.to.getTime();
+  const sameAsLeave = Boolean(live) || (from?.getTime() === MY_LEAVE.from.getTime() && to?.getTime() === MY_LEAVE.to.getTime());
 
   if (ended)
     return (
@@ -1415,18 +1510,19 @@ export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDe
     );
 
   if (saved && from && to && name) {
-    const started = from <= TODAY;
+    const started = from <= today;
     return (
       <div className="yx-plt-stack">
         <div className="yx-plt-row">
           <Badge tone={started ? 'success' : 'info'}>{started ? 'Active' : `Scheduled · starts ${dayMonth(from)}`}</Badge>
         </div>
         <InlineAlert tone="success" title={`${name} approves for you from ${formatDate(from)} to ${formatDate(to)}`}>
-          {scope === 'all' ? 'All request types.' : `Only: ${types.join(', ')}.`} {first} sees the requests, not your private data: salary details stay hidden unless {first}'s own role allows them. Requests show “{name} (for {ME.name})”.
-          {handOver ? ` The ${WAITING_FOR_ME} requests already waiting move to ${first} on ${dayMonth(from)}.` : ''}
+          {scope === 'all' ? 'All request types.' : `Only: ${types.join(', ')}.`} {first} sees the requests, not your private data: salary details stay hidden unless {first}'s own role allows them. Requests show “{name} (for {live?.meName ?? ME.name})”.
+          {!live && handOver ? ` The ${WAITING_FOR_ME} requests already waiting move to ${first} on ${dayMonth(from)}.` : ''}
         </InlineAlert>
+        {failed && <InlineAlert tone="danger">{failed}</InlineAlert>}
         <div className="yx-plt-row">
-          <Button onClick={() => setSaved(false)}>Change</Button>
+          <Button onClick={() => (live ? setEditing(true) : setSaved(false))}>Change</Button>
           <Button onClick={() => setEnding(true)}>{started ? 'End now' : 'Cancel delegation'}</Button>
         </div>
         {ending && (
@@ -1438,7 +1534,9 @@ export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDe
             confirmLabel={started ? 'End now' : 'Cancel delegation'}
             onConfirm={() => {
               setEnding(false);
-              setEnded(true);
+              if (!live?.current) return setEnded(true);
+              const id = live.current.id;
+              void run(() => live.onEnd(id)).then((ok) => ok && live.onDone?.(started ? 'Delegation ended. You approve your own requests again.' : 'Delegation cancelled.'));
             }}
           />
         )}
@@ -1468,15 +1566,25 @@ export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDe
       )}
       <FieldRow>
         <FormField label="I'm away from" required error={tried ? errors.from : null}>
-          <DatePicker value={from} onChange={setFrom} min={TODAY} />
+          <DatePicker value={from} onChange={setFrom} min={today} />
         </FormField>
         <FormField label="To" required error={tried ? errors.to : null}>
-          <DatePicker value={to} onChange={setTo} min={from ?? TODAY} />
+          <DatePicker value={to} onChange={setTo} min={from ?? today} />
         </FormField>
       </FieldRow>
-      <FormField label="Delegate to" required error={tried ? errors.delegate : null} helper="Only people who can approve your request types are listed. Delegation never passes on to a third person.">
-        <PersonPicker people={DELEGATE_OPTIONS} value={delegate} onChange={setDelegate} />
+      <FormField
+        label="Delegate to"
+        required
+        error={tried ? errors.delegate : null}
+        helper={live ? 'Type a name to find a colleague. Delegation never passes on to a third person.' : 'Only people who can approve your request types are listed. Delegation never passes on to a third person.'}
+      >
+        <PersonPicker people={options} value={delegate} onChange={setDelegate} onSearchChange={live?.onFindPeople} />
       </FormField>
+      {live ? (
+        <p className="yx-plt-muted">
+          All request types. New requests go to {first ?? 'your delegate'} while you are away{waiting ? `; if it starts today, the ${waiting} already waiting for you move now` : ''}.
+        </p>
+      ) : (
       <FormField label="Which requests">
         <RadioGroup
           aria-label="Which requests"
@@ -1488,22 +1596,31 @@ export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDe
           ]}
         />
       </FormField>
-      {scope === 'some' && (
+      )}
+      {!live && scope === 'some' && (
         <div className="yx-plt-chips" role="group" aria-label="Request types">
           {['Leave', 'Expense', 'Timesheet', 'Regularisation'].map((t) => (
             <Checkbox key={t} label={t} checked={types.includes(t)} onChange={(c) => setTypes((xs) => (c ? [...xs, t] : xs.filter((x) => x !== t)))} />
           ))}
         </div>
       )}
-      <Switch label={`Also hand over the ${WAITING_FOR_ME} requests already waiting for you`} checked={handOver} onChange={setHandOver} />
-      <Switch label={`Let my team know ${first ?? 'who'} approves while I'm away`} checked={tellTeam} onChange={setTellTeam} />
+      {!live && <Switch label={`Also hand over the ${WAITING_FOR_ME} requests already waiting for you`} checked={handOver} onChange={setHandOver} />}
+      {!live && <Switch label={`Let my team know ${first ?? 'who'} approves while I'm away`} checked={tellTeam} onChange={setTellTeam} />}
+      {failed && <InlineAlert tone="danger">{failed}</InlineAlert>}
       <div className="yx-plt-card-actions">
-        <Button>Cancel</Button>
+        {(!live || editing) && <Button onClick={() => live && setEditing(false)}>Cancel</Button>}
         <Button
           variant="primary"
+          loading={busy}
           onClick={() => {
             setTried(true);
-            if (Object.keys(errors).length === 0) setSaved(true);
+            if (Object.keys(errors).length) return;
+            if (!live) return setSaved(true);
+            void run(() => live.onSave({ delegateId: delegate!, from: from!, to: to! })).then((ok) => {
+              if (!ok) return;
+              setEditing(false);
+              live.onDone?.(`Delegation saved. ${first} approves for you from ${formatDate(from!)}.`);
+            });
           }}
         >
           Save delegation
@@ -1513,7 +1630,30 @@ export function DelegationForm({ defaultFrom = null, defaultTo = null, defaultDe
   );
 }
 
-function DelegatedToYou() {
+function DelegatedToYou({ live }: { live?: LiveDelegation }) {
+  if (live) {
+    if (!live.delegatedToYou.length) return null;
+    return (
+      <Card title="Delegated to you">
+        <ul className="yx-plt-list">
+          {live.delegatedToYou.map((d) => {
+            const running = d.from <= live.today;
+            return (
+              <li key={d.id}>
+                <span className="yx-plt-list__main">
+                  <PersonLabel name={d.person} secondary={`away ${dayMonth(d.from)} – ${dayMonth(d.to)} · all request types`} />
+                </span>
+                <Badge tone={running ? 'success' : 'info'}>{running ? 'Active' : `Starts ${dayMonth(d.from)}`}</Badge>
+                <Button size="sm" variant="review" asChild>
+                  <a href={live.approvalsHref}>Open</a>
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+    );
+  }
   return (
     <Card title="Delegated to you">
       <ul className="yx-plt-list">
@@ -1539,10 +1679,10 @@ export function DelegationScreen(props: DelegationProps) {
       <PageHeader title="Delegation" description="Choose who approves requests for you while you are away." />
       <div className="yx-plt-narrow">
         <Card>
-          <DelegationForm {...props} />
+          <DelegationForm key={props.live?.current?.id ?? 'new'} {...props} />
         </Card>
       </div>
-      <DelegatedToYou />
+      <DelegatedToYou live={props.live} />
     </DesktopFrame>
   );
 }

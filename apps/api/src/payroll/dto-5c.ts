@@ -31,6 +31,11 @@ export class RunListDto {
   @IsOptional()
   @Matches(MONTH)
   month?: string;
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class ReasonDto {

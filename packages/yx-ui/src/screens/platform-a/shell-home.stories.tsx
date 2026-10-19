@@ -99,6 +99,34 @@ export const PLT02EmployeePay: S = { name: 'PLT-02 · Role home · employee, HR 
 export const PLT02EmployeeCustomisable: S = { name: 'PLT-02 · Role home · employee, admin allows personalising', render: () => <RoleHomeScreen persona="employee" data={EMP} customisable /> };
 export const PLT02Manager: S = { name: 'PLT-02 · Role home · manager', render: () => <RoleHomeScreen persona="manager" data={MGR} /> };
 export const PLT02HR: S = { name: 'PLT-02 · Role home · HR', render: () => <RoleHomeScreen persona="hr" data={HR} /> };
+// The live HR home (design audit step 2): the designed widgets with live data only. Counts, no trends until there is
+// history to compare with; the sample widgets (announcements, coming up, cycles) wait for their data.
+const LIVE_HR = {
+  firstName: 'Lakshmi',
+  company: 'Kaveri Foods Pvt Ltd',
+  today: TODAY,
+  approvalsHref: '#approvals',
+  stats: [
+    { id: 'exceptions', title: 'Attendance exceptions', label: 'Attendance exceptions', value: 27, drill: { label: 'Resolve before lock', href: '#muster' } },
+    { id: 'notReady', title: 'Not ready for payroll', label: 'Not ready for payroll', value: 12, drill: { label: 'See the 12 of 248', href: '#run-readiness' } },
+    { id: 'cases', title: 'Open cases', label: 'Open cases', value: 9, drill: { label: 'View helpdesk', href: '#tickets' } },
+  ],
+  due: [
+    { id: 'lock', text: 'Lock September attendance, Kaveri Foods Pvt Ltd', href: '#periods', badge: { label: 'Due now', tone: 'warning' as const }, note: '27 exceptions still open', action: 'Lock attendance' },
+    { id: 'probation', text: 'Probation confirmations · 3 due by 5 Oct', href: '#probation' },
+  ],
+  moves: [
+    { id: 'j1', name: 'Rohan Shetty', secondary: 'Joins Thu 1 Oct · Sales', badges: [{ label: '2 tasks open', tone: 'warning' as const }] },
+    { id: 'j2', name: 'Imran Qureshi', secondary: 'Joins Thu 1 Oct · Hosur plant', badges: [{ label: 'All ready', tone: 'success' as const }] },
+    { id: 'l1', name: 'Rahul Verma', secondary: 'Last day Wed 30 Sep', badges: [{ label: '1 clearance item open', tone: 'warning' as const }] },
+  ],
+  movesHref: '#onboarding',
+};
+export const PLT02HRLive: S = { name: 'PLT-02 · Role home · HR, live widgets', render: () => <RoleHomeScreen persona="hr" data={HR} live={LIVE_HR} /> };
+export const PLT02HRLiveQuiet: S = {
+  name: 'PLT-02 · Role home · HR, live, quiet week',
+  render: () => <RoleHomeScreen persona="hr" data={{ actions: [] }} live={{ ...LIVE_HR, due: [], moves: [] }} />,
+};
 export const PLT02FinanceHidden: S = {
   name: 'PLT-02 · Role home · finance, amounts hidden',
   render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts />,

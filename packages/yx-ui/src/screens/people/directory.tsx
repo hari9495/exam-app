@@ -37,10 +37,19 @@ const FIELDS: FilterFieldDef[] = [
   { key: 'manager', label: 'Manager', type: 'text' },
 ];
 
+/**
+ * The Department filter's values for a row: its department and every one above it, so Operations finds Quality.
+ * shortcut: a label names only the nearest parent (Operations › Quality); show the full path if trees get deeper.
+ */
+const departmentsOf = (r: WorkforceRow) => {
+  const p = r.departmentPath ?? (r.department ? [r.department] : []);
+  return p.map((n, i) => (i ? `${p[i - 1]} › ${n}` : n));
+};
+
 /** Filter choices from the rows on screen (the live app's departments and sites, not the sample ones). */
 function fieldsFor(rows: WorkforceRow[]): FilterFieldDef[] {
-  const of = (f: (r: WorkforceRow) => string) => opt([...new Set(rows.map(f).filter(Boolean))].sort());
-  return FIELDS.map((x) => (x.key === 'department' ? { ...x, options: of((r) => r.department) } : x.key === 'location' ? { ...x, options: of((r) => r.location) } : x.key === 'status' ? { ...x, options: of((r) => r.status) } : x));
+  const of = (f: (r: WorkforceRow) => string | string[]) => opt([...new Set(rows.flatMap(f).filter(Boolean))].sort());
+  return FIELDS.map((x) => (x.key === 'department' ? { ...x, options: of(departmentsOf) } : x.key === 'location' ? { ...x, options: of((r) => r.location) } : x.key === 'status' ? { ...x, options: of((r) => r.status) } : x));
 }
 
 function directoryColumns(persona: Persona, filter: WorkforceFilter): TableColumn<WorkforceRow>[] {
@@ -177,7 +186,7 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
         (kind === 'All persons' || r.kind === kind) &&
         quickMatch(r, quick, me) &&
         (!s || [r.name, r.code, r.email, r.phone].some((x) => (x ?? '').toLowerCase().includes(s))) &&
-        filters.every((f) => matchesFilter((r as unknown as Record<string, unknown>)[f.key], f)),
+        filters.every((f) => matchesFilter(f.key === 'department' ? departmentsOf(r) : (r as unknown as Record<string, unknown>)[f.key], f)),
     );
   }, [rows, kind, filters, q, quick, me]);
   const kinds = live ? FILTERS.filter((f) => live.cards[f]) : FILTERS;
@@ -333,6 +342,7 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
                   setView(id);
                   if (views) apply(id === 'all' ? ALL_VIEW : (views.list.find((v) => v.id === id)?.state ?? ALL_VIEW));
                 }}
+                canShare={persona === 'hr'}
                 onSaveAs={views ? (name, shared) => views.onSave(name, shared, { kind, filters, q, quick, ...(columns ? { columns } : {}) }) : undefined}
               />
             )

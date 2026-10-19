@@ -4,7 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { SettingDef, resolveSetting } from '../org-structure/settings-registry';
-import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
+import { Viewer, buildViewer, has, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { OtClaimDto, OtRuleDto } from './dto';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
@@ -247,7 +247,7 @@ export class OvertimeService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ team and HR review
 
   /** Claims of a month for the people the viewer may see (team, or attendance.view in scope). */
-  async review(ctx: TenantContext, user: ScopeUser, month: string) {
+  async review(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
     const { from, to } = monthRange(month);
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -259,6 +259,7 @@ export class OvertimeService implements OnModuleInit {
         LEFT JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL
         WHERE r.organization_id = ${org}::uuid AND r.work_on BETWEEN ${from}::date AND ${to}::date AND r.employee_id <> ${own ?? '00000000-0000-0000-0000-000000000000'}::uuid
           AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`r.employee_id`, to)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`r.employee_id`, Prisma.sql`r.work_on`)}
         ORDER BY r.work_on DESC LIMIT 500`;
       const full = rows.length ? await tx.overtimeRequest.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.id) } } }) : [];
       const canOverride = has(v, 'leave.approve') && !v.actingForOther;

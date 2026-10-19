@@ -13,11 +13,13 @@ import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useOrgBranding } from '../../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
-import { useWorkspaceCounts } from '../../../../lib/yx-shell';
+import { useScope, useWorkspaceCounts } from '../../../../lib/yx-shell';
+import { homeWidgets, type HomeWidgets } from '../../../../lib/yx-home';
 import { browserLocation, useTime, useTimeWrite } from '../../../../lib/yx-time';
 
-// Home (PLT-02, design audit step 1): the designed role home with live data. Approvals waiting, today's check-in, and
-// the counts behind the person's own queues; widgets with no live data yet are left out, not faked.
+// Home (PLT-02, design audit steps 1 and 2): the designed role home with live data. Approvals waiting, today's check-in,
+// the HR widgets (attendance exceptions, not ready for payroll, open cases, due dates, joiners and leavers this week)
+// and the counts behind the person's own queues; widgets with no live data yet are left out, not faked.
 export default function YxHomePage() {
   const router = useRouter();
   const { accessToken, actingSuperAdmin } = useAuth();
@@ -30,6 +32,15 @@ export default function YxHomePage() {
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   const attendance = useTime<MyAttendance>(employee ? `/me/attendance?month=${new Date().toISOString().slice(0, 7)}` : null);
   const write = useTimeWrite();
+  // The designed HR widgets (design audit step 2), for the company and period chosen in the top bar.
+  const { scope } = useScope();
+  const widgets = useQuery<HomeWidgets>({
+    queryKey: ['yx', 'workspace', 'home', scope.entity, scope.period],
+    queryFn: () => apiFetch(`/workspace/home?month=${scope.period}${scope.entity ? `&legalEntityId=${encodeURIComponent(scope.entity)}` : ''}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && Boolean(scope.period),
+    retry: false,
+  });
+  const extra = homeWidgets(widgets.data, new Date().toISOString().slice(0, 10));
 
   const persona: RoleHomeScreenProps['persona'] = perms.has('employee.profile.view') ? 'hr' : perms.has('payroll.run.approve') || perms.has('payroll.run.view') ? 'finance' : team.data?.members.length ? 'manager' : 'employee';
   const actions: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.onBehalfOf ?? t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
@@ -44,12 +55,16 @@ export default function YxHomePage() {
     onReview: () => router.push('/yx/approvals'),
     clock: attendance.data ? <TodayCard data={attendance.data} getLocation={browserLocation} onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })} /> : undefined,
     stats: [
+      ...(extra.stats ?? []),
       ...stat('documentsToVerify', 'Documents', 'Documents to verify', '/yx/people/documents', 'Open the queue'),
       ...stat('exitCases', 'Exits', 'Open exit cases', '/yx/people/exits', 'View exits'),
       ...stat('payslipQueries', 'Payslip queries', 'Payslip queries open', '/yx/payroll/payslip-queries', 'Answer queries'),
       ...stat('myTickets', 'My tickets', 'Tickets assigned to you', '/yx/desk/tickets', 'Open tickets'),
       ...(c.scorecardsToDo ? stat('scorecardsToDo', 'Scorecards', 'Scorecards you owe', '/yx/hiring/interviews', 'Write them') : []),
     ],
+    due: extra.due,
+    moves: extra.moves,
+    movesHref: extra.movesHref,
     quickActions: employee
       ? [
           { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },

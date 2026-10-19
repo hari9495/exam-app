@@ -9,34 +9,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import {
-  ActiveDto,
-  ConsentDto,
-  EligibilityOverrideDto,
-  MonthQueryDto,
-  NightConfirmDto,
-  NightOptInDto,
-  OtClaimDto,
-  OtRuleDto,
-  OverrideDto,
-  PatternAssignDto,
-  PatternDto,
-  PeriodDto,
-  ProjectDto,
-  RegisterQueryDto,
-  RosterCellsDto,
-  RosterCopyDto,
-  SafeguardDto,
-  ShiftDetailsDto,
-  ShiftDto,
-  ShiftTimesDto,
-  SwapDto,
-  TimesheetDto,
-  UnlockDto,
-  WeekQueryDto,
-  WithdrawConsentDto,
-  YearQueryDto,
-} from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { NightWorkService } from './night-work.service';
 import { OvertimeService } from './overtime.service';
@@ -286,8 +259,8 @@ export class TimeOpsController {
   // ------------------------------------------------------------------------------------------ team and HR
 
   @Get('overtime')
-  otReview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
-    return this.overtime.review(ctx, this.user(req), q.month);
+  otReview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthEntityQueryDto) {
+    return this.overtime.review(ctx, this.user(req), q.month, q.legalEntityId);
   }
 
   @Post('overtime/:id/override')
@@ -305,8 +278,8 @@ export class TimeOpsController {
 
   @Get('periods')
   @RequirePermissions('attendance.lock')
-  periodsOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearQueryDto) {
-    return this.periods.periods(ctx, this.user(req), q.year);
+  periodsOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearEntityQueryDto) {
+    return this.periods.periods(ctx, this.user(req), q.year, q.legalEntityId);
   }
 
   @Get('periods/preflight')

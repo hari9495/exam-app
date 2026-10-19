@@ -263,4 +263,15 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     expect(byId(body, ids.meera)).toBeUndefined(); // still tomorrow in KF's time
     expect((await list('hrA', `?legalEntityId=${ids.leTN}`)).asOf).toBe(east);
   });
+
+  it('each row names its department and those above it, top first (the parent department filter)', async () => {
+    await tenantPrisma.forTenant(ctx('A'), async (tx) => {
+      const id = randomUUID();
+      await tx.department.create({ data: { organizationId: org.A.id, id, name: 'Operations', code: 'OPS', path: `/${id}/` } });
+      await tx.department.update({ where: { id: ids.deptTN }, data: { parentId: id, path: `/${id}/${ids.deptTN}/` } });
+    });
+    const body = await list('empA');
+    expect(byId(body, ids.imran)?.departmentPath).toEqual(['Operations', 'Dept TN']);
+    expect(byId(body, ids.arjun)?.departmentPath).toEqual(['Dept KF']);
+  });
 });

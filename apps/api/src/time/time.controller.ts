@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeQueryDto, ReasonDto, RegulariseDto, YearEndDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeQueryDto, ReasonDto, RegulariseDto, YearEndDto, EntityFilterDto, MonthEntityQueryDto, RangeEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
@@ -109,8 +109,8 @@ export class TimeController {
   // ------------------------------------------------------------------------------------------ team and HR
 
   @Get('team/calendar')
-  calendar(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RangeQueryDto) {
-    return this.leave.teamCalendar(ctx, this.user(req), q.from, q.to);
+  calendar(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RangeEntityQueryDto) {
+    return this.leave.teamCalendar(ctx, this.user(req), q.from, q.to, q.legalEntityId);
   }
 
   @Get('requests/:id')
@@ -126,8 +126,8 @@ export class TimeController {
   }
 
   @Get('muster')
-  muster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
-    return this.attendance.muster(ctx, this.user(req), q.month);
+  muster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthEntityQueryDto) {
+    return this.attendance.muster(ctx, this.user(req), q.month, q.legalEntityId);
   }
 
   @Get('people/:employeeId/days/:on')
@@ -137,8 +137,8 @@ export class TimeController {
 
   @Get('hr/balances')
   @RequirePermissions('leave.view')
-  balances(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.leave.hrBalances(ctx, this.user(req));
+  balances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityFilterDto) {
+    return this.leave.hrBalances(ctx, this.user(req), q.legalEntityId);
   }
 
   @Get('people/:employeeId/ledger')

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { Viewer, buildViewer, tenantWide, has, type ScopeUser } from '../access/scope';
+import { Viewer, buildViewer, inEntitySql, inScopeSql, tenantWide, has, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { PunchDto, RegulariseDto } from './dto';
@@ -215,7 +215,26 @@ export class AttendanceService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ the muster (TIM-02)
 
   /** Days of everyone the viewer may see (YX-AT-14: team for a manager, attendance.view scope for HR), read-only. */
-  async muster(ctx: TenantContext, user: ScopeUser, month: string) {
+  /**
+   * Home (PLT-02 "Attendance exceptions"): days in `month` with a missing punch or timesheet among the people the
+   * explicit attendance.view grant reaches (a manager's own team stays on the muster). Null without the key.
+   */
+  async exceptionCount(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null): Promise<number | null> {
+    const v = await this.viewer(user);
+    if (!has(v, 'attendance.view') || (v.actingForOther && !tenantWide(v, 'attendance.view'))) return null;
+    const { from, to } = monthRange(month);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      const [r] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM attendance_days d
+        WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')
+          AND ${inScopeSql(c, v, 'attendance.view', Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`, own)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`)}`;
+      return r?.n ?? 0;
+    });
+  }
+
+  async muster(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
     const { from, to } = monthRange(month);
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -227,6 +246,7 @@ export class AttendanceService implements OnModuleInit {
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${from}::date)
         JOIN locations l ON l.organization_id = e.organization_id AND l.id = a.location_id
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to)}
+          AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];

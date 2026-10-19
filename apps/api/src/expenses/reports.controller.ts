@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
-import { IsIn, IsOptional, Matches } from 'class-validator';
+import { IsIn, IsOptional, Matches, IsUUID } from 'class-validator';
 import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -23,6 +23,11 @@ export class ReportQueryDto {
   @IsOptional()
   @IsIn(['json', 'csv'])
   format?: 'json' | 'csv';
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 // Expenses batch E5: reports (EXP-09), JSON for the screen and CSV to export (M05-BUILD-DESIGN §18 "Reports").
@@ -36,7 +41,7 @@ export class ExpenseReportsController {
   async report(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('kind') kind: string, @Query() q: ReportQueryDto) {
     if (!(REPORTS as readonly string[]).includes(kind)) throw new BadRequestException('No such report.');
     if (q.from && q.to && q.from > q.to) throw new BadRequestException('The report starts after it ends.');
-    const r = await this.reports.report(ctx, req.user as ScopeUser, kind as ReportKind, q.from, q.to);
+    const r = await this.reports.report(ctx, req.user as ScopeUser, kind as ReportKind, q.from, q.to, q.legalEntityId);
     if (q.format !== 'csv') return r;
     res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="expenses-${kind}-${r.from}-to-${r.to}.csv"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return toCsv(r);

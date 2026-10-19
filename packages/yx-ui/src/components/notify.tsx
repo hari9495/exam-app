@@ -302,6 +302,8 @@ export interface NotificationCentreProps {
   /** Called when an item is opened. */
   onOpenItem?: (item: NotificationItem) => void;
   settingsHref: string;
+  /** The full inbox (PLT-03), when the app has one. */
+  allHref?: string;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -329,7 +331,7 @@ function groupByDay<T extends { at: Date }>(items: T[], now: Date) {
   return groups;
 }
 
-export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
+export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, allHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const unread = items.filter((i) => !i.read).length;
   const ref = now ?? new Date();
@@ -405,6 +407,7 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
           </RT.Content>
         </RT.Root>
         <footer className="yx-notif__foot">
+          {allHref && <Link href={allHref}>See all notifications</Link>}
           <Link href={settingsHref}>Notification settings</Link>
         </footer>
       </PopoverContent>

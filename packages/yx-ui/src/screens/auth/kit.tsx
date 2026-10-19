@@ -1,10 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { Logo } from '../../components/brand';
+import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
+import { TenantPortal } from '../portals/portals-kit';
 import { Button } from '../../components/button';
 import { Checkbox, MethodCards, type MethodCardOption } from '../../components/choice';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { Heading, Text } from '../../components/foundations';
+import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Fingerprint, KeyRound, MessageSquare, Smartphone } from 'lucide-react';
 import type { BadgeTone } from '../../components/display';
@@ -93,20 +93,59 @@ export function useStep() {
 
 /* ---------- sign-in frame ---------- */
 
-/** Centred sign-in card: logo, one h1, the form. No side art; fits 390 px phones. */
-export function AuthFrame({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+/** Where the sign-in footer's notices live (APX-G G-05, G-16, G-17, G-23, G-21): public pages, no sign-in needed. */
+export const LEGAL_LINKS = {
+  privacy: '/yx/legal/privacy',
+  terms: '/yx/legal/terms',
+  accessibility: '/yx/legal/accessibility',
+  grievance: '/yx/legal/grievance',
+  openSource: '/yx/legal/open-source',
+} as const;
+
+/**
+ * The language picked on the sign-in pages (P04 Q4, G1 people.language). The live app provides it and keeps the
+ * choice; without a provider (stories) the picker works on its own.
+ */
+export const AuthLanguageContext = createContext<{ value: string; onChange: (lang: string) => void } | null>(null);
+
+export interface AuthFrameProps {
+  title: string;
+  /** The helper line under the title. */
+  subtitle?: ReactNode;
+  children: ReactNode;
+  /** Under the card (e.g. "Start again"). */
+  footer?: ReactNode;
+  /** The company being signed in to, when known: it heads the band instead of YukthiX. */
+  company?: string | null;
+  /** The line beside the language picker. */
+  note?: string;
+}
+
+/**
+ * SEC-01 sign-in frame, in the portal sign-in pattern (PTR-01, T9-01) with YukthiX's own colours: the header band
+ * (company and product), the note and language picker, one card with the title and helper line, then the legal
+ * notices and "Powered by YukthiX". Fits 390 px phones.
+ */
+export function AuthFrame({ title, subtitle, children, footer, company, note = 'Company accounts only · a second step where your company asks for one' }: AuthFrameProps) {
+  const lang = useContext(AuthLanguageContext);
   return (
-    <div className="yx-auth">
-      <main className="yx-auth__card" aria-labelledby="yx-auth-title">
-        <Logo size="lg" />
-        <div className="yx-auth__head">
-          <Heading level={1} id="yx-auth-title">{title}</Heading>
-          {subtitle && <Text as="p" tone="secondary" className="yx-auth__sub">{subtitle}</Text>}
+    <TenantPortal
+      tenant={company || 'YukthiX'}
+      portal={company ? 'YukthiX HR' : 'HR Suite'}
+      narrow
+      access={{ kind: 'note', text: note }}
+      footer={{ privacy: 'Privacy notice', hrefs: LEGAL_LINKS }}
+      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : {})}
+    >
+      <section className="yx-signin" aria-labelledby="yx-auth-title">
+        <div className="yx-signin__head">
+          <h1 id="yx-auth-title" className="yx-signin__title">{title}</h1>
+          {subtitle && <p className="yx-signin__intro">{subtitle}</p>}
         </div>
         {children}
-      </main>
+      </section>
       {footer && <div className="yx-auth__foot">{footer}</div>}
-    </div>
+    </TenantPortal>
   );
 }
 

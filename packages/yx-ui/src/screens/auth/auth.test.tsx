@@ -835,10 +835,14 @@ describe('passkey as a sign-in method', () => {
     const onPasskey = vi.fn();
     const { rerender } = render(<SignIn options={{ ...ALL_WAYS, passkey: true }} onPasskey={onPasskey} onMobile={vi.fn()} onSocial={vi.fn()} />);
     expect(screen.getByLabelText(/Work email/)).toHaveAttribute('autocomplete', 'username webauthn');
+    // SEC-01: the passkey is the main button, above the other ways and the work email (whose Continue steps back).
+    const passkey = screen.getByRole('button', { name: 'Sign in with a passkey' });
+    expect(passkey).toHaveAttribute('data-variant', 'primary');
     const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Sign in with a passkey', 'Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
-    expect(ways[0]).toHaveAttribute('data-variant', 'secondary');
-    await userEvent.click(ways[0]);
+    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
+    expect(passkey.compareDocumentPosition(ways[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).toHaveAttribute('data-variant', 'secondary');
+    await userEvent.click(passkey);
     expect(onPasskey).toHaveBeenCalledOnce();
     // Company says no, or the browser can't (the host then passes no onPasskey): no button.
     rerender(<SignIn options={{ ...ALL_WAYS, passkey: false }} onPasskey={onPasskey} />);
@@ -914,5 +918,30 @@ describe('ipLabel', () => {
     expect(ipLabel('172.20.0.4')).toBe('Local network · 172.20.0.4');
     expect(ipLabel('49.207.12.34')).toBe('49.207.12.34');
     expect(ipLabel(null)).toBe('');
+  });
+});
+
+describe('SEC-01 sign-in frame (design audit SI-01)', () => {
+  it('heads the page with the company and product, and ends with the legal notices and "Powered by YukthiX"', () => {
+    render(<SignIn company={{ name: 'Kaveri Foods Pvt Ltd', logoUrl: null }} options={{ google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true, passkey: false }} />);
+    expect(document.querySelector('.yx-portal__tenant')).toHaveTextContent('Kaveri Foods Pvt Ltd');
+    expect(document.querySelector('.yx-portal__name')).toHaveTextContent('YukthiX HR');
+    expect(screen.getByText('Start with your work email. We take you to the right way in for your company.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument();
+    const links = within(screen.getByRole('navigation', { name: 'Legal notices' })).getAllByRole('link');
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Privacy notice', '/yx/legal/privacy'],
+      ['Terms of use', '/yx/legal/terms'],
+      ['Accessibility statement', '/yx/legal/accessibility'],
+      ['Grievance officer', '/yx/legal/grievance'],
+      ['Open-source notices', '/yx/legal/open-source'],
+    ]);
+    expect(screen.getByText(/Powered by/)).toBeInTheDocument();
+  });
+
+  it('names YukthiX in the band when the company is not known yet', () => {
+    render(<SignIn />);
+    expect(document.querySelector('.yx-portal__tenant')).toHaveTextContent('YukthiX');
+    expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument();
   });
 });

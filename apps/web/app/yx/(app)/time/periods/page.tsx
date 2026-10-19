@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { PeriodsScreen, type Periods, type Preflight } from '@yukthix/ui/time';
 import { timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // HR › Attendance periods (P08): attendance.lock for the legal entity; lock and unlock ask for a fresh second step.
 export default function YxPeriodsPage() {
+  const sp = useScopeParams();
   const [year, setYear] = useState(todayIndia().slice(0, 4));
-  const periods = useTime<Periods>(`/periods?year=${year}`);
+  const periods = useTime<Periods>(withParams(`/periods?year=${year}`, sp.entity));
   const read = useTimeRead();
   const write = useTimeWrite();
   return (

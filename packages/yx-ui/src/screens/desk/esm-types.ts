@@ -120,6 +120,8 @@ export interface Delegation {
   mine: boolean;
   person: string;
   delegate: string;
+  /** The delegate's login (PLT-07 keeps the same person on "Change"). */
+  delegateUserId?: string;
   startsOn: string;
   endsOn: string;
   source: 'manual' | 'leave';

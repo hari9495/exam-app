@@ -87,6 +87,20 @@ export class MonthQueryDto {
   month!: string;
 }
 
+export { EntityFilterDto } from '../common/entity-filter.dto';
+
+export class MonthEntityQueryDto extends MonthQueryDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
+export class RangeEntityQueryDto extends RangeQueryDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
 export class PunchDto {
   @IsIn(['in', 'out'])
   kind!: 'in' | 'out';
@@ -676,6 +690,12 @@ export class UnlockDto extends PeriodDto {
 export class YearQueryDto {
   @Matches(/^\d{4}$/)
   year!: string;
+}
+
+export class YearEntityQueryDto extends YearQueryDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class RegisterQueryDto {

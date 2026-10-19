@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import { ExitCasesScreen, type ExitRow, type IrOverview } from '@yukthix/ui/lifecycle';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // People › Exits (PPL-19; design §10): resignations and company exits in scope; HR starts company exits here.
 export default function YxExitsPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
   const canStart = perms.has('lifecycle.exit.manage');
-  const data = useLife<{ today: string; rows: ExitRow[] }>('/lifecycle/exits');
+  const data = useLife<{ today: string; rows: ExitRow[] }>(withParams('/lifecycle/exits', sp.entity));
   const places = useJoinerPlaces(canStart);
   const write = useLifeWrite();
   const ir = useLife<IrOverview>(canStart ? '/lifecycle/ir-permissions' : null);

@@ -23,6 +23,7 @@ test('HR: cards, ID and status, a saved view, export and Issue letter', async ({
   await page.getByRole('menuitem', { name: /Save as new view/ }).click();
   const name = `Arjun ${Date.now().toString(36)}`;
   await page.getByRole('textbox', { name: /View name/ }).fill(name);
+  await expect(page.getByRole('checkbox', { name: 'Share with the team' })).toBeVisible();
   await page.getByRole('button', { name: 'Save view' }).click();
   await expect(page.getByText(`View "${name}" saved`).first()).toBeVisible();
   await page.getByRole('button', { name: /^View:/ }).click();
@@ -49,4 +50,9 @@ test('a colleague: Public fields only, and the quick chips', async ({ page }) =>
   await expect(page.getByRole('columnheader', { name: /^ID/ })).toHaveCount(0);
   await page.getByRole('radio', { name: 'My department' }).click();
   await expect(page.getByRole('table')).toBeVisible();
+  // A colleague keeps views for themselves: only HR can share one with everyone.
+  await page.getByRole('button', { name: /^View:/ }).click();
+  await page.getByRole('menuitem', { name: /Save as new view/ }).click();
+  await expect(page.getByRole('textbox', { name: /View name/ })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Share with the team' })).toHaveCount(0);
 });

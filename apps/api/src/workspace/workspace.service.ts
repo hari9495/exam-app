@@ -1,9 +1,18 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
+import { employeesInEntity } from '../access/scope';
 import { EmployeeHistoryService, type RequestUser } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
+import { todayIst } from '../org-structure/org-validation';
+import { addDays } from '../time/time-maths';
+import { AttendanceService } from '../time/attendance.service';
+import { PeriodsService } from '../time/periods.service';
+import { PayRunsService } from '../payroll/runs.service';
+import { JoinersService } from '../lifecycle/joiners.service';
+import { ExitsService } from '../lifecycle/exits.service';
 
 export interface SearchHit {
   id: string;
@@ -24,7 +33,19 @@ const like = (t: string) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const enc = encodeURIComponent;
 
 /** The keys the counts and search sections need; each section shows only what its key reaches. */
-const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work'] as const;
+const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage'] as const;
+
+/** Home (PLT-02) widgets for the HR, payroll and manager homes. A widget is absent when the person may not see it. */
+export interface HomeWidgets {
+  month: string;
+  attendanceExceptions?: number;
+  notReadyForPayroll?: { notReady: number; people: number; runId: string | null };
+  openCases?: number;
+  dueLocks?: { month: string; entityId: string; entityName: string; lockableFrom: string; exceptions: number; waiting: number }[];
+  probationsDue?: { count: number; firstDue: string | null };
+  joiners?: { id: string; name: string; on: string; department: string | null; location: string; openTasks: number }[];
+  leavers?: { id: string; name: string; on: string; clearanceOpen: number }[];
+}
 
 // The YukthiX app frame (design audit step 1, PLT-01 / PLT-20): the global search behind Ctrl K and the counts on
 // the side menu. Every section runs inside the company's RLS context and applies the same rule as the page it links
@@ -36,7 +57,65 @@ export class WorkspaceService {
     private readonly prisma: PrismaService,
     private readonly history: EmployeeHistoryService,
     private readonly people: PeopleService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  // Each widget asks the module that owns the data, with that module's own permission and scope rules.
+  private service<T>(type: new (...args: never[]) => T): T {
+    return this.moduleRef.get(type, { strict: false });
+  }
+
+  /**
+   * Home widgets (design audit step 2): attendance exceptions, people not ready for payroll, open cases, due dates
+   * (attendance lock, probation confirmations) and this week's joiners and leavers. Follows the company and period
+   * chosen in the top bar. Counts only, never trends: there is no history to compare with yet.
+   */
+  async home(ctx: TenantContext, user: RequestUser, month: string, entityId: string | null): Promise<HomeWidgets> {
+    const out: HomeWidgets = { month };
+    if (!ctx.organizationId || !user.userId) return out;
+    const keys = await this.granted(user);
+    const support = Boolean(user.actingSuperAdmin);
+    const today = todayIst();
+    const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+    const week = { from: addDays(today, -dow), to: addDays(today, 6 - dow) };
+    const inWeek = (d: string | null | undefined) => Boolean(d && d >= week.from && d <= week.to);
+
+    const exceptions = await this.service(AttendanceService).exceptionCount(ctx, user, month, entityId);
+    if (exceptions !== null) out.attendanceExceptions = exceptions;
+    const notReady = support ? null : await this.service(PayRunsService).notReady(ctx, user, month, entityId);
+    if (notReady) out.notReadyForPayroll = notReady;
+    const locks = await this.service(PeriodsService).dueLocks(ctx, user, entityId);
+    if (locks?.length) out.dueLocks = locks;
+
+    const v = await this.history.viewer(user);
+    if (v.grants.has('employee.profile.view') || v.grants.has('employee.change.manage')) {
+      const soon = addDays(today, 14);
+      const due = (await this.people.probations(ctx, v)).rows.filter((r) => !r.confirmedFrom && !r.pendingConfirmationId && r.plannedEndOn <= soon);
+      if (due.length) out.probationsDue = { count: due.length, firstDue: due.map((r) => r.plannedEndOn).sort()[0] ?? null };
+    }
+    if (keys.has('lifecycle.onboarding.view') || keys.has('lifecycle.onboarding.manage')) {
+      const board = await this.service(JoinersService).board(ctx, user);
+      out.joiners = board.joiners
+        .filter((j) => inWeek(j.joiningOn) && (!entityId || j.legalEntityId === entityId))
+        .map((j) => ({ id: j.id, name: j.name, on: j.joiningOn, department: j.department, location: j.location, openTasks: j.openTasks }));
+    }
+    if (keys.has('lifecycle.exit.view') || keys.has('lifecycle.exit.manage')) {
+      const rows = (await this.service(ExitsService).list(ctx, user)).rows.filter((k) => inWeek(k.lastDay));
+      const inEntity = entityId ? await inCompany(this.tenantPrisma, ctx, (tx, c) => employeesInEntity(tx, c, entityId, rows.map((r) => r.employeeId))) : null;
+      out.leavers = rows.filter((k) => !inEntity || inEntity.has(k.employeeId)).map((k) => ({ id: k.id, name: k.name, on: k.lastDay, clearanceOpen: k.clearance.open }));
+    }
+    if (!support && keys.has('desk.ticket.work')) {
+      out.openCases = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+        // Open tickets on the desks the person works today (the queue their Tickets page shows).
+        const [r] = await tx.$queryRaw<{ n: number }[]>(Prisma.sql`SELECT count(*)::int AS n FROM sd_tickets t
+          WHERE t.organization_id = ${c.organizationId}::uuid AND t.system_state NOT IN ('solved', 'closed')
+            AND t.desk_id IN (SELECT m.desk_id FROM sd_desk_members m WHERE m.organization_id = ${c.organizationId}::uuid AND m.user_id = ${user.userId}::uuid
+              AND m.ended_at IS NULL AND m.valid_from <= ${today}::date AND (m.valid_to IS NULL OR m.valid_to >= ${today}::date))`);
+        return r?.n ?? 0;
+      });
+    }
+    return out;
+  }
 
   private granted(user: RequestUser) {
     return resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, [...KEYS]);

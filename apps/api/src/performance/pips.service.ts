@@ -4,7 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
-import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, inScopeSql, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, inScopeSql, started, employeesInEntity } from '../access/scope';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf } from '../time/time-core';
@@ -176,7 +176,7 @@ export class PerformancePipsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ list and read
 
-  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'team' | 'scope' = 'team') {
+  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'team' | 'scope' = 'team', entityId?: string | null) {
     const v = await this.viewer(user);
     return this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -189,7 +189,9 @@ export class PerformancePipsService implements OnModuleInit {
         if (!v.grants.has('perf.pip.manage') || v.actingForOther) throw new ForbiddenException('Plans of people in scope need perf.pip.manage.');
         ids = await tx.$queryRaw`SELECT p.id::text FROM pips p WHERE p.organization_id = ${org}::uuid AND ${inScopeSql(c, v, 'perf.pip.manage', Prisma.sql`p.employee_id`, Prisma.sql`${today}::date`, me)} ${me ? Prisma.sql`AND p.employee_id <> ${me}::uuid` : Prisma.empty} LIMIT 2000`;
       }
-      const rows = await tx.pip.findMany({ where: { organizationId: org, id: { in: ids.map((x) => x.id) } }, orderBy: { startsOn: 'desc' } });
+      const all = await tx.pip.findMany({ where: { organizationId: org, id: { in: ids.map((x) => x.id) } }, orderBy: { startsOn: 'desc' } });
+      const inEntity = entityId && view !== 'mine' ? await employeesInEntity(tx, c, entityId, all.map((p) => p.employeeId)) : null;
+      const rows = inEntity ? all.filter((p) => inEntity.has(p.employeeId)) : all;
       const people = await this.names(tx, org, rows.flatMap((p) => [p.employeeId, p.managerEmployeeId]));
       const next = await tx.pipCheckin.findMany({ where: { organizationId: org, pipId: { in: rows.map((p) => p.id) }, status: 'due' }, orderBy: { dueOn: 'asc' } });
       return rows.map((p) => ({ id: p.id, employee: people.get(p.employeeId) ?? '', manager: people.get(p.managerEmployeeId) ?? '', status: p.status, startsOn: iso(p.startsOn), endsOn: iso(p.endsOn), nextCheckin: next.find((x) => x.pipId === p.id)?.dueOn.toISOString().slice(0, 10) ?? null }));
