@@ -126,7 +126,7 @@ export interface AuthFrameProps {
  * (company and product), the note and language picker, one card with the title and helper line, then the legal
  * notices and "Powered by YukthiX". Fits 390 px phones.
  */
-export function AuthFrame({ title, subtitle, children, footer, company, note = 'Company accounts only · a second step where your company asks for one' }: AuthFrameProps) {
+export function AuthFrame({ title, subtitle, children, footer, company, note = 'For company staff only' }: AuthFrameProps) {
   const lang = useContext(AuthLanguageContext);
   return (
     <TenantPortal

@@ -12,7 +12,8 @@
   --yx-color-action-primary: var(--yx-tportal-accent);
 }
 :root:not([data-theme="dark"]) .yx-tportal[data-accent="tenant"] .yx-button[data-variant="primary"]:hover:not(:disabled) { filter: brightness(0.9); }
-.yx-tportal .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
+/* The top stripe shows the company's own brand colour; without one there is no stripe (a default blue looked like a bug). */
+.yx-tportal[data-accent="tenant"] .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
 .yx-tportal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--yx-space-2) var(--yx-space-4); margin-left: auto; }
 /* Narrow portals (sign-in): tighter spacing so the whole page fits a laptop screen (1536 × 730) without scrolling. */
 .yx-tportal[data-narrow] .yx-portal__body { padding-block: var(--yx-space-4); gap: var(--yx-space-4); }
