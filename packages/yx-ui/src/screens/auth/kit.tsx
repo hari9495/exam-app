@@ -135,7 +135,7 @@ export function AuthFrame({ title, subtitle, children, footer, company, note = '
       narrow
       access={{ kind: 'note', text: note }}
       footer={{ privacy: 'Privacy notice', hrefs: LEGAL_LINKS }}
-      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : {})}
+      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : { noLanguage: true })}
     >
       <section className="yx-signin" aria-labelledby="yx-auth-title">
         <div className="yx-signin__head">

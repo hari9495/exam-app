@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { YxLanguageProvider } from '../../lib/yx-language';
 
 export const metadata: Metadata = { title: { absolute: 'YukthiX', template: '%s | YukthiX' } };
 
@@ -7,7 +6,8 @@ export const metadata: Metadata = { title: { absolute: 'YukthiX', template: '%s 
 export default function YxLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="yx-root">
-      <YxLanguageProvider>{children}</YxLanguageProvider>
+      {/* No language picker on sign-in until YukthiX's own screens are translated (founder, 19 Oct 2026). */}
+      {children}
     </div>
   );
 }

@@ -927,7 +927,6 @@ describe('SEC-01 sign-in frame (design audit SI-01)', () => {
     expect(document.querySelector('.yx-portal__tenant')).toHaveTextContent('Kaveri Foods Pvt Ltd');
     expect(document.querySelector('.yx-portal__name')).toHaveTextContent('YukthiX HR');
     expect(screen.getByText('Start with your work email. We take you to the right way in for your company.')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument();
     const links = within(screen.getByRole('navigation', { name: 'Legal notices' })).getAllByRole('link');
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Privacy notice', '/yx/legal/privacy'],
@@ -943,5 +942,14 @@ describe('SEC-01 sign-in frame (design audit SI-01)', () => {
     render(<SignIn />);
     expect(document.querySelector('.yx-portal__tenant')).toHaveTextContent('YukthiX');
     expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument();
+  });
+});
+
+describe('sign-in frame', () => {
+  it('has no language picker until YukthiX is translated, no stripe without a brand colour, and a plain note', () => {
+    const { container } = render(<SignIn />);
+    expect(screen.queryByRole('combobox', { name: 'Language' })).toBeNull();
+    expect(container.querySelector('.yx-tportal')).toHaveAttribute('data-accent', 'default');
+    expect(screen.getByText('For company staff only')).toBeInTheDocument();
   });
 });
