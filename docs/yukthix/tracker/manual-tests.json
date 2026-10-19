@@ -251,6 +251,12 @@
     "result": "Fail (fixed)",
     "findings": "After the Home rebuild: 1) refused clock-in showed two messages run together ('…office network Your location could not be found…'); 2) 'Late by 770 min' instead of hours and minutes; 3) Start break button missing (breaks not built); 4) Bengaluru head office lost its geofence after an edit (likely unticked by mistake; values restored by the founder).",
     "fixedIn": "PR #190: one clear location message; 'Late by 12 h 50 min' on Home, clock and Team (tests). Start break: not built yet (see ideas)."
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Pass (HR, employee)",
+    "findings": "HR and employee Homes match the design apart from parts not built yet (WFH, Start break: being built; Announcements: Engage) and data-dependent lines (vs last month, late-mark allowance, birthdays). Founder chose: every Home box shrinks to fit its content.",
+    "fixedIn": "PR #190: widgets are as tall as their content"
    }
   ],
   "ideas": [
