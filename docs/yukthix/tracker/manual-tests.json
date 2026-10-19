@@ -3820,8 +3820,8 @@
    {
     "date": "2026-10-19",
     "result": "Fail",
-    "findings": "After typing the email, Continue stayed white under the blue passkey button and looked greyed out.",
-    "fixedIn": "PR #185: one blue button at a time; Continue turns blue once an email is typed, the passkey button turns white (unit test)"
+    "findings": "After typing the email, Continue stayed white under the blue passkey button and looked greyed out. Email check was weak: Continue turned on for anything with an @ (e.g. 'hr@demo').",
+    "fixedIn": "PR #185: one blue button at a time; Continue turns blue once an email is typed, the passkey button turns white (unit test); one shared isEmail check: Continue waits for a full email; 'Enter your full email, like name@company.com' shows after leaving the box or pressing Enter, never while typing (also forgot-password and staff sign-in)"
    }
   ],
   "ideas": [],
