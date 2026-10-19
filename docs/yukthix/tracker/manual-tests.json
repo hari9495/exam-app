@@ -346,10 +346,19 @@
  },
  {
   "account": "hr@demo-org.test",
-  "stories": [],
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-01-bell"
+  ],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "1) The panel stays open after clicking a notification (founder). 2) Every avatar shows 'Y' instead of the person. 3) Vague repeated texts ('An absconding timeline step is due' x6) without the person. 4) No Approve / View buttons on approval notifications. 5) Footer links glued: 'See all notificationsNotification settings'.",
+    "fixedIn": "In progress: search builder also fixing the bell"
+   }
+  ],
   "ideas": [],
   "id": "AF-06",
   "area": "0 App frame (design parity step 1, PR #178)",
