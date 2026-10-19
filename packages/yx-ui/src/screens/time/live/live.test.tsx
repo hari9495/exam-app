@@ -102,6 +102,18 @@ describe('Me › Attendance', () => {
     expect(getLocation).toHaveBeenCalledTimes(2);
   });
 
+  it("breaks: Start break while checked in, End break while on one; today's punches name them", async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'break_end' as const, message: 'Break ended. On the Bengaluru head office network', verdict: 'network', distanceM: null }));
+    const at = (id: string, kind: 'in' | 'break_start', iso: string) => ({ id, kind, at: iso, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
+    const data: MyAttendance = { ...ATT, next: 'out', onBreak: true, punches: [at('p1', 'in', '2026-10-09T03:58:00Z'), at('p2', 'break_start', '2026-10-09T07:30:00Z')] };
+    render(<MyAttendanceScreen state="ready" data={data} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn(async () => ({ pin: null }))} onPunch={onPunch} onFix={vi.fn()} onWithdrawFix={vi.fn()} />);
+    const list = screen.getByRole('list', { name: 'Punches today' });
+    expect(within(list).getByText('Break start')).toBeInTheDocument();
+    expect(screen.getByText('You are on a break. Break time is not counted as worked time.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'End break' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
+  });
+
   it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
     const onFix = vi.fn(async () => ({}));
     render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={onFix} onWithdrawFix={vi.fn()} />);

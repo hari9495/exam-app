@@ -1,0 +1,175 @@
+import { Test } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
+import { randomUUID } from 'crypto';
+import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AppModule } from '../src/app.module';
+import { EmailService } from '../src/email/email.service';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
+import { DayEngine } from '../src/time/day-engine.service';
+import { addDays, instantAt } from '../src/time/time-maths';
+import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+
+// Small features (19 Oct 2026), end to end against the real database (forced RLS, the app role): break punches with the
+// location check and break time off the worked time (the muster too); work from home through the approvals workflow;
+// "Show pay on Home"; Nudge. Each new endpoint is checked for another person's data, another company and no permission.
+describe('Small features: breaks, work from home, pay on Home, nudge', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let tenantPrisma: TenantPrismaService;
+  let dayEngine: DayEngine;
+  const sent: { to: string; subject: string; html: string }[] = [];
+  const PASSWORD = 'Corr3ct-Horse-Battery';
+  const run = randomUUID().slice(0, 8);
+  const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
+  const server = () => app.getHttpServer();
+  let planId: string;
+  const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
+  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'other' | 'empB';
+  const users = {} as Record<Who, string>;
+  const token = {} as Record<Who, string>;
+  const ids: Record<string, string> = {};
+  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
+  const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  const d = (n: number) => addDays(today, n);
+  // The test location's only weekly off is the weekday two days from today.
+  const offWeekday = ((new Date(`${d(2)}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+  const INSIDE = { lat: 12.9717, lng: 77.5947, accuracyM: 20 };
+  const OUTSIDE = { lat: 12.9716, lng: 77.6126, accuracyM: 20 };
+  const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; summary: { label: string; value: string }[] }[];
+  const decide = (who: Who, taskId: string, decision: 'approve' | 'reject') => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(decision === 'reject' ? { reason: 'Not this week' } : {}) });
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(EmailService)
+      .useValue({ send: jest.fn(async (m: { to: string; subject: string; html: string }) => (sent.push(m), { success: true })) })
+      .overrideProvider(BlobStorageService)
+      .useValue(createFakeBlobStorage())
+      .compile();
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    await app.init();
+    prisma = moduleRef.get(PrismaService);
+    tenantPrisma = moduleRef.get(TenantPrismaService);
+    dayEngine = moduleRef.get(DayEngine);
+
+    planId = (await prisma.plan.create({ data: { name: `small-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
+    for (const k of ['A', 'B'] as const) {
+      const created = await prisma.organization.create({ data: { name: `Small Org ${k}`, slug: `small-${k.toLowerCase()}-${run}`, planId } });
+      org[k] = { id: created.id, slug: created.slug };
+    }
+    const profile = async (o: string, name: string, keys: readonly string[]) => (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.permissionProfile.create({ data: { organizationId: o, name: `${name}-${run}`, permissionsJson: JSON.stringify(keys) } }))).id;
+    const passwordHash = await argon2.hash(PASSWORD);
+    const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
+      ['adminA', 'A', 'org_admin', null],
+      ['adminB', 'B', 'org_admin', null],
+      ['hrAdmin', 'A', 'panel', ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions],
+      ['mgr', 'A', 'panel', null],
+      ['emp', 'A', 'panel', null],
+      ['peer', 'A', 'panel', null],
+      ['other', 'A', 'panel', null],
+      ['empB', 'B', 'panel', null],
+    ];
+    for (const [who, k, role, keys] of roster) {
+      const o = org[k].id;
+      const permissionProfileId = keys ? await profile(o, who, keys) : null;
+      users[who] = (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: o, email: `${who}@small-${run}.test`, name: `${who} ${run}`, passwordHash, role, permissionProfileId } }))).id;
+      token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@small-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+    }
+    for (const k of ['A', 'B'] as const) {
+      await tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, async (tx) => {
+        const o = { organizationId: org[k].id };
+        ids[`entity${k}`] = (await tx.legalEntity.create({ data: { ...o, name: `Small Foods ${k}`, shortName: `SF${k}-${run}`, isDefault: true } })).id;
+        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata', geoLat: 12.9716, geoLng: 77.5946, geoRadiusM: 150 } })).id;
+        const deptId = randomUUID();
+        ids[`dept${k}`] = (await tx.department.create({ data: { ...o, id: deptId, name: 'Ops', code: 'OPS', path: `/${deptId}/` } })).id;
+        ids[`desig${k}`] = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
+        ids[`perm${k}`] = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+        // The location's day (9:30 to 18:30, 30 minutes' break above 5 hours) for the last month and from today.
+        await tx.locationAttendanceRule.create({ data: { ...o, locationId: ids[`loc${k}`], validFrom: new Date(`${d(-30)}T00:00:00Z`), shiftStart: 570, shiftEnd: 1110, weeklyOffs: [{ weekday: offWeekday }] } });
+      });
+    }
+    const hire = async (admin: 'adminA' | 'adminB', who: Who, manager: string | null, k: 'A' | 'B' = 'A') =>
+      (
+        await api(admin, 'post', '/people/employees')
+          .send({ legalEntityId: ids[`entity${k}`], status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, joinedOn: d(-10), userId: users[who], workEmail: `${who}@small-${run}.test`, assignment: { locationId: ids[`loc${k}`], departmentId: ids[`dept${k}`], designationId: ids[`desig${k}`], employmentTypeId: ids[`perm${k}`], managerEmployeeId: manager } })
+          .expect(201)
+      ).body.id as string;
+    ids.hrEmp = await hire('adminA', 'hrAdmin', null);
+    ids.mgrEmp = await hire('adminA', 'mgr', ids.hrEmp);
+    ids.empEmp = await hire('adminA', 'emp', ids.mgrEmp);
+    ids.peerEmp = await hire('adminA', 'peer', ids.mgrEmp);
+    ids.otherEmp = await hire('adminA', 'other', ids.hrEmp);
+    ids.empBEmp = await hire('adminB', 'empB', null, 'B');
+  }, 240_000);
+
+  afterAll(async () => {
+    await tenantPrisma
+      .forTenant(SUPER, async (tx) => {
+        const all = Object.values(users);
+        await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
+        await tx.session.deleteMany({ where: { userId: { in: all } } });
+        await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
+      })
+      .catch((e) => console.warn('cleanup', e));
+    await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
+    await app.close();
+  });
+
+  describe('breaks on the attendance clock', () => {
+    const punch = (who: Who, kind: string, at: object = INSIDE) => api(who, 'post', '/time/me/punch').send({ kind, ...at });
+
+    it('Start break / End break follow the check-in, with the same location check, each one kept', async () => {
+      expect((await punch('peer', 'break_start').expect(409)).body.message).toBe('Check in before you start a break.');
+      expect((await punch('peer', 'break_end').expect(409)).body.message).toBe('You are not on a break.');
+      await punch('peer', 'in').expect(200);
+      // Outside the geofence: refused, said in plain words, and logged.
+      const refused = (await punch('peer', 'break_start', OUTSIDE).expect(200)).body;
+      expect(refused).toMatchObject({ accepted: false, kind: 'break_start' });
+      expect(refused.message).toBe('Outside Bengaluru, 1.9 km away');
+      expect((await punch('peer', 'break_start').expect(200)).body).toMatchObject({ accepted: true, kind: 'break_start', message: 'Break started. Inside Bengaluru' });
+      expect((await punch('peer', 'break_start').expect(200)).body).toMatchObject({ duplicate: true, message: 'Break already started' });
+      let me = (await api('peer', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;
+      expect(me).toMatchObject({ next: 'out', onBreak: true });
+      expect(me.punches.map((p: { kind: string; accepted: boolean }) => `${p.kind}:${p.accepted}`)).toEqual(['in:true', 'break_start:false', 'break_start:true']);
+      expect((await punch('peer', 'break_end').expect(200)).body).toMatchObject({ accepted: true, message: 'Break ended. Inside Bengaluru' });
+      me = (await api('peer', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;
+      expect(me).toMatchObject({ next: 'out', onBreak: false });
+      // Another person's punches stay theirs; the other company sees none.
+      expect((await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body.punches).toEqual([]);
+      await api('empB', 'get', `/time/people/${ids.peerEmp}/days/${today}`).expect(404);
+      await api('emp', 'get', `/time/people/${ids.peerEmp}/days/${today}`).expect(404);
+      const card = (await api('mgr', 'get', `/time/people/${ids.peerEmp}/days/${today}`).expect(200)).body;
+      expect(card.punches.filter((p: { accepted: boolean }) => p.accepted).map((p: { kind: string }) => p.kind)).toEqual(['in', 'break_start', 'break_end']);
+    });
+
+    it('break time is not worked time: the day and the muster take off the larger of the breaks and the rule', async () => {
+      const on = d(-1);
+      const at = (hhmm: string) => instantAt(on, 'Asia/Kolkata', Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)));
+      const p = (employeeId: string, kind: string, hhmm: string) => ({ organizationId: org.A.id, employeeId, punchedAt: at(hhmm), workOn: new Date(`${on}T00:00:00Z`), kind, accepted: true, verdict: 'inside' });
+      await inA((tx) =>
+        tx.punch.createMany({
+          data: [
+            // 9:30 to 18:30 with a 45-minute break: 495.
+            p(ids.empEmp, 'in', '09:30'), p(ids.empEmp, 'break_start', '13:00'), p(ids.empEmp, 'break_end', '13:45'), p(ids.empEmp, 'out', '18:30'),
+            // A break never ended: it ends at check-out (17:30 to 18:30), so 540 - 60 = 480.
+            p(ids.otherEmp, 'in', '09:30'), p(ids.otherEmp, 'break_start', '17:30'), p(ids.otherEmp, 'out', '18:30'),
+          ],
+        }),
+      );
+      const c = { organizationId: org.A.id, isSuperAdmin: false };
+      for (const e of [ids.empEmp, ids.otherEmp]) await tenantPrisma.forTenant(c, (tx) => dayEngine.evaluate(tx, c, e, on, on));
+      const muster = (await api('hrAdmin', 'get', `/time/muster?month=${on.slice(0, 7)}`).expect(200)).body as { people: { id: string; days: { on: string; workedMinutes: number; status: string }[] }[] };
+      const day = (id: string) => muster.people.find((x) => x.id === id)!.days.find((x) => x.on === on)!;
+      expect(day(ids.empEmp)).toMatchObject({ workedMinutes: 495, status: 'present' });
+      expect(day(ids.otherEmp)).toMatchObject({ workedMinutes: 480, status: 'present' });
+      const mine = (await api('emp', 'get', `/time/me/attendance?month=${on.slice(0, 7)}`).expect(200)).body;
+      expect(mine.days.find((x: { on: string }) => x.on === on)).toMatchObject({ workedMinutes: 495 });
+    });
+  });
+});

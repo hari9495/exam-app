@@ -325,13 +325,47 @@ export interface DayInput {
   holiday: HolidayOn | null;
   /** Approved leave on the day: the whole day or one half. */
   leave: Half | null;
-  punches: readonly { at: Date; kind: 'in' | 'out' }[];
+  punches: readonly { at: Date; kind: PunchKind }[];
   /** The latest approved regularisation of the day. */
   fix: { kind: 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day'; inMinute: number | null; outMinute: number | null } | null;
   rule: DayRule;
   now: Date;
   /** Timesheet mode (D1): the day's approved timesheet minutes, or null when no approved timesheet covers it. */
   timesheetMinutes?: number | null;
+}
+
+export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
+
+/**
+ * Minutes on punched breaks between `from` and `to` (first-in and last-out). A break ends at "End break", or at the next
+ * check-in or check-out: a break still open at check-out ends there. Instants, so a break across midnight counts whole.
+ */
+export function breakMinutes(punches: readonly { at: Date; kind: PunchKind }[], from: Date, to: Date): number {
+  let total = 0;
+  let open: number | null = null;
+  const close = (t: number) => {
+    if (open === null) return;
+    const a = Math.max(open, from.getTime());
+    const b = Math.min(t, to.getTime());
+    if (b > a) total += b - a;
+    open = null;
+  };
+  for (const p of [...punches].sort((x, y) => x.at.getTime() - y.at.getTime())) {
+    if (p.kind === 'break_start') open ??= p.at.getTime();
+    else close(p.at.getTime());
+  }
+  close(to.getTime());
+  return Math.floor(total / 60_000);
+}
+
+/**
+ * Worked minutes between first-in and last-out (founder rule 19 Oct 2026): breaks are never worked time. The time taken
+ * off is the larger of the breaks punched and the shift's break rule (Q3: `breakMinutes` above `breakAboveMinutes`), so
+ * a short punched break never lowers the rule's break, and a long one is never counted twice.
+ */
+export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes'>): number {
+  const gross = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
+  return Math.max(0, gross - Math.max(breakMinutes(punches, firstIn, lastOut), gross > r.breakAboveMinutes ? r.breakMinutes : 0));
 }
 
 export interface DayResult {
@@ -378,7 +412,7 @@ export function evaluateDay(i: DayInput): DayResult {
   // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;
-    const shown = { firstIn, lastOut, workedMinutes: both ? Math.floor((lastOut!.getTime() - firstIn!.getTime()) / 60_000) : null };
+    const shown = { firstIn, lastOut, workedMinutes: both ? netWorked(i.punches, firstIn!, lastOut!, r) : null };
     if (i.mode === 'assumed_present') return { ...none, ...shown, status: 'present', leavePart };
     // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
     const t = i.timesheetMinutes;
@@ -393,8 +427,7 @@ export function evaluateDay(i: DayInput): DayResult {
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
-  let worked = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
-  if (worked > r.breakAboveMinutes) worked -= r.breakMinutes;
+  const worked = netWorked(i.punches, firstIn, lastOut, r);
   const status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
   return { status, leavePart, firstIn, lastOut, workedMinutes: worked, lateMinutes: late, regularised };
 }

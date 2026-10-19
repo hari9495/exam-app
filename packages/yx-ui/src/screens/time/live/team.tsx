@@ -8,6 +8,7 @@ import { NumberField, TextArea } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { useRun } from '../../org/org-kit';
 import { DAY_STATUS, DayStatusBadge, LivePage, MODE_TEXT, addDays, dayText, duration, timeIn } from './kit';
+import { KIND_LABEL } from '../time-kit';
 import { fmtDuration } from '../time-logic';
 import type { DayCard, HrBalances, LedgerRow, LoadState, Muster, TeamCalendar } from './types';
 
@@ -220,7 +221,7 @@ export function MusterScreen(p: MusterScreenProps) {
                       {card.punches.map((x) => (
                         <tr key={x.id}>
                           <td>{timeIn(x.at, card.zone)}</td>
-                          <td>{x.accepted ? (x.kind === 'in' ? 'In' : 'Out') : <Badge tone="danger">Refused</Badge>}</td>
+                          <td>{x.accepted ? KIND_LABEL[x.kind] : <Badge tone="danger">Refused</Badge>}</td>
                           <td>
                             {x.accepted ? `${x.verdict === 'network' ? 'Office network' : x.verdict === 'inside' ? 'Inside' : x.verdict === 'field' ? 'Field (recorded)' : 'Recorded'}${x.where ? ` · ${x.where}` : ''}${x.distanceM !== null ? ` · ${x.distanceM} m from the site` : ''}` : x.refusal}
                             <span className="yx-tim-note"> · {x.source}</span>

@@ -85,9 +85,11 @@ export interface LeavePlan {
   warnings: string[];
 }
 
+export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
+
 export interface PunchRow {
   id: string;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   at: string;
   source: string;
   accepted: boolean;
@@ -133,6 +135,8 @@ export interface MyAttendance {
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
+  /** On a break now (Start break pressed, End break not yet). */
+  onBreak?: boolean;
   days: DayRow[];
   requests: FixRow[];
   regularise: { limit: number; used: number };
@@ -141,7 +145,7 @@ export interface MyAttendance {
 export interface PunchResult {
   accepted: boolean;
   duplicate: boolean;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   message: string;
   verdict: string;
   distanceM: number | null;

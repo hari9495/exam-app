@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScheduleBook, lockedDates } from './schedule';
 import { asDate, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
-import { HolidayOn, addDays, daysBetween, eachDay, evaluateDay } from './time-maths';
+import { HolidayOn, addDays, daysBetween, eachDay, evaluateDay, type PunchKind } from './time-maths';
 
 // M02 §B3 day engine: works out each day's status from the expected day (the roster / pattern / location shift and
 // weekly off, holidays, leave), the attendance mode (P01 scoped, dated setting, D1) and punches / approved fixes /
@@ -41,7 +41,7 @@ export class DayEngine {
         weeklyOff: day.weeklyOff,
         holiday: holidays.get(f.locationId)!.get(on) ?? null,
         leave: leave.get(on) ?? null,
-        punches: punches.filter((p) => p.workOn.toISOString().slice(0, 10) === on).map((p) => ({ at: p.punchedAt, kind: p.kind as 'in' | 'out' })),
+        punches: punches.filter((p) => p.workOn.toISOString().slice(0, 10) === on).map((p) => ({ at: p.punchedAt, kind: p.kind as PunchKind })),
         fix: fix ? { kind: fix.kind as 'missed_in', inMinute: fix.inMinute, outMinute: fix.outMinute } : null,
         rule,
         now,

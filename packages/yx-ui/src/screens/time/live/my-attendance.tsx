@@ -9,10 +9,10 @@ import { CodeField, TextArea, TimeField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
-import { ClockCard } from '../time-kit';
+import { ClockCard, KIND_LABEL } from '../time-kit';
 import type { ClockState, Punch } from '../time-logic';
 import { DayStatusBadge, LivePage, MODE_TEXT, clock, dateText, dayText, duration, timeIn } from './kit';
-import type { DayRow, FixInput, FixKind, LoadState, MyAttendance, MyNightWork, NightCodeSent, PunchResult } from './types';
+import type { DayRow, FixInput, FixKind, LoadState, MyAttendance, MyNightWork, NightCodeSent, PunchKind, PunchResult } from './types';
 
 // Me › Attendance (TIM-07 / TIM-12 on the web): check in and out with the location shown before it counts (YX-AT-23:
 // a refused attempt says why in plain words and is kept), my days this month from the day engine, and fixes
@@ -33,7 +33,7 @@ export interface MyAttendanceScreenProps {
   onMonth: (month: string) => void;
   /** The browser's location, or null with the reason (permission refused, no GPS). */
   getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
-  onPunch: (kind: 'in' | 'out', pin: Pin | null) => Promise<PunchResult>;
+  onPunch: (kind: PunchKind, pin: Pin | null) => Promise<PunchResult>;
   onFix: (input: FixInput) => Promise<unknown>;
   onWithdrawFix: (id: string) => Promise<unknown>;
   /** Night work: shown when loaded. */
@@ -89,14 +89,18 @@ export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; 
   const [result, setResult] = useState<PunchResult | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { busy, error, run } = useRun();
-  const punch = () =>
-    void run('punch', async () => {
+  const [last, setLast] = useState<PunchKind>(data.next);
+  const punch = (kind: PunchKind) =>
+    void run(kind, async () => {
       setResult(null);
+      setLast(kind);
       const loc = await getLocation();
       setProblem(loc.pin ? null : (loc.problem ?? null));
-      setResult(await onPunch(data.next, loc.pin));
+      setResult(await onPunch(kind, loc.pin));
     });
   const label = data.next === 'in' ? 'Check in' : 'Check out';
+  // Breaks while checked in: Start break, then End break (a break still open ends at check-out).
+  const breakKind: PunchKind | null = data.next === 'out' ? (data.onBreak ? 'break_end' : 'break_start') : null;
   return (
     <Card title={`Today, ${dayText(data.today)}`}>
       <div className="yx-tim-stack">
@@ -107,10 +111,18 @@ export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; 
             </p>
             {data.mode !== 'punch' && <p className="yx-tim-note">{data.mode === 'assumed_present' ? 'You are counted present unless you are on leave, so checking in is optional.' : 'Your day comes from your timesheet; punches are kept as a record.'}</p>}
           </div>
-          <Button variant="primary" loading={busy === 'punch'} onClick={punch}>
-            {label}
-          </Button>
+          <div className="yx-tim-row">
+            {breakKind && (
+              <Button loading={busy === breakKind} onClick={() => punch(breakKind)}>
+                {breakKind === 'break_end' ? 'End break' : 'Start break'}
+              </Button>
+            )}
+            <Button variant="primary" loading={busy === data.next} onClick={() => punch(data.next)}>
+              {label}
+            </Button>
+          </div>
         </div>
+        {data.onBreak && <p className="yx-tim-note">You are on a break. Break time is not counted as worked time.</p>}
         {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
         {problem && !result?.accepted && <InlineAlert tone="warning" title="We could not read your location">{problem}</InlineAlert>}
         {result && (
@@ -119,7 +131,7 @@ export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; 
             title={result.accepted ? (result.duplicate ? 'Already recorded' : 'Done') : 'Not recorded'}
             actions={
               result.accepted ? undefined : (
-                <Button size="sm" onClick={punch}>
+                <Button size="sm" onClick={() => punch(last)}>
                   Retry location
                 </Button>
               )
@@ -132,7 +144,7 @@ export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; 
           <ul className="yx-tim-stack" data-gap="sm" aria-label="Punches today">
             {data.punches.map((x) => (
               <li key={x.id} className="yx-tim-row">
-                <Badge tone={x.accepted ? 'success' : 'danger'}>{x.accepted ? (x.kind === 'in' ? 'In' : 'Out') : 'Refused'}</Badge>
+                <Badge tone={!x.accepted ? 'danger' : x.kind.startsWith('break') ? 'neutral' : 'success'}>{x.accepted ? KIND_LABEL[x.kind] : 'Refused'}</Badge>
                 <span>{timeIn(x.at, data.zone)}</span>
                 <span className="yx-tim-muted">{x.accepted ? (x.where ? `${x.verdict === 'network' ? 'Office network' : 'Inside'} · ${x.where}` : 'Recorded') : x.refusal}</span>
               </li>
@@ -384,8 +396,8 @@ function zoneTime(at: Date, zone: string) {
 const hhmmOf = (minute: number) => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 
 /**
- * "Attendance today" on the Home (PLT-02): the designed clock card on the person's live day. Checking in and out goes to
- * the server, which applies the location and network rules; there is no break punch in the live app yet.
+ * "Attendance today" on the Home (PLT-02): the designed clock card on the person's live day. Checking in and out and
+ * Start break / End break go to the server, which applies the location and network rules to each.
  */
 export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref, onRegularise }: {
   data: MyAttendance;
@@ -399,7 +411,7 @@ export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref,
   const punches: Punch[] = data.punches
     .filter((p) => p.accepted)
     .map((p) => ({ id: p.id, kind: p.kind, time: zoneTime(new Date(p.at), data.zone).hhmm, source: SOURCES.includes(p.source as Punch['source']) ? (p.source as Punch['source']) : 'web', where: p.where ?? '', verdict: p.verdict === 'outside' ? 'outside' : p.verdict === 'field' ? 'field' : p.verdict === 'network' ? 'network' : 'inside' }));
-  const state: ClockState = data.next === 'out' ? 'working' : punches.length ? 'out' : 'not_in';
+  const state: ClockState = data.next === 'out' ? (data.onBreak ? 'break' : 'working') : punches.length ? 'out' : 'not_in';
   const day = data.days.find((d) => d.on === data.today);
   const dayOff = data.shift.off ? 'Weekly off today' : day?.status === 'holiday' ? 'Holiday today' : day?.status === 'leave' && (!day.leavePart || day.leavePart === 'full') ? 'On leave today' : undefined;
   return (
@@ -414,7 +426,6 @@ export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref,
       state={state}
       punches={punches}
       mode={data.shift.checkIn}
-      breaks={false}
       dayOff={dayOff}
       punchesHref={attendanceHref}
       lateMarksBefore={data.days.filter((d) => d.on < data.today && (d.lateMinutes ?? 0) > 0).length}

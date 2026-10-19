@@ -17,6 +17,8 @@ import { workOnForPunch } from './time-rules';
 
 export const REGULARISE = 'attendance.regularise';
 const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day' };
+const ALREADY: Record<PunchDto['kind'], string> = { in: 'Already checked in', out: 'Already checked out', break_start: 'Break already started', break_end: 'Break already ended' };
+const DONE: Record<PunchDto['kind'], string> = { in: 'Checked in', out: 'Checked out', break_start: 'Break started', break_end: 'Break ended' };
 const hhmm = (m: number | null) => (m === null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 
@@ -79,7 +81,9 @@ export class AttendanceService implements OnModuleInit {
         shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
         fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
-        next: accepted.length && accepted[accepted.length - 1].kind === 'in' ? 'out' : 'in',
+        // Working or on a break: the next punch closes the day (a break still open ends at check-out).
+        next: accepted.length && accepted[accepted.length - 1].kind !== 'out' ? 'out' : 'in',
+        onBreak: accepted.at(-1)?.kind === 'break_start',
         days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
         requests: requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status })),
         regularise: { limit, used },
@@ -104,9 +108,14 @@ export class AttendanceService implements OnModuleInit {
       await book.prime([f.employeeId], addDays(today, -1), today);
       const shifts = new Map<string, Awaited<ReturnType<ScheduleBook['day']>>['shift']>();
       for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
-      const workOn = workOnForPunch(now, f.zone, dto.kind, (d) => shifts.get(d) ?? null);
       const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true }, orderBy: { punchedAt: 'desc' } });
-      if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: dto.kind === 'in' ? 'Already checked in' : 'Already checked out', distanceM: last.distanceM };
+      if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[dto.kind], distanceM: last.distanceM };
+      // A break belongs to the day a check-out now would close (a break across midnight stays on the night shift's
+      // day). It starts while working that day and ends while on it.
+      const workOn = workOnForPunch(now, f.zone, dto.kind === 'in' ? 'in' : 'out', (d) => shifts.get(d) ?? null);
+      const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
+      if (dto.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
+      if (dto.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
       const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: rule.checkIn });
       await tx.punch.create({
         data: {
@@ -129,7 +138,7 @@ export class AttendanceService implements OnModuleInit {
         },
       });
       if (v.accepted) await this.days.evaluate(tx, c, f.employeeId, workOn, workOn, now);
-      return { accepted: v.accepted, duplicate: false, kind: dto.kind, at: now, verdict: v.verdict, message: v.accepted ? (dto.kind === 'in' ? `Checked in. ${v.message}` : `Checked out. ${v.message}`) : v.message, distanceM: v.distanceM };
+      return { accepted: v.accepted, duplicate: false, kind: dto.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[dto.kind]}. ${v.message}` : v.message, distanceM: v.distanceM };
     });
   }
 

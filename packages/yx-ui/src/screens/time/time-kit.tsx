@@ -100,7 +100,7 @@ export const SOURCE_LABEL: Record<Punch['source'], string> = {
   desktop: 'Desktop agent',
   field: 'Field visit',
 };
-const KIND_LABEL: Record<Punch['kind'], string> = { in: 'In', out: 'Out', break_start: 'Break start', break_end: 'Break end' };
+export const KIND_LABEL: Record<Punch['kind'], string> = { in: 'In', out: 'Out', break_start: 'Break start', break_end: 'Break end' };
 /** Sources with no GPS: a fixed reader, kiosk, Teams or desktop agent gets no distance, only the site it is fixed at. */
 const NO_VERDICT: Punch['source'][] = ['biometric', 'kiosk', 'teams', 'desktop'];
 /** Site name from a punch's place ("Chennai office · Gate 2 reader" → "Chennai office"). */
@@ -454,8 +454,8 @@ export interface ClockCardProps {
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
   /** Live app: records the punch on the server; the card shows the refusal, the parent reloads the day. */
-  onPunch?: (kind: 'in' | 'out') => Promise<{ accepted: boolean; message: string }>;
-  /** Breaks are punched (Start break / End break). The live app has no break punch yet. */
+  onPunch?: (kind: Punch['kind']) => Promise<{ accepted: boolean; message: string }>;
+  /** Breaks are punched (Start break / End break). */
   breaks?: boolean;
   /** Where "Today's punches" opens on the home card. */
   punchesHref?: string;
@@ -493,7 +493,7 @@ export function ClockCard(p: ClockCardProps) {
     dayOff,
   } = p;
   const [refused, setRefused] = useState<string | null>(null);
-  const [punching, setPunching] = useState(false);
+  const [punching, setPunching] = useState<Punch['kind'] | null>(null);
   const [stateInner, setStateInner] = useState<ClockState>(p.defaultState ?? 'not_in');
   const state = p.state ?? stateInner;
   const [punchesInner, setPunchesInner] = useState<Punch[]>(p.defaultPunches ?? []);
@@ -565,14 +565,14 @@ export function ClockCard(p: ClockCardProps) {
 
   const act = (a: ClockAction) => {
     const kind: Punch['kind'] = a === 'clock_in' ? 'in' : a === 'clock_out' ? 'out' : a === 'start_break' ? 'break_start' : 'break_end';
-    if (p.onPunch && (kind === 'in' || kind === 'out')) {
+    if (p.onPunch) {
       setRefused(null);
-      setPunching(true);
+      setPunching(kind);
       void p
         .onPunch(kind)
         .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
         .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
-        .finally(() => setPunching(false));
+        .finally(() => setPunching(null));
       return;
     }
     const next = nextClockState(state, a);
@@ -678,13 +678,13 @@ export function ClockCard(p: ClockCardProps) {
 
       {!dayOff && <div className="yx-tim-clock__actions">
         {state === 'not_in' && (
-          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching} onClick={() => primary && act(primary)}>Clock in</Button>
+          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in</Button>
         )}
         {(state === 'working' || state === 'break') && (
-          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching} onClick={() => act('clock_out')}>Clock out</Button>
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching === 'out'} onClick={() => act('clock_out')}>Clock out</Button>
         )}
         {breaks && (state === 'working' || state === 'break') && (
-          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
+          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
         {state === 'out' && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}

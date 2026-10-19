@@ -4854,7 +4854,7 @@ model Punch {
   employeeId     String   @map("employee_id") @db.Uuid
   punchedAt      DateTime @map("punched_at") @db.Timestamptz(3)
   workOn         DateTime @map("work_on") @db.Date
-  kind           String   @db.VarChar(3)
+  kind           String   @db.VarChar(11)
   source         String   @default("web") @db.VarChar(10)
   accepted       Boolean
   refusal        String?  @db.VarChar(200)

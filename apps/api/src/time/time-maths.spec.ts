@@ -1,4 +1,4 @@
-import { accrualsDue, applyFloors, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -212,6 +212,54 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
   it('first-half leave: grace starts at the working half and half the hours make the day', () => {
     const r = evaluateDay({ ...base, leave: 'first', punches: [{ at: at('14:05'), kind: 'in' }, { at: at('18:31'), kind: 'out' }] });
     expect(r).toMatchObject({ status: 'present', leavePart: 'first', lateMinutes: 0 });
+  });
+
+  describe('punched breaks are not worked time (19 Oct 2026)', () => {
+    const p = (kind: 'in' | 'out' | 'break_start' | 'break_end', hhmm: string) => ({ at: at(hhmm), kind });
+
+    it('a 45-minute break comes off; the larger of the break taken and the shift rule wins, never both', () => {
+      // 9:30 to 18:30 is 540 minutes. A 45-minute break is more than the rule's 30: 495 worked.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '13:00'), p('break_end', '13:45'), p('out', '18:30')] }).workedMinutes).toBe(495);
+      // A 10-minute break is less than the rule's 30 above 5 hours: the rule's 30 comes off, not 10 and not 40.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '11:00'), p('break_end', '11:10'), p('out', '18:30')] }).workedMinutes).toBe(510);
+      // Two breaks add up (20 + 25 = 45).
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '11:00'), p('break_end', '11:20'), p('break_start', '15:00'), p('break_end', '15:25'), p('out', '18:30')] }).workedMinutes).toBe(495);
+    });
+
+    it('a short day below the rule threshold loses only the break it punched', () => {
+      // 9:30 to 13:30 is 240 (under 5 h, so no rule break); a 15-minute break: 225, and below the half-day line.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '11:00'), p('break_end', '11:15'), p('out', '13:30')] })).toMatchObject({ workedMinutes: 225, status: 'absent' });
+    });
+
+    it('a break still open at check-out ends at check-out', () => {
+      // On break from 17:30, checked out at 18:30 without ending it: 60 minutes of break.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '17:30'), p('out', '18:30')] }).workedMinutes).toBe(480);
+      expect(breakMinutes([p('in', '09:30'), p('break_start', '17:30'), p('out', '18:30')], at('09:30'), at('18:30'))).toBe(60);
+    });
+
+    it('a long break can turn a full day into a half day', () => {
+      // 540 minutes with a 4-hour break: 300 worked, below the 480 full-day line.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:30'), p('break_start', '11:00'), p('break_end', '15:00'), p('out', '18:30')] })).toMatchObject({ workedMinutes: 300, status: 'half_day' });
+    });
+
+    it('a break across midnight on a night shift counts whole', () => {
+      const night = { ...rule, shiftStart: 22 * 60, shiftEnd: 6 * 60 };
+      const t = (on: string, hhmm: string) => instantAt(on, 'Asia/Kolkata', Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)));
+      const punches = [
+        { at: t('2026-10-05', '22:00'), kind: 'in' as const },
+        { at: t('2026-10-05', '23:40'), kind: 'break_start' as const },
+        { at: t('2026-10-06', '00:25'), kind: 'break_end' as const },
+        { at: t('2026-10-06', '06:00'), kind: 'out' as const },
+      ];
+      // 480 minutes with a 45-minute break that crosses midnight: 435.
+      expect(evaluateDay({ ...base, rule: night, punches, now: new Date('2026-10-08T00:00:00Z') }).workedMinutes).toBe(435);
+    });
+
+    it('a fixed check-out clips the break to the worked span; the other modes show the same net time', () => {
+      // Check-out fixed to 18:00 with a break from 17:30 never ended: the break ends at 18:00, so 540 - 30 = 510.
+      expect(evaluateDay({ ...base, punches: [p('in', '09:00'), p('break_start', '17:30')], fix: { kind: 'missed_out', inMinute: null, outMinute: 18 * 60 } }).workedMinutes).toBe(510);
+      expect(evaluateDay({ ...base, mode: 'assumed_present', punches: [p('in', '09:30'), p('break_start', '13:00'), p('break_end', '13:45'), p('out', '18:30')] }).workedMinutes).toBe(495);
+    });
   });
 
   it('an approved regularisation fills the missing check-out', () => {

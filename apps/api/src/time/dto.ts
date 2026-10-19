@@ -102,8 +102,8 @@ export class RangeEntityQueryDto extends RangeQueryDto {
 }
 
 export class PunchDto {
-  @IsIn(['in', 'out'])
-  kind!: 'in' | 'out';
+  @IsIn(['in', 'out', 'break_start', 'break_end'])
+  kind!: 'in' | 'out' | 'break_start' | 'break_end';
 
   @IsOptional()
   @IsNumber()
