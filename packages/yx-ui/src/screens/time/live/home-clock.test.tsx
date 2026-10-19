@@ -53,6 +53,17 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     expect(await screen.findByText('Outside Bengaluru head office, 850 m away')).toBeInTheDocument();
   });
 
+  it("shows the browser's location problem alone, not glued to the server's message", async () => {
+    const p = props({
+      getLocation: vi.fn(async () => ({ pin: null, problem: 'Your location could not be found. Move near a window or outdoors and try again.' })),
+      onPunch: vi.fn(async () => ({ accepted: false, duplicate: false, kind: 'in' as const, message: 'Turn on location for this site, or connect to the office network.', verdict: 'no_location', distanceM: null })),
+    });
+    render(<HomeClockCard {...p} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(await screen.findByText('Your location could not be found. Move near a window or outdoors and try again.')).toBeInTheDocument();
+    expect(screen.queryByText(/office network Your/)).toBeNull();
+  });
+
   it('has no clock-in on a day of leave or a weekly off', () => {
     const { rerender } = render(<HomeClockCard {...props({ data: { ...DAY, days: [{ on: '2026-10-19', status: 'leave', leavePart: 'full', workedMinutes: null, lateMinutes: null, regularised: false }] } })} />);
     expect(screen.getByText('On leave today')).toBeInTheDocument();
