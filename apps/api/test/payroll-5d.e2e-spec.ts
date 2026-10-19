@@ -471,7 +471,8 @@ describe('Payroll batch 5d', () => {
     expect(mails.filter((m) => m.attachments?.length)).toEqual([]);
     const mail1 = mails.find((m) => m.to === `emp1@pay5d-${run}.test` && m.html.includes('open='))!;
     expect(mails.filter((m) => m.html.includes('open='))).toHaveLength(3);
-    expect(mail1.html).not.toMatch(/₹|Rs\.?\s?\d|\d{1,3}(,\d{2,3})+/);
+    // : the random link token can hold "Rs4"; an amount is a word of its own.
+    expect(mail1.html).not.toMatch(/₹|Rs\.?\s?\d|\d{1,3}(,\d{2,3})+/);
     const linkToken = /open=([A-Za-z0-9_-]+)/.exec(mail1.html)![1];
     await api('emp2', 'post', `/payroll/me/payslip-links/${linkToken}/open`).expect(404);
     expect((await api('emp1', 'post', `/payroll/me/payslip-links/${linkToken}/open`).expect(200)).body).toMatchObject({ month });
