@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { button, details, noticeEmail } from '../email/account-emails';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -749,12 +750,23 @@ export class ApprovalsEngine {
       const to = [...new Set(n.to)];
       if (!to.length) continue;
       try {
-        const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
         const url = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}${n.link}`;
         const from = n.actor ?? n.toRequester ?? null;
-        const who = from ? ((await this.tenantPrisma.forTenant(ctx, (tx) => this.names(tx, ctx.organizationId as string, [from]))).get(from) ?? null) : null;
-        const subject = approvalSubject(n, who, Boolean(n.toRequester));
-        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, { subject: subject.slice(0, 150), html: `<p>${esc(n.text)}: <strong>${esc(n.title)}</strong></p><p><a href="${esc(url)}">Open in YukthiX</a></p>` }, n.actor ?? null);
+        const { who, company } = await this.tenantPrisma.forTenant(ctx, async (tx) => ({
+          who: from ? ((await this.names(tx, ctx.organizationId as string, [from])).get(from) ?? null) : null,
+          company: (await tx.organization.findUnique({ where: { id: ctx.organizationId as string }, select: { name: true } }))?.name ?? null,
+        }));
+        const subject = approvalSubject(n, who, Boolean(n.toRequester)).slice(0, 150);
+        // The designed YukthiX email (as the sign-in and account emails), one per recipient so its footer names them.
+        const email = (address: string) =>
+          noticeEmail({
+            to: address,
+            company,
+            subject,
+            heading: subject,
+            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text] as [string, string]])]), button(n.link === '/yx/approvals' ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+          });
+        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {
         this.logger.warn(`approval notice not sent: ${(e as Error).message}`);
       }

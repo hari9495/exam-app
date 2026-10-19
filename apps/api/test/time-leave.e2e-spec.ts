@@ -206,6 +206,13 @@ describe('Time and leave batch 1', () => {
       const res = await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(5), to: d(6), reason: 'Visiting family' }).expect(201);
       ids.req1 = res.body.id;
       expect(res.body).toMatchObject({ status: 'pending', days: 2 });
+      // The manager's email: who asks for what, in the designed YukthiX email (founder review 19 Oct 2026).
+      const send = app.get(EmailService).send as jest.Mock;
+      await new Promise((r) => setTimeout(r, 300));
+      const mail = send.mock.calls.map((c) => c[0] as { subject: string; html: string }).find((m) => / asks for Earned leave/.test(m.subject));
+      expect(mail?.subject).not.toMatch(/Leave: /);
+      expect(mail?.html).toContain('Review in YukthiX');
+      expect(mail?.html).toContain('Sent to');
       expect((await balance('emp', 'EL')).available).toBe(before.available - 2);
       // Overlap is refused, and so is more than the balance.
       expect((await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(6), to: d(6) }).expect(400)).body.message).toMatch(/already have leave/);
