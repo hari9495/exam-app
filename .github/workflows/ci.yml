@@ -1,8 +1,15 @@
 name: CI
 
+# Once per change: pull requests, and main after a merge. A branch push alone ran every job a second time.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A newer push to a pull request cancels its older run; main runs are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
