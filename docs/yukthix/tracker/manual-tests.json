@@ -3870,17 +3870,24 @@
   "url": "http://localhost:3000/yx/sign-in",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "SI-04",
-  "screen": "Change the email",
+  "screen": "Change the email, and Not your company?",
   "account": "(signed out)",
   "steps": [
-   "Type hr@demo-org.test, Continue.",
-   "Press Change."
+   "On the password screen press Change.",
+   "Continue again, then press Not your company?"
   ],
-  "expected": "You go back to the first screen with the email still in the box, ready to edit."
+  "expected": "Change goes back to the first screen with the email kept. Not your company? removes the 'Signing in to <company>' line and the browser forgets the company."
  },
  {
   "area": "0 Sign-in design parity",
