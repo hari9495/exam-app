@@ -20,8 +20,21 @@ export async function passkeyAssertion(getOptions: () => Promise<PublicKeyCreden
  * until the person picks one, and is cancelled when another ceremony starts).
  */
 export async function passkeySignInAssertion(autofill = false) {
-  const optionsJSON = await post('/auth/passkey/options');
+  const optionsJSON: PublicKeyCredentialRequestOptionsJSON = await post('/auth/passkey/options');
+  if (optionsJSON.rpId) lastRpId = optionsJSON.rpId;
   return startAuthentication({ optionsJSON, useBrowserAutofill: autofill });
+}
+
+let lastRpId: string | undefined;
+
+/**
+ * The API does not know this passkey (it was deleted, or the account is gone): ask the browser's password manager to
+ * remove it, so it is not offered again (WebAuthn signalUnknownCredential; browsers without it ignore this).
+ */
+export function forgetUnknownPasskey(credentialId: string): void {
+  const signal = (globalThis.PublicKeyCredential as unknown as { signalUnknownCredential?: (o: { rpId: string; credentialId: string }) => Promise<void> } | undefined)?.signalUnknownCredential;
+  const rpId = lastRpId ?? (typeof window === 'undefined' ? undefined : window.location.hostname);
+  if (signal && rpId) void signal.call(globalThis.PublicKeyCredential, { rpId, credentialId }).catch(() => undefined);
 }
 
 /** Registers a passkey named after this browser; returns the first recovery codes when it is the first factor. */
