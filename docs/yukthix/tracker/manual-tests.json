@@ -3997,8 +3997,15 @@
   "url": "http://localhost:3000/yx/sign-in",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "All 5 pages open in the legal frame. Privacy / grievance contact email not set yet (go-live checklist).",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "SI-08",
   "screen": "Legal pages",

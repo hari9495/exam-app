@@ -30,6 +30,9 @@ Things deliberately left for launch. Development runs locally until then (test k
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)
 
+- [ ] **Privacy and grievance contact (DPDP Act).** Choose the address (e.g. `privacy@yukthix.app`), set
+  `NEXT_PUBLIC_YX_PRIVACY_EMAIL` on the web app; the privacy notice, accessibility statement and grievance officer pages
+  show it. Lawyers finalise the full texts of all legal pages (SI-08, 19 Oct 2026).
 - [ ] **Platform email sender.** Set `SMTP_FROM_ADDRESS` on the API to a YukthiX address on a domain with SPF and DKIM
   (e.g. `YukthiX <no-reply@yukthix.app>`). Without it the sender falls back to `no-reply@exam-platform.test`, which
   real mailboxes reject or mark as spam. Sign-in codes, password resets and account emails all use it (SI-09, 19 Oct 2026).
