@@ -449,7 +449,7 @@ export function TripScreen(p: TripScreenProps) {
                 <Button variant="primary" loading={busy === 'approve'} onClick={() => void run('approve', () => p.onDecide(t.can.decide!, 'approve', ''))}>
                   Approve
                 </Button>
-                <Button variant="danger" onClick={() => setRejecting(true)}>
+                <Button onClick={() => setRejecting(true)}>
                   Do not approve
                 </Button>
               </>
@@ -725,7 +725,7 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
                 <Button variant="primary" loading={busy === 'approve'} onClick={() => void run('approve', () => p.onDecide(a.can.decide!, 'approve', ''))}>
                   Approve
                 </Button>
-                <Button variant="danger" onClick={() => setDialog('reject')}>
+                <Button onClick={() => setDialog('reject')}>
                   Do not approve
                 </Button>
               </>

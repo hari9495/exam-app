@@ -1,5 +1,7 @@
 'use client';
 
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApprovalsScreen, ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView, type Delegation, type PickOption } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../lib/api-client';
@@ -9,8 +11,10 @@ import { deskState } from '../../../../lib/yx-desk';
 
 // Approvals (P03 shared screen, M14 SD-2.05): what waits for me, my decisions, and who approves for me while I am away.
 // No permission key: the API returns only the person's own tasks, requests and delegations.
-export default function YxApprovalsPage() {
+function Approvals() {
   const { accessToken } = useAuth();
+  // ?request=<id>: a notice or email pointed at one request; it is scrolled into view and marked.
+  const focus = useSearchParams()?.get('request') ?? null;
   const token = accessToken ?? undefined;
   const qc = useQueryClient();
   const me = useCurrentUser();
@@ -39,6 +43,7 @@ export default function YxApprovalsPage() {
       onDelegate={(input) => write('/delegations', input)}
       onRevoke={(id) => write(`/delegations/${encodeURIComponent(id)}/revoke`)}
       onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
+      focusRequestId={focus}
     />
     <div className="yx-auth__page">
       <ChannelLinksCard
@@ -52,5 +57,13 @@ export default function YxApprovalsPage() {
       />
     </div>
     </>
+  );
+}
+
+export default function YxApprovalsPage() {
+  return (
+    <Suspense>
+      <Approvals />
+    </Suspense>
   );
 }
