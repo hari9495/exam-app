@@ -191,6 +191,7 @@ describe('Sign in with a passkey (passwordless, AAL2)', () => {
       const { res } = await passkeySignIn(stranger, { ip });
       expect(res.status).toBe(401);
       expect(res.body.message).toBe("We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.");
+      expect(res.body.code).toBe('passkey_unknown'); // so the browser can drop the dead passkey
       expect(cookieOf(res, 'refresh_token')).toBeUndefined();
       expect(Number(await redis.get(ipFails))).toBe(1);
       const [event] = await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.findMany({ where: { method: 'passkey', reason: 'unknown_credential', ipAddress: ip } }));

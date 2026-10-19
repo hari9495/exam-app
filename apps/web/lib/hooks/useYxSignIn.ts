@@ -12,7 +12,7 @@ import { yxLandingPath } from '../yx-landing';
 import { keepNextForRoundTrip, takeNext } from '../safe-next';
 import { lockWaitSeconds, tryAgainIn, yxAuthMessage, yxProofError } from '../yx-auth-messages';
 import { WebAuthnAbortService, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
-import { passkeySignInAssertion } from '../yx-security';
+import { forgetUnknownPasskey, passkeySignInAssertion } from '../yx-security';
 
 // The first step was right and a second factor is owed (P12 YX-IAM-01); no session exists yet.
 export interface MfaChallenge {
@@ -175,6 +175,10 @@ export function useYxSignIn() {
     setBusy(true);
     try {
       await settle(await post('/auth/passkey/verify', { credential }));
+    } catch (err) {
+      const id = (credential as { id?: unknown } | null)?.id;
+      if ((err as { code?: string }).code === 'passkey_unknown' && typeof id === 'string') forgetUnknownPasskey(id);
+      throw err;
     } finally {
       setBusy(false);
     }
