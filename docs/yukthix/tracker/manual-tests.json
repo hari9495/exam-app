@@ -338,8 +338,8 @@
    {
     "date": "2026-10-19",
     "result": "Fail (fixed)",
-    "findings": "After PR #192: pressing N then L with search open opened Apply leave, but the search box stayed open on top.",
-    "fixedIn": "PR #192: every search action (N L, N E, a result, Help) closes the search box first (web test fails without the fix)"
+    "findings": "After PR #192: pressing N then L with search open opened Apply leave, but the search box stayed open on top. Then: on My leave itself, N L / Apply leave did nothing (the sheet opened only on first load and ?apply=1 stayed in the address); same for N E on Expenses.",
+    "fixedIn": "PR #192: every search action (N L, N E, a result, Help) closes the search box first (web test fails without the fix); the leave and expense sheets open on every ask and the pages drop the parameter once read (unit test)"
    }
   ],
   "ideas": [],
