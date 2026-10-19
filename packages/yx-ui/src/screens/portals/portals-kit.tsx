@@ -120,11 +120,20 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
   const user = access.kind === 'otp' ? access.identity : undefined;
   return (
     <div className="yx-tportal" data-accent={res.accent ? 'tenant' : 'default'} data-narrow={narrow || undefined} style={style}>
-      <PortalFrame tenant={tenant} portal={portal} nav={nav} user={user} whiteLabel={whiteLabel}>
-        <div className="yx-tportal__bar">
-          <AccessNote access={access} />
-          <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />
-        </div>
+      <PortalFrame
+        tenant={tenant}
+        portal={portal}
+        nav={nav}
+        user={user}
+        whiteLabel={whiteLabel}
+        aside={
+          // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).
+          <div className="yx-tportal__bar">
+            <AccessNote access={access} />
+            <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />
+          </div>
+        }
+      >
         <div className="yx-tportal__content">{children}</div>
         {pinned && <div className="yx-tportal__pinned">{pinned}</div>}
         <PortalFooterLinks {...footer} />
