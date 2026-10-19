@@ -700,12 +700,12 @@ export interface LettersRegisterScreenProps {
   onDownload: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
   verifyUrl: (code: string) => string;
   /** 6e bulk wizard (PPL-28). */
-  bulk?: { types: Choice[]; people: Choice[]; onIssue: (letterType: string, personIds: string[]) => Promise<{ issued: number; failed: { personId: string; message: string }[] }> };
+  bulk?: { types: Choice[]; people: Choice[]; onIssue: (letterType: string, personIds: string[]) => Promise<{ issued: number; failed: { personId: string; message: string }[] }>; /** Open with these people chosen (Issue letter from the directory). */ defaultPicked?: string[] };
 }
 
 export function LettersRegisterScreen(p: LettersRegisterScreenProps) {
   const { busy, error, run } = useRun();
-  const [bulk, setBulk] = useState(false);
+  const [bulk, setBulk] = useState(Boolean(p.bulk?.defaultPicked?.length));
   const [bulkDone, setBulkDone] = useState<string | null>(null);
   const columns: TableColumn<Letter>[] = [
     { key: 'person', header: 'Person', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200, hideable: false },
@@ -733,6 +733,7 @@ export function LettersRegisterScreen(p: LettersRegisterScreenProps) {
         <BulkLetterDialog
           types={p.bulk.types}
           people={p.bulk.people}
+          defaultPicked={p.bulk.defaultPicked}
           onClose={() => setBulk(false)}
           onIssue={async (t, ids) => {
             const r = await p.bulk!.onIssue(t, ids);

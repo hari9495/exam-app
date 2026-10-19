@@ -7,35 +7,6 @@ export interface Ref {
   name: string | null;
 }
 
-/** A colleague in the directory: Public fields (P02 Q4); code and joining date for HR only. */
-export interface DirectoryPerson {
-  id: string;
-  name: string;
-  workEmail: string | null;
-  designation: Ref | null;
-  department: Ref | null;
-  location: Ref | null;
-  legalEntity: Ref | null;
-  manager: Ref | null;
-  employeeCode?: string;
-  joinedOn?: string;
-}
-
-export interface DirectoryPage {
-  total: number;
-  limit: number;
-  offset: number;
-  people: DirectoryPerson[];
-}
-
-export interface DirectoryQuery {
-  q: string;
-  legalEntityId: string | null;
-  departmentId: string | null;
-  locationId: string | null;
-  offset: number;
-}
-
 export type RoleType = 'employee' | 'login' | 'candidate' | 'applicant' | 'alumnus' | 'nominee' | 'consultant' | 'contract_worker' | 'vendor_worker' | 'campus_registrant' | 'test_taker' | 'external_login';
 
 /** P01 §4.5a: the person behind a record and every role they hold (HR or the person). */

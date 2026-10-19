@@ -1,5 +1,5 @@
 // Story and test data for the people-core screens (fictional Kaveri Foods, RULES.md data facts).
-import type { BulkResult, ChangeBatch, DirectoryPage, OrgChartData, PersonRecord, ProbationRow, Ref, TeamMember } from './types';
+import type { BulkResult, ChangeBatch, OrgChartData, PersonRecord, ProbationRow, Ref, TeamMember } from './types';
 import type { PersonOption } from '../history/types';
 
 export const TODAY_ISO = '2026-09-29';
@@ -15,27 +15,6 @@ const RAMESH = ref('p-ramesh', 'Ramesh Iyengar');
 const DIVYA = ref('p-divya', 'Divya Raghunathan');
 const LAKSHMI = ref('p-lakshmi', 'Lakshmi Venkatesan');
 const ARJUN = ref('p-arjun', 'Arjun Kulkarni');
-
-export const CHOICES = { legalEntities: [KF, KFT], departments: [PPL, PROD, QA], locations: [BLR, HSR] };
-
-export const DIRECTORY: DirectoryPage = {
-  total: 6,
-  limit: 50,
-  offset: 0,
-  people: [
-    { id: ARJUN.id, name: ARJUN.name!, workEmail: 'arjun.kulkarni@kaverifoods.test', designation: ref('des-qa', 'Quality Analyst'), department: QA, location: BLR, legalEntity: KF, manager: DIVYA },
-    { id: DIVYA.id, name: DIVYA.name!, workEmail: 'divya.raghunathan@kaverifoods.test', designation: ref('des-sqa', 'Senior QA Engineer'), department: QA, location: BLR, legalEntity: KF, manager: RAMESH },
-    { id: 'p-kavya', name: 'Kavya Reddy', workEmail: 'kavya.reddy@kaverifoods.test', designation: ref('des-sup', 'Production Supervisor'), department: PROD, location: HSR, legalEntity: KFT, manager: DIVYA },
-    { id: 'p-kiran', name: 'Kiran Joshi', workEmail: 'kiran.joshi@kaverifoods.test', designation: ref('des-qa', 'Quality Analyst'), department: QA, location: BLR, legalEntity: KF, manager: DIVYA },
-    { id: LAKSHMI.id, name: LAKSHMI.name!, workEmail: 'lakshmi.venkatesan@kaverifoods.test', designation: ref('des-hrbp', 'HR Business Partner'), department: PPL, location: BLR, legalEntity: KF, manager: RAMESH },
-    { id: RAMESH.id, name: RAMESH.name!, workEmail: 'ramesh.iyengar@kaverifoods.test', designation: ref('des-md', 'Managing Director'), department: PPL, location: BLR, legalEntity: KF, manager: null },
-  ],
-};
-
-export const DIRECTORY_HR: DirectoryPage = {
-  ...DIRECTORY,
-  people: DIRECTORY.people.map((p, i) => ({ ...p, employeeCode: ['KF-0142', 'KF-0001', 'KFT-0031', 'KF-0151', 'KF-0012', 'KF-0002'][i], joinedOn: ['2024-07-01', '2021-01-11', '2025-09-15', '2026-04-15', '2019-06-03', '2014-04-01'][i] })),
-};
 
 export const PERSON: PersonRecord = {
   id: 'person-arjun',
