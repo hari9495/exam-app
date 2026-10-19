@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AccessStateBody, RoleHomeScreen, SearchResultsScreen, explainedHits, paletteFor, searchableFor, type SearchHit } from './shell-home';
 
 describe('Role home loading (founder review 30 Sep 2026)', () => {
@@ -101,6 +101,25 @@ describe('Live home parity (19 Oct 2026)', () => {
     render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, tasks: [{ text: 'Write your self-review for H1 by 15 Oct', href: '/yx/performance/reviews/r1' }], coming: [] }} />);
     expect(screen.getByRole('link', { name: 'Write your self-review for H1 by 15 Oct' })).toHaveAttribute('href', '/yx/performance/reviews/r1');
     expect(screen.getByText('Nothing coming up this week.')).toBeInTheDocument();
+  });
+
+  it('shows the employee their own net pay in place of late marks, hidden until they ask', async () => {
+    const stats = [card('leave', 'Earned leave left'), card('late', 'Late marks this month'), card('requests', 'Requests pending')];
+    const pay = { label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '/yx/me/payslips' };
+    const { rerender } = render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, stats }} />);
+    expect(screen.getByText('Late marks this month')).toBeInTheDocument();
+    expect(screen.queryByText('Net pay, September')).toBeNull();
+    rerender(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, stats, pay }} />);
+    expect(screen.queryByText('Late marks this month')).toBeNull();
+    expect(screen.getByText('Amount hidden')).toBeInTheDocument();
+    expect(screen.queryByText('₹86,420')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show amount' }));
+    expect(screen.getByText('₹86,420')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View payslip/ })).toHaveAttribute('href', '/yx/me/payslips');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide amount' }));
+    expect(screen.queryByText('₹86,420')).toBeNull();
+    rerender(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, stats, pay: { ...pay, value: null } }} />);
+    expect(screen.getByText('No payslip yet.')).toBeInTheDocument();
   });
 
   it("gives the manager team today and who's off this week", () => {

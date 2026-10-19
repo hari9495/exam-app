@@ -1,4 +1,4 @@
-import { comingUp, employeeStats, hiringHome, homeWidgets, managerHome, myTasks } from './yx-home';
+import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks } from './yx-home';
 
 describe('hiringHome (recruiter Home)', () => {
   const now = new Date('2026-10-19T06:00:00Z');
@@ -72,6 +72,13 @@ describe('Employee home (parity with PLT-02 employee)', () => {
     ]);
     // A lone leave day at the end of last month is not a month on record.
     expect(employeeStats({ now, before: att('2026-09-30', [day('2026-09-30', 'leave')]) }).every((x) => x.previous === undefined)).toBe(true);
+  });
+
+  it('shows net pay only when the company turned it on, with last month when there is one', () => {
+    expect(homePay(undefined)).toBeUndefined();
+    expect(homePay({ shown: false })).toBeUndefined();
+    expect(homePay({ shown: true, latest: null, previous: null })).toEqual({ label: 'Net pay', value: null, href: '/yx/me/payslips' });
+    expect(homePay({ shown: true, latest: { id: 's', month: '2026-09', net: '86420.00' }, previous: { month: '2026-08', net: '84900.00' } })).toEqual({ label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '/yx/me/payslips' });
   });
 
   it('lists the self-review, feedback and checklist tasks, and what is coming up', () => {

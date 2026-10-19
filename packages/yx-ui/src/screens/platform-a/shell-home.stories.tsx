@@ -177,6 +177,14 @@ const LIVE_EMP = {
   moves: undefined,
 };
 export const PLT02EmployeeLive: S = { name: 'PLT-02 · Role home · employee, live', render: () => <RoleHomeScreen persona="employee" data={EMP} live={LIVE_EMP} /> };
+export const PLT02EmployeeLivePay: S = {
+  name: 'PLT-02 · Role home · employee, live, HR shows pay (hidden until asked)',
+  render: () => <RoleHomeScreen persona="employee" data={EMP} live={{ ...LIVE_EMP, pay: { label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '#payslip' } }} />,
+};
+export const PLT02EmployeeLivePayNone: S = {
+  name: 'PLT-02 · Role home · employee, live, HR shows pay, no payslip yet',
+  render: () => <RoleHomeScreen persona="employee" data={EMP} live={{ ...LIVE_EMP, pay: { label: 'Net pay', value: null, href: '#payslip' } }} />,
+};
 const LIVE_MGR = {
   ...LIVE_EMP,
   team: {

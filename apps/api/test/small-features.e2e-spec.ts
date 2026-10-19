@@ -232,4 +232,47 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect((await api('peer', 'post', `/time/me/regularise/${r.id}/withdraw`).expect(200)).body).toEqual({ id: r.id, status: 'withdrawn' });
     });
   });
+
+  describe('show pay on Home', () => {
+    const paid = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
+      inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        return fn(tx);
+      });
+    /** An approved regular payslip on a run for the month, published or not, as payroll would leave it. */
+    const slip = (employeeId: string, month: string, net: string, published: boolean) =>
+      paid(async (tx) => {
+        const x = { organizationId: org.A.id, legalEntityId: ids.entityA };
+        ids.group ??= (await tx.payGroup.create({ data: { ...x, name: 'Monthly' } })).id;
+        const start = new Date(`${month}-01T00:00:00Z`);
+        ids[`run${month}`] ??= (await tx.payrollRun.create({ data: { ...x, payGroupId: ids.group, periodStart: start, periodEnd: start, status: 'paid', preparedBy: users.adminA, publishedAt: published ? new Date() : null } })).id;
+        const employmentId = (await tx.employeeAssignment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId } })).employmentId;
+        await tx.payslip.create({ data: { ...x, runId: ids[`run${month}`], employmentId, employeeId, periodStart: start, calcVersion: 1, gross: net, deductions: '0', net, employerCost: net, ruleVersions: {}, snapshotHash: 'a'.repeat(64), resultHash: 'b'.repeat(64), status: 'approved' } });
+      });
+
+    it('is off by default; only a settings manager turns it on', async () => {
+      await slip(ids.empEmp, '2026-08', '84900.00', true);
+      await slip(ids.empEmp, '2026-09', '86420.00', true);
+      await slip(ids.peerEmp, '2026-09', '99999.00', true);
+      // Not published yet: never shown.
+      await slip(ids.empEmp, '2026-10', '70000.00', false);
+      expect((await api('emp', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: false });
+      await api('emp', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }).expect(403);
+      await api('adminA', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'maybe' }).expect(400);
+      await api('adminA', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }).expect(200);
+    });
+
+    it("on: each person's own latest published net pay and the month before, never anyone else's", async () => {
+      expect((await api('emp', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: true, latest: { id: expect.any(String), month: '2026-09', net: '86420.00' }, previous: { month: '2026-08', net: '84900.00' } });
+      expect((await api('peer', 'get', '/payroll/me/home-pay').expect(200)).body).toMatchObject({ shown: true, latest: { month: '2026-09', net: '99999.00' }, previous: null });
+      // The manager sees only their own (none), not their team's.
+      expect((await api('mgr', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: true, latest: null, previous: null });
+    });
+
+    it('another company: its own setting (off), and never this company’s pay', async () => {
+      expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: false });
+      await api('adminB', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }).expect(200);
+      expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: true, latest: null, previous: null });
+    });
+  });
 });

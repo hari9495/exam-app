@@ -39,6 +39,21 @@ const monthName = (m: string) => day(`${m}-01`, { month: 'long' });
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const CLEARANCE: Record<string, string> = { it: 'IT', admin: 'Admin', asset: 'Assets', finance: 'Finance', hr: 'HR', manager_handover: 'Handover' };
 
+/** GET /payroll/me/home-pay: shown only when the company turned "Show net pay on the employee home" on. */
+export type HomePayResponse = { shown: false } | { shown: true; latest: { id: string; month: string; net: string } | null; previous: { month: string; net: string } | null };
+
+/** The employee's own net pay card (PLT-02 "HR shows pay"), or nothing when the company keeps pay off Home. */
+export function homePay(r: HomePayResponse | undefined): LiveHome['pay'] {
+  if (!r?.shown) return undefined;
+  if (!r.latest) return { label: 'Net pay', value: null, href: '/yx/me/payslips' };
+  return {
+    label: `Net pay, ${monthName(r.latest.month)}`,
+    value: Number(r.latest.net),
+    ...(r.previous ? { previous: Number(r.previous.net), previousLabel: monthName(r.previous.month) } : {}),
+    href: '/yx/me/payslips',
+  };
+}
+
 /** The live HR widgets in the designed Home's words (PLT-02 HR): the four count cards, due dates, joiners and leavers. */
 export function homeWidgets(w: HomeWidgets | undefined, today: string): Pick<LiveHome, 'stats' | 'due' | 'moves' | 'movesHref'> {
   if (!w) return {};
