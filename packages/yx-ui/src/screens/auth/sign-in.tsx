@@ -115,8 +115,10 @@ export function SignInScreen(props: SignInScreenProps) {
   const companyButtons = providers.map((p) => (
     <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
+  // One blue button: the passkey until an email is typed, then Continue (founder review 19 Oct).
+  const typed = identifier.includes('@');
   const passkeyButton = passkeyOn && (
-    <Button variant="primary" fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>
+    <Button variant={typed ? 'secondary' : 'primary'} fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>
   );
   const ways = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
     <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
@@ -201,7 +203,7 @@ export function SignInScreen(props: SignInScreenProps) {
                 <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" spellCheck={false} autoCapitalize="none" />
               </FormField>
               {alert}
-              <Button type="submit" variant={passkeyOn ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>
+              <Button type="submit" variant={passkeyOn && !typed ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy} disabled={!typed}>Continue</Button>
               {!passkeyOn && ways && (
                 <>
                   {or}

@@ -831,6 +831,12 @@ describe('other ways that could not load', () => {
 });
 
 describe('passkey as a sign-in method', () => {
+  it('once an email is typed, Continue is the blue button and the passkey steps back (one blue button)', () => {
+    render(<SignIn options={{ ...ALL_WAYS, passkey: true }} onPasskey={vi.fn()} onMobile={vi.fn()} onSocial={vi.fn()} start={{ identifier: 'hr@demo-org.test' }} />);
+    expect(screen.getByRole('button', { name: 'Continue' })).toHaveAttribute('data-variant', 'primary');
+    expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toHaveAttribute('data-variant', 'secondary');
+  });
+
   it('"Sign in with a passkey" heads the other ways when the company allows it and the browser can; the email field offers passkeys in autofill', async () => {
     const onPasskey = vi.fn();
     const { rerender } = render(<SignIn options={{ ...ALL_WAYS, passkey: true }} onPasskey={onPasskey} onMobile={vi.fn()} onSocial={vi.fn()} />);
