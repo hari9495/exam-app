@@ -3809,5 +3809,127 @@
   "status": "Not run",
   "runs": [],
   "ideas": []
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-02",
+  "screen": "Email, then password, then Home",
+  "account": "hr@demo-org.test / Passw0rd!2026",
+  "steps": [
+   "Type hr@demo-org.test and press Continue.",
+   "Look at the password screen.",
+   "Type the password and press Sign in."
+  ],
+  "expected": "The password screen shows your email with a Change button, a Password box with an eye button, Sign in, \"Email me a code instead\" and \"Forgot your password?\". Fits the screen with no scroll bar, card in the middle. After Sign in (and your second step, if asked) you land on Home."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-03",
+  "screen": "Wrong password",
+  "account": "hr@demo-org.test / a wrong password",
+  "steps": [
+   "Type hr@demo-org.test, Continue.",
+   "Type a wrong password, press Sign in."
+  ],
+  "expected": "A clear red message under the box says the email or password is wrong, without saying which one. You can try again. Nothing else on the page jumps around."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-04",
+  "screen": "Change the email",
+  "account": "(signed out)",
+  "steps": [
+   "Type hr@demo-org.test, Continue.",
+   "Press Change."
+  ],
+  "expected": "You go back to the first screen with the email still in the box, ready to edit."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-05",
+  "screen": "Continue with mobile",
+  "account": "arjun@demo-org.test's mobile number (set up earlier)",
+  "steps": [
+   "On the first screen press Mobile.",
+   "Type the mobile number and continue.",
+   "Open the mailbox at http://localhost:8025 and read the code.",
+   "Type the code."
+  ],
+  "expected": "The code arrives (as an email in the local mailbox, since SMS goes there in testing). The right code signs you in; a wrong code says so clearly."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-06",
+  "screen": "Forgot your password",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Type the email, Continue, then press \"Forgot your password?\".",
+   "Ask for the reset email, open it at http://localhost:8025, follow the link and set a new password."
+  ],
+  "expected": "The page never says whether the email exists. The reset email arrives; the link opens the new-password screen; after saving you can sign in with the new password."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-07",
+  "screen": "Sign in with a passkey",
+  "account": "admin@demo-org.test (passkey set up earlier)",
+  "steps": [
+   "On the first screen press \"Sign in with a passkey\".",
+   "Use your fingerprint, face or PIN."
+  ],
+  "expected": "Windows asks for your passkey; after it you are signed in. If you cancel, a clear message says it did not work and the page stays usable."
+ },
+ {
+  "area": "0 Sign-in design parity",
+  "url": "http://localhost:3000/yx/sign-in",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": [],
+  "id": "SI-08",
+  "screen": "Legal pages",
+  "account": "(signed out)",
+  "steps": [
+   "Click each of the 5 legal links at the bottom.",
+   "Use the browser Back button each time."
+  ],
+  "expected": "Each page opens with its title and text, in the same frame (header, footer). No scroll bar unless the text is long. Back returns to sign-in."
  }
 ]
