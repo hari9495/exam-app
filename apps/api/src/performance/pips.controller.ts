@@ -23,7 +23,7 @@ export class PerformancePipsController {
 
   @Get('pips')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PipListQueryDto) {
-    return this.svc.list(ctx, this.user(req), q.view ?? 'team');
+    return this.svc.list(ctx, this.user(req), q.view ?? 'team', q.legalEntityId);
   }
 
   @Post('pips')

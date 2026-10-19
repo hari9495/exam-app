@@ -85,7 +85,7 @@ export class PerformanceReviewsController {
 
   @Get('reviews')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ReviewListDto) {
-    return this.svc.list(ctx, this.user(req), q.view, q.cycle);
+    return this.svc.list(ctx, this.user(req), q.view, q.cycle, q.legalEntityId);
   }
 
   @Get('reviews/:id')

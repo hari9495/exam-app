@@ -82,6 +82,12 @@ export class WorkflowController {
     return this.engine.history(m.ctx, m.userId);
   }
 
+  @Get('approvals/mine')
+  mine(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    const m = me(req, t);
+    return this.engine.mine(m.ctx, m.userId);
+  }
+
   @Get('approvals/requests/:id')
   request(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     const m = me(req, t);

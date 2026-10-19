@@ -7,13 +7,15 @@ import type { TeamMember } from '@yukthix/ui/workforce';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
 import { usePerf } from '../../../../../lib/yx-performance';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Reviews (PRF-04 / PRF-05, M06 batch PM4): mine, my team's, and for HR with perf.review.view, those in scope.
 export default function YxReviewsPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
   const [view, setView] = useState<ReviewsView>('mine');
-  const reviews = usePerf<ReviewSummary[]>(`/reviews?view=${view}`);
+  const reviews = usePerf<ReviewSummary[]>(withParams(`/reviews?view=${view}`, view === 'mine' ? '' : sp.entity));
   const handovers = usePerf<Handover[]>('/handovers');
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   return (

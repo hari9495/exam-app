@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import { ExpensesHomeScreen, type ClaimSummary, type ExpenseHome } from '@yukthix/ui/expenses';
 import { loadState } from '../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../lib/yx-expenses';
+import { useScopeParams, withParams } from '../../../../lib/yx-shell';
 
 // Expenses home (EXP-01, M05 batch E2): my claims with what I will receive, claims waiting for me, and finance's check.
 export default function YxExpensesPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const home = useExp<ExpenseHome>('/me/home');
-  const approvals = useExp<{ claims: ClaimSummary[] }>('/claims?view=approvals', Boolean(home.data?.waitingForMe));
-  const review = useExp<{ claims: ClaimSummary[] }>('/claims?view=review', home.data?.toReview !== null && home.data?.toReview !== undefined);
+  const approvals = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=approvals', sp.entity), Boolean(home.data?.waitingForMe));
+  const review = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=review', sp.entity), home.data?.toReview !== null && home.data?.toReview !== undefined);
   const write = useExpWrite();
   return (
     <ExpensesHomeScreen

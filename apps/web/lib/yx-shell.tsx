@@ -47,6 +47,25 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
 /** The company and period chosen in the top bar. */
 export const useScope = () => useContext(ScopeContext);
 
+/**
+ * Lists that follow the top bar (design audit step 2): `entity` is the query parameter for the chosen company ('' for
+ * every company), and a page's own month is the top-bar period, so changing either changes both.
+ */
+export function useScopeParams() {
+  const { scope, setScope } = useScope();
+  return {
+    entity: scope.entity ? `legalEntityId=${encodeURIComponent(scope.entity)}` : '',
+    month: scope.period || thisMonth(),
+    setMonth: (period: string) => setScope({ ...scope, period }),
+  };
+}
+
+/** Appends query parameters, skipping empty ones. */
+export const withParams = (path: string, ...params: string[]) => {
+  const q = params.filter(Boolean).join('&');
+  return q ? `${path}${path.includes('?') ? '&' : '?'}${q}` : path;
+};
+
 /** The last six payroll months, newest first. */
 export function recentMonths(today = new Date(), n = 6): { value: string; label: string }[] {
   return Array.from({ length: n }, (_, i) => {

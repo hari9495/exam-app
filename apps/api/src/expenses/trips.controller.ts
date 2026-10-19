@@ -29,7 +29,7 @@ export class ExpenseTripsController {
 
   @Get('trips')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: TripListDto) {
-    return this.trips.listTrips(ctx, this.user(req), q.view);
+    return this.trips.listTrips(ctx, this.user(req), q.view, q.legalEntityId);
   }
 
   @Post('trips')
@@ -99,7 +99,7 @@ export class ExpenseTripsController {
 
   @Get('advances')
   advances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: AdvanceListDto) {
-    return this.trips.listAdvances(ctx, this.user(req), q.view);
+    return this.trips.listAdvances(ctx, this.user(req), q.view, q.legalEntityId);
   }
 
   @Post('advances')

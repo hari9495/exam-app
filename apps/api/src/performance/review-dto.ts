@@ -86,6 +86,11 @@ export class ReviewListDto {
   @IsOptional()
   @IsUUID()
   cycle?: string;
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class AnswerDto {
@@ -547,4 +552,9 @@ export class PipListQueryDto {
   @IsOptional()
   @IsIn(['mine', 'team', 'scope'])
   view?: 'mine' | 'team' | 'scope';
+
+  /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }

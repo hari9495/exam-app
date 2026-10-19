@@ -151,6 +151,8 @@ export interface ListPageProps<R> {
   activeRowId?: string | null;
   pageSize?: number;
   onExport?: boolean;
+  /** The live app's retry for the error state (the stories show a fixed reference instead). */
+  onRetry?: () => void;
   /** Drawers / dialogs opened from the list. */
   children?: ReactNode;
 }
@@ -203,8 +205,8 @@ export function ListPage<R>(p: ListPageProps<R>) {
         onRowClick={p.onRowClick}
         activeRowId={p.activeRowId}
         pageSize={p.pageSize}
-        onRetry={p.state === 'error' ? () => {} : undefined}
-        errorReference={p.state === 'error' ? 'REQ-7F3A-2291' : undefined}
+        onRetry={p.state === 'error' ? (p.onRetry ?? (() => {})) : undefined}
+        errorReference={p.state === 'error' && !p.onRetry ? 'REQ-7F3A-2291' : undefined}
         onExport={p.onExport ? () => {} : undefined}
         toolbar={
           p.filters ? (

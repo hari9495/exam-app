@@ -153,7 +153,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     return { tripId: dto.tripId ?? null, advanceId: dto.advanceId ?? null };
   }
 
-  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'review' | 'scope' = 'mine') {
+  async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'review' | 'scope' = 'mine', entityId?: string | null) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -173,6 +173,7 @@ export class ExpenseClaimsService implements OnModuleInit {
           if (view === 'review' ? a.finance : a.scope) claims.push(r);
         }
       }
+      if (entityId && view !== 'mine') claims = claims.filter((x) => x.legalEntityId === entityId);
       const people = await this.names(tx, org, claims.map((x) => x.employeeId));
       return { claims: claims.map((x) => this.summary(x, people.get(x.employeeId) ?? '')) };
     });

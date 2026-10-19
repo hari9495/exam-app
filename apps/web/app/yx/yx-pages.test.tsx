@@ -179,7 +179,9 @@ describe('/yx/sign-in (email first, no company code)', () => {
   it('shows the remembered company, and "Not your company?" forgets it', async () => {
     route({ 'GET /auth/remembered-company': { company: { name: KAVERI.name, logoUrl: null } }, 'DELETE /auth/remembered-company': null });
     render(<YxSignInPage />);
-    expect(await screen.findByText(KAVERI.name)).toBeInTheDocument();
+    // SEC-01: the company heads the band and the "Signing in to" line.
+    expect(await screen.findByRole('status', { name: '' })).toHaveTextContent(`Signing in to ${KAVERI.name}`);
+    expect(screen.getAllByText(KAVERI.name)).toHaveLength(2);
     await userEvent.click(screen.getByRole('button', { name: 'Not your company?' }));
     await waitFor(() => expect(screen.queryByText(KAVERI.name)).toBeNull());
     expect(api).toHaveBeenCalledWith('/auth/remembered-company', { method: 'DELETE' });
@@ -403,10 +405,11 @@ describe('/yx/sign-in (email first, no company code)', () => {
       });
       start.mockResolvedValue(CREDENTIAL);
       render(<YxSignInPage />);
-      const ways = within(await screen.findByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-      expect(ways[0]).toHaveTextContent('Sign in with a passkey');
+      // SEC-01: the passkey is the main button.
+      const passkey = await screen.findByRole('button', { name: 'Sign in with a passkey' });
+      expect(passkey).toHaveAttribute('data-variant', 'primary');
       expect(screen.getByLabelText(/Work email/)).toHaveAttribute('autocomplete', 'username webauthn');
-      await userEvent.click(ways[0]);
+      await userEvent.click(passkey);
       await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
       expect(start).toHaveBeenCalledWith({ optionsJSON: { challenge: 'chal-1', userVerification: 'required' }, useBrowserAutofill: false });
       expect(api).toHaveBeenCalledWith('/auth/passkey/verify', { method: 'POST', body: JSON.stringify({ credential: CREDENTIAL }) });
@@ -804,7 +807,7 @@ describe('/yx layout', () => {
     const rail = screen.getByRole('navigation', { name: 'Areas' });
     expect(within(rail).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Home', 'Helpdesk']);
     const home = screen.getByRole('navigation', { name: 'Home' });
-    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'My security']);
+    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
     expect(within(home).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
   });

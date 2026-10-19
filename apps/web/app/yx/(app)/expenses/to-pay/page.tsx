@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { ToPayLiveScreen, type ExpenseJournalView, type ToPayData } from '@yukthix/ui/expenses';
 import { loadState, todayIst } from '../../../../../lib/yx-org';
 import { useExp, useExpDownload, useExpWrite } from '../../../../../lib/yx-expenses';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Expenses › To pay (EXP-06, M05 batch E3): approved claims to the next payroll or a bank file, bank files released by
 // someone else, and the month's expense journal. The API checks expense.payout.manage for the legal entity.
 export default function YxExpenseToPayPage() {
-  const data = useExp<ToPayData>('/to-pay');
+  const sp = useScopeParams();
+  const data = useExp<ToPayData>(withParams('/to-pay', sp.entity));
   const write = useExpWrite();
   const download = useExpDownload();
   const [entity, setEntity] = useState<string | null>(null);

@@ -34,7 +34,7 @@ export class ExpenseClaimsController {
 
   @Get('claims')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ListQueryDto) {
-    return this.claims.list(ctx, this.user(req), q.view);
+    return this.claims.list(ctx, this.user(req), q.view, q.legalEntityId);
   }
 
   @Post('claims')

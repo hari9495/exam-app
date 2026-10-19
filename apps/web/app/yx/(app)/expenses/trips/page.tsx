@@ -4,14 +4,16 @@ import { useRouter } from 'next/navigation';
 import { TripsScreen, type TripSummary } from '@yukthix/ui/expenses';
 import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../../lib/yx-expenses';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Trips (EXP-04, M05 batch E4): my trips, trips waiting for me, and the travel desk's list to book.
 export default function YxTripsPage() {
+  const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
   const mine = useExp<{ trips: TripSummary[] }>('/trips');
-  const approvals = useExp<{ trips: TripSummary[] }>('/trips?view=approvals');
-  const desk = useExp<{ trips: TripSummary[] }>('/trips?view=desk', perms.has('travel.booking.manage'));
+  const approvals = useExp<{ trips: TripSummary[] }>(withParams('/trips?view=approvals', sp.entity));
+  const desk = useExp<{ trips: TripSummary[] }>(withParams('/trips?view=desk', sp.entity), perms.has('travel.booking.manage'));
   const write = useExpWrite();
   return (
     <TripsScreen

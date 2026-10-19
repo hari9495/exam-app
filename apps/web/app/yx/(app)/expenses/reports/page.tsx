@@ -4,15 +4,17 @@ import { useState } from 'react';
 import { ExpenseReportsScreen, type ExpenseReport, type ReportKind } from '@yukthix/ui/expenses';
 import { loadState, todayIst } from '../../../../../lib/yx-org';
 import { useExp, useExpDownload } from '../../../../../lib/yx-expenses';
+import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Expense reports (EXP-09, M05 batch E5): spend, unpaid, advance ageing, over limit, GST input and approver patterns,
 // each exportable as CSV. The API checks expense.report.view for the legal entities it is granted for.
 export default function YxExpenseReportsPage() {
+  const sp = useScopeParams();
   const today = todayIst();
   const [kind, setKind] = useState<ReportKind>('summary');
   const [range, setRange] = useState({ from: `${today.slice(0, 8)}01`, to: today });
   const query = `?from=${range.from}&to=${range.to}`;
-  const report = useExp<ExpenseReport>(`/reports/${kind}${query}`);
+  const report = useExp<ExpenseReport>(withParams(`/reports/${kind}${query}`, sp.entity));
   const download = useExpDownload();
   return (
     <ExpenseReportsScreen

@@ -223,12 +223,12 @@ export class JoinersService {
   }
 
   /** The onboarding board: open joiners the viewer's onboarding key reaches, with checklist progress. */
-  async board(ctx: TenantContext, user: ScopeUser) {
+  async board(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
     const v = await this.journeys.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const since = new Date(Date.now() - 30 * 86_400_000);
-      const rows = await tx.preboarding.findMany({ where: { organizationId: org, OR: [{ status: 'invited' }, { status: 'joined', updatedAt: { gte: since } }] }, orderBy: { joiningOn: 'asc' }, take: 1000 });
+      const rows = await tx.preboarding.findMany({ where: { organizationId: org, OR: [{ status: 'invited' }, { status: 'joined', updatedAt: { gte: since } }], ...(entityId ? { legalEntityId: entityId } : {}) }, orderBy: { joiningOn: 'asc' }, take: 1000 });
       const out = [];
       for (const r of rows) {
         const key = v.grants.has('lifecycle.onboarding.view') ? 'lifecycle.onboarding.view' : 'lifecycle.onboarding.manage';

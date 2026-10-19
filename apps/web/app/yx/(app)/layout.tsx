@@ -37,7 +37,7 @@ const SEARCH_GROUPS = [
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ScopeProvider>
-      {/* Success after an action is a toast (YukthiX house rule). */}
+      {/* "Done" messages are the design system's toasts (5 s); errors stay until closed. */}
       <ToastProvider>
         <Frame>{children}</Frame>
       </ToastProvider>
@@ -236,7 +236,8 @@ function Frame({ children }: { children: React.ReactNode }) {
             loading={notifications.isLoading}
             onMarkAllRead={() => markAll.mutate(undefined, { onSuccess: () => void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }) })}
             onOpenItem={(it) => !it.read && markRead.mutate(it.id)}
-            settingsHref="/profile"
+            settingsHref="/yx/me/notifications"
+            allHref="/yx/notifications"
           />
         ),
         profile: (
@@ -273,6 +274,10 @@ function Frame({ children }: { children: React.ReactNode }) {
               onSelect={(item: PaletteItem) => {
                 const href = hrefs.get(item.id);
                 if (href) go(href);
+              }}
+              onSearchAll={(q) => {
+                setPaletteOpen(false);
+                go(`/yx/search?q=${encodeURIComponent(q.trim().replace(/^[@#>?]\s*/, ''))}`);
               }}
             />
             {!support && <DeskHelp open={helpOpen} onOpenChange={setHelpOpen} />}

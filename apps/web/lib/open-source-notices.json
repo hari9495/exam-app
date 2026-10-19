@@ -1,0 +1,656 @@
+[
+ {
+  "name": "@anthropic-ai/sdk",
+  "version": "0.32.1",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "@aws-sdk/client-s3",
+  "version": "3.1136.0",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/aws/aws-sdk-js-v3/tree/main/clients/client-s3"
+ },
+ {
+  "name": "@azure/msal-node",
+  "version": "6.0.1",
+  "licence": "MIT",
+  "url": "https://github.com/AzureAD/microsoft-authentication-library-for-js"
+ },
+ {
+  "name": "@azure/storage-blob",
+  "version": "12.33.0",
+  "licence": "MIT",
+  "url": "https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/storage/storage-blob/README.md"
+ },
+ {
+  "name": "@fontsource/ibm-plex-mono",
+  "version": "5.3.0",
+  "licence": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/ibm-plex-mono"
+ },
+ {
+  "name": "@fontsource/ibm-plex-sans",
+  "version": "5.3.0",
+  "licence": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/ibm-plex-sans"
+ },
+ {
+  "name": "@googleapis/gmail",
+  "version": "22.0.0",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/googleapis/google-api-nodejs-client"
+ },
+ {
+  "name": "@mediapipe/tasks-vision",
+  "version": "0.10.35",
+  "licence": "Apache-2.0",
+  "url": null
+ },
+ {
+  "name": "@microsoft/microsoft-graph-client",
+  "version": "3.0.7",
+  "licence": "MIT",
+  "url": "https://github.com/microsoftgraph/msgraph-sdk-javascript"
+ },
+ {
+  "name": "@monaco-editor/react",
+  "version": "4.7.0",
+  "licence": "MIT",
+  "url": "https://github.com/suren-atoyan/monaco-react#readme"
+ },
+ {
+  "name": "@nest-lab/throttler-storage-redis",
+  "version": "1.2.0",
+  "licence": "MIT",
+  "url": "https://github.com/jmcdo29/nest-lab"
+ },
+ {
+  "name": "@nestjs/common",
+  "version": "11.1.29",
+  "licence": "MIT",
+  "url": "https://nestjs.com"
+ },
+ {
+  "name": "@nestjs/config",
+  "version": "4.0.4",
+  "licence": "MIT",
+  "url": "https://github.com/nestjs/config"
+ },
+ {
+  "name": "@nestjs/core",
+  "version": "11.1.29",
+  "licence": "MIT",
+  "url": "https://nestjs.com"
+ },
+ {
+  "name": "@nestjs/jwt",
+  "version": "11.0.2",
+  "licence": "MIT",
+  "url": "https://github.com/nestjs/jwt"
+ },
+ {
+  "name": "@nestjs/passport",
+  "version": "11.0.5",
+  "licence": "MIT",
+  "url": "https://github.com/nestjs/passport"
+ },
+ {
+  "name": "@nestjs/platform-express",
+  "version": "11.2.7",
+  "licence": "MIT",
+  "url": "https://nestjs.com"
+ },
+ {
+  "name": "@nestjs/throttler",
+  "version": "6.5.0",
+  "licence": "MIT",
+  "url": "https://github.com/nestjs/throttler#readme"
+ },
+ {
+  "name": "@node-saml/passport-saml",
+  "version": "5.1.0",
+  "licence": "MIT",
+  "url": "https://github.com/node-saml/passport-saml"
+ },
+ {
+  "name": "@otplib/core",
+  "version": "13.5.0",
+  "licence": "MIT",
+  "url": "https://otplib.yeojz.dev"
+ },
+ {
+  "name": "@otplib/plugin-crypto-node",
+  "version": "13.5.0",
+  "licence": "MIT",
+  "url": "https://otplib.yeojz.dev"
+ },
+ {
+  "name": "@otplib/totp",
+  "version": "13.5.0",
+  "licence": "MIT",
+  "url": "https://otplib.yeojz.dev"
+ },
+ {
+  "name": "@otplib/uri",
+  "version": "13.5.0",
+  "licence": "MIT",
+  "url": "https://otplib.yeojz.dev"
+ },
+ {
+  "name": "@prisma/client",
+  "version": "5.22.0",
+  "licence": "Apache-2.0",
+  "url": "https://www.prisma.io"
+ },
+ {
+  "name": "@radix-ui/react-checkbox",
+  "version": "1.3.12",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-collapsible",
+  "version": "1.1.21",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-dialog",
+  "version": "1.2.0",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-dropdown-menu",
+  "version": "2.1.25",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-popover",
+  "version": "1.2.0",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-radio-group",
+  "version": "1.4.8",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-select",
+  "version": "2.3.8",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-slot",
+  "version": "1.4.0",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-switch",
+  "version": "1.3.8",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-tabs",
+  "version": "1.1.22",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-toast",
+  "version": "1.2.24",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-tooltip",
+  "version": "1.3.0",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@radix-ui/react-visually-hidden",
+  "version": "1.2.12",
+  "licence": "MIT",
+  "url": "https://radix-ui.com/primitives"
+ },
+ {
+  "name": "@scure/base",
+  "version": "1.2.6",
+  "licence": "MIT",
+  "url": "https://paulmillr.com/noble/#scure"
+ },
+ {
+  "name": "@sentry/nextjs",
+  "version": "10.70.0",
+  "licence": "MIT",
+  "url": "https://github.com/getsentry/sentry-javascript/tree/master/packages/nextjs"
+ },
+ {
+  "name": "@sentry/node",
+  "version": "10.70.0",
+  "licence": "MIT",
+  "url": "https://github.com/getsentry/sentry-javascript/tree/master/packages/node"
+ },
+ {
+  "name": "@simplewebauthn/browser",
+  "version": "13.3.0",
+  "licence": "MIT",
+  "url": "https://github.com/MasterKale/SimpleWebAuthn/tree/master/packages/browser#readme"
+ },
+ {
+  "name": "@simplewebauthn/server",
+  "version": "13.3.3",
+  "licence": "MIT",
+  "url": "https://github.com/MasterKale/SimpleWebAuthn/tree/master/packages/server#readme"
+ },
+ {
+  "name": "@socket.io/redis-adapter",
+  "version": "8.3.0",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "@tanstack/react-query",
+  "version": "5.101.4",
+  "licence": "MIT",
+  "url": "https://tanstack.com/query"
+ },
+ {
+  "name": "@tanstack/react-table",
+  "version": "9.2.4",
+  "licence": "MIT",
+  "url": "https://tanstack.com/table"
+ },
+ {
+  "name": "@tiptap/core",
+  "version": "3.31.4",
+  "licence": "MIT",
+  "url": "https://tiptap.dev"
+ },
+ {
+  "name": "@tiptap/extension-placeholder",
+  "version": "3.31.4",
+  "licence": "MIT",
+  "url": "https://tiptap.dev"
+ },
+ {
+  "name": "@tiptap/pm",
+  "version": "3.31.4",
+  "licence": "MIT",
+  "url": "https://tiptap.dev"
+ },
+ {
+  "name": "@tiptap/react",
+  "version": "3.31.4",
+  "licence": "MIT",
+  "url": "https://tiptap.dev"
+ },
+ {
+  "name": "@tiptap/starter-kit",
+  "version": "3.31.4",
+  "licence": "MIT",
+  "url": "https://tiptap.dev"
+ },
+ {
+  "name": "argon2",
+  "version": "0.31.2",
+  "licence": "MIT",
+  "url": "https://github.com/ranisalt/node-argon2#readme"
+ },
+ {
+  "name": "asn1js",
+  "version": "3.0.10",
+  "licence": "BSD-3-Clause",
+  "url": "https://github.com/PeculiarVentures/ASN1.js"
+ },
+ {
+  "name": "bullmq",
+  "version": "5.80.1",
+  "licence": "MIT",
+  "url": "https://bullmq.io/"
+ },
+ {
+  "name": "class-transformer",
+  "version": "0.5.1",
+  "licence": "MIT",
+  "url": "https://github.com/typestack/class-transformer"
+ },
+ {
+  "name": "class-validator",
+  "version": "0.14.4",
+  "licence": "MIT",
+  "url": "https://github.com/typestack/class-validator"
+ },
+ {
+  "name": "clsx",
+  "version": "2.1.1",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "cmdk",
+  "version": "1.1.1",
+  "licence": "MIT",
+  "url": "https://github.com/pacocoursey/cmdk#readme"
+ },
+ {
+  "name": "cookie-parser",
+  "version": "1.4.7",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "csv-parse",
+  "version": "7.0.2",
+  "licence": "MIT",
+  "url": "https://csv.js.org/parse"
+ },
+ {
+  "name": "csv-stringify",
+  "version": "6.8.3",
+  "licence": "MIT",
+  "url": "https://csv.js.org/stringify"
+ },
+ {
+  "name": "d3-scale",
+  "version": "4.0.2",
+  "licence": "ISC",
+  "url": "https://d3js.org/d3-scale/"
+ },
+ {
+  "name": "d3-shape",
+  "version": "3.2.0",
+  "licence": "ISC",
+  "url": "https://d3js.org/d3-shape/"
+ },
+ {
+  "name": "docxtemplater",
+  "version": "3.70.1",
+  "licence": "MIT",
+  "url": "https://github.com/open-xml-templating/docxtemplater"
+ },
+ {
+  "name": "email-reply-parser",
+  "version": "1.9.4",
+  "licence": "MIT",
+  "url": "https://github.com/crisp-oss/email-reply-parser"
+ },
+ {
+  "name": "exceljs",
+  "version": "4.4.0",
+  "licence": "MIT",
+  "url": "https://github.com/exceljs/exceljs"
+ },
+ {
+  "name": "file-type",
+  "version": "16.5.4",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "framer-motion",
+  "version": "12.43.0",
+  "licence": "MIT",
+  "url": "https://github.com/motiondivision/motion/"
+ },
+ {
+  "name": "franc-min",
+  "version": "6.2.0",
+  "licence": "MIT",
+  "url": "https://github.com/wooorm/franc/tree/main/packages/franc-min"
+ },
+ {
+  "name": "free-email-domains",
+  "version": "1.12.20",
+  "licence": "MIT",
+  "url": "https://github.com/Kikobeats/free-email-domains"
+ },
+ {
+  "name": "handlebars",
+  "version": "4.7.10",
+  "licence": "MIT",
+  "url": "https://handlebarsjs.com/"
+ },
+ {
+  "name": "ical-generator",
+  "version": "11.1.1",
+  "licence": "MIT",
+  "url": "https://github.com/sebbo2002/ical-generator"
+ },
+ {
+  "name": "imapflow",
+  "version": "2.0.6",
+  "licence": "MIT",
+  "url": "https://imapflow.com/"
+ },
+ {
+  "name": "ioredis",
+  "version": "5.10.1",
+  "licence": "MIT",
+  "url": "https://github.com/luin/ioredis"
+ },
+ {
+  "name": "ipaddr.js",
+  "version": "1.9.1",
+  "licence": "MIT",
+  "url": "https://github.com/whitequark/ipaddr.js"
+ },
+ {
+  "name": "jsep",
+  "version": "1.4.0",
+  "licence": "MIT",
+  "url": "https://ericsmekens.github.io/jsep/"
+ },
+ {
+  "name": "jszip",
+  "version": "3.10.1",
+  "licence": "(MIT OR GPL-3.0-or-later)",
+  "url": "https://github.com/Stuk/jszip"
+ },
+ {
+  "name": "ldapts",
+  "version": "8.1.8",
+  "licence": "MIT",
+  "url": "https://github.com/ldapts/ldapts#readme"
+ },
+ {
+  "name": "libphonenumber-js",
+  "version": "1.13.14",
+  "licence": "MIT",
+  "url": "https://gitlab.com/catamphetamine/libphonenumber-js#readme"
+ },
+ {
+  "name": "lucide-react",
+  "version": "1.52.0",
+  "licence": "ISC",
+  "url": "https://lucide.dev"
+ },
+ {
+  "name": "luxon",
+  "version": "3.7.2",
+  "licence": "MIT",
+  "url": "https://github.com/moment/luxon"
+ },
+ {
+  "name": "mailauth",
+  "version": "7.1.1",
+  "licence": "MIT",
+  "url": "https://github.com/postalsys/mailauth"
+ },
+ {
+  "name": "mailparser",
+  "version": "3.9.28",
+  "licence": "MIT",
+  "url": "https://github.com/nodemailer/mailparser"
+ },
+ {
+  "name": "mjml",
+  "version": "5.4.1",
+  "licence": "MIT",
+  "url": "https://mjml.io"
+ },
+ {
+  "name": "monaco-editor",
+  "version": "0.52.2",
+  "licence": "MIT",
+  "url": "https://github.com/microsoft/monaco-editor"
+ },
+ {
+  "name": "multer",
+  "version": "2.4.0",
+  "licence": "MIT",
+  "url": "https://github.com/expressjs/multer"
+ },
+ {
+  "name": "next",
+  "version": "16.3.8",
+  "licence": "MIT",
+  "url": "https://nextjs.org"
+ },
+ {
+  "name": "nodemailer",
+  "version": "10.0.15",
+  "licence": "MIT-0",
+  "url": "https://nodemailer.com/"
+ },
+ {
+  "name": "openai",
+  "version": "6.49.0",
+  "licence": "Apache-2.0",
+  "url": null
+ },
+ {
+  "name": "openid-client",
+  "version": "6.8.8",
+  "licence": "MIT",
+  "url": "https://github.com/panva/openid-client"
+ },
+ {
+  "name": "passport",
+  "version": "0.7.0",
+  "licence": "MIT",
+  "url": "https://www.passportjs.org/"
+ },
+ {
+  "name": "passport-jwt",
+  "version": "4.0.1",
+  "licence": "MIT",
+  "url": "https://github.com/mikenicholson/passport-jwt"
+ },
+ {
+  "name": "pdf-lib",
+  "version": "1.17.1",
+  "licence": "MIT",
+  "url": "https://pdf-lib.js.org"
+ },
+ {
+  "name": "pdf-parse",
+  "version": "1.1.1",
+  "licence": "MIT",
+  "url": "https://gitlab.com/autokent/pdf-parse"
+ },
+ {
+  "name": "pdfkit",
+  "version": "0.15.2",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "pizzip",
+  "version": "3.2.0",
+  "licence": "(MIT OR GPL-3.0)",
+  "url": "https://github.com/open-xml-templating/pizzip"
+ },
+ {
+  "name": "pkijs",
+  "version": "3.4.0",
+  "licence": "BSD-3-Clause",
+  "url": "https://github.com/PeculiarVentures/PKI.js"
+ },
+ {
+  "name": "qrcode",
+  "version": "1.5.4",
+  "licence": "MIT",
+  "url": null
+ },
+ {
+  "name": "react",
+  "version": "18.3.1",
+  "licence": "MIT",
+  "url": "https://reactjs.org/"
+ },
+ {
+  "name": "react-day-picker",
+  "version": "10.0.2",
+  "licence": "MIT",
+  "url": "https://daypicker.dev"
+ },
+ {
+  "name": "react-dom",
+  "version": "18.3.1",
+  "licence": "MIT",
+  "url": "https://reactjs.org/"
+ },
+ {
+  "name": "recharts",
+  "version": "3.10.1",
+  "licence": "MIT",
+  "url": "https://github.com/recharts/recharts"
+ },
+ {
+  "name": "reflect-metadata",
+  "version": "0.2.2",
+  "licence": "Apache-2.0",
+  "url": null
+ },
+ {
+  "name": "rrule",
+  "version": "2.8.1",
+  "licence": "BSD-3-Clause",
+  "url": null
+ },
+ {
+  "name": "rxjs",
+  "version": "7.8.2",
+  "licence": "Apache-2.0",
+  "url": "https://rxjs.dev"
+ },
+ {
+  "name": "sanitize-html",
+  "version": "2.17.5",
+  "licence": "MIT",
+  "url": "https://github.com/apostrophecms/apostrophe/tree/main/packages/sanitize-html#readme"
+ },
+ {
+  "name": "socket.io",
+  "version": "4.8.3",
+  "licence": "MIT",
+  "url": "https://github.com/socketio/socket.io/tree/main/packages/socket.io#readme"
+ },
+ {
+  "name": "socket.io-client",
+  "version": "4.8.3",
+  "licence": "MIT",
+  "url": "https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme"
+ },
+ {
+  "name": "tailwind-merge",
+  "version": "3.6.0",
+  "licence": "MIT",
+  "url": "https://github.com/dcastil/tailwind-merge"
+ },
+ {
+  "name": "uuid",
+  "version": "9.0.1",
+  "licence": "MIT",
+  "url": "https://github.com/uuidjs/uuid"
+ }
+]

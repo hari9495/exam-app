@@ -9,6 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
 import { CancelBatchDto, ClaimIdsDto, JournalQueryDto, PayoutDto, PayoutResultsDto, ReleaseDto } from './payments-dto';
 import { ExpensePaymentsService } from './payments.service';
+import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Expenses batch E3 (M05-BUILD-DESIGN §10, §12, §18 "Payment"). Every route needs expense.payout.manage; the service
 // limits it to the legal entities it is granted for and never to one's own claim. ⚡ = a fresh second sign-in step.
@@ -31,8 +32,8 @@ export class ExpensePaymentsController {
 
   @Get('to-pay')
   @RequirePermissions('expense.payout.manage')
-  toPay(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.payments.toPay(ctx, this.user(req));
+  toPay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityFilterDto) {
+    return this.payments.toPay(ctx, this.user(req), q.legalEntityId);
   }
 
   @Post('to-pay/payroll')

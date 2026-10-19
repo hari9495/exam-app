@@ -13,6 +13,7 @@ import { keepNextForRoundTrip, takeNext } from '../safe-next';
 import { lockWaitSeconds, tryAgainIn, yxAuthMessage, yxProofError } from '../yx-auth-messages';
 import { WebAuthnAbortService, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
 import { passkeySignInAssertion } from '../yx-security';
+import { savePickedLanguage } from '../yx-language';
 
 // The first step was right and a second factor is owed (P12 YX-IAM-01); no session exists yet.
 export interface MfaChallenge {
@@ -136,6 +137,7 @@ export function useYxSignIn() {
   // holds exam/ATS permissions (then their role's console, as before).
   async function finish(result: SignedIn) {
     login('', result.accessToken);
+    void savePickedLanguage(result.accessToken);
     const next = takeNext();
     if (result.mfa?.required) return router.push(next ? `/yx/setup-mfa?next=${encodeURIComponent(next)}` : '/yx/setup-mfa');
     const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;

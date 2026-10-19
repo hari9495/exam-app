@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards, Query } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,6 +10,7 @@ import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto,
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
+import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
 //   lifecycle.exit.view                 exit cases of the people in scope (the manager sees their team's without a key)
@@ -81,8 +82,8 @@ export class ExitsController {
   // ------------------------------------------------------------------------------------------ exit cases
 
   @Get('exits')
-  list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.exits.list(ctx, this.user(req));
+  list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityFilterDto) {
+    return this.exits.list(ctx, this.user(req), q.legalEntityId);
   }
 
   @Post('exits')

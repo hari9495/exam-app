@@ -20,6 +20,8 @@ export interface PlatformNotification {
   more?: number;
   /** The grouped notifications, shown with "Show N more like this". */
   moreItems?: PlatformNotification[];
+  /** Where the notification leads (live app). */
+  href?: string;
 }
 
 export const NOTIFICATIONS: PlatformNotification[] = [
