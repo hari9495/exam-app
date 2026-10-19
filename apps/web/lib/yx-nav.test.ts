@@ -22,9 +22,11 @@ describe('buildNav: areas', () => {
     for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract', 'visitors']) expect(areas(n)).not.toContain(unbuilt);
   });
 
-  it('YukthiX Hiring is the only hiring app: no link to the older one', () => {
+  it('YukthiX Hiring for hiring; the exam tools not yet in YukthiX are one link to the older screens (19 Oct 2026)', () => {
     const all = nav(['exam:manage', 'pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
-    expect(all.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
+    expect(all.filter((l) => l.href.startsWith('/v2')).map((l) => l.label)).toEqual(['Assessments & more (older screens)']);
+    const hiringOnly = nav(['pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(hiringOnly.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent pools']);
   });
 });

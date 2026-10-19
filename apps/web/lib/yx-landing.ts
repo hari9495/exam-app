@@ -9,44 +9,24 @@ import { roleToLandingPath } from './staff-routing';
 
 /** Any of these opens some of the exam / ATS (/v2) screens. */
 export const EXAM_ATS_KEYS = ['exam:manage', 'results:view', 'candidate:manage', 'candidate:view', 'pipeline:manage', 'question_bank:manage', 'interview:view_assigned'] as const;
-const DIRECTORY_KEY = 'employee.profile.view';
-/** Any of these is YukthiX HR work: the person lands in YukthiX, not the exam console. */
-const YX_SETTINGS_KEYS = ['org.settings.manage', 'org.structure.view', 'access.role.manage'] as const;
-/** A Service Desk agent lands on their ticket queue (M14). */
-const DESK_KEY = 'desk.ticket.view';
-const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_KEYS];
 export const YX_HOME = '/yx/home';
 
 /**
- * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR or desk permission lands on
- * the YukthiX Home (design audit step 1, PLT-02). Only exam/ATS accounts with no employee record (and platform staff)
- * keep their role's console. A new hire in their first 30 days lands on that page (lifecycle 6f, design §7.6).
+ * Pure: where a signed-in person lands. Everyone lands on the YukthiX Home (design audit step 1, PLT-02), recruiters and
+ * interviewers too (founder, 19 Oct 2026: hiring is in YukthiX; the older exam tools are one link in Hire). Only
+ * platform staff keep their console. A new hire in their first 30 days lands on that page (lifecycle 6f, design §7.6).
  */
-export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false, firstDays = false): string {
+export function landingFor(role: string | undefined, firstDays = false): string {
   if (role === 'super_admin') return roleToLandingPath(role);
-  if (firstDays) return '/yx/me/first-30-days';
-  if (isEmployee || [DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_KEYS].some((k) => granted.includes(k))) return YX_HOME;
-  if (EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);
-  return YX_HOME;
+  return firstDays ? '/yx/me/first-30-days' : YX_HOME;
 }
 
-const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`/rbac/me/permissions?keys=${LANDING_KEYS.join(',')}`, {}, token);
+const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`/rbac/me/permissions?keys=${EXAM_ATS_KEYS.join(',')}`, {}, token);
 
-/** Landing after a YukthiX sign-in. If the permissions cannot be read, the safe default is Home. */
+/** Landing after a YukthiX sign-in. A new hire's first 30 days (lifecycle 6f); any failure just means Home. */
 export async function yxLandingPath(accessToken: string, role: string | undefined): Promise<string> {
-  try {
-    const [granted, isEmployee, firstDays] = await Promise.all([
-      grantedKeys(accessToken),
-      apiFetch('/people/me', {}, accessToken).then(() => true, () => false),
-      // A new hire's first 30 days (lifecycle 6f); any failure just means no such page.
-      Promise.resolve()
-        .then(() => apiFetch('/lifecycle/me/first-30-days', {}, accessToken))
-        .then((r: { card?: unknown } | null | undefined) => Boolean(r?.card), () => false),
-    ]);
-    return landingFor(role, granted, isEmployee, firstDays);
-  } catch {
-    return YX_HOME;
-  }
+  const firstDays = await apiFetch('/lifecycle/me/first-30-days', {}, accessToken).then((r: { card?: unknown } | null | undefined) => Boolean(r?.card), () => false);
+  return landingFor(role, firstDays);
 }
 
 /** The exam/ATS keys the signed-in person holds; `ready` once known. */
@@ -64,6 +44,6 @@ export function useLanding() {
     ready: q.isSuccess || q.isError,
     has: (key: string) => granted.includes(key),
     examAts: role === 'super_admin' || EXAM_ATS_KEYS.some((k) => granted.includes(k)),
-    landing: landingFor(role ?? undefined, granted),
+    landing: landingFor(role ?? undefined),
   };
 }
