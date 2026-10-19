@@ -20,6 +20,7 @@ const DAY: MyAttendance = {
   days: [],
   requests: [],
   regularise: { limit: 4, used: 0 },
+  wfh: { limit: 4, used: 0 },
 };
 const punch = (id: string, kind: PunchKind, at: string) => ({ id, kind, at, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
 const props = { now: NOW, getLocation: async () => ({ pin: null, problem: 'Location is turned off.' }), onPunch: async (kind: PunchKind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null }), attendanceHref: '#attendance', onRegularise: () => {} };
@@ -29,6 +30,7 @@ export const NotIn: S = { name: 'Not checked in yet', render: () => <Frame data=
 export const Working: S = { name: 'Working', render: () => <Frame data={{ ...DAY, next: 'out', punches: [punch('p1', 'in', '2026-10-19T04:08:00Z')] }} /> };
 export const OnBreak: S = { name: 'On a break', render: () => <Frame data={{ ...DAY, next: 'out', onBreak: true, punches: [punch('p1', 'in', '2026-10-19T03:58:00Z'), punch('p2', 'break_start', '2026-10-19T04:05:00Z')] }} /> };
 export const BackFromBreak: S = { name: 'Back from a break', render: () => <Frame data={{ ...DAY, next: 'out', punches: [punch('p1', 'in', '2026-10-19T03:58:00Z'), punch('p2', 'break_start', '2026-10-19T04:00:00Z'), punch('p3', 'break_end', '2026-10-19T04:10:00Z')] }} /> };
+export const WorkFromHome: S = { name: 'Working from home today (approved)', render: () => <Frame data={{ ...DAY, wfhToday: true }} /> };
 export const Done: S = { name: 'Done for the day', render: () => <Frame data={{ ...DAY, punches: [punch('p1', 'in', '2026-10-19T04:08:00Z'), punch('p2', 'out', '2026-10-19T13:05:00Z')] }} /> };
 export const OnLeave: S = { name: 'On leave', render: () => <Frame data={{ ...DAY, days: [{ on: '2026-10-19', status: 'leave', leavePart: 'full', workedMinutes: null, lateMinutes: null, regularised: false }] }} /> };
 export const WeeklyOff: S = { name: 'Weekly off', render: () => <Frame data={{ ...DAY, shift: { ...DAY.shift, off: true } }} /> };

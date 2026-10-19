@@ -17,7 +17,9 @@ export class DayEngine {
     const org = c.organizationId;
     const leave = await leaveDays(tx, org, employeeId, from, to);
     const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' } });
-    const fixes = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
+    const approved = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
+    const fixes = approved.filter((x) => x.kind !== 'wfh');
+    const wfh = new Set(approved.filter((x) => x.kind === 'wfh').map((x) => x.workOn.toISOString().slice(0, 10)));
     const sheets = await this.approvedMinutes(tx, org, employeeId, from, to);
     const locked = await lockedDates(tx, org, employeeId, from, to);
     const sched = book ?? (await ScheduleBook.load(tx, org));
@@ -46,6 +48,7 @@ export class DayEngine {
         rule,
         now,
         timesheetMinutes: sheets.has(on) ? sheets.get(on)! : null,
+        wfh: wfh.has(on),
       });
       const data = { mode, status: r.status, leavePart: r.leavePart, firstIn: r.firstIn, lastOut: r.lastOut, workedMinutes: r.workedMinutes, lateMinutes: r.lateMinutes, regularised: r.regularised, evaluatedAt: now, shiftId: day.shift?.shiftId ?? null };
       await tx.attendanceDay.upsert({

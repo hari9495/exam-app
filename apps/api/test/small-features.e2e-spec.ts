@@ -172,4 +172,64 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect(mine.days.find((x: { on: string }) => x.on === on)).toMatchObject({ workedMinutes: 495 });
     });
   });
+
+  describe('request work from home', () => {
+    it('checks the day: today or later, a working day, one request a day', async () => {
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(-1), reason: 'Plumber' }).expect(400)).body.message).toBe('Pick today or a later date.');
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(2), reason: 'Plumber' }).expect(400)).body.message).toMatch(/is your weekly off\.$/);
+      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: '' }).expect(400);
+    });
+
+    it('goes to the manager only; the person sees it in My requests; no one else can see or touch it', async () => {
+      const r = (await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Plumber visit at home in the morning' }).expect(201)).body;
+      expect(r).toMatchObject({ status: 'pending', hrStep: false });
+      ids.wfh = r.id;
+      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Again' }).expect(409);
+      const mine = (await api('emp', 'get', '/workflow/approvals/mine').expect(200)).body as { title: string; status: string }[];
+      expect(mine.find((x) => x.title.includes('work from home'))).toMatchObject({ status: 'pending' });
+      const me = (await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;
+      expect(me.wfh).toEqual({ limit: 4, used: 1 });
+      expect(me.requests).toEqual([expect.objectContaining({ id: r.id, kind: 'wfh', status: 'pending' })]);
+      // Only the manager is asked: not a teammate, not HR (under the limit), never the other company.
+      for (const who of ['peer', 'hrAdmin', 'other', 'adminB', 'empB'] as const) expect((await inbox(who)).some((t) => t.title.includes('work from home'))).toBe(false);
+      // Nobody else can withdraw it.
+      await api('peer', 'post', `/time/me/regularise/${r.id}/withdraw`).expect(404);
+      await api('empB', 'post', `/time/me/regularise/${r.id}/withdraw`).expect(404);
+      const task = (await inbox('mgr')).find((t) => t.title.includes('work from home'))!;
+      expect(task.title).toMatch(/^emp .*: work from home on /);
+      expect(task.summary.find((s) => s.label === 'Work from home this month')!.value).toBe('Day 1 of 4 without HR');
+      // The person cannot decide their own request; the teammate has no task to decide (not found, nothing given away).
+      await decide('emp', task.taskId, 'approve').expect(404);
+      await decide('peer', task.taskId, 'approve').expect(404);
+      await decide('empB', task.taskId, 'approve').expect(404);
+      await decide('mgr', task.taskId, 'approve').expect(200);
+      expect(await inA((tx) => tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } }))).toMatchObject({ status: 'approved' });
+    });
+
+    it('on an approved day: counted present, and web check-in from outside the geofence is recorded, not refused', async () => {
+      let me = (await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;
+      expect(me.wfhToday).toBe(true);
+      expect(me.days.find((x: { on: string }) => x.on === today)).toMatchObject({ status: 'present' });
+      const p = (await api('emp', 'post', '/time/me/punch').send({ kind: 'in', ...OUTSIDE }).expect(200)).body;
+      expect(p).toMatchObject({ accepted: true, verdict: 'field', message: 'Checked in. Working from home today, location recorded' });
+      // A teammate on an office day is still refused outside.
+      expect((await api('other', 'post', '/time/me/punch').send({ kind: 'in', ...OUTSIDE }).expect(200)).body).toMatchObject({ accepted: false });
+      me = (await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;
+      expect(me.days.find((x: { on: string }) => x.on === today)).toMatchObject({ status: 'present' });
+      // The manager's muster says present too.
+      const muster = (await api('mgr', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body as { people: { id: string; days: { on: string; status: string }[] }[] };
+      expect(muster.people.find((x) => x.id === ids.empEmp)!.days.find((x) => x.on === today)).toMatchObject({ status: 'present' });
+    });
+
+    it('beyond the monthly limit HR approves too', async () => {
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.wfh_monthly_limit', scopeType: 'tenant', value: '0' }).expect(200);
+      const r = (await api('peer', 'post', '/time/me/wfh').send({ on: d(1), reason: 'Internet engineer visit' }).expect(201)).body;
+      expect(r).toMatchObject({ status: 'pending', hrStep: true });
+      const task = (await inbox('mgr')).find((t) => t.title.startsWith('peer ') && t.title.includes('work from home'))!;
+      await decide('mgr', task.taskId, 'approve').expect(200);
+      expect((await inbox('hrAdmin')).some((t) => t.title.startsWith('peer ') && t.title.includes('work from home'))).toBe(true);
+      // Withdrawn by the person while HR still has it.
+      expect((await api('peer', 'post', `/time/me/regularise/${r.id}/withdraw`).expect(200)).body).toEqual({ id: r.id, status: 'withdrawn' });
+    });
+  });
 });

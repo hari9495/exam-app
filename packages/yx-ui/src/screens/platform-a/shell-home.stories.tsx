@@ -116,6 +116,7 @@ const DAY: MyAttendance = {
   days: [],
   requests: [],
   regularise: { limit: 4, used: 0 },
+  wfh: { limit: 4, used: 0 },
 };
 const liveClock = <HomeClockCard data={DAY} now={new Date('2026-09-29T04:12:15Z')} getLocation={async () => ({ pin: null })} onPunch={async (kind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })} attendanceHref="#attendance" onRegularise={() => {}} />;
 const LIVE_HR = {

@@ -124,6 +124,17 @@ export class PunchDto {
   accuracyM?: number;
 }
 
+export class WfhDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class RegulariseDto {
   @IsDateString(DATE)
   on!: string;

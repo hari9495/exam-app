@@ -463,6 +463,8 @@ export interface ClockCardProps {
   lateMarksBefore?: number;
   /** Not a working day for this person: "On leave today", "Weekly off today", "Holiday: Diwali". No clock-in. */
   dayOff?: string;
+  /** Today is an approved work-from-home day: the badge shows and the place never blocks clock-in. */
+  wfhToday?: boolean;
 }
 
 // A break is normal, not a risk: neutral.
@@ -500,7 +502,7 @@ export function ClockCard(p: ClockCardProps) {
   const punches = p.punches ?? punchesInner;
   const [noteOpen, setNoteOpen] = useState(defaultNoteOpen);
   const [note, setNote] = useState('');
-  const [workMode, setWorkMode] = useState(defaultWorkMode);
+  const [workMode, setWorkMode] = useState(p.wfhToday ? 'wfh' : defaultWorkMode);
   const [tick, setTick] = useState(0);
   const [announce, setAnnounce] = useState('');
   const [rechecked, setRechecked] = useState('');
@@ -624,7 +626,7 @@ export function ClockCard(p: ClockCardProps) {
             {workMode === 'wfh' && <Badge tone="info">Work from home</Badge>}
             {workMode === 'on_duty' && <Badge tone="info">On duty</Badge>}
           </div>
-          {workMode !== 'office' && state === 'not_in' && (
+          {workMode !== 'office' && state === 'not_in' && !p.wfhToday && (
             <p className="yx-tim-row">
               <span className="yx-tim-muted">
                 {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {ME.manager}'s approval · {usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of 4 used this month

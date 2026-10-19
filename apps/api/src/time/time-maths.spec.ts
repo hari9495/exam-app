@@ -262,6 +262,14 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
     });
   });
 
+  it('an approved work-from-home day is present, with or without punches; leave and weekly offs still come first', () => {
+    expect(evaluateDay({ ...base, wfh: true })).toMatchObject({ status: 'present', workedMinutes: null });
+    expect(evaluateDay({ ...base, wfh: true, punches: [{ at: at('09:31'), kind: 'in' }] })).toMatchObject({ status: 'present', lateMinutes: 0 });
+    expect(evaluateDay({ ...base, wfh: true, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('12:00'), kind: 'out' }] })).toMatchObject({ status: 'present', workedMinutes: 150 });
+    expect(evaluateDay({ ...base, wfh: true, leave: 'full' }).status).toBe('leave');
+    expect(evaluateDay({ ...base, wfh: true, weeklyOff: true }).status).toBe('weekly_off');
+  });
+
   it('an approved regularisation fills the missing check-out', () => {
     const r = evaluateDay({ ...base, punches: [{ at: at('09:31'), kind: 'in' }], fix: { kind: 'missed_out', inMinute: null, outMinute: 18 * 60 + 10 } });
     expect(r).toMatchObject({ status: 'present', regularised: true });

@@ -118,7 +118,8 @@ export type FixKind = 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day';
 export interface FixRow {
   id: string;
   on: string;
-  kind: FixKind;
+  /** A fix of the day, or work from home on it (TIM-07). */
+  kind: FixKind | 'wfh';
   inMinute: number | null;
   outMinute: number | null;
   reason: string;
@@ -140,6 +141,15 @@ export interface MyAttendance {
   days: DayRow[];
   requests: FixRow[];
   regularise: { limit: number; used: number };
+  /** Work-from-home days this month (asked for or approved) and the days a month the manager alone approves. */
+  wfh: { limit: number; used: number };
+  /** Today is an approved work-from-home day. */
+  wfhToday?: boolean;
+}
+
+export interface WfhInput {
+  on: string;
+  reason: string;
 }
 
 export interface PunchResult {

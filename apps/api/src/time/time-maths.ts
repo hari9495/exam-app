@@ -332,6 +332,8 @@ export interface DayInput {
   now: Date;
   /** Timesheet mode (D1): the day's approved timesheet minutes, or null when no approved timesheet covers it. */
   timesheetMinutes?: number | null;
+  /** An approved work-from-home day (TIM-07): present, with or without punches. */
+  wfh?: boolean;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -424,6 +426,8 @@ export function evaluateDay(i: DayInput): DayResult {
   const dayOver = nowMin >= workEnd + 240;
 
   const late = firstIn ? Math.max(0, minutesInto(i.on, i.zone, firstIn) - workStart - r.graceMinutes) : null;
+  // Work from home (19 Oct 2026): approved, the day counts as present; punches still give the hours and lateness.
+  if (i.wfh) return { status: 'present', leavePart, firstIn, lastOut, workedMinutes: firstIn && lastOut ? netWorked(i.punches, firstIn, lastOut, r) : null, lateMinutes: late, regularised };
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };

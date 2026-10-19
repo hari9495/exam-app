@@ -5,8 +5,8 @@ import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-struc
 import { Viewer, buildViewer, inEntitySql, inScopeSql, tenantWide, has, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
-import { PunchDto, RegulariseDto } from './dto';
-import { TIME_KEYS, asDate, dateOf, factsOn, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
+import { PunchDto, RegulariseDto, WfhDto } from './dto';
+import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { addDays, checkInVerdict, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen } from './schedule';
 import { workOnForPunch } from './time-rules';
@@ -16,6 +16,7 @@ import { workOnForPunch } from './time-rules';
 // P03 with the monthly limit (Q5: beyond it HR approves too).
 
 export const REGULARISE = 'attendance.regularise';
+export const WFH = 'attendance.wfh';
 const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day' };
 const ALREADY: Record<PunchDto['kind'], string> = { in: 'Already checked in', out: 'Already checked out', break_start: 'Break already started', break_end: 'Break already ended' };
 const DONE: Record<PunchDto['kind'], string> = { in: 'Checked in', out: 'Checked out', break_start: 'Break started', break_end: 'Break ended' };
@@ -33,6 +34,7 @@ export class AttendanceService implements OnModuleInit {
 
   onModuleInit() {
     this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -71,7 +73,9 @@ export class AttendanceService implements OnModuleInit {
       const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { workOn: 'asc' } });
       const requests = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(addDays(from, -31)) } }, orderBy: { workOn: 'desc' }, take: 60 });
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, today));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
+      const thisMonth = monthRange(today.slice(0, 7));
+      const wfhUsed = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'wfh', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(thisMonth.from), lte: asDate(thisMonth.to) } } });
       return {
         employee: { id: f.employeeId, name: f.name },
         today,
@@ -87,6 +91,9 @@ export class AttendanceService implements OnModuleInit {
         days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
         requests: requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status })),
         regularise: { limit, used },
+        // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
+        wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
+        wfhToday: requests.some((r) => r.kind === 'wfh' && r.status === 'approved' && dateOf(r.workOn) === today),
       };
     });
   }
@@ -116,7 +123,10 @@ export class AttendanceService implements OnModuleInit {
       const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
       if (dto.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
       if (dto.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
-      const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: rule.checkIn });
+      // An approved work-from-home day: the punch records where the person is and is never refused for the place.
+      const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
+      const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: wfh ? 'field' : rule.checkIn });
+      if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
       await tx.punch.create({
         data: {
           organizationId: org,
@@ -160,9 +170,9 @@ export class AttendanceService implements OnModuleInit {
       if (needIn && dto.inMinute === undefined) throw new BadRequestException('Give the time you started.');
       if (needOut && dto.outMinute === undefined) throw new BadRequestException('Give the time you finished.');
       if (dto.kind === 'wrong_time' && dto.outMinute! <= dto.inMinute!) throw new BadRequestException('The finish time is before the start time.');
-      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
+      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: { not: 'wfh' }, status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, dto.on));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
       const r = await tx.attendanceRequest.create({
         data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: dto.kind, inMinute: needIn ? dto.inMinute! : null, outMinute: needOut ? dto.outMinute! : null, reason: dto.reason, raisedBy: c.userId ?? null },
       });
@@ -198,13 +208,66 @@ export class AttendanceService implements OnModuleInit {
     return res;
   }
 
+  /**
+   * Work from home on one day (TIM-07, 19 Oct 2026), through P03: the manager, and HR too beyond the monthly limit
+   * (attendance.wfh_monthly_limit). Today or a later working day: never a weekly off or a holiday, one request a day.
+   * Approved, the day counts as present and web check-in records where the person is (never refused for the place).
+   */
+  async requestWfh(ctx: TenantContext, user: ScopeUser, dto: WfhDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { f: now, today } = await this.meFacts(tx, c);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${now.employeeId}`}))`;
+      if (dto.on < today) throw new BadRequestException('Pick today or a later date.');
+      const f = await factsOn(tx, org, now.employeeId, dto.on);
+      if (!f || dto.on < f.joinedOn || (f.exitedOn && dto.on > f.exitedOn)) throw new BadRequestException('You are not working here on that day.');
+      if ((await (await ScheduleBook.load(tx, org)).day(f, dto.on)).weeklyOff) throw new BadRequestException(`${fmt(dto.on)} is your weekly off.`);
+      const holiday = (await holidaysFor(tx, org, f.locationId, dto.on, dto.on, f.employeeId)).map.get(dto.on);
+      if (holiday && !holiday.halfDay) throw new BadRequestException(`${fmt(dto.on)} is a holiday (${holiday.name}).`);
+      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'wfh', status: { in: ['pending', 'approved'] } } })) throw new ConflictException('You have already asked to work from home on that day.');
+      const limit = Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, dto.on));
+      const month = monthRange(dto.on.slice(0, 7));
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'wfh', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(month.from), lte: asDate(month.to) } } });
+      const r = await tx.attendanceRequest.create({ data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'wfh', reason: dto.reason, raisedBy: c.userId ?? null } });
+      const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
+      const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }];
+      if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 });
+      const sub = await this.engine.submit(tx, c, {
+        type: WFH,
+        subjectType: 'attendance_request',
+        subjectId: r.id,
+        title: `${f.name}: work from home on ${fmt(dto.on)}`,
+        summary: [
+          { label: 'Day', value: fmt(dto.on) },
+          { label: 'Work from home this month', value: `Day ${used + 1} of ${limit} without HR` },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps,
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: hr,
+      });
+      notices.push(...sub.notices);
+      await tx.attendanceRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'attendance.wfh.submitted', 'attendance_request', r.id, { employeeId: f.employeeId, on: dto.on, hrStep: used >= limit });
+      return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status, hrStep: used >= limit };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
   async withdraw(ctx: TenantContext, user: ScopeUser, id: string) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const mine = await myEmployeeId(tx, c.organizationId, c.userId);
       const r = await tx.attendanceRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: mine } });
       if (!r) throw new NotFoundException('No such request.');
-      if (r.status !== 'pending') throw new ConflictException('Only a fix still waiting for approval can be withdrawn.');
+      if (r.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
       if (r.wfRequestId) await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       await tx.attendanceRequest.update({ where: { id: r.id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       return { id: r.id, status: 'withdrawn' };

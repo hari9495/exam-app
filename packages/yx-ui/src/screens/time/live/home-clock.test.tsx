@@ -17,6 +17,7 @@ const DAY: MyAttendance = {
   days: [],
   requests: [],
   regularise: { limit: 4, used: 0 },
+  wfh: { limit: 4, used: 0 },
 };
 const punch = (kind: PunchKind, at: string) => ({ id: kind, kind, at, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: null });
 const props = (over: Partial<Parameters<typeof HomeClockCard>[0]> = {}) => ({
@@ -89,6 +90,13 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     expect(screen.queryByRole('button', { name: 'Clock in' })).not.toBeInTheDocument();
     rerender(<HomeClockCard {...props({ data: { ...DAY, shift: { ...DAY.shift, off: true } } })} />);
     expect(screen.getByText('Weekly off today')).toBeInTheDocument();
+  });
+
+  it('on an approved work-from-home day: the badge shows, clock-in is open, no approval note', () => {
+    render(<HomeClockCard {...props({ data: { ...DAY, wfhToday: true } })} />);
+    expect(screen.getByText('Work from home')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clock in' })).toBeEnabled();
+    expect(screen.queryByText(/needs .* approval/)).toBeNull();
   });
 
   it('is done for the day after checking out', () => {
