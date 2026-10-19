@@ -1,6 +1,9 @@
 // Indian identifier checks for MaskedField (§16). Each returns an error
 // message telling the user what to do (§34), or null when valid.
 
+/** A complete email address: something@domain.tld, no spaces (the API checks it again). */
+export const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 export type IdKind = 'pan' | 'ifsc' | 'uan' | 'aadhaar' | 'phone';
 
 export interface IdSpec {

@@ -226,7 +226,11 @@ export function useYxSignIn() {
     busy,
     error: lockUntil ? tryAgainIn((lockUntil - Date.now()) / 1000) : error,
     challenge,
-    setField: (field: keyof SignInFields, value: string) => setFields((f) => ({ ...f, [field]: value })),
+    setField: (field: keyof SignInFields, value: string) => {
+      setFields((f) => ({ ...f, [field]: value }));
+      // An error was about what was typed before; once it changes, it no longer applies (founder review 19 Oct).
+      if (!lockUntil) setError(null);
+    },
 
     identify: () =>
       run('Something went wrong. Try again.', async () => {
