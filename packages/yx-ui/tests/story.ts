@@ -27,4 +27,17 @@ export async function openStory(page: Page, id: string, theme: 'light' | 'dark')
     w.__STORYBOOK_ADDONS_CHANNEL__.emit('storyRendered', storyId);
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   }, id);
+  // The rewrite can still land after that (a dark-theme focus ring once missed): wait until every forced state on the
+  // page (an element with class pseudo-focus-visible, ...) has a rewritten rule to draw it.
+  await page.waitForFunction(() => {
+    const wanted = new Set([...document.querySelectorAll('[class*="pseudo-"]')].flatMap((e) => [...e.classList].filter((c) => c.startsWith('pseudo-'))));
+    const rules = [...document.styleSheets].flatMap((sh) => {
+      try {
+        return [...sh.cssRules].map((r) => r.cssText);
+      } catch {
+        return [];
+      }
+    });
+    return [...wanted].every((c) => rules.some((t) => t.includes(`.${c}`)));
+  });
 }
