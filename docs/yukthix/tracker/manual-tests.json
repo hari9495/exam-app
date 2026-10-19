@@ -73,7 +73,9 @@
   "note": "",
   "status": "Not run",
   "runs": [],
-  "ideas": []
+  "ideas": [
+   "Filter by a parent department (Operations shows everyone in Operations and its sub-departments, e.g. Quality). The old directory had this (fix 00a8cf56, Area 6); the new designed Directory filters exact departments only. Founder to decide: add it back?"
+  ]
  },
  {
   "id": "DIR-05",
