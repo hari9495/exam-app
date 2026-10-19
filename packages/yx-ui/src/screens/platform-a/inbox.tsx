@@ -29,10 +29,10 @@ import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type Plat
 
 const CATEGORIES: (NotifCategory | 'All')[] = ['All', 'Approvals', 'Leave & time', 'Pay', 'Tasks', 'Hiring', 'From YukthiX'];
 
-function groupNotifs(items: PlatformNotification[]) {
+function groupNotifs(items: PlatformNotification[], today: Date = TODAY) {
   const out: { label: string; items: PlatformNotification[] }[] = [];
   for (const n of [...items].sort((a, b) => b.at.getTime() - a.at.getTime())) {
-    const label = dayLabel(n.at, TODAY);
+    const label = dayLabel(n.at, today);
     const last = out[out.length - 1];
     if (last?.label === label) last.items.push(n);
     else out.push({ label, items: [n] });
@@ -300,7 +300,7 @@ function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, onRetry, a
           action={unreadOnly || cat !== 'All' ? <Button onClick={onShowAll}>Show all</Button> : undefined}
         />
       ) : (
-        groupNotifs(shown).map((g) => (
+        groupNotifs(shown, actions.live ? new Date() : TODAY).map((g) => (
           <section key={g.label} aria-label={g.label} className="yx-plt-stack" data-gap="sm">
             <h2 className="yx-plt-h">{g.label}</h2>
             <ul className="yx-plt-notifs">
