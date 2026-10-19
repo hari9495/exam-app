@@ -108,7 +108,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     expect(api).toHaveBeenCalledWith('/auth/identify', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in' }) });
     await userEvent.type(await screen.findByLabelText(/^Password/), 'correct horse battery');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(api).toHaveBeenCalledWith('/auth/staff/login', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in', password: 'correct horse battery' }) });
     expect(login).toHaveBeenCalledWith('', expect.any(String));
   });
@@ -200,7 +200,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Email me a code instead' }));
     await userEvent.type(await screen.findByLabelText(/6-digit code/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/panel/reports'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in', otpToken: 'o'.repeat(43), code: '123456' }) });
   });
 
@@ -388,7 +388,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('by SMS');
     await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: '98450 12345', otpToken: 'o'.repeat(43), code: '123456' }) });
   });
 
@@ -419,7 +419,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
       expect(passkey).toHaveAttribute('data-variant', 'primary');
       expect(screen.getByLabelText(/Work email/)).toHaveAttribute('autocomplete', 'username webauthn');
       await userEvent.click(passkey);
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
       expect(start).toHaveBeenCalledWith({ optionsJSON: { challenge: 'chal-1', userVerification: 'required' }, useBrowserAutofill: false });
       expect(api).toHaveBeenCalledWith('/auth/passkey/verify', { method: 'POST', body: JSON.stringify({ credential: CREDENTIAL }) });
       expect(login).toHaveBeenCalledWith('', expect.any(String));
@@ -450,7 +450,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
       start.mockResolvedValue(CREDENTIAL);
       render(<YxSignInPage />);
       await waitFor(() => expect(start).toHaveBeenCalledWith({ optionsJSON: { challenge: 'chal-2' }, useBrowserAutofill: true }));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     });
 
     it('a refused passkey says so; a closed prompt says nothing', async () => {
@@ -507,7 +507,7 @@ describe('/yx/sign-in/callback (back from Google / Microsoft)', () => {
       'GET /rbac/me/permissions': ['exam:manage'],
     });
     render(<YxSignInCallbackPage />);
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(api).toHaveBeenCalledWith('/auth/social/exchange', { method: 'POST', body: JSON.stringify({ code: 'c0de' }) });
     expect(api.mock.calls.filter(([p]) => p === '/auth/social/exchange')).toHaveLength(1);
     expect(window.location.hash).toBe('');

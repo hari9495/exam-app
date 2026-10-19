@@ -203,7 +203,8 @@ export function buildNav(n: NavInput): NavArea[] {
   };
 
   // M10 AT1: hiring, for holders of the hiring keys (founder D2); never in a support session (D14). YukthiX Hiring is
-  // the only hiring app (founder decision 15 Oct 2026): no link to the older one.
+  // the only hiring app (founder decision 15 Oct 2026). Assessments, campaigns and the other exam tools are not in YukthiX
+  // yet: recruiters now land here, so one link reaches them in the older screens until they are redesigned (19 Oct).
   const hire: NavArea = {
     id: 'hire',
     title: 'Hiring',
@@ -218,6 +219,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
+          ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
+          ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
         ]),
   };
 

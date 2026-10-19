@@ -26,17 +26,16 @@ describe('SsoCallbackPage', () => {
     window.sessionStorage.clear();
   });
 
-  it('exchanges a code for tokens, signs in and lands an exam admin in their console', async () => {
+  it('exchanges a code for tokens, signs in and lands an exam admin on the YukthiX Home (founder, 19 Oct 2026)', async () => {
     atCallback('code=abc123');
     const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
     (apiFetch as jest.Mock)
       .mockResolvedValueOnce({ accessToken })
-      .mockResolvedValueOnce(['exam:manage'])
-      .mockRejectedValueOnce(new Error('You have no employee record in this company.'));
+      .mockRejectedValueOnce(new Error('No first-30-days page'));
 
     render(<SsoCallbackPage />);
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
     expect(apiFetch).toHaveBeenCalledWith('/auth/sso/exchange', { method: 'POST', body: JSON.stringify({ code: 'abc123' }) });
     expect(login).toHaveBeenCalledWith('', accessToken);
   });
@@ -129,16 +128,14 @@ describe('SsoCallbackPage', () => {
     (apiFetch as jest.Mock)
       .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp'] })
       .mockResolvedValueOnce({ accessToken })
-      .mockResolvedValueOnce(['exam:manage'])
-      .mockRejectedValueOnce(new Error('You have no employee record in this company.'));
+      .mockRejectedValueOnce(new Error('No first-30-days page'));
 
     render(<SsoCallbackPage />);
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    // An admin with exam permissions keeps the role console.
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/home'));
   });
 
   it('lands a YukthiX SSO sign-in without exam/ATS permissions in YukthiX', async () => {
