@@ -239,7 +239,14 @@
   ],
   "note": "Design library: run 'yx-design' (Storybook from the test app's code) on port 6106.",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "HR Home live vs design: 1) switcher has no period, no assistant button; 2) no Request work from home; 3) Needs your action rows show an empty avatar and no name/due date; 4) older Check in box nested in a card instead of the designed Attendance today widget; 5) different count cards, no 'vs last month', gap in the grid; 6) Joiners and leavers this week missing; 7) Fixed-term contracts ending missing from Due dates.",
+    "fixedIn": "In progress: builder matching HR, employee and manager Homes to the design (one widget set, no second version)"
+   }
+  ],
   "ideas": [],
   "id": "AF-01",
   "area": "0 App frame (design parity step 1, PR #178)",
