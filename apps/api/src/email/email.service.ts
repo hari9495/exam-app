@@ -49,8 +49,12 @@ const PLATFORM_FROM_FALLBACK = 'no-reply@exam-platform.test';
  * Read at call time, not at module load: ConfigModule populates process.env
  * during bootstrap, after this module is first imported.
  */
+// A mail-server login is the sender only when it is an address: a login such as "dev-smtp-user" as From was refused
+// (553 5.1.3) and every platform email was lost (founder testing, 19 Oct 2026).
+const asSender = (login: string | null | undefined) => (login && /^[^\s@<>]+@[^\s@<>]+$/.test(login) ? login : undefined);
+
 function platformFromAddress(): string {
-  return process.env.SMTP_FROM_ADDRESS || process.env.SMTP_USER || PLATFORM_FROM_FALLBACK;
+  return process.env.SMTP_FROM_ADDRESS || asSender(process.env.SMTP_USER) || PLATFORM_FROM_FALLBACK;
 }
 const PLATFORM_CACHE_KEY = '__platform__';
 
@@ -182,7 +186,7 @@ export class EmailService {
         return {
           transporter,
           fromAddress:
-            fromAddressOverride ?? defaultSender?.address ?? org.emailFromAddress ?? org.smtpUser ?? platformFromAddress(),
+            fromAddressOverride ?? defaultSender?.address ?? org.emailFromAddress ?? asSender(org.smtpUser) ?? platformFromAddress(),
           deliverable: true,
         };
       }

@@ -227,6 +227,16 @@ describe('EmailService', () => {
       );
     });
 
+    it('never sends as a login that is not an address (it was refused and the email lost)', async () => {
+      process.env.SMTP_HOST = '127.0.0.1';
+      process.env.SMTP_USER = 'dev-smtp-user-change-me';
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>' });
+
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@exam-platform.test' }));
+    });
+
     it('prefers an explicit SMTP_FROM_ADDRESS when one is set', async () => {
       process.env.SMTP_HOST = 'smtp.office365.com';
       process.env.SMTP_USER = 'prudenthire-noreply@prudentconsulting.com';
