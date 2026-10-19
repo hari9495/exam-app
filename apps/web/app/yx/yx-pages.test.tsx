@@ -425,6 +425,23 @@ describe('/yx/sign-in (email first, no company code)', () => {
       expect(login).toHaveBeenCalledWith('', expect.any(String));
     });
 
+    it('a passkey the site no longer knows: the browser is asked to forget it, and the page says so', async () => {
+      const signalUnknownCredential = jest.fn().mockResolvedValue(undefined);
+      Object.defineProperty(window, 'PublicKeyCredential', { value: { signalUnknownCredential }, configurable: true });
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': { ...WAYS, passkey: true },
+        'POST /auth/passkey/options': { challenge: 'chal-1', rpId: 'localhost', userVerification: 'required' },
+        'POST /auth/passkey/verify': Object.assign(new Error('No such passkey'), { code: 'passkey_unknown' }),
+      });
+      start.mockResolvedValue(CREDENTIAL);
+      render(<YxSignInPage />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }));
+      await waitFor(() => expect(signalUnknownCredential).toHaveBeenCalledWith({ rpId: 'localhost', credentialId: 'cred-1' }));
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      delete (window as { PublicKeyCredential?: unknown }).PublicKeyCredential;
+    });
+
     it('not offered where the browser cannot, or the company does not allow passkeys', async () => {
       route({ 'GET /auth/remembered-company': { company: null }, 'GET /auth/sign-in-options': { ...WAYS, passkey: false } });
       const { unmount } = render(<YxSignInPage />);

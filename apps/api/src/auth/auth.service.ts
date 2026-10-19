@@ -717,6 +717,10 @@ export class AuthService {
     const attempt = { method: 'passkey' as const, meta };
     const refuse = async (reason: string, account?: Account): Promise<never> => {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId: account?.organizationId ?? null, userId: account?.id ?? null, identifier: account?.email.toLowerCase() ?? null, result: 'failed', reason });
+      // A passkey this site no longer has (deleted, or from a rebuilt database): the browser is told so it can remove
+      // it (WebAuthn signalUnknownCredential). The credential id is the browser's own random id, so this says nothing
+      // about any account.
+      if (reason === 'unknown_credential') throw new UnauthorizedException({ statusCode: 401, message: PASSKEY_FAILED, code: 'passkey_unknown' });
       throw new UnauthorizedException(PASSKEY_FAILED);
     };
     const locked = async (block: { scope: string; retryAfterSeconds: number }, account?: Account): Promise<never> => {
