@@ -422,7 +422,8 @@ export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref,
       onPunch={async (kind) => {
         const loc = await getLocation();
         const r = await onPunch(kind, loc.pin);
-        return { accepted: r.accepted, message: r.accepted ? r.message : loc.problem ? `${r.message} ${loc.problem}` : r.message };
+        // The browser's own reason (location off, not found) is the clearer one; never two messages run together.
+        return { accepted: r.accepted, message: r.accepted ? r.message : (loc.problem ?? r.message) };
       }}
     />
   );
