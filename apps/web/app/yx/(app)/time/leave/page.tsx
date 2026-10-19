@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { MyLeaveScreen, type LeavePlan, type MyLeave, type PersonOption } from '@yukthix/ui/time';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -14,6 +14,11 @@ function MyLeave() {
   const { accessToken } = useAuth();
   // ?apply=1: the "Apply leave" action (Ctrl K, N L) opens the request sheet at once.
   const apply = useSearchParams()?.get('apply') === '1';
+  const router = useRouter();
+  // Drop ?apply=1 once read, so asking again (N L) changes the address and opens the sheet again.
+  useEffect(() => {
+    if (apply) router.replace('/yx/time/leave', { scroll: false });
+  }, [apply, router]);
   const leave = useTime<MyLeave>('/me/leave');
   const write = useTimeWrite();
   return (

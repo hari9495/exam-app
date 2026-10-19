@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ExpensesHomeScreen, type ClaimSummary, type ExpenseHome } from '@yukthix/ui/expenses';
 import { loadState } from '../../../../lib/yx-org';
@@ -13,6 +13,10 @@ function ExpensesHome() {
   const router = useRouter();
   // ?new=1: the "New expense claim" action (Ctrl K, N E) opens the new-claim sheet at once.
   const startNew = useSearchParams()?.get('new') === '1';
+  // Drop ?new=1 once read, so asking again (N E) changes the address and opens the sheet again.
+  useEffect(() => {
+    if (startNew) router.replace('/yx/expenses', { scroll: false });
+  }, [startNew, router]);
   const home = useExp<ExpenseHome>('/me/home');
   const approvals = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=approvals', sp.entity), Boolean(home.data?.waitingForMe));
   const review = useExp<{ claims: ClaimSummary[] }>(withParams('/claims?view=review', sp.entity), home.data?.toReview !== null && home.data?.toReview !== undefined);
