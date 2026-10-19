@@ -21,7 +21,8 @@ export interface WorkforceRow {
   manager: string;
   email: string;
   phone: string;
-  joined: Date;
+  /** Left out where the viewer may not see it (live app). */
+  joined?: Date;
   status: string;
   /** Contractor firm, client or consulting firm. */
   via?: string;

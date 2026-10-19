@@ -1,41 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { DirectoryScreen } from './directory';
 import { OrgChartScreen } from './org-chart';
 import { TeamScreen, type TeamScreenProps } from './team';
 import { ProbationScreen } from './probation';
 import { BulkChangesScreen } from './bulk';
-import { BATCH_DETAIL, BATCHES, BULK_RESULT, CHOICES, DIRECTORY, DIRECTORY_HR, ORG_CHART, PEOPLE, PERSON, PROBATIONS, TEAM, TODAY_ISO } from './data';
+import { BATCH_DETAIL, BATCHES, BULK_RESULT, ORG_CHART, PEOPLE, PROBATIONS, TEAM, TODAY_ISO } from './data';
 import { IMPACT, OPTIONS } from '../history/data';
-import type { DirectoryQuery } from './types';
 
 const meta: Meta = { title: 'Screens/People/People core', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
 const wait = (ms = 400) => new Promise<void>((r) => setTimeout(r, ms));
-const EMPTY_QUERY: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
-
-const ENTITY_CHOICES = CHOICES.legalEntities.map((e) => ({ value: e.id, label: e.name ?? '' }));
-/** The second try links to the matched person (PPL-36). */
-let tries = 0;
-const hire = async (input: { personId?: string }) => {
-  await wait();
-  if (!input.personId && tries++ % 2 === 0) throw Object.assign(new Error('Possible same person'), { code: 'POSSIBLE_SAME_PERSON', body: { personIds: ['person-1'] } });
-  return { id: 'e-new' };
-};
-
-function Directory({ hr = false }: { hr?: boolean }) {
-  const [query, setQuery] = useState(EMPTY_QUERY);
-  const page = hr ? DIRECTORY_HR : DIRECTORY;
-  const people = page.people.filter((p) => (!query.q || p.name.toLowerCase().includes(query.q.toLowerCase())) && (!query.departmentId || p.department?.id === query.departmentId));
-  return <DirectoryScreen state="ready" page={{ ...page, total: people.length, people }} query={query} onQuery={setQuery} choices={CHOICES} isHr={hr} loadPerson={() => wait().then(() => PERSON)} onOpenHistory={() => {}} onOpenProfile={hr ? () => {} : undefined} addPerson={hr ? { options: OPTIONS, legalEntities: ENTITY_CHOICES, onSubmit: hire } : undefined} />;
-}
-
-export const DirectoryEmployee: S = { name: 'Directory · employee (Public fields)', render: () => <Directory /> };
-export const DirectoryHr: S = { name: 'Directory · HR (codes, person and roles)', render: () => <Directory hr /> };
-export const DirectoryLoading: S = { name: 'Directory · loading', render: () => <DirectoryScreen state="loading" page={null} query={EMPTY_QUERY} onQuery={() => {}} choices={CHOICES} isHr={false} /> };
-
 function Chart({ hr = false }: { hr?: boolean }) {
   const [asOf, setAsOf] = useState(TODAY_ISO);
   return <OrgChartScreen state="ready" data={{ ...ORG_CHART, asOf }} today={TODAY_ISO} onAsOf={hr ? setAsOf : undefined} meId="p-divya" companyName="Kaveri Foods Pvt Ltd" onOpenPerson={hr ? () => {} : undefined} />;

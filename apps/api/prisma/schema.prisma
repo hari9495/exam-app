@@ -9913,3 +9913,33 @@ model ScorecardRating {
   @@id([scorecardId, itemId])
   @@map("scorecard_ratings")
 }
+
+/// People › Directory saved views (design audit step 2): personal, or shared with the company.
+model SavedView {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  ownerUserId    String   @map("owner_user_id") @db.Uuid
+  page           String   @db.VarChar(40)
+  name           String   @db.VarChar(60)
+  shared         Boolean  @default(false)
+  state          Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, page], map: "saved_views_org_page_idx")
+  @@map("saved_views")
+}
+
+/// Monthly head counts for the directory cards; legalEntityId null is the whole company.
+model WorkforceSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String?  @map("legal_entity_id") @db.Uuid
+  month          DateTime @db.Date
+  employees      Int
+  consultants    Int
+  persons        Int
+  employeePersons Int     @map("employee_persons")
+  takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
+
+  @@map("workforce_snapshots")
+}

@@ -36,12 +36,12 @@ const SEARCH_GROUPS = [
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   return (
-    // Toasts (§25) say "done" after an action; a message that must stay visible remains an inline alert.
-    <ToastProvider>
-      <ScopeProvider>
+    <ScopeProvider>
+      {/* Success after an action is a toast (YukthiX house rule). */}
+      <ToastProvider>
         <Frame>{children}</Frame>
-      </ScopeProvider>
-    </ToastProvider>
+      </ToastProvider>
+    </ScopeProvider>
   );
 }
 

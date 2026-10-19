@@ -1,18 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { DirectoryScreen } from './directory';
 import { OrgChartScreen } from './org-chart';
 import { TeamScreen } from './team';
 import { ProbationScreen } from './probation';
 import { BulkChangesScreen, type BulkChangesScreenProps } from './bulk';
 import { csvCell, csvText } from './workforce-kit';
-import { BATCH_DETAIL, BATCHES, BULK_RESULT, CHOICES, DIRECTORY, DIRECTORY_HR, ORG_CHART, PEOPLE, PERSON, PROBATIONS, TEAM, TODAY_ISO } from './data';
-import type { DirectoryQuery } from './types';
-import { OPTIONS } from '../history/data';
+import { BATCH_DETAIL, BATCHES, BULK_RESULT, ORG_CHART, PEOPLE, PROBATIONS, TEAM, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
-const QUERY: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
 
 describe('CSV export cells (OWASP CSV injection)', () => {
   it('quotes commas and quotes, and defuses formula-looking text', () => {
@@ -27,64 +23,6 @@ describe('CSV export cells (OWASP CSV injection)', () => {
   });
 });
 
-describe('Directory (P02 Q4, YX-SEC-17)', () => {
-  it('shows Public fields to colleagues: no codes, no joining dates, no person panel', async () => {
-    render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
-    expect(screen.getAllByText('Arjun Kulkarni').length).toBeGreaterThan(0);
-    expect(screen.queryByText('KF-0142')).toBeNull();
-    await userEvent.click(screen.getAllByText('Kiran Joshi')[0]);
-    const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).queryByText('Joined')).toBeNull();
-    expect(within(drawer).queryByRole('button', { name: 'Job history' })).toBeNull();
-    expect(within(drawer).getByRole('link', { name: /Email Kiran/ })).toHaveAttribute('href', 'mailto:kiran.joshi@kaverifoods.test');
-  });
-
-  it('HR sees codes and the person behind the record with their roles', async () => {
-    const loadPerson = vi.fn().mockResolvedValue(PERSON);
-    const onOpenHistory = vi.fn();
-    render(<DirectoryScreen state="ready" page={DIRECTORY_HR} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr loadPerson={loadPerson} onOpenHistory={onOpenHistory} />);
-    await userEvent.click(screen.getAllByText('Arjun Kulkarni')[0]);
-    const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('KF-0142')).toBeInTheDocument();
-    expect(await within(drawer).findByText('Candidate')).toBeInTheDocument();
-    expect(within(drawer).getByText('+91 98450 12345')).toBeInTheDocument();
-    expect(loadPerson).toHaveBeenCalledWith('p-arjun');
-    await userEvent.click(within(drawer).getByRole('button', { name: 'Job history' }));
-    expect(onOpenHistory).toHaveBeenCalledWith('p-arjun');
-  });
-
-  it('HR sees a Joined column; colleagues do not; a long work email breaks after the @', () => {
-    const { unmount } = render(<DirectoryScreen state="ready" page={DIRECTORY_HR} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr />);
-    expect(screen.getByRole('columnheader', { name: /Joined/ })).toBeInTheDocument();
-    expect(screen.getAllByText('1 Jul 2024').length).toBeGreaterThan(0);
-    const email = screen.getAllByRole('cell').find((c) => c.textContent === 'arjun.kulkarni@kaverifoods.test')!;
-    expect(email.querySelector('wbr')).not.toBeNull();
-    unmount();
-    render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
-    expect(screen.queryByRole('columnheader', { name: /Joined/ })).toBeNull();
-  });
-
-  it('Add person and Profile only where granted; Add person opens the hire form', async () => {
-    const { unmount } = render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
-    expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();
-    unmount();
-    const onOpenProfile = vi.fn();
-    render(<DirectoryScreen state="ready" page={DIRECTORY_HR} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr onOpenProfile={onOpenProfile} addPerson={{ options: OPTIONS, legalEntities: [], onSubmit: vi.fn() }} />);
-    await userEvent.click(screen.getAllByText('Arjun Kulkarni')[0]);
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Profile' }));
-    expect(onOpenProfile).toHaveBeenCalledWith('p-arjun');
-    await userEvent.keyboard('{Escape}');
-    await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
-    expect(await screen.findByRole('dialog', { name: /Add person/ })).toBeInTheDocument();
-  });
-
-  it('searches a moment after typing, from the first page', async () => {
-    const onQuery = vi.fn();
-    render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={onQuery} choices={CHOICES} isHr={false} />);
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search people' }), 'kir');
-    await waitFor(() => expect(onQuery).toHaveBeenLastCalledWith({ ...QUERY, q: 'kir', offset: 0 }));
-  });
-});
 
 describe('Org chart (M01 §3.2, Q5)', () => {
   it('offers the date and person links to HR only, and exports what it shows', async () => {

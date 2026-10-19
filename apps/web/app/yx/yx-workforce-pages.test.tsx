@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ToastProvider } from '@yukthix/ui';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxDirectoryPage from './(app)/people/directory/page';
@@ -15,7 +16,7 @@ jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
 // People core pages wired to the /people API (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const PERMS_PATH = '/rbac/me/permissions';
 const ref = (id: string, name: string) => ({ id, name });
 const ARJUN = { id: 'p-arjun', name: 'Arjun Kulkarni', workEmail: 'arjun.kulkarni@kaverifoods.test', designation: ref('des-1', 'Quality Analyst'), department: ref('d-qa', 'Quality'), location: ref('loc-1', 'Bengaluru head office'), legalEntity: ref('le-1', 'Kaveri Foods Pvt Ltd'), manager: ref('p-divya', 'Divya Raghunathan') };
@@ -47,60 +48,58 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
 });
 
-describe('/yx/people/directory', () => {
+describe('/yx/people/directory (PPL-01 live)', () => {
+  const ref = (id: string, name: string) => ({ id, name });
+  const row = (over: Record<string, unknown>) => ({ kind: 'employee', designation: 'Quality Analyst', department: ref('d-qa', 'Quality'), location: ref('loc-1', 'Bengaluru'), legalEntity: ref('le-1', 'Kaveri Foods'), manager: ref('p-divya', 'Divya Raghunathan'), workEmail: 'x@kaverifoods.test', ...over });
+  const WF = {
+    me: { id: 'p-arjun', managerId: 'p-divya', departmentId: 'd-qa', locationId: 'loc-1' },
+    rows: [row({ id: 'p-arjun', name: 'Arjun Kulkarni' }), row({ id: 'p-meera', name: 'Meera Iyer', department: ref('d-lab', 'Lab'), location: ref('loc-2', 'Hosur') })],
+    cards: { employees: { count: 2, previous: null }, consultants: null, persons: { roles: 2, people: 2, previous: null } },
+    previousMonth: null,
+  };
+  const HR_WF = {
+    ...WF,
+    me: null,
+    rows: [row({ id: 'p-arjun', name: 'Arjun Kulkarni', employeeCode: 'KF-0142', status: 'Probation', joinedOn: '2024-07-01', phone: '+919845012345' }), row({ id: 'k-1', kind: 'consultant', name: 'Lexicon Advisory', designation: 'Consulting firm', department: null, location: null, manager: null, via: 'Lexicon Advisory' })],
+    cards: { employees: { count: 1, previous: 0 }, consultants: { count: 1, previous: 1 }, persons: { roles: 2, people: 2, previous: 1 } },
+    previousMonth: '2026-09',
+  };
+
   it('opens at the name a search result gave (?q=) and lists only the company chosen in the top bar', async () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('q=Arjun'));
     window.localStorage.setItem('yx-scope', JSON.stringify({ entity: 'le-1', period: '2026-10' }));
     try {
-      route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] }, 'GET /people/org-chart': CHART });
+      route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/workforce': WF, 'GET /people/workforce/views': [] });
       wrap(
         <ScopeProvider>
           <YxDirectoryPage />
         </ScopeProvider>,
       );
-      await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&q=Arjun&legalEntityId=le-1', {}, 'tok'));
+      await waitFor(() => expect(api).toHaveBeenCalledWith('/people/workforce?legalEntityId=le-1', {}, 'tok'));
+      expect(await screen.findByRole('textbox', { name: 'Search name or email' })).toHaveValue('Arjun');
     } finally {
       window.localStorage.removeItem('yx-scope');
     }
   });
 
-  it('searches on the server and filters from the org chart; colleagues see no codes', async () => {
-    route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] }, 'GET /people/org-chart': CHART });
+  it('a colleague: Public columns only, no cards, and the quick chips from their own record', async () => {
+    route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/workforce': WF, 'GET /people/workforce/views': [] });
     wrap(<YxDirectoryPage />);
-    expect((await screen.findAllByText('Arjun Kulkarni')).length).toBeGreaterThan(0);
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search people' }), 'arj');
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&q=arj', {}, 'tok'));
-    expect(screen.queryByText('Code')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();
+    expect((await screen.findAllByText('Meera Iyer')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('tablist', { name: 'Workforce' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^ID/ })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^Status/ })).toBeNull();
+    await userEvent.click(screen.getByRole('radio', { name: 'My department' }));
+    await waitFor(() => expect(screen.queryAllByText('Meera Iyer')).toHaveLength(0));
+    expect(screen.getAllByText('Arjun Kulkarni').length).toBeGreaterThan(0);
   });
 
-  it('with structure access, the department filter offers parents too (Operations covers its subtree)', async () => {
-    route({
-      [`GET ${PERMS_PATH}`]: ['org.structure.view'],
-      'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [ARJUN] },
-      'GET /people/org-chart': CHART,
-      'GET /org/masters/departments': [
-        { id: 'd-ops', name: 'Operations', code: 'OPS', archivedAt: null, parentId: null },
-        { id: 'd-q', name: 'Quality', code: 'QA', archivedAt: null, parentId: 'd-ops' },
-        { id: 'd-old', name: 'Old', code: 'OLD', archivedAt: '2026-01-01T00:00:00Z', parentId: null },
-      ],
-    });
-    wrap(<YxDirectoryPage />);
-    await screen.findAllByText('Arjun Kulkarni');
-    await userEvent.click(screen.getByRole('combobox', { name: 'Department' }));
-    expect(await screen.findByRole('option', { name: 'Operations' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Operations › Quality' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Old' })).toBeNull(); // archived
-    await userEvent.click(screen.getByRole('option', { name: 'Operations' }));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&departmentId=d-ops', {}, 'tok'));
-  });
-
-  it('HR adds a person (the entities come from the org API) and opens a profile from the directory', async () => {
+  it('HR: cards with the change since last month, ID and status, Open record and the hire form', async () => {
     route({
       [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'],
-      'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [{ ...ARJUN, employeeCode: 'KF-0142' }] },
-      'GET /people/org-chart': CHART,
-      'GET /people/employees/p-arjun/person': { id: 'person-1', roles: [] },
+      'GET /people/workforce': HR_WF,
+      'GET /people/workforce/views': [],
+      'GET /people/org-chart': { asOf: '2026-10-15', truncated: false, nodes: [] },
       'GET /org/legal-entities': [{ id: 'le-1', name: 'Kaveri Foods Pvt Ltd', archivedAt: null }],
       'GET /org/masters/departments': [],
       'GET /org/masters/designations': [],
@@ -109,18 +108,20 @@ describe('/yx/people/directory', () => {
       'GET /org/masters/cost-centres': [],
       'GET /org/locations': [],
     });
-    const { unmount } = wrap(<YxDirectoryPage />);
-    await userEvent.click((await screen.findAllByText('Arjun Kulkarni'))[0]);
-    await userEvent.click(await screen.findByRole('button', { name: 'Profile' }));
-    expect(push).toHaveBeenCalledWith('/yx/people/profile?person=p-arjun');
-    unmount();
     wrap(<YxDirectoryPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Add person' }));
+    const tabs = await screen.findByRole('tablist', { name: 'Workforce' });
+    expect(within(tabs).getAllByRole('tab').map((t) => t.querySelector('.yx-ppl__wf-label')?.textContent)).toEqual(['Employees', 'Consultants', 'All persons']);
+    expect(tabs).toHaveTextContent('1 more than September');
+    expect(screen.getByRole('columnheader', { name: /^Status/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+    await userEvent.click((await screen.findAllByText('Arjun Kulkarni'))[0]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Open record' }));
+    expect(push).toHaveBeenCalledWith('/yx/people/profile?person=p-arjun');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(await screen.findByRole('button', { name: 'Add employee' }));
     const drawer = await screen.findByRole('dialog', { name: /Add person/ });
-    // The choices are loaded from the org API before the drawer offers them.
     await waitFor(() => expect(api).toHaveBeenCalledWith('/org/legal-entities', {}, 'tok'));
     expect(within(drawer).getByRole('combobox', { name: 'Legal entity' })).toBeInTheDocument();
-    // No pay field without employee.salary.manage (R1).
     expect(within(drawer).queryByLabelText(/Annual CTC/)).toBeNull();
   });
 });

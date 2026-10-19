@@ -91,6 +91,6 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   await join.getByRole('button', { name: 'Mark joined' }).click();
   await expect(join).toHaveCount(0, { timeout: 30_000 });
   await hr.goto('/yx/people/directory');
-  await hr.getByRole('searchbox').first().fill(first);
+  await hr.getByRole('textbox', { name: 'Search name, ID, email or phone' }).fill(first);
   await expect(hr.getByText(new RegExp(`${first} Rao`)).first()).toBeVisible({ timeout: 30_000 });
 });
