@@ -390,7 +390,7 @@ export class ApprovalsEngine {
     }
     const updated = await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, currentStep: next, version: { increment: 1 }, updatedAt: now } });
     const holders = (await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id, step: next, status: 'open' }, select: { assigneeUserId: true } })).map((t) => t.assigneeUserId);
-    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: '/yx/approvals', text: `${this.type(req.requestType).label}: ${s.name}`, actor: req.requesterUserId });
+    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `${this.type(req.requestType).label}: ${s.name}`, actor: req.requesterUserId });
     return updated;
   }
 
@@ -415,7 +415,7 @@ export class ApprovalsEngine {
       await tx.wfTask.update({ where: { id: t.id }, data: { status: 'closed', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       await this.log(tx, org, req.id, t.id, step, null, null, 'closed', why, 'system');
     }
-    if (open.length) notices.push({ to: open.map((t) => t.assigneeUserId), requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: '/yx/approvals', text: why });
+    if (open.length) notices.push({ to: open.map((t) => t.assigneeUserId), requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: `/yx/approvals?request=${req.id}`, text: why });
   }
 
   /** Applies a step verdict: next step, or the end of the request. */
@@ -531,7 +531,7 @@ export class ApprovalsEngine {
         const steps = req.steps as unknown as FrozenStep[];
         if (!steps[t.step].approverIds.includes(boss)) steps[t.step].approverIds.push(boss);
         await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
-        notices.push({ to: [boss], requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: '/yx/approvals', text: `Escalated to you: ${s.name}`, actor: req.requesterUserId });
+        notices.push({ to: [boss], requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `Escalated to you: ${s.name}`, actor: req.requesterUserId });
       }
       await tx.wfTask.update({ where: { id: t.id }, data: { dueAt: null, escalatedAt: now, version: { increment: 1 }, updatedAt: now } });
       await this.log(tx, org, req.id, t.id, t.step, null, null, 'escalated', ok ? 'No answer in time: sent to their manager too' : 'No answer in time (no manager to send it to)', 'system');
@@ -541,7 +541,7 @@ export class ApprovalsEngine {
       const more = t.reminders + 1 < 3 && s.remindAfterHours;
       await tx.wfTask.update({ where: { id: t.id }, data: { reminders: { increment: 1 }, remindAt: more ? new Date(now.getTime() + hours(s.remindAfterHours!)) : null, version: { increment: 1 }, updatedAt: now } });
       await this.log(tx, org, req.id, t.id, t.step, null, null, 'reminded', null, 'system');
-      notices.push({ to: [t.assigneeUserId], requestId: req.id, type: 'workflow.approval.reminder', title: req.title, link: '/yx/approvals', text: `Still waiting for you: ${s.name}`, actor: req.requesterUserId });
+      notices.push({ to: [t.assigneeUserId], requestId: req.id, type: 'workflow.approval.reminder', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `Still waiting for you: ${s.name}`, actor: req.requesterUserId });
       return 1;
     }
     return 0;
@@ -764,7 +764,7 @@ export class ApprovalsEngine {
             company,
             subject,
             heading: subject,
-            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text] as [string, string]])]), button(n.link === '/yx/approvals' ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
           });
         await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {

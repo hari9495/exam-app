@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
@@ -28,6 +28,8 @@ export interface ApprovalsScreenProps {
   onRevoke: (id: string) => Promise<unknown>;
   /** People search for the delegate (returns user ids). */
   onFindPeople: (q: string) => Promise<PickOption[]>;
+  /** The request a notice or email pointed at: scrolled into view and marked. */
+  focusRequestId?: string | null;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -42,6 +44,10 @@ const DECISION: Record<string, { label: string; tone: 'success' | 'danger' | 'ne
 
 export function ApprovalsScreen(props: ApprovalsScreenProps) {
   const [tab, setTab] = useState('waiting');
+  const focus = props.focusRequestId ?? null;
+  useEffect(() => {
+    if (focus) document.getElementById(`approval-${focus}`)?.scrollIntoView({ block: 'center' });
+  }, [focus, props.tasks.length]);
   const [rejecting, setRejecting] = useState<ApprovalTask | null>(null);
   const [reason, setReason] = useState('');
   const [delegate, setDelegate] = useState<string | null>(null);
@@ -69,7 +75,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
             ) : (
               <ul className="yx-esm-approvals">
                 {props.tasks.map((t) => (
-                  <li key={t.taskId}>
+                  <li key={t.taskId} id={`approval-${t.requestId}`} data-focused={t.requestId === focus || undefined}>
                     <Card
                       title={t.title}
                       actions={
@@ -105,7 +111,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                         <Button variant="approve" disabled={busy === t.taskId} onClick={() => void run(t.taskId, () => props.onDecide(t, 'approve', ''))}>
                           Approve
                         </Button>
-                        <Button variant="danger" disabled={busy === t.taskId} onClick={() => setRejecting(t)}>
+                        <Button disabled={busy === t.taskId} onClick={() => setRejecting(t)}>
                           Do not approve
                         </Button>
                       </div>

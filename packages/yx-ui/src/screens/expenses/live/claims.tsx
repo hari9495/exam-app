@@ -375,7 +375,7 @@ export function ClaimScreen(p: ClaimScreenProps) {
                   Approve
                 </Button>
                 <Button onClick={() => setDeciding('send_back')}>Send back</Button>
-                <Button variant="danger" onClick={() => setDeciding('reject')}>
+                <Button onClick={() => setDeciding('reject')}>
                   Do not approve
                 </Button>
               </>
