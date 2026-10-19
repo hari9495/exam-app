@@ -3907,9 +3907,17 @@
     "result": "Pass",
     "findings": "",
     "fixedIn": ""
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Finding",
+    "findings": "After the mobile code the recruiter (Neha, no employee record) landed on the older console (/v2/today, older design), not YukthiX.",
+    "fixedIn": "PR #187 (founder chose YukthiX Home + Hire): everyone but platform staff lands on YukthiX Home; Hire has 'Assessments & more (older screens)' until those tools are designed in YukthiX"
    }
   ],
-  "ideas": [],
+  "ideas": [
+   "Design the exam / assessment tools (exams, question bank, campaigns, drives, referrals, message templates, hiring analytics) in YukthiX, then retire the older console link in Hire (founder, 19 Oct 2026)."
+  ],
   "id": "SI-05",
   "screen": "Continue with mobile",
   "account": "recruiter@demo-org.test's mobile 98450 12345 (from the demo data)",
