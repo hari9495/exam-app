@@ -8,7 +8,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { WorkforceService } from '../src/people/workforce.service';
-import { addDays, todayIst } from '../src/org-structure/org-validation';
+import { addDays, localDate, todayIst } from '../src/org-structure/org-validation';
 
 // People › Directory on the designed screen (PPL-01, design audit step 2), against the real database (forced RLS):
 // colleagues get Public fields only; ID, joining date and status follow employee.profile.view and its scope; phone
@@ -200,12 +200,16 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     const theirs = (await api('empA', 'get', '/people/workforce/views').expect(200)).body;
     expect(theirs).toEqual([{ id: shared.id, name: 'Joined this year', shared: true, state: { q: '' }, mine: false }]);
     await api('empA', 'delete', `/people/workforce/views/${shared.id}`).expect(404);
+    // Only HR may put a view in everyone's View menu; a colleague keeps theirs private.
+    await api('empA', 'post', '/people/workforce/views').send({ name: 'Everyone', shared: true, state: {} }).expect(403);
+    const own = (await api('empA', 'post', '/people/workforce/views').send({ name: 'Mine', shared: false, state: {} }).expect(201)).body;
+    await api('empA', 'delete', `/people/workforce/views/${own.id}`).expect(200);
     expect((await api('adminB', 'get', '/people/workforce/views').expect(200)).body).toEqual([]);
     await api('hrA', 'post', '/people/workforce/views').send({ name: 'Big', shared: false, state: { x: 'y'.repeat(5000) } }).expect(400);
     await api('hrA', 'delete', `/people/workforce/views/${mine.id}`).expect(200);
   });
 
-  it('status per person comes from the modules: probation, notice period (status or an open exit), on leave today', async () => {
+  it('status per person comes from the modules: probation, notice period (status or an accepted exit), on leave today', async () => {
     const today = todayIst();
     ids.kiran = (await api('hrA', 'post', '/people/employees').send({
       legalEntityId: ids.leTN, status: 'probation', reason: 'Joined', joinedOn: addDays(today, -10), givenName: 'Kiran', workEmail: `kiran-${runId}@dir.test`,
@@ -215,9 +219,13 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
       const m = await tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.arjun }, select: { id: true } });
       const { personId } = await tx.employee.findFirstOrThrow({ where: { organizationId: org.A.id, id: ids.arjun }, select: { personId: true } });
       await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: m.id, employeeId: ids.arjun, personId, exitType: 'resignation', initiatedBy: 'employee', submittedOn: new Date(`${today}T00:00:00Z`), noticePeriod: '30d', standardLwd: new Date(`${addDays(today, 30)}T00:00:00Z`), status: 'submitted' } });
+      ids.arjunExit = (await tx.exitCase.findFirstOrThrow({ where: { organizationId: org.A.id, employmentId: m.id }, select: { id: true } })).id;
       const type = await tx.leaveType.create({ data: { organizationId: org.A.id, code: 'CL', name: 'Casual leave', kind: 'casual' } });
       await tx.leaveRequest.create({ data: { organizationId: org.A.id, employeeId: ids.meera, leaveTypeId: type.id, fromOn: new Date(`${today}T00:00:00Z`), toOn: new Date(`${today}T00:00:00Z`), days: 1, status: 'approved' } });
     });
+    // A resignation HR has not accepted yet is not a notice period.
+    expect(byId(await list('hrA'), ids.arjun)?.status).toBe('Active');
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.exitCase.update({ where: { id: ids.arjunExit }, data: { status: 'accepted', approvedLwd: new Date(`${addDays(today, 30)}T00:00:00Z`) } }));
     const body = await list('hrA');
     expect([byId(body, ids.kiran)?.status, byId(body, ids.arjun)?.status, byId(body, ids.meera)?.status, byId(body, ids.imran)?.status]).toEqual(['Probation', 'Notice period', 'On leave', 'Active']);
     // A colleague never learns who is on leave or leaving.
@@ -240,5 +248,19 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     expect(hr.previousMonth).toBe(last.toISOString().slice(0, 7));
     expect((await list('empA')).cards.persons.previous).toBe(2); // employees only, for someone without the consultant keys
     expect((await list('hrA', `?legalEntityId=${ids.leTN}`)).cards.employees.previous).toBeNull(); // no TN row last month
+  });
+
+  it("each entity counts on its own date: a far-east site's new joiner is in, a far-west site's is not yet", async () => {
+    // UTC+14 and UTC-11 are always on different dates, so this holds at any hour.
+    const east = localDate(new Date(), 'Pacific/Kiritimati');
+    await tenantPrisma.forTenant(ctx('A'), async (tx) => {
+      await tx.location.update({ where: { id: ids.locTN }, data: { timezone: 'Pacific/Kiritimati' } });
+      await tx.location.update({ where: { id: ids.locKF }, data: { timezone: 'Pacific/Pago_Pago' } });
+      await tx.employment.updateMany({ where: { organizationId: org.A.id, employeeId: { in: [ids.imran, ids.meera] } }, data: { joinedOn: new Date(`${east}T00:00:00Z`) } });
+    });
+    const body = await list('hrA');
+    expect(byId(body, ids.imran)).toBeDefined(); // joined today in TN's time
+    expect(byId(body, ids.meera)).toBeUndefined(); // still tomorrow in KF's time
+    expect((await list('hrA', `?legalEntityId=${ids.leTN}`)).asOf).toBe(east);
   });
 });

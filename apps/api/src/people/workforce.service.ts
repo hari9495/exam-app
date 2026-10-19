@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { isoDate, todayIst } from '../org-structure/org-validation';
+import { entityTimeZone, isoDate, localDate, todayIst } from '../org-structure/org-validation';
 import { displayName, EmployeeHistoryService, Viewer, type RequestUser } from '../employee-history/employee-history.service';
 import { has } from '../access/scope';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
@@ -55,6 +55,20 @@ const previousMonth = (d: string) => {
   return x.toISOString().slice(0, 10);
 };
 
+/** Today in each legal entity's own time zone: a company in Dubai and one in India can be on different dates. */
+async function entityDays(tx: Tx, org: string, now = new Date()): Promise<Map<string, string>> {
+  const ids = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
+  const days = new Map<string, string>();
+  for (const id of ids) days.set(id, localDate(now, await entityTimeZone(tx, org, id)));
+  return days;
+}
+
+/** The days as a joinable table d(entity_id, day). */
+const daysTable = (days: Map<string, string>) =>
+  days.size
+    ? Prisma.sql`(VALUES ${Prisma.join([...days].map(([id, day]) => Prisma.sql`(${id}::uuid, ${day}::date)`))}) AS d(entity_id, day)`
+    : Prisma.sql`(SELECT NULL::uuid AS entity_id, NULL::date AS day WHERE false) AS d`;
+
 @Injectable()
 export class WorkforceService {
   constructor(
@@ -73,14 +87,14 @@ export class WorkforceService {
   }
 
   /** Head counts on a date for the company or one entity: the cards and the monthly snapshot use the same numbers. */
-  private async counts(tx: Tx, org: string, date: string, legalEntityId: string | null): Promise<Counts> {
+  private async counts(tx: Tx, org: string, days: Map<string, string>, legalEntityId: string | null): Promise<Counts> {
     const entity = (col: Prisma.Sql) => (legalEntityId ? Prisma.sql`AND ${col} = ${legalEntityId}::uuid` : Prisma.empty);
     const [r] = await tx.$queryRaw<{ employees: number; consultants: number; persons: number; employee_persons: number }[]>`
       WITH emp AS (
         SELECT e.person_id, lower(e.work_email::text) AS work, lower(p.primary_email::text) AS main
         FROM employees e
-        JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
-         AND m.joined_on <= ${date}::date AND (m.exited_on IS NULL OR m.exited_on >= ${date}::date) ${entity(Prisma.sql`m.legal_entity_id`)}
+        JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id ${entity(Prisma.sql`m.legal_entity_id`)}
+        JOIN ${daysTable(days)} ON d.entity_id = m.legal_entity_id AND m.joined_on <= d.day AND (m.exited_on IS NULL OR m.exited_on >= d.day)
         LEFT JOIN persons p ON p.organization_id = e.organization_id AND p.id = e.person_id
         WHERE e.organization_id = ${org}::uuid),
       con AS (
@@ -100,14 +114,16 @@ export class WorkforceService {
       this.history.run(ctx, async (tx, c) => {
         const own = await this.history.ownEmployeeId(tx, c, v);
         if (!has(v, 'employee.profile.view') && !own) throw new ForbiddenException('The directory is for employees of this company.');
-        const today = todayIst();
+        const days = await entityDays(tx, c.organizationId);
+        // The whole company's month follows India time, as the monthly snapshot does; one entity follows its own.
+        const today = (legalEntityId && days.get(legalEntityId)) || todayIst();
         const reach = v.actingForOther ? [] : await this.consultantEntities(tx, c, user);
         const consultants = reach.length > 0;
         // Last month's snapshot counts every consultant: compare only when the person sees all the ones in this scope.
         const allEntities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } })).map((e) => e.id);
         const fullReach = legalEntityId ? reach.includes(legalEntityId) : allEntities.every((id) => reach.includes(id));
-        const rows = await this.employeeRows(tx, c, v, today, legalEntityId, null);
-        const { k, now } = await withPayScope(tx, reach, async () => ({ k: consultants ? await this.consultantRows(tx, c, legalEntityId, null) : [], now: await this.counts(tx, c.organizationId, today, legalEntityId) }));
+        const rows = await this.employeeRows(tx, c, v, days, legalEntityId, null);
+        const { k, now } = await withPayScope(tx, reach, async () => ({ k: consultants ? await this.consultantRows(tx, c, legalEntityId, null) : [], now: await this.counts(tx, c.organizationId, days, legalEntityId) }));
         const snap = await tx.workforceSnapshot.findFirst({ where: { organizationId: c.organizationId, legalEntityId, month: new Date(`${previousMonth(today)}T00:00:00Z`) } });
         const prev = snap ? { ...snap, consultants: fullReach ? snap.consultants : null, persons: fullReach ? snap.persons : null } : null;
         const me = own ? rows.find((r) => r.id === own) : undefined;
@@ -129,9 +145,9 @@ export class WorkforceService {
     );
   }
 
-  private async employeeRows(tx: Tx, c: CompanyContext, v: Viewer, today: string, legalEntityId: string | null, ids: string[] | null): Promise<WorkforceRow[]> {
-    const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${today}::date`);
-    const personal = await this.history.scopeFilter(tx, c, v, 'employee.personal.view', Prisma.sql`e.id`, Prisma.sql`${today}::date`);
+  private async employeeRows(tx: Tx, c: CompanyContext, v: Viewer, days: Map<string, string>, legalEntityId: string | null, ids: string[] | null): Promise<WorkforceRow[]> {
+    const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`d.day`);
+    const personal = await this.history.scopeFilter(tx, c, v, 'employee.personal.view', Prisma.sql`e.id`, Prisma.sql`d.day`);
     const rows = await tx.$queryRaw<
       { id: string; given_name: string; family_name: string | null; preferred_name: string | null; work_email: string | null; employee_code: string; joined_on: Date; legal_entity_id: string; location_id: string; department_id: string; designation_id: string; manager_employee_id: string | null; in_scope: boolean; phone: string | null; period_status: string | null; notice: boolean; on_leave: boolean }[]
     >`
@@ -140,15 +156,15 @@ export class WorkforceService {
              (${inScope}) AS in_scope,
              CASE WHEN (${personal}) THEN p.primary_phone ELSE NULL END AS phone,
              CASE WHEN (${inScope}) THEN (SELECT sp.status FROM employment_status_periods sp WHERE sp.organization_id = m.organization_id AND sp.employment_id = m.id
-               AND sp.superseded_at IS NULL AND ${today}::date <@ daterange(sp.valid_from, sp.valid_to, '[]') ORDER BY sp.valid_from DESC LIMIT 1) END AS period_status,
-             (${inScope}) AND EXISTS (SELECT 1 FROM exit_cases x WHERE x.organization_id = m.organization_id AND x.employment_id = m.id AND x.status IN ('submitted', 'accepted', 'cleared')) AS notice,
+               AND sp.superseded_at IS NULL AND d.day <@ daterange(sp.valid_from, sp.valid_to, '[]') ORDER BY sp.valid_from DESC LIMIT 1) END AS period_status,
+             (${inScope}) AND EXISTS (SELECT 1 FROM exit_cases x WHERE x.organization_id = m.organization_id AND x.employment_id = m.id AND x.status IN ('accepted', 'cleared')) AS notice,
              (${inScope}) AND EXISTS (SELECT 1 FROM leave_requests l WHERE l.organization_id = m.organization_id AND l.employee_id = e.id
-               AND l.status IN ('approved', 'cancel_pending') AND ${today}::date BETWEEN l.from_on AND l.to_on) AS on_leave
+               AND l.status IN ('approved', 'cancel_pending') AND d.day BETWEEN l.from_on AND l.to_on) AS on_leave
       FROM employees e
       JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
-       AND m.joined_on <= ${today}::date AND (m.exited_on IS NULL OR m.exited_on >= ${today}::date)
+      JOIN ${daysTable(days)} ON d.entity_id = m.legal_entity_id AND m.joined_on <= d.day AND (m.exited_on IS NULL OR m.exited_on >= d.day)
       JOIN employee_assignments a ON a.organization_id = m.organization_id AND a.employment_id = m.id AND a.superseded_at IS NULL
-       AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+       AND d.day <@ daterange(a.valid_from, a.valid_to, '[]')
       LEFT JOIN persons p ON p.organization_id = e.organization_id AND p.id = e.person_id
       WHERE e.organization_id = ${c.organizationId}::uuid
         ${legalEntityId ? Prisma.sql`AND m.legal_entity_id = ${legalEntityId}::uuid` : Prisma.empty}
@@ -215,7 +231,7 @@ export class WorkforceService {
         const entity = dto.legalEntityId ?? null;
         const reach = v.actingForOther ? [] : await this.consultantEntities(tx, c, user);
         const k = reach.length ? await withPayScope(tx, reach, () => this.consultantRows(tx, c, entity, dto.ids ?? null)) : [];
-        const rows = [...(await this.employeeRows(tx, c, v, todayIst(), entity, dto.ids ?? null)), ...k];
+        const rows = [...(await this.employeeRows(tx, c, v, await entityDays(tx, c.organizationId), entity, dto.ids ?? null)), ...k];
         const cell: Record<ExportColumn, (r: WorkforceRow) => string> = {
           name: (r) => r.name,
           designation: (r) => r.designation ?? '',
@@ -265,11 +281,15 @@ export class WorkforceService {
   createView(ctx: TenantContext, user: RequestUser, dto: { name: string; shared: boolean; state: Record<string, unknown> }) {
     const { me } = this.views(ctx, user);
     if (user.actingSuperAdmin || user.impersonatorUserId) throw new ForbiddenException('Not available while acting for someone else');
-    return this.history.run(ctx, async (tx, c) => {
-      const row = await tx.savedView.create({ data: { organizationId: c.organizationId, ownerUserId: me, page: 'people.directory', name: dto.name.trim(), shared: dto.shared, state: dto.state as Prisma.InputJsonValue }, select: { id: true, name: true, shared: true, state: true } });
-      if (dto.shared) await audit(tx, c, 'people.directory.view_shared', 'saved_view', row.id, { name: row.name });
-      return { ...row, mine: true };
-    });
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        // A shared view shows in every colleague's View menu, so only HR may share one.
+        if (dto.shared && !has(v, 'employee.profile.view')) throw new ForbiddenException('Only HR can share a view with everyone.');
+        const row = await tx.savedView.create({ data: { organizationId: c.organizationId, ownerUserId: me, page: 'people.directory', name: dto.name.trim(), shared: dto.shared, state: dto.state as Prisma.InputJsonValue }, select: { id: true, name: true, shared: true, state: true } });
+        if (dto.shared) await audit(tx, c, 'people.directory.view_shared', 'saved_view', row.id, { name: row.name });
+        return { ...row, mine: true };
+      }),
+    );
   }
 
   deleteView(ctx: TenantContext, user: RequestUser, id: string) {
@@ -286,14 +306,15 @@ export class WorkforceService {
   /** This month's counts for the company and each entity (the last run in the month stands for the month). */
   snapshot(org: string): Promise<number> {
     return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
-      const today = todayIst();
-      const month = monthStart(today);
+      const days = await entityDays(tx as unknown as Tx, org);
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true } });
       // The job counts every consultant: the pay guard is opened to all of the company's entities for this read only.
       const all = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
       let n = 0;
       for (const entity of [null, ...entities.map((e) => e.id)]) {
-        const k = await withPayScope(tx as unknown as Tx, all, () => this.counts(tx as unknown as Tx, org, today, entity));
+        // Each entity's month follows its own date; the whole company's follows India time.
+        const month = monthStart((entity && days.get(entity)) || todayIst());
+        const k = await withPayScope(tx as unknown as Tx, all, () => this.counts(tx as unknown as Tx, org, days, entity));
         await tx.$executeRaw`
           INSERT INTO workforce_snapshots (organization_id, legal_entity_id, month, employees, consultants, persons, employee_persons)
           VALUES (${org}::uuid, ${entity}::uuid, ${month}::date, ${k.employees}, ${k.consultants}, ${k.persons}, ${k.employeePersons})
