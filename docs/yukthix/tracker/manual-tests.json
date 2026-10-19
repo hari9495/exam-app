@@ -301,10 +301,20 @@
  },
  {
   "account": "hr@demo-org.test",
-  "stories": [],
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-20-palette",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-20-people"
+  ],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "Live search vs design: opens with a long 'Go to' list of menu pages all labelled 'Home' instead of Recent + Actions (with N L / N E shortcuts) + People + Requests; no Clear recent; no icons; typing a name finds only People, not Requests and tickets.",
+    "fixedIn": "In progress: second builder matching the palette to PLT-20/21"
+   }
+  ],
   "ideas": [],
   "id": "AF-04",
   "area": "0 App frame (design parity step 1, PR #178)",
