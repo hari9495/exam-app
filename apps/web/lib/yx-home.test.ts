@@ -96,6 +96,8 @@ describe('Manager home (parity with PLT-02 manager)', () => {
       calendar: { from: '2026-10-19', to: '2026-10-25', scope: 'team', people: [{ id: 'm', name: 'Meera', code: null, me: false, holidays: [], days: [{ on: '2026-10-21', part: 'full', status: 'approved', code: 'CL', colour: 'green', name: 'Casual leave' }] }] } as never,
     });
     expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
+    // Only someone not checked in can be nudged.
+    expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);
     expect(m.stats?.[0]).toMatchObject({ label: 'Late check-ins this week', value: 1, previous: 2, previousLabel: 'last week' });
   });

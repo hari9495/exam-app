@@ -9958,3 +9958,18 @@ model HomeSnapshot {
 
   @@map("home_snapshots")
 }
+
+// ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
+
+model Nudge {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  item           String   @db.VarChar(20)
+  onDay          DateTime @map("on_day") @db.Date
+  sentBy         String   @map("sent_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, item, onDay], map: "nudges_once_a_day_key")
+  @@map("nudges")
+}

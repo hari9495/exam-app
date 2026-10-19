@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AccessStateBody, RoleHomeScreen, SearchResultsScreen, explainedHits, paletteFor, searchableFor, type SearchHit } from './shell-home';
+import { ToastProvider } from '../../components/notify';
 
 describe('Role home loading (founder review 30 Sep 2026)', () => {
   it('keeps the clock usable while every other widget loads, and announces once', () => {
@@ -120,6 +121,24 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(screen.queryByText('₹86,420')).toBeNull();
     rerender(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, stats, pay: { ...pay, value: null } }} />);
     expect(screen.getByText('No payslip yet.')).toBeInTheDocument();
+  });
+
+  it('Nudge on Team today: only for someone not checked in; sends once, says so in a toast; a refusal says why', async () => {
+    const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'));
+    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }] };
+    render(
+      <ToastProvider>
+        <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team, onNudge }} />
+      </ToastProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Nudge Meera Krishnan' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Nudge Sanjay Gupta' }));
+    expect(await screen.findByText('Reminder sent to Sanjay Gupta')).toBeInTheDocument();
+    expect(onNudge).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', name: 'Sanjay Gupta' }));
+    expect(screen.getByRole('button', { name: 'Reminded Sanjay Gupta' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Nudge Kavya Reddy' }));
+    expect(await screen.findByText('Kavya Reddy was already reminded today. You can remind them again tomorrow.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nudge Kavya Reddy' })).toBeEnabled();
   });
 
   it("gives the manager team today and who's off this week", () => {

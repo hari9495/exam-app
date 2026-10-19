@@ -190,7 +190,8 @@ export function managerHome(input: {
       summary: `${inToday.length} in · ${onLeave.length} on leave · ${notIn.length} not checked in · ${late.length} late`,
       total: people.length,
       href: '/yx/time/muster',
-      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in' })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
+      // Nudge (PLT-02): someone not checked in yet can be reminded; the API checks scope and the day again.
+      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
     };
     const week = weekOf(today);
     const lastWeek = week.map((d) => new Date(new Date(`${d}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 10));

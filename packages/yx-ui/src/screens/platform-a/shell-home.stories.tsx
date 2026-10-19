@@ -192,7 +192,7 @@ const LIVE_MGR = {
     total: 14,
     href: '#today',
     rows: [
-      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am' },
+      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am', nudge: true },
       { id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' },
       { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' },
     ],
@@ -204,6 +204,7 @@ const LIVE_MGR = {
     { day: 'Thu 1 Oct', who: 'Kavya Reddy, Vikram Rao · Arjun Mehta asked (pending)' },
   ],
   offHref: '#leave-calendar',
+  onNudge: () => new Promise<void>((r) => setTimeout(r, 600)),
   stats: [
     { id: 'late', title: 'Late', label: 'Late check-ins this week', value: 3, previous: 5, previousLabel: 'last week', drill: { label: 'View late marks', href: '#muster' } },
     { id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: 6, drill: { label: 'Open reviews', href: '#reviews' } },
@@ -216,6 +217,13 @@ const LIVE_MGR = {
   ],
 };
 export const PLT02ManagerLive: S = { name: 'PLT-02 · Role home · manager, live', render: () => <RoleHomeScreen persona="manager" data={MGR} live={LIVE_MGR} /> };
+export const PLT02ManagerLiveNudged: S = {
+  name: 'PLT-02 · Role home · manager, live, Nudge sent',
+  render: () => <RoleHomeScreen persona="manager" data={MGR} live={LIVE_MGR} />,
+  play: async ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>('button[aria-label="Nudge Sanjay Gupta"]')?.click();
+  },
+};
 export const PLT02ManagerLiveQuiet: S = {
   name: 'PLT-02 · Role home · manager, live, quiet week',
   render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, summary: '14 in · 0 on leave · 0 not checked in · 0 late', rows: [] }, off: [], goals: [] }} />,

@@ -106,7 +106,7 @@ export default function YxHomePage() {
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
-    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals } : {}),
+    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals, onNudge: async (r: { id: string }) => void (await write(`/people/${encodeURIComponent(r.id)}/nudge`, 'POST', undefined, false)) } : {}),
     hiring: hiringView,
     ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),

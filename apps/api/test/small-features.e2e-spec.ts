@@ -27,11 +27,11 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'other' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'quiet' | 'other' | 'empB';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const d = (n: number) => addDays(today, n);
@@ -72,6 +72,7 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       ['mgr', 'A', 'panel', null],
       ['emp', 'A', 'panel', null],
       ['peer', 'A', 'panel', null],
+      ['quiet', 'A', 'panel', null],
       ['other', 'A', 'panel', null],
       ['empB', 'B', 'panel', null],
     ];
@@ -104,6 +105,7 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
     ids.mgrEmp = await hire('adminA', 'mgr', ids.hrEmp);
     ids.empEmp = await hire('adminA', 'emp', ids.mgrEmp);
     ids.peerEmp = await hire('adminA', 'peer', ids.mgrEmp);
+    ids.quietEmp = await hire('adminA', 'quiet', ids.mgrEmp);
     ids.otherEmp = await hire('adminA', 'other', ids.hrEmp);
     ids.empBEmp = await hire('adminB', 'empB', null, 'B');
   }, 240_000);
@@ -273,6 +275,52 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: false });
       await api('adminB', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }).expect(200);
       expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: true, latest: null, previous: null });
+    });
+  });
+
+  describe('nudge', () => {
+    const nudge = (who: Who, employeeId: string) => api(who, 'post', `/time/people/${employeeId}/nudge`);
+    const bell = async (who: Who) => (await api(who, 'get', '/notifications').expect(200)).body as { type: string; contextText: string | null; linkPath: string }[];
+
+    it('a manager reminds someone in their team who has not checked in: a notification and an email naming the item', async () => {
+      const before = sent.length;
+      expect((await nudge('mgr', ids.quietEmp).expect(200)).body).toEqual({ sent: true, to: `quiet ${run}`, item: 'check_in', on: today });
+      const n = (await bell('quiet')).filter((x) => x.type === 'nudge.reminder');
+      expect(n).toHaveLength(1);
+      const day = new Date(`${today}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+      expect(n[0].contextText).toBe(`mgr ${run} reminded you to check in today (${day}).`);
+      expect(n[0].linkPath).toBe('/yx/time/attendance');
+      const mail = sent.slice(before).filter((m) => m.to === `quiet@small-${run}.test`);
+      expect(mail).toHaveLength(1);
+      expect(mail[0].subject).toBe('Reminder: check in today');
+      expect(mail[0].html).toContain(`mgr ${run} reminded you to check in today`);
+    });
+
+    it('once a day per person and item, whoever sends it', async () => {
+      expect((await nudge('mgr', ids.quietEmp).expect(409)).body.message).toBe(`quiet ${run} was already reminded today. You can remind them again tomorrow.`);
+      // HR sees everyone, but the person was already reminded today.
+      await nudge('hrAdmin', ids.quietEmp).expect(409);
+      expect((await bell('quiet')).filter((x) => x.type === 'nudge.reminder')).toHaveLength(1);
+    });
+
+    it('only for people the nudger can see, never themselves, and only while it is still waiting', async () => {
+      // A teammate, someone outside the manager's team, the other company: not found (nothing given away).
+      await nudge('peer', ids.quietEmp).expect(404);
+      await nudge('mgr', ids.otherEmp).expect(404);
+      await nudge('empB', ids.quietEmp).expect(404);
+      await nudge('adminB', ids.quietEmp).expect(404);
+      await nudge('mgr', ids.empBEmp).expect(404);
+      await nudge('mgr', ids.mgrEmp).expect(400);
+      // Already checked in today: nothing to remind.
+      expect((await nudge('mgr', ids.empEmp).expect(409)).body.message).toBe(`emp ${run} has already checked in today.`);
+    });
+
+    it("HR reaches anyone in scope; the email follows the person's notification preferences", async () => {
+      await api('other', 'patch', '/notifications/preferences').send({ type: 'nudge.reminder', emailEnabled: false }).expect(200);
+      const before = sent.length;
+      await nudge('hrAdmin', ids.otherEmp).expect(200);
+      expect((await bell('other')).filter((x) => x.type === 'nudge.reminder')).toHaveLength(1);
+      expect(sent.slice(before).filter((m) => m.to === `other@small-${run}.test`)).toHaveLength(0);
     });
   });
 });

@@ -4,6 +4,8 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { Viewer, buildViewer, inEntitySql, inScopeSql, tenantWide, has, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
 import { PunchDto, RegulariseDto, WfhDto } from './dto';
 import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
@@ -30,6 +32,7 @@ export class AttendanceService implements OnModuleInit {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly engine: ApprovalsEngine,
     private readonly days: DayEngine,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -282,6 +285,45 @@ export class AttendanceService implements OnModuleInit {
       const on = dateOf(r.workOn);
       await this.days.evaluate(tx, { organizationId: wf.organizationId, isSuperAdmin: false }, r.employeeId, on, on);
     }
+  }
+
+  /**
+   * Nudge (PLT-02 Team today): a manager or HR reminds someone who has not checked in today. Only for a person the
+   * nudger sees on the muster (their team, or the attendance.view grant), never themselves, and only while it is still
+   * waiting (a working day with no check-in yet). One nudge per item per person per day, whoever sends it. An in-app
+   * notification naming the item, and an email when the person's notification preferences allow it.
+   */
+  async nudge(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const v = await this.viewer(user);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      const zoneOf = await factsOn(tx, org, employeeId, new Date().toISOString().slice(0, 10));
+      if (!zoneOf) throw new NotFoundException('Not found');
+      const today = todayIn(zoneOf.zone);
+      if ((await mustSee(tx, c, v, own, 'attendance.view', employeeId, today)) === 'self') throw new BadRequestException('You cannot remind yourself.');
+      const f = (await factsOn(tx, org, employeeId, today)) ?? zoneOf;
+      if (!f.userId) throw new ConflictException(`${f.name} has no sign-in to remind.`);
+      const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: org, employeeId, workOn: asDate(today) } } });
+      if (day && ['leave', 'holiday', 'weekly_off'].includes(day.status)) throw new ConflictException(`${f.name} is not working today.`);
+      if (await tx.punch.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(today), kind: 'in', accepted: true }, select: { id: true } })) throw new ConflictException(`${f.name} has already checked in today.`);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`nudge:${org}:${employeeId}:${today}`}))`;
+      if (await tx.nudge.findFirst({ where: { organizationId: org, employeeId, item: 'check_in', onDay: asDate(today) }, select: { id: true } })) throw new ConflictException(`${f.name} was already reminded today. You can remind them again tomorrow.`);
+      const row = await tx.nudge.create({ data: { organizationId: org, employeeId, item: 'check_in', onDay: asDate(today), sentBy: c.userId! } });
+      await audit(tx, c, 'attendance.nudge.sent', 'employee', employeeId, { item: 'check_in', on: today });
+      const sender = (await tx.user.findFirst({ where: { organizationId: org, id: c.userId! }, select: { name: true } }))?.name || 'Your manager';
+      return { id: row.id, userId: f.userId, name: f.name, sender, today };
+    });
+    const text = `${out.sender} reminded you to check in today (${fmt(out.today)}).`;
+    await this.notifications.notifySystem(
+      ctx,
+      [out.userId],
+      'nudge.reminder',
+      { entityType: 'nudge', entityId: out.id, contextText: text, linkPath: '/yx/time/attendance' },
+      { subject: 'Reminder: check in today', html: `<p>${escapeHtml(text)}</p><p>Open YukthiX to check in.</p>` },
+    );
+    return { sent: true, to: out.name, item: 'check_in', on: out.today };
   }
 
   // ------------------------------------------------------------------------------------------ the muster (TIM-02)

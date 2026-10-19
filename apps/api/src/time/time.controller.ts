@@ -133,6 +133,14 @@ export class TimeController {
     return this.leave.verifyCertificate(ctx, this.user(req), id);
   }
 
+  /** Nudge (PLT-02 Team today): remind someone in the viewer's attendance scope to check in; once a day per person. */
+  @Post('people/:employeeId/nudge')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  nudge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.attendance.nudge(ctx, this.user(req), employeeId);
+  }
+
   @Get('muster')
   muster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthEntityQueryDto) {
     return this.attendance.muster(ctx, this.user(req), q.month, q.legalEntityId);
