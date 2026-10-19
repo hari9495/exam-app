@@ -777,7 +777,8 @@ export class AuthService {
   // the real reason is in the login event.
   async startOtpLogin(dto: OtpStartDto, meta: ClientMeta): Promise<OtpSent> {
     const parsed = parseOtpIdentifier(dto.identifier);
-    if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
+    // A text or WhatsApp code was asked for: the box held a mobile number, so say so (founder review 19 Oct).
+    if (!parsed) throw new BadRequestException(dto.channel === 'sms' || dto.channel === 'whatsapp' ? 'Enter a mobile number that can get text messages, like 98450 12345' : 'Enter an email address or a mobile number');
     const channel: OtpChannel = dto.channel ?? (parsed.kind === 'email' ? 'email' : 'sms');
     if (channel === 'email' && parsed.kind !== 'email') throw new BadRequestException('A code by email needs an email address');
     if (channel !== 'email' && parsed.kind !== 'mobile') throw new BadRequestException('A code by text message needs a mobile number');

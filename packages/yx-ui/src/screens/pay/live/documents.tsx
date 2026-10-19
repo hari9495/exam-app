@@ -3,7 +3,7 @@ import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
-import { TextField } from '../../../components/inputs';
+import { CodeField, TextField } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
@@ -421,7 +421,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
                 If this email may sign in, a code is on its way. It works for 5 minutes.
               </InlineAlert>
               <FormField id="pp-code" label="Code" required error={save.errorOf('pp-code')}>
-                <TextField value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" />
+                <CodeField value={code} onChange={setCode} />
               </FormField>
             </>
           )}

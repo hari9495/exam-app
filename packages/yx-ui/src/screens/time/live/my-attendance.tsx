@@ -5,7 +5,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Switch } from '../../../components/choice';
-import { TextArea, TextField, TimeField } from '../../../components/inputs';
+import { CodeField, TextArea, TimeField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
@@ -343,7 +343,7 @@ function NightWork({ night, p }: { night: MyNightWork; p: MyAttendanceScreenProp
         {sent && open.some((x) => x.id === sent.id && !x.confirmedAt) && (
           <div className="yx-tim-row">
             <FormField id="nw-code" label={`The 6-digit code sent to ${sent.to}`} required>
-              <TextField value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" />
+              <CodeField value={code} onChange={setCode} />
             </FormField>
             <Button variant="primary" disabled={code.length !== 6} loading={busy === 'confirm'} onClick={() => void run('confirm', async () => (await p.onNightConfirm!(sent.id, code), setSent(null), setCode('')))}>
               Confirm my consent

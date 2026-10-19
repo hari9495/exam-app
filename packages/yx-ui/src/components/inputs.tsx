@@ -40,6 +40,14 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
   );
 });
 
+/** A one-time code: digits only, at most `length` (6), the number keypad on phones and the code from an SMS offered. */
+export const CodeField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'inputMode' | 'maxLength'> & { length?: number }>(function CodeField(
+  { onChange, length = 6, ...rest },
+  ref,
+) {
+  return <TextField ref={ref} inputMode="numeric" autoComplete="one-time-code" spellCheck={false} maxLength={length} {...rest} onChange={(v) => onChange?.(v.replace(/\D/g, '').slice(0, length))} />;
+});
+
 export interface TextAreaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange'> {
   onChange?: (value: string) => void;
 }

@@ -3,7 +3,7 @@ import { LogOut, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { TextArea, TextField } from '../../components/inputs';
+import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { Card } from '../../components/shell';
@@ -214,7 +214,7 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
             <>
               <InlineAlert tone="info">If this email can use the help page, a 6-digit code is on its way.</InlineAlert>
               <FormField label="6-digit code" required helper={`Sent to ${email}.`}>
-                <TextField inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} />
+                <CodeField value={code} onChange={setCode} />
               </FormField>
               <div className="yx-ops-row">
                 <Button variant="primary" disabled={code.length !== 6} loading={busy === 'verify'} onClick={() => void run('verify', () => props.onVerify(email.trim().toLowerCase(), code))}>

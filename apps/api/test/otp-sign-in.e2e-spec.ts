@@ -390,6 +390,9 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
 
     it('rejects malformed input at the boundary', async () => {
       await post(browser(), '/auth/otp/start', { organizationSlug: A().slug, identifier: 'not an identifier' }).expect(400);
+      // Asked for a text: the message is about the mobile number, not "an email address" (founder review 19 Oct).
+      const half = await post(browser(), '/auth/otp/start', { organizationSlug: A().slug, identifier: '98450 123', channel: 'sms' }).expect(400);
+      expect(half.body.message).toBe('Enter a mobile number that can get text messages, like 98450 12345');
       await post(browser(), '/auth/otp/start', { organizationSlug: A().slug, identifier: FIELD, channel: 'pigeon' }).expect(400);
       await post(browser(), '/auth/otp/verify', { organizationSlug: A().slug, identifier: FIELD, otpToken: 'short', code: '123456' }).expect(400);
       await post(browser(), '/auth/otp/verify', { organizationSlug: A().slug, identifier: FIELD, otpToken: 'A'.repeat(43), code: '12345a' }).expect(400);
