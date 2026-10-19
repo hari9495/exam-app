@@ -6,7 +6,8 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--yx-space-6);
-  align-items: stretch;
+  /* Every widget is as tall as its content, never stretched to the one beside it (founder, 19 Oct 2026). */
+  align-items: start;
 }
 .yx-dashboard__empty { grid-column: 1 / -1; border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-card); }
 .yx-dashboard[data-editing] .yx-widget { border-color: var(--yx-color-border-strong); }
