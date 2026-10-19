@@ -245,9 +245,18 @@
     "result": "Fail",
     "findings": "HR Home live vs design: 1) switcher has no period, no assistant button; 2) no Request work from home; 3) Needs your action rows show an empty avatar and no name/due date; 4) older Check in box nested in a card instead of the designed Attendance today widget; 5) different count cards, no 'vs last month', gap in the grid; 6) Joiners and leavers this week missing; 7) Fixed-term contracts ending missing from Due dates. Employee Home (arjun@) vs design: only Needs your action and the old Check in box; missing Attendance today widget, Leave balance, Days present, Late marks / Net pay, Requests pending, My tasks, News, Coming up, Request work from home.",
     "fixedIn": "In progress: builder matching HR, employee and manager Homes to the design (one widget set, no second version)"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Fail (fixed)",
+    "findings": "After the Home rebuild: 1) refused clock-in showed two messages run together ('…office network Your location could not be found…'); 2) 'Late by 770 min' instead of hours and minutes; 3) Start break button missing (breaks not built); 4) Bengaluru head office lost its geofence after an edit (likely unticked by mistake; values restored by the founder).",
+    "fixedIn": "PR #190: one clear location message; 'Late by 12 h 50 min' on Home, clock and Team (tests). Start break: not built yet (see ideas)."
    }
   ],
-  "ideas": [],
+  "ideas": [
+   "Ask before saving a location that removes its geofence ('People could then check in from anywhere on its networks') — suggested 19 Oct, waiting for the founder.",
+   "Build breaks (Start break / End break punches; breaks not counted as worked time), Request work from home, show pay on Home, Nudge — founder pointed out Start break is missing, 19 Oct."
+  ],
   "id": "AF-01",
   "area": "0 App frame (design parity step 1, PR #178)",
   "screen": "Sign-in lands on Home",
