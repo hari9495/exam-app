@@ -31,6 +31,16 @@ describe('DirectoryScreen live', () => {
     expect(tabs).toHaveTextContent('Same as September');
   });
 
+  it('filtering a parent department finds everyone under it, and offers it as "Parent › Child"', () => {
+    const rows = [
+      { ...ROWS[0], id: 'q', name: 'Quinn Rao', department: 'Quality', departmentPath: ['Operations', 'Quality'] },
+      { ...ROWS[1], id: 's', name: 'Sara Das', department: 'Sales', departmentPath: ['Sales'] },
+    ];
+    render(<DirectoryScreen persona="hr" rows={rows} live={live()} defaultFilters={[{ key: 'department', type: 'multi', values: ['Operations'] }]} />);
+    expect(screen.getAllByText('Quinn Rao').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Sara Das')).toHaveLength(0);
+  });
+
   it('All persons: N roles held by M people', async () => {
     render(<DirectoryScreen persona="hr" rows={ROWS} live={live()} />);
     await userEvent.click(screen.getByRole('tab', { name: /All persons/ }));

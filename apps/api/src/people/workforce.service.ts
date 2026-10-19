@@ -27,6 +27,8 @@ export interface WorkforceRow {
   name: string;
   designation: string | null;
   department: { id: string; name: string | null } | null;
+  /** The department and those above it, top first, so filtering Operations finds Quality under it. */
+  departmentPath?: string[];
   location: { id: string; name: string | null } | null;
   legalEntity: { id: string; name: string | null } | null;
   manager: { id: string; name: string | null } | null;
@@ -175,7 +177,7 @@ export class WorkforceService {
     const uniq = (f: (r: (typeof rows)[number]) => string | null) => [...new Set(rows.map(f).filter((x): x is string => Boolean(x)))];
     const [locs, depts, desigs, ents, mgrs] = await Promise.all([
       tx.location.findMany({ where: { ...org, id: { in: uniq((r) => r.location_id) } }, select: { id: true, name: true } }),
-      tx.department.findMany({ where: { ...org, id: { in: uniq((r) => r.department_id) } }, select: { id: true, name: true } }),
+      tx.department.findMany({ where: { ...org, id: { in: uniq((r) => r.department_id) } }, select: { id: true, name: true, path: true } }),
       tx.designation.findMany({ where: { ...org, id: { in: uniq((r) => r.designation_id) } }, select: { id: true, name: true } }),
       tx.legalEntity.findMany({ where: { ...org, id: { in: uniq((r) => r.legal_entity_id) } }, select: { id: true, name: true } }),
       tx.employee.findMany({ where: { ...org, id: { in: uniq((r) => r.manager_employee_id) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
@@ -183,6 +185,10 @@ export class WorkforceService {
     const name = (list: { id: string; name: string }[]) => new Map(list.map((x) => [x.id, x.name]));
     const [L, D, G, E] = [name(locs), name(depts), name(desigs), name(ents)];
     const M = new Map(mgrs.map((m) => [m.id, displayName(m)]));
+    // The materialised path ("/root/.../self/") names every department above.
+    const pathIds = new Map(depts.map((d) => [d.id, d.path.split('/').filter(Boolean)]));
+    const above = [...new Set([...pathIds.values()].flat())].filter((id) => !D.has(id));
+    for (const a of await tx.department.findMany({ where: { ...org, id: { in: above } }, select: { id: true, name: true } })) D.set(a.id, a.name);
     const ref = (m: Map<string, string>, id: string | null) => (id ? { id, name: m.get(id) ?? null } : null);
     return rows.map((r) => ({
       id: r.id,
@@ -190,6 +196,7 @@ export class WorkforceService {
       name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }),
       designation: G.get(r.designation_id) ?? null,
       department: ref(D, r.department_id),
+      departmentPath: (pathIds.get(r.department_id) ?? [r.department_id]).map((id) => D.get(id)).filter((n): n is string => Boolean(n)),
       location: ref(L, r.location_id),
       legalEntity: ref(E, r.legal_entity_id),
       manager: ref(M, r.manager_employee_id),

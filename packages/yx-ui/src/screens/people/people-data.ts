@@ -17,6 +17,8 @@ export interface WorkforceRow {
   kind: WorkforceKind;
   role: string;
   department: string;
+  /** The department and those above it, top first (live app): filtering a parent finds everyone under it. */
+  departmentPath?: string[];
   location: string;
   manager: string;
   email: string;
