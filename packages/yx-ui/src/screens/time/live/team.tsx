@@ -8,6 +8,7 @@ import { NumberField, TextArea } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { useRun } from '../../org/org-kit';
 import { DAY_STATUS, DayStatusBadge, LivePage, MODE_TEXT, addDays, dayText, duration, timeIn } from './kit';
+import { fmtDuration } from '../time-logic';
 import type { DayCard, HrBalances, LedgerRow, LoadState, Muster, TeamCalendar } from './types';
 
 // Team › Leave calendar (TIM-20) and HR › Muster (TIM-02, read-only in batch 1), both opening on the viewer's widest
@@ -203,7 +204,7 @@ export function MusterScreen(p: MusterScreenProps) {
               <div className="yx-tim-stack">
                 {card.day && (
                   <p className="yx-tim-muted">
-                    <DayStatusBadge status={card.day.status} leavePart={card.day.leavePart} /> {card.day.workedMinutes !== null ? `Worked ${duration(card.day.workedMinutes)}.` : ''} {card.day.lateMinutes ? `Late by ${card.day.lateMinutes} min.` : ''} {card.day.regularised ? 'Fixed by an approved request.' : ''}
+                    <DayStatusBadge status={card.day.status} leavePart={card.day.leavePart} /> {card.day.workedMinutes !== null ? `Worked ${duration(card.day.workedMinutes)}.` : ''} {card.day.lateMinutes ? `Late by ${fmtDuration(card.day.lateMinutes)}.` : ''} {card.day.regularised ? 'Fixed by an approved request.' : ''}
                   </p>
                 )}
                 {card.punches.length ? (

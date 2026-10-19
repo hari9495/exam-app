@@ -64,6 +64,13 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     expect(screen.queryByText(/office network Your/)).toBeNull();
   });
 
+  it('says how late in hours and minutes, never "770 min"', () => {
+    // Clocked in at 10:20 pm for a 9:30 am shift: 12 h 50 min late.
+    render(<HomeClockCard {...props({ now: new Date('2026-10-19T16:51:00Z'), data: { ...DAY, next: 'out', punches: [punch('in', '2026-10-19T16:50:00Z')] } })} />);
+    expect(screen.getByText('Late by 12 h 50 min')).toBeInTheDocument();
+    expect(screen.queryByText(/770 min/)).toBeNull();
+  });
+
   it('has no clock-in on a day of leave or a weekly off', () => {
     const { rerender } = render(<HomeClockCard {...props({ data: { ...DAY, days: [{ on: '2026-10-19', status: 'leave', leavePart: 'full', workedMinutes: null, lateMinutes: null, regularised: false }] } })} />);
     expect(screen.getByText('On leave today')).toBeInTheDocument();
