@@ -140,6 +140,48 @@ export const PLT02PartlyLoaded: S = {
 };
 export const PLT02Editing: S = { name: 'PLT-02 · Role home · customising widgets', render: () => <RoleHomeScreen persona="hr" data={HR} editing customisable defaultHidden={['cycles', 'coming']} /> };
 
+// Recruiter home (founder decision 19 Oct 2026): scorecards owed, offers waiting and candidates waiting too long, each
+// opening its hiring page; today's interviews; this week's counts; the recruiter's open jobs by stage.
+const REC: HomeData = {
+  actions: [
+    { id: 'r1', type: 'Scorecard', title: 'Write your scorecard · Quality Analyst', who: 'Ananya Kulkarni', kind: 'review', note: 'Interview on 28 Sep', actionLabel: 'Write scorecard', href: '#interview' },
+    { id: 'r2', type: 'Offer', title: 'Approve the offer · Plant Engineer', who: 'Farhan Sheikh', kind: 'review', note: 'Waiting for your approval', actionLabel: 'Open', href: '#application' },
+    { id: 'r3', type: 'Offer', title: 'Send the offer · Area Sales Manager', who: 'Priya Menon', kind: 'review', note: 'Approved, not sent yet', actionLabel: 'Open', href: '#application' },
+    { id: 'r4', type: 'Waiting', title: '12 days in Screened · Quality Analyst', who: 'Rohit Sharma', kind: 'review', actionLabel: 'Open', href: '#application' },
+  ],
+};
+const LIVE_REC = {
+  firstName: 'Neha',
+  company: 'Kaveri Foods Pvt Ltd',
+  today: TODAY,
+  approvalsHref: '#jobs',
+  hiring: {
+    interviewsToday: [
+      { id: 'i1', at: new Date(2026, 8, 29, 11, 0), candidate: 'Ananya Kulkarni', job: 'Quality Analyst', href: '#interview' },
+      { id: 'i2', at: new Date(2026, 8, 29, 14, 30), candidate: 'Farhan Sheikh', job: 'Plant Engineer', href: '#interview' },
+    ],
+    interviewsHref: '#interviews',
+    week: { applied: 18, interview: 6, offers: 2, hired: 1 },
+    jobs: [
+      { id: 'j1', title: 'Quality Analyst', href: '#job', stages: [{ name: 'Applied', count: 12 }, { name: 'Screened', count: 5 }, { name: 'Interview', count: 3 }, { name: 'Offer', count: 1 }, { name: 'Hired', count: 0 }] },
+      { id: 'j2', title: 'Plant Engineer', href: '#job', stages: [{ name: 'Applied', count: 7 }, { name: 'Screened', count: 2 }, { name: 'Interview', count: 2 }, { name: 'Offer', count: 0 }, { name: 'Hired', count: 1 }] },
+    ],
+    jobsHref: '#jobs',
+  },
+};
+export const PLT02Recruiter: S = { name: 'PLT-02 · Role home · recruiter', render: () => <RoleHomeScreen persona="recruiter" data={REC} /> };
+export const PLT02RecruiterLoading: S = { name: 'PLT-02 · Role home · recruiter, loading', render: () => <RoleHomeScreen persona="recruiter" data={REC} loading /> };
+export const PLT02RecruiterLive: S = { name: 'PLT-02 · Role home · recruiter, live', render: () => <RoleHomeScreen persona="recruiter" data={REC} live={LIVE_REC} /> };
+export const PLT02RecruiterLiveEmpty: S = {
+  name: 'PLT-02 · Role home · recruiter, live, nothing yet',
+  render: () => <RoleHomeScreen persona="recruiter" data={{ actions: [] }} live={{ ...LIVE_REC, hiring: { ...LIVE_REC.hiring, interviewsToday: [], week: { applied: 0, interview: 0, offers: 0, hired: 0 }, jobs: [] } }} />,
+};
+// Someone who is HR and also hires keeps the HR home; the recruiter widgets are added after their own.
+export const PLT02HRLiveHiring: S = {
+  name: 'PLT-02 · Role home · HR who also hires, live',
+  render: () => <RoleHomeScreen persona="hr" data={{ actions: [...HR.actions, ...REC.actions.slice(0, 2)] }} live={{ ...LIVE_HR, hiring: LIVE_REC.hiring }} />,
+};
+
 /* PLT-10 */
 export const PLT10Settings: S = { name: 'PLT-10 · Settings home', render: () => <SettingsHomeScreen /> };
 export const PLT10Search: S = { name: 'PLT-10 · Settings home · search “probation”', render: () => <SettingsHomeScreen defaultQuery="probation" /> };

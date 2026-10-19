@@ -443,6 +443,8 @@ export interface ActionItem {
   note?: string;
   /** Label of the main button when it isn't a review, e.g. "Start" for an onboarding task. */
   actionLabel?: string;
+  /** The page that handles it: the main button becomes a link there instead of calling onReview. */
+  href?: string;
 }
 
 export interface NeedsActionListProps {
@@ -534,9 +536,17 @@ export function NeedsActionList({ items, total = items.length, viewAllHref, onAp
                     Approve
                   </Button>
                 )}
-                <Button variant="review" size="sm" onClick={() => onReview?.(it)} aria-label={it.actionLabel ? `${it.actionLabel}: ${it.title}` : `Review ${it.type.toLowerCase()} for ${it.who}`}>
-                  {it.actionLabel ?? 'Review'}
-                </Button>
+                {it.href ? (
+                  <Button variant="review" size="sm" asChild>
+                    <a href={it.href} aria-label={`${it.actionLabel ?? 'Review'}: ${it.title}`}>
+                      <span className="yx-button__label">{it.actionLabel ?? 'Review'}</span>
+                    </a>
+                  </Button>
+                ) : (
+                  <Button variant="review" size="sm" onClick={() => onReview?.(it)} aria-label={it.actionLabel ? `${it.actionLabel}: ${it.title}` : `Review ${it.type.toLowerCase()} for ${it.who}`}>
+                    {it.actionLabel ?? 'Review'}
+                  </Button>
+                )}
               </div>
             </li>
           ))}

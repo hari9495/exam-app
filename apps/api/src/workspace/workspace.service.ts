@@ -13,6 +13,7 @@ import { PeriodsService } from '../time/periods.service';
 import { PayRunsService } from '../payroll/runs.service';
 import { JoinersService } from '../lifecycle/joiners.service';
 import { ExitsService } from '../lifecycle/exits.service';
+import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 
 export interface SearchHit {
   id: string;
@@ -45,6 +46,8 @@ export interface HomeWidgets {
   probationsDue?: { count: number; firstDue: string | null };
   joiners?: { id: string; name: string; on: string; department: string | null; location: string; openTasks: number }[];
   leavers?: { id: string; name: string; on: string; clearanceOpen: number }[];
+  /** People who hold a hiring key: what waits for them, today's interviews, this week and their open jobs. */
+  hiring?: HiringHome;
 }
 
 // The YukthiX app frame (design audit step 1, PLT-01 / PLT-20): the global search behind Ctrl K and the counts on
@@ -114,6 +117,8 @@ export class WorkspaceService {
         return r?.n ?? 0;
       });
     }
+    const hiring = await this.service(HiringHomeService).home(ctx, user);
+    if (hiring) out.hiring = hiring;
     return out;
   }
 
