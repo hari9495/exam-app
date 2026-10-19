@@ -617,8 +617,8 @@ export function ClockCard(p: ClockCardProps) {
             <Clock size={16} aria-hidden="true" /> {shift.name} shift · {fmt12(shift.start)} – {fmt12(shift.end)}
           </p>
           <div className="yx-tim-clock__flags">
-            {late > 0 && <Badge tone="warning">Late by {late} min</Badge>}
-            {lateIfNow > 0 && <Badge tone="warning">Late by {lateIfNow} min if you clock in now{markNote}</Badge>}
+            {late > 0 && <Badge tone="warning">Late by {fmtDuration(late)}</Badge>}
+            {lateIfNow > 0 && <Badge tone="warning">Late by {fmtDuration(lateIfNow)} if you clock in now{markNote}</Badge>}
             {firstIn && late === 0 && <Badge tone="success">On time</Badge>}
             {early > 0 && <Badge tone="warning">Left early by {fmtDuration(early)}</Badge>}
             {workMode === 'wfh' && <Badge tone="info">Work from home</Badge>}
