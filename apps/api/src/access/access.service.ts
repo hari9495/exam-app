@@ -31,6 +31,19 @@ const PREVIEW_KEYS: readonly { key: string; label: string }[] = [
   { key: 'employee.salary.view', label: 'See salary' },
 ];
 
+/** Plain words for the Confidential keys, for the role risk warning admins read (no permission codes on screen). */
+export const CONFIDENTIAL_LABEL: Record<string, string> = {
+  'employee.salary.view': 'see salary',
+  'employee.salary.manage': 'change salary',
+  'employee.identity.view': 'see identity and bank details',
+  'employee.identity.manage': 'change identity and bank details',
+  'employee.identity.approve': 'approve bank and identity changes',
+  'employee.aadhaar.view': 'see Aadhaar in full',
+  'pay.range.view': 'see pay ranges',
+  'pay.range.manage': 'change pay ranges',
+  'org.entity.statutory.manage': 'change company tax identifiers',
+};
+
 const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentId' | null> = {
   tenant: null,
   legal_entity: 'legalEntityId',
@@ -192,7 +205,7 @@ export class AccessService {
       const confidential = holdsConfidential(keys);
       const people = await this.peopleIn(tx, c, { type: dto.scopeType, id: dto.scopeId ?? null }, granteeEmployee);
       const threshold = Number(await settingFor(tx, c, 'access.risk.confidential_threshold', { legalEntityId: '' }));
-      const warnings = confidential && people > threshold ? [`Opens Confidential data (${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).join(', ')}) of ${people} people, more than the company's limit of ${threshold}.`] : [];
+      const warnings = confidential && people > threshold ? [`Lets them ${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).map((k) => CONFIDENTIAL_LABEL[k] ?? 'open Confidential data').join(', ')} for ${people} people, more than the company's limit of ${threshold}.`] : [];
       if (warnings.length && !dto.confirmRisk) {
         throw new ConflictException({ statusCode: 409, code: 'RISK_CONFIRMATION_REQUIRED', message: warnings[0], warnings, people });
       }

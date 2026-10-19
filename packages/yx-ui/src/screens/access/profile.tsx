@@ -10,6 +10,7 @@ import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
+import { useToast } from '../../components/notify';
 import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
 import { formatPhone } from '../../lib/format';
@@ -180,6 +181,12 @@ function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest;
 
 export function ProfileScreen(props: ProfileScreenProps) {
   const { state, onRetry, profile: p, people, onPickPerson, requests } = props;
+  const { toast } = useToast();
+  // Each save says so in a toast; a failure still shows in the dialog that ran it.
+  const said = <A extends unknown[]>(run: (...a: A) => Promise<void>, title: string) => async (...a: A) => {
+    await run(...a);
+    toast({ tone: 'success', title });
+  };
   const [editing, setEditing] = useState(false);
   const [changing, setChanging] = useState(false);
   const [cancelling, setCancelling] = useState<ProfileRequest | null>(null);
@@ -222,7 +229,7 @@ export function ProfileScreen(props: ProfileScreenProps) {
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load this profile." description="It may not be yours to see, or the connection dropped." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy="HR" what="this profile" />}
-      {state === 'ready' && !p && <EmptyState title="Pick a person" description="Choose whose profile to open." />}
+      {state === 'ready' && !p && (people?.length ? <EmptyState title="Pick a person" description="Choose whose profile to open." /> : <EmptyState title="No profiles to show" description="You can open the profiles of the people your roles cover. Right now that is no one." />)}
       {state === 'ready' && p && (
         <>
           <Card title="Personal details" actions={p.can.editPersonal && p.personal ? <Button size="sm" onClick={() => setEditing(true)}>Edit</Button> : undefined}>
@@ -315,9 +322,9 @@ export function ProfileScreen(props: ProfileScreenProps) {
           </Card>
         </>
       )}
-      {editing && p?.personal && <PersonalDialog initial={p.personal} states={props.states} onSave={props.onSavePersonal} onClose={() => setEditing(false)} />}
-      {changing && p && <ChangeDialog pending={pending.map((r) => r.kind)} onRequest={props.onRequestChange} onClose={() => setChanging(false)} />}
-      {cancelling && <CancelDialog request={cancelling} onCancel={props.onCancelRequest} onClose={() => setCancelling(null)} />}
+      {editing && p?.personal && <PersonalDialog initial={p.personal} states={props.states} onSave={said(props.onSavePersonal, 'Saved.')} onClose={() => setEditing(false)} />}
+      {changing && p && <ChangeDialog pending={pending.map((r) => r.kind)} onRequest={said(props.onRequestChange, 'Sent for approval.')} onClose={() => setChanging(false)} />}
+      {cancelling && <CancelDialog request={cancelling} onCancel={said(props.onCancelRequest, 'Withdrawn.')} onClose={() => setCancelling(null)} />}
     </div>
   );
 }

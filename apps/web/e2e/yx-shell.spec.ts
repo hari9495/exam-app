@@ -28,7 +28,7 @@ test('HR: Home, rail and menus by keyboard, search, bell, Help, breadcrumbs, acc
 
   // Ctrl K: people from the server; Enter opens the first one.
   await page.keyboard.press('Control+k');
-  const box = page.getByRole('combobox');
+  const box = page.getByRole('dialog', { name: 'Search and actions' }).getByRole('combobox');
   await expect(box).toBeFocused();
   await box.fill('Arjun');
   await expect(page.getByRole('option', { name: /Arjun/ }).first()).toBeVisible({ timeout: 10_000 });
@@ -37,7 +37,7 @@ test('HR: Home, rail and menus by keyboard, search, bell, Help, breadcrumbs, acc
 
   // Pages are in search as actions too.
   await page.keyboard.press('Control+k');
-  await page.getByRole('combobox').fill('>Probation');
+  await page.getByRole('dialog', { name: 'Search and actions' }).getByRole('combobox').fill('>Probation');
   await page.getByRole('option', { name: /Probation/ }).first().click();
   await page.waitForURL(/\/yx\/people\/probation/);
 

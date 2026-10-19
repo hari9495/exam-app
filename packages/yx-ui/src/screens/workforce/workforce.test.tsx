@@ -45,6 +45,12 @@ describe('Org chart (M01 §3.2, Q5)', () => {
 });
 
 describe('My team (M01 §3.10; YX-SEC-27)', () => {
+  it('the aside (Joining soon) sits under the page heading, not above it', () => {
+    render(<TeamScreen state="ready" members={TEAM} today={TODAY_ISO} onOpenHistory={vi.fn()} aside={<p>Joining soon card</p>} />);
+    const heading = screen.getByRole('heading', { name: 'My team' });
+    expect(heading.compareDocumentPosition(screen.getByText('Joining soon card')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('lists direct, indirect and dotted-line reports; raising changes only for the reporting team', async () => {
     const onOpenHistory = vi.fn();
     render(<TeamScreen state="ready" members={TEAM} today={TODAY_ISO} onOpenHistory={onOpenHistory} raise={{ options: { people: PEOPLE, locations: [], departments: [], designations: [], grades: [], employmentTypes: [], costCentres: [], canPay: false, retroLimit: '2026-04-01', today: TODAY_ISO, types: ['promotion', 'transfer', 'redesignation', 'manager_change'] }, onPreview: vi.fn(), onSubmit: ok() }} />);

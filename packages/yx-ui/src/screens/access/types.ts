@@ -51,6 +51,8 @@ export interface Grant {
   scope: { type: ScopeType; id: string | null; name: string | null };
   validFrom: string;
   validTo: string | null;
+  /** When an admin ended it early (ISO time); the When column shows it as the end date. */
+  revokedAt?: string | null;
   status: GrantStatus;
   reason: string;
   grantedBy: string | null;

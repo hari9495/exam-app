@@ -2281,6 +2281,8 @@ model LegalEntity {
   country           String    @default("IN") @db.Char(2)
   currency          String    @default("INR") @db.Char(3)
   fyStartMonth      Int       @default(4) @map("fy_start_month") @db.SmallInt
+  /// New people get codes like KF-0001 (YX-ORG-16); null keeps E0001.
+  employeeCodePrefix String?  @map("employee_code_prefix") @db.VarChar(12)
   registeredAddress Json?     @map("registered_address")
   dataRegion        String    @default("IN") @map("data_region") @db.VarChar(8)
   // Confidential (P02 §4.4): returned only to org.entity.statutory.manage.

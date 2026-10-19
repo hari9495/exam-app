@@ -30,9 +30,8 @@ export default function YxTeamPage() {
   // M01 lifecycle 6a (founder D2): joiners are not team members until day one; they show here, above the team.
   const soon = useLife<Joiner[]>('/lifecycle/joining-soon');
   return (
-    <>
-    {soon.data?.length ? <JoiningSoonCard rows={soon.data} today={todayIst()} onOpen={(journeyId) => router.push(`/yx/people/onboarding/${id(journeyId)}`)} /> : null}
     <TeamScreen
+      aside={soon.data?.length ? <JoiningSoonCard rows={soon.data} today={todayIst()} onOpen={(journeyId) => router.push(`/yx/people/onboarding/${id(journeyId)}`)} /> : undefined}
       state={loadState(team)}
       onRetry={() => void team.refetch()}
       members={members}
@@ -40,6 +39,5 @@ export default function YxTeamPage() {
       onOpenHistory={(personId) => router.push(`/yx/people/history?person=${id(personId)}`)}
       raise={canRaise && chart.data ? { options: { ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }, ...raise } : undefined}
     />
-    </>
   );
 }

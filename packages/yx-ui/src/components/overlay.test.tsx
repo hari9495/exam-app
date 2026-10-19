@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './button';
 import { ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from './overlay';
@@ -82,6 +82,13 @@ describe('Toasts', () => {
 /* ---------- Dialogs ---------- */
 
 describe('Dialogs', () => {
+  it('a notice sits above the buttons, outside the scrolling body, so it is never hidden', () => {
+    render(<Dialog open title="Give access" notice={<p>Check before you continue</p>} footer={<Button>Send</Button>}><p>Long form</p></Dialog>);
+    const note = screen.getByText('Check before you continue');
+    expect(note.closest('.yx-dialog__body')).toBeNull();
+    expect(note.closest('.yx-dialog__notice')?.nextElementSibling).toHaveClass('yx-dialog__foot');
+  });
+
   it('non-destructive dialog closes on Esc and returns focus to the trigger', async () => {
     const u = userEvent.setup();
     render(<Dialog title="Change reporting manager?" trigger={<Button>Change manager</Button>} footer={<Button>Cancel</Button>} />);
@@ -120,7 +127,8 @@ describe('Dialogs', () => {
     render(<ConfirmDialog defaultOpen title="Publish holiday list 2027?" confirmLabel="Publish" onConfirm={onConfirm} />);
     await u.click(screen.getByRole('button', { name: 'Publish' }));
     expect(onConfirm).toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // It closes once the promise settles, a tick after the click.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('type-to-confirm enables the danger button only on an exact match', async () => {

@@ -23,6 +23,8 @@ export interface LegalEntity {
   country: string;
   currency: string;
   fyStartMonth: number;
+  /** Codes made for new people start with this (KF-0001); null or missing means E0001. */
+  employeeCodePrefix?: string | null;
   registeredAddress: Address | null;
   dataRegion: string;
   isDefault: boolean;
@@ -36,6 +38,7 @@ export interface LegalEntityInput {
   shortName: string;
   currency: string;
   fyStartMonth: number;
+  employeeCodePrefix: string | null;
   registeredAddress: Address | null;
 }
 

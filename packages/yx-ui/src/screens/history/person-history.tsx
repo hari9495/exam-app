@@ -61,7 +61,7 @@ export function serviceDatesInput(d: { mode: 'rule' | 'date'; date: Date | null;
   const date = d.date ? dayKey(d.date) : null;
   if (d.mode === 'date' && !date) errors.push({ fieldId: 'sd-date', message: 'Choose the date continuous service counts from' });
   if (d.mode === 'date' && date && date > employerStart) errors.push({ fieldId: 'sd-date', message: `Choose a date on or before ${dateLabel(employerStart)}` });
-  if (d.reason.trim().length < 3) errors.push({ fieldId: 'sd-reason', message: 'Say why, in a few words' });
+  if (d.reason.trim().length < 3) errors.push({ fieldId: 'sd-reason', message: 'Enter the reason for the new dates' });
   if (errors.length) return { input: null, errors };
   return { input: { continuousServiceFrom: d.mode === 'date' ? date : null, reason: d.reason.trim() }, errors };
 }
@@ -166,7 +166,7 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                 person
                 photoUrl={null}
                 name={view.employee.name}
-                secondary={a ? [a.designation?.name, a.department?.name].filter(Boolean).join(' · ') : 'No assignment on this date'}
+                secondary={a ? [a.designation?.name, a.department?.name].filter(Boolean).join(' · ') : asOf < view.employee.joinedOn ? `Joins on ${dateLabel(view.employee.joinedOn)}` : 'No assignment on this date'}
                 status={view.status ? <Badge tone={view.status.status === 'probation' ? 'warning' : 'neutral'}>{STATUS_LABEL[view.status.status]}</Badge> : undefined}
                 facts={[
                   { label: 'Employee code', value: view.employee.employeeCode },
@@ -227,7 +227,12 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                     <dd>{range(a.validFrom, a.validTo)}</dd>
                   </dl>
                 ) : (
-                  <EmptyState compact title="Not employed on this date." description={`Joined on ${dateLabel(view.employee.joinedOn)}.`} />
+                  // Before the first day, say so in the future tense and offer that day (founder review 14 Oct 2026).
+                  asOf < view.employee.joinedOn ? (
+                    <EmptyState compact title="Not joined yet on this date." description={`Joins on ${dateLabel(view.employee.joinedOn)}.`} action={<Button onClick={() => onAsOf(view.employee.joinedOn)}>See the first day</Button>} />
+                  ) : (
+                    <EmptyState compact title="Not employed on this date." description={`Joined on ${dateLabel(view.employee.joinedOn)}.`} />
+                  )
                 )}
               </Card>
               {serviceDates !== undefined && (

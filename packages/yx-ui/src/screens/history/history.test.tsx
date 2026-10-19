@@ -98,6 +98,15 @@ describe('ImpactPanel (YX-HIS-11, YX-HIS-06, R1)', () => {
 });
 
 describe('PersonHistoryScreen (P06 §4.7, §7)', () => {
+  it('before the first day: future tense and a button to that day', async () => {
+    const onAsOf = vi.fn();
+    render(<History onAsOf={onAsOf} view={{ ...AS_OF, assignment: null, employee: { ...AS_OF.employee, joinedOn: '2099-01-04' } }} />);
+    expect(screen.getByText('Not joined yet on this date.')).toBeInTheDocument();
+    expect(screen.getAllByText('Joins on 4 Jan 2099').length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'See the first day' }));
+    expect(onAsOf).toHaveBeenCalledWith('2099-01-04');
+  });
+
   it('shows the facts in force, the changes and the corrected records; pay only after Show pay (R1)', async () => {
     const onShowPay = ok();
     render(<History onShowPay={onShowPay} />);
@@ -256,7 +265,8 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
     await u.type(within(dialog).getByLabelText(/Joins on/), '1/10/2026');
     await u.type(within(dialog).getByLabelText(/^Reason/), 'Offer accepted');
     await u.click(within(dialog).getByRole('button', { name: 'Add person' }));
-    await screen.findByText('This email or phone already belongs to someone here');
+    const box = await screen.findByText('This email or phone already belongs to someone here');
+    expect(box.closest('.yx-drawer__notice')).not.toBeNull(); // above the buttons, not scrolled away at the top of the form
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('personId');
     const link = within(dialog).getByRole('button', { name: 'Link and add' });
     expect(link).toBeDisabled();
@@ -306,9 +316,9 @@ describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit continuous service' }));
     // No red error while typing: the reason is asked for only on save.
     await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'A');
-    expect(screen.queryByText('Say why, in a few words')).not.toBeInTheDocument();
+    expect(screen.queryByText('Enter the reason for the new dates')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect((await screen.findAllByText('Say why, in a few words')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Enter the reason for the new dates')).length).toBeGreaterThan(0);
     await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'cquired company');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ continuousServiceFrom: null, reason: 'Acquired company' }));

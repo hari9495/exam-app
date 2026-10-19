@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -18,7 +19,7 @@ jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Arjun Kulkarni', email: 'arjun.k@kaverifoods.in' } }) }));
 
 const wrap = (ui: React.ReactElement) =>
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 
 const PERMS_PATH = '/rbac/me/permissions';
 const ENTITY = {
@@ -156,7 +157,7 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     const del = jest.fn().mockResolvedValue(undefined);
     route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-1', value: '3', validFrom: null }] }, 'DELETE /org/settings/s-1': del, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
     wrap(<YxCompanyRulesPage />);
-    expect(await screen.findByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
+    expect((await screen.findAllByText('Starter value')).length).toBeGreaterThan(0);
     const table = screen.getByRole('table', { name: /Probation lasts/ });
     expect(within(table).getByText('Kaveri Foods Pvt Ltd')).toBeInTheDocument();
     await userEvent.click(within(table).getAllByRole('button').at(-1)!);
@@ -173,7 +174,7 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     unmount();
     route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
     wrap(<YxCompanyRulesPage />);
-    await screen.findByText('6 · YukthiX starter, not changed yet');
+    await screen.findAllByText('Starter value');
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 

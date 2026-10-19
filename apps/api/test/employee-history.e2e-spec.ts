@@ -204,6 +204,14 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
         .expect(201);
       expect(tn.body.employeeCode).toBe('E0001');
       ids.imran = tn.body.id;
+      // The entity's own prefix: a bad one is refused; then new codes follow it, numbered within that prefix.
+      await api('adminA', 'put', `/org/legal-entities/${ids.tn}`).send({ name: 'Kaveri TN', shortName: 'KFPL-TN', employeeCodePrefix: 'kft;' }).expect(400);
+      await api('adminA', 'put', `/org/legal-entities/${ids.tn}`).send({ name: 'Kaveri TN', shortName: 'KFPL-TN', employeeCodePrefix: 'KFT-' }).expect(200);
+      const prefixed = await api('adminA', 'post', '/people/employees')
+        .send(join({ givenName: 'Selvi', legalEntityId: ids.tn, joinedOn: joinOld, assignment: { ...join({}).assignment, locationId: ids.hsr, departmentId: ids.prod, managerEmployeeId: ids.divya, costCentres: [{ costCentreId: ids.ccTn, percent: '100' }] } }))
+        .expect(201);
+      expect(prefixed.body.employeeCode).toBe('KFT-0001');
+      await api('adminA', 'put', `/org/legal-entities/${ids.tn}`).send({ name: 'Kaveri TN', shortName: 'KFPL-TN', employeeCodePrefix: null }).expect(200);
     });
 
     it('refuses a duplicate code, ids of another entity or company, archived masters and one login twice', async () => {
@@ -227,7 +235,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('adminA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: addDays(joinArjun, -30), assignment: { ...join({}).assignment, managerEmployeeId: ids.arjun } })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, assignment: { ...join({}).assignment, costCentres: [{ costCentreId: ids.cc1, percent: '50' }] } })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, isAdmin: true })).expect(400); // not whitelisted
-      expect((await auditActions('employee.created')).length).toBe(6);
+      expect((await auditActions('employee.created')).length).toBe(7); // includes Selvi, hired under the KFT- prefix
     });
 
     it('as on a date: the facts in force, nothing before joining, pay only with pay access', async () => {
@@ -503,8 +511,8 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
 
     it('the people list: HR everyone, a manager themselves and their current team', async () => {
       const names = (who: Who) => api(who, 'get', '/people/employees').expect(200).then((r) => r.body.map((p: { name: string }) => p.name).sort());
-      expect(await names('hrA')).toEqual(['Arjun Kulkarni', 'Divya', 'Imran', 'Kavya', 'Lakshmi Venkatesan', 'Ravi']);
-      expect(await names('divyaA')).toEqual(['Arjun Kulkarni', 'Divya', 'Imran']);
+      expect(await names('hrA')).toEqual(['Arjun Kulkarni', 'Divya', 'Imran', 'Kavya', 'Lakshmi Venkatesan', 'Ravi', 'Selvi']);
+      expect(await names('divyaA')).toEqual(['Arjun Kulkarni', 'Divya', 'Imran', 'Selvi']);
       expect(await names('kavyaA')).toEqual(['Kavya', 'Ravi']);
       expect(await names('arjunA')).toEqual(['Arjun Kulkarni']);
     });
