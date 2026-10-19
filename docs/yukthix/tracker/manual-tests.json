@@ -3945,7 +3945,7 @@
   "ideas": [],
   "id": "SI-06",
   "screen": "Forgot your password",
-  "account": "hr@demo-org.test",
+  "account": "plant-hr@demo-org.test (so hr@'s password stays the same for the other tests)",
   "steps": [
    "Type the email, Continue, then press \"Forgot your password?\".",
    "Ask for the reset email, open it at http://localhost:8025, follow the link and set a new password."
