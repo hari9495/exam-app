@@ -1,5 +1,174 @@
 [
  {
+  "id": "DIR-01",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Directory looks like the design (PPL-01)",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test / Passw0rd!2026",
+  "steps": [
+   "Open People > Directory.",
+   "Compare with the design screenshot."
+  ],
+  "expected": "Title, description, count cards, Add employee, search, Filter, View, Group, Columns, Export and the table (Name, Status, ID, Department, Location, Manager) all look like the design.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-02",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Count cards",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Look at the cards at the top.",
+   "Click All persons, then Employees."
+  ],
+  "expected": "Employees and All persons show real numbers. All persons says \"N roles held by M people\" when someone has two roles. Clicking a card changes the list. No Contract workers or Placements card (not built yet). No \"vs last month\" line until a month has been saved.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-03",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Status column",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Find someone on probation, someone on notice and someone on leave today."
+  ],
+  "expected": "Status shows Probation, Notice period, On leave or Active correctly for each.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-04",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Filter, Group, Columns, saved View",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Filter by one department.",
+   "Group by location.",
+   "Hide one column.",
+   "Save this as a view, reload the page, choose the view."
+  ],
+  "expected": "Each works. Saving shows a toast. The saved view brings back the same filter, grouping and columns.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-05",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Row actions and selection",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Tick two people.",
+   "Use Issue letter, then Start change.",
+   "On one row, use the ... menu: Open record."
+  ],
+  "expected": "Ticking works. Issue letter opens the letters wizard with both people chosen. Start change opens bulk changes for several, or job history for one. Open record opens the profile.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-06",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Export follows privacy",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Click Export, choose Excel, then CSV.",
+   "Open the file."
+  ],
+  "expected": "Only fields you may see are in the file. No formulas run when opened in Excel. (Export is recorded in the audit log.)",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-07",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Employee sees only public details",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "arjun@demo-org.test",
+  "steps": [
+   "Open People > Directory.",
+   "Try the quick chips Everyone, My team, My department, My location."
+  ],
+  "expected": "No ID, status, phone or joining date. No Export. Chips filter correctly. Search box says \"Search name or email\".",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-08",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Company switcher",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "In the top bar, pick one company, then All entities."
+  ],
+  "expected": "Cards, list and export show only that company, then everyone again.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-09",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Add employee",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "hr@demo-org.test",
+  "steps": [
+   "Click Add employee and start adding a person who already exists (same email)."
+  ],
+  "expected": "The add form opens and warns that this person may already exist.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "DIR-10",
+  "area": "0 Directory (design parity step 2, PR #179)",
+  "screen": "Phone layout",
+  "url": "http://localhost:3000/yx/people/directory",
+  "account": "arjun@demo-org.test",
+  "steps": [
+   "Make the window narrow (about 375 px) and open the Directory."
+  ],
+  "expected": "Phone layout like the design: readable cards or rows, no sideways scrolling.",
+  "stories": [],
+  "note": "",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
   "id": "SI-01",
   "area": "0 Sign-in design parity",
   "screen": "Sign-in page matches the YukthiX design",
