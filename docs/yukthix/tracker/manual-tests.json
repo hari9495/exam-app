@@ -3895,7 +3895,14 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "An incomplete number (98450 123) turned 'Text me a code' on, and the server's message said 'Enter an email address or a mobile number' on the mobile screen.",
+    "fixedIn": "PR #186: the screen checks the number with libphonenumber-js (as the API does); buttons wait for a full number; 'Enter your full mobile number, like 98450 12345' after leaving the box; API says 'Enter a mobile number that can get text messages' for a text/WhatsApp request"
+   }
+  ],
   "ideas": [],
   "id": "SI-05",
   "screen": "Continue with mobile",
