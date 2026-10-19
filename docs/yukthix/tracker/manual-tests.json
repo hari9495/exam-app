@@ -3965,8 +3965,17 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
-  "ideas": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail (test data)",
+    "findings": "Passkey sign-in refused: Windows offered an old localhost passkey left from a rebuilt test database (login event: unknown_credential). The app has passkeys only for admin@ (12 Oct) and plant-hr@ (14 Oct).",
+    "fixedIn": "PR #188 (founder asked): the API marks an unknown passkey and the page asks the browser to forget it (WebAuthn signalUnknownCredential). Founder retries picking admin@demo-org.test."
+   }
+  ],
+  "ideas": [
+   "Done on request: forget dead passkeys in the browser (PR #188)."
+  ],
   "id": "SI-07",
   "screen": "Sign in with a passkey",
   "account": "admin@demo-org.test (passkey set up earlier)",
