@@ -71,6 +71,35 @@ describe('Application panel (AT5)', () => {
   });
 });
 
+describe('Offer approval in YukthiX (founder follow-up 19 Oct 2026)', () => {
+  const waiting = { ...panel, app: { ...panel.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: '₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] } };
+  it('the approver approves the offer from the application', async () => {
+    const onOfferDecide = vi.fn(async () => ({}));
+    render(<ApplicationPanel {...waiting} offersToDecide={['o1']} onOfferDecide={onOfferDecide} />);
+    await ue.click(screen.getByRole('tab', { name: /Offers/ }));
+    expect(screen.getByText('Waiting for your approval.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Approve offer' }));
+    expect(onOfferDecide).toHaveBeenCalledWith('o1', 'approved');
+  });
+
+  it('turning down asks for a reason; someone else sees no decision buttons', async () => {
+    const onOfferDecide = vi.fn(async () => ({}));
+    const { unmount } = render(<ApplicationPanel {...waiting} offersToDecide={['o1']} onOfferDecide={onOfferDecide} />);
+    await ue.click(screen.getByRole('tab', { name: /Offers/ }));
+    await ue.click(screen.getByRole('button', { name: 'Turn down' }));
+    const d = screen.getAllByRole('dialog').at(-1)!;
+    await ue.click(within(d).getByRole('button', { name: 'Turn down' }));
+    expect(onOfferDecide).not.toHaveBeenCalled();
+    await ue.type(within(d).getByLabelText(/Reason/), 'Above the band');
+    await ue.click(within(d).getByRole('button', { name: 'Turn down' }));
+    expect(onOfferDecide).toHaveBeenCalledWith('o1', 'rejected', 'Above the band');
+    unmount();
+    render(<ApplicationPanel {...waiting} offersToDecide={[]} onOfferDecide={onOfferDecide} />);
+    await ue.click(screen.getByRole('tab', { name: /Offers/ }));
+    expect(screen.queryByRole('button', { name: 'Approve offer' })).not.toBeInTheDocument();
+  });
+});
+
 describe('Interviews and scorecards (AT5, D7)', () => {
   it('a panellist rates every item and recommends before submitting; colleagues stay hidden until then', async () => {
     const onSubmit = vi.fn(async () => ({}));
