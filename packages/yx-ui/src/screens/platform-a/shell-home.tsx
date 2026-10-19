@@ -24,7 +24,7 @@ import { Meter } from '../../components/feedback';
 import { QrCode } from '../portals/portals-kit';
 import { formatDate, formatINR } from '../../lib/format';
 import { DesktopFrame, PERIODS, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
-import { ENTITIES, HOLIDAYS_2026, HR_ADMIN, ME, PAYROLL_ADMIN, TODAY } from '../_kit/data';
+import { ENTITIES, HOLIDAYS_2026, HR_ADMIN, ME, PAYROLL_ADMIN, RECRUITER, TODAY } from '../_kit/data';
 import { ClockCard } from '../time/time-kit';
 import { GENERAL_SHIFT, NOW_MIN, TODAY_PUNCHES } from '../time/time-data';
 import '../time/time.css';
@@ -34,7 +34,7 @@ import { SettingsHomeScreen as SettingsMapHome } from '../settings/settings-scre
 import { NOTIFICATIONS } from './platform-data';
 import type { TableColumn } from '../../components/table';
 
-export type Persona = 'employee' | 'manager' | 'hr' | 'finance' | 'admin';
+export type Persona = 'employee' | 'manager' | 'hr' | 'finance' | 'recruiter' | 'admin';
 
 /** Role-filtered rail (APX-D §1: a person sees only modules their grants reach). */
 export function railFor(persona: Persona): RailItem[] {
@@ -43,6 +43,7 @@ export function railFor(persona: Persona): RailItem[] {
     manager: ['home', 'people', 'time', 'pay', 'performance', 'learning', 'helpdesk', 'engage', 'analytics'],
     hr: ['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'analytics', 'settings'],
     finance: ['home', 'pay', 'compliance', 'projects', 'analytics', 'settings'],
+    recruiter: ['home', 'hire', 'assess'],
     admin: SCREEN_RAIL.map((r) => r.id),
   };
   return SCREEN_RAIL.filter((r) => ids[persona].includes(r.id));
@@ -276,6 +277,8 @@ const WIDGET_INFO: Record<string, { description: string; suggested?: boolean }> 
   moneyOut: { description: 'Salaries, claims and statutory payments due in 30 days', suggested: true },
   approval: { description: 'The payroll run waiting for your approval', suggested: true },
   trend: { description: 'Monthly payroll cost against budget' },
+  interviewsToday: { description: 'The interviews you sit on today', suggested: true },
+  myJobs: { description: 'Your open jobs with candidates at each stage', suggested: true },
 };
 
 /** Pay is private: hidden on every load, shown only on request (founder review 30 Sep 2026). */
@@ -301,6 +304,96 @@ function PayStat({ loading }: { loading: boolean }) {
       {toggle}
     </section>
   );
+}
+
+/** The recruiter part of the Home (founder decision 19 Oct 2026). A part is left out when the person has no access to it. */
+export interface HiringHomeView {
+  /** The person's own interviews today (as a panellist). */
+  interviewsToday: { id: string; at: Date; candidate: string; job: string; href: string }[];
+  interviewsHref: string;
+  /** This week, counts only: no trends. */
+  week?: { applied: number; interview: number; offers: number; hired: number };
+  /** Open jobs the person created or is hiring manager for, with candidates per stage. */
+  jobs?: { id: string; title: string; href: string; stages: { name: string; count: number }[] }[];
+  jobsHref: string;
+}
+
+const HIRING_SAMPLE: HiringHomeView = {
+  interviewsToday: [
+    { id: 'i1', at: new Date(2026, 8, 29, 11, 0), candidate: 'Ananya Kulkarni', job: 'Quality Analyst', href: '#interview' },
+    { id: 'i2', at: new Date(2026, 8, 29, 14, 30), candidate: 'Farhan Sheikh', job: 'Plant Engineer', href: '#interview' },
+    { id: 'i3', at: new Date(2026, 8, 29, 16, 0), candidate: 'Priya Menon', job: 'Area Sales Manager', href: '#interview' },
+  ],
+  interviewsHref: '#interviews',
+  week: { applied: 18, interview: 6, offers: 2, hired: 1 },
+  jobs: [
+    { id: 'j1', title: 'Quality Analyst · Hosur plant', href: '#job', stages: [{ name: 'Applied', count: 12 }, { name: 'Screened', count: 5 }, { name: 'Interview', count: 3 }, { name: 'Offer', count: 1 }, { name: 'Hired', count: 0 }] },
+    { id: 'j2', title: 'Plant Engineer · Hosur plant', href: '#job', stages: [{ name: 'Applied', count: 7 }, { name: 'Screened', count: 2 }, { name: 'Interview', count: 2 }, { name: 'Offer', count: 0 }, { name: 'Hired', count: 1 }] },
+    { id: 'j3', title: 'Area Sales Manager · Chennai', href: '#job', stages: [{ name: 'Applied', count: 4 }, { name: 'Screened', count: 1 }, { name: 'Interview', count: 1 }, { name: 'Offer', count: 1 }, { name: 'Hired', count: 0 }] },
+  ],
+  jobsHref: '#jobs',
+};
+
+const interviewTime = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+
+/** Today's interviews, this week's counts and the open jobs; shared by the designed and the live recruiter Home. */
+function hiringWidgets(h: HiringHomeView, loading: boolean): DashboardWidget[] {
+  const week = h.week;
+  return [
+    {
+      id: 'interviewsToday',
+      title: 'Your interviews today',
+      size: 4,
+      actions: <Link href={h.interviewsHref}>All interviews</Link>,
+      empty: h.interviewsToday.length ? undefined : 'No interviews for you today.',
+      content: (
+        <ul className="yx-plt-list">
+          {h.interviewsToday.map((i) => (
+            <li key={i.id} className="yx-plt-off">
+              <span className="yx-plt-off__day">{interviewTime(i.at)}</span>
+              <span className="yx-plt-list__main">
+                <Link href={i.href}>{i.candidate}</Link>
+                <span className="yx-plt-muted">{i.job}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+    },
+    ...(week
+      ? [
+          stat('applied', 'New applicants', <StatCard loading={loading} label="New applicants this week" value={week.applied} drill={{ label: 'View jobs', href: h.jobsHref }} />),
+          stat('toInterview', 'Moved to interview', <StatCard loading={loading} label="Moved to interview this week" value={week.interview} drill={{ label: 'View interviews', href: h.interviewsHref }} />),
+          stat('offersMade', 'Offers made', <StatCard loading={loading} label="Offers sent this week" value={week.offers} drill={{ label: 'View jobs', href: h.jobsHref }} />),
+          stat('joined', 'Joined', <StatCard loading={loading} label="Hired this week" value={week.hired} drill={{ label: 'View jobs', href: h.jobsHref }} />),
+        ]
+      : []),
+    ...(h.jobs
+      ? [{
+          id: 'myJobs',
+          title: 'My open jobs',
+          size: 12 as const,
+          actions: <Link href={h.jobsHref}>All jobs</Link>,
+          empty: h.jobs.length ? undefined : 'You have no open jobs.',
+          content: (
+            <ul className="yx-plt-list">
+              {h.jobs.map((j) => {
+                const total = j.stages.reduce((n, s) => n + s.count, 0);
+                return (
+                  <li key={j.id}>
+                    <span className="yx-plt-list__main">
+                      <Link href={j.href}>{j.title}</Link>
+                      <span className="yx-plt-muted">{j.stages.map((s) => `${s.name} ${s.count}`).join(' · ') || 'No stages set up'}</span>
+                    </span>
+                    <Badge>{`${total} ${total === 1 ? 'candidate' : 'candidates'}`}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          ),
+        }]
+      : []),
+  ];
 }
 
 function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading: boolean, payOnHome: boolean, hideMoney = false): DashboardWidget[] {
@@ -347,6 +440,7 @@ function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading
           />
         ),
       };
+  if (persona === 'recruiter') return [{ ...actions, size: 8 }, ...hiringWidgets(HIRING_SAMPLE, loading)];
   if (persona === 'employee')
     return [
       { ...actions, size: 8 },
@@ -608,6 +702,8 @@ export interface LiveHome {
   /** "Joiners and leavers this week"; an empty list says so, an absent one hides the widget. */
   moves?: { id: string; name: string; secondary: string; badges: { label: string; tone: BadgeTone }[] }[];
   movesHref?: string;
+  /** People with a hiring key: today's interviews, this week and their open jobs. */
+  hiring?: HiringHomeView;
 }
 
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
@@ -618,7 +714,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     {
       id: 'actions',
       title: 'Needs your action',
-      size: live.clock ? 8 : 12,
+      size: live.clock || live.hiring ? 8 : 12,
       pinned: true,
       bare: true,
       content: <NeedsActionList items={data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
@@ -681,6 +777,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           ),
         }]
       : []),
+    ...(live.hiring ? hiringWidgets(live.hiring, loading) : []),
   ];
   const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
   return (
@@ -716,6 +813,7 @@ const GREETING: Record<RoleHomeScreenProps['persona'], string> = {
   manager: 'Your team and what is waiting for you.',
   hr: 'Exceptions, runs and what is due across Kaveri Foods.',
   finance: 'Money to pay, payroll to approve and statutory dues.',
+  recruiter: 'Your interviews, offers and the candidates waiting for you.',
 };
 
 // PLT-02 · Role homes (employee / manager / HR / finance). APX-D §1.1 Home.
@@ -734,16 +832,17 @@ export function RoleHomeScreen({ persona, data, loading = false, editing, firstR
   // A new joiner has nothing waiting yet, so the panel shows no counts.
   const panel = newJoiner ? homePanel('Home').map((sec) => ({ ...sec, items: sec.items.map((it) => ({ ...it, count: undefined })) })) : homePanel('Home');
   return (
-    <DesktopFrame area="home" panelTitle="Home" panel={panel} railItems={railFor(persona)} user={persona === 'hr' ? HR_ADMIN : persona === 'finance' ? PAYROLL_ADMIN : ME} scope={persona === 'hr' || persona === 'finance' ? 'full' : 'none'}>
+    <DesktopFrame area="home" panelTitle="Home" panel={panel} railItems={railFor(persona)} user={persona === 'hr' ? HR_ADMIN : persona === 'finance' ? PAYROLL_ADMIN : persona === 'recruiter' ? RECRUITER : ME} scope={persona === 'hr' || persona === 'finance' ? 'full' : 'none'}>
       {live ? <LiveHomeBody persona={persona} data={data} loading={loading} live={live} /> : <>
       <div className="yx-plt-row" data-justify="between">
         <div className="yx-plt-greet">
-          <Heading level={1}>{newJoiner ? 'Welcome to Kaveri Foods, Divya' : `Good morning, ${persona === 'hr' ? 'Lakshmi' : persona === 'finance' ? 'Suresh' : 'Divya'}`}</Heading>
+          <Heading level={1}>{newJoiner ? 'Welcome to Kaveri Foods, Divya' : `Good morning, ${persona === 'hr' ? 'Lakshmi' : persona === 'finance' ? 'Suresh' : persona === 'recruiter' ? 'Neha' : 'Divya'}`}</Heading>
           <p className="yx-plt-muted">
             {formatDate(TODAY)} · {newJoiner ? 'Your first day. Here is what to do and who to meet.' : GREETING[persona]}
           </p>
         </div>
-        {(
+        {/* A recruiter often has no employee record, so no leave or payslip buttons. */}
+        {persona !== 'recruiter' && (
           <div className="yx-plt-row" role="group" aria-label="Quick actions">
             {persona === 'finance' && (
               <Button icon={hideMoney ? Eye : EyeOff} aria-pressed={hideMoney} onClick={toggleHide}>
@@ -997,7 +1096,7 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
 ];
 
 /** Items only some roles may open (founder review 30 Sep 2026): payroll for HR / finance, candidates for HR and hiring managers. */
-const PALETTE_ONLY: Record<string, Persona[]> = { rc2: ['hr', 'finance', 'admin'], pp3: ['hr', 'admin'] };
+const PALETTE_ONLY: Record<string, Persona[]> = { rc2: ['hr', 'finance', 'admin'], pp3: ['hr', 'recruiter', 'admin'] };
 /** The palette for one person: nothing they can't open is ever suggested. */
 export const paletteFor = (persona: Persona): PaletteGroup[] =>
   PALETTE_GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => !PALETTE_ONLY[it.id] || PALETTE_ONLY[it.id].includes(persona)) }));
@@ -1051,6 +1150,7 @@ const SEARCH_SOURCES: Record<Persona, SearchHit['source'][] | 'all'> = {
   employee: ['People', 'Requests', 'Policies'],
   manager: ['People', 'Requests', 'Policies'],
   finance: ['People', 'Requests', 'Policies', 'Documents'],
+  recruiter: ['Candidates', 'Requests', 'Policies'],
   hr: 'all',
   admin: 'all',
 };

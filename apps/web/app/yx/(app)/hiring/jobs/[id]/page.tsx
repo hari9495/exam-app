@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApplicationPanel, JobWorkspaceScreen, type ApplicationView, type BoardRowView, type BoardStageView, type CandidateProfileView, type EmailTemplateChoice, type ScorecardSummary } from '@yukthix/ui/hiring';
 import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
 import { apiFetch, apiFetchBlob } from '../../../../../../lib/api-client';
@@ -45,7 +45,8 @@ export default function YxHiringJobPage() {
   const templates = useMessageTemplates();
   const senders = useOrgSenderAddresses();
   const write = useApiWrite();
-  const [open, setOpen] = useState<string | null>(null);
+  // ?entry= opens one application straight away (links from the recruiter Home).
+  const [open, setOpen] = useState<string | null>(useSearchParams().get('entry'));
 
   const stages: BoardStageView[] = (board.data?.pipeline.stages ?? []).map((s) => ({ id: s.id, name: s.name, category: s.category, statuses: s.statuses.map((x) => ({ id: x.id, name: x.name })) }));
   const statusName = (statusId: string) => stages.flatMap((s) => s.statuses.map((x) => ({ ...x, stage: s.name }))).find((x) => x.id === statusId);

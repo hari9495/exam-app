@@ -29,6 +29,49 @@ describe('Role home loading (founder review 30 Sep 2026)', () => {
   });
 });
 
+describe('Recruiter home (founder decision 19 Oct 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const hiring = {
+    interviewsToday: [{ id: 'i1', at: new Date(2026, 8, 29, 11, 0), candidate: 'Ananya Kulkarni', job: 'Quality Analyst', href: '/yx/hiring/interviews/i1' }],
+    interviewsHref: '/yx/hiring/interviews',
+    week: { applied: 18, interview: 6, offers: 2, hired: 1 },
+    jobs: [{ id: 'j1', title: 'Quality Analyst', href: '/yx/hiring/jobs/j1', stages: [{ name: 'Applied', count: 12 }, { name: 'Screened', count: 5 }] }],
+    jobsHref: '/yx/hiring/jobs',
+  };
+  const live = { firstName: 'Neha', company: 'Kaveri Foods', today, approvalsHref: '/yx/hiring/jobs', hiring };
+  const scorecard = { id: 'r1', type: 'Scorecard', title: 'Write your scorecard · Quality Analyst', who: 'Ananya Kulkarni', kind: 'review' as const, actionLabel: 'Write scorecard', href: '/yx/hiring/interviews/i9' };
+
+  it('opens each action row on its hiring page', () => {
+    render(<RoleHomeScreen persona="recruiter" data={{ actions: [scorecard] }} live={live} />);
+    expect(screen.getByRole('link', { name: 'Write scorecard: Write your scorecard · Quality Analyst' })).toHaveAttribute('href', '/yx/hiring/interviews/i9');
+  });
+
+  it("shows today's interviews, this week's counts and the open jobs with candidates per stage", () => {
+    render(<RoleHomeScreen persona="recruiter" data={{ actions: [] }} live={live} />);
+    expect(screen.getByRole('link', { name: 'Ananya Kulkarni' })).toHaveAttribute('href', '/yx/hiring/interviews/i1');
+    expect(screen.getByRole('region', { name: 'New applicants this week' })).toHaveTextContent('18');
+    expect(screen.getByRole('region', { name: 'Hired this week' })).toHaveTextContent('1');
+    expect(screen.getByRole('link', { name: 'Quality Analyst' })).toHaveAttribute('href', '/yx/hiring/jobs/j1');
+    expect(screen.getByText('Applied 12 · Screened 5')).toBeInTheDocument();
+    expect(screen.getByText('17 candidates')).toBeInTheDocument();
+    expect(screen.getByText('Your interviews, offers and the candidates waiting for you.', { exact: false })).toBeInTheDocument();
+  });
+
+  it('says so when there is nothing yet, and leaves out jobs and counts for a panellist', () => {
+    render(<RoleHomeScreen persona="recruiter" data={{ actions: [] }} live={{ ...live, hiring: { ...hiring, interviewsToday: [], week: undefined, jobs: undefined } }} />);
+    expect(screen.getByText('No interviews for you today.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing needs your action.')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'My open jobs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'New applicants this week' })).not.toBeInTheDocument();
+  });
+
+  it('adds the recruiter widgets to an HR home without replacing it', () => {
+    render(<RoleHomeScreen persona="hr" data={{ actions: [] }} live={{ ...live, stats: [{ id: 'cases', title: 'Open cases', label: 'Open cases', value: 9, drill: { label: 'View helpdesk', href: '#' } }] }} />);
+    expect(screen.getAllByRole('region', { name: 'Open cases' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('region', { name: 'My open jobs' })).toBeInTheDocument();
+  });
+});
+
 describe('Command palette by role (founder review 30 Sep 2026)', () => {
   const labels = (p: Parameters<typeof paletteFor>[0]) => paletteFor(p).flatMap((g) => g.items.map((i) => i.label));
   it('never suggests payroll or candidates to a manager', () => {

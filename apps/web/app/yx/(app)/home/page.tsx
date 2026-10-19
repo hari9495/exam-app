@@ -14,12 +14,14 @@ import { useOrgBranding } from '../../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { useScope, useWorkspaceCounts } from '../../../../lib/yx-shell';
-import { homeWidgets, type HomeWidgets } from '../../../../lib/yx-home';
+import { hiringHome, homeWidgets, type HomeWidgets } from '../../../../lib/yx-home';
 import { browserLocation, useTime, useTimeWrite } from '../../../../lib/yx-time';
 
 // Home (PLT-02, design audit steps 1 and 2): the designed role home with live data. Approvals waiting, today's check-in,
 // the HR widgets (attendance exceptions, not ready for payroll, open cases, due dates, joiners and leavers this week)
 // and the counts behind the person's own queues; widgets with no live data yet are left out, not faked.
+// Hiring (founder decision 19 Oct 2026): someone whose only keys are hiring keys gets the recruiter Home; someone who
+// is also HR, finance, a manager or an employee keeps their Home and gets the recruiter widgets added after their own.
 export default function YxHomePage() {
   const router = useRouter();
   const { accessToken, actingSuperAdmin } = useAuth();
@@ -41,9 +43,12 @@ export default function YxHomePage() {
     retry: false,
   });
   const extra = homeWidgets(widgets.data, new Date().toISOString().slice(0, 10));
+  const hiring = hiringHome(widgets.data?.hiring, new Date());
 
-  const persona: RoleHomeScreenProps['persona'] = perms.has('employee.profile.view') ? 'hr' : perms.has('payroll.run.approve') || perms.has('payroll.run.view') ? 'finance' : team.data?.members.length ? 'manager' : 'employee';
-  const actions: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.onBehalfOf ?? t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  const own: RoleHomeScreenProps['persona'] = perms.has('employee.profile.view') ? 'hr' : perms.has('payroll.run.approve') || perms.has('payroll.run.view') ? 'finance' : team.data?.members.length ? 'manager' : 'employee';
+  const persona = own === 'employee' && !employee && hiring.view ? 'recruiter' : own;
+  const approvals: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.onBehalfOf ?? t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  const actions = [...approvals, ...hiring.actions];
   const c = counts.data ?? {};
   const stat = (id: keyof typeof c, title: string, label: string, href: string, drill: string): NonNullable<LiveHome['stats']>[number][] =>
     c[id] === undefined ? [] : [{ id, title, label, value: c[id]!, drill: { label: drill, href } }];
@@ -51,7 +56,7 @@ export default function YxHomePage() {
     firstName: (me.data?.name ?? '').split(' ')[0] || 'there',
     company: branding.data?.name || 'your company',
     today: new Date(),
-    approvalsHref: '/yx/approvals',
+    approvalsHref: approvals.length || !hiring.view ? '/yx/approvals' : '/yx/hiring/jobs',
     onReview: () => router.push('/yx/approvals'),
     clock: attendance.data ? <TodayCard data={attendance.data} getLocation={browserLocation} onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })} /> : undefined,
     stats: [
@@ -60,11 +65,13 @@ export default function YxHomePage() {
       ...stat('exitCases', 'Exits', 'Open exit cases', '/yx/people/exits', 'View exits'),
       ...stat('payslipQueries', 'Payslip queries', 'Payslip queries open', '/yx/payroll/payslip-queries', 'Answer queries'),
       ...stat('myTickets', 'My tickets', 'Tickets assigned to you', '/yx/desk/tickets', 'Open tickets'),
-      ...(c.scorecardsToDo ? stat('scorecardsToDo', 'Scorecards', 'Scorecards you owe', '/yx/hiring/interviews', 'Write them') : []),
+      // With the recruiter widgets the scorecards owed are listed under Needs your action instead.
+      ...(c.scorecardsToDo && !hiring.view ? stat('scorecardsToDo', 'Scorecards', 'Scorecards you owe', '/yx/hiring/interviews', 'Write them') : []),
     ],
     due: extra.due,
     moves: extra.moves,
     movesHref: extra.movesHref,
+    hiring: hiring.view,
     quickActions: employee
       ? [
           { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },
@@ -72,5 +79,5 @@ export default function YxHomePage() {
         ]
       : [],
   };
-  return <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading} live={live} />;
+  return <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />;
 }

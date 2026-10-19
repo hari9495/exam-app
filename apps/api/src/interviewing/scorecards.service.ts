@@ -87,7 +87,7 @@ export class ScorecardsService {
         const slot = i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0];
         const card = cards.find((x) => x.interviewId === i.id);
         const hasTemplate = Boolean(i.scorecardTemplateId ?? i.pipelineEntry.job.scorecardTemplateId);
-        return { id: i.id, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, when: slot?.startsAt ?? null, status: i.status, scorecard: !hasTemplate ? 'none' : card ? card.status : 'not_started' };
+        return { id: i.id, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, when: slot?.startsAt ?? null, endsAt: slot?.endsAt ?? null, confirmed: Boolean(i.confirmedSlotId), status: i.status, scorecard: !hasTemplate ? 'none' : card ? card.status : 'not_started' };
       });
     });
   }
