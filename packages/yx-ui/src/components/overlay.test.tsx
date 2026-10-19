@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './button';
 import { ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from './overlay';
@@ -127,7 +127,8 @@ describe('Dialogs', () => {
     render(<ConfirmDialog defaultOpen title="Publish holiday list 2027?" confirmLabel="Publish" onConfirm={onConfirm} />);
     await u.click(screen.getByRole('button', { name: 'Publish' }));
     expect(onConfirm).toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // It closes once the promise settles, a tick after the click.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('type-to-confirm enables the danger button only on an exact match', async () => {
