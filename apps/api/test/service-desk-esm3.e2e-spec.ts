@@ -261,8 +261,12 @@ describe('Service Desk 3b-2 batch 3', () => {
       const neutral = await until(() => sentTo(phone(3)).find((x) => x.text.startsWith(`There is a new reply on your request ${ids.waNumber}`)), 'the neutral notice');
       expect(neutral.text).not.toMatch(/salary/);
       expect(fake.sent.some((x) => x.text.includes('salary'))).toBe(false);
-      const log = await system((tx) => tx.notificationDelivery.findMany({ where: { organizationId: org.A.id, channel: 'whatsapp', kind: 'desk_reply' } }));
-      expect(log.every((d) => d.status === 'sent' && /•/.test(d.addressMasked))).toBe(true);
+      // The fake phone gets the text a moment before the log row is marked sent.
+      const log = await until(async () => {
+        const rows = await system((tx) => tx.notificationDelivery.findMany({ where: { organizationId: org.A.id, channel: 'whatsapp', kind: 'desk_reply' } }));
+        return rows.every((d) => d.status === 'sent') ? rows : null;
+      }, 'the delivery log');
+      expect(log.every((d) => /•/.test(d.addressMasked))).toBe(true);
     });
 
     it('outside 24 hours only the approved template goes, never the words', async () => {
