@@ -3,7 +3,7 @@ import { Button, Link } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
-import { TextField } from '../../components/inputs';
+import { CodeField } from '../../components/inputs';
 import { Dialog } from '../../components/overlay';
 import { MethodCards } from '../../components/choice';
 import { Check, Copy } from 'lucide-react';
@@ -178,7 +178,7 @@ export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCanc
       <Text as="p" tone="secondary" size="sm">Can't scan it? Enter this key in the app instead:</Text>
       <SecretKey secret={setup.secret} />
       <FormField label="6-digit code" required>
-        <TextField value={code} onChange={onCode} autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
+        <CodeField value={code} onChange={onCode} />
       </FormField>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       <div className="yx-auth__row">

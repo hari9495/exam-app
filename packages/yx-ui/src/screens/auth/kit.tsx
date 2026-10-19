@@ -5,7 +5,7 @@ import { Checkbox, MethodCards, type MethodCardOption } from '../../components/c
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
-import { TextField } from '../../components/inputs';
+import { CodeField, TextField } from '../../components/inputs';
 import { Fingerprint, KeyRound, MessageSquare, Smartphone } from 'lucide-react';
 import type { BadgeTone } from '../../components/display';
 import type { LoginResult, MfaProof } from './types';
@@ -256,14 +256,11 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
           )}
           {choice === 'otp' && sent && <Text as="p" tone="secondary" role="status">We sent a code by {sent === 'sms' ? 'SMS' : 'WhatsApp'}. It expires in 5 minutes.</Text>}
           <FormField label={CODE_LABEL[choice]} required helper={choice === 'recovery_code' ? 'Each recovery code works once.' : undefined}>
-            <TextField
-              value={code}
-              onChange={setCode}
-              autoComplete="one-time-code"
-              inputMode={choice === 'recovery_code' ? 'text' : 'numeric'}
-              maxLength={choice === 'recovery_code' ? 40 : 6}
-              spellCheck={false}
-            />
+            {choice === 'recovery_code' ? (
+              <TextField value={code} onChange={setCode} autoComplete="one-time-code" maxLength={40} spellCheck={false} />
+            ) : (
+              <CodeField value={code} onChange={setCode} />
+            )}
           </FormField>
         </>
       )}

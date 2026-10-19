@@ -126,6 +126,14 @@ describe('SignInScreen (work email first, no company code)', () => {
     expect(screen.getByRole('button', { name: 'Text me a code' })).toBeEnabled();
   });
 
+  it('the code box keeps digits only, at most 6 (letters are dropped as they are typed)', async () => {
+    render(<SignIn step="mobile-code" options={ALL_WAYS} start={{ mobile: '9845012345' }} />);
+    const box = screen.getByLabelText(/6-digit code/);
+    await userEvent.type(box, '89253s1x99');
+    expect(box).toHaveValue('892531');
+    expect(box).toHaveAttribute('inputmode', 'numeric');
+  });
+
   it('mobile with WhatsApp only: WhatsApp is the main button', async () => {
     const onSendCode = vi.fn();
     render(<SignIn step="mobile" options={{ ...ALL_WAYS, sms: false }} onSendCode={onSendCode} start={{ mobile: '9845012345' }} />);

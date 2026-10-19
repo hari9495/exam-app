@@ -8,7 +8,7 @@ import { Badge, PersonLabel, Tag } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { FormField, FieldRow } from '../../components/field';
-import { TextArea, TextField } from '../../components/inputs';
+import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { FileUpload } from '../../components/upload';
@@ -996,7 +996,7 @@ export function PolicyAcknowledge({ policy, today, done, otpSent, quizAnswers = 
       <Checkbox checked={read} onChange={setRead} label={`I have read and understood the ${policy.title} (${policy.version})`} />
       {policy.method === 'OTP' && sent && (
         <FormField label="One-time code" helper="Sent by SMS to your mobile ending 4471. It expires in 10 minutes.">
-          <TextField value={otp} onChange={setOtp} inputMode="numeric" maxLength={6} autoComplete="one-time-code" />
+          <CodeField value={otp} onChange={setOtp} />
         </FormField>
       )}
       <Actions>

@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Heading, Text } from '../../components/foundations';
-import { PasswordField, TextField } from '../../components/inputs';
+import { CodeField, PasswordField, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
@@ -300,7 +300,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
         <form className="yx-auth__form" onSubmit={verify} noValidate>
           <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {formatPhone(sentTo)}. It expires in 5 minutes.</Text>
           <FormField label="Code from the text" required>
-            <TextField value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+            <CodeField value={code} onChange={setCode} />
           </FormField>
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <div className="yx-auth__row">

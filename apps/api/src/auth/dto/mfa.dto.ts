@@ -96,7 +96,7 @@ export class MfaLoginDto extends ProofFieldsDto {
 }
 
 export class ConfirmTotpDto {
-  @Matches(/^\d{6}$/, { message: 'code must be the 6-digit code from your authenticator app' }) code!: string;
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code from your authenticator app.' }) code!: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(64) label?: string;
 }
 

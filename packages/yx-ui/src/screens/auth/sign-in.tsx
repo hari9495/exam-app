@@ -5,7 +5,7 @@ import { Avatar } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Spinner, Text } from '../../components/foundations';
-import { PasswordField, TextField } from '../../components/inputs';
+import { CodeField, PasswordField, TextField } from '../../components/inputs';
 import { isEmail, isPhoneNumber } from '../../lib/validators';
 import { AuthFrame } from './kit';
 import { GoogleMark, MicrosoftMark } from './marks';
@@ -284,7 +284,7 @@ export function SignInScreen(props: SignInScreenProps) {
                   : `If ${mobile} can sign in by code, we sent it a 6-digit code by ${channelName}. It expires in 5 minutes.`}
               </Text>
               <FormField label="6-digit code" required>
-                <TextField value={fields.code} onChange={(v) => set('code', v)} autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
+                <CodeField value={fields.code} onChange={(v) => set('code', v)} />
               </FormField>
               {alert}
               <Button type="submit" variant="primary" fullWidth loading={busy} disabled={fields.code.trim().length < 6}>Sign in</Button>

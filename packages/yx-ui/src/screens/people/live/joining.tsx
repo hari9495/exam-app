@@ -8,7 +8,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { NumberField, TextArea, TextField } from '../../../components/inputs';
+import { CodeField, NumberField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
@@ -297,7 +297,7 @@ export function PortalSignIn(p: PortalSignInProps) {
         {sent ? (
           <>
             <FormField id="ps-code" label="Code" required helper="6 digits. It expires in a few minutes.">
-              <TextField value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+              <CodeField value={code} onChange={setCode} />
             </FormField>
             <Button variant="primary" loading={busy === 'v'} disabled={code.length !== 6} onClick={() => void run('v', () => p.onVerify(email.trim(), code))}>
               Sign in
@@ -489,7 +489,7 @@ function SectionDrawer({ section, me, onClose, onSave, onStepUpCode, onStepUp }:
           {codeSent ? (
             <>
               <FormField id="ps-step" label="Code" required>
-                <TextField value={code} onChange={setCode} inputMode="numeric" maxLength={6} autoComplete="one-time-code" />
+                <CodeField value={code} onChange={setCode} />
               </FormField>
               <Button
                 variant="primary"
@@ -652,7 +652,7 @@ function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign }: { l
       )}
       {sent ? (
         <FormField id="ac-code" label="Code from your email" required>
-          <TextField value={code} onChange={setCode} inputMode="numeric" maxLength={6} autoComplete="one-time-code" />
+          <CodeField value={code} onChange={setCode} />
         </FormField>
       ) : (
         <Button
