@@ -23,6 +23,7 @@ interface Row {
   name: string;
   designation: string | null;
   department: Ref | null;
+  departmentPath?: string[];
   location: Ref | null;
   legalEntity: Ref | null;
   manager: Ref | null;
@@ -56,6 +57,7 @@ function toRow(r: Row): WorkforceRow {
     kind: r.kind === 'consultant' ? 'Consultant' : 'Employee',
     role: r.designation ?? '',
     department: r.department?.name ?? '',
+    ...(r.departmentPath ? { departmentPath: r.departmentPath } : {}),
     location: r.location?.name ?? r.legalEntity?.name ?? '',
     manager: r.manager?.name ?? '',
     email: r.workEmail ?? '',
