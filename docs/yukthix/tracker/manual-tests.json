@@ -232,8 +232,12 @@
  },
  {
   "account": "admin@demo-org.test / DevAdmin123!, then hr@ and arjun@ (Passw0rd!2026)",
-  "stories": [],
-  "note": "",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-employee",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-manager"
+  ],
+  "note": "Design library: run 'yx-design' (Storybook from the test app's code) on port 6106.",
   "status": "Not run",
   "runs": [],
   "ideas": [],
