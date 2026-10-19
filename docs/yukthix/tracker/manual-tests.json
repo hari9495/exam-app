@@ -3913,6 +3913,12 @@
     "result": "Finding",
     "findings": "After the mobile code the recruiter (Neha, no employee record) landed on the older console (/v2/today, older design), not YukthiX.",
     "fixedIn": "PR #187 (founder chose YukthiX Home + Hire): everyone but platform staff lands on YukthiX Home; Hire has 'Assessments & more (older screens)' until those tools are designed in YukthiX"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Pass (landing)",
+    "findings": "Recruiter now lands on YukthiX Home with Hire in the rail, but the Home is empty: the design has no recruiter Home.",
+    "fixedIn": "In progress: founder chose a Recruiter Home with Needs your action, Today's interviews, This week counts and My open jobs; designed in the library first, then live"
    }
   ],
   "ideas": [
