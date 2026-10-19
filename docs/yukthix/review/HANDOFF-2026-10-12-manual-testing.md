@@ -7,6 +7,7 @@ For a new session that continues the founder's manual testing. The building sess
 - When something is wrong: find the root cause, fix it in one go (shared component or service, not just the one screen), add a test, commit, then tell the founder to refresh and retry.
 - Rules: YukthiX design only; clickable must look clickable; a single choice uses the Segment control; no red error under a field while typing; gold-standard security; never weaken a check to pass a test.
 - Show each screen in the preview pane when presenting it.
+- **Before handing any test to the founder (rule, 20 Oct 2026):** walk through it yourself first — live screen next to its design (Storybook 6106) at 1278 x 635, the test steps as a user, the emails it sends (Mailpit 8025), empty states, errors, keyboard paths — and run the screen checklist: no scroll bar if it fits; durations in hours and minutes; no glued messages; one main button, negative actions plain until confirmed; every control looks clickable; designed email layout and plain subjects; texts name people and items; repeat actions work (no stale URL params or errors). Builders send design | live screenshots, checked before the founder sees them.
 - Test list: `docs/yukthix/tracker/manual-tests.json` (update a test's wording when the real behaviour differs from it, and commit).
 
 ## Where we are
