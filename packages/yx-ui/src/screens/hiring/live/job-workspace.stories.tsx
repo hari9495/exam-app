@@ -147,6 +147,10 @@ export const templates: ScorecardTemplatesScreenProps = {
 
 export const Workspace: S = { render: () => <JobWorkspaceScreen {...workspace} /> };
 export const Application: S = { render: () => <ApplicationPanel {...panel} /> };
+export const ApplicationOfferToApprove: S = {
+  name: 'Application · offer waiting for your approval',
+  render: () => <ApplicationPanel {...panel} app={{ ...panel.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: '₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} offersToDecide={['o1']} onOfferDecide={async () => {}} />,
+};
 export const Interview: S = { render: () => <InterviewScreen {...interview} /> };
 export const InterviewSubmitted: S = { render: () => <InterviewScreen {...interview} view={{ ...interview.view!, scorecards: [{ ...interview.view!.scorecards[0], status: 'submitted', recommendation: 'yes', weightedScore: 3, passes: true, ratings: [{ itemId: 'a', rating: 3, notes: null }, { itemId: 'b', rating: 3, notes: null }] }, { id: 'sc1', panelistUserId: 'u1', panelistName: 'Anil', mine: false, status: 'submitted', recommendation: 'strong_yes', summary: 'Best this month', weightedScore: 3.67, passes: true, submittedAt: inHours(-1), ratings: [] }], result: { complete: true, submitted: 2, expected: 2, score: 3.33, passes: true } }} /> };
 export const MyInterviews: S = { render: () => <MyInterviewsScreen {...mine} /> };
