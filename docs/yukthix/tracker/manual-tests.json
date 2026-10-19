@@ -238,7 +238,7 @@
    "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-manager"
   ],
   "note": "Design library: run 'yx-design' (Storybook from the test app's code) on port 6106.",
-  "status": "Not run",
+  "status": "Pass",
   "runs": [
    {
     "date": "2026-10-19",
@@ -257,6 +257,12 @@
     "result": "Pass (HR, employee)",
     "findings": "HR and employee Homes match the design apart from parts not built yet (WFH, Start break: being built; Announcements: Engage) and data-dependent lines (vs last month, late-mark allowance, birthdays). Founder chose: every Home box shrinks to fit its content.",
     "fixedIn": "PR #190: widgets are as tall as their content"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Pass (recruiter)",
+    "findings": "Neha's Recruiter Home: offer to send, candidate waiting 10 days, interview today 3 pm, this-week counts, my open jobs. No Attendance box because Neha has no employee record (correct; a recruiter added in People gets Attendance and her hiring boxes together). Founder: selling ATS alone needs a per-company module switch (go-live plan 1.16).",
+    "fixedIn": ""
    }
   ],
   "ideas": [
