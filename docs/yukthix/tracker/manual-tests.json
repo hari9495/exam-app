@@ -3816,7 +3816,14 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "After typing the email, Continue stayed white under the blue passkey button and looked greyed out.",
+    "fixedIn": "PR #185: one blue button at a time; Continue turns blue once an email is typed, the passkey button turns white (unit test)"
+   }
+  ],
   "ideas": [],
   "id": "SI-02",
   "screen": "Email, then password, then Home",
