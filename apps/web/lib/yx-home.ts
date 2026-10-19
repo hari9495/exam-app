@@ -183,9 +183,11 @@ export function managerHome(input: {
   if (input.muster && people.length) {
     const todayOf = (p: (typeof people)[number]) => p.days.find((d) => d.on === today);
     const onLeave = people.filter((p) => todayOf(p)?.status === 'leave');
-    const notIn = people.filter((p) => NOT_IN.has(todayOf(p)?.status ?? ''));
+    // While the day is still on, the day engine says "not started" for everyone: checked in or not is the first punch.
+    const open = (p: (typeof people)[number], checkedIn: boolean) => todayOf(p)?.status === 'not_started' && Boolean(todayOf(p)?.firstIn) === checkedIn;
+    const notIn = people.filter((p) => NOT_IN.has(todayOf(p)?.status ?? '') || open(p, false));
     const late = people.filter((p) => (todayOf(p)?.lateMinutes ?? 0) > 0);
-    const inToday = people.filter((p) => ['present', 'half_day', 'missing_out'].includes(todayOf(p)?.status ?? ''));
+    const inToday = people.filter((p) => ['present', 'half_day', 'missing_out'].includes(todayOf(p)?.status ?? '') || open(p, true));
     out.team = {
       summary: `${inToday.length} in · ${onLeave.length} on leave · ${notIn.length} not checked in · ${late.length} late`,
       total: people.length,

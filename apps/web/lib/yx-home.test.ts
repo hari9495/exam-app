@@ -89,13 +89,17 @@ describe('Employee home (parity with PLT-02 employee)', () => {
 
 describe('Manager home (parity with PLT-02 manager)', () => {
   it("builds team today, who's off and late check-ins against last week", () => {
-    const person = (id: string, days: { on: string; status: string; lateMinutes?: number }[]) => ({ id, name: id, code: null, location: '', me: false, mode: 'punch', missingPunchEffect: 'none', days: days.map((d) => ({ leavePart: null, workedMinutes: null, regularised: false, lateMinutes: null, ...d })) });
+    const person = (id: string, days: { on: string; status: string; lateMinutes?: number; firstIn?: string | null }[]) => ({ id, name: id, code: null, location: '', me: false, mode: 'punch', missingPunchEffect: 'none', days: days.map((d) => ({ leavePart: null, workedMinutes: null, regularised: false, lateMinutes: null, ...d })) });
     const m = managerHome({
       today: '2026-10-21',
       muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Sanjay', [{ on: '2026-10-21', status: 'missing_in' }]), person('Meera', [{ on: '2026-10-21', status: 'leave' }]), person('Kavya', [{ on: '2026-10-20', status: 'present', lateMinutes: 15 }, { on: '2026-10-13', status: 'present', lateMinutes: 5 }, { on: '2026-10-14', status: 'present', lateMinutes: 5 }, { on: '2026-10-21', status: 'present' }])] } as never,
       calendar: { from: '2026-10-19', to: '2026-10-25', scope: 'team', people: [{ id: 'm', name: 'Meera', code: null, me: false, holidays: [], days: [{ on: '2026-10-21', part: 'full', status: 'approved', code: 'CL', colour: 'green', name: 'Casual leave' }] }] } as never,
     });
     expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
+    // During the day: the first punch says who is in; someone with none yet is not checked in (and can be nudged).
+    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }])] } as never });
+    expect(during.team?.summary).toBe('1 in · 0 on leave · 1 not checked in · 0 late');
+    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true })]);
     // Only someone not checked in can be nudged.
     expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);

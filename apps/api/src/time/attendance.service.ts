@@ -383,7 +383,7 @@ export class AttendanceService implements OnModuleInit {
           me: p.id === own,
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
-          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
+          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
         })),
       };
     });
