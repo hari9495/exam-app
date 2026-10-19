@@ -349,7 +349,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     });
     render(<YxSignInPage />);
     const ways = within(await screen.findByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Google']);
+    expect(ways.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Continue with mobile', 'Continue with Google']);
     await userEvent.click(ways[1]);
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://accounts.example.test/auth?state=s'));
     expect(api).toHaveBeenCalledWith('/auth/social/google/start', { method: 'POST', body: '{}' });

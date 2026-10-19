@@ -61,7 +61,7 @@ describe('SignInScreen (work email first, no company code)', () => {
     render(<SignIn options={ALL_WAYS} onMobile={onMobile} onSocial={onSocial} />);
     expect(screen.getByRole('separator')).toHaveTextContent('or');
     const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
+    expect(ways.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
     // Bordered buttons (R2), each with its decorative mark.
     for (const b of ways) {
       expect(b).toHaveAttribute('data-variant', 'secondary');
@@ -80,7 +80,7 @@ describe('SignInScreen (work email first, no company code)', () => {
   it("hides each way that is off, and the 'or' when none is on", () => {
     const { unmount } = render(<SignIn options={{ ...ALL_WAYS, sms: false, whatsapp: false, google: false }} onMobile={vi.fn()} onSocial={vi.fn()} />);
     const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Continue with Microsoft']);
+    expect(ways.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Continue with Microsoft']);
     unmount();
     render(<SignIn options={{ google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true }} onMobile={vi.fn()} onSocial={vi.fn()} />);
     expect(screen.queryByRole('separator')).toBeNull();
@@ -92,7 +92,7 @@ describe('SignInScreen (work email first, no company code)', () => {
     const onSocial = vi.fn();
     render(<SignIn company={KAVERI} providers={PROVIDERS} options={ALL_WAYS} onSocial={onSocial} onSso={onSso} />);
     const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Continue with Microsoft', 'Continue with Google', 'Continue with Kaveri staff directory']);
+    expect(ways.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Continue with Microsoft', 'Continue with Google', 'Continue with Kaveri staff directory']);
     await userEvent.click(ways[1]);
     expect(onSso).toHaveBeenCalledWith(PROVIDERS[0].id);
     expect(onSocial).not.toHaveBeenCalled();
@@ -839,7 +839,7 @@ describe('passkey as a sign-in method', () => {
     const passkey = screen.getByRole('button', { name: 'Sign in with a passkey' });
     expect(passkey).toHaveAttribute('data-variant', 'primary');
     const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
-    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
+    expect(ways.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
     expect(passkey.compareDocumentPosition(ways[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue' })).toHaveAttribute('data-variant', 'secondary');
     await userEvent.click(passkey);

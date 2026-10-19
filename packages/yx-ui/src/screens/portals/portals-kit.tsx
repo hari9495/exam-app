@@ -126,6 +126,7 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
         nav={nav}
         user={user}
         whiteLabel={whiteLabel}
+        foot={<PortalFooterLinks {...footer} />}
         aside={
           // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).
           <div className="yx-tportal__bar">
@@ -136,7 +137,6 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
       >
         <div className="yx-tportal__content">{children}</div>
         {pinned && <div className="yx-tportal__pinned">{pinned}</div>}
-        <PortalFooterLinks {...footer} />
       </PortalFrame>
     </div>
   );

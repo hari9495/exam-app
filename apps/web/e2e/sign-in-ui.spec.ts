@@ -28,13 +28,13 @@ test.describe('phone touch targets', () => {
   });
 });
 
-// Founder review 19 Oct 2026: the sign-in page scrolled on a laptop (1920 × 1080 at 125 % shows 1536 × 730).
+// Founder review 19 Oct 2026: the sign-in page scrolled on a laptop (1920 × 1080 at 150 % shows 1278 × 635).
 test.describe('laptop screen', () => {
-  test.use({ viewport: { width: 1536, height: 730 } });
+  test.use({ viewport: { width: 1278, height: 635 } });
   test('the sign-in page fits without scrolling', async ({ page }) => {
     await page.goto('/yx/sign-in');
     await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
     await expect(page.getByText('Powered by')).toBeInViewport();
-    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(730);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(635);
   });
 });
