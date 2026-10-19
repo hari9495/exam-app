@@ -209,8 +209,8 @@
    {
     "date": "2026-10-19",
     "result": "Fail",
-    "findings": "The page scrolled on a laptop screen (1536 x 730): 843 px tall. Founder rule: no scroll bar unless the screen is really too small.",
-    "fixedIn": "PR #184 (note and language picker in the header band, tighter spacing; e2e guard at 1536 x 730)"
+    "findings": "The page scrolled on a laptop screen (1536 x 730): 843 px tall. Founder rule: no scroll bar unless the screen is really too small. Second look: the founder's screen is 1920 x 1080 at 150 % (1278 x 635), still scrolled (736 px). Also asked what the blue line is: the company colour stripe of the portal pattern (YukthiX blue when no brand colour is set).",
+    "fixedIn": "PR #184: note and language picker in the header band; Mobile, Microsoft, Google in one row (full names kept for screen readers); legal links in the footer band; e2e guard at 1278 x 635"
    }
   ],
   "ideas": [
