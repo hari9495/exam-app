@@ -334,6 +334,12 @@
     "result": "Fail",
     "findings": "Live search vs design: opens with a long 'Go to' list of menu pages all labelled 'Home' instead of Recent + Actions (with N L / N E shortcuts) + People + Requests; no Clear recent; no icons; typing a name finds only People, not Requests and tickets.",
     "fixedIn": "In progress: second builder matching the palette to PLT-20/21"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Fail (fixed)",
+    "findings": "After PR #192: pressing N then L with search open opened Apply leave, but the search box stayed open on top.",
+    "fixedIn": "PR #192: every search action (N L, N E, a result, Help) closes the search box first (web test fails without the fix)"
    }
   ],
   "ideas": [],
