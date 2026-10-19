@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Fingerprint, KeyRound, Smartphone } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Avatar } from '../../components/display';
@@ -6,6 +6,7 @@ import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Spinner, Text } from '../../components/foundations';
 import { PasswordField, TextField } from '../../components/inputs';
+import { isEmail } from '../../lib/validators';
 import { AuthFrame } from './kit';
 import { GoogleMark, MicrosoftMark } from './marks';
 import type { SignInOptions, SsoProviderOption } from './types';
@@ -85,6 +86,29 @@ export function providerButtonLabel(p: SsoProviderOption): string {
 
 export const isMobileIdentifier = (value: string) => value.trim() !== '' && !value.includes('@');
 
+/** An email box that says what is wrong once the person leaves it or presses Enter, never while they type. */
+function EmailField({ label, value, onChange, autoComplete }: { label: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
+  const [left, setLeft] = useState(false);
+  const wrong = left && value.trim() !== '' && !isEmail(value);
+  return (
+    <FormField label={label} required error={wrong ? 'Enter your full email, like name@company.com' : undefined}>
+      <TextField
+        type="email"
+        value={value}
+        onChange={(v) => {
+          setLeft(false);
+          onChange(v);
+        }}
+        onBlur={() => setLeft(true)}
+        onKeyDown={(e) => e.key === 'Enter' && setLeft(true)}
+        autoComplete={autoComplete}
+        spellCheck={false}
+        autoCapitalize="none"
+      />
+    </FormField>
+  );
+}
+
 /** Staff sign-in (P12 §6.1). Nobody types a company code. */
 export function SignInScreen(props: SignInScreenProps) {
   const { step, fields, onFieldChange: set, providers, options, busy, error, company } = props;
@@ -116,7 +140,7 @@ export function SignInScreen(props: SignInScreenProps) {
     <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
   // One blue button: the passkey until an email is typed, then Continue (founder review 19 Oct).
-  const typed = identifier.includes('@');
+  const typed = isEmail(identifier);
   const passkeyButton = passkeyOn && (
     <Button variant={typed ? 'secondary' : 'primary'} fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>
   );
@@ -199,9 +223,7 @@ export function SignInScreen(props: SignInScreenProps) {
               {passkeyButton}
               {passkeyOn && ways}
               {passkeyOn && or}
-              <FormField label="Work email" required>
-                <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" spellCheck={false} autoCapitalize="none" />
-              </FormField>
+              <EmailField label="Work email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" />
               {alert}
               <Button type="submit" variant={passkeyOn && !typed ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy} disabled={!typed}>Continue</Button>
               {!passkeyOn && ways && (
@@ -299,14 +321,12 @@ export function StaffSignInScreen({ email, password, onEmailChange, onPasswordCh
   return (
     <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready." note="YukthiX staff only · security key required">
       <form className="yx-auth__form" onSubmit={submit} noValidate>
-        <FormField label="Staff email" required>
-          <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />
-        </FormField>
+        <EmailField label="Staff email" value={email} onChange={onEmailChange} autoComplete="username" />
         <FormField label="Password" required>
           <PasswordField value={password} onChange={onPasswordChange} autoComplete="current-password" />
         </FormField>
         {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-        <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!email.includes('@') || !password}>Continue</Button>
+        <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!isEmail(email) || !password}>Continue</Button>
       </form>
     </AuthFrame>
   );
@@ -338,11 +358,9 @@ export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, bus
         </div>
       ) : (
         <form className="yx-auth__form" onSubmit={submit} noValidate>
-          <FormField label="Work email" required>
-            <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />
-          </FormField>
+          <EmailField label="Work email" value={email} onChange={onEmailChange} autoComplete="username" />
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-          <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!email.includes('@')}>Email me a reset link</Button>
+          <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!isEmail(email)}>Email me a reset link</Button>
           <Link href={signInHref}>Back to sign in</Link>
         </form>
       )}

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
-import { ID_SPECS } from '../lib/validators';
+import { ID_SPECS, isEmail } from '../lib/validators';
 import { Icon, type IconComponent } from './foundations';
 import { Button, ButtonGroup, IconButton } from './button';
 import { Badge } from './display';
@@ -1018,7 +1018,6 @@ export interface JobApplyFormProps {
 
 type ApplyErrors = Partial<Record<'name' | 'email' | 'phone' | 'resume' | 'consent', string>>;
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Short, mobile-first apply form: five inputs, done in under 3 minutes (§40). */
 export function JobApplyForm({ job, companyName, upload, onSubmit, privacyHref = '#privacy', defaultSent = false }: JobApplyFormProps) {
@@ -1037,7 +1036,7 @@ export function JobApplyForm({ job, companyName, upload, onSubmit, privacyHref =
   const validate = (): ApplyErrors => {
     const e: ApplyErrors = {};
     if (!name.trim()) e.name = 'Enter your full name';
-    if (!EMAIL_RE.test(email.trim())) e.email = 'Enter an email like name@example.com';
+    if (!isEmail(email)) e.email = 'Enter an email like name@example.com';
     const phoneError = phone ? ID_SPECS.phone.validate(phone) : 'Enter your mobile number';
     if (phoneError) e.phone = phoneError;
     const done = files.find((f) => f.status === 'done');

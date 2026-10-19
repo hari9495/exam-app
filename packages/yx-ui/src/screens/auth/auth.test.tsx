@@ -831,6 +831,19 @@ describe('other ways that could not load', () => {
 });
 
 describe('passkey as a sign-in method', () => {
+  it('Continue waits for a full email; a half email is named when the person leaves the box, not while typing', async () => {
+    render(<SignIn />);
+    const box = screen.getByLabelText(/Work email/);
+    await userEvent.type(box, 'hr@demo');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.queryByText(/Enter your full email/)).toBeNull();
+    await userEvent.tab();
+    expect(screen.getByText('Enter your full email, like name@company.com')).toBeInTheDocument();
+    await userEvent.type(box, '-org.test');
+    expect(screen.queryByText(/Enter your full email/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  });
+
   it('once an email is typed, Continue is the blue button and the passkey steps back (one blue button)', () => {
     render(<SignIn options={{ ...ALL_WAYS, passkey: true }} onPasskey={vi.fn()} onMobile={vi.fn()} onSocial={vi.fn()} start={{ identifier: 'hr@demo-org.test' }} />);
     expect(screen.getByRole('button', { name: 'Continue' })).toHaveAttribute('data-variant', 'primary');
