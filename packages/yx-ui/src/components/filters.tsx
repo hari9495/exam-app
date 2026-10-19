@@ -270,10 +270,12 @@ export interface SavedViewMenuProps {
   modified?: boolean;
   onSave?: () => void;
   onSaveAs?: (name: string, shared: boolean) => void;
+  /** Offer "Share with the team" (false: the person may only keep views for themselves). */
+  canShare?: boolean;
 }
 
 /** Personal and shared saved views (§20). */
-export function SavedViewMenu({ views, currentId, onSelect, modified, onSave, onSaveAs }: SavedViewMenuProps) {
+export function SavedViewMenu({ views, currentId, onSelect, modified, onSave, onSaveAs, canShare = true }: SavedViewMenuProps) {
   const current = views.find((v) => v.id === currentId);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
@@ -318,7 +320,7 @@ export function SavedViewMenu({ views, currentId, onSelect, modified, onSave, on
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim()) return;
-            onSaveAs?.(name.trim(), shared);
+            onSaveAs?.(name.trim(), canShare && shared);
             setNaming(false);
             setName('');
           }}
@@ -326,7 +328,7 @@ export function SavedViewMenu({ views, currentId, onSelect, modified, onSave, on
           <FormField label="View name" required>
             <TextField value={name} onChange={setName} autoFocus placeholder="e.g. Chennai on probation" />
           </FormField>
-          <Checkbox label="Share with the team" checked={shared} onChange={setShared} />
+          {canShare && <Checkbox label="Share with the team" checked={shared} onChange={setShared} />}
           <div className="yx-filter-editor__foot">
             <Button size="sm" onClick={() => setNaming(false)}>
               Cancel

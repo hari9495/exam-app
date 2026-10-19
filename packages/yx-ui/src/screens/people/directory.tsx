@@ -333,6 +333,7 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
                   setView(id);
                   if (views) apply(id === 'all' ? ALL_VIEW : (views.list.find((v) => v.id === id)?.state ?? ALL_VIEW));
                 }}
+                canShare={persona === 'hr'}
                 onSaveAs={views ? (name, shared) => views.onSave(name, shared, { kind, filters, q, quick, ...(columns ? { columns } : {}) }) : undefined}
               />
             )
