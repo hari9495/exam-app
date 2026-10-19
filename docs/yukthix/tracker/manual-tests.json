@@ -3922,7 +3922,8 @@
    }
   ],
   "ideas": [
-   "Design the exam / assessment tools (exams, question bank, campaigns, drives, referrals, message templates, hiring analytics) in YukthiX, then retire the older console link in Hire (founder, 19 Oct 2026)."
+   "Design the exam / assessment tools (exams, question bank, campaigns, drives, referrals, message templates, hiring analytics) in YukthiX, then retire the older console link in Hire (founder, 19 Oct 2026).",
+   "Recruiter Home (PR #189) follow-ups, founder OK 19 Oct: add Approve for offers in YukthiX; keep 'my jobs' = created or hiring manager; 7 days = waiting too long; remove the old charts 'Recruiter home' demo from the design library."
   ],
   "id": "SI-05",
   "screen": "Continue with mobile",
@@ -3964,13 +3965,19 @@
   "url": "http://localhost:3000/yx/sign-in",
   "stories": [],
   "note": "",
-  "status": "Not run",
+  "status": "Pass",
   "runs": [
    {
     "date": "2026-10-19",
     "result": "Fail (test data)",
     "findings": "Passkey sign-in refused: Windows offered an old localhost passkey left from a rebuilt test database (login event: unknown_credential). The app has passkeys only for admin@ (12 Oct) and plant-hr@ (14 Oct).",
     "fixedIn": "PR #188 (founder asked): the API marks an unknown passkey and the page asks the browser to forget it (WebAuthn signalUnknownCredential). Founder retries picking admin@demo-org.test."
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "Picking admin@demo-org.test's passkey signed in.",
+    "fixedIn": ""
    }
   ],
   "ideas": [
