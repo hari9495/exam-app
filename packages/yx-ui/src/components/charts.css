@@ -221,3 +221,5 @@
 .yx-stat__change { margin: 0; display: flex; align-items: center; gap: var(--yx-space-1); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
 .yx-stat__drill { display: inline-flex; align-items: center; gap: var(--yx-space-1); margin-top: var(--yx-space-2); font-size: var(--yx-text-sm); min-height: var(--yx-target-min); align-self: flex-start; }
 .yx-stat .yx-skeleton { display: block; }
+/* Nothing to count yet: the words sit where the number would, so the card keeps its height. */
+.yx-stat__empty { margin: 0; min-height: var(--yx-space-8); display: flex; align-items: center; font-size: var(--yx-text-md); line-height: var(--yx-leading-md); color: var(--yx-color-text-secondary); }

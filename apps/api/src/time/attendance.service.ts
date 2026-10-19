@@ -225,13 +225,14 @@ export class AttendanceService implements OnModuleInit {
     const { from, to } = monthRange(month);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
-      const [r] = await tx.$queryRaw<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM attendance_days d
-        WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')
-          AND ${inScopeSql(c, v, 'attendance.view', Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`, own)}
-          AND ${inEntitySql(c, entityId, Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`)}`;
-      return r?.n ?? 0;
+      return countExceptions(tx, c, from, to, entityId, inScopeSql(c, v, 'attendance.view', Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`, own));
     });
+  }
+
+  /** The whole company's (or one entity's) exceptions in a month, for the monthly Home snapshot (no viewer). */
+  exceptionTotal(tx: Tx, c: CompanyContext, month: string, entityId: string | null): Promise<number> {
+    const { from, to } = monthRange(month);
+    return countExceptions(tx, c, from, to, entityId, Prisma.sql`TRUE`);
   }
 
   async muster(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
@@ -313,4 +314,13 @@ export class AttendanceService implements OnModuleInit {
       return n;
     });
   }
+}
+
+async function countExceptions(tx: Tx, c: CompanyContext, from: string, to: string, entityId: string | null | undefined, inScope: Prisma.Sql): Promise<number> {
+  const [r] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM attendance_days d
+    WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')
+      AND ${inScope}
+      AND ${inEntitySql(c, entityId, Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`)}`;
+  return r?.n ?? 0;
 }

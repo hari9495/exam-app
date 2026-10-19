@@ -12,6 +12,8 @@ import { PageHeader } from '../../components/shell';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { peoplePanel } from '../people/people-kit';
 import { TODAY } from '../_kit/data';
+import { HomeClockCard } from '../time/live/my-attendance';
+import type { MyAttendance } from '../time/live/types';
 
 const meta: Meta = { title: 'Screens/Platform/Shell & homes', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -99,33 +101,115 @@ export const PLT02EmployeePay: S = { name: 'PLT-02 · Role home · employee, HR 
 export const PLT02EmployeeCustomisable: S = { name: 'PLT-02 · Role home · employee, admin allows personalising', render: () => <RoleHomeScreen persona="employee" data={EMP} customisable /> };
 export const PLT02Manager: S = { name: 'PLT-02 · Role home · manager', render: () => <RoleHomeScreen persona="manager" data={MGR} /> };
 export const PLT02HR: S = { name: 'PLT-02 · Role home · HR', render: () => <RoleHomeScreen persona="hr" data={HR} /> };
-// The live HR home (design audit step 2): the designed widgets with live data only. Counts, no trends until there is
-// history to compare with; the sample widgets (announcements, coming up, cycles) wait for their data.
+// The live homes (design audit step 2, home parity 19 Oct 2026): the designed widgets with live data only. "vs last
+// month" shows only once last month's number is on record; the sample widgets (announcements, coming up, cycles, my
+// tasks) wait for their data.
+const DAY: MyAttendance = {
+  employee: { id: 'e1', name: 'Lakshmi Venkatesan' },
+  today: '2026-09-29',
+  zone: 'Asia/Kolkata',
+  mode: 'punch',
+  shift: { name: 'General', start: 570, end: 1110, grace: 10, checkIn: 'restricted' },
+  fences: [],
+  punches: [{ id: 'p1', kind: 'in', at: '2026-09-29T04:08:00Z', source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Chennai office' }],
+  next: 'out',
+  days: [],
+  requests: [],
+  regularise: { limit: 4, used: 0 },
+};
+const liveClock = <HomeClockCard data={DAY} now={new Date('2026-09-29T04:12:15Z')} getLocation={async () => ({ pin: null })} onPunch={async (kind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })} attendanceHref="#attendance" onRegularise={() => {}} />;
 const LIVE_HR = {
   firstName: 'Lakshmi',
   company: 'Kaveri Foods Pvt Ltd',
   today: TODAY,
   approvalsHref: '#approvals',
+  clock: liveClock,
+  quickActions: [
+    { label: 'Apply leave', href: '#leave', kind: 'leave' as const },
+    { label: 'Download payslip', href: '#payslip', kind: 'payslip' as const },
+  ],
   stats: [
-    { id: 'exceptions', title: 'Attendance exceptions', label: 'Attendance exceptions', value: 27, drill: { label: 'Resolve before lock', href: '#muster' } },
-    { id: 'notReady', title: 'Not ready for payroll', label: 'Not ready for payroll', value: 12, drill: { label: 'See the 12 of 248', href: '#run-readiness' } },
-    { id: 'cases', title: 'Open cases', label: 'Open cases', value: 9, drill: { label: 'View helpdesk', href: '#tickets' } },
+    { id: 'exceptions', title: 'Attendance exceptions', label: 'Attendance exceptions', value: 27, previous: 41, previousLabel: 'August', drill: { label: 'Resolve before lock', href: '#muster' } },
+    { id: 'notReady', title: 'Not ready for payroll', label: 'Not ready for payroll', value: 12, previous: 5, previousLabel: 'August', drill: { label: 'See the 12 of 248', href: '#run-readiness' } },
+    { id: 'cases', title: 'Open cases', label: 'Open cases', value: 9, previous: 12, previousLabel: 'August', drill: { label: 'View helpdesk', href: '#tickets' } },
+    { id: 'joins', title: 'Joining in September', label: 'Joining in September', value: 7, previous: 4, previousLabel: 'August', drill: { label: 'View onboarding', href: '#onboarding' } },
   ],
   due: [
     { id: 'lock', text: 'Lock September attendance, Kaveri Foods Pvt Ltd', href: '#periods', badge: { label: 'Due now', tone: 'warning' as const }, note: '27 exceptions still open', action: 'Lock attendance' },
     { id: 'probation', text: 'Probation confirmations · 3 due by 5 Oct', href: '#probation' },
+    { id: 'contracts', text: 'Fixed-term contracts ending by 31 Oct · 2 people', href: '#contracts' },
   ],
   moves: [
-    { id: 'j1', name: 'Rohan Shetty', secondary: 'Joins Thu 1 Oct · Sales', badges: [{ label: '2 tasks open', tone: 'warning' as const }] },
+    { id: 'j1', name: 'Rohan Shetty', secondary: 'Joins Thu 1 Oct · Sales', badges: [{ label: 'Laptop pending', tone: 'warning' as const }, { label: 'Email pending', tone: 'warning' as const }] },
     { id: 'j2', name: 'Imran Qureshi', secondary: 'Joins Thu 1 Oct · Hosur plant', badges: [{ label: 'All ready', tone: 'success' as const }] },
-    { id: 'l1', name: 'Rahul Verma', secondary: 'Last day Wed 30 Sep', badges: [{ label: '1 clearance item open', tone: 'warning' as const }] },
+    { id: 'l1', name: 'Rahul Verma', secondary: 'Last day Wed 30 Sep', badges: [{ label: 'IT clearance pending', tone: 'warning' as const }] },
   ],
   movesHref: '#onboarding',
 };
 export const PLT02HRLive: S = { name: 'PLT-02 · Role home · HR, live widgets', render: () => <RoleHomeScreen persona="hr" data={HR} live={LIVE_HR} /> };
 export const PLT02HRLiveQuiet: S = {
   name: 'PLT-02 · Role home · HR, live, quiet week',
-  render: () => <RoleHomeScreen persona="hr" data={{ actions: [] }} live={{ ...LIVE_HR, due: [], moves: [] }} />,
+  render: () => (
+    <RoleHomeScreen
+      persona="hr"
+      data={{ actions: [] }}
+      live={{
+        ...LIVE_HR,
+        // First month on record: no change lines yet; no payroll run yet; nothing due, no one joining or leaving.
+        stats: LIVE_HR.stats.map(({ previous: _p, previousLabel: _l, ...x }) => (x.id === 'notReady' ? { ...x, value: 0, empty: 'No payroll run for September yet', drill: { label: 'Open payroll runs', href: '#runs' } } : x)),
+        due: [],
+        moves: [],
+      }}
+    />
+  ),
+};
+const LIVE_EMP = {
+  ...LIVE_HR,
+  firstName: 'Divya',
+  stats: [
+    { id: 'leave', title: 'Leave balance', label: 'Earned leave left', value: 9, unit: 'days', drill: { label: 'View balances', href: '#leave' } },
+    { id: 'present', title: 'Days present', label: 'Days present in September', value: 19, previous: 21, previousLabel: 'August', drill: { label: 'View attendance', href: '#attendance' } },
+    { id: 'late', title: 'Late marks', label: 'Late marks this month', value: 2, previous: 1, previousLabel: 'August', drill: { label: 'View late marks', href: '#attendance' } },
+    { id: 'requests', title: 'My requests', label: 'Requests pending', value: 2, drill: { label: 'View 2 requests', href: '#my-requests' } },
+  ],
+  due: undefined,
+  moves: undefined,
+};
+export const PLT02EmployeeLive: S = { name: 'PLT-02 · Role home · employee, live', render: () => <RoleHomeScreen persona="employee" data={EMP} live={LIVE_EMP} /> };
+const LIVE_MGR = {
+  ...LIVE_EMP,
+  team: {
+    summary: '11 in · 2 on leave · 1 not checked in · 0 late',
+    total: 14,
+    href: '#today',
+    rows: [
+      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am' },
+      { id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' },
+      { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' },
+    ],
+  },
+  off: [
+    { day: 'Mon 28', who: 'Meera Krishnan' },
+    { day: 'Tue 29 · today', who: 'Meera Krishnan, Rahul Nair' },
+    { day: 'Wed 30', who: 'Rahul Nair' },
+    { day: 'Thu 1 Oct', who: 'Kavya Reddy, Vikram Rao · Arjun Mehta asked (pending)' },
+  ],
+  offHref: '#leave-calendar',
+  stats: [
+    { id: 'late', title: 'Late', label: 'Late check-ins this week', value: 3, previous: 5, previousLabel: 'last week', drill: { label: 'View late marks', href: '#muster' } },
+    { id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: 6, drill: { label: 'Open reviews', href: '#reviews' } },
+    { id: 'probation', title: 'Probation', label: 'Probation reviews due in October', value: 1, drill: { label: 'View probations', href: '#probation' } },
+    { id: 'oneOnOnes', title: '1:1s', label: '1:1s this week', value: 2, drill: { label: 'View 1:1s', href: '#one-on-ones' } },
+  ],
+  goals: [
+    { text: '1:1 with Arjun Mehta · today 3:00 pm', href: '#one-on-one' },
+    { text: 'Probation review for Kavya Reddy · due 5 Oct', href: '#probation' },
+  ],
+};
+export const PLT02ManagerLive: S = { name: 'PLT-02 · Role home · manager, live', render: () => <RoleHomeScreen persona="manager" data={MGR} live={LIVE_MGR} /> };
+export const PLT02ManagerLiveQuiet: S = {
+  name: 'PLT-02 · Role home · manager, live, quiet week',
+  render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, summary: '14 in · 0 on leave · 0 not checked in · 0 late', rows: [] }, off: [], goals: [] }} />,
 };
 export const PLT02FinanceHidden: S = {
   name: 'PLT-02 · Role home · finance, amounts hidden',

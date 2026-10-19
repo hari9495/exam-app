@@ -17,6 +17,8 @@ export interface LeaveBalanceRow {
   takenThisYear: number;
   entitlement: number | null;
   negativeLimit: number;
+  /** The balance on the first day of the leave year, where the record has one (the Home's "since 1 Apr"). */
+  atYearStart?: number;
 }
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'cancel_pending' | 'cancelled';
