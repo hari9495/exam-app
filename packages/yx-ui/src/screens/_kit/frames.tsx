@@ -291,12 +291,16 @@ export interface PortalFrameProps {
   /** `href` where the page is live; the stories leave it out (#). */
   nav?: { label: string; active?: boolean; href?: string }[];
   user?: string;
+  /** Right end of the header band (a tenant portal's note and language picker). */
+  aside?: ReactNode;
+  /** In the footer band, above "Powered by YukthiX" (a tenant portal's legal notices). */
+  foot?: ReactNode;
   children: ReactNode;
   whiteLabel?: boolean;
 }
 
 /** T9 external-portal shell (APX-D §4): tenant header, simple top nav, Powered by YukthiX footer. */
-export function PortalFrame({ tenant, portal, nav = [], user, children, whiteLabel }: PortalFrameProps) {
+export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, children, whiteLabel }: PortalFrameProps) {
   return (
     <div className="yx-portal">
       <header className="yx-portal__head">
@@ -310,9 +314,11 @@ export function PortalFrame({ tenant, portal, nav = [], user, children, whiteLab
           ))}
         </nav>
         {user && <span className="yx-portal__user">{user}</span>}
+        {aside}
       </header>
       <main className="yx-portal__body">{children}</main>
       <footer className="yx-portal__foot">
+        {foot}
         <PoweredBy whiteLabel={whiteLabel} />
       </footer>
     </div>

@@ -12,8 +12,14 @@
   --yx-color-action-primary: var(--yx-tportal-accent);
 }
 :root:not([data-theme="dark"]) .yx-tportal[data-accent="tenant"] .yx-button[data-variant="primary"]:hover:not(:disabled) { filter: brightness(0.9); }
-.yx-tportal .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
-.yx-tportal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-4); }
+/* The top stripe shows the company's own brand colour; without one there is no stripe (a default blue looked like a bug). */
+.yx-tportal[data-accent="tenant"] .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
+.yx-tportal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--yx-space-2) var(--yx-space-4); margin-left: auto; }
+/* Narrow portals (sign-in): tighter spacing so the whole page fits a laptop screen (1536 × 730) without scrolling. */
+.yx-tportal[data-narrow] .yx-portal__body { padding-block: var(--yx-space-4); gap: var(--yx-space-4); justify-content: center; } /* the card in the middle, equal space above and below */
+.yx-tportal[data-narrow] .yx-portal__foot { padding-block: var(--yx-space-2); }
+.yx-tportal .yx-portal__foot { display: flex; flex-direction: column; align-items: center; gap: var(--yx-space-2); }
+.yx-tportal .yx-portal-notices { padding-top: 0; border-top: 0; }
 .yx-tportal__note { display: inline-flex; align-items: center; gap: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 .yx-tportal__note[data-state="ending"] { color: var(--yx-color-warning-text); }
 .yx-tportal__note[data-state="ended"] { color: var(--yx-color-danger-text); }

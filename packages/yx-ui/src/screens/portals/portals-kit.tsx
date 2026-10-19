@@ -109,25 +109,36 @@ export interface TenantPortalProps {
   /** Narrow single-column content (forms, sign-in). */
   narrow?: boolean;
   language?: string;
-  /** Keeps the language choice (the live sign-in); without it the switcher is uncontrolled. */
+  /** No language picker (the live sign-in until YukthiX's screens are translated: a picker that changes nothing). */
+  noLanguage?: boolean;
+  /** Keeps the language choice; without it the switcher is uncontrolled. */
   onLanguageChange?: (lang: string) => void;
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, language = 'en', onLanguageChange, children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, language = 'en', onLanguageChange, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
   return (
     <div className="yx-tportal" data-accent={res.accent ? 'tenant' : 'default'} data-narrow={narrow || undefined} style={style}>
-      <PortalFrame tenant={tenant} portal={portal} nav={nav} user={user} whiteLabel={whiteLabel}>
-        <div className="yx-tportal__bar">
-          <AccessNote access={access} />
-          <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />
-        </div>
+      <PortalFrame
+        tenant={tenant}
+        portal={portal}
+        nav={nav}
+        user={user}
+        whiteLabel={whiteLabel}
+        foot={<PortalFooterLinks {...footer} />}
+        aside={
+          // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).
+          <div className="yx-tportal__bar">
+            <AccessNote access={access} />
+            {!noLanguage && <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
+          </div>
+        }
+      >
         <div className="yx-tportal__content">{children}</div>
         {pinned && <div className="yx-tportal__pinned">{pinned}</div>}
-        <PortalFooterLinks {...footer} />
       </PortalFrame>
     </div>
   );

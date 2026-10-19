@@ -120,9 +120,14 @@ export function SignInScreen(props: SignInScreenProps) {
   );
   const ways = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
     <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
-      {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile}>Continue with mobile</Button>}
-      {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')}>Continue with Microsoft</Button>}
-      {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')}>Continue with Google</Button>}
+      {/* One row, short labels, so the page fits a laptop at 150 % (founder review 19 Oct); the names stay in full. */}
+      {(mobileOn || microsoftOn || googleOn) && (
+        <div className="yx-auth__ways-row">
+          {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile} aria-label="Continue with mobile">Mobile</Button>}
+          {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')} aria-label="Continue with Microsoft">Microsoft</Button>}
+          {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')} aria-label="Continue with Google">Google</Button>}
+        </div>
+      )}
       {companyButtons}
     </div>
   );

@@ -71,7 +71,7 @@ export function LegalNoticeScreen({ doc, contactEmail = null, components = [], s
       nav={(Object.keys(TITLES) as LegalDoc[]).map((d) => ({ label: TITLES[d], href: LEGAL_LINKS[d], active: d === doc }))}
       access={{ kind: 'public' }}
       footer={{ privacy: 'Privacy notice', hrefs: LEGAL_LINKS }}
-      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : {})}
+      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : { noLanguage: true })}
     >
       <article className="yx-legal" aria-labelledby="yx-legal-title">
         <div className="yx-signin__head">

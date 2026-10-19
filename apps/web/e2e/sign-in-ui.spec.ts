@@ -27,3 +27,21 @@ test.describe('phone touch targets', () => {
     expect((await page.getByLabel(/^Password/).locator('xpath=..').boundingBox())!.height).toBeGreaterThanOrEqual(44);
   });
 });
+
+// Founder review 19 Oct 2026: the sign-in page scrolled on a laptop (1920 × 1080 at 150 % shows 1278 × 635).
+test.describe('laptop screen', () => {
+  test.use({ viewport: { width: 1278, height: 635 } });
+  test('the sign-in page fits without scrolling', async ({ page }) => {
+    await page.goto('/yx/sign-in');
+    await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
+    await expect(page.getByText('Powered by')).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(635);
+    // The card sits in the middle: equal space above and below (founder review 19 Oct).
+    const gap = await page.evaluate(() => {
+      const b = document.querySelector('.yx-portal__body')!.getBoundingClientRect();
+      const c = document.querySelector('.yx-signin')!.getBoundingClientRect();
+      return Math.abs(c.top - b.top - (b.bottom - c.bottom));
+    });
+    expect(gap).toBeLessThanOrEqual(2);
+  });
+});
