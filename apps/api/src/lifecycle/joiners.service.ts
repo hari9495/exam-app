@@ -1,3 +1,4 @@
+import { displayName } from '../employee-history/employee-history.service';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
@@ -133,7 +134,9 @@ export class JoinersService {
       await this.portal.invite(ctx.organizationId, a.pb.id).catch(() => undefined);
     }
     const managers = await this.tenantPrisma.forTenant(ctx, (tx) => tx.employee.findMany({ where: { organizationId: ctx.organizationId, id: { in: added.map((a) => a.pb.managerEmployeeId).filter((x): x is string => Boolean(x)) }, userId: { not: null } }, select: { userId: true } }));
-    if (managers.length) void this.notifications.notify(ctx, user.userId!, managers.map((m) => m.userId!), 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: added[0].pb.id, contextText: 'Someone is joining your team', linkPath: '/yx/people/team' }).catch(() => undefined);
+    const p = added.length === 1 ? await this.tenantPrisma.forTenant(ctx, (tx) => tx.person.findFirst({ where: { organizationId: ctx.organizationId, id: added[0].pb.personId }, select: { givenName: true, familyName: true, preferredName: true } })) : null;
+    const text = p ? `${displayName(p)} joins your team on ${added[0].pb.joiningOn.toISOString().slice(0, 10)}` : 'Someone is joining your team';
+    if (managers.length) void this.notifications.notify(ctx, user.userId!, managers.map((m) => m.userId!), 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: added[0].pb.id, contextText: text, linkPath: '/yx/people/team' }).catch(() => undefined);
   }
 
   /** LIFE-2.09: an accepted ATS offer becomes a joiner (M10 Q2 manual mode); internal moves are transfers, never onboarding. */

@@ -91,11 +91,13 @@ export interface ExpensesHomeScreenProps {
   /** E4: trips and advances live on their own pages. */
   onTrips?: () => void;
   onAdvances?: () => void;
+  /** Opens the new-claim sheet at once (the "New expense claim" action in Ctrl K, N E). */
+  startNew?: boolean;
 }
 
 export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
   const [tab, setTab] = useState<'mine' | 'approvals' | 'review'>('mine');
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(p.startNew));
   const [title, setTitle] = useState('');
   const h = p.home;
   const rows = tab === 'mine' ? (h?.claims ?? []) : tab === 'approvals' ? (p.approvals ?? []) : (p.review ?? []);

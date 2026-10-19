@@ -147,7 +147,8 @@ a.yx-notif__text:focus-visible { outline: var(--yx-focus-width) solid var(--yx-c
   border-radius: var(--yx-radius-round);
   background: var(--yx-color-action-primary);
 }
-.yx-notif__foot { padding: var(--yx-space-3) var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
+.yx-notif__foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-4); padding: var(--yx-space-3) var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
+.yx-notif__system { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--yx-space-8); height: var(--yx-space-8); border-radius: 50%; background: var(--yx-color-bg-subtle); color: var(--yx-color-text-muted); border: var(--yx-border-width) solid var(--yx-color-border); }
 
 /* ---------- Approvals inbox (§32) ---------- */
 .yx-inbox { display: flex; flex-direction: column; gap: var(--yx-space-3); font-family: var(--yx-font-sans); font-size: var(--yx-text-body); line-height: var(--yx-leading-body); color: var(--yx-color-text); }

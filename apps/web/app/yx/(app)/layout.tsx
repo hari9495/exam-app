@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Languages, ShieldCheck, UserRound } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import type { LegalEntity } from '@yukthix/ui/org';
@@ -13,26 +13,21 @@ import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
-import { useNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../lib/hooks/useNotifications';
-import { notificationText } from '../../../lib/notification-text';
+import { useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../lib/hooks/useNotifications';
+import { useBellItems } from '../../../lib/yx-bell';
+import { useYxPalette } from '../../../lib/yx-palette';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
 import { useOrg, useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
 import { ME_SECURITY, activeLink, buildNav, type NavArea } from '../../../lib/yx-nav';
-import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts, useWorkspaceSearch } from '../../../lib/yx-shell';
+import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
 const COLLAPSE_KEY = 'yx-panel-collapsed';
-const SEARCH_GROUPS = [
-  ['people', 'People', '@'],
-  ['requests', 'Requests', '#'],
-  ['tickets', 'Tickets', '#'],
-  ['candidates', 'Candidates', '@'],
-] as const;
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -69,10 +64,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [typed, setTyped] = useState('');
-  const search = useWorkspaceSearch(paletteOpen ? typed : '');
   const [helpOpen, setHelpOpen] = useState(false);
-  const notifications = useNotifications();
+  const bell = useBellItems(!actingSuperAdmin);
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
   const [collapsed, setCollapsedState] = useState(false);
@@ -112,6 +105,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data],
   );
+  // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
+  const palette = useYxPalette({ nav, pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => router.push(href), openHelp: () => setHelpOpen(true) });
   // Company / period button: people who read the structure, when there is more than one entity; the period for pay.
   const seesEntities = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const entities = useOrg<LegalEntity[]>('/legal-entities', seesEntities);
@@ -184,20 +179,6 @@ function Frame({ children }: { children: React.ReactNode }) {
     </>
   );
 
-  // Search: the server's people, requests, tickets and candidates (each only what the person may open), and every page
-  // in their menu as an action.
-  const hrefs = new Map<string, string>();
-  const groups: PaletteGroup[] = [
-    ...SEARCH_GROUPS.flatMap(([key, heading, prefix]) => {
-      const hits = search.data?.[key] ?? [];
-      return hits.length ? [{ heading, prefix, items: hits.map((h) => (hrefs.set(`${key}:${h.id}`, h.href), { id: `${key}:${h.id}`, label: h.label, secondary: h.secondary, keywords: [typed.replace(/^[@#>?]\s*/, '')] })) }] : [];
-    }),
-    {
-      heading: 'Go to',
-      prefix: '>',
-      items: nav.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => (hrefs.set(`go:${l.href}`, l.href), { id: `go:${l.href}`, label: l.label, secondary: a.title, keywords: [s.label ?? ''] })))),
-    },
-  ];
   const entityList = entities.data?.filter((e) => !e.archivedAt) ?? [];
   const scopePicker =
     entityList.length > 1 || payPeriods ? (
@@ -232,8 +213,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         scope: scopePicker,
         notifications: (
           <NotificationCentre
-            items={(notifications.data ?? []).map((n) => ({ id: n.id, actor: { name: n.actorName ?? 'YukthiX' }, text: notificationText(n), at: new Date(n.createdAt), read: Boolean(n.readAt), href: n.linkPath }))}
-            loading={notifications.isLoading}
+            items={bell.items}
+            loading={bell.loading}
             onMarkAllRead={() => markAll.mutate(undefined, { onSuccess: () => void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }) })}
             onOpenItem={(it) => !it.read && markRead.mutate(it.id)}
             settingsHref="/yx/me/notifications"
@@ -262,19 +243,17 @@ function Frame({ children }: { children: React.ReactNode }) {
         overlays: (
           <>
             <CommandPalette
-              groups={groups}
+              groups={palette.groups}
               open={paletteOpen}
               onOpenChange={(o) => {
                 setPaletteOpen(o);
-                if (!o) setTyped('');
+                if (!o) palette.reset();
               }}
-              onQueryChange={setTyped}
-              loading={search.loading}
+              onQueryChange={palette.onQueryChange}
+              loading={palette.loading}
               placeholder={PALETTE_PLACEHOLDER}
-              onSelect={(item: PaletteItem) => {
-                const href = hrefs.get(item.id);
-                if (href) go(href);
-              }}
+              onSelect={palette.onSelect}
+              onClearRecent={palette.onClearRecent}
               onSearchAll={(q) => {
                 setPaletteOpen(false);
                 go(`/yx/search?q=${encodeURIComponent(q.trim().replace(/^[@#>?]\s*/, ''))}`);

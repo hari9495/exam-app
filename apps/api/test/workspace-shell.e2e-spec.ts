@@ -22,6 +22,8 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
   const joined = addDays(todayIst(), -400);
   // A word no other test data uses, so every hit below comes from this file.
   const WORD = `Zephyr${runId}`;
+  // A name token for the request owners, to search requests by person (PLT-20 "arjun").
+  const NAME = `Quillon${runId}`;
 
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
@@ -70,7 +72,7 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
       ['outsiderA', 'A', 'panel', null],
     ];
     for (const [name, k, role, permissionProfileId] of roster) {
-      users[name] = (await tenantPrisma.forTenant(ctx(k), (tx) => tx.user.create({ data: { organizationId: org[k].id, email: email(name), passwordHash, role, permissionProfileId } }))).id;
+      users[name] = (await tenantPrisma.forTenant(ctx(k), (tx) => tx.user.create({ data: { organizationId: org[k].id, email: email(name), passwordHash, role, permissionProfileId, name: `${name} ${NAME}` } }))).id;
       token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
     }
 
@@ -105,6 +107,10 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
       ids.reqTask = (await req(`${WORD} leave for HR`, users.hrA)).id;
       ids.reqOther = (await req(`${WORD} private to HR`, users.hrA)).id;
       await tx.wfTask.create({ data: { organizationId: org.A.id, requestId: ids.reqTask, step: 0, assigneeUserId: users.arjunA, status: 'open' } });
+      // Arjun's leave that HR approves (found by Arjun's name); the outsider's own private request (no one else's).
+      ids.reqArjunToHr = (await tx.wfRequest.create({ data: { organizationId: org.A.id, requestType: 'leave.request', subjectType: 'employee', subjectId: ids.arjun, title: 'Casual leave, 1 Oct – 2 Oct (2 days)', steps: [], requesterUserId: users.arjunA, status: 'pending', currentStep: 0 } })).id;
+      await tx.wfTask.create({ data: { organizationId: org.A.id, requestId: ids.reqArjunToHr, step: 0, assigneeUserId: users.hrA, status: 'open' } });
+      ids.reqOutsider = (await tx.wfRequest.create({ data: { organizationId: org.A.id, requestType: 'leave.request', subjectType: 'employee', subjectId: ids.zA, title: 'Sick leave, 3 Oct', steps: [], requesterUserId: users.outsiderA, status: 'pending', currentStep: 0 } })).id;
       await tx.userNotification.create({ data: { organizationId: org.A.id, recipientUserId: users.arjunA, type: 'test', entityType: 'wf_request', entityId: ids.reqTask, linkPath: '/yx/approvals' } });
     });
     await tenantPrisma.forTenant(ctx('B'), (tx) =>
@@ -180,6 +186,39 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     await request(server()).get('/api/v1/workspace/search?q=ab').expect(401);
   });
 
+  // Ctrl K parity (founder review 19 Oct 2026): requests by person and by reference, each only where the person may open it.
+  it('requests by person name and reference: never a private request of someone else, another company or someone out of scope', async () => {
+    const byName = async (who: Who) => idsOf((await search(who, `arjunA ${NAME}`)).requests);
+    expect(await byName('arjunA')).toEqual([ids.reqOwn, ids.reqArjunToHr].sort());
+    // HR approves one of Arjun's requests: that one only, never his private ones.
+    expect(await byName('hrA')).toEqual([ids.reqArjunToHr]);
+    // An org admin and an unrelated colleague find none of Arjun's requests.
+    expect(await byName('adminA')).toEqual([]);
+    expect(await byName('outsiderA')).toEqual([]);
+    // Another company: the same name finds nothing, and its own request stays in company B.
+    expect((await search('adminB', `arjunA ${NAME}`)).requests).toEqual([]);
+    expect(JSON.stringify(await search('adminB', NAME))).not.toContain(ids.reqOwn);
+    // The outsider's own request: HR holds an HR key over everyone, but search is never wider than Approvals.
+    expect(idsOf((await search('outsiderA', `outsiderA ${NAME}`)).requests)).toEqual([ids.reqOutsider]);
+    expect((await search('hrA', `outsiderA ${NAME}`)).requests).toEqual([]);
+    // By reference (the start of the id, as My requests shows it): only for someone who may open it.
+    const ref = ids.reqOutsider.slice(0, 8).toUpperCase();
+    expect(idsOf((await search('outsiderA', ref)).requests)).toEqual([ids.reqOutsider]);
+    for (const who of ['arjunA', 'hrA', 'adminA', 'adminB'] as const) expect((await search(who, ref)).requests).toEqual([]);
+    // The row reads like the design: reference, type, what, person, status; your own opens in My requests.
+    const hit = (await search('hrA', `arjunA ${NAME}`)).requests[0];
+    expect(hit.label).toBe(ids.reqArjunToHr.slice(0, 8).toUpperCase());
+    expect(hit.secondary).toBe(`Casual leave, 1 Oct – 2 Oct (2 days) · arjunA ${NAME} · Waiting`);
+    expect(hit.href).toBe('/yx/approvals');
+    expect((await search('arjunA', ids.reqOwn.slice(0, 8))).requests[0].href).toBe('/yx/me/requests');
+  });
+
+  it('tickets: the requester finds theirs by number with its status; nobody else does', async () => {
+    const own = (await search('arjunA', WORD)).tickets[0];
+    expect(own.secondary).toMatch(new RegExp(`^${WORD} VPN will not connect · Ticket · `));
+    for (const who of ['outsiderA', 'hrA', 'adminB'] as const) expect((await search(who, own.label)).tickets).toEqual([]);
+  });
+
   it('answers in under 300 ms', async () => {
     await search('hrA', WORD); // warm-up
     for (const who of ['hrA', 'arjunA', 'adminA'] as const) {
@@ -229,7 +268,7 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
 
   it('my requests (PLT-06): only what the person asked for, in their company', async () => {
     const mine = async (who: Who) => ((await api(who, 'get', '/workflow/approvals/mine').expect(200)).body as { requestId: string }[]).map((r) => r.requestId).sort();
-    expect(await mine('arjunA')).toEqual([ids.reqOwn]);
+    expect(await mine('arjunA')).toEqual([ids.reqOwn, ids.reqArjunToHr].sort());
     expect(await mine('hrA')).toEqual([ids.reqTask, ids.reqOther].sort());
     expect(await mine('adminA')).toEqual([]);
     expect(JSON.stringify(await mine('adminB'))).not.toContain(ids.reqOwn);

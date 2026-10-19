@@ -14,6 +14,8 @@ import { PayRunsService } from '../payroll/runs.service';
 import { JoinersService } from '../lifecycle/joiners.service';
 import { ExitsService } from '../lifecycle/exits.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
+import { ApprovalsEngine } from '../workflow/approvals-engine.service';
+import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
 
 export interface SearchHit {
   id: string;
@@ -30,6 +32,25 @@ export interface SearchResult {
 }
 
 const LIMIT = 5;
+const REQUEST_STATUS: Record<string, string> = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancelled: 'Cancelled' };
+const TICKET_STATUS: Record<string, string> = { new: 'New', open: 'In progress', pending: 'Waiting on requester', on_hold: 'On hold', solved: 'Resolved', closed: 'Closed' };
+
+/** The type in front ("Overtime · …") unless the line already says it ("Casual leave, …" is plainly leave). */
+export const withType = (type: string, line: string) => (line.toLowerCase().includes(type.toLowerCase()) ? line : `${type} · ${line}`);
+
+/** A request's reference: the start of its id, as My requests shows it (and search finds it). */
+export const requestRef = (id: string) => id.slice(0, 8).toUpperCase();
+
+/**
+ * PLT-20 "Casual leave · Arjun Mehta · Waiting": what it is, whose it is and where it stands. Leave titles start with
+ * the person's name ("Arjun Mehta: Casual leave, 1 Oct – 2 Oct (2 days)"), so the name is moved, never repeated.
+ */
+export function requestLine(title: string, person: string | null, status: string): string {
+  // No login for the person (most leave is applied for employees without one): their name leads the title.
+  const name = person?.trim() || (/^([^:]{2,80}): ./.exec(title)?.[1] ?? '');
+  const what = name && title.startsWith(`${name}: `) ? title.slice(name.length + 2) : title;
+  return [what, name && !what.includes(name) ? name : '', REQUEST_STATUS[status] ?? status].filter(Boolean).join(' · ');
+}
 const like = (t: string) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const enc = encodeURIComponent;
 
@@ -138,13 +159,16 @@ export class WorkspaceService {
       inCompany(this.tenantPrisma, ctx, async (tx, c) => {
         const me = user.userId!;
         const org = c.organizationId;
-        // Requests the person raised, asked for, or holds (held) a task on: ApprovalsEngine.view's rule.
-        const requests = await tx.$queryRaw<{ id: string; title: string; request_type: string; status: string }[]>`
-          SELECT r.id::text, r.title, r.request_type, r.status FROM wf_requests r
+        // Requests the person raised, asked for, or holds (held) a task on: ApprovalsEngine.view's rule. Found by
+        // reference, title or the requester's name (PLT-20 "arjun" finds Arjun's leave), never wider than that rule.
+        const requests = await tx.$queryRaw<{ id: string; title: string; request_type: string; status: string; mine: boolean; person: string | null }[]>`
+          SELECT r.id::text, r.title, r.request_type, r.status, u.name AS person,
+            (r.requester_user_id IS NOT DISTINCT FROM ${me}::uuid OR r.raised_by_user_id IS NOT DISTINCT FROM ${me}::uuid) AS mine
+          FROM wf_requests r LEFT JOIN users u ON u.id = r.requester_user_id AND u.organization_id = r.organization_id
           WHERE r.organization_id = ${org}::uuid
             AND (r.requester_user_id = ${me}::uuid OR r.raised_by_user_id = ${me}::uuid
               OR EXISTS (SELECT 1 FROM wf_tasks t WHERE t.request_id = r.id AND (t.assignee_user_id = ${me}::uuid OR t.on_behalf_of_user_id = ${me}::uuid)))
-            AND (r.title ILIKE ${like(q)} OR r.id::text ILIKE ${`${q.toLowerCase()}%`})
+            AND (r.title ILIKE ${like(q)} OR r.id::text ILIKE ${`${q.toLowerCase()}%`} OR u.name ILIKE ${like(q)})
           ORDER BY r.created_at DESC LIMIT ${LIMIT}`;
         const candidates = !support && (keys.has('candidate:view') || keys.has('candidate:manage'))
           ? await tx.$queryRaw<{ id: string; name: string; email: string }[]>`
@@ -154,8 +178,8 @@ export class WorkspaceService {
               ORDER BY c.created_at DESC LIMIT ${LIMIT}`
           : [];
         // Tickets the person raised (as a requester): the ones their Help page shows.
-        const tickets = support ? [] : await tx.$queryRaw<{ id: string; number: string; subject: string }[]>`
-          SELECT t.id::text, t.number, t.subject FROM sd_tickets t
+        const tickets = support ? [] : await tx.$queryRaw<{ id: string; number: string; subject: string; state: string }[]>`
+          SELECT t.id::text, t.number, t.subject, t.system_state AS state FROM sd_tickets t
           WHERE t.organization_id = ${org}::uuid
             AND t.requester_person_id IN (SELECT pr.person_id FROM person_roles pr WHERE pr.organization_id = ${org}::uuid
               AND pr.role_type = 'login' AND pr.source_table = 'users' AND pr.source_id = ${me}::uuid AND pr.end_on IS NULL)
@@ -164,13 +188,42 @@ export class WorkspaceService {
         return { requests, candidates, tickets };
       }),
     ]);
-    const STATUS: Record<string, string> = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancelled: 'Cancelled' };
+    const engine = this.service(ApprovalsEngine);
+    const own = rest.tickets.map((t) => ({ id: t.id, label: t.number, secondary: `${t.subject} · Ticket · ${TICKET_STATUS[t.state] ?? t.state}`, href: `/yx/desk/help/${enc(t.id)}` }));
+    const worked = support ? [] : (await this.workedTickets(ctx, user, q)).filter((t) => !own.some((o) => o.id === t.id));
     return {
       people,
-      requests: rest.requests.map((r) => ({ id: r.id, label: r.title, secondary: `${r.request_type.replace(/[._]/g, ' ')} · ${STATUS[r.status] ?? r.status}`, href: '/yx/approvals' })),
+      requests: rest.requests.map((r) => ({
+        id: r.id,
+        label: requestRef(r.id),
+        secondary: withType(engine.typeLabel(r.request_type), requestLine(r.title, r.person, r.status)),
+        // Your own requests open in My requests; ones you approve (or approved) in Approvals.
+        href: r.mine ? '/yx/me/requests' : '/yx/approvals',
+      })),
       candidates: rest.candidates.map((c) => ({ id: c.id, label: c.name, secondary: `Candidate · ${c.email}`, href: `/yx/hiring/candidates/${enc(c.id)}` })),
-      tickets: rest.tickets.map((t) => ({ id: t.id, label: t.number, secondary: t.subject, href: `/yx/desk/help/${enc(t.id)}` })),
+      tickets: [...own, ...worked].slice(0, LIMIT),
     };
+  }
+
+  /** Tickets the person works as an agent: exactly the Service Desk's own list rule (desk seats, privacy, shares). */
+  private async workedTickets(ctx: TenantContext, user: RequestUser, q: string): Promise<SearchHit[]> {
+    let actor;
+    try {
+      actor = await this.service(DeskAccessService).actorOf(user, { ...ctx, organizationId: ctx.organizationId! });
+    } catch {
+      return []; // e.g. a desk seat that needs two-step sign-in first: the desk would refuse too
+    }
+    if (!actor.roles.size) return [];
+    const seen = actor;
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const rows = await tx.sdTicket.findMany({
+        where: { AND: [await visibleTickets(tx, seen), { OR: [{ number: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }] }] },
+        select: { id: true, number: true, subject: true, systemState: true },
+        orderBy: { createdAt: 'desc' },
+        take: LIMIT,
+      });
+      return rows.map((t) => ({ id: t.id, label: t.number, secondary: `${t.subject} · Ticket · ${TICKET_STATUS[t.systemState] ?? t.systemState}`, href: `/yx/desk/tickets/${enc(t.id)}` }));
+    });
   }
 
   /** People exactly as the Directory shows them to this person (Public fields; codes only within HR's scope). */
