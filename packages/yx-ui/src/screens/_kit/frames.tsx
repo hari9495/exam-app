@@ -238,6 +238,7 @@ export interface PhoneFrameProps {
 
 /** T8 mobile frame (M04): phone-width column with header and bottom tabs. Use with the mobile viewport global. */
 export function PhoneFrame({ tab, title, back, actions, children, hideTabs, user = ME, onAsk }: PhoneFrameProps) {
+  const nested = useContext(InLiveFrame);
   const [asking, setAsking] = useState(false);
   const [messages, setMessages] = useState<AssistantMessage[]>([
     { id: 'hi', role: 'assistant', text: `Ask me about ${title}. I answer from your own records and policies, and I never change anything without asking you first.` },
@@ -248,6 +249,14 @@ export function PhoneFrame({ tab, title, back, actions, children, hideTabs, user
       { id: `u${m.length}`, role: 'user', text },
       { id: `a${m.length}`, role: 'assistant', text: `I've looked at ${title}. Open the line you're asking about to see how it was worked out, or raise a query and the team will reply.` },
     ]);
+  // In the live app the shell is the phone's header and tabs: keep the page title and the content.
+  if (nested)
+    return (
+      <>
+        <h1 className="yx-phone__title">{title}</h1>
+        {children}
+      </>
+    );
   return (
     <div className="yx-phone">
       <header className="yx-phone__head">
