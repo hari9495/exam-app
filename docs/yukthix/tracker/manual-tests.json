@@ -198,7 +198,7 @@
   "expected": "Same layout and parts as the design: header band with company and product, a short helper line, passkey as the main button, the other sign-in options, language picker, and the legal footer (privacy notice, terms, accessibility, grievance officer, open-source notices) with \"Powered by YukthiX\".",
   "stories": [],
   "note": "Added 15 Oct 2026 after the founder asked for a side-by-side check.",
-  "status": "Fail",
+  "status": "Pass",
   "runs": [
    {
     "date": "2026-10-15",
@@ -217,6 +217,12 @@
     "result": "Fail",
     "findings": "1) The note 'Company accounts only · a second step where your company asks for one' was unclear. 2) The language picker changed nothing (YukthiX screen text has no translations). 3) The blue top stripe showed even with no company brand colour and looked like a bug.",
     "fixedIn": "PR #184: note is 'For company staff only'; language picker hidden on sign-in and legal pages (founder chose to hide); stripe only with a company brand colour; unit test guards all three"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Fail then Pass",
+    "findings": "Card was not centred (less space above than below). Fixed, then the founder passed SI-01.",
+    "fixedIn": "PR #184 (card centred; e2e checks equal space)"
    }
   ],
   "ideas": [
