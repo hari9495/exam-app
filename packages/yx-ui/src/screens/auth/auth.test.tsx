@@ -112,6 +112,20 @@ describe('SignInScreen (work email first, no company code)', () => {
     expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
   });
 
+  it('mobile: the buttons wait for a full number; a short one is named on leaving the box, not while typing', async () => {
+    render(<SignIn step="mobile" options={ALL_WAYS} onSendCode={vi.fn()} />);
+    const box = screen.getByLabelText(/Mobile number/);
+    await userEvent.type(box, '98450 123');
+    expect(screen.getByRole('button', { name: 'Text me a code' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send a code on WhatsApp' })).toBeDisabled();
+    expect(screen.queryByText(/Enter your full mobile number/)).toBeNull();
+    await userEvent.tab();
+    expect(screen.getByText('Enter your full mobile number, like 98450 12345')).toBeInTheDocument();
+    await userEvent.type(box, '45');
+    expect(screen.queryByText(/Enter your full mobile number/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Text me a code' })).toBeEnabled();
+  });
+
   it('mobile with WhatsApp only: WhatsApp is the main button', async () => {
     const onSendCode = vi.fn();
     render(<SignIn step="mobile" options={{ ...ALL_WAYS, sms: false }} onSendCode={onSendCode} start={{ mobile: '9845012345' }} />);
