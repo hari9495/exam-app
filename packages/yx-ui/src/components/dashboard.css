@@ -6,7 +6,8 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--yx-space-6);
-  align-items: stretch;
+  /* Every widget is as tall as its content, never stretched to the one beside it (founder, 19 Oct 2026). */
+  align-items: start;
 }
 .yx-dashboard__empty { grid-column: 1 / -1; border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-card); }
 .yx-dashboard[data-editing] .yx-widget { border-color: var(--yx-color-border-strong); }
@@ -27,8 +28,6 @@
 .yx-widget[data-size="4"] { grid-column: span 4; }
 .yx-widget[data-size="8"] { grid-column: span 8; }
 .yx-widget[data-size="12"] { grid-column: span 12; }
-/* "Needs your action" is as tall as its rows, not stretched to the widget beside it (founder, 19 Oct 2026). */
-.yx-widget:has(.yx-actions) { align-self: start; }
 .yx-widget__header { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-2); min-height: var(--yx-control-sm); }
 .yx-widget__title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yx-widget__actions { display: flex; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
