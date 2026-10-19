@@ -30,6 +30,10 @@ Things deliberately left for launch. Development runs locally until then (test k
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)
 
+- [ ] **Platform email sender.** Set `SMTP_FROM_ADDRESS` on the API to a YukthiX address on a domain with SPF and DKIM
+  (e.g. `YukthiX <no-reply@yukthix.app>`). Without it the sender falls back to `no-reply@exam-platform.test`, which
+  real mailboxes reject or mark as spam. Sign-in codes, password resets and account emails all use it (SI-09, 19 Oct 2026).
+
 - [ ] **Base domain.** Set `YX_BASE_DOMAIN` (e.g. `yukthix.app`) on the API. Each company then signs in at
       `https://<company slug>.yukthix.app`; the API takes the company from the Host / Origin only when it is
       exactly `<label>.yukthix.app` (never from `X-Forwarded-Host`) and allows those origins for CORS.
