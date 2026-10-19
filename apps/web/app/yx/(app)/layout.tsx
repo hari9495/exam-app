@@ -106,7 +106,15 @@ function Frame({ children }: { children: React.ReactNode }) {
     [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
-  const palette = useYxPalette({ nav, pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => router.push(href), openHelp: () => setHelpOpen(true) });
+  const palette = useYxPalette({ nav, pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {
+      setPaletteOpen(false); // whatever search opens, the search box closes first (founder, 19 Oct 2026)
+      router.push(href);
+    },
+    openHelp: () => {
+      setPaletteOpen(false);
+      setHelpOpen(true);
+    },
+  });
   // Company / period button: people who read the structure, when there is more than one entity; the period for pay.
   const seesEntities = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const entities = useOrg<LegalEntity[]>('/legal-entities', seesEntities);

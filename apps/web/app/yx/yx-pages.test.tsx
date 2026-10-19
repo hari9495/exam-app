@@ -868,7 +868,25 @@ describe('/yx layout', () => {
     await userEvent.type(box, 'meera');
     await userEvent.click(await screen.findByRole('option', { name: /Meera Iyer/ }, { timeout: 3000 }));
     expect(push).toHaveBeenCalledWith('/yx/people/directory?q=Meera%20Iyer');
+    // Whatever search opens, the search box closes (founder, 19 Oct 2026).
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
     expect(api).toHaveBeenCalledWith('/workspace/search?q=meera', {}, 'tok');
+  });
+
+  it('N then L with search open opens Apply leave and closes the search box', async () => {
+    const push = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (usePathname as jest.Mock).mockReturnValue('/yx/home');
+    // An employee (they have a manager), so My leave and its N L shortcut exist.
+    route({ ...PLAIN, 'GET /people/team': { managerId: 'm1', members: [] }, 'GET /workspace/search': { people: [], requests: [], candidates: [], tickets: [] } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await screen.findByRole('link', { name: 'My leave' }, { timeout: 3000 }).catch(() => undefined);
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    await screen.findByRole('combobox');
+    fireEvent.keyDown(window, { key: 'n' });
+    fireEvent.keyDown(window, { key: 'l' });
+    await waitFor(() => expect(push).toHaveBeenCalledWith(expect.stringMatching(/\?apply=1$/)));
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
   });
 
   it('the bell lists the person own notifications; Help opens the help drawer; the account menu has My security', async () => {
