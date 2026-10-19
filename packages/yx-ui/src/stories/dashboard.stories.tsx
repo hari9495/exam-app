@@ -181,50 +181,10 @@ const PAYROLL: DashboardWidget[] = [
   { id: 'close', title: 'Payroll close', size: 4, content: <Gauge label="Inputs received for October" value={64} target={100} variant="bar" /> },
 ];
 
-/* ---------- Recruiter ---------- */
-const RECRUITER: DashboardWidget[] = [
-  {
-    id: 'actions',
-    title: 'Needs your action',
-    size: 12,
-    pinned: true,
-    bare: true,
-    content: (
-      <Actions
-        total={14}
-        items={[
-          { id: 'r1', type: 'Feedback', title: 'Interview feedback missing: Senior QA Engineer', who: 'Thomas George', due: d(28), kind: 'review' },
-          { id: 'r2', type: 'Offer', title: 'Offer approval, ₹18,40,000 CTC', who: 'Aisha Khan', due: d(30) },
-          { id: 'r3', type: 'Requisition', title: 'New requisition: 3 Maintenance Technicians, Hosur', who: 'Manoj Patil', due: d(2, 9) },
-        ]}
-      />
-    ),
-  },
-  stat('open', <StatCard label="Open positions" value={18} previous={18} previousLabel="August" drill={{ label: 'View 18 positions', href: '#jobs' }} />, 'Open positions'),
-  stat('apps', <StatCard label="Applications this week" value={214} previous={176} previousLabel="last week" trend={[120, 150, 140, 176, 214]} drill={{ label: 'View 214 applications', href: '#apps' }} />, 'Applications'),
-  stat('offers', <StatCard label="Offers out" value={7} previous={9} previousLabel="last week" drill={{ label: 'View 7 offers', href: '#offers' }} />, 'Offers'),
-  stat('tth', <StatCard label="Days to hire, median" value={34} unit="days" previous={38} previousLabel="last quarter" drill={{ label: 'View hires', href: '#hires' }} />, 'Days to hire'),
-  {
-    id: 'funnel',
-    title: 'Hiring funnel',
-    size: 6,
-    bare: true,
-    content: <Funnel title="Hiring funnel, Q2" stages={[{ label: 'Applied', count: 1_240 }, { label: 'Screened', count: 412 }, { label: 'Interviewed', count: 138 }, { label: 'Offered', count: 31 }, { label: 'Joined', count: 24 }]} />,
-  },
-  {
-    id: 'source',
-    title: 'Hires by source',
-    size: 6,
-    bare: true,
-    content: <BarChart title="Hires by source" orientation="horizontal" xLabel="Source" categories={['Referral', 'Careers page', 'Naukri', 'LinkedIn', 'Campus']} series={[{ name: 'Hires', values: [9, 6, 5, 3, 1] }]} />,
-  },
-];
-
 export const EmployeeHome: S = { render: () => <Home title="Good morning, Kavya" widgets={EMPLOYEE} /> };
 export const ManagerHome: S = { render: () => <Home title="Good morning, Joseph" widgets={MANAGER} /> };
 export const HrAdminHome: S = { name: 'HR admin home', render: () => <Home title="Good morning, Fatima" widgets={HR} /> };
 export const PayrollAdminHome: S = { render: () => <Home title="Good morning, Divya" widgets={PAYROLL} /> };
-export const RecruiterHome: S = { render: () => <Home title="Good morning, Aisha" widgets={RECRUITER} /> };
 export const EditMode: S = { render: () => <Home title="Good morning, Fatima" widgets={HR} editing /> };
 export const ManagerHomeMobile: S = { globals: { viewport: { value: 'mobile2', isRotated: false } }, render: ManagerHome.render };
 export const ManagerHomeDark: S = { globals: { theme: 'dark' }, render: ManagerHome.render };
