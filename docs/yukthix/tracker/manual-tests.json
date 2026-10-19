@@ -396,6 +396,12 @@
     "result": "In progress",
     "findings": "Grey bell icons and separate footer links fixed. Old notices made before the fix keep their old text (stored). HR got no email for Arjun's leave: correct, the approver is his manager (panel@). The approval email subject read 'Leave: Manager: Arjun Kulkarni: Casual leave, 21 Oct (1 day)'.",
     "fixedIn": "PR #192: subjects now 'Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)', 'Still waiting for your approval: …', 'Escalated to you: …', 'Approved: your request for …' (unit test)"
+   },
+   {
+    "date": "2026-10-20",
+    "result": "Fail (fixed)",
+    "findings": "Approval email was bare HTML. The notice opened the whole Approvals list (had to scroll to the request). 'Do not approve' was solid red next to a light Approve, so the negative looked like the main action (same on expense and travel approvals). Old demo request (Kavya Reddy) shows 'From ·' with no name.",
+    "fixedIn": "PR #192: designed approval email (heading, request, step, Review button); notices link to /yx/approvals?request=<id> which scrolls to and marks the request; Do not approve is plain until the reason dialog (tests)"
    }
   ],
   "ideas": [],
