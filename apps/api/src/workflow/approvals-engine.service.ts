@@ -315,6 +315,7 @@ export class ApprovalsEngine {
         summary: input.summary.slice(0, 40) as unknown as Prisma.InputJsonValue,
         requesterUserId: input.requesterUserId,
         raisedByUserId: input.raisedByUserId,
+        subjectPersonId: input.subjectPersonId,
         steps: steps as unknown as Prisma.InputJsonValue,
         risk: input.risk ?? type.risk,
       },
@@ -618,6 +619,8 @@ export class ApprovalsEngine {
       const tasks = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: 'open' }, orderBy: { createdAt: 'asc' }, take: 200 });
       const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: tasks.map((t) => t.requestId) }, status: 'pending' } })).map((r) => [r.id, r]));
       const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.map((t) => t.onBehalfOfUserId)));
+      const personIds = [...new Set([...reqs.values()].map((r) => r.subjectPersonId).filter((x): x is string => Boolean(x)))];
+      const persons = new Map((personIds.length ? await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : []).map((p) => [p.id, p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ')]));
       return tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
@@ -632,6 +635,8 @@ export class ApprovalsEngine {
             requester: r.requesterUserId ? (names.get(r.requesterUserId) ?? '') : '',
             raisedBy: r.raisedByUserId && r.raisedByUserId !== r.requesterUserId ? (names.get(r.raisedByUserId) ?? '') : null,
             onBehalfOf: t.onBehalfOfUserId ? (names.get(t.onBehalfOfUserId) ?? '') : null,
+            // Who the request is about (the inbox row's person); the requester when the request names no one.
+            person: (r.subjectPersonId && persons.get(r.subjectPersonId)) || (r.requesterUserId ? (names.get(r.requesterUserId) ?? '') : ''),
             step: { index: t.step + 1, of: steps.length, name: steps[t.step].name, need: steps[t.step].need, approvers: steps[t.step].approverIds.length },
             dueAt: t.dueAt,
             submittedAt: r.submittedAt,

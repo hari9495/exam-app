@@ -293,8 +293,11 @@ export class LeaveService implements OnModuleInit {
       const org = c.organizationId;
       // G1 (gap pass G1): leave names in the person's language where the company translated them.
       const words = await translated(tx, c, await employeeLanguage(tx, c, f.employeeId), 'leave_type', (await this.types(tx, org)).map((t) => t.id));
-      const balances = (await this.balancesIn(tx, c, f, today)).map((b) => ({ ...b, name: words.get(b.leaveTypeId) ?? b.name }));
       const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+      // The balance on the first day of the leave year (opening entries included), where the ledger has one: the
+      // Home says how it changed since then.
+      const atStart = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId, entryOn: { lte: asDate(year.start) } }, _sum: { days: true } })).map((g) => [g.leaveTypeId, Math.round(num(g._sum.days) * 100) / 100]));
+      const balances = (await this.balancesIn(tx, c, f, today)).map((b) => ({ ...b, name: words.get(b.leaveTypeId) ?? b.name, ...(b.hasBalance && atStart.has(b.leaveTypeId) ? { atYearStart: atStart.get(b.leaveTypeId)! } : {}) }));
       const requests = await tx.leaveRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(addDays(today, -400)) } }, orderBy: { fromOn: 'desc' }, take: 100 });
       const types = new Map((await this.types(tx, org)).map((t) => [t.id, { ...t, name: words.get(t.id) ?? t.name }]));
       const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));

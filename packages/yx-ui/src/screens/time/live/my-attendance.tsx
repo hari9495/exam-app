@@ -9,6 +9,8 @@ import { CodeField, TextArea, TimeField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
+import { ClockCard } from '../time-kit';
+import type { ClockState, Punch } from '../time-logic';
 import { DayStatusBadge, LivePage, MODE_TEXT, clock, dateText, dayText, duration, timeIn } from './kit';
 import type { DayRow, FixInput, FixKind, LoadState, MyAttendance, MyNightWork, NightCodeSent, PunchResult } from './types';
 
@@ -369,5 +371,59 @@ function NightWork({ night, p }: { night: MyNightWork; p: MyAttendanceScreenProp
         </Drawer>
       )}
     </Card>
+  );
+}
+
+const SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
+/** Hours and minutes of a moment in a time zone, as "HH:MM" and minutes since midnight. */
+function zoneTime(at: Date, zone: string) {
+  const [h, m, s] = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: zone }).split(':').map(Number);
+  const hh = h % 24;
+  return { hhmm: `${String(hh).padStart(2, '0')}:${String(m).padStart(2, '0')}`, minute: hh * 60 + m, second: s };
+}
+const hhmmOf = (minute: number) => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+
+/**
+ * "Attendance today" on the Home (PLT-02): the designed clock card on the person's live day. Checking in and out goes to
+ * the server, which applies the location and network rules; there is no break punch in the live app yet.
+ */
+export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref, onRegularise }: {
+  data: MyAttendance;
+  now: Date;
+  getLocation: MyAttendanceScreenProps['getLocation'];
+  onPunch: MyAttendanceScreenProps['onPunch'];
+  attendanceHref: string;
+  onRegularise: () => void;
+}) {
+  const t = zoneTime(now, data.zone);
+  const punches: Punch[] = data.punches
+    .filter((p) => p.accepted)
+    .map((p) => ({ id: p.id, kind: p.kind, time: zoneTime(new Date(p.at), data.zone).hhmm, source: SOURCES.includes(p.source as Punch['source']) ? (p.source as Punch['source']) : 'web', where: p.where ?? '', verdict: p.verdict === 'outside' ? 'outside' : p.verdict === 'field' ? 'field' : p.verdict === 'network' ? 'network' : 'inside' }));
+  const state: ClockState = data.next === 'out' ? 'working' : punches.length ? 'out' : 'not_in';
+  const day = data.days.find((d) => d.on === data.today);
+  const dayOff = data.shift.off ? 'Weekly off today' : day?.status === 'holiday' ? 'Holiday today' : day?.status === 'leave' && (!day.leavePart || day.leavePart === 'full') ? 'On leave today' : undefined;
+  return (
+    <ClockCard
+      variant="home"
+      live
+      now={t.minute}
+      seconds={t.second}
+      date={now}
+      // The server decides when check-in opens; the card never blocks before the shift.
+      shift={{ name: data.shift.name, start: hhmmOf(data.shift.start), end: hhmmOf(data.shift.end), graceMin: data.shift.grace, opensBeforeMin: data.shift.start }}
+      state={state}
+      punches={punches}
+      mode={data.shift.checkIn}
+      breaks={false}
+      dayOff={dayOff}
+      punchesHref={attendanceHref}
+      lateMarksBefore={data.days.filter((d) => d.on < data.today && (d.lateMinutes ?? 0) > 0).length}
+      onRegularise={onRegularise}
+      onPunch={async (kind) => {
+        const loc = await getLocation();
+        const r = await onPunch(kind, loc.pin);
+        return { accepted: r.accepted, message: r.accepted ? r.message : loc.problem ? `${r.message} ${loc.problem}` : r.message };
+      }}
+    />
   );
 }

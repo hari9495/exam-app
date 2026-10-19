@@ -453,6 +453,16 @@ export interface ClockCardProps {
   onRegularise?: () => void;
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
+  /** Live app: records the punch on the server; the card shows the refusal, the parent reloads the day. */
+  onPunch?: (kind: 'in' | 'out') => Promise<{ accepted: boolean; message: string }>;
+  /** Breaks are punched (Start break / End break). The live app has no break punch yet. */
+  breaks?: boolean;
+  /** Where "Today's punches" opens on the home card. */
+  punchesHref?: string;
+  /** Late marks already this month (decides the "last free late mark" note). */
+  lateMarksBefore?: number;
+  /** Not a working day for this person: "On leave today", "Weekly off today", "Holiday: Diwali". No clock-in. */
+  dayOff?: string;
 }
 
 // A break is normal, not a risk: neutral.
@@ -478,7 +488,12 @@ export function ClockCard(p: ClockCardProps) {
     onAlternative,
     onRegularise,
     defaultWorkMode = 'office',
+    breaks = true,
+    punchesHref = '#attendance',
+    dayOff,
   } = p;
+  const [refused, setRefused] = useState<string | null>(null);
+  const [punching, setPunching] = useState(false);
   const [stateInner, setStateInner] = useState<ClockState>(p.defaultState ?? 'not_in');
   const state = p.state ?? stateInner;
   const [punchesInner, setPunchesInner] = useState<Punch[]>(p.defaultPunches ?? []);
@@ -515,7 +530,8 @@ export function ClockCard(p: ClockCardProps) {
     deviceApproved,
     outAt,
   };
-  const { actions, block } = evaluateClock(ctx);
+  const evaluated = evaluateClock(ctx);
+  const { actions, block } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
 
   const firstIn = punches.find((x) => x.kind === 'in')?.time;
   const lastBreak = [...punches].reverse().find((x) => x.kind === 'break_start')?.time;
@@ -526,10 +542,10 @@ export function ClockCard(p: ClockCardProps) {
   const late = firstIn ? lateMinutes(shift.start, firstIn, shift.graceMin) : 0;
   const early = state === 'out' && outAt && toMin(outAt) < toMin(shift.end) - shift.graceMin ? toMin(shift.end) - toMin(outAt) : 0;
   // Not in yet and past grace: say so before the punch, not after (same rule as the day card's late minutes).
-  const lateIfNow = state === 'not_in' && nowMin < toMin(shift.end) ? lateMinutes(shift.start, toHHMM(nowMin), shift.graceMin) : 0;
+  const lateIfNow = !dayOff && state === 'not_in' && nowMin < toMin(shift.end) ? lateMinutes(shift.start, toHHMM(nowMin), shift.graceMin) : 0;
   // Which late mark a clock-in now would be (3 a month are free).
   const sameMonth = ({ date: d }: AttendanceDay) => d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear() && d.getDate() < date.getDate();
-  const nextMark = SEPTEMBER.filter((d) => sameMonth(d) && (d.lateMin ?? 0) > 0).length + 1;
+  const nextMark = (p.lateMarksBefore ?? SEPTEMBER.filter((d) => sameMonth(d) && (d.lateMin ?? 0) > 0).length) + 1;
   const markNote = nextMark === 3 ? ' · last free late mark' : nextMark > 3 ? ' · late penalty applies' : '';
   // WFH / on-duty days already used this month (limit 4 each).
   const usedOf = (code: DayCode) => SEPTEMBER.filter((d) => sameMonth(d) && d.code === code).length;
@@ -537,8 +553,9 @@ export function ClockCard(p: ClockCardProps) {
   const web = channel === 'web';
   const blockTitle = !block ? '' : web && block.code === 'outside' ? `Not on ${locationName} Wi-Fi` : web && block.code === 'device' ? "This computer isn't approved for clock-in" : block.title;
 
-  const status =
-    state === 'not_in'
+  const status = dayOff
+    ? dayOff
+    : state === 'not_in'
       ? 'Not clocked in'
       : state === 'working'
         ? `Working since ${fmt12(firstIn ?? '09:30')}`
@@ -548,6 +565,16 @@ export function ClockCard(p: ClockCardProps) {
 
   const act = (a: ClockAction) => {
     const kind: Punch['kind'] = a === 'clock_in' ? 'in' : a === 'clock_out' ? 'out' : a === 'start_break' ? 'break_start' : 'break_end';
+    if (p.onPunch && (kind === 'in' || kind === 'out')) {
+      setRefused(null);
+      setPunching(true);
+      void p
+        .onPunch(kind)
+        .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
+        .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
+        .finally(() => setPunching(false));
+      return;
+    }
     const next = nextClockState(state, a);
     const punch: Punch = {
       id: `n${punches.length + 1}`,
@@ -565,7 +592,7 @@ export function ClockCard(p: ClockCardProps) {
   };
 
   const primary: ClockAction | null = actions.includes('clock_in') ? 'clock_in' : actions.includes('clock_out') ? 'clock_out' : null;
-  const breakAct: ClockAction | null = actions.includes('start_break') ? 'start_break' : actions.includes('end_break') ? 'end_break' : null;
+  const breakAct: ClockAction | null = !breaks ? null : actions.includes('start_break') ? 'start_break' : actions.includes('end_break') ? 'end_break' : null;
   // A note attaches to a punch, so it is offered once today has one.
   const canNote = variant !== 'home' && punches.length > 0 && (primary !== null || breakAct !== null);
   const statusId = useId();
@@ -608,7 +635,7 @@ export function ClockCard(p: ClockCardProps) {
         </div>
       </div>
 
-      <Meter
+      {!dayOff && <Meter
         label="Hours worked today"
         value={Math.min(worked, expected)}
         max={expected}
@@ -616,7 +643,7 @@ export function ClockCard(p: ClockCardProps) {
         warnAt={Infinity}
         dangerAt={Infinity}
         valueText={`${fmtDuration(worked)} of ${fmtDuration(expected)} expected`}
-      />
+      />}
       {/* A few minutes short is normal; a bigger gap gets a plain reason, still neutral. */}
       {short > 10 && <p className="yx-tim-muted">{fmtDuration(short)} short of the expected hours</p>}
 
@@ -647,21 +674,23 @@ export function ClockCard(p: ClockCardProps) {
         </InlineAlert>
       )}
 
-      <div className="yx-tim-clock__actions">
+      {refused && <InlineAlert tone="danger" title="Not recorded">{refused}</InlineAlert>}
+
+      {!dayOff && <div className="yx-tim-clock__actions">
         {state === 'not_in' && (
-          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} onClick={() => primary && act(primary)}>Clock in</Button>
+          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching} onClick={() => primary && act(primary)}>Clock in</Button>
         )}
         {(state === 'working' || state === 'break') && (
-          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} onClick={() => act('clock_out')}>Clock out</Button>
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching} onClick={() => act('clock_out')}>Clock out</Button>
         )}
-        {(state === 'working' || state === 'break') && (
+        {breaks && (state === 'working' || state === 'break') && (
           <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
         {state === 'out' && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}
         {canNote && !noteOpen && <Button size="lg" icon={StickyNote} onClick={() => setNoteOpen(true)}>{note ? 'Edit note' : 'Add note'}</Button>}
         {state === 'break' && primary !== 'clock_out' && <span className="yx-tim-muted">End your break to clock out</span>}
-      </div>
+      </div>}
 
       {canNote && noteOpen && (
         <div className="yx-tim-clock__note">
@@ -686,12 +715,12 @@ export function ClockCard(p: ClockCardProps) {
       </div>}
 
       <div className="yx-tim-clock__foot">
-        {variant === 'home' && <Link href="#attendance">Today's punches ({punches.length})</Link>}
+        {variant === 'home' && <Link href={punchesHref}>Today's punches ({punches.length})</Link>}
         {/*
           Only when there is something to fix: a punch today or the shift has started. Not when clocked out (the alert
           offers "Regularise today"), nor when the alert already gives the next step (device, outside, not started).
         */}
-        {state !== 'out' && (punches.length > 0 || nowMin >= toMin(shift.start)) && !block && <Button size="sm" onClick={onRegularise}>Regularise</Button>}
+        {!dayOff && state !== 'out' && (punches.length > 0 || nowMin >= toMin(shift.start)) && !block && <Button size="sm" onClick={onRegularise}>Regularise</Button>}
         {variant === 'page' && state === 'not_in' && <span className="yx-tim-muted">Grace {shift.graceMin} min · clock-in opens {fmt12(toHHMM(toMin(shift.start) - shift.opensBeforeMin))}</span>}
       </div>
     </section>

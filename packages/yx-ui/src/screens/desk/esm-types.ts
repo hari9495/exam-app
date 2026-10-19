@@ -105,6 +105,8 @@ export interface ApprovalTask {
   requester: string;
   raisedBy: string | null;
   onBehalfOf: string | null;
+  /** Who the request is about (the employee on leave, the claimant); the requester when it names no one. */
+  person?: string;
   step: { index: number; of: number; name: string; need: number; approvers: number };
   dueAt: string | null;
   submittedAt: string;

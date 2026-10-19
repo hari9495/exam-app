@@ -3,7 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
-import { employeesInEntity } from '../access/scope';
+import { buildViewer, employeesInEntity, tenantWide } from '../access/scope';
 import { EmployeeHistoryService, type RequestUser } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -11,8 +11,10 @@ import { addDays } from '../time/time-maths';
 import { AttendanceService } from '../time/attendance.service';
 import { PeriodsService } from '../time/periods.service';
 import { PayRunsService } from '../payroll/runs.service';
+import { withPayScope } from '../payroll/pay-access';
 import { JoinersService } from '../lifecycle/joiners.service';
 import { ExitsService } from '../lifecycle/exits.service';
+import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 
 export interface SearchHit {
@@ -40,12 +42,21 @@ const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycl
 export interface HomeWidgets {
   month: string;
   attendanceExceptions?: number;
-  notReadyForPayroll?: { notReady: number; people: number; runId: string | null };
+  /** noRun: the person prepares payroll but the month has no open run yet. */
+  notReadyForPayroll?: { notReady: number; people: number; runId: string | null; noRun?: boolean };
   openCases?: number;
   dueLocks?: { month: string; entityId: string; entityName: string; lockableFrom: string; exceptions: number; waiting: number }[];
   probationsDue?: { count: number; firstDue: string | null };
-  joiners?: { id: string; name: string; on: string; department: string | null; location: string; openTasks: number }[];
-  leavers?: { id: string; name: string; on: string; clearanceOpen: number }[];
+  joiners?: { id: string; name: string; on: string; department: string | null; location: string; openTasks: number; pendingTasks: string[] }[];
+  leavers?: { id: string; name: string; on: string; clearanceOpen: number; pendingClearance: string[] }[];
+  /** Joining in the chosen month (invited, accepted or joined). */
+  joining?: number;
+  /** Fixed-term contracts ending in the next 30 days. */
+  contractsEnding?: { count: number; lastOn: string };
+  /** Last month's numbers, only where one is on record and covers exactly what the person sees now. */
+  previous?: { month: string; attendanceExceptions?: number; notReadyForPayroll?: number; openCases?: number; joining?: number };
+  /** "Coming up": birthdays and work anniversaries in the person's circle this coming week. */
+  celebrations?: { id: string; name: string; kind: 'birthday' | 'anniversary'; on: string; years?: number }[];
   /** People who hold a hiring key: what waits for them, today's interviews, this week and their open jobs. */
   hiring?: HiringHome;
 }
@@ -82,11 +93,25 @@ export class WorkspaceService {
     const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
     const week = { from: addDays(today, -dow), to: addDays(today, 6 - dow) };
     const inWeek = (d: string | null | undefined) => Boolean(d && d >= week.from && d <= week.to);
+    const prevMonth = addDays(`${month}-01`, -1).slice(0, 7);
+    const previous = await this.snapshotsFor(ctx, prevMonth);
+    const prev: NonNullable<HomeWidgets['previous']> = { month: prevMonth };
 
     const exceptions = await this.service(AttendanceService).exceptionCount(ctx, user, month, entityId);
-    if (exceptions !== null) out.attendanceExceptions = exceptions;
-    const notReady = support ? null : await this.service(PayRunsService).notReady(ctx, user, month, entityId);
-    if (notReady) out.notReadyForPayroll = notReady;
+    if (exceptions !== null) {
+      out.attendanceExceptions = exceptions;
+      // The stored number counts the whole company (or entity): compare only for someone who sees all of it.
+      const sv = await buildViewer(this.prisma, this.tenantPrisma, user, ['attendance.view']);
+      const p = previous.get(`attendance_exceptions:${entityId ?? ''}`);
+      if (p !== undefined && tenantWide(sv, 'attendance.view') && !sv.actingForOther) prev.attendanceExceptions = p;
+    }
+    const payroll = support ? [] : await this.service(PayRunsService).preparesFor(ctx, user);
+    if (payroll.length) {
+      out.notReadyForPayroll = (await this.service(PayRunsService).notReady(ctx, user, month, entityId)) ?? { notReady: 0, people: 0, runId: null, noRun: true };
+      const all = await this.entityIds(ctx);
+      const p = previous.get(`not_ready_payroll:${entityId ?? ''}`);
+      if (p !== undefined && (entityId ? payroll.includes(entityId) : all.every((id) => payroll.includes(id)))) prev.notReadyForPayroll = p;
+    }
     const locks = await this.service(PeriodsService).dueLocks(ctx, user, entityId);
     if (locks?.length) out.dueLocks = locks;
 
@@ -100,26 +125,84 @@ export class WorkspaceService {
       const board = await this.service(JoinersService).board(ctx, user);
       out.joiners = board.joiners
         .filter((j) => inWeek(j.joiningOn) && (!entityId || j.legalEntityId === entityId))
-        .map((j) => ({ id: j.id, name: j.name, on: j.joiningOn, department: j.department, location: j.location, openTasks: j.openTasks }));
+        .map((j) => ({ id: j.id, name: j.name, on: j.joiningOn, department: j.department, location: j.location, openTasks: j.openTasks, pendingTasks: j.pendingTasks }));
+      const joining = await this.service(JoinersService).joining(ctx, user, month, entityId);
+      if (joining) {
+        out.joining = joining.count;
+        const p = previous.get(`joining:${entityId ?? ''}`);
+        if (p !== undefined && joining.full) prev.joining = p;
+      }
     }
     if (keys.has('lifecycle.exit.view') || keys.has('lifecycle.exit.manage')) {
       const rows = (await this.service(ExitsService).list(ctx, user)).rows.filter((k) => inWeek(k.lastDay));
       const inEntity = entityId ? await inCompany(this.tenantPrisma, ctx, (tx, c) => employeesInEntity(tx, c, entityId, rows.map((r) => r.employeeId))) : null;
-      out.leavers = rows.filter((k) => !inEntity || inEntity.has(k.employeeId)).map((k) => ({ id: k.id, name: k.name, on: k.lastDay, clearanceOpen: k.clearance.open }));
+      const shown = rows.filter((k) => !inEntity || inEntity.has(k.employeeId));
+      // Which departments still have to clear each leaver (the list above already applied the exit rule).
+      const open = shown.length
+        ? await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.clearanceItem.findMany({ where: { organizationId: c.organizationId, exitCaseId: { in: shown.map((k) => k.id) }, status: 'open' }, select: { exitCaseId: true, department: true } }))
+        : [];
+      out.leavers = shown.map((k) => ({ id: k.id, name: k.name, on: k.lastDay, clearanceOpen: k.clearance.open, pendingClearance: [...new Set(open.filter((i) => i.exitCaseId === k.id).map((i) => i.department))] }));
+      const until = addDays(today, 30);
+      const ending = (await this.service(ExitExtrasService).upcoming(ctx, user)).rows.filter((r) => r.kind === 'contract_end' && r.on <= until);
+      if (ending.length) out.contractsEnding = { count: ending.length, lastOn: ending[ending.length - 1].on };
     }
     if (!support && keys.has('desk.ticket.work')) {
-      out.openCases = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-        // Open tickets on the desks the person works today (the queue their Tickets page shows).
-        const [r] = await tx.$queryRaw<{ n: number }[]>(Prisma.sql`SELECT count(*)::int AS n FROM sd_tickets t
-          WHERE t.organization_id = ${c.organizationId}::uuid AND t.system_state NOT IN ('solved', 'closed')
-            AND t.desk_id IN (SELECT m.desk_id FROM sd_desk_members m WHERE m.organization_id = ${c.organizationId}::uuid AND m.user_id = ${user.userId}::uuid
-              AND m.ended_at IS NULL AND m.valid_from <= ${today}::date AND (m.valid_to IS NULL OR m.valid_to >= ${today}::date))`);
-        return r?.n ?? 0;
-      });
+      // Open tickets on the desks the person works today (the queue their Tickets page shows), desk by desk.
+      const desks = await inCompany(this.tenantPrisma, ctx, (tx, c) =>
+        tx.$queryRaw<{ desk: string; n: number }[]>(Prisma.sql`SELECT m.desk_id::text AS desk,
+            (SELECT count(*)::int FROM sd_tickets t WHERE t.organization_id = m.organization_id AND t.desk_id = m.desk_id AND t.system_state NOT IN ('solved', 'closed')) AS n
+          FROM sd_desk_members m WHERE m.organization_id = ${c.organizationId}::uuid AND m.user_id = ${user.userId}::uuid
+            AND m.ended_at IS NULL AND m.valid_from <= ${today}::date AND (m.valid_to IS NULL OR m.valid_to >= ${today}::date)
+          GROUP BY m.desk_id, m.organization_id`),
+      );
+      out.openCases = desks.reduce((n, d) => n + d.n, 0);
+      const before = desks.map((d) => previous.get(`open_cases:${d.desk}`));
+      if (desks.length && before.every((x) => x !== undefined)) prev.openCases = before.reduce((n: number, x) => n + (x ?? 0), 0);
     }
+    if (Object.keys(prev).length > 1) out.previous = prev;
+    const celebrations = await this.celebrations(ctx, user);
+    if (celebrations) out.celebrations = celebrations;
     const hiring = await this.service(HiringHomeService).home(ctx, user);
     if (hiring) out.hiring = hiring;
     return out;
+  }
+
+  private entityIds(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true } })).map((e) => e.id));
+  }
+
+  /** A month's stored Home numbers, keyed "metric:scope" ('' = the whole company). */
+  private snapshotsFor(ctx: TenantContext, month: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
+      new Map((await tx.homeSnapshot.findMany({ where: { organizationId: c.organizationId, month: new Date(`${month}-01T00:00:00Z`) } })).map((r) => [`${r.metric}:${r.scopeId ?? ''}`, r.value])),
+    );
+  }
+
+  /** Daily: this month's Home numbers for the company, each entity and each help desk (the last run in a month stands). */
+  async snapshot(org: string): Promise<number> {
+    const month = todayIst().slice(0, 7);
+    return inCompany(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, async (tx, c) => {
+      const entities = (await tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true } })).map((e) => e.id);
+      const rows: [string, string | null, number][] = [];
+      for (const entity of [null, ...entities]) {
+        rows.push(['attendance_exceptions', entity, await this.service(AttendanceService).exceptionTotal(tx, c, month, entity)]);
+        rows.push(['joining', entity, await this.service(JoinersService).joiningTotal(tx, org, month, entity)]);
+        // The job reads the runs of the entities it counts: the pay guard opens to those, for this read only.
+        const ids = entity ? [entity] : entities;
+        const r = await withPayScope(tx, ids, () => this.service(PayRunsService).notReadyIn(tx, org, ids, month));
+        if (r) rows.push(['not_ready_payroll', entity, r.notReady]);
+      }
+      const desks = await tx.$queryRaw<{ desk: string; n: number }[]>`SELECT d.id::text AS desk,
+          (SELECT count(*)::int FROM sd_tickets t WHERE t.organization_id = d.organization_id AND t.desk_id = d.id AND t.system_state NOT IN ('solved', 'closed')) AS n
+        FROM sd_desks d WHERE d.organization_id = ${org}::uuid`;
+      for (const d of desks) rows.push(['open_cases', d.desk, d.n]);
+      for (const [metric, scope, value] of rows)
+        await tx.$executeRaw`
+          INSERT INTO home_snapshots (organization_id, metric, scope_id, month, value) VALUES (${org}::uuid, ${metric}, ${scope}::uuid, ${`${month}-01`}::date, ${value})
+          ON CONFLICT (organization_id, metric, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'::uuid), month)
+          DO UPDATE SET value = EXCLUDED.value, taken_at = now()`;
+      return rows.length;
+    });
   }
 
   private granted(user: RequestUser) {
@@ -188,6 +271,47 @@ export class WorkspaceService {
       if (e instanceof ForbiddenException) return [];
       throw e;
     }
+  }
+
+  /**
+   * "Coming up" (PLT-02): birthdays and work anniversaries in the next 7 days among the person's circle (their manager,
+   * the people who share that manager, and their own direct reports). Day and month only, never the year of birth, and
+   * never for someone who hid their birthday (P02 Q4, YX-SEC-17). Null for someone with no employee record.
+   */
+  private async celebrations(ctx: TenantContext, user: RequestUser): Promise<HomeWidgets['celebrations'] | null> {
+    if (user.actingSuperAdmin || user.impersonatorUserId) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = await tx.employee.findFirst({ where: { organizationId: org, userId: user.userId }, select: { id: true } });
+      if (!me) return null;
+      const rows = await tx.$queryRaw<{ id: string; given_name: string; family_name: string | null; preferred_name: string | null; dob: Date | null; hide: boolean | null; joined_on: Date | null }[]>`
+        WITH cur AS (
+          SELECT a.employee_id, a.manager_employee_id FROM employee_assignments a
+          WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')),
+        mine AS (SELECT manager_employee_id AS boss FROM cur WHERE employee_id = ${me.id}::uuid),
+        circle AS (
+          SELECT boss AS id FROM mine WHERE boss IS NOT NULL
+          UNION SELECT cur.employee_id FROM cur, mine WHERE mine.boss IS NOT NULL AND cur.manager_employee_id = mine.boss
+          UNION SELECT employee_id FROM cur WHERE manager_employee_id = ${me.id}::uuid)
+        SELECT e.id::text, e.given_name, e.family_name, e.preferred_name, d.date_of_birth AS dob, d.hide_birthday AS hide,
+               (SELECT min(m.joined_on) FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL) AS joined_on
+        FROM employees e JOIN circle ON circle.id = e.id
+        LEFT JOIN employee_personal_details d ON d.organization_id = e.organization_id AND d.employee_id = e.id
+        WHERE e.organization_id = ${org}::uuid AND e.id <> ${me.id}::uuid
+          AND EXISTS (SELECT 1 FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL)`;
+      const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
+      const out: NonNullable<HomeWidgets['celebrations']> = [];
+      for (const r of rows) {
+        const name = r.preferred_name || [r.given_name, r.family_name].filter(Boolean).join(' ');
+        const md = (d: Date) => d.toISOString().slice(5, 10);
+        const birthday = r.dob && !r.hide ? days.find((d) => d.slice(5) === md(r.dob!)) : undefined;
+        if (birthday) out.push({ id: `b-${r.id}`, name, kind: 'birthday', on: birthday });
+        const anniversary = r.joined_on ? days.find((d) => d.slice(5) === md(r.joined_on!) && d.slice(0, 4) > r.joined_on!.toISOString().slice(0, 4)) : undefined;
+        if (anniversary) out.push({ id: `a-${r.id}`, name, kind: 'anniversary', on: anniversary, years: Number(anniversary.slice(0, 4)) - r.joined_on!.getUTCFullYear() });
+      }
+      return out.sort((a, b) => a.on.localeCompare(b.on));
+    });
   }
 
   /** Counts for the side menu, each only for someone who may open the page it sits on. */

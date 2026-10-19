@@ -198,16 +198,28 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const ids = (await entitiesFor(tx, c, v, 'payroll.run.prepare')).filter((id) => !entityId || id === entityId);
       await payScope(tx, ids);
-      const runs = await tx.payrollRun.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, runType: 'regular', periodStart: asDate(`${month}-01`), status: { in: ['draft', 'calculated', 'in_review', 'reopened'] } } });
-      if (!runs.length) return null;
-      let people = 0;
-      const blocked = new Set<string>();
-      for (const run of runs) {
-        people += (await this.members(tx, c.organizationId, run)).length;
-        for (const x of await this.current(tx, c.organizationId, run)) if (x.severity === 'block' && !x.waivedBy && x.employeeId) blocked.add(`${run.id}:${x.employeeId}`);
-      }
-      return { notReady: blocked.size, people, runId: runs.length === 1 ? runs[0].id : null };
+      return this.notReadyIn(tx, c.organizationId, ids, month);
     }, RUN_TX);
+  }
+
+  /** People blocked from the month's open regular runs of these entities (the pay guard must already cover them). */
+  async notReadyIn(tx: Tx, org: string, ids: string[], month: string): Promise<{ notReady: number; people: number; runId: string | null } | null> {
+    const runs = await tx.payrollRun.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, runType: 'regular', periodStart: asDate(`${month}-01`), status: { in: ['draft', 'calculated', 'in_review', 'reopened'] } } });
+    if (!runs.length) return null;
+    let people = 0;
+    const blocked = new Set<string>();
+    for (const run of runs) {
+      people += (await this.members(tx, org, run)).length;
+      for (const x of await this.current(tx, org, run)) if (x.severity === 'block' && !x.waivedBy && x.employeeId) blocked.add(`${run.id}:${x.employeeId}`);
+    }
+    return { notReady: blocked.size, people, runId: runs.length === 1 ? runs[0].id : null };
+  }
+
+  /** The payroll-run entities this person prepares runs for ([] without the key or when acting for someone else). */
+  async preparesFor(ctx: TenantContext, user: ScopeUser): Promise<string[]> {
+    const v = await this.viewer(user);
+    if (!v.grants.has('payroll.run.prepare') || v.actingForOther) return [];
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => entitiesFor(tx, c, v, 'payroll.run.prepare'));
   }
 
   /** One run; while it waits for approval, whether the viewer decides it now and the phrase to type (batch 5j screens). */

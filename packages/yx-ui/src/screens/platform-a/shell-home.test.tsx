@@ -72,6 +72,45 @@ describe('Recruiter home (founder decision 19 Oct 2026)', () => {
   });
 });
 
+describe('Live home parity (19 Oct 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const base = { firstName: 'Lakshmi', company: 'Kaveri Foods', today, approvalsHref: '/yx/approvals' };
+  const card = (id: string, label: string, extra = {}) => ({ id, title: label, label, value: 3, drill: { label: 'Open', href: '#' }, ...extra });
+
+  it('names the person on each action row, and never draws an empty avatar', () => {
+    render(<RoleHomeScreen persona="hr" data={{ actions: [{ id: 'a', type: 'Leave', title: 'Casual leave, 27 Oct', who: 'Meera Iyer', kind: 'review' }, { id: 'b', type: 'Leave', title: 'Sick leave', who: '', kind: 'review' }] }} live={base} />);
+    expect(screen.getByText('Meera Iyer')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem').filter((li) => li.querySelector('.yx-avatar') && !li.textContent?.includes('Meera'))).toHaveLength(0);
+  });
+
+  it('says how a count changed since last month only when last month is on record, and words an empty count', () => {
+    render(<RoleHomeScreen persona="hr" data={{ actions: [] }} live={{ ...base, stats: [card('exceptions', 'Attendance exceptions', { value: 27, previous: 41, previousLabel: 'August' }), card('cases', 'Open cases'), card('notReady', 'Not ready for payroll', { empty: 'No payroll run for September yet' })] }} />);
+    expect(screen.getByText('14 fewer than August')).toBeInTheDocument();
+    expect(screen.getByText('No payroll run for September yet')).toBeInTheDocument();
+    expect(screen.queryByText(/than/, { selector: '[aria-label="Open cases"] *' })).not.toBeInTheDocument();
+  });
+
+  it('fills each row: three cards share it, a lone card takes it all', () => {
+    const { container } = render(<RoleHomeScreen persona="hr" data={{ actions: [] }} live={{ ...base, stats: [card('a', 'Alpha count'), card('b', 'Beta count'), card('c', 'Gamma count')], due: [{ id: 'd', text: 'Probation confirmations', href: '#' }] }} />);
+    const size = (title: string) => [...container.querySelectorAll('.yx-widget')].find((w) => w.textContent?.includes(title))?.getAttribute('data-size');
+    expect(['Alpha count', 'Beta count', 'Gamma count'].map((t) => size(t))).toEqual(['4', '4', '4']);
+    expect(size('Probation confirmations')).toBe('12');
+  });
+
+  it('shows the employee their tasks and what is coming up, with empty states', () => {
+    render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, tasks: [{ text: 'Write your self-review for H1 by 15 Oct', href: '/yx/performance/reviews/r1' }], coming: [] }} />);
+    expect(screen.getByRole('link', { name: 'Write your self-review for H1 by 15 Oct' })).toHaveAttribute('href', '/yx/performance/reviews/r1');
+    expect(screen.getByText('Nothing coming up this week.')).toBeInTheDocument();
+  });
+
+  it("gives the manager team today and who's off this week", () => {
+    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { summary: '11 in · 2 on leave · 1 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't', name: 'Sanjay Gupta', secondary: 'Not checked in' }] }, off: [], offHref: '/yx/time/team' }} />);
+    expect(screen.getByText('11 in · 2 on leave · 1 not checked in · 0 late')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/muster');
+    expect(screen.getByText('No one in your team is off this week.')).toBeInTheDocument();
+  });
+});
+
 describe('Command palette by role (founder review 30 Sep 2026)', () => {
   const labels = (p: Parameters<typeof paletteFor>[0]) => paletteFor(p).flatMap((g) => g.items.map((i) => i.label));
   it('never suggests payroll or candidates to a manager', () => {
