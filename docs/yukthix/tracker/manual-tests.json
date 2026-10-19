@@ -327,7 +327,7 @@
    "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-20-people"
   ],
   "note": "",
-  "status": "Not run",
+  "status": "Pass",
   "runs": [
    {
     "date": "2026-10-19",
@@ -340,6 +340,12 @@
     "result": "Fail (fixed)",
     "findings": "After PR #192: pressing N then L with search open opened Apply leave, but the search box stayed open on top. Then: on My leave itself, N L / Apply leave did nothing (the sheet opened only on first load and ?apply=1 stayed in the address); same for N E on Expenses.",
     "fixedIn": "PR #192: every search action (N L, N E, a result, Help) closes the search box first (web test fails without the fix); the leave and expense sheets open on every ask and the pages drop the parameter once read (unit test)"
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Pass",
+    "findings": "Recent and Actions with icons and shortcuts, Clear recent, people plus requests, N L opens Apply leave and closes search.",
+    "fixedIn": ""
    }
   ],
   "ideas": [],
