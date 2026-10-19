@@ -205,6 +205,12 @@
     "result": "Fail",
     "findings": "1) The main desktop sign-in has no design in the design library (only phone MOB-01 and portal sign-ins exist), so it was never checked against one. 2) Compared with the portal sign-in pattern, live lacks: legal footer links (needed for DPDP / go-live), language picker, header band with company and product, helper line; passkey is not the main button. Screenshots: scratchpad/signin/live-signin.png and design-partner-signin.png.",
     "fixedIn": ""
+   },
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "The page scrolled on a laptop screen (1536 x 730): 843 px tall. Founder rule: no scroll bar unless the screen is really too small.",
+    "fixedIn": "PR #184 (note and language picker in the header band, tighter spacing; e2e guard at 1536 x 730)"
    }
   ],
   "ideas": [
