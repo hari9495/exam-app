@@ -4002,7 +4002,14 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-19",
+    "result": "Fail",
+    "findings": "No code email arrived. Every platform email was refused (553 5.1.3): with no SMTP_FROM_ADDRESS the sender fell back to the SMTP login 'dev-smtp-user-change-me', which is not an address. The sign-in still said a code was sent (by design, so accounts cannot be found out).",
+    "fixedIn": "PR #186: a login is used as the sender only when it is an address; else the platform fallback (unit test). Go-live: set SMTP_FROM_ADDRESS to a YukthiX address."
+   }
+  ],
   "ideas": []
  }
 ]
