@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { Camera, Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
@@ -98,6 +98,10 @@ export interface ExpensesHomeScreenProps {
 export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
   const [tab, setTab] = useState<'mine' | 'approvals' | 'review'>('mine');
   const [creating, setCreating] = useState(Boolean(p.startNew));
+  // Asked again while already on this page (Ctrl K, N E): open the sheet then too, not only on first load.
+  useEffect(() => {
+    if (p.startNew) setCreating(true);
+  }, [p.startNew]);
   const [title, setTitle] = useState('');
   const h = p.home;
   const rows = tab === 'mine' ? (h?.claims ?? []) : tab === 'approvals' ? (p.approvals ?? []) : (p.review ?? []);
