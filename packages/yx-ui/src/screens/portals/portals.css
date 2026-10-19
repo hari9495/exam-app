@@ -16,7 +16,7 @@
 .yx-tportal[data-accent="tenant"] .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
 .yx-tportal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--yx-space-2) var(--yx-space-4); margin-left: auto; }
 /* Narrow portals (sign-in): tighter spacing so the whole page fits a laptop screen (1536 × 730) without scrolling. */
-.yx-tportal[data-narrow] .yx-portal__body { padding-block: var(--yx-space-4); gap: var(--yx-space-4); }
+.yx-tportal[data-narrow] .yx-portal__body { padding-block: var(--yx-space-4); gap: var(--yx-space-4); justify-content: center; } /* the card in the middle, equal space above and below */
 .yx-tportal[data-narrow] .yx-portal__foot { padding-block: var(--yx-space-2); }
 .yx-tportal .yx-portal__foot { display: flex; flex-direction: column; align-items: center; gap: var(--yx-space-2); }
 .yx-tportal .yx-portal-notices { padding-top: 0; border-top: 0; }

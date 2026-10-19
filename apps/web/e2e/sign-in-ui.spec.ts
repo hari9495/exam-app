@@ -36,5 +36,12 @@ test.describe('laptop screen', () => {
     await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
     await expect(page.getByText('Powered by')).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(635);
+    // The card sits in the middle: equal space above and below (founder review 19 Oct).
+    const gap = await page.evaluate(() => {
+      const b = document.querySelector('.yx-portal__body')!.getBoundingClientRect();
+      const c = document.querySelector('.yx-signin')!.getBoundingClientRect();
+      return Math.abs(c.top - b.top - (b.bottom - c.bottom));
+    });
+    expect(gap).toBeLessThanOrEqual(2);
   });
 });
