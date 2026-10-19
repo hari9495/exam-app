@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { HomeClockCard } from './my-attendance';
-import type { MyAttendance } from './types';
+import type { MyAttendance, PunchKind } from './types';
 
 const NOW = new Date('2026-10-19T04:12:15Z');
 const DAY: MyAttendance = {
@@ -17,13 +17,14 @@ const DAY: MyAttendance = {
   days: [],
   requests: [],
   regularise: { limit: 4, used: 0 },
+  wfh: { limit: 4, used: 0 },
 };
-const punch = (kind: 'in' | 'out', at: string) => ({ id: kind, kind, at, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: null });
+const punch = (kind: PunchKind, at: string) => ({ id: kind, kind, at, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: null });
 const props = (over: Partial<Parameters<typeof HomeClockCard>[0]> = {}) => ({
   data: DAY,
   now: NOW,
   getLocation: vi.fn(async () => ({ pin: { lat: 12.9, lng: 77.6, accuracyM: 20 } })),
-  onPunch: vi.fn(async (kind: 'in' | 'out') => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })),
+  onPunch: vi.fn(async (kind: PunchKind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })),
   attendanceHref: '/yx/time/attendance',
   onRegularise: vi.fn(),
   ...over,
@@ -38,12 +39,24 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     await waitFor(() => expect(p.onPunch).toHaveBeenCalledWith('in', { lat: 12.9, lng: 77.6, accuracyM: 20 }));
   });
 
-  it('shows working since the first punch, with no break button (no break punch in the live app)', () => {
-    render(<HomeClockCard {...props({ data: { ...DAY, next: 'out', punches: [punch('in', '2026-10-19T04:08:00Z')] } })} />);
+  it('shows working since the first punch; Start break goes to the server with the location', async () => {
+    const p = props({ data: { ...DAY, next: 'out', punches: [punch('in', '2026-10-19T04:08:00Z')] } });
+    render(<HomeClockCard {...p} />);
     expect(screen.getByText('Working since 9:38 am')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clock out' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Start break' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: "Today's punches (1)" })).toHaveAttribute('href', '/yx/time/attendance');
+    await userEvent.click(screen.getByRole('button', { name: 'Start break' }));
+    await waitFor(() => expect(p.onPunch).toHaveBeenCalledWith('break_start', { lat: 12.9, lng: 77.6, accuracyM: 20 }));
+  });
+
+  it('on a break: says since when, End break ends it, and clock-out waits for it', async () => {
+    const p = props({ data: { ...DAY, next: 'out', onBreak: true, punches: [punch('in', '2026-10-19T03:58:00Z'), punch('break_start', '2026-10-19T04:05:00Z')] } });
+    render(<HomeClockCard {...p} />);
+    expect(screen.getByText('On break since 9:35 am')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clock out' })).toBeDisabled();
+    expect(screen.getByText('End your break to clock out')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'End break' }));
+    await waitFor(() => expect(p.onPunch).toHaveBeenCalledWith('break_end', { lat: 12.9, lng: 77.6, accuracyM: 20 }));
   });
 
   it('says why a punch was refused', async () => {
@@ -77,6 +90,13 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     expect(screen.queryByRole('button', { name: 'Clock in' })).not.toBeInTheDocument();
     rerender(<HomeClockCard {...props({ data: { ...DAY, shift: { ...DAY.shift, off: true } } })} />);
     expect(screen.getByText('Weekly off today')).toBeInTheDocument();
+  });
+
+  it('on an approved work-from-home day: the badge shows, clock-in is open, no approval note', () => {
+    render(<HomeClockCard {...props({ data: { ...DAY, wfhToday: true } })} />);
+    expect(screen.getByText('Work from home')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clock in' })).toBeEnabled();
+    expect(screen.queryByText(/needs .* approval/)).toBeNull();
   });
 
   it('is done for the day after checking out', () => {

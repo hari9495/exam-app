@@ -6,6 +6,7 @@ import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
 import { MusterScreen, TeamLeaveScreen } from './team';
 import type { LeavePlan, MyAttendance, MyLeave, Muster, TimeSetup } from './types';
+import { ToastProvider } from '../../../components/notify';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
@@ -88,6 +89,7 @@ const ATT: MyAttendance = {
   days: [{ on: '2026-10-06', status: 'missing_out', leavePart: null, firstIn: '2026-10-06T04:01:00Z', lastOut: null, workedMinutes: null, lateMinutes: null, regularised: false }],
   requests: [],
   regularise: { limit: 4, used: 1 },
+  wfh: { limit: 4, used: 0 },
 };
 
 describe('Me › Attendance', () => {
@@ -100,6 +102,57 @@ describe('Me › Attendance', () => {
     expect(onPunch).toHaveBeenCalledWith('in', { lat: 12.9, lng: 77.6, accuracyM: 20 });
     await ue.click(screen.getByRole('button', { name: 'Retry location' }));
     expect(getLocation).toHaveBeenCalledTimes(2);
+  });
+
+  it("breaks: Start break while checked in, End break while on one; today's punches name them", async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'break_end' as const, message: 'Break ended. On the Bengaluru head office network', verdict: 'network', distanceM: null }));
+    const at = (id: string, kind: 'in' | 'break_start', iso: string) => ({ id, kind, at: iso, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
+    const data: MyAttendance = { ...ATT, next: 'out', onBreak: true, punches: [at('p1', 'in', '2026-10-09T03:58:00Z'), at('p2', 'break_start', '2026-10-09T07:30:00Z')] };
+    render(<MyAttendanceScreen state="ready" data={data} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn(async () => ({ pin: null }))} onPunch={onPunch} onFix={vi.fn()} onWithdrawFix={vi.fn()} />);
+    const list = screen.getByRole('list', { name: 'Punches today' });
+    expect(within(list).getByText('Break start')).toBeInTheDocument();
+    expect(screen.getByText('You are on a break. Break time is not counted as worked time.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'End break' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
+  });
+
+  it('work from home: the sheet says what Send needs (never red), shows the effect, sends, then a toast', async () => {
+    const onWfh = vi.fn(async () => undefined);
+    render(
+      <ToastProvider>
+        <MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} onWfh={onWfh} />
+      </ToastProvider>,
+    );
+    await ue.click(screen.getByRole('button', { name: 'Request work from home' }));
+    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    expect(within(sheet).getByText('Goes to your manager')).toBeInTheDocument();
+    expect(within(sheet).getByText('Work from home · counts as present')).toBeInTheDocument();
+    expect(within(sheet).getByText('This will be work-from-home day 1 of 4 in October.')).toBeInTheDocument();
+    expect(within(sheet).getByText('Enter a reason')).toBeInTheDocument();
+    expect(within(sheet).queryByRole('alert')).toBeNull();
+    expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber visit');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onWfh).toHaveBeenCalledWith({ on: '2026-10-09', reason: 'Plumber visit' }));
+    expect(await screen.findByText('Sent to your manager')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Request work from home' })).toBeNull());
+  });
+
+  it('work from home over the monthly limit goes to HR too; a refusal from the server says why', async () => {
+    const onWfh = vi.fn(async () => {
+      throw new Error('Wed 14 Oct is a holiday (Founders Day).');
+    });
+    render(
+      <ToastProvider>
+        <MyAttendanceScreen state="ready" data={{ ...ATT, wfh: { limit: 4, used: 4 } }} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} onWfh={onWfh} defaultWfhOpen />
+      </ToastProvider>,
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    expect(within(sheet).getByText('Goes to your manager, then HR')).toBeInTheDocument();
+    expect(within(sheet).getByText('Approval: Your manager → HR')).toBeInTheDocument();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Family function');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    expect(await within(sheet).findByText('Wed 14 Oct is a holiday (Founders Day).')).toBeInTheDocument();
   });
 
   it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
