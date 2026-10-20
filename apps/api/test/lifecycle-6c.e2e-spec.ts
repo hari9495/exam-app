@@ -138,7 +138,7 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'post', `/lifecycle/me/assets/${mine[0].assignmentId}/acknowledge`).expect(200);
     await api('sita', 'post', `/lifecycle/me/assets/${mine[1].assignmentId}/acknowledge`).expect(404);
     const list = (await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows;
-    expect(list.find((r: { id: string }) => r.id === ids.laptop).holder.name).toMatch(/Ravi/);
+    expect(list.find((r: { id: string }) => r.id === ids.laptop).holder).toMatchObject({ name: expect.stringMatching(/Ravi/), condition: 'New' });
   });
 
   it('resignation: notice from the policy in force today; the manager then HR accept; on notice with checklist, clearance and interview', async () => {
@@ -276,7 +276,9 @@ describe('Lifecycle batch 6c', () => {
 
   it('probation review: the manager extends within the maximum; ending it opens an exit another HR person approves', async () => {
     const list = (await api('mgr', 'get', '/people/probations').expect(200)).body.rows;
-    expect(list.find((r: { employeeId: string }) => r.employeeId === emp.arun).canReview).toBe(true);
+    expect(list.find((r: { employeeId: string }) => r.employeeId === emp.arun)).toMatchObject({ canReview: true, designation: expect.any(String), manager: `Divya ${run}` });
+    expect((await api('ravi', 'get', '/people/probations').expect(200)).body.rows).toEqual([]); // a colleague without the team or the key sees no one
+    expect((await api('adminB', 'get', '/people/probations').expect(200)).body.rows).toEqual([]);
     await api('ravi', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 2, comments: 'Needs more time' }).expect(404);
     await api('arun', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'confirm', comments: 'I am great' }).expect(403);
     expect((await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 12, comments: 'Too long' }).expect(400)).body.message).toMatch(/at most 12 months/);
@@ -295,6 +297,8 @@ describe('Lifecycle batch 6c', () => {
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);
+    expect((await api('hr', 'get', '/lifecycle/exits').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.raviCase)).toMatchObject({ manager: `Divya ${run}` });
+    expect((await api('sita', 'get', '/lifecycle/exits').expect(200)).body.rows).toEqual([]); // a colleague without the key: no one else's case
     expect((await api('adminB', 'get', '/lifecycle/assets').expect(200)).body.rows).toHaveLength(0);
     await api('adminB', 'post', `/lifecycle/assets/${ids.laptop}/issue`).send({ employeeId: emp.ravi, issuedOn: today, condition: 'Fine' }).expect(404);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.exitCase.count())).toBe(0);

@@ -1,5 +1,5 @@
 // PPL-25 Asset register + issue / return dialog + employee acknowledgement · PPL-26 Succession (M01 §3.6, §3.9 Q8).
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Download, Plus, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
@@ -8,7 +8,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -21,10 +21,11 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { successionRisk, type Persona } from './people-logic';
 import { ASSETS, SUCCESSION } from './people-data';
 import { PeopleFrame, StatusBadge } from './people-kit';
+import type { AssetRow } from './live/types';
 
 /* ================================================================== PPL-25 asset register */
 
-type Asset = (typeof ASSETS)[number];
+export type Asset = (typeof ASSETS)[number];
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const FIELDS: FilterFieldDef[] = [
   { key: 'type', label: 'Type', type: 'multi', options: opt(['Laptop', 'Tablet', 'Phone', 'Two-wheeler']) },
@@ -40,8 +41,206 @@ const PEOPLE = [
 
 export type AssetDialog = 'issue' | 'return' | null;
 
+/** The live app's asset register (design audit step 3). */
+export interface LiveAssets {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  /** Live rows: the design's row plus the API row it came from. */
+  rows: (Asset & { live: AssetRow })[];
+  today: Date;
+  people: { id: string; name: string; role?: string; department?: string }[];
+  onAdd?: () => void;
+  onIssue: (a: AssetRow, input: { employeeId: string; issuedOn: string; condition: string }) => Promise<void>;
+  onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<void>;
+  /** The add-asset form the page opens. */
+  children?: ReactNode;
+}
+
+const dayKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAssets; issuing: AssetRow | null; returning: AssetRow | null; onClose: () => void }) {
+  const [who, setWho] = useState<string | null>(null);
+  const [on, setOn] = useState<Date | null>(live.today);
+  const [condition, setCondition] = useState<string | null>(issuing ? 'New' : 'Good');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await fn();
+      onClose();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const first = (name: string) => name.split(' ')[0];
+  return (
+    <>
+      <Dialog
+        open={!!issuing}
+        onOpenChange={(o) => !o && onClose()}
+        title={issuing ? `Issue ${issuing.tag} · ${issuing.name}` : ''}
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy} disabled={!who || !on || !condition} onClick={() => issuing && void run(() => live.onIssue(issuing, { employeeId: who!, issuedOn: dayKeyOf(on!), condition: condition! }))}>
+              Issue asset
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ppl__stack">
+          {failed && <InlineAlert tone="danger" title={failed} />}
+          <FormField label="Issue to" required>
+            <PersonPicker people={live.people} value={who} onChange={setWho} placeholder="Find a person" />
+          </FormField>
+          <FormField label="Issued on" required>
+            <DatePicker value={on} onChange={setOn} max={live.today} />
+          </FormField>
+          <FormField label="Condition" required>
+            <Select options={opt(['New', 'Good', 'Fair'])} value={condition} onChange={setCondition} />
+          </FormField>
+          <Text size="sm" tone="secondary" as="p">
+            {who ? `${first(live.people.find((p) => p.id === who)?.name ?? 'They')} gets` : 'The person gets'} a notification to acknowledge receipt with a click. Until then the asset shows &quot;Waiting&quot;.
+          </Text>
+        </div>
+      </Dialog>
+      <Dialog
+        open={!!returning}
+        onOpenChange={(o) => !o && onClose()}
+        title={returning ? `Return ${returning.tag} from ${returning.holder?.name ?? 'the holder'}` : ''}
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={!on || !condition || (condition === 'Not returned' && note.trim().length < 3)}
+              onClick={() =>
+                returning &&
+                void run(() =>
+                  live.onReturn(returning, { returnedOn: dayKeyOf(on!), condition: [condition, note.trim()].filter(Boolean).join(': '), status: condition === 'Not returned' ? 'lost' : condition === 'Damaged' ? 'in_repair' : 'in_stock' }),
+                )
+              }
+            >
+              {condition === 'Not returned' ? 'Mark not returned' : 'Record return'}
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ppl__stack">
+          {failed && <InlineAlert tone="danger" title={failed} />}
+          <FormField label={condition === 'Not returned' ? 'Recorded on' : 'Returned on'} required>
+            <DatePicker value={on} onChange={setOn} max={live.today} />
+          </FormField>
+          <FormField label="Return condition" required>
+            <Select options={opt(['Good', 'Fair', 'Damaged', 'Not returned'])} value={condition} onChange={setCondition} />
+          </FormField>
+          <FormField label={condition === 'Not returned' ? 'What happened' : 'Note'} required={condition === 'Not returned'} optional={condition !== 'Not returned'}>
+            <TextArea rows={2} value={note} onChange={setNote} maxLength={150} />
+          </FormField>
+          <InlineAlert tone="info">
+            {condition === 'Not returned'
+              ? `A leaver's clearance item stays open for a recovery${returning?.cost ? ` of the asset's cost` : ''}.`
+              : condition === 'Damaged'
+                ? 'The asset goes to repair. A leaver’s clearance item for it is signed off.'
+                : 'The asset is back in stock. A leaver’s clearance item for it is signed off.'}
+          </InlineAlert>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Persona }) {
+  const [filters, setFilters] = useState<FilterValue[]>([]);
+  const [q, setQ] = useState('');
+  const [issuing, setIssuing] = useState<AssetRow | null>(null);
+  const [returning, setReturning] = useState<AssetRow | null>(null);
+  const rows = live.rows;
+  const of = (f: (r: Asset) => string) => opt([...new Set(rows.map(f).filter(Boolean))].sort());
+  const fields: FilterFieldDef[] = [
+    { key: 'type', label: 'Type', type: 'multi', options: of((r) => r.type) },
+    { key: 'status', label: 'Status', type: 'multi', options: of((r) => r.status) },
+    { key: 'location', label: 'Location', type: 'multi', options: of((r) => r.location) },
+  ];
+  const shown = rows.filter((r) => {
+    const s = q.trim().toLowerCase();
+    return (!s || [r.tag, r.name, r.serial, r.holder].some((x) => x.toLowerCase().includes(s))) && filters.every((f) => matchesFilter((r as unknown as Record<string, unknown>)[f.key], f));
+  });
+  const cols: TableColumn<Asset & { live: AssetRow }>[] = [
+    { key: 'tag', header: 'Tag', type: 'id', value: (r) => r.tag, width: 130 },
+    { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div">{[r.type, r.serial].filter(Boolean).join(' · ')}</Text></span>, width: 240 },
+    { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => (r.holder ? <span>{r.holder}{r.live.holder && <Text size="sm" tone="secondary" as="div">{r.live.holder.acknowledged ? 'Acknowledged' : 'Waiting for acknowledgement'}</Text>}</span> : <span className="yx-table__none">—</span>), width: 200 },
+    { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 180 },
+    { key: 'purchased', header: 'Purchased', type: 'date', value: (r) => r.purchased, width: 130 },
+    { key: 'cost', header: 'Cost', type: 'money', value: (r) => r.cost, total: 'sum', width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: STATUS_TONE, groupable: true, width: 120 },
+  ];
+  return (
+    <PeopleFrame active="Assets" persona={persona}>
+      <PageHeader
+        title="Assets"
+        description="What each person holds. Unreturned assets flow into exit clearance and, if you set a recovery, into F&F. Depreciation stays in your finance system."
+        // Import and export of assets: not in the live app yet (left out).
+        actions={live.onAdd ? <Button variant="primary" icon={Plus} onClick={live.onAdd}>Add asset</Button> : undefined}
+      />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the assets" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Assets"
+          columns={cols}
+          rows={shown}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : 'ready'}
+          filtered={filters.length > 0 || q !== ''}
+          onClearFilters={() => {
+            setFilters([]);
+            setQ('');
+          }}
+          toolbar={<FilterBar fields={fields} value={filters} onChange={setFilters} search={q} onSearchChange={setQ} searchPlaceholder="Search tag, serial or person" />}
+          rowButtons={(r) =>
+            !r.live.canManage ? null : r.live.status === 'in_stock' ? (
+              <Button size="sm" onClick={() => setIssuing(r.live)}>
+                Issue
+              </Button>
+            ) : r.live.status === 'assigned' ? (
+              <Button size="sm" onClick={() => setReturning(r.live)}>
+                Return
+              </Button>
+            ) : null
+          }
+          empty={<EmptyState title="No assets yet" description="Add laptops, phones, vehicles and safety kit." action={live.onAdd ? <Button onClick={live.onAdd}>Add asset</Button> : undefined} />}
+        />
+      )}
+      {(issuing || returning) && (
+        <LiveAssetDialogs
+          key={(issuing ?? returning)!.id}
+          live={live}
+          issuing={issuing}
+          returning={returning}
+          onClose={() => {
+            setIssuing(null);
+            setReturning(null);
+          }}
+        />
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
+}
+
 // PPL-25
-export function AssetRegister({ rows, dialog = null, persona = 'hr' }: { rows: Asset[]; dialog?: AssetDialog; persona?: Persona }) {
+export function AssetRegister(props: { rows: Asset[]; dialog?: AssetDialog; persona?: Persona; live?: LiveAssets }) {
+  return props.live ? <LiveAssetRegister live={props.live} persona={props.persona ?? 'hr'} /> : <SampleAssetRegister {...props} />;
+}
+
+function SampleAssetRegister({ rows, dialog = null, persona = 'hr' }: { rows: Asset[]; dialog?: AssetDialog; persona?: Persona }) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<AssetDialog>(dialog);

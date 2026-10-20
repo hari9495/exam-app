@@ -2688,6 +2688,7 @@ model EmployeeChangeBatch {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote   String?   @map("decision_note") @db.VarChar(1000)
   compCycleId    String?   @map("comp_cycle_id") @db.Uuid
+  letterTemplateId String? @map("letter_template_id") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])

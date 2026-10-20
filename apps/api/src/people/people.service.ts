@@ -453,6 +453,13 @@ export class PeopleService {
       const plans = await tx.probation.findMany({ where: { organizationId: c.organizationId, employmentId: { in: employments.map((e) => e.id) } }, orderBy: { plannedEndOn: 'asc' } });
       const state = await this.probationState(tx, c, plans.map((p) => p.employmentId));
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: employments.map((e) => e.employeeId) } } });
+      // Today's designation and manager for the queue (Internal fields the viewer already reaches for these people).
+      const assigns = await tx.employeeAssignment.findMany({
+        where: { organizationId: c.organizationId, employmentId: { in: plans.map((p) => p.employmentId) }, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] },
+        select: { employmentId: true, designationId: true, managerEmployeeId: true },
+      });
+      const designations = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: assigns.map((a) => a.designationId) } }, select: { id: true, name: true } });
+      const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: assigns.map((a) => a.managerEmployeeId).filter((x): x is string => Boolean(x)) } } });
       const rows = [];
       for (const p of plans) {
         const e = employments.find((x) => x.id === p.employmentId)!;
@@ -479,6 +486,11 @@ export class PeopleService {
           stage: confirmedFrom ? 'confirmed' : state.pendingChange(e.id) ? 'awaiting_approval' : end < today ? 'overdue' : today >= reviewDueOn ? 'review_due' : p.extendedMonths ? 'extended' : 'running',
           maxTotalMonths: maxTotal,
           canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id),
+          designation: designations.find((d) => d.id === assigns.find((a) => a.employmentId === e.id)?.designationId)?.name ?? null,
+          manager: (() => {
+            const m = managers.find((x) => x.id === assigns.find((a) => a.employmentId === e.id)?.managerEmployeeId);
+            return m ? displayName(m) : null;
+          })(),
         });
       }
       return { today, rows };

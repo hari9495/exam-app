@@ -9,6 +9,13 @@ import { ChangeRequestDto } from '../employee-history/dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { CHANGE_TYPES, FoldError } from '../employee-history/history-rules';
 import { CsvProblem, parseBulkCsv, RawRow } from './bulk-csv';
+import { IncrementDto } from './dto';
+import { percentFor, raisedCtc } from './increment';
+import { withPayScope } from '../payroll/pay-access';
+import { settingFor } from './probation';
+import { LettersService } from '../documents/letters/letters.service';
+import type { LetterPay } from '../documents/letters/fields';
+import { Logger } from '@nestjs/common';
 
 // M01 §3.3 bulk job changes (annual increment, reorg, "reassign 6 reports to …", §3.2): many P06 changes raised
 // together, each validated and previewed row by row (dry run), stored all or nothing as one batch, and
@@ -26,6 +33,19 @@ interface Item {
   error?: string;
 }
 
+interface IncrementRows {
+  items: Item[];
+  people: { employeeId: string; name: string; code: string; department: string | null; grade: string | null; rating: string | null; currentCtc: string; percent: string; newCtc: string; bandMax: string | null; aboveBand: boolean; capped: boolean }[];
+  /** The company's rule for a raise above the pay range maximum (pay.band.above_max). */
+  bandPolicy: 'warn' | 'cap' | 'block';
+  /** Active increment letter templates for the entity (the person's entity first, then company-wide). */
+  letterTemplates: { id: string; name: string; version: number }[];
+  leftOut: { employeeId: string; name: string; rating: string | null; why: string }[];
+  ratingCycles: { id: string; name: string }[];
+  ratingCycleId: string | null;
+  bands: string[];
+}
+
 const message = (e: unknown) => {
   if (e instanceof HttpException) {
     const r = e.getResponse();
@@ -38,7 +58,12 @@ const message = (e: unknown) => {
 
 @Injectable()
 export class BulkChangesService {
-  constructor(private readonly history: EmployeeHistoryService) {}
+  private readonly logger = new Logger(BulkChangesService.name);
+
+  constructor(
+    private readonly history: EmployeeHistoryService,
+    private readonly letters: LettersService,
+  ) {}
 
   // ---- turning file rows into change requests ----
 
@@ -177,7 +202,7 @@ export class BulkChangesService {
   }
 
   /** Dry run, then (unless only a dry run was asked for) the batch: stored all or nothing, pending approval. */
-  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign'; fileName?: string; reason: string; dryRun: boolean }) {
+  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign' | 'increment'; fileName?: string; reason: string; dryRun: boolean; letterTemplateId?: string }) {
     const preview = await this.history.preview(ctx, async (tx, c) => this.evaluate(tx, c, v, await build(tx, c)));
     if (!preview.rows.length) throw new BadRequestException('There is nothing to change.');
     if (meta.dryRun) return { batch: null, ...preview };
@@ -185,7 +210,7 @@ export class BulkChangesService {
     const batch = await this.history.run(ctx, async (tx, c) => {
       const items = await build(tx, c);
       const row = await tx.employeeChangeBatch.create({
-        data: { organizationId: c.organizationId, source: meta.source, fileName: meta.fileName ?? null, reason: meta.reason.trim(), rowCount: items.length, requestedBy: c.userId ?? null },
+        data: { organizationId: c.organizationId, source: meta.source, fileName: meta.fileName ?? null, reason: meta.reason.trim(), rowCount: items.length, requestedBy: c.userId ?? null, letterTemplateId: meta.letterTemplateId ?? null },
       });
       for (const item of items) {
         if (!item.dto) throw new ConflictException('The data changed while the file was checked. Check it again.');
@@ -232,6 +257,149 @@ export class BulkChangesService {
         }));
     };
     return this.submit(ctx, v, build, { source: 'reassign', reason: dto.reason, dryRun: dto.dryRun === true });
+  }
+
+  /**
+   * PPL-06 annual increment: a salary revision for each confirmed person chosen, by rating (released reviews of a
+   * review cycle) or one percentage, the new CTC rounded to whole rupees. Only people the viewer may change, see the pay
+   * of and change the pay of are ever considered (R1, P02 §4.3); ratings only where perf.review.view reaches. Each row
+   * then goes through the same change path as a single change, and the batch through one approval.
+   */
+  async increment(ctx: TenantContext, v: Viewer, dto: IncrementDto) {
+    if (dto.mode === 'percent' && !dto.percent) throw new BadRequestException('Give the raise for everyone.');
+    if (dto.mode === 'rating' && !dto.byRating?.length && !dto.dryRun) throw new BadRequestException('Give the raise for each rating.');
+    if (dto.mode === 'rating' && !v.grants.has('perf.review.view')) throw new ForbiddenException('A raise by rating needs perf.review.view.');
+    let info: IncrementRows | null = null;
+    const out = await this.submit(
+      ctx,
+      v,
+      async (tx, c) => {
+        info = await this.incrementRows(tx, c, v, dto);
+        return info.items;
+      },
+      { source: 'increment', reason: dto.reason, dryRun: dto.dryRun === true, ...(dto.letterTemplateId ? { letterTemplateId: dto.letterTemplateId } : {}) },
+    );
+    const { people, leftOut, ratingCycles, ratingCycleId, bands, bandPolicy, letterTemplates } = info!;
+    return { ...out, people, leftOut, ratingCycles, ratingCycleId, bands, bandPolicy, letterTemplates };
+  }
+
+  /**
+   * PPL-06 Letters step: one person's increment letter as it would be made after approval, with the figures the change
+   * engine computes for them now (a preview: never numbered or kept). Only people the increment itself reaches.
+   */
+  async incrementLetterPreview(ctx: TenantContext, v: Viewer, dto: IncrementDto & { employeeId: string }) {
+    if (!dto.letterTemplateId) throw new BadRequestException('Choose the letter template first.');
+    const found = await this.history.preview(ctx, async (tx, c) => {
+      const r = await this.incrementRows(tx, c, v, { ...dto, dryRun: true });
+      const row = r.people.find((p) => p.employeeId === dto.employeeId);
+      const person = row ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: row.employeeId }, select: { personId: true } }) : null;
+      return row && person ? { row, personId: person.personId } : null;
+    });
+    // Outside the people this increment reaches (or not getting a raise): the same answer as an unknown person.
+    if (!found) throw new NotFoundException('No raise for this person in this increment.');
+    return this.letters.previewPay(ctx, { personId: found.personId, templateId: dto.letterTemplateId, pay: { oldCtc: found.row.currentCtc, newCtc: found.row.newCtc, percent: found.row.percent, effectiveDate: dto.effectiveDate } });
+  }
+
+  private async incrementRows(tx: Tx, c: CompanyContext, v: Viewer, dto: IncrementDto): Promise<IncrementRows> {
+    const org = c.organizationId;
+    const on = dto.effectiveDate;
+    const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: org }, select: { id: true } });
+    if (!entity) throw new NotFoundException('Legal entity not found');
+    // Everyone in the entity on the date, with their job then.
+    const placed = await tx.$queryRaw<{ employee_id: string; employment_id: string; department_id: string | null; grade_id: string | null }[]>`
+      SELECT DISTINCT ON (a.employee_id) a.employee_id::text, a.employment_id::text, a.department_id::text, a.grade_id::text
+      FROM employee_assignments a JOIN employments m ON m.organization_id = a.organization_id AND m.id = a.employment_id
+      WHERE a.organization_id = ${org}::uuid AND m.legal_entity_id = ${entity.id}::uuid AND a.superseded_at IS NULL AND m.exited_on IS NULL
+        AND a.valid_from <= ${on}::date AND (a.valid_to IS NULL OR a.valid_to >= ${on}::date)
+      ORDER BY a.employee_id, a.valid_from DESC`;
+    const ids = placed.map((p) => p.employee_id);
+    // R1 / P02 §4.3: nobody outside all three grants is a row, or even counted.
+    const change = await this.reachable(tx, c, v);
+    const payView = await this.history.reachedIds(tx, c, v, 'employee.salary.view', ids);
+    const payManage = await this.history.reachedIds(tx, c, v, 'employee.salary.manage', ids);
+    const scoped = placed.filter((p) => change.has(p.employee_id) && payView.has(p.employee_id) && payManage.has(p.employee_id));
+    const employmentIds = scoped.map((p) => p.employment_id);
+    const jobs = await tx.employment.findMany({ where: { organizationId: org, id: { in: employmentIds } }, select: { id: true, employeeCode: true, joinedOn: true } });
+    const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: scoped.map((p) => p.employee_id) } } });
+    const during = { supersededAt: null, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] };
+    const statuses = await tx.employmentStatusPeriod.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...during } });
+    const departments = await tx.department.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.department_id ? [p.department_id] : [])) } }, select: { id: true, name: true } });
+    const grades = await tx.grade.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.grade_id ? [p.grade_id] : [])) } }, select: { id: true, name: true } });
+    const pays = await withPayScope(tx, [entity.id], () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...during } }));
+    // Pay ranges per grade (Structure › Grades), in force on the date, and the company's rule for going above one.
+    const ranges = await withPayScope(tx, [entity.id], () => tx.gradePayRange.findMany({ where: { organizationId: org, legalEntityId: entity.id, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] } }));
+    const bandPolicy = (await settingFor(tx, c, 'pay.band.above_max', { legalEntityId: entity.id })) as IncrementRows['bandPolicy'];
+    if (dto.letterTemplateId && !(await tx.letterTemplate.findFirst({ where: { organizationId: org, id: dto.letterTemplateId, letterType: 'increment', status: 'active', OR: [{ legalEntityId: entity.id }, { legalEntityId: null }] }, select: { id: true } }))) {
+      throw new BadRequestException('That increment letter template is not active for this legal entity.');
+    }
+    const capAsked = new Set(dto.capped ?? []);
+    // Ratings: the released reviews of the chosen (or latest) review cycle in this entity, where perf.review.view reaches.
+    const released = await tx.review.groupBy({ by: ['cycleId'], where: { organizationId: org, legalEntityId: entity.id, status: { in: ['released', 'acknowledged'] } }, _max: { releasedAt: true } });
+    const cycles = (await tx.reviewCycle.findMany({ where: { organizationId: org, id: { in: released.map((r) => r.cycleId) } }, select: { id: true, name: true } }))
+      .map((x) => ({ ...x, at: released.find((r) => r.cycleId === x.id)?._max.releasedAt?.getTime() ?? 0 }))
+      .sort((a, b) => b.at - a.at)
+      .map(({ id, name }) => ({ id, name }));
+    const cycle = dto.reviewCycleId ? cycles.find((x) => x.id === dto.reviewCycleId) : cycles[0];
+    if (dto.reviewCycleId && !cycle) throw new NotFoundException('No released ratings in that review cycle for this entity.');
+    const ratingReach = dto.mode === 'rating' && cycle ? await this.history.reachedIds(tx, c, v, 'perf.review.view', scoped.map((p) => p.employee_id)) : new Set<string>();
+    const reviews = cycle && ratingReach.size ? await tx.review.findMany({ where: { organizationId: org, cycleId: cycle.id, status: { in: ['released', 'acknowledged'] }, employeeId: { in: [...ratingReach] } }, select: { employeeId: true, band: true, finalScore: true } }) : [];
+    // The rating labels, best first.
+    const bands = [...new Set([...reviews].filter((r) => r.band).sort((a, b) => Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0)).map((r) => r.band!))];
+    const overrides = new Map((dto.overrides ?? []).map((o) => [o.employeeId, o.percent]));
+    const depts = dto.departmentIds?.length ? new Set(dto.departmentIds) : null;
+    const rows: IncrementRows['people'] = [];
+    const leftOut: IncrementRows['leftOut'] = [];
+    const items: Item[] = [];
+    for (const p of scoped) {
+      const job = jobs.find((j) => j.id === p.employment_id)!;
+      if (depts && (!p.department_id || !depts.has(p.department_id))) continue;
+      if (dto.joinedBefore && isoDate(job.joinedOn) >= dto.joinedBefore) continue;
+      const name = displayName(people.find((x) => x.id === p.employee_id)!);
+      const status = statuses.find((x) => x.employmentId === p.employment_id)?.status;
+      const pay = pays.find((x) => x.employmentId === p.employment_id);
+      const rating = reviews.find((r) => r.employeeId === p.employee_id)?.band ?? null;
+      const skip = (why: string) => leftOut.push({ employeeId: p.employee_id, name, rating, why });
+      if (status === 'notice') {
+        skip('On notice.');
+        continue;
+      }
+      if (status !== 'confirmed') {
+        skip('Not confirmed yet.');
+        continue;
+      }
+      if (!pay) {
+        skip('No current pay on file.');
+        continue;
+      }
+      const percent = percentFor(dto, rating, overrides.get(p.employee_id));
+      if (!percent) {
+        skip(dto.mode === 'percent' ? 'No raise set.' : rating ? `No raise set for the rating ${rating}.` : cycle ? `No released rating in ${cycle.name}.` : 'No released ratings in this entity yet.');
+        continue;
+      }
+      const grade = grades.find((g) => g.id === p.grade_id)?.name ?? null;
+      const max = ranges.find((r) => r.gradeId === p.grade_id && r.currency === pay.currency)?.max ?? null;
+      let newCtc = raisedCtc(pay.annualCtc, percent);
+      let shown = percent;
+      const capped = Boolean(max && max.lt(newCtc) && (bandPolicy === 'cap' || capAsked.has(p.employee_id)));
+      if (capped) {
+        if (!max!.gt(pay.annualCtc)) {
+          skip(`Already at or above the top of the pay range${grade ? ` for ${grade}` : ''}.`);
+          continue;
+        }
+        newCtc = max!.toFixed(2);
+        shown = max!.minus(pay.annualCtc).div(pay.annualCtc).mul(100).toDecimalPlaces(2).toString();
+      }
+      const aboveBand = Boolean(max && max.lt(newCtc));
+      rows.push({ employeeId: p.employee_id, name, code: job.employeeCode, department: departments.find((d) => d.id === p.department_id)?.name ?? null, grade, rating, currentCtc: pay.annualCtc.toFixed(2), percent: shown, newCtc, bandMax: max ? max.toFixed(2) : null, aboveBand, capped });
+      items.push({ line: items.length + 1, employeeId: p.employee_id, employeeCode: job.employeeCode, dto: plainToInstance(ChangeRequestDto, { employeeId: p.employee_id, changeType: 'salary_revision', effectiveDate: on, payload: { compensation: { annualCtc: newCtc } }, reason: dto.reason.trim() }) });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    leftOut.sort((a, b) => a.name.localeCompare(b.name));
+    // The company's rule (pay.band.above_max = block): nothing above a pay range is sent for approval.
+    const above = rows.filter((r) => r.aboveBand);
+    if (!dto.dryRun && bandPolicy === 'block' && above.length) throw new BadRequestException({ statusCode: 400, code: 'ABOVE_PAY_RANGE', message: `${above.map((r) => r.name).slice(0, 3).join(', ')}${above.length > 3 ? ` and ${above.length - 3} more` : ''} would go above the top of their pay range. Cap them at the maximum or lower their raise.` });
+    const templates = await tx.letterTemplate.findMany({ where: { organizationId: org, letterType: 'increment', status: 'active', OR: [{ legalEntityId: entity.id }, { legalEntityId: null }] }, orderBy: [{ legalEntityId: { sort: 'asc', nulls: 'last' } }, { name: 'asc' }], select: { id: true, name: true, version: true } });
+    return { items, people: rows, leftOut, ratingCycles: cycles, ratingCycleId: cycle?.id ?? null, bands, bandPolicy, letterTemplates: templates };
   }
 
   // ---- the batch: one decision for all its changes ----
@@ -304,8 +472,9 @@ export class BulkChangesService {
   }
 
   /** One approval for every change in the batch, in the order raised; any failure leaves everything as it was. */
-  approve(ctx: TenantContext, v: Viewer, id: string, confirmRebase: boolean, note?: string) {
-    return this.history.run(ctx, async (tx, c) => {
+  async approve(ctx: TenantContext, v: Viewer, id: string, confirmRebase: boolean, note?: string) {
+    let jobs: { personId: string; name: string; templateId: string; changeId: string; pay: LetterPay }[] = [];
+    const view = await this.history.run(ctx, async (tx, c) => {
       const b = await this.visibleBatch(tx, c, v, id);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`batch:${c.organizationId}:${id}`}))`;
       const fresh = await this.batchOr404(tx, c, id);
@@ -334,8 +503,38 @@ export class BulkChangesService {
       for (const a of applied) await this.history.afterApply(tx, c, a.updated, a.impact, a.effectiveNow);
       const updated = await tx.employeeChangeBatch.update({ where: { id }, data: { status: 'approved', decidedBy: c.userId ?? null, decidedAt: new Date(), decisionNote: note?.trim() || null } });
       await audit(tx, c, 'employee.change.batch_approved', 'employee_change_batch', id, { changes: applied.length });
+      if (fresh.source === 'increment' && fresh.letterTemplateId) jobs = await this.letterJobs(tx, c, fresh.letterTemplateId, changes, people);
       return this.batchView(tx, c, v, updated, true);
     });
+    // PPL-06: increment letters only now that the batch is approved, through the letter pipeline (numbered, rendered,
+    // emailed to the person). A letter that cannot be made yet (no signatory, say) is reported; the raises stand.
+    const failed: { name: string; message: string }[] = [];
+    for (const j of jobs) {
+      try {
+        await this.letters.issueSystem(ctx, { letterType: 'increment', personId: j.personId, templateId: j.templateId, pay: j.pay, subjectType: 'change', subjectId: j.changeId });
+      } catch (e) {
+        this.logger.warn(`Increment letter for change ${j.changeId} not made: ${(e as Error).message}`);
+        failed.push({ name: j.name, message: e instanceof HttpException ? message(e) : 'The letter could not be made.' });
+      }
+    }
+    return { ...view, letters: jobs.length ? { issued: jobs.length - failed.length, failed } : null };
+  }
+
+  /** The figures for each approved raise's letter: the pay the day before and from the effective date. */
+  private async letterJobs(tx: Tx, c: CompanyContext, templateId: string, changes: Prisma.EmployeeChangeGetPayload<object>[], people: Prisma.EmployeeGetPayload<object>[]) {
+    const out: { personId: string; name: string; templateId: string; changeId: string; pay: LetterPay }[] = [];
+    for (const ch of changes) {
+      const newCtc = (ch.payload as { compensation?: { annualCtc?: string } }).compensation?.annualCtc;
+      const who = people.find((p) => p.id === ch.employeeId);
+      if (!newCtc || !who) continue;
+      const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: ch.employmentId }, select: { legalEntityId: true } });
+      const before = new Date(ch.effectiveDate.getTime() - 86_400_000);
+      const old = await withPayScope(tx, [e.legalEntityId], () => tx.compensation.findFirst({ where: { organizationId: c.organizationId, employmentId: ch.employmentId, supersededAt: null, validFrom: { lte: before }, OR: [{ validTo: null }, { validTo: { gte: before } }] } }));
+      if (!old) continue;
+      const percent = new Prisma.Decimal(newCtc).minus(old.annualCtc).div(old.annualCtc).mul(100).toDecimalPlaces(2).toString();
+      out.push({ personId: who.personId, name: displayName(who), templateId, changeId: ch.id, pay: { oldCtc: old.annualCtc.toFixed(2), newCtc: new Prisma.Decimal(newCtc).toFixed(2), percent, effectiveDate: isoDate(ch.effectiveDate) } });
+    }
+    return out;
   }
 
   /** Reject (an approver, never the requester) or cancel (the requester or HR): every pending change goes with it. */

@@ -1,24 +1,20 @@
 import { useState } from 'react';
-import { Button, IconButton } from '../../components/button';
-import { Eye, Lock } from 'lucide-react';
+import { Button,  } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
-import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { InlineAlert,  } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
-import { useToast } from '../../components/notify';
-import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
-import { formatPhone } from '../../lib/format';
-import { dateLabel, errorText } from '../org/org-kit';
-import { GENDER_LABEL, KIND_LABEL, shown } from './access-kit';
+import { errorText } from '../org/org-kit';
+import { GENDER_LABEL, KIND_LABEL,  } from './access-kit';
 import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
 
-// People › Profile (PPL-03 / PPL-32; P02 §4.4–4.5): the record by sensitivity class. Personal details for the
+// People › the person record's dialogs (PPL-03 / PPL-32; P02 §4.4–4.5), used by the designed record: personal details
+// edited directly, identity, bank and legal-name changes sent for approval, a waiting change withdrawn.
+// Before the design audit this file also held a simpler Profile screen: the record by sensitivity class. Personal details for the
 // person and HR with personal-data access, edited directly; identity and bank details masked, each full look
 // recorded (YX-SEC-09), Aadhaar in full only with its own grant (YX-SEC-08); identity, bank and legal-name
 // changes go to approval with old and new side by side. Pay stays on Job history behind "Show pay" (R1).
@@ -57,7 +53,7 @@ const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']
 };
 KIND_FIELDS.bank_reimbursement = KIND_FIELDS.bank_salary;
 
-function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
+export function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
   const [d, setD] = useState(initial);
   const set = <K extends keyof PersonalDetails>(k: K, v: PersonalDetails[K]) => setD((x) => ({ ...x, [k]: v }));
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +122,7 @@ function PersonalDialog({ initial, states, onSave, onClose }: { initial: Persona
   );
 }
 
-function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[]; onRequest: ProfileScreenProps['onRequestChange']; onClose: () => void }) {
+export function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[]; onRequest: ProfileScreenProps['onRequestChange']; onClose: () => void }) {
   const [kind, setKind] = useState<RequestKind | null>(null);
   const [value, setValue] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
@@ -168,7 +164,7 @@ function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[];
   );
 }
 
-function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest; onCancel: ProfileScreenProps['onCancelRequest']; onClose: () => void }) {
+export function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest; onCancel: ProfileScreenProps['onCancelRequest']; onClose: () => void }) {
   const [reason, setReason] = useState('');
   return (
     <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Withdraw the ${request.label.toLowerCase()} change?`} consequence="Nothing changes on the record." confirmLabel="Withdraw" destructive confirmDisabled={!reason.trim()} onConfirm={async () => (await onCancel(request.id, reason.trim()), onClose())}>
@@ -176,155 +172,5 @@ function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest;
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
-  );
-}
-
-export function ProfileScreen(props: ProfileScreenProps) {
-  const { state, onRetry, profile: p, people, onPickPerson, requests } = props;
-  const { toast } = useToast();
-  // Each save says so in a toast; a failure still shows in the dialog that ran it.
-  const said = <A extends unknown[]>(run: (...a: A) => Promise<void>, title: string) => async (...a: A) => {
-    await run(...a);
-    toast({ tone: 'success', title });
-  };
-  const [editing, setEditing] = useState(false);
-  const [changing, setChanging] = useState(false);
-  const [cancelling, setCancelling] = useState<ProfileRequest | null>(null);
-  const [revealed, setRevealed] = useState<Partial<Record<RevealField, string>>>({});
-  const [revealError, setRevealError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<RevealField | null>(null);
-  const reveal = async (field: RevealField) => {
-    setBusy(field);
-    setRevealError(null);
-    try {
-      const value = await props.onReveal(field);
-      setRevealed((r) => ({ ...r, [field]: value }));
-    } catch (e) {
-      setRevealError(errorText(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-  const REVEAL_NAME: Record<RevealField, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'salary account number', bank_reimbursement: 'reimbursement account number' };
-  const masked = (field: RevealField, value: string | null, allowed: boolean) =>
-    value ? (
-      <span className="yx-ppl2__row">
-        <Text mono>{revealed[field] ?? value}</Text>
-        {allowed && !revealed[field] && (
-          <IconButton icon={Eye} size="sm" label={`Show full ${REVEAL_NAME[field]}`} disabled={busy === field} onClick={() => void reveal(field)} />
-        )}
-      </span>
-    ) : (
-      'Not on file'
-    );
-  const pending = requests.filter((r) => r.status === 'pending');
-  return (
-    <div className="yx-auth__page">
-      <PageHeader breadcrumbs={<Breadcrumbs items={p?.self ? [{ label: 'Home' }, { label: 'My profile' }] : [{ label: 'People' }, { label: 'Profile' }]} />} title={p ? p.name : 'Profile'} description={p?.employeeCode ? `${p.employeeCode}${p.joinedOn ? ` · joined ${dateLabel(p.joinedOn)}` : ''}` : 'Personal, identity and bank details.'} />
-      {people && onPickPerson && (
-        <FormField id="pf-person" label="Person">
-          <Select aria-label="Person" value={p?.employeeId ?? null} onChange={(v) => v && onPickPerson(v)} searchable options={people.map((x) => ({ value: x.id, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }))} />
-        </FormField>
-      )}
-      {state === 'loading' && <Skeleton height={240} />}
-      {state === 'error' && <ErrorState title="We couldn't load this profile." description="It may not be yours to see, or the connection dropped." onRetry={onRetry} />}
-      {state === 'no-access' && <NoAccessState grantedBy="HR" what="this profile" />}
-      {state === 'ready' && !p && (people?.length ? <EmptyState title="Pick a person" description="Choose whose profile to open." /> : <EmptyState title="No profiles to show" description="You can open the profiles of the people your roles cover. Right now that is no one." />)}
-      {state === 'ready' && p && (
-        <>
-          <Card title="Personal details" actions={p.can.editPersonal && p.personal ? <Button size="sm" onClick={() => setEditing(true)}>Edit</Button> : undefined}>
-            {p.personal ? (
-              <DescriptionList
-                columns={2}
-                items={[
-                  { label: 'Date of birth', value: p.personal.dateOfBirth ? dateLabel(p.personal.dateOfBirth) : '—' },
-                  { label: 'Gender', value: p.personal.gender ? GENDER_LABEL[p.personal.gender] ?? p.personal.gender : '—' },
-                  { label: 'Personal email', value: p.personal.personalEmail ?? '—' },
-                  { label: 'Personal phone', value: p.personal.personalPhone ? formatPhone(p.personal.personalPhone) : '—' },
-                  { label: 'Address', value: [p.personal.addressLine1, p.personal.addressLine2, p.personal.city, p.personal.postalCode].filter(Boolean).join(', ') || '—' },
-                  { label: 'Birthday in the directory', value: p.personal.hideBirthday ? 'Hidden' : 'Shown' },
-                ]}
-              />
-            ) : (
-              <Text as="p" tone="secondary">
-                Personal details are for the person and HR with personal-data access.
-              </Text>
-            )}
-          </Card>
-          <Card title="Identity and bank" actions={p.can.requestChange ? <Button size="sm" onClick={() => setChanging(true)}>Request a change</Button> : undefined}>
-            {p.identity ? (
-              <>
-                <p className="yx-ppl2__confidential">
-                  <Lock size={14} aria-hidden />
-                  <Text as="span" size="sm" weight="medium">Confidential</Text>
-                  <Text as="span" tone="secondary" size="sm">{p.self ? '· Only you, HR and payroll with access can see these.' : '· Each full look is recorded and shown to the person.'}</Text>
-                </p>
-                <DescriptionList
-                  columns={2}
-                  items={[
-                    { label: 'Legal name', value: p.identity.legalName ?? 'Not on file' },
-                    { label: 'PAN', value: masked('pan', p.identity.pan, p.can.reveal) },
-                    { label: 'UAN', value: masked('uan', p.identity.uan, p.can.reveal) },
-                    { label: 'ESIC IP number', value: masked('esic', p.identity.esic, p.can.reveal) },
-                    {
-                      label: 'Aadhaar',
-                      value: (
-                        <span className="yx-auth__item-main">
-                          {masked('aadhaar', p.identity.aadhaar, p.classes.aadhaar)}
-                          {p.identity.aadhaar && !p.classes.aadhaar && <Text tone="secondary" size="sm">Never shown in full</Text>}
-                        </span>
-                      ),
-                    },
-                    ...p.identity.bankAccounts.map((b) => ({
-                      label: b.purpose === 'salary' ? 'Salary account' : 'Reimbursement account',
-                      value: (
-                        <span className="yx-auth__item-main">
-                          {masked(b.purpose === 'salary' ? 'bank_salary' : 'bank_reimbursement', b.account, p.can.reveal)}
-                          <Text tone="secondary" size="sm">{`${b.holderName} · ${b.ifsc}`}</Text>
-                          {new Date(b.usableFrom) > new Date() && <Badge tone="info">{`Used for pay from ${dateLabel(b.usableFrom.slice(0, 10))}`}</Badge>}
-                        </span>
-                      ),
-                    })),
-                  ]}
-                />
-                {revealError && <InlineAlert tone="danger" title={revealError} />}
-              </>
-            ) : (
-              <Text as="p" tone="secondary">
-                Identity and bank details are for the person and payroll.
-              </Text>
-            )}
-          </Card>
-          {pending.length > 0 && (
-            <Card title="Changes waiting for approval">
-              <ul className="yx-acc__list">
-                {pending.map((r) => (
-                  <li key={r.id}>
-                    <span className="yx-auth__item-main">
-                      <Text weight="medium">{r.label}</Text>
-                      <Text tone="secondary" size="sm">{`${shown(r.current)} → ${shown(r.proposed)}`}</Text>
-                    </span>
-                    {(r.mine || p.self) && (
-                      <Button size="sm" onClick={() => setCancelling(r)}>
-                        Withdraw
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-          <Card title="Pay">
-            <span className="yx-ppl2__row">
-              <Text tone="secondary">{p.classes.pay ? 'Pay is on Job history, behind "Show pay". Each look by someone else is recorded.' : 'Pay is visible only with pay access.'}</Text>
-              {p.classes.pay && props.onOpenHistory && <Button size="sm" onClick={props.onOpenHistory}>Open job history</Button>}
-            </span>
-          </Card>
-        </>
-      )}
-      {editing && p?.personal && <PersonalDialog initial={p.personal} states={props.states} onSave={said(props.onSavePersonal, 'Saved.')} onClose={() => setEditing(false)} />}
-      {changing && p && <ChangeDialog pending={pending.map((r) => r.kind)} onRequest={said(props.onRequestChange, 'Sent for approval.')} onClose={() => setChanging(false)} />}
-      {cancelling && <CancelDialog request={cancelling} onCancel={said(props.onCancelRequest, 'Withdrawn.')} onClose={() => setCancelling(null)} />}
-    </div>
   );
 }
