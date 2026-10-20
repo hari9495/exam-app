@@ -3,6 +3,8 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export {
+  AddJoinerDrawer,
+  ImportDrawer,
   OnboardingBoardScreen,
   JourneyScreen,
   MyTasksScreen,

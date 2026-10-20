@@ -271,7 +271,8 @@ export class JoinersService {
     const open = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } } }) : 0;
     const overdue = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] }, dueOn: { lt: asDate(todayIst()) } } }) : 0;
     // The first few open tasks by name, for the Home's readiness tags.
-    const pending = j ? (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, orderBy: { dueOn: 'asc' }, take: 3, select: { title: true } })).map((t) => t.title) : [];
+    const next = j ? await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, orderBy: { dueOn: 'asc' }, take: 3, select: { title: true, dueOn: true, ownerType: true } }) : [];
+    const pending = next.map((t) => t.title);
     return {
       id: r.id,
       personId: r.personId,
@@ -292,6 +293,9 @@ export class JoinersService {
       openTasks: open,
       overdueTasks: overdue,
       pendingTasks: pending,
+      // The board card's next step (PPL-11) and when the joiner was added (days in pre-boarding).
+      nextTask: next[0] ? { title: next[0].title, dueOn: iso(next[0].dueOn), ownerType: next[0].ownerType } : null,
+      addedOn: r.createdAt.toISOString().slice(0, 10),
       personType: r.personType,
       batchId: r.batchId,
       buddyEmployeeId: r.buddyEmployeeId,

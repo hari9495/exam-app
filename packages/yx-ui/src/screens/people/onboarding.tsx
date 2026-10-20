@@ -1,7 +1,7 @@
 // PPL-11 Onboarding board · PPL-12 Ready to onboard · PPL-13 Journey record · PPL-14 Pre-boarding batches
 // PPL-15 Pre-boarding actions · PPL-16 Probation queue · PPL-17 Probation review · PPL-41 Buddy panel (M01 §3.4, §3.5, §3.11).
-import { useMemo, useState } from 'react';
-import { CalendarClock, Check, FileText, Lock, Plus, UserPlus } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { CalendarClock, Check, FileText, Lock, Plus, Upload, UserPlus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
@@ -10,7 +10,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -43,8 +43,8 @@ function TaskBar({ value, label, when }: { value: number; label: string; when: s
 
 type Owner = 'HR' | 'IT' | 'Manager' | 'New hire';
 /** Board card plus what the filters need: location, who owns the next task, and batch size. */
-type JoinerCard = KanbanCard & { location: string; owner: Owner; people: number };
-const card = (id: string, name: string, role: string, when: string, progress: number, days: number, location: string, next: { text: string; owner: Owner; overdue?: boolean }, people = 1): JoinerCard => ({
+export type JoinerCard = KanbanCard & { location: string; owner: string; people: number };
+export const joinerCard = (id: string, name: string, role: string, when: string, progress: number, days: number, location: string, next: { text: string; owner: string; overdue?: boolean }, people = 1): JoinerCard => ({
   id,
   name,
   facts: [role, <TaskBar key="p" value={progress} when={when} label={`${name}: tasks done`} />] as [string, JSX.Element],
@@ -55,11 +55,11 @@ const card = (id: string, name: string, role: string, when: string, progress: nu
   people,
 });
 export const BOARD: KanbanColumn[] = [
-  { id: 'offer', title: 'Offer accepted', cards: [card('k4', 'Ananya Das', 'Account Executive', 'joins 2 Nov', 5, 2, 'Chennai office', { text: 'Pre-boarding link · 3 Oct', owner: 'HR' }), card('k2', 'Suresh Nair', 'Maintenance Technician', 'joins 12 Oct (rehire)', 10, 5, 'Hosur plant', { text: 'Rehire options · 30 Sep', owner: 'HR', overdue: true }), card('k9', 'Selvi Perumal', 'Warehouse Associate', 'joins 6 Oct', 0, 3, 'Hosur plant', { text: 'Convert to employee · 1 Oct', owner: 'HR' })], emptyText: 'No accepted offers waiting' },
-  { id: 'pre', title: 'Pre-boarding', cards: [card('k1', 'Kavya Reddy', 'Quality Inspector', 'joins 5 Oct', journeyProgress(ONBOARDING_TASKS), 11, 'Hosur plant', { text: 'Education proofs · 28 Sep', owner: 'New hire', overdue: true }), card('k5', 'Campus 2026 · Sales', '12 sales trainees', 'join 19 Oct', 88, 40, 'Bengaluru head office', { text: 'Bank details ×3 · 25 Sep', owner: 'HR', overdue: true }, 12)], slaDays: 30 },
-  { id: 'day1', title: 'Day 1', cards: [card('k3', 'Murugan K', 'Warehouse Associate', 'joins 1 Oct', 70, 3, 'Hosur plant', { text: 'Safety induction · 1 Oct', owner: 'Manager' })], emptyText: 'No one joins this week' },
-  { id: 'first30', title: 'First 30 days', cards: [card('k6', 'Kiran Joshi', 'Account Executive', 'joined 3 Sep', 92, 26, 'Chennai office', { text: '30-day check-in · 6 Oct', owner: 'Manager' }), card('k7', 'Sneha Patil', 'HR Executive', 'joined 26 Aug', 96, 34, 'Bengaluru head office', { text: 'Buddy feedback · 27 Sep', owner: 'HR', overdue: true })], slaDays: 30 },
-  { id: 'done', title: 'Done', cards: [card('k8', 'Deepa Ghosh', 'Accountant', 'joined 30 Mar', 100, 120, 'Bengaluru head office', { text: 'All tasks done', owner: 'HR' })] },
+  { id: 'offer', title: 'Offer accepted', cards: [joinerCard('k4', 'Ananya Das', 'Account Executive', 'joins 2 Nov', 5, 2, 'Chennai office', { text: 'Pre-boarding link · 3 Oct', owner: 'HR' }), joinerCard('k2', 'Suresh Nair', 'Maintenance Technician', 'joins 12 Oct (rehire)', 10, 5, 'Hosur plant', { text: 'Rehire options · 30 Sep', owner: 'HR', overdue: true }), joinerCard('k9', 'Selvi Perumal', 'Warehouse Associate', 'joins 6 Oct', 0, 3, 'Hosur plant', { text: 'Convert to employee · 1 Oct', owner: 'HR' })], emptyText: 'No accepted offers waiting' },
+  { id: 'pre', title: 'Pre-boarding', cards: [joinerCard('k1', 'Kavya Reddy', 'Quality Inspector', 'joins 5 Oct', journeyProgress(ONBOARDING_TASKS), 11, 'Hosur plant', { text: 'Education proofs · 28 Sep', owner: 'New hire', overdue: true }), joinerCard('k5', 'Campus 2026 · Sales', '12 sales trainees', 'join 19 Oct', 88, 40, 'Bengaluru head office', { text: 'Bank details ×3 · 25 Sep', owner: 'HR', overdue: true }, 12)], slaDays: 30 },
+  { id: 'day1', title: 'Day 1', cards: [joinerCard('k3', 'Murugan K', 'Warehouse Associate', 'joins 1 Oct', 70, 3, 'Hosur plant', { text: 'Safety induction · 1 Oct', owner: 'Manager' })], emptyText: 'No one joins this week' },
+  { id: 'first30', title: 'First 30 days', cards: [joinerCard('k6', 'Kiran Joshi', 'Account Executive', 'joined 3 Sep', 92, 26, 'Chennai office', { text: '30-day check-in · 6 Oct', owner: 'Manager' }), joinerCard('k7', 'Sneha Patil', 'HR Executive', 'joined 26 Aug', 96, 34, 'Bengaluru head office', { text: 'Buddy feedback · 27 Sep', owner: 'HR', overdue: true })], slaDays: 30 },
+  { id: 'done', title: 'Done', cards: [joinerCard('k8', 'Deepa Ghosh', 'Accountant', 'joined 30 Mar', 100, 120, 'Bengaluru head office', { text: 'All tasks done', owner: 'HR' })] },
 ];
 
 // PPL-11
@@ -67,18 +67,31 @@ const LOCATIONS = ['Bengaluru head office', 'Chennai office', 'Hosur plant'];
 const OWNERS: Owner[] = ['HR', 'IT', 'Manager', 'New hire'];
 const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || (col.slaDays !== undefined && c.daysInStage > col.slaDays));
 
-export function OnboardingBoard({ columns, state = 'ready' }: { columns: KanbanColumn[]; state?: 'ready' | 'loading' }) {
+/** The live app's board (design audit step 3). Stages follow the dates, so cards are not moved by hand. */
+export interface LiveBoard {
+  error: boolean;
+  onRetry: () => void;
+  onAdd?: () => void;
+  onImport?: () => void;
+  onOpenCard: (id: string) => void;
+  /** Drawers and dialogs the page opens. */
+  children?: ReactNode;
+}
+
+export function OnboardingBoard({ columns, state = 'ready', live }: { columns: KanbanColumn[]; state?: 'ready' | 'loading'; live?: LiveBoard }) {
   const [entity, setEntity] = useState<string | null>('all');
   const [q, setQ] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [location, setLocation] = useState<string | null>(null);
-  const [owner, setOwner] = useState<Owner | null>(null);
+  const [owner, setOwner] = useState<string | null>(null);
   const cards = columns.flatMap((c) => c.cards as JoinerCard[]);
   const total = cards.length;
   const batches = cards.filter((c) => c.people > 1);
   const singles = total - batches.length;
   const people = cards.reduce((n, c) => n + (c.people ?? 1), 0);
   const overdue = columns.reduce((n, col) => n + col.cards.filter((c) => isLate(c, col)).length, 0);
+  const locations = live ? [...new Set(cards.map((c) => c.location).filter(Boolean))].sort() : LOCATIONS;
+  const owners = live ? [...new Set(cards.map((c) => c.owner).filter(Boolean))] : OWNERS;
   // Filters change what the board shows; moves stay with the board.
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -89,7 +102,8 @@ export function OnboardingBoard({ columns, state = 'ready' }: { columns: KanbanC
       ),
     }));
   }, [columns, q, overdueOnly, location, owner]);
-  const filterKey = `${q}|${overdueOnly}|${location}|${owner}`;
+  const filterKey = `${q}|${overdueOnly}|${location}|${owner}|${live ? total : ''}`;
+  const add = live ? live.onAdd : () => {};
   return (
     <PeopleFrame active="Onboarding board">
       <PageHeader
@@ -97,25 +111,48 @@ export function OnboardingBoard({ columns, state = 'ready' }: { columns: KanbanC
         description={
           total === 0
             ? 'No one is onboarding right now.'
-            : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} people in all, from offer accepted to 30 days in. Drag a card or use Move to on each card.`
+            : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}`
         }
         actions={
           <div className="yx-ppl__head-actions">
-            <span className="yx-ppl__head-select">
-              <Select aria-label="Legal entity" size="sm" options={[{ value: 'all', label: 'All entities' }, { value: 'ka', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value={entity} onChange={setEntity} />
-            </span>
-            {total > 0 && (
-              <Button icon={UserPlus} variant="primary">
+            {/* Live: the company picker in the top bar scopes the board. */}
+            {!live && (
+              <span className="yx-ppl__head-select">
+                <Select aria-label="Legal entity" size="sm" options={[{ value: 'all', label: 'All entities' }, { value: 'ka', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value={entity} onChange={setEntity} />
+              </span>
+            )}
+            {total > 0 && live?.onImport && (
+              <Button icon={Upload} onClick={live.onImport}>
+                Import joiners
+              </Button>
+            )}
+            {total > 0 && add && (
+              <Button icon={UserPlus} variant="primary" onClick={add}>
                 Add joiner
               </Button>
             )}
           </div>
         }
       />
-      {state === 'loading' ? (
+      {live?.error ? (
+        <ErrorState title="We couldn't load the onboarding board" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : state === 'loading' ? (
         <ListSkeleton label="Loading onboarding board" rows={5} />
       ) : total === 0 ? (
-        <EmptyState title="No one is onboarding right now" description="Accepted offers appear here automatically, or add a joiner by hand." action={<Button variant="primary" icon={UserPlus}>Add joiner</Button>} />
+        <EmptyState
+          title="No one is onboarding right now"
+          description={add ? 'Accepted offers appear here automatically, or add a joiner by hand.' : 'Accepted offers and joiners appear here.'}
+          action={
+            add ? (
+              <span className="yx-ppl__row">
+                {live?.onImport && <Button icon={Upload} onClick={live.onImport}>Import joiners</Button>}
+                <Button variant="primary" icon={UserPlus} onClick={add}>
+                  Add joiner
+                </Button>
+              </span>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           <div className="yx-ppl__filters">
@@ -123,19 +160,20 @@ export function OnboardingBoard({ columns, state = 'ready' }: { columns: KanbanC
               <TextField type="search" aria-label="Find a joiner" placeholder="Find a joiner" value={q} onChange={setQ} size="sm" />
             </span>
             <span className="yx-ppl__head-select">
-              <Select aria-label="Location" size="sm" options={[{ value: 'all', label: 'All locations' }, ...LOCATIONS.map((l) => ({ value: l, label: l }))]} value={location ?? 'all'} onChange={(v) => setLocation(v === 'all' || !v ? null : v)} />
+              <Select aria-label="Location" size="sm" options={[{ value: 'all', label: 'All locations' }, ...locations.map((l) => ({ value: l, label: l }))]} value={location ?? 'all'} onChange={(v) => setLocation(v === 'all' || !v ? null : v)} />
             </span>
             <span className="yx-ppl__head-select">
-              <Select aria-label="Next task owner" size="sm" options={[{ value: 'all', label: 'Next task: anyone' }, ...OWNERS.map((o) => ({ value: o, label: `Next task: ${o}` }))]} value={owner ?? 'all'} onChange={(v) => setOwner(v === 'all' || !v ? null : (v as Owner))} />
+              <Select aria-label="Next task owner" size="sm" options={[{ value: 'all', label: 'Next task: anyone' }, ...owners.map((o) => ({ value: o, label: `Next task: ${o}` }))]} value={owner ?? 'all'} onChange={(v) => setOwner(v === 'all' || !v ? null : v)} />
             </span>
             <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={overdueOnly} onClick={() => setOverdueOnly(!overdueOnly)}>
               {overdueOnly && <Icon icon={Check} size="sm" />}
               Only overdue ({overdue})
             </button>
           </div>
-          <KanbanBoard key={filterKey} aria-label="Onboarding board" defaultColumns={shown} noun="joiner" onOpenCard={() => {}} />
+          <KanbanBoard key={filterKey} aria-label="Onboarding board" defaultColumns={shown} noun="joiner" readOnly={Boolean(live)} onOpenCard={live ? live.onOpenCard : () => {}} />
         </>
       )}
+      {live?.children}
     </PeopleFrame>
   );
 }

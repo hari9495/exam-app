@@ -135,6 +135,9 @@ export interface Joiner {
   openTasks: number;
   overdueTasks: number;
   version: number;
+  /** The next open task (the board card's next step) and the day the joiner was added. */
+  nextTask?: { title: string; dueOn: string; ownerType: OwnerType } | null;
+  addedOn?: string;
   /** 6e */
   personType?: 'new' | 'rehire';
   batchId?: string | null;
@@ -334,6 +337,8 @@ export interface ReadyOffer {
   phone: string | null;
   startDate: string;
   jobTitle: string;
+  /** The day the offer was accepted (null for older offers). */
+  acceptedOn?: string | null;
   personType: 'new' | 'ex_employee' | 'internal';
 }
 

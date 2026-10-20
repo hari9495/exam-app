@@ -170,7 +170,7 @@ export function OnboardingBoardScreen(p: OnboardingBoardScreenProps) {
   );
 }
 
-function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlaces; today: string; onClose: () => void; onAdd: (x: JoinerInput) => Promise<void> }) {
+export function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlaces; today: string; onClose: () => void; onAdd: (x: JoinerInput) => Promise<void> }) {
   const [given, setGiven] = useState('');
   const [family, setFamily] = useState('');
   const [email, setEmail] = useState('');
@@ -275,7 +275,7 @@ function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlac
 
 const IMPORT_HEADER = 'given_name,family_name,email,phone,joining_on,legal_entity,location,department,designation,employment_type,manager_code';
 
-function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: (csv: string, commit: boolean) => Promise<ImportResult>; onDone: (n: number) => void }) {
+export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: (csv: string, commit: boolean) => Promise<ImportResult>; onDone: (n: number) => void }) {
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const { busy, error, run } = useRun();

@@ -14,3 +14,6 @@ export type { FieldRow, JobChange } from '../people/people-data';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
 export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';
+// Onboarding (PPL-11 to PPL-17, PPL-41) with live data.
+export { OnboardingBoard, joinerCard, type JoinerCard, type LiveBoard } from '../people/onboarding';
+export type { KanbanColumn } from '../../components/kanban';
