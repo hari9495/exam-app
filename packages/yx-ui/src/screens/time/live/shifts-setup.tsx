@@ -5,13 +5,13 @@ import { Checkbox } from '../../../components/choice';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
-import { NumberField, TextArea, TextField, TimeField } from '../../../components/inputs';
+import { NumberField, TextArea, TextField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
-import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
+import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
-import { LivePage, clock, dateText } from './kit';
-import type { LoadState, OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftRow, ShiftSetup } from './types';
+import { dateText } from './kit';
+import type { OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftSetup } from './types';
 
 // HR › Shifts & patterns, the parts the TIM-06 design does not cover yet (M02 Q7, §B7, OSH Code): overtime rules by
 // scope and date, timesheet projects, and the women's night-work records the law needs (consents and the
@@ -33,8 +33,6 @@ export interface ShiftsSetupScreenProps {
   onAttest: (input: { locationId: string; item: string; attestedOn: string; reviewDue: string; note: string }) => Promise<unknown>;
 }
 
-const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
-const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SCOPES = [
   { value: 'tenant', label: 'Whole company' },
   { value: 'legal_entity', label: 'Legal entity' },
@@ -42,8 +40,6 @@ const SCOPES = [
   { value: 'department', label: 'Department' },
   { value: 'employee', label: 'One person' },
 ];
-const toMinute = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
-const fromMinute = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const minutes = (m: number | null) => (m === null ? 'none' : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m / 60} h`);
 
 export function AssignPatternDrawer({ data, pattern, onClose, onAssign }: { data: ShiftSetup; pattern: ShiftSetup['patterns'][number]; onClose: () => void; onAssign: ShiftsSetupScreenProps['onAssignPattern'] }) {

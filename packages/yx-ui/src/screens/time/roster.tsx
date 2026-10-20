@@ -918,8 +918,6 @@ function LiveShiftEditorView({ live, tab = 'shift' }: { live: LiveShiftEditor; t
   );
 }
 
-type LivePattern = ShiftSetup['patterns'][number];
-
 /** The designed Patterns tab on live data: the list, a new pattern's week or cycle, who follows each, and 14 days ahead. */
 function LivePatternsPanel({ live, data }: { live: LiveShiftEditor; data: ShiftSetup }) {
   const { toast } = useToast();
