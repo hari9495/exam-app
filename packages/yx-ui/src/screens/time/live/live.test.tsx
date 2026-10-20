@@ -6,7 +6,8 @@ import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
 import { TeamLeaveCalendarScreen } from '../leave';
 import { MusterScreen } from '../attendance';
-import type { LeavePlan, MyAttendance, MyLeave, Muster, TeamCalendar, TimeSetup } from './types';
+import { LeaveReportsScreen } from '../ops';
+import type { HrBalances, LeavePlan, MyAttendance, MyLeave, Muster, TeamCalendar, TimeSetup } from './types';
 import { ToastProvider } from '../../../components/notify';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -200,6 +201,25 @@ describe('Me › Attendance', () => {
 });
 
 describe('Team and HR', () => {
+  it('the designed leave reports list balances per type and open a leave card where HR adjusts with a reason', async () => {
+    const row = { leaveTypeId: 'el', code: 'EL', name: 'Earned leave', kind: 'earned', colour: 'blue', paid: true, hasBalance: true, balance: 12, pending: 0, available: 12, takenThisYear: 3, entitlement: 15, negativeLimit: 0 };
+    const data: HrBalances = { types: [{ id: 'el', code: 'EL', name: 'Earned leave', kind: 'earned' }], people: [{ employeeId: 'k', name: 'Kavya Reddy', code: 'KFT-0031', canAdjust: true, balances: [row] }] };
+    const onLedger = vi.fn(async () => [{ id: 'l1', on: '2026-01-01', type: 'Earned leave', kind: 'accrual', days: 15, reason: 'Year credit' }]);
+    const onAdjust = vi.fn(async () => ({}));
+    render(<ToastProvider><LeaveReportsScreen live={{ state: 'ready', data, today: '2026-10-20', onLedger, onAdjust }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Leave reports' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Earned/ })).toBeInTheDocument();
+    await ue.click(screen.getByText('Kavya Reddy'));
+    const card = await screen.findByRole('dialog', { name: /Leave card · Kavya Reddy/ });
+    expect(await within(card).findByText(/credited \+15 Earned leave/)).toBeInTheDocument();
+    await ue.click(within(card).getByRole('button', { name: 'Adjust balance' }));
+    const adjust = screen.getByRole('dialog', { name: 'Adjust balance' });
+    expect(within(adjust).getByRole('button', { name: 'Post adjustment' })).toBeDisabled();
+    await ue.type(within(adjust).getByRole('textbox', { name: /Reason/ }), 'Joined mid-year');
+    await ue.click(within(adjust).getByRole('button', { name: 'Post adjustment' }));
+    await waitFor(() => expect(onAdjust).toHaveBeenCalledWith('k', { leaveTypeId: 'el', days: 2, reason: 'Joined mid-year' }));
+  });
+
   it('the designed leave calendar marks leave, waiting requests and each person’s weekly off', async () => {
     const onRange = vi.fn();
     const data: TeamCalendar = { from: '2026-10-12', to: '2026-10-25', scope: 'team', people: [{ id: 'a', name: 'Kavya Reddy', code: null, me: false, department: 'Production', location: 'Hosur plant', offs: ['2026-10-18'], holidays: [], days: [{ on: '2026-10-13', part: 'full', status: 'pending', code: 'SL', colour: 'orange', name: 'Sick leave' }] }] };

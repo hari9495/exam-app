@@ -17,8 +17,9 @@ import { PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
-import type { LoadState, TeamCalendar as TeamCalendarData } from './live/types';
-import { ApprovalTimeline, Timeline, type TimelineItem } from '../../components/timeline';
+import type { LeaveBalanceRow, LedgerRow as LiveLedgerRow, LoadState, TeamCalendar as TeamCalendarData } from './live/types';
+import { useToast } from '../../components/notify';
+import { ApprovalTimeline, SYSTEM_ACTOR, Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import {
   BALANCES,
@@ -180,12 +181,12 @@ const LWP_DATES = [new Date(2026, 7, 21)];
    ===================================================================== */
 
 /** Balance cards; unpaid types show "taken this year" (YX-LV-14). */
-export function BalanceCards({ compact, balances = BALANCES, person = ME.name, onViewPending, onUseCompOff }: { compact?: boolean; balances?: LeaveBalance[]; /** Whose balances: approved leave still ahead shows as "booked", not "used". */ person?: string; onViewPending?: () => void; onUseCompOff?: () => void }) {
+export function BalanceCards({ compact, balances = BALANCES, person = ME.name, onViewPending, onUseCompOff, live }: { compact?: boolean; balances?: LeaveBalance[]; /** Whose balances: approved leave still ahead shows as "booked", not "used". */ person?: string; onViewPending?: () => void; onUseCompOff?: () => void; /** Live balances: no story requests, expiry dates or unpaid dates. */ live?: boolean }) {
   return (
     <div className={compact ? 'yx-tim-stack' : 'yx-tim-cards'}>
       {balances.map((b) => {
         const total = b.credited + (b.carried ?? 0);
-        const bookedReqs = LEAVE_REQUESTS.filter((r) => r.person === person && r.status === 'Approved' && r.type === b.name && day0(r.from) > TODAY0);
+        const bookedReqs = live ? [] : LEAVE_REQUESTS.filter((r) => r.person === person && r.status === 'Approved' && r.type === b.name && day0(r.from) > TODAY0);
         const booked = Math.min(b.taken, bookedReqs.reduce((t, r) => t + r.days, 0));
         // One rule on every card: the big number is what is free to apply for now (booked and pending days already off).
         // A comp-off "pending" is a claim still to be credited, so it doesn't reduce what's free.
@@ -193,7 +194,7 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
         // The whole year is credited on 1 Jan (see the ledger), so there is no "next credit" line.
         return (
           <Card key={b.code} title={b.name} actions={b.paid ? undefined : <Badge tone="neutral">Unpaid</Badge>}>
-            {b.paid ? (
+            {b.paid && !b.takenOnly ? (
               <>
                 <p className="yx-tim-big">{free} <span className="yx-tim-muted">{free === 1 ? 'day' : 'days'} available</span></p>
                 {b.code !== 'CO' && <Meter label={`${b.name} taken`} value={b.taken} max={total || 1} valueText={booked > 0 ? `${b.taken} of ${total} taken or booked` : `${b.taken} of ${total} taken`} />}
@@ -205,7 +206,7 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
                     {onViewPending && <Button size="sm" onClick={onViewPending}>View request</Button>}
                   </div>
                 )}
-                {b.code === 'CO' && b.balance > 0 && (
+                {b.code === 'CO' && b.balance > 0 && !live && (
                   <>
                     <div className="yx-tim-row">
                       <span className="yx-tim-muted">Expires {dm(CO_EXPIRES)}</span>
@@ -218,7 +219,7 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
             ) : (
               <>
                 <p className="yx-tim-big">{b.taken} <span className="yx-tim-muted">{b.taken === 1 ? 'day' : 'days'} taken this year</span></p>
-                {b.code === 'LWP' && b.taken > 0 && <p className="yx-tim-note">{LWP_DATES.map(dm).join(', ')} · deducted in that month's pay</p>}
+                {b.code === 'LWP' && b.taken > 0 && !live && <p className="yx-tim-note">{LWP_DATES.map(dm).join(', ')} · deducted in that month's pay</p>}
               </>
             )}
           </Card>
@@ -658,9 +659,11 @@ export function ApplyLeaveSheet(p: ApplyLeaveProps & { surface?: 'desk' | 'phone
 
 const PEOPLE_WITH_BALANCES = [ME.name, ...Object.keys(PERSON_BALANCES)];
 
-function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost }: { open: boolean; onOpenChange: (o: boolean) => void; person?: string; onPost?: (e: { person: string; code: string; delta: number; reason: string }) => void }) {
+function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, balances: liveBalances }: { open: boolean; onOpenChange: (o: boolean) => void; person?: string; /** May return a promise (live): the dialog stays open until it is saved. */ onPost?: (e: { person: string; code: string; delta: number; reason: string }) => void | Promise<unknown>; /** Live balances of the fixed person. */ balances?: LeaveBalance[] }) {
   const [person, setPerson] = useState(fixedPerson ?? 'Priya Shankar');
-  const balances = balancesFor(person).filter((b) => b.paid);
+  const balances = (liveBalances ?? balancesFor(person)).filter((b) => b.paid);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState('');
   const [code, setCode] = useState('EL');
   const [dir, setDir] = useState('add');
   const [days, setDays] = useState<number | null>(2);
@@ -687,11 +690,25 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost }
         <>
           {blockedBy && <span className="yx-tim-muted" style={{ alignSelf: 'center' }}>{blockedBy}</span>}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!!blockedBy} onClick={() => { onPost?.({ person, code: b.code, delta, reason }); onOpenChange(false); setReason(''); }}>Post adjustment</Button>
+          <Button
+            variant="primary"
+            disabled={!!blockedBy}
+            loading={saving}
+            onClick={() => {
+              const done = onPost?.({ person, code: b.code, delta, reason });
+              if (!(done instanceof Promise)) { onOpenChange(false); setReason(''); return; }
+              setSaving(true);
+              setFailed('');
+              done.then(() => { onOpenChange(false); setReason(''); }, (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not saved. Try again.')).finally(() => setSaving(false));
+            }}
+          >
+            Post adjustment
+          </Button>
         </>
       }
     >
       <div className="yx-tim-stack">
+        {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
         {!fixedPerson && <FormField label="Employee" required><PersonPicker aria-label="Employee" value={person} onChange={(v) => v && setPerson(v)} people={people} /></FormField>}
         <FormField label="Leave type" required><Select value={b?.code ?? code} onChange={(v) => v && setCode(v)} options={balances.map((x) => ({ value: x.code, label: `${x.name} · ${plural(free(x), 'day')} available` }))} /></FormField>
         <FormField label="Direction"><Segment label="Direction" value={dir} onChange={setDir} options={[{ value: 'add', label: 'Add' }, { value: 'deduct', label: 'Deduct' }]} /></FormField>
@@ -1483,6 +1500,67 @@ function projectBalance(b: LeaveBalance, on: Date, person = ME.name) {
     ? `If the ${pending.map((r) => span(r.from, r.to)).join(', ')} request${pending.length > 1 ? 's are' : ' is'} approved · ${plural(b.balance, 'day')} if not`
     : 'Nothing pending · no more credit before 31 Dec';
   return { value, note };
+}
+
+/** A live balance row as the designed card's balance (credited = what the year gave, so the meter reads "taken of credited"). */
+export const toLeaveBalance = (b: LeaveBalanceRow): LeaveBalance => ({ code: b.code, name: b.name, paid: b.paid, takenOnly: !b.hasBalance, balance: b.balance, taken: b.takenThisYear, credited: b.entitlement ?? b.balance + b.takenThisYear, pending: b.pending });
+const KIND_ORDER = ['casual', 'sick', 'earned', 'comp_off'];
+/** The designed order of the cards: Casual, Sick, Earned, Comp-off, then the rest as the company lists them. */
+export const sortBalances = <T extends { kind: string }>(rows: T[]) => [...rows].sort((a, b) => (KIND_ORDER.includes(a.kind) ? KIND_ORDER.indexOf(a.kind) : 9) - (KIND_ORDER.includes(b.kind) ? KIND_ORDER.indexOf(b.kind) : 9));
+const LEDGER_KIND: Record<string, string> = { opening: 'opening balance', accrual: 'credited', taken: 'took', cancelled: 'cancelled', adjustment: 'adjusted', carry_forward: 'carried forward', lapse: 'lapsed' };
+const AUTOMATIC = new Set(['opening', 'accrual', 'carry_forward', 'lapse']);
+
+/** TIM-21 on live data, as a drawer: the person's balance cards, their ledger as history, and Adjust balance for HR. */
+export function LiveLeaveCard({ open, onClose, person, balances, ledger, onAdjust }: {
+  open: boolean;
+  onClose: () => void;
+  person: { name: string; code: string | null };
+  balances: LeaveBalanceRow[];
+  /** null while it loads. */
+  ledger: LiveLedgerRow[] | null;
+  /** HR with leave.balance.adjust over the person. */
+  onAdjust?: (input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+}) {
+  const { toast } = useToast();
+  const [adj, setAdj] = useState(false);
+  const cards = sortBalances(balances).map(toLeaveBalance);
+  const items: TimelineItem[] = (ledger ?? []).map((l) => ({
+    id: l.id,
+    at: isoLocal(l.on),
+    actor: { name: AUTOMATIC.has(l.kind) ? SYSTEM_ACTOR : l.kind === 'adjustment' ? 'HR' : person.name },
+    action: `${LEDGER_KIND[l.kind] ?? l.kind} ${l.days > 0 ? `+${l.days}` : l.days} ${l.type}${l.reason ? ` · ${l.reason}` : ''}`,
+  }));
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      title={`Leave card · ${person.name}`}
+      subtitle={person.code ?? undefined}
+      size="lg"
+      footer={onAdjust ? <Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button> : undefined}
+    >
+      <div className="yx-tim-stack">
+        <BalanceCards live balances={cards} person={person.name} />
+        <Card title="History · every change to the balance">
+          {ledger === null ? <LoadingBlock rows={4} /> : items.length ? <Timeline aria-label="Leave history" items={items} /> : <p className="yx-tim-muted">No entries yet.</p>}
+          <p className="yx-tim-note">Each balance is the sum of its entries.</p>
+        </Card>
+      </div>
+      {onAdjust && (
+        <AdjustBalanceDialog
+          open={adj}
+          onOpenChange={setAdj}
+          person={person.name}
+          balances={cards}
+          onPost={async (e) => {
+            const row = balances.find((b) => b.code === e.code)!;
+            await onAdjust({ leaveTypeId: row.leaveTypeId, days: e.delta, reason: e.reason.trim() });
+            toast({ tone: 'success', title: `${e.delta > 0 ? 'Added' : 'Deducted'} ${plural(Math.abs(e.delta), 'day')} ${row.name} ${e.delta > 0 ? 'to' : 'from'} ${person.name}` });
+          }}
+        />
+      )}
+    </Drawer>
+  );
 }
 
 export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg }: {

@@ -26,6 +26,8 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
+import { LiveLeaveCard } from './leave';
+import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState } from './live/types';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -1101,7 +1103,114 @@ const LOP: LopRow[] = [
 ];
 
 type LeaveReport = 'balances' | 'ledger' | 'taken' | 'lop' | 'liability' | 'negative';
-export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state = 'ready' }: { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState }) {
+
+/** What the live app gives the leave reports (design audit): everyone's balances in scope, and each leave card. */
+export interface LiveLeaveReports {
+  state: LoadState;
+  onRetry?: () => void;
+  data: HrBalances | null;
+  /** yyyy-mm-dd in the company's time. */
+  today: string;
+  onLedger: (employeeId: string) => Promise<LiveLedgerRow[]>;
+  onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+}
+
+type LeaveReportsProps = { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState; /** The live app's data. Stories leave it out. */ live?: LiveLeaveReports };
+
+export function LeaveReportsScreen(props: LeaveReportsProps) {
+  return props.live ? <LiveLeaveReportsView live={props.live} /> : <StoryLeaveReports {...props} />;
+}
+
+type LivePerson = HrBalances['people'][number];
+const csvDownload = (name: string, rows: (string | number)[][]) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/** TIM-30 on live data: the report picker, the table with a column per leave type, and each person's leave card. */
+function LiveLeaveReportsView({ live }: { live: LiveLeaveReports }) {
+  const d = live.data;
+  const [r, setR] = useState<'balances' | 'taken' | 'negative'>('balances');
+  const [open, setOpen] = useState<LivePerson | null>(null);
+  const [ledger, setLedger] = useState<LiveLedgerRow[] | null>(null);
+  // The designed order: Casual, Sick, Earned, Comp-off, then the rest.
+  const ORDER = ['casual', 'sick', 'earned', 'comp_off'];
+  const rank = (k: string) => (ORDER.includes(k) ? ORDER.indexOf(k) : ORDER.length);
+  const types = [...(d?.types ?? [])].sort((a, b) => rank(a.kind) - rank(b.kind));
+  const bal = (x: LivePerson, id: string) => x.balances.find((b) => b.leaveTypeId === id);
+  // Types with a balance get a balance column; the others (unpaid) show the days taken.
+  const withBalance = types.filter((t) => (d?.people ?? []).some((x) => bal(x, t.id)?.hasBalance));
+  const unpaid = types.filter((t) => !withBalance.includes(t));
+  const people = (d?.people ?? []).filter((x) => r !== 'negative' || x.balances.some((b) => b.hasBalance && b.balance < 0));
+  const person: TableColumn<LivePerson> = { key: 'name', header: 'Employee', type: 'person', width: PERSON_W, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: x.code ?? undefined }) };
+  const balCell = (x: LivePerson, id: string) => {
+    const b = bal(x, id);
+    return !b ? '' : b.balance < 0 ? <Badge tone="danger">{b.balance}</Badge> : b.balance;
+  };
+  const cols: TableColumn<LivePerson>[] =
+    r === 'taken'
+      ? [person, ...types.map((t): TableColumn<LivePerson> => ({ key: t.id, header: t.name.replace(/ leave$/, ''), type: 'number', value: (x) => bal(x, t.id)?.takenThisYear ?? 0, total: 'sum' }))]
+      : [
+          person,
+          ...withBalance.map((t): TableColumn<LivePerson> => ({ key: t.id, header: t.name.replace(/ leave$/, ''), type: 'number', value: (x) => bal(x, t.id)?.balance ?? 0, total: r === 'negative' ? undefined : 'sum', render: (x) => balCell(x, t.id) })),
+          ...unpaid.map((t): TableColumn<LivePerson> => ({ key: t.id, header: `${t.name.replace(/ leave$/, '')} taken`, type: 'number', value: (x) => bal(x, t.id)?.takenThisYear ?? 0, total: r === 'negative' ? undefined : 'sum', optional: t.kind !== 'unpaid' })),
+        ];
+  const options = [
+    { value: 'balances', label: 'Balances' },
+    { value: 'taken', label: 'Leave taken' },
+    { value: 'negative', label: 'Negative balances' },
+  ];
+  const asOf = formatDate(new Date(Number(live.today.slice(0, 4)), Number(live.today.slice(5, 7)) - 1, Number(live.today.slice(8, 10))));
+  const reportLabel = options.find((o) => o.value === r)!.label;
+  const openCard = (x: LivePerson) => {
+    setOpen(x);
+    setLedger(null);
+    live.onLedger(x.employeeId).then(setLedger, () => setLedger([]));
+  };
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title="Leave reports"
+        description={r === 'taken' ? `Days taken or approved this leave year, as of ${asOf}` : `Balances as of ${asOf}`}
+        actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as typeof r)} options={options} /></div>}
+      />
+      {live.state === 'no-access' ? (
+        <EmptyState title="Nothing to show" description="People in your HR scope appear here." />
+      ) : (
+        <DataTable
+          key={r}
+          label="Leave report"
+          columns={cols}
+          rows={people}
+          getRowId={(x) => x.employeeId}
+          state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
+          onRetry={live.onRetry}
+          // ponytail: CSV for both choices (no Excel writer in the library yet); add one when finance asks for .xlsx.
+          onExport={live.state === 'ready' ? () => csvDownload(`${reportLabel} · ${asOf}.csv`, [cols.map((c) => String(c.header)), ...people.map((x) => cols.map((c) => String(c.value?.(x) ?? '')))]) : undefined}
+          // Each row opens that person's leave card; the negative list also says so on a button, as designed.
+          onRowClick={openCard}
+          rowButtons={r === 'negative' ? (x) => <Button size="sm" onClick={() => openCard(x)}>Open {x.name.split(' ')[0]}'s leave card</Button> : undefined}
+          empty={r === 'negative' ? <EmptyState title="No one is below zero" description="No one has used more leave than they have." /> : <EmptyState title="Nothing to show" description="People in your HR scope appear here once they have leave." />}
+        />
+      )}
+      {open && (
+        <LiveLeaveCard
+          open
+          onClose={() => setOpen(null)}
+          person={{ name: open.name, code: open.code }}
+          balances={(d?.people.find((x) => x.employeeId === open.employeeId) ?? open).balances}
+          ledger={ledger}
+          onAdjust={open.canAdjust ? async (input) => { await live.onAdjust(open.employeeId, input); setLedger(await live.onLedger(open.employeeId)); } : undefined}
+        />
+      )}
+    </TimePage>
+  );
+}
+
+function StoryLeaveReports({ report = 'balances', persona = 'hr', state = 'ready' }: LeaveReportsProps) {
   const fin = persona === 'fin';
   const [r, setR] = useState<LeaveReport>(fin ? 'liability' : report);
   const narrow = useNarrow(599);
