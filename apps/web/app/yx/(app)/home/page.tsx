@@ -121,7 +121,7 @@ export default function YxHomePage() {
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
-    ...(fin ? { moneyOut: fin.moneyOut } : {}),
+    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval } : {}),
     ...(hideKey
       ? {
           amounts: {
@@ -141,10 +141,10 @@ export default function YxHomePage() {
     hiring: hiringView,
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
-    // No work-from-home request in the live app yet, so the designed "Request work from home" button waits for it.
     quickActions: employee
       ? [
           { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },
+          { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
           { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
         ]
       : [],

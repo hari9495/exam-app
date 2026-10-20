@@ -103,10 +103,11 @@ describe('Finance home (PLT-02 finance)', () => {
       await tx.wfTask.create({ data: { organizationId: org.A.id, requestId: wf.id, step: 0, assigneeUserId: users.approverA, status: 'open' } });
       ids.wf = wf.id;
       for (const [m, status, net] of [[lastMonth, 'paid', '17985200.00'], [month, 'submitted', '18240500.00']] as const) {
-        const run = await tx.payrollRun.create({ data: { ...o, payGroupId: group.id, periodStart: new Date(`${m}-01T00:00:00Z`), periodEnd: new Date(`${monthEnd(m)}T00:00:00Z`), status, preparedBy: users.payA, totals: { people: 248, net, gross: net }, ...(m === month ? { wfRequestId: wf.id } : {}) } });
+        const run = await tx.payrollRun.create({ data: { ...o, payGroupId: group.id, periodStart: new Date(`${m}-01T00:00:00Z`), periodEnd: new Date(`${monthEnd(m)}T00:00:00Z`), status, calcVersion: 1, preparedBy: users.payA, totals: { people: 248, net, gross: net }, ...(m === month ? { wfRequestId: wf.id } : {}) } });
         ids[`run-${m}`] = run.id;
         const slip = await tx.payslip.create({ data: { ...o, employmentId, employeeId: ids.ravi, runId: run.id, periodStart: new Date(`${m}-01T00:00:00Z`), calcVersion: 1, gross: 100000, deductions: 10000, net: 90000, employerCost: 110000, ruleVersions: {}, snapshotHash: 'a'.repeat(64), resultHash: 'b'.repeat(64), status: 'approved' } });
         const lines: [string, string, number][] = [['pf_employee', 'deduction', m === month ? 1800 : 1700], ['pf_employer', 'employer', 1800], ['esi_employee', 'deduction', 750], ['esi_employer', 'employer', 3250], ['tds', 'deduction', m === month ? 5200 : 5000]];
+        if (m === month) await tx.varianceFlag.create({ data: { ...o, employeeId: ids.ravi, runId: run.id, payslipId: slip.id, kind: 'net_change', size: 15000, detail: 'Net pay changed by 20.0%.' } });
         await tx.payslipLine.createMany({ data: lines.map(([code, kind, amount], i) => ({ ...o, employeeId: ids.ravi, payslipId: slip.id, position: i, componentCode: code, name: code, kind, amount, explanation: 'Test line' })) });
       }
       await tx.expenseClaim.createMany({
@@ -116,6 +117,8 @@ describe('Finance home (PLT-02 finance)', () => {
           { ...o, employeeId: ids.ravi, employmentId, title: 'Paid already', currency: 'INR', status: 'approved', paymentStatus: 'paid', approvedTotal: 999, netPayable: 999 },
         ],
       });
+      // Last month's stored "claims to pay" for the whole company (the daily Home snapshot).
+      await tx.homeSnapshot.create({ data: { organizationId: org.A.id, metric: 'claims_to_pay', scopeId: null, month: new Date(`${lastMonth}-01T00:00:00Z`), value: 16230 } });
       await tx.expensePayoutBatch.create({ data: { ...o, formatKey: 'GENERIC', formatVersion: '1', fileName: `expenses-${addDays(today, 2)}.txt`, contentType: 'text/plain', fileEnc: 'x', sha256: 'c'.repeat(64), total: 4200, rowCount: 3, claimIds: [], generatedBy: users.approverA } });
     });
   }, 180_000);
@@ -139,7 +142,7 @@ describe('Finance home (PLT-02 finance)', () => {
     expect(now).toMatchObject({ id: ids[`run-${month}`], status: 'submitted', people: 248, net: '18240500.00', payOn: monthEnd(month), preparedBy: 'payA Person', preparedByMe: true, approveNow: false });
     expect(f.runs.find((r: { month: string }) => r.month === lastMonth)).toMatchObject({ status: 'paid', net: '17985200.00' });
     // A paid claim is not to pay; a failed one is.
-    expect(f.claims).toMatchObject({ count: 2, amount: '18850.50', batches: [{ rows: 3, total: '4200.00', payOn: addDays(today, 2), madeBy: 'approverA Person', madeByMe: false }] });
+    expect(f.claims).toMatchObject({ count: 2, amount: '18850.50', previous: 16230, batches: [{ rows: 3, total: '4200.00', payOn: addDays(today, 2), madeBy: 'approverA Person', madeByMe: false }] });
     const dues = f.dues.find((d: { month: string }) => d.month === month);
     const amount = (s: string) => dues.cards.find((c: { statute: string }) => c.statute === s).amount;
     expect([amount('IN.PF'), amount('IN.ESI'), dues.tds.amount]).toEqual(['3600.00', '4000.00', '5200.00']);
@@ -149,7 +152,7 @@ describe('Finance home (PLT-02 finance)', () => {
 
   it('marks the run the approver decides now, and gives them nothing their keys do not reach', async () => {
     const f = (await home('approverA')).finance;
-    expect(f.runs.find((r: { month: string }) => r.month === month)).toMatchObject({ approveNow: true, requestId: ids.wf, preparedBy: 'payA Person', preparedByMe: false });
+    expect(f.runs.find((r: { month: string }) => r.month === month)).toMatchObject({ approveNow: true, requestId: ids.wf, preparedBy: 'payA Person', preparedByMe: false, preparedRole: null, submittedOn: expect.any(String), variance: { flagged: 1, threshold: '10' } });
     expect(f.claims).toBeUndefined();
     expect(f.dues).toBeUndefined();
   });
@@ -163,6 +166,7 @@ describe('Finance home (PLT-02 finance)', () => {
     const body = await home('payB');
     expect(body.finance.runs).toEqual([]);
     expect(body.finance.claims).toMatchObject({ count: 0, amount: '0.00', batches: [] });
+    expect(body.finance.claims.previous).toBeUndefined();
     expect(body.finance.dues.every((d: { entityId: string }) => d.entityId === ids.leB)).toBe(true);
     expect(JSON.stringify(body)).not.toMatch(/18240500|18850|Ravi|payA Person/);
     // Asking for company A's entity by id shows nothing of it either.

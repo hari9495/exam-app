@@ -701,6 +701,8 @@ export interface LiveHome {
   amounts?: { hidden: boolean; onToggle: () => void };
   /** Finance: "Money going out" in the next 30 days, by date; an empty list says so, an absent one hides the widget. amount: unknown until calculated. */
   moneyOut?: { id: string; date: string; what: string; amount: number | null; status: string; tone: BadgeTone; action: string; href: string }[];
+  /** Finance: "Payroll approval", the run waiting for this person. changePct: net against last month, when on record. */
+  approval?: { month: string; preparedBy: string; role?: string; on?: string; previousMonth?: string; changePct?: number; flagged: number; threshold: string; href: string };
   /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. */
   team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string }[] };
   /** Manager: "Who's off this week", day by day. */
@@ -827,6 +829,36 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
             </div>
           ) : (
             <p className="yx-plt-muted">Nothing to pay in the next 30 days.</p>
+          ),
+        }]
+      : []),
+    ...(live.approval
+      ? [{
+          id: 'approval',
+          title: 'Payroll approval',
+          size: 4 as const,
+          content: (
+            <div className="yx-plt-stack" data-gap="sm">
+              <p>
+                {live.approval.month} run prepared by <strong className="yx-plt-strong">{live.approval.preparedBy}</strong>
+                {live.approval.role ? `, ${live.approval.role.toLowerCase()},` : ''}
+                {live.approval.on ? ` on ${live.approval.on}` : ''}. You approve it; the person who prepares a run can never approve it.
+              </p>
+              <Link href={live.approval.href}>
+                {[
+                  live.approval.previousMonth ? `Variance vs ${live.approval.previousMonth}${hide || live.approval.changePct === undefined ? '' : ` ${live.approval.changePct >= 0 ? '+' : '−'}${Math.abs(live.approval.changePct).toFixed(1)}%`}` : '',
+                  `${live.approval.flagged} ${live.approval.flagged === 1 ? 'employee' : 'employees'} above ${live.approval.threshold}% change`,
+                ].filter(Boolean).join(' · ')}
+              </Link>
+              <p className="yx-plt-muted">Releasing the bank file after approval asks you to sign in again.</p>
+              <span>
+                <Button variant="primary" asChild>
+                  <a href={live.approval.href}>
+                    <span className="yx-button__label">Open run for approval</span>
+                  </a>
+                </Button>
+              </span>
+            </div>
           ),
         }]
       : []),

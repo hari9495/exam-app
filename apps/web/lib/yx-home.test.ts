@@ -111,16 +111,16 @@ describe('Finance home (parity with PLT-02 finance)', () => {
       {
         runs: [
           { ...run, id: 'r8', month: '2026-08', status: 'paid', people: 245, net: '17985200.00', payOn: '2026-08-31' },
-          { ...run, id: 'r9', month: '2026-09', status: 'submitted', people: 248, net: '18240500.00', payOn: '2026-09-30', approveNow: true },
+          { ...run, id: 'r9', month: '2026-09', status: 'submitted', people: 248, net: '18240500.00', payOn: '2026-09-30', approveNow: true, preparedRole: 'Payroll executive', submittedOn: '2026-09-27T20:00:00Z', variance: { flagged: 3, threshold: '20' } },
         ],
-        claims: { count: 23, amount: '184250.00', batches: [{ id: 'b1', rows: 23, total: '184250.00', payOn: '2026-10-01', madeBy: 'Kiran Joshi', madeByMe: false }] },
+        claims: { count: 23, amount: '184250.00', previous: 162300, batches: [{ id: 'b1', rows: 23, total: '184250.00', payOn: '2026-10-01', madeBy: 'Kiran Joshi', madeByMe: false }] },
         dues: [due('2026-08', '2370000.00', '561000.00', '1455000.00', 'filed'), due('2026-09', '2412100.00', '556300.00', '1482600.00')],
       },
       '2026-09',
       '2026-09-29',
     );
     expect(f.stats!.map((s) => [s.label, s.value, s.previous, s.previousLabel, s.empty, s.drill.label])).toEqual([
-      ['Claims approved, to pay', 184250, undefined, undefined, undefined, 'View 23 claims'],
+      ['Claims approved, to pay', 184250, 162300, 'August', undefined, 'View 23 claims'],
       ['September net payroll', 18240500, 17985200, 'August', undefined, 'Open run for approval'],
       ['PF and ESI due 15 Oct', 2968400, 2931000, 'August', undefined, 'View challans'],
       ['TDS to deposit by 7 Oct', 1482600, 1455000, 'August', undefined, 'View TDS'],
@@ -137,6 +137,8 @@ describe('Finance home (parity with PLT-02 finance)', () => {
       ['Release claims payout file · 23 claims', 'Kiran Joshi', undefined, '/yx/expenses/to-pay'],
     ]);
     expect(f.replaces).toEqual(['wf1']);
+    // Prepared late on 27 Sep (UTC) is 28 Sep in India; net up 1.4% on August.
+    expect({ ...f.approval, changePct: f.approval!.changePct!.toFixed(1) }).toEqual({ month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: '1.4', flagged: 3, threshold: '20', href: '/yx/payroll/runs/r9' });
   });
 
   it('words a month with nothing yet and leaves out what the API left out', () => {

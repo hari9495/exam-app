@@ -232,6 +232,21 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: runs.map((r) => r.preparedBy) } }, select: { id: true, name: true, email: true } });
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, id: { in: runs.map((r) => r.legalEntityId) } }, select: { id: true, name: true } });
       const mine = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId!, status: 'open', requestId: { in: runs.flatMap((r) => (r.wfRequestId ? [r.wfRequestId] : [])) } }, select: { requestId: true } });
+      const requests = await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: runs.flatMap((r) => (r.wfRequestId ? [r.wfRequestId] : [])) } }, select: { id: true, createdAt: true } });
+      // People whose net pay changed by more than the company's threshold (the run's variance review, current calculation).
+      const flagged = await tx.$queryRaw<{ run_id: string; n: number }[]>`
+        SELECT f.run_id::text, count(DISTINCT f.employee_id)::int AS n FROM variance_flags f JOIN payslips p ON p.id = f.payslip_id
+        JOIN payroll_runs r ON r.id = f.run_id AND p.calc_version = r.calc_version
+        WHERE f.organization_id = ${org}::uuid AND f.run_id = ANY(${runs.map((r) => r.id)}::uuid[]) AND f.kind = 'net_change'
+        GROUP BY f.run_id`;
+      // The preparer's designation, from their employee record when they have one.
+      const roles = await tx.$queryRaw<{ user_id: string; name: string }[]>`
+        SELECT e.user_id::text, d.name FROM employees e JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id
+          AND a.superseded_at IS NULL AND current_date <@ daterange(a.valid_from, a.valid_to, '[]')
+        JOIN designations d ON d.id = a.designation_id
+        WHERE e.organization_id = ${org}::uuid AND e.user_id = ANY(${[...new Set(runs.map((r) => r.preparedBy))]}::uuid[])`;
+      const threshold = new Map<string, string>();
+      for (const id of new Set(runs.map((r) => r.legalEntityId))) threshold.set(id, String(await settingFor(tx, c, 'payroll.variance_threshold_pct', { legalEntityId: id })));
       return runs.map((r) => {
         const t = (r.totals ?? {}) as { people?: number; net?: string | number };
         const payDay = groups.find((g) => g.id === r.payGroupId)?.payDay ?? 0;
@@ -249,6 +264,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
           preparedByMe: r.preparedBy === v.userId,
           requestId: r.wfRequestId,
           approveNow: mine.some((x) => x.requestId === r.wfRequestId) && r.status === 'submitted',
+          preparedRole: roles.find((x) => x.user_id === r.preparedBy)?.name ?? null,
+          submittedOn: requests.find((x) => x.id === r.wfRequestId)?.createdAt.toISOString() ?? null,
+          variance: { flagged: flagged.find((x) => x.run_id === r.id)?.n ?? 0, threshold: threshold.get(r.legalEntityId) ?? '10' },
         };
       });
     });

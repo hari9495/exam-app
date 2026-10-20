@@ -27,8 +27,8 @@ export interface HomeWidgets {
 
 /** Amounts are rupees as decimal strings. */
 export interface FinanceHome {
-  runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean }[];
-  claims?: { count: number; amount: string; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean; preparedRole?: string | null; submittedOn?: string | null; variance?: { flagged: number; threshold: string } }[];
+  claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
@@ -303,7 +303,7 @@ const sumOf = <T>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x),
  * run the person approves now, a claims payout file someone else made). Nothing is made up: a part the API left out stays
  * out, and a month with nothing yet is said in words.
  */
-export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut'> & { actions: ActionItem[]; replaces: string[] } {
+export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval'> & { actions: ActionItem[]; replaces: string[] } {
   if (!f) return { actions: [], replaces: [] };
   const prev = prevMonthOf(month);
   const name = monthName(month);
@@ -312,7 +312,7 @@ export function financeHome(f: FinanceHome | undefined, month: string, today: st
 
   if (f.claims) {
     const c = f.claims;
-    stats.push({ id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: rupees(c.amount), money: true, ...(c.count ? {} : { empty: 'No approved claims waiting' }), drill: { label: c.count ? `View ${plural(c.count, 'claim')}` : 'Open To pay', href: TO_PAY } });
+    stats.push({ id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: rupees(c.amount), money: true, ...(c.count ? (c.previous !== undefined ? { previous: c.previous, previousLabel: monthName(prev) } : {}) : { empty: 'No approved claims waiting' }), drill: { label: c.count ? `View ${plural(c.count, 'claim')}` : 'Open To pay', href: TO_PAY } });
   }
   if (f.runs) {
     const now = f.runs.filter((r) => r.month === month);
@@ -381,6 +381,22 @@ export function financeHome(f: FinanceHome | undefined, month: string, today: st
     })),
     ...(f.claims?.batches ?? []).filter((b) => !b.madeByMe).map((b) => ({ id: `payout-${b.id}`, type: 'Payment', kind: 'review' as const, who: b.madeBy, title: `Release claims payout file · ${plural(b.rows, 'claim')}`, due: localDay(b.payOn), href: TO_PAY })),
   ];
+  // "Payroll approval": the chosen month's run waiting for this person, with its change against last month.
+  const mine = approve.find((r) => r.month === month);
+  const last = (f.runs ?? []).filter((r) => r.month === prev);
+  const lastNet = last.length && last.every((r) => r.net !== null) ? sumOf(last, (r) => rupees(r.net)) : 0;
+  const approval: LiveHome['approval'] = mine
+    ? {
+        month: name,
+        preparedBy: mine.preparedBy,
+        ...(mine.preparedRole ? { role: mine.preparedRole } : {}),
+        ...(mine.submittedOn ? { on: dm(new Date(Date.parse(mine.submittedOn) + 330 * 60_000).toISOString().slice(0, 10)) } : {}),
+        ...(lastNet && mine.net !== null ? { previousMonth: monthName(prev), changePct: ((rupees(mine.net) - lastNet) / lastNet) * 100 } : {}),
+        flagged: mine.variance?.flagged ?? 0,
+        threshold: mine.variance?.threshold ?? '10',
+        href: `${RUNS}/${encodeURIComponent(mine.id)}`,
+      }
+    : undefined;
   // The approvals inbox lists the same run; the finance row (with its headcount and net) takes its place.
-  return { stats, moneyOut, actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
+  return { stats, moneyOut, ...(approval ? { approval } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
 }

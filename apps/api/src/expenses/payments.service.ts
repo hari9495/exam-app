@@ -240,9 +240,13 @@ export class ExpensePaymentsService implements OnModuleInit {
         _count: true,
         _sum: { netPayable: true },
       });
+      // The stored monthly figure counts every open claim of the company (or entity): compare only for someone who sees all of them.
+      const own = me ? await tx.expenseClaim.count({ where: { organizationId: org, legalEntityId: { in: ids }, paymentStatus: { in: [...OPEN] }, employeeId: me.id } }) : 0;
+      const whole = !own && (entityId ? ids.length === 1 : tenantWide(v, 'expense.payout.manage'));
       const batches = await tx.expensePayoutBatch.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, status: 'draft' }, orderBy: { createdAt: 'asc' }, take: 20 });
       const makers = await tx.user.findMany({ where: { organizationId: org, id: { in: batches.map((b) => b.generatedBy) } }, select: { id: true, name: true, email: true } });
       return {
+        whole,
         count: open._count,
         amount: (open._sum.netPayable ?? D(0)).toFixed(2),
         batches: batches.map((b) => {

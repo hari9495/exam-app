@@ -218,13 +218,18 @@ export const PLT02FinanceHidden: S = {
 };
 export const PLT02Finance: S = { name: 'PLT-02 · Role home · finance', render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts={false} /> };
 // Finance, live (home parity 20 Oct 2026): the designed finance widgets with live data only. Left out until they have a
-// source: "Payroll approval" (variance), "Payroll cost" against budget, Announcements, Coming up, the professional tax
-// row (no due date on record), "vs last month" for claims, and "All payments" (no such page yet).
+// source: "Payroll cost" against budget, Announcements, Coming up, the professional tax
+// row (no due date on record) and "All payments" (no such page yet).
 const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
   ...LIVE_HR,
   firstName: 'Suresh',
+  quickActions: [
+    { label: 'Apply leave', href: '#leave', kind: 'leave' },
+    { label: 'Request work from home', href: '#wfh', kind: 'wfh' },
+    { label: 'Download payslip', href: '#payslip', kind: 'payslip' },
+  ],
   stats: [
-    { id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: 184250, money: true, drill: { label: 'View 23 claims', href: '#to-pay' } },
+    { id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: 184250, money: true, previous: 162300, previousLabel: 'August', drill: { label: 'View 23 claims', href: '#to-pay' } },
     { id: 'net', title: 'Payroll net', label: 'September net payroll', value: 18240500, money: true, previous: 17985200, previousLabel: 'August', drill: { label: 'Open run for approval', href: '#run' } },
     { id: 'pf', title: 'Statutory due', label: 'PF and ESI due 15 Oct', value: 2968400, money: true, previous: 2931000, previousLabel: 'August', drill: { label: 'View challans', href: '#statutory' } },
     { id: 'tds', title: 'TDS', label: 'TDS to deposit by 7 Oct', value: 1482600, money: true, previous: 1455000, previousLabel: 'August', drill: { label: 'View TDS', href: '#tds' } },
@@ -236,6 +241,7 @@ const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
     { id: 'o4', date: '15 Oct', what: 'Provident Fund', amount: 2412100, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
     { id: 'o5', date: '15 Oct', what: 'ESI', amount: 556300, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
   ],
+  approval: { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '#run' },
   due: undefined,
   moves: undefined,
 };
@@ -253,6 +259,7 @@ function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden
           { id: 'tds', title: 'TDS', label: 'TDS to deposit', value: 0, money: true, empty: 'Nothing due for October yet', drill: { label: 'View TDS', href: '#tds' } },
         ],
         moneyOut: [],
+        approval: undefined,
       }
     : { ...LIVE_FIN, amounts: { hidden, onToggle: () => setHidden(!hidden) } };
   return <RoleHomeScreen persona="finance" data={quiet ? { actions: [] } : FIN} live={live} />;
@@ -260,12 +267,11 @@ function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden
 export const PLT02FinanceLive: S = { name: 'PLT-02 · Role home · finance, live', render: () => <FinanceLive /> };
 export const PLT02FinanceLiveHidden: S = { name: 'PLT-02 · Role home · finance, live, amounts hidden', render: () => <FinanceLive hidden /> };
 export const PLT02FinanceLiveQuiet: S = { name: 'PLT-02 · Role home · finance, live, nothing yet', render: () => <FinanceLive quiet /> };
-// The payroll preparer with no employee record (Suresh in the demo): the run he prepared waits for someone else, so
-// nothing needs his action; no clock, leave or payslip buttons without an employee record; no claims card without the
-// payout key.
+// The payroll preparer (Suresh in the demo): the run he prepared waits for someone else, so nothing needs his action
+// and there is no "Payroll approval" card; no claims card without the payout key.
 function FinancePreparer() {
   const [hidden, setHidden] = useState(false);
-  const { clock: _c, quickActions: _q, ...rest } = LIVE_FIN;
+  const { approval: _a, ...rest } = LIVE_FIN;
   const live: LiveHome = {
     ...rest,
     amounts: { hidden, onToggle: () => setHidden(!hidden) },

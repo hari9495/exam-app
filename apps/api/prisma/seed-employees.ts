@@ -17,12 +17,9 @@ interface Actors {
   panel: string;
 }
 
-export async function seedEmployees(tx: Tx, organizationId: string, actors: Actors): Promise<void> {
+/** The change path the API uses (YX-HIS-01): hire people and record their changes, then rebuild their history. */
+function hirer(tx: Tx, organizationId: string, actors: Pick<Actors, 'admin' | 'hr'>) {
   const org = { organizationId };
-  // Each part is idempotent on its own, so a database seeded by an earlier step gains the later parts.
-  const first = !(await tx.employee.findFirst({ where: { ...org, workEmail: 'ramesh.iyengar@kaverifoods.test' } }));
-  const second = !(await tx.employee.findFirst({ where: { ...org, workEmail: 'kiran.joshi@kaverifoods.test' } }));
-  if (!first && !second) return;
   const history = new EmployeeHistoryService(undefined as never, undefined as never);
   const ctx = { organizationId, isSuperAdmin: false, userId: actors.hr, role: null };
   const today = todayIst();
@@ -81,6 +78,17 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
     const employee = await tx.employee.findFirstOrThrow({ where: { ...org, workEmail: email } });
     people[key] = { employee: employee.id, employment: await tx.employment.findFirstOrThrow({ where: { ...org, employeeId: employee.id, exitedOn: null } }) };
   };
+
+  return { id, entity, costCentre, people, change, hire, load };
+}
+
+export async function seedEmployees(tx: Tx, organizationId: string, actors: Actors): Promise<void> {
+  const org = { organizationId };
+  // Each part is idempotent on its own, so a database seeded by an earlier step gains the later parts.
+  const first = !(await tx.employee.findFirst({ where: { ...org, workEmail: 'ramesh.iyengar@kaverifoods.test' } }));
+  const second = !(await tx.employee.findFirst({ where: { ...org, workEmail: 'kiran.joshi@kaverifoods.test' } }));
+  if (!first && !second) return;
+  const { id, costCentre, people, change, hire, load } = hirer(tx, organizationId, actors);
 
   const blr = await id('location', 'BLR-HO');
   const hosur = await id('location', 'HSR-PLT');
@@ -179,3 +187,50 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
   }
 }
 
+
+/**
+ * The payroll and finance demo users get employee records (founder decision 20 Oct 2026), so their Home shows the
+ * designed quick actions and attendance: Neha Joshi heads Finance, Meena Raghavan runs payroll under her and Suresh
+ * Pillai prepares it under Meena, all in Bengaluru head office (General shift). Idempotent per person: someone whose
+ * login already has an employee record, or whose work email is taken, is left as is. Runs after the pay seeds, so the
+ * logins exist; also used by prisma/scripts/add-finance-employees.ts for an already seeded database.
+ */
+export async function seedFinanceEmployees(tx: Tx, organizationId: string): Promise<string[]> {
+  const org = { organizationId };
+  const login = async (email: string) => (await tx.user.findFirst({ where: { ...org, email }, select: { id: true } }))?.id ?? null;
+  const admin = await login('admin@demo-org.test');
+  const hr = await login('hr@demo-org.test');
+  const ramesh = await tx.employee.findFirst({ where: { ...org, workEmail: 'ramesh.iyengar@kaverifoods.test' }, select: { id: true } });
+  if (!admin || !hr || !ramesh) throw new Error('The Kaveri Foods demo (admin, HR and Ramesh Iyengar) must be seeded first.');
+  const { id, costCentre, hire } = hirer(tx, organizationId, { admin, hr });
+  const blr = await id('location', 'BLR-HO');
+  const fin = await id('department', 'FIN');
+  const perm = await id('employmentType', 'PERM');
+  const cc = [{ costCentreId: await costCentre('CC-BLR-FIN'), percent: '100.00' }];
+  // The head of Finance needs a designation the org structure did not have.
+  if (!(await tx.designation.findFirst({ where: { ...org, code: 'FIN-CONTROLLER' } }))) await tx.designation.create({ data: { ...org, name: 'Finance Controller', code: 'FIN-CONTROLLER' } });
+  const added: string[] = [];
+  let manager = ramesh.id;
+  const team = [
+    { user: 'finance@demo-org.test', given: 'Neha', family: 'Joshi', email: 'neha.joshi@kaverifoods.test', code: 'KF-0020', joined: '2018-08-01', designation: 'FIN-CONTROLLER', grade: 'M3', ctc: '3600000' },
+    { user: 'payroll-approver@demo-org.test', given: 'Meena', family: 'Raghavan', email: 'meena.raghavan@kaverifoods.test', code: 'KF-0031', joined: '2020-02-17', designation: 'PAYROLL-MGR', grade: 'M1', ctc: '1800000' },
+    { user: 'payroll@demo-org.test', given: 'Suresh', family: 'Pillai', email: 'suresh.pillai@kaverifoods.test', code: 'KF-0045', joined: '2022-03-07', designation: 'ACC-EXEC', grade: 'G3', ctc: '840000' },
+  ];
+  for (const p of team) {
+    const userId = await login(p.user);
+    if (!userId) throw new Error(`${p.user} must be seeded first.`);
+    const existing = await tx.employee.findFirst({ where: { ...org, OR: [{ userId }, { workEmail: p.email }] }, select: { id: true } });
+    if (!existing) {
+      await hire(
+        p.email,
+        { given: p.given, family: p.family, email: p.email, userId, entity: 'KFPL', code: p.code, joined: p.joined, status: 'confirmed' },
+        { locationId: blr, departmentId: fin, designationId: await id('designation', p.designation), gradeId: await id('grade', p.grade), employmentTypeId: perm, managerEmployeeId: manager, costCentres: cc },
+        p.ctc,
+      );
+      added.push(`${p.given} ${p.family}`);
+    }
+    // The next person reports to this one (whether just added or already there).
+    manager = (await tx.employee.findFirstOrThrow({ where: { ...org, OR: [{ userId }, { workEmail: p.email }] }, select: { id: true } })).id;
+  }
+  return added;
+}
