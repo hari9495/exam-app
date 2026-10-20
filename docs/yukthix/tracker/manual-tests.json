@@ -5407,5 +5407,39 @@
   "status": "Not run",
   "runs": [],
   "ideas": []
+ },
+ {
+  "id": "HOME-FIN",
+  "area": "Home (role homes)",
+  "screen": "Home for payroll and finance people (PLT-02 finance)",
+  "url": "http://localhost:3000/yx/home",
+  "account": "payroll@demo-org.test; payroll-approver@demo-org.test; hr@demo-org.test (unchanged)",
+  "steps": [
+   "Compare with the finance live designs.",
+   "Hide amounts, Apply leave, Request work from home, Download payslip.",
+   "HR still gets the HR Home."
+  ],
+  "expected": "Matches PLT-02 finance (live); HR Home unchanged.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-finance-live-quiet",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-finance-live-hidden"
+  ],
+  "note": "",
+  "status": "Not run",
+  "runs": [
+   {
+    "date": "2026-10-21",
+    "result": "Fail (fixed)",
+    "findings": "Apply leave opened My leave without the form; Attendance today kept showing the previous day (Tue 20 Oct, Holiday) after midnight. Show amounts had nothing to hide (no payroll run yet; not a bug). Suresh's leave balances 0 (new employee record; data).",
+    "fixedIn": "PR #199: Apply leave links ?apply=1 (all homes); the Home re-checks the India date every minute and refetches attendance"
+   },
+   {
+    "date": "2026-10-21",
+    "result": "Pass (payroll@)",
+    "findings": "Apply leave opens the form; Attendance today shows Wed 21 Oct with Clock in.",
+    "fixedIn": ""
+   }
+  ],
+  "ideas": []
  }
 ]
