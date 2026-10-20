@@ -24,7 +24,8 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRoute, type PeriodStage } from './time-logic';
 import type { ViewState } from './attendance';
 import { useToast } from '../../components/notify';
-import type { FixInput, LoadState, MyAttendance, OtClaim, OtReview, Periods as PeriodsData, Preflight, WfhInput } from './live/types';
+import type { FixInput, LoadState, MyAttendance, MyShifts as MyShiftsData, OtClaim, OtReview, Periods as PeriodsData, Preflight, WfhInput } from './live/types';
+import { NoAccessState } from '../../components/feedback';
 import { toDay } from './live/adapt';
 import { ErrorState } from '../../components/feedback';
 import { LoadingBlock } from './attendance';
@@ -631,7 +632,121 @@ function swapPlan(c: SwapPerson, give: number, base: ShiftCode[] = REQUESTER.wee
 }
 const hours = (week: ShiftCode[]) => week.filter((x) => x !== 'OFF').length * SHIFT_H;
 
-export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: { view?: 'request' | 'consent' | 'accepted'; surface?: 'desk' | 'phone'; blocked?: 'rest' | 'night' }) {
+/** What the live app gives My shifts (design audit): the person's published days, colleagues to swap with, their swaps. */
+export interface LiveMyShifts {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyShiftsData | null;
+  /** yyyy-mm-dd in the company's time. */
+  today: string;
+  onSwap: (input: { on: string; colleagueEmployeeId: string; reason: string }) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+  /** A colleague's swap waiting for this person's consent is answered in the approvals inbox. */
+  onOpenApprovals: () => void;
+}
+
+type ShiftSwapProps = { view?: 'request' | 'consent' | 'accepted'; surface?: 'desk' | 'phone'; blocked?: 'rest' | 'night'; /** The live app's data. Stories leave it out. */ live?: LiveMyShifts };
+
+export function ShiftSwapSheet(props: ShiftSwapProps) {
+  return props.live ? <LiveMyShiftsView live={props.live} /> : <StorySwapSheet {...props} />;
+}
+
+const clock12 = (min: number) => hourText(min / 60);
+const liveShiftLabel = (x: MyShiftsData['days'][number]) => (x.shift ? `${x.shift.name} ${clock12(x.shift.start)} – ${clock12(x.shift.end)}` : 'Weekly off');
+const liveDay = (iso: string) => { const d = localOf(iso); return `${WD[d.getDay()]} ${dm(d)}`; };
+
+/** TIM-08 on live data: My shifts with the next two weeks, each working day's Ask to swap, and the request drawer. */
+function LiveMyShiftsView({ live }: { live: LiveMyShifts }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const days = (d?.days ?? []).filter((x) => x.employed);
+  const working = days.filter((x) => x.shift && !x.off && x.on >= live.today);
+  const [open, setOpen] = useState(false);
+  const [give, setGive] = useState<string | null>(null);
+  const [withId, setWithId] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const mine = (d?.swaps ?? []).filter((x) => x.mine && x.status === 'pending');
+  const asked = (d?.swaps ?? []).filter((x) => !x.mine && x.status === 'pending');
+  const pendingOn = new Set((d?.swaps ?? []).filter((x) => x.status === 'pending').map((x) => x.on));
+  const given = days.find((x) => x.on === give);
+  const colleague = d?.colleagues.find((x) => x.id === withId);
+  const sendBlock = !give ? 'Pick your shift' : pendingOn.has(give) ? `A request for ${liveDay(give)} is already sent` : !colleague ? 'Pick a colleague' : !reason.trim() ? 'Enter a reason' : null;
+  const ask = (on: string) => { setGive(on); setWithId(null); setReason(''); setFailed(''); setOpen(true); };
+  const send = () => {
+    setBusy(true);
+    setFailed('');
+    live.onSwap({ on: give!, colleagueEmployeeId: withId!, reason: reason.trim() }).then(
+      () => { toast({ tone: 'success', title: `Swap for ${liveDay(give!)} sent to ${colleague!.name}` }); setOpen(false); },
+      (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not sent. Try again.'),
+    ).finally(() => setBusy(false));
+  };
+  const withdraw = (id: string, on: string) =>
+    live.onWithdraw(id).then(() => toast({ tone: 'success', title: `Swap for ${liveDay(on)} withdrawn` }), (e: unknown) => toast({ tone: 'error', title: 'Not withdrawn', description: e instanceof Error ? e.message : 'Try again.' }));
+  if (live.state === 'no-access') return <NoAccessState grantedBy="HR" what="your shifts" />;
+  return (
+    <TimePage active="My shifts">
+      <PageHeader title="My shifts" description="Your shifts for the next two weeks, as published." />
+      {mine.map((x) => (
+        <InlineAlert key={x.id} tone="success" title={`Sent to ${firstName(x.with)} · ${liveDay(x.on)}`} actions={<Button size="sm" onClick={() => void withdraw(x.id, x.on)}>Withdraw</Button>}>
+          Next: {firstName(x.with)} agrees, then your manager decides.
+        </InlineAlert>
+      ))}
+      {asked.map((x) => (
+        <InlineAlert key={x.id} tone="info" title={`${x.with} asked you to swap · ${liveDay(x.on)}`} actions={<Button size="sm" onClick={live.onOpenApprovals}>Open approvals</Button>}>
+          You agree or decline in Approvals; then your manager decides.
+        </InlineAlert>
+      ))}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? <LoadingBlock rows={6} /> : live.state === 'error' ? (
+        <ErrorState title="Your shifts didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : (
+        <Card title="Next two weeks">
+          {days.length === 0 ? <EmptyState compact title="No shifts published yet" description="Your shifts show here once your manager publishes the roster." /> : (
+            <ul className="yx-tim-list">
+              {days.map((x) => (
+                <li key={x.on}>
+                  <span className="yx-tim-row">{liveDay(x.on)} · {liveShiftLabel(x)}{x.on === live.today && <Badge tone="info">Today</Badge>}</span>
+                  {pendingOn.has(x.on) ? <Badge tone="neutral">Swap pending</Badge> : x.shift && !x.off && x.on >= live.today && (d?.colleagues.length ?? 0) > 0 && <Button size="sm" onClick={() => ask(x.on)}>Ask to swap</Button>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+      <Drawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Shift change or swap"
+        subtitle="Your colleague agrees first, then your manager decides"
+        footer={<>{sendBlock && <FootReason>{sendBlock}</FootReason>}<Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" disabled={!!sendBlock} loading={busy} onClick={send}>Send request</Button></>}
+      >
+        <div className="yx-tim-form">
+          {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+          <FormField label="My shift" required>
+            <Select value={give} onChange={(v) => v && setGive(v)} options={working.map((x) => ({ value: x.on, label: `${liveDay(x.on)} · ${liveShiftLabel(x)}` }))} />
+          </FormField>
+          <FormField label="Swap with" required helper="Someone with the same manager. The rest and night-work rules are checked when you send.">
+            <Select value={withId} onChange={setWithId} options={(d?.colleagues ?? []).map((x) => ({ value: x.id, label: x.name }))} />
+          </FormField>
+          <FormField label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} maxLength={500} /></FormField>
+          <section className="yx-tim-effect">
+            <strong>Effect</strong>
+            {given && colleague ? (
+              <>
+                <div className="yx-tim-effect__line">You: off on {liveDay(given.on)} instead of {liveShiftLabel(given)}</div>
+                <div className="yx-tim-effect__line">{firstName(colleague.name)}: works {liveDay(given.on)} {liveShiftLabel(given)}</div>
+                <p className="yx-tim-muted">Approval: {firstName(colleague.name)}'s consent → your manager.</p>
+              </>
+            ) : <p className="yx-tim-muted">Pick a colleague to see the effect.</p>}
+          </section>
+        </div>
+      </Drawer>
+    </TimePage>
+  );
+}
+
+function StorySwapSheet({ view = 'request', surface = 'desk', blocked }: ShiftSwapProps) {
   const [open, setOpen] = useState(true);
   const [kind, setKind] = useState('swap');
   const [give, setGive] = useState(2); // Sat 3 Oct

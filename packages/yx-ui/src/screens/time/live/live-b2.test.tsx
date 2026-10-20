@@ -2,11 +2,10 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MyOvertimeScreen } from './overtime';
-import { OtReviewScreen, PeriodsScreen } from '../requests';
+import { OtReviewScreen, PeriodsScreen, ShiftSwapSheet } from '../requests';
 import { ToastProvider } from '../../../components/notify';
 import { PayrollFeedScreen } from '../payroll-feed';
 import { AttendanceReportsScreen } from '../ops';
-import { MyShiftsScreen } from './roster';
 import { RosterScreen } from '../roster';
 import { ShiftsSetupScreen } from './shifts-setup';
 import { MyTimesheetScreen } from './timesheet';
@@ -59,15 +58,16 @@ describe('Roster planner (YX-AT-07)', () => {
     await waitFor(() => expect(onPublish).toHaveBeenCalledWith('2026-10-12'));
   });
 
-  it('an employee sees their shifts and asks a teammate to swap (no errors while typing)', async () => {
+  it('an employee sees their shifts and asks a teammate to swap: Send waits for a colleague and a reason, then a toast', async () => {
     const data: MyShifts = { week: '2026-10-05', days: [{ on: '2026-10-10', shift: { shiftId: 's-m', name: 'Morning', start: 360, end: 840 }, off: false, employed: true }], colleagues: [{ id: 'c1', name: 'Karthik Raja' }], swaps: [] };
     const onSwap = vi.fn(async () => ({}));
-    render(<MyShiftsScreen state="ready" data={data} today="2026-10-09" onSwap={onSwap} onWithdrawSwap={vi.fn(async () => ({}))} />);
-    await ue.click(screen.getByRole('button', { name: 'Ask to swap a shift' }));
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).queryByText('Choose the colleague.')).not.toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Send to my colleague' }));
-    expect(within(dialog).getAllByText('Choose the colleague.').length).toBeGreaterThan(0);
+    render(<ToastProvider><ShiftSwapSheet live={{ state: 'ready', data, today: '2026-10-09', onSwap, onWithdraw: vi.fn(async () => ({})), onOpenApprovals: vi.fn() }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'My shifts' })).toBeInTheDocument();
+    expect(screen.getByText(/Sat 10 Oct · Morning 6 am – 2 pm/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Ask to swap' }));
+    const dialog = screen.getByRole('dialog', { name: 'Shift change or swap' });
+    expect(within(dialog).getByText('Pick a colleague')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Send request' })).toBeDisabled();
     expect(onSwap).not.toHaveBeenCalled();
   });
 });

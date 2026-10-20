@@ -10,7 +10,7 @@ export { TeamLeaveCalendarScreen, type LiveLeaveCalendar } from '../leave';
 export { MusterScreen, type LiveMuster } from '../attendance';
 export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
-export { MyShiftsScreen, type MyShiftsScreenProps } from './roster';
+export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { RosterScreen, type LiveRoster } from '../roster';
 export { ShiftsSetupScreen, type ShiftsSetupScreenProps } from './shifts-setup';
 export { MyOvertimeScreen, type MyOvertimeScreenProps } from './overtime';
