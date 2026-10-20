@@ -18,8 +18,10 @@ import YxSecuritySettingsPage from './(app)/settings/security/page';
 import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
+import YxApprovalsPage from './(app)/approvals/page';
+import { ToastProvider } from '@yukthix/ui';
 
-jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }) }));
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }), useSearchParams: () => new URLSearchParams() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), API_BASE: 'https://api.test/api/v1' }));
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
@@ -956,5 +958,15 @@ describe('/yx/setup-mfa', () => {
     });
     wrap(<YxSetupMfaPage />);
     expect(await screen.findByRole('button', { name: /Authenticator app/ })).toBeInTheDocument();
+  });
+});
+
+describe('/yx/approvals', () => {
+  it('a decision says it is done with a toast (founder rule, 20 Oct 2026)', async () => {
+    const TASK = { taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Arjun Kulkarni: Casual leave, 27 Oct (1 day)', summary: [], requester: 'Arjun Kulkarni', raisedBy: null, onBehalfOf: null, step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: NOW };
+    route({ 'GET /workflow/approvals/inbox': [TASK], 'GET /workflow/delegations': [], 'POST /workflow/approvals/tasks/t1/decide': {} });
+    wrap(<ToastProvider><YxApprovalsPage /></ToastProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText('Approved: Arjun Kulkarni: Casual leave, 27 Oct (1 day)')).toBeInTheDocument();
   });
 });

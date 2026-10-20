@@ -3,6 +3,7 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@yukthix/ui';
 import { ApprovalsScreen, ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView, type Delegation, type PickOption } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -17,6 +18,7 @@ function Approvals() {
   const focus = useSearchParams()?.get('request') ?? null;
   const token = accessToken ?? undefined;
   const qc = useQueryClient();
+  const { toast } = useToast();
   const me = useCurrentUser();
   const get = <T,>(path: string) => ({ queryKey: ['workflow', path], queryFn: () => apiFetch(`/workflow${path}`, {}, token) as Promise<T>, enabled: Boolean(token), retry: false });
   const tasks = useQuery(get<ApprovalTask[]>('/approvals/inbox'));
@@ -39,7 +41,11 @@ function Approvals() {
       history={history.data ?? null}
       delegations={delegations.data ?? []}
       timeZone={me.data?.timeZone ?? undefined}
-      onDecide={(t, decision, reason) => write(`/approvals/tasks/${encodeURIComponent(t.taskId)}/decide`, { decision, ...(reason ? { reason } : {}) })}
+      onDecide={async (t, decision, reason) => {
+        await write(`/approvals/tasks/${encodeURIComponent(t.taskId)}/decide`, { decision, ...(reason ? { reason } : {}) });
+        // A decision is "done": a toast says what happened (founder rule).
+        toast({ tone: 'success', title: decision === 'approve' ? `Approved: ${t.title}` : `Not approved: ${t.title}`, ...(t.requester ? { description: `${t.requester} is told by email and in their bell.` } : {}) });
+      }}
       onDelegate={(input) => write('/delegations', input)}
       onRevoke={(id) => write(`/delegations/${encodeURIComponent(id)}/revoke`)}
       onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
