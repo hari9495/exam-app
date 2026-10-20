@@ -354,12 +354,13 @@ export class AttendanceService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
-      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; location: string }[]>`
-        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, l.name::text AS location
+      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; location: string; department: string }[]>`
+        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, l.name::text AS location, dp.name::text AS department
         FROM employees e
         JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${to}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${from}::date)
         JOIN locations l ON l.organization_id = e.organization_id AND l.id = a.location_id
+        JOIN departments dp ON dp.organization_id = e.organization_id AND dp.id = a.department_id
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to)}
           AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
@@ -402,6 +403,7 @@ export class AttendanceService implements OnModuleInit {
           name: p.name,
           code: p.code,
           location: p.location,
+          department: p.department,
           me: p.id === own,
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',

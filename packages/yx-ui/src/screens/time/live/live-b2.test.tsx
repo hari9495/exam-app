@@ -4,12 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { MyOvertimeScreen } from './overtime';
 import { OtReviewScreen, PeriodsScreen } from '../requests';
 import { ToastProvider } from '../../../components/notify';
-import { PayrollFeedScreen, RegistersScreen } from './periods';
+import { PayrollFeedScreen } from './periods';
+import { AttendanceReportsScreen } from '../ops';
 import { MyShiftsScreen } from './roster';
 import { RosterScreen } from '../roster';
 import { ShiftsSetupScreen } from './shifts-setup';
 import { MyTimesheetScreen } from './timesheet';
-import type { MyOvertime, MyShifts, MyTimesheet, OtReview, PayrollFeed, Periods, Registers, RosterWeek, ShiftSetup } from './types';
+import type { MyOvertime, MyShifts, MyTimesheet, Muster, OtReview, PayrollFeed, Periods, Registers, RosterWeek, ShiftSetup } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
@@ -187,9 +188,16 @@ describe('Timesheet, periods, registers and the payroll feed', () => {
   it('registers download each format; the feed is read only and says when it is frozen', async () => {
     const regs: Registers = { month: '2026-09', locations: [{ id: 'l1', name: 'Hosur plant', state: 'IN-TN', entityId: 'le', entity: 'Kaveri Foods TN', people: 6, locked: true, formats: [{ type: 'muster', title: 'Register of attendance (muster roll)', form: 'TN form', columns: ['Sl. no.'] }], source: 'x', verify: true }] };
     const onDownload = vi.fn(async () => ({}));
-    render(<RegistersScreen state="ready" data={regs} month="2026-09" onMonth={vi.fn()} onDownload={onDownload} />);
+    const base = { leavePart: null, workedMinutes: 480, regularised: false, leave: null, ot: null, waiting: false, wfh: false };
+    const muster: Muster = { month: '2026-09', from: '2026-09-01', to: '2026-09-30', scope: 'company', people: [{ id: 'm', name: 'Murugan Selvam', code: 'KFT-0101', location: 'Hosur plant', department: 'Production', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ ...base, on: '2026-09-02', status: 'present', lateMinutes: 12 }, { ...base, on: '2026-09-03', status: 'present', lateMinutes: null, ot: { minutes: 90, status: 'approved' } }] }] };
+    const { unmount } = render(<ToastProvider><AttendanceReportsScreen live={{ state: 'ready', muster, registers: regs, today: '2026-10-09', month: '2026-09', months: ['2026-10', '2026-09'], onMonth: vi.fn(), onDownload }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Attendance reports' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Report rows' })).toHaveTextContent('Production');
+    await ue.click(screen.getByRole('combobox', { name: 'Report' }));
+    await ue.click(screen.getByRole('option', { name: 'Register of attendance (muster roll)' }));
     await ue.click(screen.getByRole('button', { name: 'Download PDF' }));
     expect(onDownload).toHaveBeenCalledWith('muster', 'l1', 'pdf');
+    unmount();
     const feed: PayrollFeed = { entity: { id: 'le', name: 'Kaveri Foods TN' }, month: '2026-09', frozen: true, lockedAt: '2026-10-02T10:00:00Z', rows: [{ employeeId: 'e1', name: 'Murugan Selvam', code: 'KFT-0101', mode: 'punch', calendarDays: 30, paidDays: 29.5, lopDays: 0.5, otNormalMinutes: 90, otWeeklyOffMinutes: 0, otHolidayMinutes: 0, nightShifts: 7, compOffDays: 0.5, timesheetMinutes: 0, unevaluatedDays: 0 }] };
     render(<PayrollFeedScreen state="ready" data={feed} entities={[{ id: 'le', name: 'Kaveri Foods TN' }]} entityId="le" onEntity={vi.fn()} month="2026-09" onMonth={vi.fn()} />);
     expect(screen.getByText(/Frozen/)).toBeInTheDocument();

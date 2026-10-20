@@ -27,7 +27,8 @@ import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
 import { LiveLeaveCard } from './leave';
-import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState } from './live/types';
+import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState, Muster as MusterData, Registers } from './live/types';
+import { useToast } from '../../components/notify';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -888,7 +889,169 @@ const NIGHT: NightRow[] = [
   { id: 'n2', name: 'Selvi Arumugam', code: 'KF-0186', consent: 'NWC-2026-021', validTo: '28 Feb 2027', sep: 6, aug: 8, transport: { sep: 6, aug: 8 } },
 ];
 
-export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready' }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState }) {
+/** What the live app gives the attendance reports (design audit): the month's muster and the establishments' registers. */
+export interface LiveAttendanceReports {
+  state: LoadState;
+  onRetry?: () => void;
+  muster: MusterData | null;
+  registers: Registers | null;
+  /** yyyy-mm-dd and yyyy-mm. */
+  today: string;
+  month: string;
+  /** The months to pick from (yyyy-mm, newest first); picking one moves the top-bar period. */
+  months: string[];
+  onMonth: (month: string) => void;
+  onDownload: (type: 'muster' | 'leave', locationId: string, format: 'pdf' | 'xlsx') => Promise<unknown>;
+}
+
+type AttendanceReportsProps = { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's data. Stories leave it out. */ live?: LiveAttendanceReports };
+
+export function AttendanceReportsScreen(props: AttendanceReportsProps) {
+  return props.live ? <LiveAttendanceReportsView live={props.live} /> : <StoryAttendanceReports {...props} />;
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthTitle = (m: string) => `${MONTHS_LONG[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+const STATE_NAME: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
+interface LiveReportRow { id: string; label: string; loc: string; late: number; otHours: number; lop: number }
+
+/** TIM-16 on live data: late marks and overtime by department (or by person for a manager), and the statutory registers to download. */
+function LiveAttendanceReportsView({ live }: { live: LiveAttendanceReports }) {
+  const { toast } = useToast();
+  const [r, setR] = useState<string>('late');
+  const [filters, setFilters] = useState<FilterValue[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+  const m = live.muster;
+  const mgr = m?.scope === 'team';
+  // Each person's counted days: late check-ins, approved overtime and unpaid leave (today is still open).
+  const perPerson: LiveReportRow[] = (m?.people ?? []).map((p) => {
+    const days = p.days.filter((d) => d.on < live.today);
+    return {
+      id: p.id,
+      label: mgr ? p.name : p.department ?? '',
+      loc: p.location,
+      late: days.filter((d) => (d.lateMinutes ?? 0) > 0).length,
+      otHours: Math.round((days.reduce((a, d) => a + (d.ot?.status === 'approved' ? d.ot.minutes : 0), 0) / 60) * 100) / 100,
+      lop: days.filter((d) => d.leave?.code === 'LOP').length,
+    };
+  });
+  const grouped = mgr
+    ? perPerson
+    : [...perPerson.reduce((acc, x) => {
+        const k = `${x.label}|${x.loc}`;
+        const g = acc.get(k) ?? { id: k, label: x.label, loc: x.loc, late: 0, otHours: 0, lop: 0 };
+        acc.set(k, { ...g, late: g.late + x.late, otHours: Math.round((g.otHours + x.otHours) * 100) / 100, lop: g.lop + x.lop });
+        return acc;
+      }, new Map<string, LiveReportRow>()).values()].sort((a, b) => a.label.localeCompare(b.label));
+  const locs = multi(filters, 'loc');
+  const depts = multi(filters, 'dept');
+  const rows = grouped.filter((x) => (!locs || locs.includes(x.loc)) && (mgr || !depts || depts.includes(x.label)));
+  const cats = [...new Set(rows.map((x) => x.label))];
+  const sum = (pick: (x: LiveReportRow) => number) => cats.map((c) => rows.filter((x) => x.label === c).reduce((a, x) => a + pick(x), 0));
+  const isOt = r === 'ot';
+  const cols: TableColumn<LiveReportRow>[] = [
+    { key: 'label', header: mgr ? 'Employee' : 'Department', value: (x) => x.label },
+    { key: 'loc', header: 'Location', value: (x) => x.loc, optional: true },
+    { key: 'late', header: 'Late marks', type: 'number', value: (x) => x.late, total: 'sum', optional: isOt },
+    { key: 'ot', header: 'Overtime hours', type: 'number', value: (x) => x.otHours, total: 'sum', optional: !isOt },
+    { key: 'lop', header: 'Unpaid days (LOP)', type: 'number', value: (x) => x.lop, total: 'sum', optional: true },
+  ];
+  // The statutory registers this month: one option per register kind the establishments in scope keep.
+  const regs = live.registers?.locations ?? [];
+  const kinds = [...new Map(regs.flatMap((l) => l.formats).map((f) => [f.type, f.type === 'muster' ? 'Register of attendance (muster roll)' : 'Register of leave'])).entries()];
+  const reg = r.startsWith('reg:') ? (r.slice(4) as 'muster' | 'leave') : null;
+  const current = live.month === live.today.slice(0, 7);
+  const lastDay = Number(live.today.slice(8, 10)) - 1;
+  const period = current ? (
+    <span className="yx-tim-muted">{lastDay > 0 ? `1–${lastDay} ${MONTHS_LONG[Number(live.month.slice(5, 7)) - 1].slice(0, 3)}` : 'Nothing counted yet'} · today's check-ins not counted yet</span>
+  ) : (
+    <span className="yx-tim-row"><span>{monthTitle(live.month)}</span>{regs.length > 0 && regs.every((l) => l.locked) && <Badge tone="neutral">Locked</Badge>}</span>
+  );
+  const download = async (type: 'muster' | 'leave', l: Registers['locations'][number], fmt: 'pdf' | 'xlsx', title: string) => {
+    setBusy(`${l.id}-${fmt}`);
+    setFailed('');
+    try {
+      await live.onDownload(type, l.id, fmt);
+      toast({ tone: 'success', title: `${title} · ${l.name} downloaded`, description: l.locked ? undefined : `Draft: ${monthTitle(live.month)} is not locked yet.` });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Not downloaded. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const tableState = live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready';
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title={mgr ? 'My team · attendance' : 'Attendance reports'}
+        description={mgr ? `Your ${perPerson.length} direct reports` : undefined}
+        facts={period}
+        actions={
+          <div className="yx-tim-row">
+            <div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v)} options={[{ value: 'late', label: 'Late marks' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : kinds.map(([type, label]) => ({ value: `reg:${type}`, label })))]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={live.months.map((x) => ({ value: x, label: monthTitle(x) }))} /></div>
+          </div>
+        }
+      />
+      {failed && <InlineAlert tone="danger" title="Not downloaded">{failed}</InlineAlert>}
+      {live.state === 'no-access' ? (
+        <EmptyState title="No attendance to report" description="People you manage, or look after in HR, appear here." />
+      ) : reg ? (
+        <div className="yx-tim-stack">
+          {regs.filter((l) => l.formats.some((f) => f.type === reg)).map((l) => {
+            const f = l.formats.find((x) => x.type === reg)!;
+            return (
+              <Card key={l.id} title={`${f.title} · ${l.name}`} actions={l.locked ? <Badge tone="neutral">Month locked</Badge> : <Badge tone="warning">Draft: month not locked</Badge>}>
+                <div className="yx-tim-stack">
+                  <p className="yx-tim-muted">{l.entity} · {STATE_NAME[l.state] ?? l.state} · {l.people} people · {f.form}{l.verify ? ' · format to be confirmed by your compliance adviser' : ''}</p>
+                  <div className="yx-tim-row">
+                    <Button icon={Download} loading={busy === `${l.id}-pdf`} onClick={() => void download(reg, l, 'pdf', f.title)}>Download PDF</Button>
+                    <Button icon={Download} loading={busy === `${l.id}-xlsx`} onClick={() => void download(reg, l, 'xlsx', f.title)}>Download Excel</Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          {(rows.length > 0 || live.state === 'loading') && (
+            <BarChart
+              title={isOt ? (mgr ? 'Overtime hours by person' : 'Overtime hours by department') : mgr ? 'Late marks by person' : 'Late marks by department'}
+              categories={mgr ? cats.map((c) => c.split(' ')[0]) : cats}
+              series={isOt ? [{ name: 'Overtime hours', values: sum((x) => x.otHours) }] : [{ name: 'Late marks', values: sum((x) => x.late) }]}
+              xLabel={mgr ? 'Employee' : 'Department'}
+              horizontalBelow={480}
+              loading={live.state === 'loading'}
+            />
+          )}
+          <DataTable
+            key={r}
+            label="Report rows"
+            columns={cols}
+            rows={rows}
+            getRowId={(x) => x.id}
+            state={tableState}
+            onRetry={live.onRetry}
+            // ponytail: CSV for both choices (no Excel writer in the library yet).
+            onExport={live.state === 'ready' ? () => csvDownload(`${isOt ? 'Overtime' : 'Late marks'} · ${monthTitle(live.month)}.csv`, [cols.map((c) => String(c.header)), ...rows.map((x) => cols.map((c) => String(c.value?.(x) ?? '')))]) : undefined}
+            toolbar={<FilterBar fields={[{ key: 'loc', label: 'Location', type: 'multi', options: [...new Set(grouped.map((x) => x.loc))].map((l) => ({ value: l, label: l })) }, ...(mgr ? [] : [{ key: 'dept', label: 'Department', type: 'multi' as const, options: [...new Set(grouped.map((x) => x.label))].map((d) => ({ value: d, label: d })) }])]} value={filters} onChange={setFilters} />}
+            empty={
+              filters.length > 0 ? (
+                <EmptyState title="No attendance for these filters" description="No one matches every filter you picked." action={<Button onClick={() => setFilters([])}>Clear filters</Button>} />
+              ) : (
+                <EmptyState title="No attendance recorded" description={`Nothing was recorded for ${monthTitle(live.month)} yet.`} />
+              )
+            }
+          />
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryAttendanceReports({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready' }: AttendanceReportsProps) {
   const [r, setR] = useState(report);
   const [month, setMonth] = useState<Month>(startMonth);
   const [filters, setFilters] = useState<FilterValue[]>(startFilters);
