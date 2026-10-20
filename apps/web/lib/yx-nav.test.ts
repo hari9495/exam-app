@@ -34,7 +34,7 @@ describe('buildNav: areas', () => {
 describe('buildNav: People', () => {
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });

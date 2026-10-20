@@ -10004,3 +10004,73 @@ model Successor {
   @@index([organizationId], map: "successors_org_idx")
   @@map("successors")
 }
+
+/// PPL-09: a bulk move inside a legal entity or between legal entities, sent once, approved once by someone else.
+model Restructure {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// merge · close · demerge · within
+  kind           String    @db.VarChar(8)
+  fromEntityId   String    @map("from_entity_id") @db.Uuid
+  intoEntityId   String?   @map("into_entity_id") @db.Uuid
+  effectiveOn    DateTime  @map("effective_on") @db.Date
+  plan           Json
+  reason         String    @db.VarChar(500)
+  overrideReason String?   @map("override_reason") @db.VarChar(500)
+  /// pending · scheduled (approved, runs on the effective date) · done · rejected · cancelled
+  status         String    @default("pending") @db.VarChar(10)
+  requestedBy    String    @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(500)
+  ranAt          DateTime? @map("ran_at") @db.Timestamptz(3)
+  moved          Int       @default(0)
+  failed         Int       @default(0)
+  version        Int       @default(1)
+
+  @@unique([organizationId, id], map: "restructures_org_id_key")
+  @@index([organizationId, status], map: "restructures_org_status_idx")
+  @@map("restructures")
+}
+
+model RestructurePerson {
+  organizationId  String  @map("organization_id") @db.Uuid
+  restructureId   String  @map("restructure_id") @db.Uuid
+  employeeId      String  @map("employee_id") @db.Uuid
+  employmentId    String  @map("employment_id") @db.Uuid
+  options         Json    @default("{}")
+  /// pending · moved · failed · left_out
+  status          String  @default("pending") @db.VarChar(8)
+  failReason      String? @map("fail_reason") @db.VarChar(500)
+  newEmploymentId String? @map("new_employment_id") @db.Uuid
+  changeId        String? @map("change_id") @db.Uuid
+  result          Json?
+
+  @@id([restructureId, employeeId])
+  @@index([organizationId], map: "restructure_people_org_idx")
+  @@map("restructure_people")
+}
+
+/// PPL-10: what still has to happen for one person after a move between legal entities.
+model ContinuityItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  restructureId  String    @map("restructure_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  /// The entity the person moved into.
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  key            String    @db.VarChar(20)
+  title          String    @db.VarChar(300)
+  owner          String    @db.VarChar(20)
+  dueOn          DateTime? @map("due_on") @db.Date
+  status         String    @default("open") @db.VarChar(8)
+  note           String?   @db.VarChar(300)
+  doneBy         String?   @map("done_by") @db.Uuid
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@unique([restructureId, employeeId, key], map: "continuity_items_key")
+  @@index([organizationId, legalEntityId, status], map: "continuity_items_open_idx")
+  @@map("continuity_items")
+}

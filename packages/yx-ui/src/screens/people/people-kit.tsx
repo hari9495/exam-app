@@ -68,6 +68,8 @@ export const STATUS_TONE: Record<string, BadgeTone> = {
   Missing: 'danger', Rejected: 'danger', Failed: 'danger', Blocked: 'danger', Overdue: 'danger', Expired: 'danger', Escalated: 'danger', 'With HR': 'danger', 'No successor': 'danger', 'No ready successor': 'warning', Mismatch: 'danger',
   Refused: 'danger', Correction: 'warning', Current: 'success', Past: 'neutral',
   Scheduled: 'info', 'In progress': 'info', Ready: 'success', 'On approval': 'neutral', 'Fix needed': 'warning', Skipped: 'neutral', Leaving: 'warning', Superseded: 'neutral', Scanning: 'info', 'Auto-verified': 'success',
+  // PPL-09 restructure.
+  Moved: 'success', 'Waiting for approval': 'warning', "Couldn't move": 'danger', "Can't move": 'danger', 'Left out': 'neutral', 'You do this': 'neutral', Cancelled: 'neutral',
 };
 export const toneOf = (status: string): BadgeTone => STATUS_TONE[status] ?? STATUS_TONE[status.split(':')[0]] ?? 'neutral';
 export const StatusBadge = ({ status }: { status: string }) => <Badge tone={toneOf(status)}>{status}</Badge>;
