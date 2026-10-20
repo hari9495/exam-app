@@ -4267,7 +4267,14 @@
   ],
   "note": "Story names: Reporting lines (today); Department view; Position view with vacancies; As on 1 Jul 2026; As on 1 Oct 2026 (scheduled changes); Employee view",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Fail (in progress)",
+    "findings": "HR: all controls match except Export (only CSV; design has PNG and PDF) and a page scroll bar when 'View as on' shows its notice. Position view missing (no position data; founder: show job openings as 'Vacant · role'). Org chart ignored the company switcher (founder: option B, follow the switcher). 'View as on' only for HR (founder: past dates for everyone, future dates HR only). Manager: pass.",
+    "fixedIn": "People builder, PR #194"
+   }
+  ],
   "ideas": []
  },
  {
