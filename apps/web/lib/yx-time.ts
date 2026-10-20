@@ -26,6 +26,17 @@ export function useTimeWrite() {
   };
 }
 
+/** Decides the viewer's own P03 step on a time request (overtime, fixes) in place; the engine checks the task again. */
+export function useTimeDecide() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return async (taskId: string, decision: 'approve' | 'reject', reason?: string) => {
+    await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }) }, accessToken ?? undefined);
+    await queryClient.invalidateQueries({ queryKey: ['time'] });
+    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
+  };
+}
+
 /** A GET that is not cached (previews, day cards, ledgers). */
 export function useTimeRead() {
   const { accessToken } = useAuth();

@@ -432,6 +432,8 @@ export interface OtClaim {
   name?: string;
   code?: string | null;
   canOverride?: boolean;
+  /** The viewer's own open approval step on a waiting claim (null when someone else decides). */
+  taskId?: string | null;
 }
 /** Me › Attendance › Night work (founder decisions 9 Oct 2026). */
 export interface MyNightWork {

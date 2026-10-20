@@ -1,7 +1,9 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { MyOvertimeScreen, OvertimeReviewScreen } from './overtime';
+import { MyOvertimeScreen } from './overtime';
+import { OtReviewScreen } from '../requests';
+import { ToastProvider } from '../../../components/notify';
 import { PayrollFeedScreen, PeriodsScreen, RegistersScreen } from './periods';
 import { MyShiftsScreen } from './roster';
 import { RosterScreen } from '../roster';
@@ -136,16 +138,24 @@ describe('Overtime', () => {
     await waitFor(() => expect(onClaim).toHaveBeenCalledWith({ on: '2026-10-05', reason: 'Line changeover' }));
   });
 
-  it('HR pays over the limit only with a reason', async () => {
-    const data: OtReview = { month: '2026-10', scope: 'company', claims: [{ id: 'o1', employeeId: 'e1', on: '2026-10-05', category: 'normal', workedMinutes: 600, scheduledMinutes: 450, eligibleMinutes: 150, payableMinutes: 90, overCapMinutes: 60, rate: 2, settle: 'pay', compOffDays: 0, reason: 'x', status: 'approved', overridden: false, overrideReason: null, name: 'Murugan Selvam', canOverride: true }] };
+  it('the designed overtime review approves in place, and HR pays over the limit only with a reason', async () => {
+    const base = { employeeId: 'e1', category: 'normal' as const, workedMinutes: 600, scheduledMinutes: 450, eligibleMinutes: 150, payableMinutes: 90, rate: 2, settle: 'pay' as const, compOffDays: 0, reason: 'x', overridden: false, overrideReason: null };
+    const data: OtReview = { month: '2026-10', scope: 'company', claims: [
+      { ...base, id: 'o1', on: '2026-10-05', overCapMinutes: 60, status: 'approved', name: 'Murugan Selvam', canOverride: true, taskId: null },
+      { ...base, id: 'o2', on: '2026-10-06', overCapMinutes: 0, status: 'pending', name: 'Kavya Reddy', taskId: 't2' },
+    ] };
     const onOverride = vi.fn(async () => ({}));
-    render(<OvertimeReviewScreen state="ready" data={data} month="2026-10" onMonth={vi.fn()} onOverride={onOverride} />);
-    await ue.click(screen.getByRole('button', { name: 'Pay over the limit' }));
+    const onDecide = vi.fn(async () => ({}));
+    render(<ToastProvider><OtReviewScreen live={{ state: 'ready', data, today: '2026-10-09', onDecide, onOverride }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Overtime review' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('t2', 'approve'));
+    expect((await screen.findAllByText("Approved Kavya Reddy's overtime for 6 Oct")).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Override limit' }));
     const dialog = screen.getByRole('dialog');
-    await ue.click(within(dialog).getByRole('button', { name: 'Pay over the limit' }));
-    expect(onOverride).not.toHaveBeenCalled();
-    await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Approved by the plant head');
-    await ue.click(within(dialog).getByRole('button', { name: 'Pay over the limit' }));
+    expect(within(dialog).getByRole('button', { name: 'Approve with override' })).toBeDisabled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Approved by the plant head');
+    await ue.click(within(dialog).getByRole('button', { name: 'Approve with override' }));
     await waitFor(() => expect(onOverride).toHaveBeenCalledWith('o1', 'Approved by the plant head'));
   });
 });

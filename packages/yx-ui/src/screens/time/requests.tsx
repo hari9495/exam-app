@@ -23,6 +23,8 @@ import { EXCEPTIONS, HOLIDAYS, HR_ADMIN, LATE_PAYROLL, LEAVE_REQUESTS, ME, OT_RO
 import { DueBadge, Kpis, TimePage } from './time-kit';
 import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRoute, type PeriodStage } from './time-logic';
 import type { ViewState } from './attendance';
+import { useToast } from '../../components/notify';
+import type { LoadState, OtClaim, OtReview } from './live/types';
 import './time.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -721,7 +723,195 @@ const minus = (hhmm: string, min: number) => {
 const otFacts = (r: OtRow) => `${dm(r.date)} · ${fmtDuration(r.otMin)} OT · ${r.preApproved ? 'pre-approved' : 'not pre-approved'}`;
 const OT_STATUS_TONE: Record<OtRow['status'], BadgeTone> = { Pending: 'warning', Approved: 'success', Rejected: 'danger', 'Comp-off': 'info' };
 
-export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 'ready', action }: { persona?: 'mgr' | 'hr'; /** Manager whose reports are shown (default the signed-in manager). */ manager?: string; state?: ViewState; action?: 'override' | 'comp' }) {
+/** What the live app gives the overtime review (design audit): the month's claims and the decisions. */
+export interface LiveOtReview {
+  state: LoadState;
+  onRetry?: () => void;
+  data: OtReview | null;
+  /** yyyy-mm-dd in the company's time. */
+  today: string;
+  /** Approve or reject the viewer's own approval step on a waiting claim (the approvals engine checks it). */
+  onDecide: (taskId: string, decision: 'approve' | 'reject', reason?: string) => Promise<unknown>;
+  /** HR: pay the minutes over a legal limit on an approved claim, with a reason. */
+  onOverride: (claimId: string, reason: string) => Promise<unknown>;
+}
+
+type OtReviewProps = { persona?: 'mgr' | 'hr'; /** Manager whose reports are shown (default the signed-in manager). */ manager?: string; state?: ViewState; action?: 'override' | 'comp'; /** The live app's data. Stories leave it out. */ live?: LiveOtReview };
+
+export function OtReviewScreen(props: OtReviewProps) {
+  return props.live ? <LiveOtReviewView live={props.live} /> : <StoryOtReview {...props} />;
+}
+
+const isoLocal = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const OT_LIVE_STATUS: Record<OtClaim['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Pending', tone: 'warning' }, approved: { label: 'Approved', tone: 'success' }, rejected: { label: 'Rejected', tone: 'danger' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } };
+const OT_CATEGORY: Record<OtClaim['category'], string> = { normal: 'Working day', weekly_off: 'Weekly off', holiday: 'Holiday' };
+const otSettle = (c: OtClaim) => (c.settle === 'comp_off' ? `comp-off ${c.compOffDays} ${c.compOffDays === 1 ? 'day' : 'days'}` : `paid at ${c.rate}×`);
+
+/** TIM-09 on live data: the same header, table, row decisions, bulk bar and reason dialogs. */
+function LiveOtReviewView({ live }: { live: LiveOtReview }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const today = isoLocal(live.today);
+  const rows = d?.claims ?? [];
+  const [sel, setSel] = useState<string[]>([]);
+  const [over, setOver] = useState<OtClaim | null>(null);
+  const [reason, setReason] = useState('');
+  const [rej, setRej] = useState<string[] | null>(null);
+  const [rejReason, setRejReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const byId = (id: string) => rows.find((r) => r.id === id);
+  const decidable = new Set(rows.filter((r) => r.status === 'pending' && r.taskId).map((r) => r.id));
+  const pending = rows.filter((r) => r.status === 'pending');
+  const rejRows = rows.filter((r) => rej?.includes(r.id));
+  const who = (r: OtClaim) => `${r.name}'s overtime for ${dm(isoLocal(r.on))}`;
+  const act = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setFailed('');
+    try {
+      await fn();
+      setSel([]);
+      toast({ title: done, tone: 'success' });
+      return true;
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const approve = (ids: string[]) => {
+    const list = ids.map(byId).filter((r): r is OtClaim => Boolean(r?.taskId));
+    void act(async () => { for (const r of list) await live.onDecide(r.taskId!, 'approve'); }, list.length === 1 ? `Approved ${who(list[0])}` : `Approved ${list.length} overtime claims`);
+  };
+  const cols: TableColumn<OtClaim>[] = [
+    {
+      key: 'person', header: 'Employee', type: 'person', width: 200, value: (r) => r.name ?? '',
+      person: (r) => {
+        const ago = -daysUntil(isoLocal(r.on), today);
+        return {
+          name: r.name ?? '',
+          secondary: (
+            <span className="yx-tim-row">
+              {dm(isoLocal(r.on))}
+              {r.status === 'pending' && ago > 0 && <Badge tone={ago > 7 ? 'warning' : 'neutral'}>{ago === 1 ? 'yesterday' : `${ago} days ago`}</Badge>}
+            </span>
+          ),
+        };
+      },
+    },
+    {
+      key: 'worked', header: 'Worked', optional: true, width: 220, value: (r) => r.workedMinutes,
+      render: (r) => (
+        <span className="yx-tim-list__main">
+          <span>{r.category === 'normal' ? `Shift of ${fmtDuration(r.scheduledMinutes)}` : OT_CATEGORY[r.category]}</span>
+          <span className="yx-tim-muted">Worked {fmtDuration(r.workedMinutes)}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'ot', header: 'OT', type: 'number', value: (r) => r.payableMinutes / 60,
+      render: (r) => (
+        <span className="yx-tim-list__main">
+          <span>{fmtDuration(r.payableMinutes)}</span>
+          <span className="yx-tim-muted" style={NOWRAP}>{otSettle(r)}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'cap', header: 'Legal limit', hideable: false, width: 150, value: (r) => (r.overCapMinutes ? 'Over the limit' : 'Within limit'),
+      render: (r) =>
+        r.overCapMinutes ? (
+          <span className="yx-tim-list__main" style={{ alignItems: 'flex-start' }}>
+            <Badge tone={r.overridden ? 'success' : 'danger'} style={NOWRAP}>{r.overridden ? 'Over limit · paid' : 'Over the limit'}</Badge>
+            <span className="yx-tim-muted" style={NOWRAP}>{fmtDuration(r.overCapMinutes)} over</span>
+          </span>
+        ) : <Badge tone="success" style={NOWRAP}>Within limit</Badge>,
+    },
+  ];
+  const month = d ? isoLocal(`${d.month}-01`) : today;
+  return (
+    <TimePage active="Requests">
+      <PageHeader
+        title="Overtime review"
+        description={`${d ? (d.scope === 'team' ? 'Your team' : d.scope === 'company' ? 'Everyone' : 'The people you look after') : 'Overtime'} · ${MONTH[month.getMonth()]} ${month.getFullYear()}. Overtime counts past each rule's minimum, in its steps. Hours over a legal limit are paid only after an HR review.`}
+        facts={pending.length > 0 && <span className="yx-tim-muted">{`${pending.length} waiting · ${fmtDuration(pending.reduce((a, r) => a + r.payableMinutes, 0))} of overtime.`}</span>}
+      />
+      {failed && <InlineAlert tone="danger" title="That did not work">{failed}</InlineAlert>}
+      {live.state === 'no-access' ? (
+        <EmptyState title="No overtime to review" description="People you manage, or look after in HR, appear here." />
+      ) : (
+        <DataTable
+          label="Overtime to review"
+          columns={cols}
+          rows={rows}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
+          onRetry={live.onRetry}
+          empty={<EmptyState title="No overtime to review" description="Claims show here once someone asks for the overtime of a worked day." />}
+          selectable
+          isSelectable={(r) => (decidable.has(r.id) ? true : r.status === 'pending' ? 'Waiting for someone else' : false)}
+          selectedIds={sel}
+          onSelectedChange={(ids) => setSel(ids.filter((id) => decidable.has(id)))}
+          bulkActions={(ids) => (
+            <>
+              <Button variant="approve" size="sm" disabled={busy} onClick={() => approve(ids)}>Approve {ids.length}</Button>
+              <Button size="sm" disabled={busy} onClick={() => { setRejReason(''); setRej(ids); }}>Reject</Button>
+            </>
+          )}
+          rowButtons={(r) =>
+            decidable.has(r.id) ? (
+              <Button variant="approve" size="sm" disabled={busy} onClick={() => approve([r.id])}>Approve</Button>
+            ) : r.canOverride ? (
+              <Button size="sm" onClick={() => { setReason(''); setOver(r); }}>Override limit</Button>
+            ) : r.status === 'pending' ? <Badge tone="neutral">Waiting for approval</Badge> : <Badge tone={OT_LIVE_STATUS[r.status].tone}>{OT_LIVE_STATUS[r.status].label}</Badge>
+          }
+          rowActions={(r) => (decidable.has(r.id) ? <MenuItem onSelect={() => { setRejReason(''); setRej([r.id]); }}>Reject…</MenuItem> : null)}
+        />
+      )}
+      <Dialog
+        open={!!over}
+        onOpenChange={(o) => !o && setOver(null)}
+        title={`Pay over the limit · ${over?.name ?? ''}`}
+        footer={
+          <>
+            {!reason.trim() && <FootReason>Enter a reason</FootReason>}
+            <Button onClick={() => setOver(null)}>Cancel</Button>
+            <Button variant="approve" disabled={!reason.trim() || busy} onClick={() => { const r = over!; void act(() => live.onOverride(r.id, reason.trim()), `Paid ${fmtDuration(r.overCapMinutes)} over the limit on ${who(r)}`).then((ok) => ok && setOver(null)); }}>
+              Approve with override
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-tim-stack">
+          {over && <p className="yx-tim-muted">{dm(isoLocal(over.on))} · {fmtDuration(over.payableMinutes)} OT · {fmtDuration(over.overCapMinutes)} over the limit</p>}
+          <InlineAlert tone="warning" title="Over the legal limit">Paying over the legal limit is recorded against your name in the audit log.</InlineAlert>
+          <FormField label="Reason" required><TextArea rows={3} value={reason} onChange={setReason} placeholder="For example: emergency line breakdown, plant head approved" /></FormField>
+        </div>
+      </Dialog>
+      <Dialog
+        open={!!rej}
+        onOpenChange={(o) => !o && setRej(null)}
+        title={rejRows.length === 1 ? `Reject overtime · ${rejRows[0].name}` : `Reject ${rejRows.length} overtime entries`}
+        footer={
+          <>
+            {!rejReason.trim() && <FootReason>Enter a reason</FootReason>}
+            <Button onClick={() => setRej(null)}>Cancel</Button>
+            <Button variant="danger" disabled={!rejReason.trim() || busy} onClick={() => { const list = rejRows; void act(async () => { for (const r of list) await live.onDecide(r.taskId!, 'reject', rejReason.trim()); }, list.length === 1 ? `Rejected ${who(list[0])}` : `Rejected ${list.length} overtime claims`).then((ok) => ok && setRej(null)); }}>Reject overtime</Button>
+          </>
+        }
+      >
+        <div className="yx-tim-stack">
+          <p className="yx-tim-muted">{rejRows.length === 1 ? `${dm(isoLocal(rejRows[0].on))} · ${fmtDuration(rejRows[0].payableMinutes)} OT` : `${rejRows.length} entries · ${fmtDuration(rejRows.reduce((a, r) => a + r.payableMinutes, 0))} of overtime`}</p>
+          <p>These hours are not paid. The employee sees your reason.</p>
+          <FormField label="Reason" required><TextArea rows={3} value={rejReason} onChange={setRejReason} placeholder="For example: work could wait until the next shift" /></FormField>
+        </div>
+      </Dialog>
+    </TimePage>
+  );
+}
+
+function StoryOtReview({ persona = 'mgr', manager = ME.name, state = 'ready', action }: OtReviewProps) {
   const scoped = persona === 'hr' ? OT_ROWS : OT_ROWS.filter((r) => isMyReport(r.person, manager));
   const capped = (r: OtRow) => !!otCapFlag(r.weekHours, r.quarterHours);
   const [rows, setRows] = useState<OtRow[]>(scoped);
