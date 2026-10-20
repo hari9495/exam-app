@@ -1093,8 +1093,6 @@ export interface LiveProbation {
   /** employee.change.manage: confirm (a change someone else approves) or extend. */
   canDecide: boolean;
   onReview: (id: string, outcome: ProbationOutcome, months: number | null, draft: ProbationDraft) => Promise<void>;
-  onConfirm: (id: string, from: Date, reason: string) => Promise<void>;
-  onExtend: (id: string, months: number, reason: string) => Promise<void>;
   /** A confirmation waiting for approval opens the change list. */
   onOpenApproval: () => void;
 }
@@ -1154,16 +1152,15 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
   const escalated = withState.filter((r) => r.state === 'escalated');
   const empty = <EmptyState title="No one is on probation" description="New joiners appear here with their probation end date." />;
   const sorted = [...withState].sort((a, b) => a.end.getTime() - b.end.getTime());
-  const outcomes: ProbationOutcome[] = live && open && !open.live?.canReview ? ['confirm', 'extend'] : ['confirm', 'extend', 'terminate'];
-  const hrDecides = Boolean(live && open && !open.live?.canReview);
+  // PPL-16: HR decides with the same review as the manager (confirm, extend or recommend ending, rating, comments);
+  // the API takes HR's review on everyone its job-change grant reaches.
+  const outcomes: ProbationOutcome[] = ['confirm', 'extend', 'terminate'];
   const problem =
     !live || !open
       ? null
       : outcome === 'extend' && (!months || months < 1 || months > (open.live?.maxMonthsLeft ?? 0))
         ? 'months'
-        : hrDecides && outcome === 'confirm' && !draft.from
-          ? 'from'
-          : draft.comments.trim().length < 3
+        : draft.comments.trim().length < 3
             ? 'comments'
             : null;
   const submit = async () => {
@@ -1173,9 +1170,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
     setBusy(true);
     setFailed(null);
     try {
-      if (!hrDecides) await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
-      else if (outcome === 'confirm') await live.onConfirm(open.id, draft.from!, draft.comments.trim());
-      else await live.onExtend(open.id, months!, [draft.comments.trim(), draft.improve.trim() && `To improve: ${draft.improve.trim()}`].filter(Boolean).join('\n'));
+      await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
       setOpenId(null);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -1245,7 +1240,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             <>
               <Button onClick={() => setOpenId(null)}>Cancel</Button>
               <Button variant={outcome === 'terminate' ? 'danger' : 'primary'} loading={busy} onClick={() => void submit()}>
-                {outcome === 'confirm' ? (hrDecides ? 'Send for approval' : `Confirm ${first}`) : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
+                {outcome === 'confirm' ? `Confirm ${first}` : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
               </Button>
             </>
           ) : (
@@ -1283,7 +1278,6 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
                       draft,
                       setDraft,
                       maxMonths: open.live?.maxMonthsLeft ?? 0,
-                      confirmFrom: hrDecides,
                       errors: tried ? problem : null,
                     }
                   : {})}

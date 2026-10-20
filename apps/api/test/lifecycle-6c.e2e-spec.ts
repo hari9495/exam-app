@@ -283,8 +283,10 @@ describe('Lifecycle batch 6c', () => {
     await api('arun', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'confirm', comments: 'I am great' }).expect(403);
     expect((await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 12, comments: 'Too long' }).expect(400)).body.message).toMatch(/at most 12 months/);
     await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 2, comments: 'Needs more time on the line', rating: 3 }).expect(200);
+    // PPL-16: HR decides with the same review (its job-change grant reaches Arun); payroll's keys do not.
+    await api('hr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 1, comments: 'One more month on the line', rating: 3 }).expect(200);
     const arunJob = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.arun } }));
-    expect((await inA((tx) => tx.probation.findFirstOrThrow({ where: { employmentId: arunJob.id } }))).extendedMonths).toBe(2);
+    expect((await inA((tx) => tx.probation.findFirstOrThrow({ where: { employmentId: arunJob.id } }))).extendedMonths).toBe(3);
     await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'terminate', comments: 'Safety rules not followed' }).expect(200);
     const k = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { employeeId: emp.arun } }));
     expect(k).toMatchObject({ exitType: 'probation_termination', status: 'submitted' });
