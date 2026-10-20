@@ -15,5 +15,6 @@ export { ShiftsSetupScreen, type ShiftsSetupScreenProps } from './shifts-setup';
 export { MyOvertimeScreen, type MyOvertimeScreenProps } from './overtime';
 export { OtReviewScreen, type LiveOtReview } from '../requests';
 export { MyTimesheetScreen, type MyTimesheetScreenProps } from './timesheet';
-export { PeriodsScreen, RegistersScreen, PayrollFeedScreen, type PeriodsScreenProps, type RegistersScreenProps, type PayrollFeedScreenProps } from './periods';
+export { RegistersScreen, PayrollFeedScreen, type RegistersScreenProps, type PayrollFeedScreenProps } from './periods';
+export { PeriodsScreen, type LivePeriods } from '../requests';
 export { DAY_STATUS, LEAVE_STATUS, dayText, rangeText } from './kit';

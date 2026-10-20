@@ -2,9 +2,9 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MyOvertimeScreen } from './overtime';
-import { OtReviewScreen } from '../requests';
+import { OtReviewScreen, PeriodsScreen } from '../requests';
 import { ToastProvider } from '../../../components/notify';
-import { PayrollFeedScreen, PeriodsScreen, RegistersScreen } from './periods';
+import { PayrollFeedScreen, RegistersScreen } from './periods';
 import { MyShiftsScreen } from './roster';
 import { RosterScreen } from '../roster';
 import { ShiftsSetupScreen } from './shifts-setup';
@@ -171,12 +171,17 @@ describe('Timesheet, periods, registers and the payroll feed', () => {
   it('locking shows the pre-flight first and refuses while requests wait', async () => {
     const data: Periods = { year: '2026', today: '2026-10-09', entities: [{ id: 'le', name: 'Kaveri Foods TN', months: [{ month: '2026-09', stage: 'open', changedAt: null, changedBy: null, reason: null, lockable: true }, { month: '2026-10', stage: 'open', changedAt: null, changedBy: null, reason: null, lockable: false }] }] };
     const onLock = vi.fn(async () => ({}));
-    render(<PeriodsScreen state="ready" data={data} year="2026" onYear={vi.fn()} onPreflight={vi.fn(async () => ({ month: '2026-09', lockableFrom: '2026-10-02', people: 6, pending: [{ kind: 'Overtime claims', count: 1 }], exceptions: 0 }))} onLock={onLock} onUnlock={vi.fn(async () => ({}))} />);
-    await ue.click(screen.getByRole('button', { name: 'Lock' }));
-    const dialog = screen.getByRole('dialog');
-    expect(await within(dialog).findByText(/1 overtime claims still waiting/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Lock the month' })).toBeDisabled();
-    expect(screen.getByText('Can be locked from the 2nd of the next month')).toBeInTheDocument();
+    const onOpen = vi.fn();
+    render(<ToastProvider><PeriodsScreen live={{ state: 'ready', data, onPreflight: vi.fn(async () => ({ month: '2026-09', lockableFrom: '2026-10-02', people: 6, pending: [{ kind: 'Overtime claims', count: 1 }], exceptions: 0 })), onLock, onUnlock: vi.fn(async () => ({})), onOpen }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Periods' })).toBeInTheDocument();
+    expect(screen.getByText('Can be locked from 2 Nov')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Pre-lock checklist' })[1]);
+    const drawer = screen.getByRole('dialog', { name: /September 2026 · pre-lock checklist/ });
+    expect(await within(drawer).findByText('1 pending')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: 'Lock period' })).toBeDisabled();
+    await ue.click(within(drawer).getByRole('button', { name: 'Review OT' }));
+    expect(onOpen).toHaveBeenCalledWith('overtime');
+    expect(onLock).not.toHaveBeenCalled();
   });
 
   it('registers download each format; the feed is read only and says when it is frozen', async () => {

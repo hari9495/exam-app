@@ -24,7 +24,9 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRoute, type PeriodStage } from './time-logic';
 import type { ViewState } from './attendance';
 import { useToast } from '../../components/notify';
-import type { LoadState, OtClaim, OtReview } from './live/types';
+import type { LoadState, OtClaim, OtReview, Periods as PeriodsData, Preflight } from './live/types';
+import { ErrorState } from '../../components/feedback';
+import { LoadingBlock } from './attendance';
 import './time.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1278,13 +1280,215 @@ const FIX_STORY = {
   timesheets: 'screens-time-tim-15-·-timesheets--submitted',
 };
 
-export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false }: {
+/** What the live app gives the periods (design audit): each legal entity's months, the pre-lock check, lock and reopen. */
+export interface LivePeriods {
+  state: LoadState;
+  onRetry?: () => void;
+  data: PeriodsData | null;
+  onPreflight: (legalEntityId: string, month: string) => Promise<Preflight>;
+  onLock: (legalEntityId: string, month: string) => Promise<unknown>;
+  onUnlock: (legalEntityId: string, month: string, reason: string) => Promise<unknown>;
+  /** Opens the page that holds a checklist item. */
+  onOpen: (where: 'muster' | 'leave' | 'overtime' | 'approvals') => void;
+}
+
+type PeriodsProps = {
   persona?: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen';
   /** September locked on 1 Oct with payroll not yet run, so it can still be reopened. Use with `after`. */
   reopenable?: boolean;
   /** 1 Oct: September's inputs are frozen and every item is done, so it can be locked. */
   after?: boolean;
-}) {
+  /** The live app's data. Stories leave it out. */
+  live?: LivePeriods;
+};
+
+export function PeriodsScreen(props: PeriodsProps) {
+  return props.live ? <LivePeriodsView live={props.live} /> : <StoryPeriods {...props} />;
+}
+
+type LiveMonth = PeriodsData['entities'][number]['months'][number];
+type LiveEntity = { id: string; name: string };
+const monthOf = (month: string) => isoLocal(`${month}-01`);
+const monthLabel = (month: string) => `${MONTH[monthOf(month).getMonth()]} ${monthOf(month).getFullYear()}`;
+const lockableOn = (month: string) => { const d = monthOf(month); return new Date(d.getFullYear(), d.getMonth() + 1, 2); };
+const LIVE_STAGE: Record<string, { label: string; tone: 'success' | 'warning' | 'neutral' | 'info' }> = { ...STAGE };
+/** Checklist rows for the live pre-flight: what the server counts, where to fix it. */
+const LIVE_CHECKS: { kind: string; label: string; button: string; where: 'muster' | 'leave' | 'overtime' | 'approvals' }[] = [
+  { kind: 'Attendance fixes', label: 'Attendance requests decided', button: 'Open approvals', where: 'approvals' },
+  { kind: 'Leave requests', label: 'Leave requests for the month decided', button: 'Open leave calendar', where: 'leave' },
+  { kind: 'Overtime claims', label: 'OT approved or rejected', button: 'Review OT', where: 'overtime' },
+  { kind: 'Shift swaps', label: 'Shift swaps decided', button: 'Open approvals', where: 'approvals' },
+  { kind: 'Timesheets', label: 'Timesheets approved', button: 'Open approvals', where: 'approvals' },
+];
+
+/** TIM-11 on live data: a card per month (newest first) for each legal entity, the pre-lock checklist, lock and reopen. */
+function LivePeriodsView({ live }: { live: LivePeriods }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const today = d ? isoLocal(d.today) : new Date();
+  const [open, setOpen] = useState<{ e: LiveEntity; m: LiveMonth } | null>(null);
+  const [pre, setPre] = useState<Preflight | null>(null);
+  const [preFailed, setPreFailed] = useState(false);
+  const [dlg, setDlg] = useState<'lock' | 'reopen' | undefined>();
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const entities = d?.entities ?? [];
+  // The month now and the three before it, newest first (as the design shows them).
+  const shown = (e: PeriodsData['entities'][number]) => e.months.filter((m) => m.month <= d!.today.slice(0, 7)).slice(-4).reverse();
+  const isOpen = (m: LiveMonth) => m.stage === 'open' || m.stage === 'frozen';
+  const showChecklist = (e: LiveEntity, m: LiveMonth) => {
+    setOpen({ e, m });
+    setDlg(undefined);
+    setFailed('');
+    setPre(null);
+    setPreFailed(false);
+    if (isOpen(m)) live.onPreflight(e.id, m.month).then(setPre, () => setPreFailed(true));
+  };
+  const blockers = pre ? pre.pending.reduce((a, x) => a + x.count, 0) + pre.exceptions : 0;
+  const block = !open || !pre ? null : !open.m.lockable ? `You can lock ${MONTH[monthOf(open.m.month).getMonth()]} from ${dm(lockableOn(open.m.month))}.` : blockers ? `${plural(blockers, 'item')} still open.` : null;
+  const act = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setFailed('');
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+      setDlg(undefined);
+      setOpen(null);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const zero = <Badge tone="success">None open</Badge>;
+  const CheckRow = ({ label, children }: { label: string; children: ReactNode }) => (
+    <li style={{ flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <span style={{ flex: '1 1 calc(var(--yx-space-16) * 2.5)' }}>{label}</span>
+      <span className="yx-tim-row" style={{ flex: 'none', flexWrap: 'nowrap' }}>{children}</span>
+    </li>
+  );
+  const fixRow = (n: number, label: string, button: string, where: 'muster' | 'leave' | 'overtime' | 'approvals') =>
+    n ? (
+      <>
+        <Badge tone="danger" style={{ minWidth: 'calc(var(--yx-space-16) * 1.25)', justifyContent: 'center' }}>{label}</Badge>
+        <Button size="sm" style={{ minWidth: 'calc(var(--yx-space-16) * 2.5)' }} onClick={() => live.onOpen(where)}>{button}</Button>
+      </>
+    ) : zero;
+  const one = entities.length === 1 ? entities[0] : null;
+  return (
+    <TimePage active="Periods">
+      <PageHeader
+        title="Periods"
+        description={`${one ? `${one.name}. ` : ''}Each month is locked once its attendance and leave are final, before payroll runs.`}
+        facts={<span className="yx-tim-muted">A locked month refuses changes and payroll reads its frozen figures. Reopening it needs two approvals.</span>}
+      />
+      {live.state === 'loading' ? <LoadingBlock rows={6} /> : live.state === 'error' ? (
+        <ErrorState title="The periods didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' || !entities.length ? (
+        <EmptyState title="No legal entity to lock" description="Locking attendance needs attendance.lock for a legal entity." />
+      ) : (
+        entities.map((e) => (
+          <section key={e.id} className="yx-tim-stack" aria-label={e.name}>
+            {!one && <h2 className="yx-tim-h3">{e.name}</h2>}
+            <div className="yx-tim-cards">
+              {shown(e).map((m) => {
+                const st = m.reopenAsked ? { label: 'Reopen asked', tone: 'info' as const } : LIVE_STAGE[m.stage];
+                const by = m.changedAt ? `${dm(isoLocal(m.changedAt.slice(0, 10)))}${m.changedBy ? ` by ${m.changedBy}` : ''}` : '';
+                return (
+                  <Card key={m.month} title={monthLabel(m.month)} actions={<Badge tone={st.tone}>{st.label}</Badge>}>
+                    {isOpen(m) ? (
+                      m.lockable ? <p className="yx-tim-muted">Can be locked now</p> : <div className="yx-tim-row"><span className="yx-tim-muted">Can be locked from {dm(lockableOn(m.month))}</span><DueBadge date={lockableOn(m.month)} today={today} /></div>
+                    ) : (
+                      <p className="yx-tim-muted">Locked {by}</p>
+                    )}
+                    {m.reopenAsked && <p className="yx-tim-muted">Waiting for two approvals to reopen</p>}
+                    <div className="yx-tim-row">
+                      <Button size="sm" onClick={() => showChecklist(e, m)}>{isOpen(m) ? 'Pre-lock checklist' : 'Lock summary'}</Button>
+                      {m.stage === 'locked' && !m.reopenAsked && <Button size="sm" icon={Unlock} onClick={() => { setOpen({ e, m }); setReason(''); setFailed(''); setDlg('reopen'); }}>Request reopen</Button>}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        ))
+      )}
+      <Drawer
+        open={!!open && dlg !== 'reopen'}
+        onOpenChange={(o) => !o && setOpen(null)}
+        size="lg"
+        title={open ? `${monthLabel(open.m.month)} · ${isOpen(open.m) ? 'pre-lock checklist' : 'lock summary'}` : ''}
+        subtitle={open && !one ? open.e.name : undefined}
+        footer={open && isOpen(open.m) ? (
+          <>
+            {block && <FootReason>{block}</FootReason>}
+            <Button onClick={() => setOpen(null)}>Close</Button>
+            <Button variant="primary" icon={Lock} disabled={!pre || !!block} onClick={() => setDlg('lock')}>Lock period</Button>
+          </>
+        ) : undefined}
+      >
+        {open && (isOpen(open.m) ? (
+          <div className="yx-tim-stack">
+            {failed && <InlineAlert tone="danger" title="Not locked">{failed}</InlineAlert>}
+            {preFailed ? <ErrorState title="The checklist didn't load" description="Nothing has changed. Try again in a moment." onRetry={() => showChecklist(open.e, open.m)} /> : !pre ? <LoadingBlock rows={5} /> : (
+              <>
+                <p className="yx-tim-muted">{plural(pre.people, 'person', 'people')} in this legal entity during the month. Every day is worked out again before the lock.</p>
+                <ul className="yx-tim-check">
+                  <CheckRow label="Attendance exceptions resolved">{fixRow(pre.exceptions, `${pre.exceptions} open`, 'Open muster', 'muster')}</CheckRow>
+                  {LIVE_CHECKS.map((c) => {
+                    const n = pre.pending.find((x) => x.kind === c.kind)?.count ?? 0;
+                    return <CheckRow key={c.kind} label={c.label}>{fixRow(n, `${n} pending`, c.button, c.where)}</CheckRow>;
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        ) : (
+          <ul className="yx-tim-check">
+            <li><span>Lock</span><span>{open.m.changedAt ? `${dm(isoLocal(open.m.changedAt.slice(0, 10)))}${open.m.changedBy ? ` by ${open.m.changedBy}` : ''}` : ''}</span></li>
+            <li><span>Checklist</span><Badge tone="success">All items done</Badge></li>
+            <li><span>Stage</span><span>{LIVE_STAGE[open.m.stage].label}</span></li>
+            <li><span>Reopen</span><span className="yx-tim-muted">{open.m.stage === 'locked' ? 'Allowed with two approvals until the bank file is released or payslips are issued' : 'Not allowed once the month is filed'}</span></li>
+          </ul>
+        ))}
+      </Drawer>
+      {open && (
+        <TypeToConfirmDialog
+          open={dlg === 'lock'}
+          onOpenChange={(o) => !o && setDlg(undefined)}
+          title={`Lock ${monthLabel(open.m.month)} · ${open.e.name}`}
+          consequence={`Attendance, leave, overtime, rosters and timesheets for ${MONTH[monthOf(open.m.month).getMonth()]} can't change after this, and its payroll figures are frozen. You'll be asked to confirm it's you.`}
+          objectName={`${open.e.name.toUpperCase()} ${MON[monthOf(open.m.month).getMonth()].toUpperCase()} ${monthOf(open.m.month).getFullYear()}`}
+          confirmLabel="Lock period"
+          onConfirm={() => { setDlg(undefined); void act(() => live.onLock(open.e.id, open.m.month), `Locked ${monthLabel(open.m.month)} for ${open.e.name}`); }}
+        />
+      )}
+      {open && dlg === 'reopen' && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && (setDlg(undefined), setOpen(null))}
+          title={`Request reopen · ${monthLabel(open.m.month)}`}
+          footer={
+            <>
+              {!reason.trim() && <FootReason>Enter a reason</FootReason>}
+              <Button onClick={() => { setDlg(undefined); setOpen(null); }}>Cancel</Button>
+              <Button variant="danger" icon={Unlock} disabled={!reason.trim() || busy} onClick={() => void act(() => live.onUnlock(open.e.id, open.m.month, reason.trim()), `Reopen request sent for ${monthLabel(open.m.month)}, ${open.e.name}`)}>Send reopen request</Button>
+            </>
+          }
+        >
+          <div className="yx-tim-stack">
+            {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+            <p>Reopen is a high-risk request. It needs a payroll check, then Finance or a System Admin, and you can't approve your own request. A month whose bank file is released or whose payslips are issued can't be reopened.</p>
+            <FormField label="Reason" required><TextArea rows={3} value={reason} onChange={setReason} /></FormField>
+          </div>
+        </Dialog>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryPeriods({ persona = 'hr', openId, dialog, reopenable = false, after = false }: PeriodsProps) {
   const today = after ? new Date(2026, 9, 1, 10, 0) : TODAY;
   const [lockedIds, setLockedIds] = useState<string[]>([]);
   const periods = PERIODS.map((p) =>
