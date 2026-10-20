@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -52,9 +53,34 @@ export class AttendanceService implements OnModuleInit {
     return { f: (await factsOn(tx, c.organizationId, id, today)) ?? f, today };
   }
 
+  /** TIM-31: one fence per allowed point of each location (a location with no point still brings its networks). */
   private async fences(tx: Tx, org: string, ids: string[]): Promise<Fence[]> {
-    const rows = await tx.location.findMany({ where: { organizationId: org, id: { in: ids }, archivedAt: null } });
-    return rows.map((l) => ({ locationId: l.id, name: l.name, lat: l.geoLat === null ? null : Number(l.geoLat), lng: l.geoLng === null ? null : Number(l.geoLng), radiusM: l.geoRadiusM, ipRanges: l.ipRanges }));
+    const [rows, points] = await Promise.all([
+      tx.location.findMany({ where: { organizationId: org, id: { in: ids }, archivedAt: null } }),
+      tx.locationFence.findMany({ where: { organizationId: org, locationId: { in: ids } }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+    ]);
+    return rows.flatMap((l): Fence[] => {
+      const mine = points.filter((p) => p.locationId === l.id);
+      if (!mine.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges }];
+      return mine.map((p) => ({ locationId: l.id, name: l.name, lat: Number(p.lat), lng: Number(p.lng), radiusM: p.radiusM, ipRanges: l.ipRanges }));
+    });
+  }
+
+  /**
+   * TIM-31 phone binding: where the person's location binds check-in to one phone, the first phone they check in from
+   * is kept (a hash of the key the app keeps on it); another phone is refused until HR resets it. Null: allowed.
+   */
+  private async otherPhone(tx: Tx, org: string, employeeId: string, locationId: string, deviceId: string | undefined, label: string | null): Promise<string | null> {
+    const site = await tx.location.findFirst({ where: { organizationId: org, id: locationId }, select: { bindDevice: true } });
+    if (!site?.bindDevice) return null;
+    if (!deviceId) return 'This site checks you in from one phone. Update the app and try again.';
+    const hash = createHash('sha256').update(deviceId).digest('hex');
+    const bound = await tx.checkinDevice.findUnique({ where: { organizationId_employeeId: { organizationId: org, employeeId } } });
+    if (!bound) {
+      await tx.checkinDevice.create({ data: { organizationId: org, employeeId, deviceHash: hash, label: label?.slice(0, 200) ?? null } });
+      return null;
+    }
+    return bound.deviceHash === hash ? null : 'Check-in here is bound to another phone. Ask HR to reset it if you changed phones.';
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
@@ -130,6 +156,9 @@ export class AttendanceService implements OnModuleInit {
       const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
       const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: wfh ? 'field' : rule.checkIn });
       if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
+      // A place that passes is still refused from another phone than the bound one (TIM-31).
+      const phone = v.accepted ? await this.otherPhone(tx, org, f.employeeId, f.locationId, dto.deviceId, device) : null;
+      if (phone) Object.assign(v, { accepted: false, verdict: 'other_phone', message: phone });
       await tx.punch.create({
         data: {
           organizationId: org,

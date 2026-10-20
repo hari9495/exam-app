@@ -239,7 +239,11 @@ export interface LeaveTypeRow {
   paid: boolean;
   colour: string;
   active: boolean;
+  /** The rules in force today, and their version number. */
   rules: LeaveRules;
+  version: number;
+  /** Every dated version, newest first: leave follows the version in force on its first day. */
+  versions: { version: number; validFrom: string; rules: LeaveRules; note: string | null }[];
 }
 
 export interface PolicyLine {
@@ -267,7 +271,9 @@ export interface TimeSetup {
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: { id: string; name: string; locationId: string | null; halfDayOpenHalf: 'first' | 'second'; optionalLimit: number; holidays: HolidayRow[] }[];
-  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean; rule: LocationRule; upcoming: LocationRule[] }[];
+  /** People whose check-in is bound to one phone, at their current location. */
+  phones: { employeeId: string; name: string; locationId: string | null; boundAt: string }[];
   entities: { id: string; name: string }[];
   statutory: { jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
 }

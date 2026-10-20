@@ -57,7 +57,7 @@ export const RULES: CompanyRules = {
   defaultOwnership: { value: 'shared', source: 'company' },
 };
 
-const loc = (id: string, legalEntityId: string, name: string, code: string, city: string, state: string, postalCode: string, line: string, geofence: OrgLocation['geofence'], ipRanges: string[], archivedAt: string | null = null): OrgLocation => ({
+const loc = (id: string, legalEntityId: string, name: string, code: string, city: string, state: string, postalCode: string, line: string, fence: { lat: number; lng: number; radiusM: number } | null, ipRanges: string[], archivedAt: string | null = null): OrgLocation => ({
   id,
   legalEntityId,
   name,
@@ -66,8 +66,10 @@ const loc = (id: string, legalEntityId: string, name: string, code: string, city
   state,
   timezone: 'Asia/Kolkata',
   minWageZone: null,
-  geofence,
+  fences: fence ? [{ name: 'Main point', ...fence }] : [],
   ipRanges,
+  wifiNames: [],
+  bindDevice: false,
   archivedAt,
 });
 

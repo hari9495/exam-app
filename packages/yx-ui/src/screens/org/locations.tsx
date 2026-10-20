@@ -17,14 +17,7 @@ interface Draft {
   address: AddressDraft;
   timezone: string;
   minWageZone: string;
-  fence: boolean;
-  lat: number | null;
-  lng: number | null;
-  radiusM: number | null;
-  ipRanges: string;
 }
-
-const CIDR = /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2}|[0-9A-Fa-f:]+\/\d{1,3})$/;
 
 /** IANA time zones from the browser, India first (every company today); a saved zone the browser lacks stays choosable. */
 export function timeZoneOptions(current?: string): SelectOption[] {
@@ -42,14 +35,6 @@ export function locationInput(d: Draft): { input: LocationInput | null; errors: 
   const address = addressInput(d.address, 'loc-addr');
   errors.push(...address.errors);
   if (!/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(d.timezone.trim())) errors.push({ fieldId: 'loc-tz', message: 'Enter a time zone such as Asia/Kolkata' });
-  if (d.fence) {
-    if (d.lat == null || d.lat < -90 || d.lat > 90) errors.push({ fieldId: 'loc-lat', message: 'Latitude is between -90 and 90' });
-    if (d.lng == null || d.lng < -180 || d.lng > 180) errors.push({ fieldId: 'loc-lng', message: 'Longitude is between -180 and 180' });
-    if (d.radiusM == null || d.radiusM < 10 || d.radiusM > 5000) errors.push({ fieldId: 'loc-radius', message: 'Radius is 10 to 5000 metres' });
-  }
-  const ipRanges = d.ipRanges.split(/[\s,]+/).map((r) => r.trim()).filter(Boolean);
-  const bad = ipRanges.find((r) => !CIDR.test(r));
-  if (bad) errors.push({ fieldId: 'loc-ip', message: `${bad} is not a range such as 203.0.113.0/24` });
   if (errors.length) return { input: null, errors };
   return {
     input: {
@@ -59,14 +44,15 @@ export function locationInput(d: Draft): { input: LocationInput | null; errors: 
       address: address.address!,
       timezone: d.timezone.trim(),
       minWageZone: d.minWageZone.trim() || null,
-      geofence: d.fence ? { lat: d.lat!, lng: d.lng!, radiusM: d.radiusM! } : null,
-      ipRanges,
     },
     errors,
   };
 }
 
-function LocationEditor({ location, entities, states, onClose, onSave }: { location: OrgLocation | null; entities: LegalEntity[]; states: StateOption[]; onClose: () => void; onSave: (input: LocationInput) => Promise<void> }) {
+/** Check-in at a site in one line: its points, networks and phone binding. */
+export const checkInText = (l: OrgLocation) => [l.fences.length ? `${l.fences.length} geofence point${l.fences.length === 1 ? '' : 's'}` : 'No geofence', l.ipRanges.length ? `${l.ipRanges.length} network${l.ipRanges.length === 1 ? '' : 's'}` : null, l.bindDevice ? 'one phone' : null].filter(Boolean).join(' · ');
+
+function LocationEditor({ location, entities, states, checkInHref, onClose, onSave }: { location: OrgLocation | null; entities: LegalEntity[]; states: StateOption[]; checkInHref?: string; onClose: () => void; onSave: (input: LocationInput) => Promise<void> }) {
   const [draft, setDraft] = useState<Draft>({
     legalEntityId: location?.legalEntityId ?? entities.find((e) => e.isDefault && !e.archivedAt)?.id ?? null,
     name: location?.name ?? '',
@@ -74,11 +60,6 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
     address: addressDraft(location?.address),
     timezone: location?.timezone ?? 'Asia/Kolkata',
     minWageZone: location?.minWageZone ?? '',
-    fence: Boolean(location?.geofence),
-    lat: location?.geofence?.lat ?? null,
-    lng: location?.geofence?.lng ?? null,
-    radiusM: location?.geofence?.radiusM ?? 200,
-    ipRanges: location?.ipRanges.join('\n') ?? '',
   });
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -90,22 +71,8 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
   const timeZones = useMemo(() => timeZoneOptions(location?.timezone), [location?.timezone]);
-  const [dialog, ask] = useConfirm();
   const save = () => {
     if (!input) return saveErrors.reveal();
-    // Taking a geofence off opens check-in to anywhere on the site's networks: ask first (founder rule 19 Oct 2026).
-    if (location?.geofence && !input.geofence)
-      return ask({
-        title: `Remove the geofence from ${location.name}?`,
-        consequence: 'People could then check in from anywhere on its office networks.',
-        confirmLabel: 'Remove geofence',
-        cancelLabel: 'Keep it',
-        destructive: true,
-        action: async () => {
-          await onSave(input);
-          onClose();
-        },
-      });
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -147,27 +114,11 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
         <FormSection title="Address">
           <AddressFields prefix="loc-addr" draft={draft.address} onChange={(address) => set({ address })} states={states} errorOf={errorOf} required />
         </FormSection>
-        <FormSection title="Check-in" description="Mobile check-in is checked against the geofence; web check-in against the networks.">
-          <Checkbox label="Use a geofence" checked={draft.fence} onChange={(fence) => set({ fence })} />
-          {draft.fence && (
-            <FieldRow>
-              <FormField id="loc-lat" label="Latitude" required error={errorOf('loc-lat')}>
-                <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} decimals />
-              </FormField>
-              <FormField id="loc-lng" label="Longitude" required error={errorOf('loc-lng')}>
-                <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} decimals />
-              </FormField>
-              <FormField id="loc-radius" label="Radius" required error={errorOf('loc-radius')}>
-                <NumberField value={draft.radiusM} onChange={(radiusM) => set({ radiusM })} min={10} max={5000} suffix="m" />
-              </FormField>
-            </FieldRow>
-          )}
-          <FormField id="loc-ip" label="Allowed networks" optional helper="One range per line, such as 203.0.113.0/24." error={errorOf('loc-ip')}>
-            <TextArea value={draft.ipRanges} onChange={(ipRanges) => set({ ipRanges })} rows={3} spellCheck={false} />
-          </FormField>
+        <FormSection title="Check-in" description="Geofence points, office networks and phone binding are set in Time › Locations.">
+          <Text>{location ? checkInText(location) : 'Set after the location is added.'}</Text>
+          {location && checkInHref && <a className="yx-link" href={checkInHref}>Change check-in in Time › Locations</a>}
         </FormSection>
       </EditorDrawer>
-      {dialog}
     </>
   );
 }
@@ -184,6 +135,8 @@ export interface LocationsScreenProps {
   onArchive: (id: string) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** Where check-in (geofence points, networks, phone binding) is changed: Time › Locations. */
+  checkInHref?: string;
 }
 
 /** Settings › Organisation › Locations (P01 §4.2; YX-ORG-02, YX-ORG-08). */
@@ -213,8 +166,8 @@ export function LocationsScreen(props: LocationsScreenProps) {
     {
       key: 'checkin',
       header: 'Check-in',
-      value: (l) => (l.geofence ? l.geofence.radiusM : 0),
-      render: (l) => [l.geofence ? `Geofence ${l.geofence.radiusM} m` : 'No geofence', l.ipRanges.length ? `${l.ipRanges.length} network${l.ipRanges.length === 1 ? '' : 's'}` : null].filter(Boolean).join(' · '),
+      value: (l) => l.fences.length,
+      render: checkInText,
       width: 200,
       optional: true,
     },
@@ -257,7 +210,7 @@ export function LocationsScreen(props: LocationsScreenProps) {
         />
       </section>
       {dialog}
-      {editing && <LocationEditor key={editing.key} location={editing.location} entities={props.entities} states={props.states} onClose={() => setEditing(null)} onSave={(input) => props.onSave(editing.location?.id ?? null, input)} />}
+      {editing && <LocationEditor key={editing.key} location={editing.location} entities={props.entities} states={props.states} checkInHref={props.checkInHref} onClose={() => setEditing(null)} onSave={(input) => props.onSave(editing.location?.id ?? null, input)} />}
     </OrgPage>
   );
 }

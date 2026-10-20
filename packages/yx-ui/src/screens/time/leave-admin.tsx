@@ -1136,7 +1136,8 @@ export interface LiveLeavePolicies {
   state: LoadState;
   onRetry?: () => void;
   data: TimeSetup | null;
-  onSaveType: (id: string | null, input: { code: string; name: string; kind: string; paid: boolean; colour: string; rules: LeaveRules; active?: boolean }) => Promise<unknown>;
+  /** A change to the rules applies from `validFrom` (today or later) as a new version; leave before it keeps the old rules. */
+  onSaveType: (id: string | null, input: { code: string; name: string; kind: string; paid: boolean; colour: string; rules: LeaveRules; active?: boolean; validFrom?: string }) => Promise<unknown>;
   onCreatePolicy: (name: string) => Promise<unknown>;
   onAddVersion: (policyId: string, input: { validFrom: string; lines: PolicyLine[]; note?: string }) => Promise<unknown>;
   onAssign: (policyId: string, input: { scopeType: string; scopeId?: string; validFrom: string }) => Promise<unknown>;
@@ -1367,7 +1368,12 @@ const LIVE_SECTIONS = { basics: 'Basics', counting: 'Counting', rules: 'Rules', 
 function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePolicies; data: TimeSetup; typeId: string; onBack: () => void }) {
   const { toast } = useToast();
   const row = data.types.find((t) => t.id === typeId) ?? null;
-  const start = { code: row?.code ?? '', name: row?.name ?? '', kind: row?.kind ?? 'other', paid: row?.paid ?? true, colour: row?.colour ?? 'blue', active: row?.active ?? true, rules: { ...BASE_RULES, ...(row?.rules ?? {}) } };
+  // The newest version (one still to start, if any) is what a change builds on.
+  const latest = row?.versions[0] ?? null;
+  const upcoming = latest && latest.validFrom > data.today ? latest : null;
+  const start = { code: row?.code ?? '', name: row?.name ?? '', kind: row?.kind ?? 'other', paid: row?.paid ?? true, colour: row?.colour ?? 'blue', active: row?.active ?? true, rules: { ...BASE_RULES, ...(latest?.rules ?? row?.rules ?? {}) } };
+  const [asking, setAsking] = useState(false);
+  const [from, setFrom] = useState<Date | null>(upcoming ? fromIso(upcoming.validFrom) : fromIso(data.today));
   const [form, setForm] = useState(start);
   const [sec, setSec] = useState<string>('basics');
   const [busy, setBusy] = useState(false);
@@ -1381,12 +1387,16 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   const usedIn = data.policies.filter((x) => (inForce(x, data.today)?.lines ?? []).some((l) => l.leaveTypeId === typeId));
   // Fri 13 – Mon 16 Nov with Sat 14 and Sun 15 as weekly offs: how this type counts the weekend between.
   const ex = countLeaveDays({ from: new Date(2026, 10, 13), to: new Date(2026, 10, 16), holidays: [], weeklyOffDays: [0, 6], weeklyOffDates: [], sandwich: form.rules.sandwich });
+  const rulesChanged = JSON.stringify(form.rules) !== JSON.stringify(start.rules);
+  const next = upcoming ? upcoming.version : (row?.version ?? 0) + 1;
   const save = async () => {
     setBusy(true);
     setFailed('');
     try {
-      await live.onSaveType(row?.id ?? null, { code: form.code, name: form.name.trim(), kind: form.kind, paid: form.paid, colour: form.colour, rules: form.rules, active: form.active });
-      toast({ tone: 'success', title: `${row ? 'Saved' : 'Added'} ${form.name.trim()}` });
+      const validFrom = row && rulesChanged ? isoDate(from!) : undefined;
+      await live.onSaveType(row?.id ?? null, { code: form.code, name: form.name.trim(), kind: form.kind, paid: form.paid, colour: form.colour, rules: form.rules, active: form.active, ...(validFrom ? { validFrom } : {}) });
+      toast({ tone: 'success', title: !row ? `Added ${form.name.trim()}` : validFrom ? `Saved ${form.name.trim()} as version ${next} · from ${day(from!)}` : `Saved ${form.name.trim()}` });
+      setAsking(false);
       onBack();
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'Not saved. Try again.');
@@ -1400,16 +1410,28 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
       <PageHeader
         title={title}
         description={`${form.paid ? 'Paid' : 'Unpaid'} · ${usedIn.length ? `used in ${plural(usedIn.length, 'policy', 'policies')}: ${usedIn.map((x) => x.name).join('; ')}` : 'not in a policy yet'}.`}
-        status={row ? <Badge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Active' : 'Not in use'}</Badge> : <Badge tone="neutral">Not saved yet</Badge>}
+        status={row ? <Badge tone={row.active ? 'success' : 'neutral'}>{`${row.active ? 'Active' : 'Not in use'} · version ${row.version}`}</Badge> : <Badge tone="neutral">Not saved yet</Badge>}
         actions={
           <div className="yx-tim-row">
             {!dirty ? <span className="yx-tim-muted">No changes yet</span> : saveBlocked && <span className="yx-tim-muted">{saveBlocked}</span>}
             <Button onClick={onBack}>Back to policies</Button>
-            <Button variant="primary" disabled={!dirty || !!saveBlocked} loading={busy} onClick={() => void save()}>{row ? 'Save changes' : 'Add leave type'}</Button>
+            <Button variant="primary" disabled={!dirty || !!saveBlocked} loading={busy} onClick={() => (row && rulesChanged ? setAsking(true) : void save())}>{!row ? 'Add leave type' : rulesChanged ? `Save as version ${next}` : 'Save changes'}</Button>
           </div>
         }
       />
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {upcoming && <InlineAlert tone="info" title={`Version ${upcoming.version} starts on ${day(fromIso(upcoming.validFrom))}`}>You are changing that version. Leave before it follows version {row!.version}.</InlineAlert>}
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title={`Save ${title.toLowerCase()} as version ${next}?`}
+        consequence={from ? `Leave that starts before ${day(from)} keeps the rules of version ${row?.version ?? 1}; leave that starts on or after it follows version ${next}. Leave already taken or asked for does not change.` : 'Choose the date the new rules start.'}
+        confirmLabel={`Save version ${next}`}
+        confirmDisabled={!from || busy}
+        onConfirm={() => void save()}
+      >
+        <FormField label="Applies from" required><DatePicker value={from} onChange={setFrom} min={fromIso(data.today)} /></FormField>
+      </ConfirmDialog>
       <div className="yx-tim-editor">
         <div className="yx-tim-form">
           <Tabs value={sec} onValueChange={setSec}>
@@ -2099,10 +2121,10 @@ const nameError = (v: string) => (v.trim() === '' ? 'Enter a point name' : null)
 const pointErrors = (p: GeoPoint) => [nameError(p.name), latError(p.lat), lngError(p.lng), radiusBad(p.r)].filter(Boolean).length;
 const pointBad = (p: GeoPoint) => pointErrors(p) > 0;
 /** Map position from coordinates: the drawing's centre (160, 100) is the office centre, 1 map unit = 5 m. */
-const toMap = (p: GeoPoint) => {
+const toMap = (p: GeoPoint, c: { lat: number; lng: number } = CENTRE) => {
   if (latError(p.lat) || lngError(p.lng)) return null;
   const m = 111_320;
-  return { x: 160 + ((Number(p.lng) - CENTRE.lng) * m * Math.cos((CENTRE.lat * Math.PI) / 180)) / 5, y: 100 - ((Number(p.lat) - CENTRE.lat) * m) / 5 };
+  return { x: 160 + ((Number(p.lng) - c.lng) * m * Math.cos((c.lat * Math.PI) / 180)) / 5, y: 100 - ((Number(p.lat) - c.lat) * m) / 5 };
 };
 
 /** First bad line in a one-range-per-line IP list, e.g. "Line 2: 10.20.300.0/24 is not a valid range…". */
@@ -2123,6 +2145,10 @@ export interface LiveLocations {
   onRetry?: () => void;
   data: TimeSetup | null;
   onSetRule: (locationId: string, input: { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field' }) => Promise<unknown>;
+  /** The site's allowed points, office networks, Wi-Fi names and phone binding (one save). */
+  onSaveCheckIn: (locationId: string, input: { fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean }) => Promise<unknown>;
+  /** Unbinds a person's phone: their next check-in binds the phone they use. */
+  onResetPhone: (employeeId: string) => Promise<unknown>;
 }
 
 type GeofenceProps = { view?: 'edit' | 'multi' | 'field'; ipError?: boolean; /** The live app's data. Stories leave it out. */ live?: LiveLocations };
@@ -2137,7 +2163,10 @@ type LiveLocation = TimeSetup['locations'][number];
  *  The geofence and office networks stay on the location in Settings › Locations (one circle, no Wi-Fi or phone binding yet). */
 function LiveLocationsView({ live }: { live: LiveLocations }) {
   const [editing, setEditing] = useState<LiveLocation | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const d = live.data;
+  const opened = d?.locations.find((l) => l.id === openId);
+  if (d && opened) return <LiveLocationEditor key={opened.id} live={live} data={d} location={opened} onBack={() => setOpenId(null)} />;
   const cols: TableColumn<LiveLocation>[] = [
     { key: 'name', header: 'Location', value: (l) => l.name, render: (l) => <span className="yx-tim-list__main"><strong>{l.name}</strong><span className="yx-tim-muted">{STATE_NAMES[l.state] ?? l.state}</span></span> },
     {
@@ -2155,11 +2184,19 @@ function LiveLocationsView({ live }: { live: LiveLocations }) {
       render: (l) => (
         <span className="yx-tim-list__main">
           {l.rule.checkIn === 'field' ? <Badge tone="info">Field check-in</Badge> : <Badge tone="success">Restricted check-in</Badge>}
-          <span className="yx-tim-muted">{l.geofence ? `${l.geofence.radiusM} m geofence` : 'No geofence'} · {l.ipRanges.length ? `${l.ipRanges.length} office network${l.ipRanges.length === 1 ? '' : 's'}` : 'no office network'}</span>
+          <span className="yx-tim-muted">{l.fences.length ? plural(l.fences.length, 'point') : 'No geofence'} · {l.ipRanges.length ? `${l.ipRanges.length} office network${l.ipRanges.length === 1 ? '' : 's'}` : 'no office network'}{l.bindDevice ? ' · one phone' : ''}</span>
         </span>
       ),
     },
-    { key: 'act', header: 'Actions', value: () => '', render: (l) => <Button size="sm" aria-label={`Change ${l.name}`} onClick={() => setEditing(l)}>Change</Button> },
+    {
+      key: 'act', header: 'Actions', value: () => '',
+      render: (l) => (
+        <span className="yx-tim-row">
+          <Button size="sm" aria-label={`Check-in at ${l.name}`} onClick={() => setOpenId(l.id)}>Check-in</Button>
+          <Button size="sm" aria-label={`Shift and weekly offs at ${l.name}`} onClick={() => setEditing(l)}>Shift</Button>
+        </span>
+      ),
+    },
   ];
   if (live.state === 'no-access') return <EmptyState title="You can't change locations" description="Location rules need the leave and attendance set-up key." />;
   return (
@@ -2179,10 +2216,228 @@ function LiveLocationsView({ live }: { live: LiveLocations }) {
             getRowId={(l) => l.id}
             empty={<EmptyState compact title="No locations yet" description="Add the company's locations in Settings › Locations first." />}
           />
-          <p className="yx-tim-note">The geofence and office networks are set on the location in Settings › Locations.</p>
         </div>
       )}
       {editing && d && <LiveRuleDrawer today={d.today} location={editing} onClose={() => setEditing(null)} onSave={live.onSetRule} />}
+    </TimePage>
+  );
+}
+
+const fenceToPoint = (f: LiveLocation['fences'][number], i: number): GeoPoint => ({ id: `p${i}`, name: f.name, lat: String(f.lat), lng: String(f.lng), r: f.radiusM });
+
+/** TIM-31 on live data: the designed editor for one location's points, office network, Wi-Fi and phone binding. */
+function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocations; data: TimeSetup; location: LiveLocation; onBack: () => void }) {
+  const { toast } = useToast();
+  const startPoints = location.fences.map(fenceToPoint);
+  const [points, setPoints] = useState<GeoPoint[]>(startPoints);
+  const [sel, setSel] = useState(startPoints[0]?.id ?? '');
+  const [ips, setIps] = useState(location.ipRanges.join('\n'));
+  const [wifi, setWifi] = useState(location.wifiNames.join(', '));
+  const [mode, setMode] = useState<string>(location.rule.checkIn);
+  const [bind, setBind] = useState(location.bindDevice);
+  const [showPoints, setShowPoints] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [askRemove, setAskRemove] = useState(false);
+  const [rule, setRule] = useState(false);
+  const [resetting, setResetting] = useState<TimeSetup['phones'][number] | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const cur = points.find((p) => p.id === sel) ?? points[0];
+  const edit = (patch: Partial<GeoPoint>) => setPoints((ps) => ps.map((p) => (p.id === cur.id ? { ...p, ...patch } : p)));
+  const ipErr = ipRangeError(ips);
+  const wifiNames = wifi.split(',').map((w) => w.trim()).filter(Boolean);
+  const wifiErr = wifiNames.length > 10 ? 'Give at most 10 Wi-Fi names' : wifiNames.some((w) => w.length > 32) ? 'A Wi-Fi name is at most 32 characters' : null;
+  const errors = (ipErr ? 1 : 0) + (wifiErr ? 1 : 0) + points.reduce((n, p) => n + pointErrors(p), 0);
+  const field = mode === 'field';
+  const ipList = ips.split('\n').map((l) => l.trim()).filter(Boolean);
+  const dirty = JSON.stringify(points) !== JSON.stringify(startPoints) || ipList.join('\n') !== location.ipRanges.join('\n') || wifiNames.join(',') !== location.wifiNames.join(',') || mode !== location.rule.checkIn || bind !== location.bindDevice;
+  const phones = data.phones.filter((x) => x.locationId === location.id);
+  const centre = (() => {
+    const first = points.find((p) => !latError(p.lat) && !lngError(p.lng));
+    return first ? { lat: Number(first.lat), lng: Number(first.lng) } : { lat: 0, lng: 0 };
+  })();
+  const addPoint = () => {
+    const id = `p${Date.now()}`;
+    setPoints((ps) => [...ps, { id, name: `Point ${ps.length + 1}`, lat: '', lng: '', r: 100 }]);
+    setSel(id);
+  };
+  const jumpToError = () => {
+    setShowPoints(true);
+    const bad = points.find(pointBad);
+    if (bad && cur && !pointBad(cur) && !ipErr) setSel(bad.id);
+    requestAnimationFrame(() => {
+      const el = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      el?.scrollIntoView({ block: 'center' });
+      el?.focus();
+    });
+  };
+  const save = async () => {
+    setBusy(true);
+    setFailed('');
+    try {
+      await live.onSaveCheckIn(location.id, { fences: points.map((p) => ({ name: p.name.trim(), lat: Number(p.lat), lng: Number(p.lng), radiusM: p.r! })), ipRanges: ipList, wifiNames, bindDevice: bind });
+      if (mode !== location.rule.checkIn) {
+        const r = location.rule;
+        await live.onSetRule(location.id, { validFrom: data.today, shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, weeklyOffs: r.weeklyOffs, checkIn: mode as 'restricted' | 'field' });
+      }
+      toast({ tone: 'success', title: `Saved check-in at ${location.name}` });
+      onBack();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Not saved. Try again.');
+    } finally {
+      setBusy(false);
+      setAskRemove(false);
+    }
+  };
+  // Taking every point off opens check-in to anywhere on the site's networks: ask first (founder rule 19 Oct 2026).
+  const trySave = () => (startPoints.length > 0 && points.length === 0 ? setAskRemove(true) : void save());
+  const saveRow = (
+    <div className="yx-tim-row">
+      {errors > 0 && <Button size="sm" onClick={jumpToError}>{plural(errors, 'error')} to fix</Button>}
+      {!dirty && errors === 0 && <span className="yx-tim-muted">No changes yet</span>}
+      <Button variant="primary" disabled={errors > 0 || !dirty} loading={busy} onClick={trySave}>Save location</Button>
+    </div>
+  );
+  const pointsSection = (
+    <FormSection title="Allowed points">
+      {points.length === 0 ? (
+        <p className="yx-tim-muted">No points yet: check-in here is checked against the office network only{ipList.length ? '' : ', so it is not restricted'}.</p>
+      ) : (
+        <ul className="yx-tim-list">
+          {points.map((p) => (
+            <li key={p.id}>
+              <span className="yx-tim-list__main">
+                <strong>{p.name.trim() || 'Unnamed point'}</strong>
+                <span className="yx-tim-muted">{p.lat || '—'}, {p.lng || '—'} · {p.r ?? '—'} m</span>
+              </span>
+              <span className="yx-tim-row">
+                {pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
+                {points.length > 1 && <Button size="sm" disabled={p.id === cur?.id} onClick={() => setSel(p.id)}>{p.id === cur?.id ? 'Editing' : 'Edit'}</Button>}
+                <Button size="sm" aria-label={`Remove ${p.name.trim() || 'this point'}`} onClick={() => { setPoints((ps) => ps.filter((x) => x.id !== p.id)); if (p.id === cur?.id) setSel(points.find((x) => x.id !== p.id)?.id ?? ''); }}>Remove</Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {cur && (
+        <>
+          <FormField label="Point name" required error={nameError(cur.name)}><TextField value={cur.name} maxLength={60} onChange={(v) => edit({ name: v })} /></FormField>
+          <FieldRow>
+            <FormField label="Latitude" error={latError(cur.lat)}><TextField value={cur.lat} inputMode="decimal" onChange={(v) => edit({ lat: v })} /></FormField>
+            <FormField label="Longitude" error={lngError(cur.lng)}><TextField value={cur.lng} inputMode="decimal" onChange={(v) => edit({ lng: v })} /></FormField>
+          </FieldRow>
+          <FormField label="Radius (m)" helper="50–1,000 m. Phone GPS is usually accurate to 20–50 m outdoors." error={radiusBad(cur.r) ? 'Enter a radius between 50 and 1,000 m' : null}>
+            <NumberField value={cur.r} onChange={(v) => edit({ r: v })} />
+          </FormField>
+        </>
+      )}
+      <span><Button icon={Plus} onClick={addPoint}>{points.length ? 'Add another point' : 'Add a point'}</Button></span>
+    </FormSection>
+  );
+  const networkSection = (
+    <FormSection title="Office network (web check-in)">
+      <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
+        <TextArea value={ips} onChange={setIps} rows={3} spellCheck={false} />
+      </FormField>
+      <FormField label="Wi-Fi names" optional helper="Separate names with commas. Shown to people as the network to join; check-in is checked against the IP ranges." error={wifiErr}>
+        <TextField value={wifi} onChange={setWifi} />
+      </FormField>
+    </FormSection>
+  );
+  const fences = points.flatMap((p) => {
+    const at = toMap(p, centre);
+    return at ? [{ id: p.id, label: `${p.name.trim() || 'Unnamed point'} · ${p.r ?? 0} m`, x: at.x, y: at.y, r: (p.r ?? 0) / 5, active: points.length > 1 && p.id === cur?.id }] : [];
+  });
+  return (
+    <TimePage active="Locations & geofences">
+      <PageHeader
+        title={location.name}
+        description={`${STATE_NAMES[location.state] ?? location.state} · ${location.rule.shiftName} ${clock(location.rule.shiftStart)} to ${clock(location.rule.shiftEnd)}`}
+        status={field ? <Badge tone="info">Field check-in</Badge> : <Badge tone="success">Restricted check-in</Badge>}
+        actions={
+          <div className="yx-tim-row">
+            <Button onClick={onBack}>Back to locations</Button>
+            <Button onClick={() => setRule(true)}>Shift and weekly offs</Button>
+          </div>
+        }
+      />
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      <div className="yx-tim-editor">
+        {fences.length ? (
+          <GeoMap
+            height={300}
+            fences={fences}
+            pins={[]}
+            editable={!field}
+            // The map draws 1 px per 5 m; the radius snaps to 10 m.
+            onRadiusChange={(id, r) => { if (id === cur?.id) edit({ r: Math.round((r * 5) / 10) * 10 }); }}
+            caption={field ? 'Used to label check-ins as at office' : 'Drag the handle, or type the radius in the form'}
+          />
+        ) : (
+          <EmptyState compact title="No points on the map" description="Add a point with its latitude, longitude and radius to draw it here." />
+        )}
+        <div className="yx-tim-form" ref={formRef}>
+          <FormSection title="Check-in mode">
+            <RadioGroup
+              aria-label="Check-in mode"
+              value={mode}
+              onChange={setMode}
+              options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]}
+            />
+            <Switch label="Bind check-in to one phone" description="Each person checks in from the first phone they use here, until HR resets it" checked={bind} onChange={setBind} />
+            {phones.length > 0 && (
+              <ul className="yx-tim-list" aria-label="Phones bound here">
+                {phones.map((x) => (
+                  <li key={x.employeeId}>
+                    <span className="yx-tim-list__main"><strong>{x.name}</strong><span className="yx-tim-muted">Phone bound {dateText(x.boundAt.slice(0, 10))}</span></span>
+                    <Button size="sm" aria-label={`Reset ${x.name}'s phone`} onClick={() => setResetting(x)}>Reset phone</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </FormSection>
+          {field && !showPoints ? (
+            <FormSection title="Points and office network">
+              <p className="yx-tim-muted">In field mode, points are used only to label check-ins as at office. {plural(points.length, 'point')} and the office network are kept.</p>
+              <span><Button onClick={() => setShowPoints(true)}>Show points and network</Button></span>
+            </FormSection>
+          ) : (
+            <>
+              {pointsSection}
+              {networkSection}
+            </>
+          )}
+          {saveRow}
+        </div>
+      </div>
+      <ConfirmDialog
+        open={askRemove}
+        onOpenChange={setAskRemove}
+        title={`Remove the geofence from ${location.name}?`}
+        consequence={ipList.length ? `People at ${location.name} can then check in from anywhere on its office network.` : `People at ${location.name} can then check in from anywhere.`}
+        cancelLabel="Keep it"
+        confirmLabel="Remove geofence"
+        destructive
+        confirmDisabled={busy}
+        onConfirm={() => void save()}
+      />
+      <ConfirmDialog
+        open={!!resetting}
+        onOpenChange={(o) => !o && setResetting(null)}
+        title={`Reset ${resetting?.name ?? ''}'s phone?`}
+        consequence="Their next check-in binds the phone they use then."
+        confirmLabel="Reset phone"
+        confirmDisabled={busy}
+        onConfirm={() => {
+          const x = resetting!;
+          setBusy(true);
+          live.onResetPhone(x.employeeId).then(
+            () => { toast({ tone: 'success', title: `${x.name}'s phone is reset` }); setResetting(null); },
+            (e: unknown) => toast({ tone: 'error', title: 'Not reset', description: e instanceof Error ? e.message : 'Try again.' }),
+          ).finally(() => setBusy(false));
+        }}
+      />
+      {rule && <LiveRuleDrawer today={data.today} location={location} onClose={() => setRule(false)} onSave={live.onSetRule} />}
     </TimePage>
   );
 }

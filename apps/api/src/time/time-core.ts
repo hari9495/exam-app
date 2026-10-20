@@ -169,6 +169,19 @@ export interface Facts {
 }
 
 /** The employee's assignment and location on `on` (P06: as of that date). Null when not employed on it. */
+/**
+ * TIM-27: the leave type rules in force on a day (founder decision 20 Oct 2026). Leave follows the version in force on
+ * its first day; a day before the first version takes the first one. A type with no version has the defaults.
+ */
+export async function leaveRuleBook(tx: Tx, org: string, typeIds?: string[]): Promise<(typeId: string, on: string) => LeaveRules> {
+  const rows = await tx.leaveTypeVersion.findMany({ where: { organizationId: org, ...(typeIds ? { leaveTypeId: { in: typeIds } } : {}) }, orderBy: { validFrom: 'asc' } });
+  return (id, on) => {
+    const mine = rows.filter((v) => v.leaveTypeId === id);
+    const v = mine.filter((x) => dateOf(x.validFrom) <= on).pop() ?? mine[0];
+    return v ? { ...DEFAULT_RULES, ...(v.rules as object) } : DEFAULT_RULES;
+  };
+}
+
 export async function factsOn(tx: Tx, org: string, employeeId: string, on: string): Promise<Facts | null> {
   const rows = await tx.$queryRaw<(Omit<Facts, 'joinedOn' | 'exitedOn'> & { joinedOn: Date; exitedOn: Date | null })[]>`
     SELECT e.id::text AS "employeeId", e.person_id::text AS "personId", e.user_id::text AS "userId",

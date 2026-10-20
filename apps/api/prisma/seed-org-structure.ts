@@ -73,13 +73,15 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
             country: 'IN',
             state,
             timezone: IST,
-            geoLat: geo?.[0] ?? null,
-            geoLng: geo?.[1] ?? null,
-            geoRadiusM: geo?.[2] ?? null,
             ipRanges,
           },
         }),
-    );
+    ).then(async (l) => {
+      // TIM-31: the site's check-in point lives in location_fences.
+      if (geo && !(await tx.locationFence.findFirst({ where: { ...org, locationId: l.id } })))
+        await tx.locationFence.create({ data: { ...org, locationId: l.id, name: 'Main point', lat: geo[0], lng: geo[1], radiusM: geo[2] } });
+      return l;
+    });
   const blr = await location(kfpl.id, 'Bengaluru head office', 'BLR-HO', 'Bengaluru', 'IN-KA', '560025', '14 Residency Road', [12.9716, 77.5946, 150], ['203.0.113.0/24']);
   await location(tn.id, 'Chennai office', 'MAA-OFF', 'Chennai', 'IN-TN', '600032', '5 Guindy Industrial Estate', [13.0067, 80.2206, 150], ['198.51.100.16/28']);
   const hosur = await location(tn.id, 'Hosur plant', 'HSR-PLT', 'Hosur', 'IN-TN', '635126', '22 SIPCOT Industrial Complex', [12.7409, 77.8253, 300], ['10.20.0.0/16']);

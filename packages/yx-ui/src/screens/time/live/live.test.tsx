@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { NightWorkCard } from './my-attendance';
 import { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
-import { HolidayCalendarsScreen, LeavePoliciesScreen, YearEndWizard } from '../leave-admin';
+import { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, YearEndWizard } from '../leave-admin';
 import { LeaveHomeScreen, TeamLeaveCalendarScreen } from '../leave';
 import { MusterScreen } from '../attendance';
 import { LeaveReportsScreen } from '../ops';
@@ -253,7 +253,7 @@ describe('Team and HR', () => {
   });
 
   it('the designed leave policies show the legal minimums and add a leave type (TIM-27/28)', async () => {
-    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], calendars: [], locations: [], entities: [], statutory: [{ jurisdiction: 'IN-KA', version: '1', validFrom: '2000-01-01', values: { floors: [{ kinds: ['earned'], days: 18 }] }, source: '', verify: true }] };
+    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], calendars: [], locations: [], phones: [], entities: [], statutory: [{ jurisdiction: 'IN-KA', version: '1', validFrom: '2000-01-01', values: { floors: [{ kinds: ['earned'], days: 18 }] }, source: '', verify: true }] };
     const onSaveType = vi.fn(async () => ({}));
     render(<ToastProvider><LeavePoliciesScreen live={{ state: 'ready', data, onSaveType, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn() }} /></ToastProvider>);
     expect(screen.getByText(/Karnataka: earned 18 days a year/)).toBeInTheDocument();
@@ -264,8 +264,57 @@ describe('Team and HR', () => {
     await waitFor(() => expect(onSaveType).toHaveBeenCalledWith(null, expect.objectContaining({ code: 'EL1', name: 'Earned leave' })));
   });
 
+  it('the designed locations editor saves several points, the network and phone binding, and asks before removing the geofence (TIM-31)', async () => {
+    const rule = { validFrom: '2026-01-01', shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted' as const };
+    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], calendars: [], entities: [], statutory: [], phones: [{ employeeId: 'e1', name: 'Kavya Reddy', locationId: 'l1', boundAt: '2026-10-01T04:00:00Z' }], locations: [{ id: 'l1', name: 'Hosur plant', state: 'IN-TN', timezone: 'Asia/Kolkata', fences: [{ name: 'Main block', lat: 12.7409, lng: 77.8253, radiusM: 300 }], ipRanges: ['10.20.0.0/16'], wifiNames: [], bindDevice: false, rule, upcoming: [] }] };
+    const onSaveCheckIn = vi.fn(async () => ({}));
+    const onResetPhone = vi.fn(async () => ({}));
+    const live = { state: 'ready' as const, data, onSetRule: vi.fn(), onSaveCheckIn, onResetPhone };
+    const { unmount } = render(<ToastProvider><GeofenceEditorScreen live={live} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Check-in at Hosur plant' }));
+    expect(screen.getByRole('heading', { name: 'Hosur plant' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add another point' }));
+    await ue.clear(screen.getByLabelText(/^Point name/));
+    await ue.type(screen.getByLabelText(/^Point name/), 'Annexe');
+    await ue.type(screen.getByLabelText(/^Latitude/), '12.7509');
+    await ue.type(screen.getByLabelText(/^Longitude/), '77.8353');
+    await ue.click(screen.getByRole('switch', { name: /Bind check-in to one phone/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save location' }));
+    await waitFor(() => expect(onSaveCheckIn).toHaveBeenCalledWith('l1', { fences: [{ name: 'Main block', lat: 12.7409, lng: 77.8253, radiusM: 300 }, { name: 'Annexe', lat: 12.7509, lng: 77.8353, radiusM: 100 }], ipRanges: ['10.20.0.0/16'], wifiNames: [], bindDevice: true }));
+    expect((await screen.findAllByText('Saved check-in at Hosur plant')).length).toBeGreaterThan(0);
+    unmount();
+    // Taking the only point off asks first (founder rule 19 Oct 2026): Keep it saves nothing.
+    onSaveCheckIn.mockClear();
+    render(<ToastProvider><GeofenceEditorScreen live={live} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Check-in at Hosur plant' }));
+    await ue.click(screen.getByRole('button', { name: 'Remove Main block' }));
+    await ue.click(screen.getByRole('button', { name: 'Save location' }));
+    const ask = await screen.findByRole('dialog', { name: 'Remove the geofence from Hosur plant?' });
+    await ue.click(within(ask).getByRole('button', { name: 'Keep it' }));
+    expect(onSaveCheckIn).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Save location' }));
+    await ue.click(within(await screen.findByRole('dialog', { name: 'Remove the geofence from Hosur plant?' })).getByRole('button', { name: 'Remove geofence' }));
+    await waitFor(() => expect(onSaveCheckIn).toHaveBeenCalledWith('l1', expect.objectContaining({ fences: [] })));
+  });
+
+  it('a leave type rule change is saved as a new version from a chosen date (TIM-27)', async () => {
+    const rules = { sandwich: 'none' as const, sandwichOn: 'both' as const, sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+    const data: TimeSetup = { today: '2026-10-09', policies: [], calendars: [], locations: [], phones: [], entities: [], statutory: [], types: [{ id: 'cl', code: 'CL', name: 'Casual leave', kind: 'casual', paid: true, colour: 'green', active: true, rules, version: 1, versions: [{ version: 1, validFrom: '2026-01-01', rules, note: null }] }] };
+    const onSaveType = vi.fn(async () => ({}));
+    render(<ToastProvider><LeavePoliciesScreen live={{ state: 'ready', data, onSaveType, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn() }} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByText('Active · version 1')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'Counting' }));
+    await ue.click(screen.getByRole('radio', { name: 'Always count them' }));
+    await ue.click(screen.getByRole('button', { name: 'Save as version 2' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save casual leave as version 2?' });
+    expect(within(dialog).getByText(/keeps the rules of version 1/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save version 2' }));
+    await waitFor(() => expect(onSaveType).toHaveBeenCalledWith('cl', expect.objectContaining({ validFrom: '2026-10-09', rules: expect.objectContaining({ sandwich: 'always' }) })));
+  });
+
   it('the designed holiday calendars add a holiday to a location (TIM-26)', async () => {
-    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], entities: [], statutory: [], locations: [{ id: 'l1', name: 'Hosur plant', state: 'IN-TN', timezone: 'Asia/Kolkata', geofence: null, ipRanges: [], rule: { validFrom: null, shiftName: 'General', shiftStart: 540, shiftEnd: 1080, graceMinutes: 10, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted' } as never, upcoming: [] }], calendars: [{ id: 'c1', name: 'Hosur holidays', locationId: 'l1', optionalLimit: 2, halfDayOpenHalf: 'first', holidays: [{ id: 'h1', on: '2026-11-08', name: 'Deepavali', kind: 'festival', halfDay: false }] }] as never };
+    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], entities: [], statutory: [], phones: [], locations: [{ id: 'l1', name: 'Hosur plant', state: 'IN-TN', timezone: 'Asia/Kolkata', fences: [], ipRanges: [], wifiNames: [], bindDevice: false, rule: { validFrom: null, shiftName: 'General', shiftStart: 540, shiftEnd: 1080, graceMinutes: 10, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted' } as never, upcoming: [] }], calendars: [{ id: 'c1', name: 'Hosur holidays', locationId: 'l1', optionalLimit: 2, halfDayOpenHalf: 'first', holidays: [{ id: 'h1', on: '2026-11-08', name: 'Deepavali', kind: 'festival', halfDay: false }] }] as never };
     const onAddHoliday = vi.fn(async () => ({}));
     render(<ToastProvider><HolidayCalendarsScreen live={{ state: 'ready', data, onCreateCalendar: vi.fn(), onUpdateCalendar: vi.fn(), onAddHoliday, onRemoveHoliday: vi.fn() }} /></ToastProvider>);
     expect(screen.getByRole('tab', { name: /Hosur plant/ })).toBeInTheDocument();

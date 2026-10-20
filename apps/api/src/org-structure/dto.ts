@@ -116,23 +116,6 @@ export class LegalEntityStatutoryDto {
   cin?: string | null;
 }
 
-export class GeofenceDto {
-  @IsNumber({ maxDecimalPlaces: 6 })
-  @Min(-90)
-  @Max(90)
-  lat!: number;
-
-  @IsNumber({ maxDecimalPlaces: 6 })
-  @Min(-180)
-  @Max(180)
-  lng!: number;
-
-  @IsInt()
-  @Min(10)
-  @Max(5000)
-  radiusM!: number;
-}
-
 export class LocationDto {
   /** Fixed once created. */
   @IsUUID()
@@ -161,17 +144,7 @@ export class LocationDto {
   @MaxLength(40)
   minWageZone?: string | null;
 
-  @Nullable()
-  @ValidateNested()
-  @Type(() => GeofenceDto)
-  geofence?: GeofenceDto | null;
-
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(50)
-  @IsString({ each: true })
-  @MaxLength(43, { each: true })
-  ipRanges?: string[];
+  // Check-in (geofence points, office networks, Wi-Fi, phone binding) is set in Time › Locations (TIM-31).
 }
 
 // ---- structure masters (YX-ORG-15) ----

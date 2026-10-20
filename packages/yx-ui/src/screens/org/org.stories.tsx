@@ -71,17 +71,6 @@ const find = async <T extends Element>(get: () => T | null | undefined): Promise
 };
 const byText = (root: ParentNode, sel: string, text: string) => [...root.querySelectorAll<HTMLElement>(sel)].find((e) => e.textContent?.trim() === text);
 
-export const LocationsRemoveGeofence: S = {
-  name: 'Locations · taking a geofence off asks first',
-  render: Locations.render,
-  play: async ({ canvasElement }) => {
-    const row = await find(() => [...canvasElement.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Hosur plant')));
-    (await find(() => byText(row, 'button', 'Edit'))).click();
-    (await find(() => document.querySelector<HTMLElement>('[role="dialog"] [role="checkbox"]'))).click();
-    (await find(() => byText(document, '[role="dialog"] button', 'Save changes'))).click();
-  },
-};
-
 const pay = { today: TODAY_ISO, onLoad: async () => (await wait(), PAY_RANGES), onCreate: () => wait(), onUpdate: () => wait(), onDelete: () => wait() };
 
 export const Structure: S = {

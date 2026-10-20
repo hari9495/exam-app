@@ -18,7 +18,7 @@ import { useScope } from '../../../../lib/yx-shell';
 import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
-import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
+import { browserLocation, checkInDeviceId, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
 
 type Probations = { rows: NonNullable<Parameters<typeof managerHome>[0]['probations']> };
 type Reviews = NonNullable<Parameters<typeof managerHome>[0]['reviews']>;
@@ -99,7 +99,7 @@ export default function YxHomePage() {
         data={attendance.data}
         now={new Date()}
         getLocation={browserLocation}
-        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
+        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), deviceId: checkInDeviceId() })}
         attendanceHref="/yx/time/attendance"
         onRegularise={() => router.push('/yx/time/attendance?request=regularise')}
       />

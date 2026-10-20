@@ -92,7 +92,8 @@ describe('Time and leave batch 1', () => {
       await tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, async (tx) => {
         const o = { organizationId: org[k].id };
         ids[`entity${k}`] = (await tx.legalEntity.create({ data: { ...o, name: `Time Foods ${k}`, shortName: `TF${k}-${run}`, isDefault: true } })).id;
-        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata', geoLat: 12.9716, geoLng: 77.5946, geoRadiusM: 150 } })).id;
+        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } })).id;
+        await tx.locationFence.create({ data: { ...o, locationId: ids[`loc${k}`], name: 'Main point', lat: 12.9716, lng: 77.5946, radiusM: 150 } });
         const deptId = randomUUID();
         ids[`dept${k}`] = (await tx.department.create({ data: { ...o, id: deptId, name: 'Ops', code: 'OPS', path: `/${deptId}/` } })).id;
         ids[`desig${k}`] = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
@@ -370,6 +371,88 @@ describe('Time and leave batch 1', () => {
       await api('empB', 'post', `/time/me/holidays/${ids.optional}/choose`).expect(404);
       // A chosen optional holiday is a holiday in the day count.
       expect((await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from: d(25), to: d(25) }).expect(200)).body.total).toBe(0);
+    });
+  });
+
+  describe('locations and geofences in Time (TIM-31, founder decision 20 Oct 2026)', () => {
+    const checkIn = (over: object = {}) => ({ fences: [{ name: 'Main block', lat: 12.9716, lng: 77.5946, radiusM: 150 }, { name: 'Annexe', lat: 12.98, lng: 77.6, radiusM: 100 }], ipRanges: ['198.51.100.0/24'], wifiNames: ['TF-Office'], bindDevice: true, ...over });
+
+    it('only the set-up key, for the whole company, changes check-in; bad input is refused; Settings shows the same points', async () => {
+      await api('hrExec', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn()).expect(403);
+      await api('emp', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn()).expect(403);
+      await api('adminB', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn()).expect(404);
+      await api('hrAdmin', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn({ ipRanges: ['10.0.0.300/8'] })).expect(400);
+      await api('hrAdmin', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn({ fences: [{ name: 'Tiny', lat: 12.97, lng: 77.59, radiusM: 20 }] })).expect(400);
+      await api('hrAdmin', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn()).expect(200);
+      const loc = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body.locations.find((l: { id: string }) => l.id === ids.locA);
+      expect(loc).toMatchObject({ ipRanges: ['198.51.100.0/24'], wifiNames: ['TF-Office'], bindDevice: true });
+      expect(loc.fences.map((f: { name: string }) => f.name)).toEqual(['Main block', 'Annexe']);
+      // One source of truth: Settings › Locations reads the same points.
+      const inSettings = (await api('adminA', 'get', '/org/locations').expect(200)).body.find((l: { id: string }) => l.id === ids.locA);
+      expect(inSettings.fences.map((f: { name: string }) => f.name)).toEqual(['Main block', 'Annexe']);
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.location.checkin_changed' } }))).toBeGreaterThan(0);
+      // Company B's set-up never shows company A's points.
+      expect((await api('adminB', 'get', '/time/setup').expect(200)).body.locations.flatMap((l: { fences: { name: string }[] }) => l.fences.map((f) => f.name))).not.toContain('Annexe');
+    });
+
+    it('a punch is checked against every point; the first phone is bound; another phone is refused until HR resets it', async () => {
+      const punch = (kind: string, lat: number, lng: number, deviceId?: string) => api('peer', 'post', '/time/me/punch').send({ kind, lat, lng, accuracyM: 20, ...(deviceId ? { deviceId } : {}) }).expect(200);
+      const phone1 = randomUUID();
+      const phone2 = randomUUID();
+      // Far from both points: refused with the nearest one's distance.
+      expect((await punch('in', 13.05, 77.7, phone1)).body).toMatchObject({ accepted: false, verdict: 'outside' });
+      // No key from a site that binds phones: refused in plain words.
+      expect((await punch('in', 12.98, 77.6)).body).toMatchObject({ accepted: false, verdict: 'other_phone' });
+      // Inside the second point (the Annexe): accepted, and this phone is bound (only its hash is kept).
+      expect((await punch('in', 12.9801, 77.6001, phone1)).body).toMatchObject({ accepted: true, verdict: 'inside' });
+      const bound = await inA((tx) => tx.checkinDevice.findFirst({ where: { organizationId: org.A.id, employeeId: ids.peerEmp } }));
+      expect(bound?.deviceHash).toHaveLength(64);
+      expect(bound?.deviceHash).not.toContain(phone1);
+      // Inside the first point, from another phone: refused.
+      expect((await punch('out', 12.9716, 77.5946, phone2)).body).toMatchObject({ accepted: false, verdict: 'other_phone', message: expect.stringMatching(/bound to another phone/) });
+      // HR resets it: only with the set-up key, only in their company.
+      await api('hrExec', 'post', `/time/setup/phones/${ids.peerEmp}/reset`).expect(403);
+      await api('adminB', 'post', `/time/setup/phones/${ids.peerEmp}/reset`).expect(404);
+      await api('hrAdmin', 'post', `/time/setup/phones/${ids.peerEmp}/reset`).expect(200);
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.phone.reset' } }))).toBe(1);
+      expect((await punch('out', 12.9716, 77.5946, phone2)).body).toMatchObject({ accepted: true, verdict: 'inside' });
+      // Back to one point and no binding for the tests after this one.
+      await api('hrAdmin', 'put', `/time/setup/locations/${ids.locA}/checkin`).send(checkIn({ fences: [{ name: 'Main point', lat: 12.9716, lng: 77.5946, radiusM: 150 }], ipRanges: [], wifiNames: [], bindDevice: false })).expect(200);
+    });
+  });
+
+  describe('dated versions of a leave type (TIM-27, founder decision 20 Oct 2026)', () => {
+    it('a change applies from a chosen date; leave before it, and leave already asked for, keep the old rules', async () => {
+      const total = async (from: string, to: string) => (await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from, to }).expect(200)).body.total;
+      const mine = async () => (await api('emp', 'get', '/time/me/leave').expect(200)).body as { balances: { code: string; balance: number; pending: number }[]; requests: { id: string; days: number; status: string }[] };
+      // d(2) and d(23) are the location's weekly off: CL never counts them (version 1).
+      expect(await total(d(1), d(3))).toBe(2);
+      expect(await total(d(22), d(24))).toBe(2);
+      const before = await mine();
+      const body = { code: 'CL', name: 'Casual leave', kind: 'casual', paid: true, rules: { sandwich: 'always' } };
+      await api('hrExec', 'put', `/time/setup/types/${ids.CL}`).send({ ...body, validFrom: d(20) }).expect(403);
+      await api('adminB', 'put', `/time/setup/types/${ids.CL}`).send({ ...body, validFrom: d(20) }).expect(404);
+      await api('hrAdmin', 'put', `/time/setup/types/${ids.CL}`).send({ ...body, validFrom: d(-1) }).expect(400);
+      await api('hrAdmin', 'put', `/time/setup/types/${ids.CL}`).send({ ...body, validFrom: d(20) }).expect(200);
+      // Version 2 from d(20): leave starting before it keeps version 1; leave starting on or after it follows version 2.
+      expect(await total(d(1), d(3))).toBe(2);
+      expect(await total(d(22), d(24))).toBe(3);
+      const after = await mine();
+      expect(after.requests).toEqual(before.requests);
+      expect(after.balances).toEqual(before.balances);
+      const t = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === ids.CL);
+      expect(t).toMatchObject({ version: 1, rules: { sandwich: 'none' } });
+      expect(t.versions.map((v: { version: number; validFrom: string }) => [v.version, v.validFrom])).toEqual([[2, d(20)], [1, today]]);
+      // A version used on an earlier day never changes, even through the database (the app role, RLS on); none is removed.
+      const old = await inA(async (tx) => {
+        const t = await tx.leaveType.create({ data: { organizationId: org.A.id, code: 'OLDL', name: 'Old leave', kind: 'other' } });
+        await tx.leaveTypeVersion.create({ data: { organizationId: org.A.id, leaveTypeId: t.id, version: 1, validFrom: new Date(`${d(-5)}T00:00:00Z`) } });
+        return t.id;
+      });
+      await expect(inA((tx) => tx.leaveTypeVersion.updateMany({ where: { organizationId: org.A.id, leaveTypeId: old }, data: { note: 'x' } }))).rejects.toThrow(/YX_VERSION_IN_FORCE/);
+      await expect(inA((tx) => tx.leaveTypeVersion.deleteMany({ where: { organizationId: org.A.id, leaveTypeId: ids.CL } }))).rejects.toThrow();
+      // The other company never sees the versions.
+      expect((await api('adminB', 'get', '/time/setup').expect(200)).body.types).toEqual([]);
     });
   });
 });

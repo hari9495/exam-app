@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, LocationCheckInDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto } from './dto';
 import { LeaveService } from './leave.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
@@ -236,6 +236,19 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.setup.removeHoliday(ctx, this.user(req), id);
+  }
+
+  @Put('setup/locations/:id/checkin')
+  @RequirePermissions('leave.settings.manage')
+  setCheckIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LocationCheckInDto) {
+    return this.setup.setCheckIn(ctx, this.user(req), id, dto);
+  }
+
+  @Post('setup/phones/:employeeId/reset')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  resetPhone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.setup.resetPhone(ctx, this.user(req), employeeId);
   }
 
   @Post('setup/locations/:id/rule')

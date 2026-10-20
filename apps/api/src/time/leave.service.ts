@@ -10,6 +10,7 @@ import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
 import {
   Facts,
   LeaveRules,
+  leaveRuleBook,
   PolicyLine,
   TIME_KEYS,
   asDate,
@@ -136,6 +137,7 @@ export class LeaveService implements OnModuleInit {
         AND d.leave_on BETWEEN ${year.start}::date AND ${year.end}::date GROUP BY 1`;
     const takenBy = new Map(taken.map((t) => [t.id, t.days]));
     const inPolicy = new Set(lines.map((l) => l.leaveTypeId));
+    const rulesOf = await leaveRuleBook(tx, org);
     return types
       .filter((t) => inPolicy.has(t.id) || sums.has(t.id) || !hasBalance(t.kind))
       .map((t) => {
@@ -155,7 +157,7 @@ export class LeaveService implements OnModuleInit {
           available: withBalance ? Math.round((balance - p) * 100) / 100 : 0,
           takenThisYear: takenBy.get(t.id) ?? 0,
           entitlement: ent.get(t.id) ?? null,
-          negativeLimit: Number((t.rules as unknown as LeaveRules).negativeLimit ?? 0),
+          negativeLimit: Number(rulesOf(t.id, on).negativeLimit ?? 0),
         };
       });
   }
@@ -166,7 +168,8 @@ export class LeaveService implements OnModuleInit {
     const org = c.organizationId;
     const t = await tx.leaveType.findFirst({ where: { organizationId: org, id: dto.leaveTypeId, active: true } });
     if (!t) throw new NotFoundException('No such leave type.');
-    const rules = t.rules as unknown as LeaveRules;
+    // The rules in force on the first day of the leave (TIM-27 versions).
+    const rules = (await leaveRuleBook(tx, org, [t.id]))(t.id, dto.from);
     const fromHalf = dto.fromHalf ?? 'full';
     const toHalf = dto.toHalf ?? 'full';
     const blocks: string[] = [];
@@ -206,7 +209,7 @@ export class LeaveService implements OnModuleInit {
       WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0
         AND r.status = ANY(${ACTIVE}::text[]) AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date
         AND (d.part = 'full' OR d.part = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => (x.part === 'full' ? ['first', 'second', 'full'] : [x.part])).flat()}::text[]))
-        AND d.leave_on = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => x.on)}::date[])
+        AND d.leave_on::text = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => x.on)}::text[])
       ORDER BY 1 LIMIT 1`;
     if (clash.length) blocks.push(`You already have leave on ${fmt(clash[0].on)}.`);
     let balanceAfter: number | null = null;
@@ -300,6 +303,7 @@ export class LeaveService implements OnModuleInit {
       const balances = (await this.balancesIn(tx, c, f, today)).map((b) => ({ ...b, name: words.get(b.leaveTypeId) ?? b.name, ...(b.hasBalance && atStart.has(b.leaveTypeId) ? { atYearStart: atStart.get(b.leaveTypeId)! } : {}) }));
       const requests = await tx.leaveRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(addDays(today, -400)) } }, orderBy: { fromOn: 'desc' }, take: 100 });
       const types = new Map((await this.types(tx, org)).map((t) => [t.id, { ...t, name: words.get(t.id) ?? t.name }]));
+      const rulesOf = await leaveRuleBook(tx, org);
       const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));
       const holidays = cal ? await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(year.start), lte: asDate(year.end) } }, orderBy: { holidayOn: 'asc' } }) : [];
       const chosen = new Set((await tx.optionalHolidayChoice.findMany({ where: { organizationId: org, employeeId: f.employeeId } })).map((x) => x.holidayId));
@@ -308,7 +312,7 @@ export class LeaveService implements OnModuleInit {
         today,
         year,
         balances,
-        requests: requests.map((r) => this.requestView(r, types.get(r.leaveTypeId), true)),
+        requests: requests.map((r) => this.requestView(r, types.get(r.leaveTypeId), true, rulesOf(r.leaveTypeId, dateOf(r.fromOn)).medical)),
         holidays: {
           calendar: cal ? { id: cal.id, name: cal.name, optionalLimit: cal.optionalLimit } : null,
           list: holidays.map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, chosen: chosen.has(h.id) })),
@@ -317,11 +321,11 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
-  private requestView(r: Req, t: LeaveTypeRow | undefined, withReason: boolean) {
+  private requestView(r: Req, t: LeaveTypeRow | undefined, withReason: boolean, medical: boolean) {
     return {
       id: r.id,
       employeeId: r.employeeId,
-      type: t ? { id: t.id, code: t.code, name: t.name, colour: t.colour, medical: Boolean((t.rules as unknown as LeaveRules).medical) } : null,
+      type: t ? { id: t.id, code: t.code, name: t.name, colour: t.colour, medical } : null,
       from: dateOf(r.fromOn),
       to: dateOf(r.toOn),
       fromHalf: r.fromHalf,
@@ -424,7 +428,10 @@ export class LeaveService implements OnModuleInit {
       notices.push(...sub.notices);
       await tx.leaveRequest.update({ where: { id: req.id }, data: { wfRequestId: sub.id } });
       await audit(tx, c, 'leave.request.submitted', 'leave_request', req.id, { employeeId: f.employeeId, type: p.type.code, from: dto.from, to: dto.to, days: p.total, wfRequestId: sub.id });
-      return { id: req.id, status: (await tx.leaveRequest.findFirstOrThrow({ where: { id: req.id } })).status, days: p.total, wfRequestId: sub.id };
+      // Who it went to first, so the person is told by name (founder rule: messages name the person).
+      const task = await tx.wfTask.findFirst({ where: { organizationId: org, requestId: sub.id, status: 'open' }, orderBy: { createdAt: 'asc' }, select: { assigneeUserId: true } });
+      const approver = task?.assigneeUserId ? ((await tx.user.findFirst({ where: { id: task.assigneeUserId }, select: { name: true } }))?.name ?? null) : null;
+      return { id: req.id, status: (await tx.leaveRequest.findFirstOrThrow({ where: { id: req.id } })).status, days: p.total, wfRequestId: sub.id, approver };
     }
   }
 
@@ -553,7 +560,7 @@ export class LeaveService implements OnModuleInit {
       const today = new Date().toISOString().slice(0, 10);
       const rel = await mustSee(tx, c, v, own, 'leave.view', r.employeeId, today);
       const t = await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, id: r.leaveTypeId } });
-      const medical = Boolean((t?.rules as unknown as LeaveRules | undefined)?.medical);
+      const medical = Boolean(t && (await leaveRuleBook(tx, c.organizationId, [t.id]))(t.id, dateOf(r.fromOn)).medical);
       let withReason = rel === 'self' || !medical;
       if (medical && rel !== 'self' && !v.actingForOther && (await grantCovers(tx, c, v, own, 'leave.medical.view', r.employeeId, today))) {
         withReason = true;
@@ -562,7 +569,7 @@ export class LeaveService implements OnModuleInit {
       }
       const f = await factsOn(tx, c.organizationId, r.employeeId, dateOf(r.fromOn));
       const route = r.wfRequestId ? await this.engine.viewIn(tx, c.organizationId, await tx.wfRequest.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.wfRequestId } })) : null;
-      return { ...this.requestView(r, t ?? undefined, withReason), person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null };
+      return { ...this.requestView(r, t ?? undefined, withReason, medical), person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null };
     });
   }
 
@@ -767,6 +774,7 @@ export class LeaveService implements OnModuleInit {
   async yearEndRows(tx: Tx, c: CompanyContext, yearEnd: string) {
     const org = c.organizationId;
     const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+    const rulesOf = await leaveRuleBook(tx, org);
     const employees = await tx.$queryRaw<{ id: string }[]>`
       SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
       WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${yearEnd}::date <@ daterange(a.valid_from, a.valid_to, '[]')`;
@@ -786,7 +794,7 @@ export class LeaveService implements OnModuleInit {
         // P07: a company carry-forward cap below the state's accumulation floor is raised to it.
         const cap = l.carryForwardMax === null ? null : Math.max(l.carryForwardMax, st.carry[t.kind] ?? 0);
         const split = yearEndSplit(Math.round(sum * 100) / 100, cap);
-        rows.push({ employeeId: f.employeeId, name: f.name, code: f.code, leaveTypeId: t.id, type: t.code, balance: Math.round(sum * 100) / 100, carry: split.carry, lapse: split.lapse, encashable: Boolean((t.rules as unknown as LeaveRules).encashable) });
+        rows.push({ employeeId: f.employeeId, name: f.name, code: f.code, leaveTypeId: t.id, type: t.code, balance: Math.round(sum * 100) / 100, carry: split.carry, lapse: split.lapse, encashable: Boolean(rulesOf(t.id, yearEnd).encashable) });
       }
     }
     return rows;

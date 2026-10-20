@@ -248,7 +248,7 @@ export interface Fence {
 
 export interface CheckInVerdict {
   accepted: boolean;
-  verdict: 'inside' | 'outside' | 'network' | 'no_fence' | 'field' | 'coarse' | 'no_location';
+  verdict: 'inside' | 'outside' | 'network' | 'no_fence' | 'field' | 'coarse' | 'no_location' | 'other_phone';
   distanceM: number | null;
   locationId: string | null;
   /** Plain words, shown to the employee (YX-AT-23). */

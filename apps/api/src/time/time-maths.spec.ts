@@ -138,6 +138,16 @@ describe('check-in verdicts (YX-AT-01, YX-AT-23)', () => {
     expect(checkInVerdict({ fences: [maa, blr], pin: { lat: 12.9718, lng: 77.5947, accuracyM: 20 }, ip: null, mode: 'restricted' })).toMatchObject({ accepted: true, verdict: 'inside', locationId: 'blr' });
   });
 
+  it('TIM-31: several points of one site, each checked; the network of the site still lets a web punch in', () => {
+    const main = { ...blr, name: 'Plant', locationId: 'plant', lat: 12.7409, lng: 77.8253, radiusM: 300, ipRanges: ['10.20.0.0/16'] };
+    const annexe = { ...main, lat: 12.7509, lng: 77.8353, radiusM: 100 };
+    expect(checkInVerdict({ fences: [main, annexe], pin: { lat: 12.751, lng: 77.8354, accuracyM: 20 }, ip: null, mode: 'restricted' })).toMatchObject({ accepted: true, verdict: 'inside', locationId: 'plant' });
+    const out = checkInVerdict({ fences: [main, annexe], pin: { lat: 12.7509, lng: 77.8453, accuracyM: 20 }, ip: null, mode: 'restricted' });
+    expect(out).toMatchObject({ accepted: false, verdict: 'outside' });
+    expect(out.distanceM).toBeLessThan(1200); // the nearest point (the annexe), not the main one
+    expect(checkInVerdict({ fences: [main, annexe], pin: { lat: 13.5, lng: 77.5, accuracyM: 20 }, ip: '10.20.4.7', mode: 'restricted' })).toMatchObject({ accepted: true, verdict: 'network' });
+  });
+
   it('outside is refused with a plain reason and the distance', () => {
     const v = checkInVerdict({ fences: [blr], pin: { lat: 12.9716, lng: 77.6026, accuracyM: 20 }, ip: null, mode: 'restricted' });
     expect(v.accepted).toBe(false);
