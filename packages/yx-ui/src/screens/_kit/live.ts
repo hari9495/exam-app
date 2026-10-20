@@ -8,3 +8,6 @@ export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, type Live
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
+// People › person record (design audit step 3): PPL-03 with the live record.
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordRole, type RecordTab } from '../people/record';
+export type { FieldRow, JobChange } from '../people/people-data';

@@ -194,6 +194,10 @@ export interface FieldRow {
   /** Masked form when the viewer may only see it masked. */
   masked?: string;
   mono?: boolean;
+  /** Live: ask the server for the full value (a recorded look). */
+  reveal?: () => Promise<string>;
+  /** Live: the server says whether the viewer may see it in full (no Show button when false). */
+  canReveal?: boolean;
 }
 
 export const ARJUN = {

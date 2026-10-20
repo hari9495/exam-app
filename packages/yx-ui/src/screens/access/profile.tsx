@@ -57,7 +57,7 @@ const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']
 };
 KIND_FIELDS.bank_reimbursement = KIND_FIELDS.bank_salary;
 
-function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
+export function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
   const [d, setD] = useState(initial);
   const set = <K extends keyof PersonalDetails>(k: K, v: PersonalDetails[K]) => setD((x) => ({ ...x, [k]: v }));
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +126,7 @@ function PersonalDialog({ initial, states, onSave, onClose }: { initial: Persona
   );
 }
 
-function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[]; onRequest: ProfileScreenProps['onRequestChange']; onClose: () => void }) {
+export function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[]; onRequest: ProfileScreenProps['onRequestChange']; onClose: () => void }) {
   const [kind, setKind] = useState<RequestKind | null>(null);
   const [value, setValue] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
@@ -168,7 +168,7 @@ function ChangeDialog({ pending, onRequest, onClose }: { pending: RequestKind[];
   );
 }
 
-function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest; onCancel: ProfileScreenProps['onCancelRequest']; onClose: () => void }) {
+export function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest; onCancel: ProfileScreenProps['onCancelRequest']; onClose: () => void }) {
   const [reason, setReason] = useState('');
   return (
     <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Withdraw the ${request.label.toLowerCase()} change?`} consequence="Nothing changes on the record." confirmLabel="Withdraw" destructive confirmDisabled={!reason.trim()} onConfirm={async () => (await onCancel(request.id, reason.trim()), onClose())}>

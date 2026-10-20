@@ -193,7 +193,10 @@ export interface QueueDocument {
   expiresOn: string | null;
   rejectReason: string | null;
   file: { name: string; scanStatus: 'pending' | 'clean' | 'infected'; size: number } | null;
-  uploadedAt?: string;
+  uploadedAt?: string | null;
+  verifiedAt?: string | null;
+  /** How many files were uploaded over time (a person's documents). */
+  versions?: number;
   version: number;
 }
 
@@ -434,7 +437,7 @@ export interface AssetRow {
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
   version: number;
   canManage: boolean;
-  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; acknowledged: boolean } | null;
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean } | null;
 }
 export interface MyAsset {
   assignmentId: string;

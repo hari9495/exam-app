@@ -70,7 +70,7 @@ describe('Exit workspace (PPL-19 / PPL-20)', () => {
 });
 
 describe('Assets (PPL-25)', () => {
-  const row: AssetRow = { id: 'a', category: 'Laptop', name: 'ThinkPad', tag: 'LT-1', serial: null, legalEntityId: null, locationId: null, purchasedOn: null, cost: '62000.00', status: 'assigned', version: 1, canManage: true, holder: { assignmentId: 'x', employeeId: 'e', name: 'Ravi', issuedOn: '2026-10-01', acknowledged: false } };
+  const row: AssetRow = { id: 'a', category: 'Laptop', name: 'ThinkPad', tag: 'LT-1', serial: null, legalEntityId: null, locationId: null, purchasedOn: null, cost: '62000.00', status: 'assigned', version: 1, canManage: true, holder: { assignmentId: 'x', employeeId: 'e', name: 'Ravi', issuedOn: '2026-10-01', condition: 'New', acknowledged: false } };
   it('taking back as "not returned" says it becomes a recovery', async () => {
     render(<AssetsScreen state="ready" rows={[row]} canAdd today="2026-10-09" entities={[]} locations={[]} people={[]} onAdd={vi.fn()} onIssue={vi.fn()} onReturn={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Take back' }));
