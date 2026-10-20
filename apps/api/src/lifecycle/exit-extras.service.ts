@@ -33,6 +33,9 @@ const KEYS = ['lifecycle.exit.view', 'lifecycle.exit.manage', 'employee.change.m
 type Step = { key: 'hold' | 'notice_1' | 'notice_2' | 'abandoned'; day: number; dueOn: string; doneAt: string | null; note: string | null; dispatchRef: string | null };
 const STEP_LABEL: Record<Step['key'], string> = { hold: 'Salary hold and alert', notice_1: 'Notice 1', notice_2: 'Notice 2 (final)', abandoned: 'Deemed abandonment' };
 
+/** The bell line for an absconding step (founder review 19 Oct 2026): whose timeline and which step, never a bare "a step is due". */
+export const abscondingText = (name: string, steps: string[]) => `Absconding: ${steps.join(', ') || 'next step'} for ${name || 'an employee'}`;
+
 /** The end of the month in which someone reaches `age` (YX-LC-20 starter rule). */
 export function retirementDay(dob: string, age: number): string {
   const [y, m] = dob.split('-').map(Number);
@@ -226,6 +229,8 @@ export class ExitExtrasService {
     let notices = 0;
     let due = false;
     let personId = '';
+    let name = '';
+    const doneNow: string[] = [];
     const notify: string[] = [];
     await this.tenantPrisma.forTenant(c, async (tx) => {
       const t = await tx.abscondingTimeline.findFirst({ where: { organizationId: org, id, status: 'running' } });
@@ -247,16 +252,19 @@ export class ExitExtrasService {
           s.note = 'Notice issued in YukthiX; send it by email and registered post and record the dispatch number.';
         }
         s.doneAt = new Date().toISOString();
+        doneNow.push(STEP_LABEL[s.key]);
         due = true;
         await audit(tx, c, `absconding.${s.key}`, 'employee', t.employeeId, { timelineId: id, day: s.day });
       }
       await tx.abscondingTimeline.update({ where: { id }, data: { steps: steps as unknown as Prisma.InputJsonValue, status, exitCaseId, version: { increment: 1 } } });
       if (due) notify.push(...(await holdersOf(tx, org, 'lifecycle.exit.manage', t.employeeId, today)), (await this.managerUser(tx, org, e.id)) ?? '');
       personId = (await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: t.employeeId } })).personId;
+      const p = await tx.person.findFirst({ where: { organizationId: org, id: personId }, select: { givenName: true, familyName: true, preferredName: true } });
+      name = p ? displayName(p) : '';
     });
     // Each notice is a letter in YukthiX (the person's vault); HR also sends it by email and registered post.
     for (let i = 0; i < notices; i++) await this.letters.issueSystem(c, { letterType: 'absconding_notice', personId }).catch((err: Error) => this.logger.warn(`absconding notice: ${err.message}`));
-    if (notify.length) await this.tell(org, notify, 'An absconding timeline step is due', '/yx/people/absconding');
+    if (notify.length) await this.tell(org, notify, abscondingText(name, doneNow), '/yx/people/absconding');
   }
 
   /**

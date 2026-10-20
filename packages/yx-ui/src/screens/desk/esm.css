@@ -7,6 +7,8 @@
 .yx-esm-item__name { font-weight: var(--yx-weight-semibold); color: var(--yx-color-link); }
 .yx-esm-item__text { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 .yx-esm-item__facts { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+/* The request a notice or email pointed at (founder review 20 Oct 2026). */
+.yx-esm-approvals > li[data-focused] > .yx-card { border-color: var(--yx-color-action-primary); box-shadow: 0 0 0 var(--yx-focus-width) var(--yx-color-focus-ring); }
 .yx-esm-cart, .yx-esm-requests, .yx-esm-approvals, .yx-esm-rules, .yx-esm-runs, .yx-esm-media { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-3); }
 .yx-esm-cart > li, .yx-esm-rules > li, .yx-esm-runs > li { padding-bottom: var(--yx-space-2); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-esm-cart__name { flex: 1 1 calc(var(--yx-space-16) * 3); min-width: 0; overflow-wrap: anywhere; }

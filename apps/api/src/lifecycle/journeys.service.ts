@@ -515,9 +515,10 @@ export class LifecycleJourneysService implements OnModuleInit {
       const n = await tx.journeyTask.updateMany({ where: { organizationId: c.organizationId, id: t.id, version: dto.version, status: { in: ['open', 'waiting'] } }, data: { assigneeUserId: dto.userId, assigneeGroupId: null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this task. Reload it.');
       await audit(tx, c, 'journey.task.reassigned', 'journey', j.id, { taskKey: t.key, to: dto.userId });
-      return j.id;
+      const p = await tx.person.findFirst({ where: { organizationId: c.organizationId, id: j.personId }, select: { givenName: true, familyName: true, preferredName: true } });
+      return { id: j.id, text: `Checklist task for you: ${t.title}${p ? ` for ${[p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ')}` : ''}` };
     });
-    void this.notifications.notify(ctx, user.userId!, [dto.userId], 'journey.task.assigned', { entityType: 'journey', entityId: res, contextText: 'A checklist task was handed to you', linkPath: '/yx/people/my-tasks' }).catch(() => undefined);
+    void this.notifications.notify(ctx, user.userId!, [dto.userId], 'journey.task.assigned', { entityType: 'journey', entityId: res.id, contextText: res.text, linkPath: '/yx/people/my-tasks' }).catch(() => undefined);
     return { ok: true };
   }
 
@@ -584,16 +585,19 @@ export class LifecycleJourneysService implements OnModuleInit {
         if (!j) return null;
         const remind = !t.remindedOn ? ((await tx.journeyTask.updateMany({ where: { id: t.id, remindedOn: null }, data: { remindedOn: asDate(today) } })).count ? t.assigneeUserId : null) : null;
         const escalate = iso(t.dueOn) <= addDays(today, -2) && !t.escalatedOn && (await tx.journeyTask.updateMany({ where: { id: t.id, escalatedOn: null }, data: { escalatedOn: asDate(today) } })).count ? j.ownerUserId : null;
-        return { remind, escalate, journeyId: j.id };
+        const p = await tx.person.findFirst({ where: { organizationId: t.organizationId, id: j.personId }, select: { givenName: true, familyName: true, preferredName: true } });
+        // Whose checklist (founder review 19 Oct 2026): both recipients work this journey, so they may see the name.
+        const who = p ? ` for ${[p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ')}` : '';
+        return { remind, escalate, journeyId: j.id, who };
       });
       if (!out) continue;
       if (out.remind) {
         reminded++;
-        await this.notifications.notifySystem(ctx, [out.remind], 'journey.task.due', { entityType: 'journey', entityId: out.journeyId, contextText: `Due today: ${t.title}`, linkPath: '/yx/people/my-tasks' }, { subject: 'A checklist task is due today', html: '<p>A checklist task is due today. Open YukthiX to see it.</p>' }).catch(() => undefined);
+        await this.notifications.notifySystem(ctx, [out.remind], 'journey.task.due', { entityType: 'journey', entityId: out.journeyId, contextText: `Due today: ${t.title}${out.who}`, linkPath: '/yx/people/my-tasks' }, { subject: 'A checklist task is due today', html: '<p>A checklist task is due today. Open YukthiX to see it.</p>' }).catch(() => undefined);
       }
       if (out.escalate) {
         escalated++;
-        await this.notifications.notifySystem(ctx, [out.escalate], 'journey.task.overdue', { entityType: 'journey', entityId: out.journeyId, contextText: `Overdue: ${t.title}`, linkPath: `/yx/people/onboarding/${out.journeyId}` }, { subject: 'A checklist task is overdue', html: '<p>A checklist task you own is overdue. Open YukthiX to see it.</p>' }).catch(() => undefined);
+        await this.notifications.notifySystem(ctx, [out.escalate], 'journey.task.overdue', { entityType: 'journey', entityId: out.journeyId, contextText: `Overdue: ${t.title}${out.who}`, linkPath: `/yx/people/onboarding/${out.journeyId}` }, { subject: 'A checklist task is overdue', html: '<p>A checklist task you own is overdue. Open YukthiX to see it.</p>' }).catch(() => undefined);
       }
     }
     return { reminded, escalated };

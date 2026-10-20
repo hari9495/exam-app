@@ -127,7 +127,10 @@ export class NotificationsService {
     recipientUserIds: string[],
     type: string,
     target: MentionTarget,
-    email: { subject: string; html: string },
+    /** One email for everyone, or one per recipient address (the designed email names who it was sent to). */
+    email: { subject: string; html: string } | ((to: string) => Promise<{ subject: string; html: string }>),
+    /** The person the notice is about, for the bell row's avatar (never the recipient themselves). */
+    aboutUserId: string | null = null,
   ): Promise<void> {
     const ids = [...new Set(recipientUserIds)].filter((id) => Boolean(id));
     if (ids.length === 0) return;
@@ -143,7 +146,7 @@ export class NotificationsService {
           data: {
             organizationId: context.organizationId as string,
             recipientUserId: u.id,
-            actorUserId: null,
+            actorUserId: aboutUserId && aboutUserId !== u.id ? aboutUserId : null,
             type,
             entityType: target.entityType,
             entityId: target.entityId,
@@ -165,7 +168,10 @@ export class NotificationsService {
         // Same cadence gate as notify(): 'immediate' only; 'daily' is batched by the digest sweep
         // (the bell row created above is what the digest collects), 'off' gets none.
         .filter((entry) => entry.digest === 'immediate' && (entry.prefMap.get(type) ?? true))
-        .map((entry) => this.emailService.send({ to: entry.to, subject: email.subject, html: email.html, organizationId: context.organizationId as string }));
+        .map(async (entry) => {
+          const e = typeof email === 'function' ? await email(entry.to) : email;
+          return this.emailService.send({ to: entry.to, subject: e.subject, html: e.html, organizationId: context.organizationId as string });
+        });
       await Promise.allSettled(sends);
     } catch (error) {
       this.logger.error('Failed to send reminder email(s)', error as Error);

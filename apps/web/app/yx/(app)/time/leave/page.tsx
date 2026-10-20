@@ -12,13 +12,14 @@ const id = encodeURIComponent;
 
 // Me › Leave (the designed TIM-17 leave home, with TIM-18 apply, TIM-19 request and TIM-23 optional holidays): no
 // permission key; the API reaches only the signed-in person's own leave. Home's Apply leave opens the sheet here
-// (?request=apply); the parameter is then dropped, so asking again opens it again.
+// (?request=apply, or ?apply=1 from Ctrl K); the parameter is then dropped, so asking again opens it again.
 function YxMyLeaveInner() {
   const { accessToken } = useAuth();
   const params = useSearchParams();
   const router = useRouter();
   const path = usePathname();
-  const asked = params.get('request') === 'apply';
+  // ?request=apply (Home's Apply leave) or ?apply=1 (the Apply leave action, Ctrl K then N L).
+  const asked = params.get('request') === 'apply' || params.get('apply') === '1';
   const [apply, setApply] = useState<number | undefined>();
   useEffect(() => {
     if (!asked) return;
