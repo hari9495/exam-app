@@ -109,7 +109,8 @@ const siteOf = (where: string) => LOCATIONS.find((l) => where.startsWith(l.name)
 function verdictOf(p: Punch): { label: string; tone: BadgeTone } | null {
   const site = siteOf(p.where);
   if (NO_VERDICT.includes(p.source)) return site ? { label: `At ${site}`, tone: 'success' } : null;
-  if (p.verdict === 'inside') return { label: `At ${site ?? 'the office'}${p.distanceM ? ` (${formatDistance(p.distanceM)} from centre)` : ''}`, tone: 'success' };
+  // A live site is named by its punch ("Hosur plant"), not the sample locations.
+  if (p.verdict === 'inside') return { label: `At ${site ?? (p.where.split(' · ')[0] || 'the office')}${p.distanceM ? ` (${formatDistance(p.distanceM)} from centre)` : ''}`, tone: 'success' };
   if (p.verdict === 'outside') return { label: `Outside the office${p.distanceM ? ` (${formatDistance(p.distanceM)} away)` : ''}`, tone: 'danger' };
   if (p.verdict === 'network') return { label: 'Office network', tone: 'success' };
   return { label: 'Location recorded', tone: 'info' };
@@ -886,6 +887,8 @@ export interface DayCardBodyProps {
    * comp-off; the request withdrawn; the exception resolved. Set it after the confirm step succeeds.
    */
   outcome?: { ot?: 'approved' | 'rejected' | 'comp-off'; request?: 'withdrawn'; exception?: 'resolved' };
+  /** Live app: real punches and shift only, no story facts (map, OT review row, late-mark allowance); buttons only with an action. */
+  live?: boolean;
 }
 
 /**
@@ -917,13 +920,14 @@ export function DayCardBody({
   onRejectOvertime,
   onCompOff,
   outcome = {},
+  live,
 }: DayCardBodyProps) {
   const monthLong = day.date.toLocaleDateString('en-IN', { month: 'long' });
   const monthYear = day.date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const openPayroll = latePayrollMonth();
+  const openPayroll = live ? new Date(day.date.getFullYear(), day.date.getMonth() + 1, 1).toLocaleDateString('en-IN', { month: 'long' }) : latePayrollMonth();
   const first = person.split(' ')[0];
-  const own = person === ME.name;
-  const waitingOn = approver ?? (own ? ME.manager : ME.name);
+  const own = !live && person === ME.name;
+  const waitingOn = approver ?? (live ? 'approval' : own ? ME.manager : ME.name);
 
   // Only a missing punch or an absence needs fixing; a late day with both punches has nothing to fix.
   const resolved = outcome.exception === 'resolved';
@@ -950,12 +954,12 @@ export function DayCardBody({
   const otValue = open || noData ? '—' : day.otMin ? `${fmtDuration(day.otMin)} · ${otState}` : 'None';
   const lateValue = noData || offDay ? '—' : day.lateMin ? `${day.lateMin} min` : 'No';
   // The OT review row for this day (category, pre-approval, quarter hours): the facts the approve decision needs.
-  const otRow = OT_ROWS.find((r) => r.person === person && r.date.toDateString() === day.date.toDateString());
+  const otRow = live ? undefined : OT_ROWS.find((r) => r.person === person && r.date.toDateString() === day.date.toDateString());
 
   const needsFix = (day.code === 'MP' || day.code === 'A') && !resolved;
   // In a locked month, an unpaid or missing day can still change, through a late request.
   const canLate = locked && !resolved && (day.code === 'MP' || day.code === 'A' || day.code === 'LOP');
-  const lateN = day.lateMin ? lateMarkNumber(day, monthDays ?? [...AUGUST, ...SEPTEMBER]) : 0;
+  const lateN = day.lateMin && !live ? lateMarkNumber(day, monthDays ?? [...AUGUST, ...SEPTEMBER]) : 0;
 
   const fence = dayFence(punches);
   const allField = punches.length > 0 && punches.every((p) => p.verdict === 'field');
@@ -983,13 +987,13 @@ export function DayCardBody({
   const fixButtons =
     viewer === 'hr' ? (
       <>
-        <Button variant="primary" onClick={onFix}>Resolve with reason</Button>
-        <Button onClick={onRemind}>Remind employee</Button>
+        {onFix && <Button variant="primary" onClick={onFix}>Resolve with reason</Button>}
+        {onRemind && <Button onClick={onRemind}>Remind employee</Button>}
       </>
     ) : viewer === 'mgr' ? (
-      <Button variant="primary" onClick={onFix}>Nudge to fix</Button>
+      onFix && <Button variant="primary" onClick={onFix}>Nudge to fix</Button>
     ) : (
-      <Button variant="primary" onClick={onFix}>{locked ? `Raise late request for ${shortDate(day.date)}` : 'Fix this day'}</Button>
+      onFix && <Button variant="primary" onClick={onFix}>{locked ? `Raise late request for ${shortDate(day.date)}` : 'Fix this day'}</Button>
     );
   // A pending request's note ("Request sent 23 Sep: out was …"): the sent date goes on the request line below, the reason stays up top.
   const sentOn = day.code === 'R' ? /sent (\d{1,2} \w{3})/.exec(day.note ?? '')?.[1] : undefined;
@@ -1003,7 +1007,7 @@ export function DayCardBody({
   const sentDate = sentOn ? new Date(day.date.getFullYear(), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(sentOn.split(' ')[1]), Number(sentOn.split(' ')[0])) : undefined;
   const sentAge = sentDate ? relativeDue(sentDate, TODAY) : undefined;
   const fixAsk =
-    viewer === 'hr' ? 'Resolve it with a reason, or remind the employee.' : viewer === 'mgr' ? `Ask ${first} to regularise it.` : day.code === 'A' ? 'Apply leave for it or regularise it.' : 'Regularise it with your actual out time.';
+    viewer === 'hr' ? (onFix ? 'Resolve it with a reason, or remind the employee.' : `${first} fixes it with a request.`) : viewer === 'mgr' ? `Ask ${first} to regularise it.` : day.code === 'A' ? 'Apply leave for it or regularise it.' : 'Regularise it with your actual out time.';
 
   return (
     <div className="yx-tim-stack">
@@ -1039,8 +1043,8 @@ export function DayCardBody({
       />
       {punches.length > 0 && (
         <>
-          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches}now={day.code === 'TODAY' ? NOW_MIN : undefined} off={offDay} />
-          <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />
+          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches} now={day.code === 'TODAY' && !live ? NOW_MIN : undefined} off={offDay} />
+          {!live && <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />}
         </>
       )}
       {/* On an on-duty day the header says "On duty", so field punches don't repeat it as a chip. */}
@@ -1066,12 +1070,12 @@ export function DayCardBody({
                 <Button size="sm" onClick={onWithdraw}>Withdraw</Button>
               </>
             ) : (
-              <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
+              onViewRequest && <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
             )}
           </span>
         </div>
       )}
-      {otPending && !open && viewer !== 'emp' && (
+      {otPending && !open && viewer !== 'emp' && onReviewOvertime && (
         <div className="yx-tim-stack">
           {/* The facts the decision needs, beside the buttons. */}
           {otRow && (

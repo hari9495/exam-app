@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { MyAttendanceScreen } from './my-attendance';
 import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
-import { MusterScreen, TeamLeaveScreen } from './team';
+import { TeamLeaveScreen } from './team';
+import { MusterScreen } from '../attendance';
 import type { LeavePlan, MyAttendance, MyLeave, Muster, TimeSetup } from './types';
 import { ToastProvider } from '../../../components/notify';
 
@@ -213,12 +214,23 @@ describe('Team and HR', () => {
     expect(cell).toHaveTextContent('SL');
   });
 
-  it('the muster opens a day card with each punch and its verdict (YX-AT-15)', async () => {
-    const data: Muster = { month: '2026-10', from: '2026-10-01', to: '2026-10-02', scope: 'granted', people: [{ id: 'k', name: 'Kavya Reddy', code: 'KFT-0031', location: 'Hosur plant', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ on: '2026-10-01', status: 'present', leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }] }] };
-    const onOpenDay = vi.fn(async () => ({ person: { name: 'Kavya Reddy', code: null }, on: '2026-10-01', zone: 'Asia/Kolkata', day: { status: 'present' as const, leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }, punches: [{ id: 'p', kind: 'in' as const, at: '2026-10-01T02:31:00Z', source: 'web', accepted: true, refusal: null, verdict: 'inside', distanceM: 40, accuracyM: 18, where: 'Hosur plant', minute: 481 }] }));
-    render(<MusterScreen state="ready" data={data} month="2026-10" onMonth={vi.fn()} onOpenDay={onOpenDay} />);
-    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, Thu 1 Oct: Present/ }));
-    expect(await screen.findByText(/Inside · Hosur plant · 40 m from the site/)).toBeInTheDocument();
+  it('the designed muster shows leave codes and opens the designed day card with each punch (YX-AT-15)', async () => {
+    const base = { leavePart: null, lateMinutes: null, regularised: false, leave: null, ot: null, waiting: false, wfh: false };
+    const data: Muster = {
+      month: '2026-10',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      scope: 'granted',
+      people: [{ id: 'k', name: 'Kavya Reddy', code: 'KFT-0031', location: 'Hosur plant', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ ...base, on: '2026-10-01', status: 'present', workedMinutes: 490 }, { ...base, on: '2026-10-02', status: 'leave', workedMinutes: null, leave: { code: 'CO', name: 'Comp-off' } }] }],
+    };
+    const onOpenDay = vi.fn(async () => ({ person: { name: 'Kavya Reddy', code: null }, on: '2026-10-01', zone: 'Asia/Kolkata', shift: { name: 'Morning', start: 360, end: 840, grace: 10 }, day: { status: 'present' as const, leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }, punches: [{ id: 'p', kind: 'in' as const, at: '2026-10-01T02:31:00Z', source: 'web', accepted: true, refusal: null, verdict: 'inside', distanceM: 40, accuracyM: 18, where: 'Hosur plant', minute: 481 }] }));
+    render(<MusterScreen live={{ state: 'ready', data, today: '2026-10-03', month: '2026-10', onOpenDay }} />);
+    expect(screen.getByRole('heading', { name: 'Muster · October 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Kavya Reddy, .*2 Oct 2026: Comp-off/ })).toHaveTextContent('CO');
+    expect(screen.queryByRole('button', { name: 'Freeze inputs' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, .*1 Oct 2026: Present/ }));
+    expect(onOpenDay).toHaveBeenCalledWith('k', '2026-10-01');
+    expect(await screen.findByText(/At Hosur plant \(40 m from centre\)/)).toBeInTheDocument();
   });
 
   it('set-up shows the legal minimums and refuses a bad code only on save', async () => {

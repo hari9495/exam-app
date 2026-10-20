@@ -176,12 +176,20 @@ export interface TeamCalendar {
   people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
 }
 
+/** What the muster adds to a day: the leave taken, overtime and its state, a request waiting, approved work from home. */
+export interface MusterDay {
+  leave: { code: string; name: string } | null;
+  ot: { minutes: number; status: 'pending' | 'approved' | 'comp-off' } | null;
+  waiting: boolean;
+  wfh: boolean;
+}
+
 export interface Muster {
   month: string;
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; days: DayRow[] }[];
+  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; days: (DayRow & MusterDay)[] }[];
 }
 
 export interface DayCard {
@@ -189,6 +197,8 @@ export interface DayCard {
   on: string;
   zone: string;
   day: Omit<DayRow, 'on'> | null;
+  /** The shift that day (minutes after midnight); null on a weekly off. */
+  shift?: { name: string; start: number; end: number; grace: number } | null;
   punches: (PunchRow & { minute: number })[];
 }
 

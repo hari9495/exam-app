@@ -3,7 +3,9 @@
 export * from './types';
 export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
 export { HomeClockCard, MyAttendanceScreen, TodayCard, type MyAttendanceScreenProps, type Pin } from './my-attendance';
-export { TeamLeaveScreen, MusterScreen, LeaveBalancesScreen, type TeamLeaveScreenProps, type MusterScreenProps, type LeaveBalancesScreenProps } from './team';
+export { TeamLeaveScreen, LeaveBalancesScreen, type TeamLeaveScreenProps, type LeaveBalancesScreenProps } from './team';
+// The designed screens, made live (design audit): one version of each screen.
+export { MusterScreen, type LiveMuster } from '../attendance';
 export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
 export { RosterPlannerScreen, MyShiftsScreen, type RosterPlannerScreenProps, type MyShiftsScreenProps } from './roster';

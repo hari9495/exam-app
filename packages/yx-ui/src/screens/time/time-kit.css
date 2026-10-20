@@ -204,7 +204,7 @@
 [data-code="R"] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border-strong); }
 [data-code="A"], [data-code="MP"], [data-code="LOP"] { background: var(--yx-color-danger-bg); border-color: var(--yx-color-danger-border); }
 [data-code="A"] .yx-tim-month__code, [data-code="MP"] .yx-tim-month__code { color: var(--yx-color-danger-text); }
-[data-code="CL"], [data-code="EL"], [data-code="SL"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
+[data-code="CL"], [data-code="EL"], [data-code="SL"], [data-code="LV"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
 [data-code="H"] { background: var(--yx-color-ai-bg); border-color: var(--yx-color-ai-border); }
 [data-code="WO"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); }
 [data-code="WFH"], [data-code="OD"] { border-style: dashed; }

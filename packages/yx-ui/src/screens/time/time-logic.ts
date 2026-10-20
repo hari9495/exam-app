@@ -244,7 +244,7 @@ export function geofenceVerdict(pin: { lat: number; lng: number; accuracyM: numb
 
 /* ---------- attendance month ---------- */
 
-export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
+export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
 
 export const DAY_CODE_LABEL: Record<DayCode, string> = {
   P: 'Present',
@@ -254,6 +254,7 @@ export const DAY_CODE_LABEL: Record<DayCode, string> = {
   CL: 'Casual leave',
   EL: 'Earned leave',
   SL: 'Sick leave',
+  LV: 'Leave',
   H: 'Holiday',
   WO: 'Weekly off',
   WFH: 'Work from home',
@@ -278,6 +279,8 @@ export interface AttendanceDay {
   /** Overtime approval; month totals count paid (approved) overtime only, not pending or taken as comp-off. */
   otStatus?: 'pending' | 'approved' | 'comp-off';
   note?: string;
+  /** Live app: the leave type taken that day (any company code; the cell shows it instead of the day code). */
+  leave?: { code: string; name: string };
 }
 
 /** Legend counts and totals for the month (M02 §B5 row totals). Payable days are the days before `today`. */
@@ -288,7 +291,7 @@ export function monthSummary(days: AttendanceDay[], today: Date = new Date(2026,
   // Today counts once checked in late, as the legend counts it under Late (so Present + Late + WFH adds up).
   const lateToday = days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length;
   const present = c('P') + c('L') + c('WFH') + c('OD') + c('HD') * 0.5 + lateToday;
-  const leave = c('CL') + c('EL') + c('SL') + c('HD') * 0.5;
+  const leave = c('CL') + c('EL') + c('SL') + c('LV') + c('HD') * 0.5;
   // An absence in an open month can still be fixed, so it is not unpaid yet; a locked month shows it as LOP.
   const lop = c('LOP');
   const absent = c('A');

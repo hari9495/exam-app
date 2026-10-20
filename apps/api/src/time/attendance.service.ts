@@ -365,6 +365,28 @@ export class AttendanceService implements OnModuleInit {
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      // What the designed muster (TIM-02) shows on a day besides its status: the leave taken, overtime and its state,
+      // a request still waiting, and approved work from home. Same people as above (already filtered by scope).
+      const key = (employeeId: string, on: string) => `${employeeId}|${on}`;
+      const leave = new Map<string, { code: string; name: string }>();
+      const ot = new Map<string, { minutes: number; status: 'pending' | 'approved' | 'comp-off' }>();
+      const waiting = new Set<string>();
+      const wfh = new Set<string>();
+      if (ids.length) {
+        for (const l of await tx.$queryRaw<{ employeeId: string; on: string; code: string; name: string }[]>`
+          SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, t.code::text, t.name
+          FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+          JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+          WHERE d.organization_id = ${c.organizationId}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.active AND d.portion > 0
+            AND r.status IN ('approved', 'cancel_pending') AND d.leave_on BETWEEN ${from}::date AND ${to}::date`)
+          leave.set(key(l.employeeId, l.on), { code: l.code, name: l.name });
+        for (const o of await tx.overtimeRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, payableMinutes: true, status: true, settle: true } }))
+          ot.set(key(o.employeeId, dateOf(o.workOn)), { minutes: o.payableMinutes, status: o.status === 'pending' ? 'pending' : o.settle === 'comp_off' ? 'comp-off' : 'approved' });
+        for (const r of await tx.attendanceRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, kind: true, status: true } })) {
+          if (r.status === 'pending') waiting.add(key(r.employeeId, dateOf(r.workOn)));
+          else if (r.kind === 'wfh') wfh.add(key(r.employeeId, dateOf(r.workOn)));
+        }
+      }
       const modes = new Map<string, { mode: string; effect: string }>();
       for (const id of ids) {
         const f = await factsOn(tx, c.organizationId, id, to);
@@ -383,7 +405,12 @@ export class AttendanceService implements OnModuleInit {
           me: p.id === own,
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
-          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
+          days: days
+            .filter((d) => d.employeeId === p.id)
+            .map((d) => {
+              const k = key(p.id, dateOf(d.workOn));
+              return { on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, leave: leave.get(k) ?? null, ot: ot.get(k) ?? null, waiting: waiting.has(k), wfh: wfh.has(k) };
+            }),
         })),
       };
     });
@@ -400,10 +427,13 @@ export class AttendanceService implements OnModuleInit {
       const punches = await tx.punch.findMany({ where: { organizationId: c.organizationId, employeeId, workOn: asDate(on) }, orderBy: { punchedAt: 'asc' } });
       const names = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: punches.map((p) => p.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
       const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: c.organizationId, employeeId, workOn: asDate(on) } } });
+      const planned = await (await ScheduleBook.load(tx, c.organizationId)).day(f, on);
       return {
         person: { name: f.name, code: f.code },
         on,
         zone: f.zone,
+        // The shift that day (the designed day card draws it under the punches); null on a weekly off.
+        shift: planned.shift ? { name: planned.shift.name, start: planned.shift.shiftStart, end: planned.shift.shiftEnd, grace: planned.shift.graceMinutes } : null,
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.
         punches: punches.map((p) => ({ ...this.punchView(p, names), minute: minutesInto(on, f.zone, p.punchedAt) })),

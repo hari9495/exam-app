@@ -51,6 +51,9 @@ import {
 import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, GeoMap, Kpis, SOURCE_LABEL, TimePage, codeText, type ClockCardProps, type DayCardBodyProps } from './time-kit';
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
+import { NoAccessState } from '../../components/feedback';
+import { localDate, monthDays as liveMonthDays, toPunches, toShift } from './live/adapt';
+import type { DayCard, LoadState, Muster as LiveMusterData } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -1302,15 +1305,43 @@ export interface MusterProps {
   resolved?: boolean;
   /** Show the muster as it was on an earlier day (the August lock story is set on 2 Sep, before payroll was approved on 3 Sep). */
   asOf?: Date;
+  /** The live app's data (design audit). Stories leave it out and keep their sample data. */
+  live?: LiveMuster;
 }
 
-export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf }: MusterProps) {
-  const today = asOf ?? TODAY;
-  const [state, retry] = useViewState(stateProp);
+/** What the live app gives the muster: the month's people and days, and the day card on a click. */
+export interface LiveMuster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: LiveMusterData | null;
+  /** yyyy-mm-dd and yyyy-mm, in the company's time. */
+  today: string;
+  month: string;
+  /** Whose muster, e.g. the legal entity chosen in the top bar; the places come from the people. */
+  entity?: string | null;
+  onOpenDay: (employeeId: string, on: string) => Promise<DayCard>;
+}
+
+const MODE_LABEL: Record<string, MusterRow['mode']> = { punch: 'Punch', assumed_present: 'Assumed present', timesheet: 'Timesheet' };
+const liveRows = (l: LiveMuster): MusterRow[] =>
+  (l.data?.people ?? []).map((p) => {
+    const mode = MODE_LABEL[p.mode] ?? 'Punch';
+    const days = liveMonthDays(l.month, p.days, l.today);
+    return { id: p.id, name: p.name, code: p.code ?? '', mode, days: mode === 'Punch' ? days : noLate(days) };
+  });
+/** "Chennai office and Hosur plant", or "4 places". */
+const placesText = (places: string[]) => (places.length > 3 ? `${places.length} places` : places.length > 1 ? `${places.slice(0, -1).join(', ')} and ${places[places.length - 1]}` : places[0] ?? '');
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf, live }: MusterProps) {
+  const today = live ? localDate(live.today) : asOf ?? TODAY;
+  const [storyState, retry] = useViewState(stateProp);
   const [stage, setStage] = useState(stageProp);
   // August is paid and closed; September's exceptions are open unless the story says resolved.
-  const resolved = resolvedProp || month === 'aug' || stage === 'locked';
-  const [rows, setRows] = useState(() => musterRows(month, resolved));
+  const resolved = Boolean(live) || resolvedProp || month === 'aug' || stage === 'locked';
+  const [storyRows, setRows] = useState(() => musterRows(month, resolved));
+  const rows = useMemo(() => (live ? liveRows(live) : storyRows), [live, storyRows]);
+  const state: ViewState = !live ? storyState : live.state === 'ready' ? (rows.length ? 'ready' : 'empty') : live.state === 'loading' ? 'loading' : 'error';
   const [cell, setCell] = useState<[string, number] | null>(openCell ?? null);
   const [dlg, setDlg] = useState(dialog);
   const [selected, setSelected] = useState<string[]>(defaultSelected);
@@ -1322,9 +1353,10 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
   const row = cell ? rows.find((r) => r.id === cell[0]) : null;
   const day = row && cell ? row.days[cell[1]] : null;
   const exceptions = resolved ? 0 : timeCounts(HR_ADMIN).Exceptions;
-  const monthDays = month === 'sep' ? SEPTEMBER : AUGUST;
-  const monthName = month === 'sep' ? 'September' : 'August';
-  const cutoff = month === 'sep' ? SEP_CUTOFF : new Date(2026, 7, 31);
+  const monthDays = useMemo(() => (live ? liveMonthDays(live.month, [], live.today) : month === 'sep' ? SEPTEMBER : AUGUST), [live, month]);
+  const monthName = live ? monthDays[0].date.toLocaleDateString('en-IN', { month: 'long' }) : month === 'sep' ? 'September' : 'August';
+  const year = monthDays[0].date.getFullYear();
+  const cutoff = live ? monthDays[monthDays.length - 1].date : month === 'sep' ? SEP_CUTOFF : new Date(2026, 7, 31);
   // The month can't be locked before its last day is recorded.
   const cutoffPassed = daysUntil(cutoff, today) < 0;
   const lockBlock = !cutoffPassed
@@ -1339,20 +1371,26 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
   const usedCodes = MUSTER_CODES.filter((c) => shown.some((r) => r.days.some((d) => cellCode(d.code) === c)));
   const openExceptions = <LinkButton size="sm" to={STORY.exceptionsHr}>Open exceptions</LinkButton>;
   // Bulk "mark present" only when the month has absent or missing-punch days to mark (a closed August has none).
-  const bulkable = stage !== 'locked' && shown.some((r) => r.days.some((d) => canMarkPresent(d.code)));
+  const bulkable = !live && stage !== 'locked' && shown.some((r) => r.days.some((d) => canMarkPresent(d.code)));
   // Open on the latest days, where most of the open exceptions are (names and totals stay pinned).
   useEffect(() => {
     const g = gridRef.current;
-    if (g) g.scrollLeft = g.scrollWidth;
+    if (!g) return;
+    // Live: open on today (the days after it are still empty), with today near the right edge.
+    const th = g.querySelector<HTMLElement>('th[data-today]');
+    g.scrollLeft = th ? th.offsetLeft + th.offsetWidth * 3 - g.clientWidth : g.scrollWidth;
   }, [narrow, state]);
+  if (live?.state === 'no-access') return <NoAccessState grantedBy="HR" what="the muster" />;
+  const places = placesText([...new Set((live?.data?.people ?? []).map((p) => p.location))]);
+  const liveDescription = [live?.entity, places, state === 'ready' ? `${shown.length} ${shown.length === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(' · ');
   return (
     <TimePage active="Muster" user={HR_ADMIN} counts={resolved || state === 'empty' ? { ...timeCounts(HR_ADMIN), Exceptions: 0 } : undefined}>
       <PageHeader
-        title={`Muster · ${monthName} 2026`}
-        description={`Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant${state === 'ready' ? ` · ${shown.length} people` : ''}${asOf ? ` · as on ${shortDate(asOf)}` : ''}`}
-        status={<Badge tone={stage === 'open' ? 'success' : stage === 'frozen' ? 'warning' : 'neutral'}>{stage === 'open' ? 'Open' : stage === 'frozen' ? 'Inputs frozen' : 'Locked'}</Badge>}
+        title={`Muster · ${monthName} ${year}`}
+        description={live ? liveDescription || undefined : `Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant${state === 'ready' ? ` · ${shown.length} people` : ''}${asOf ? ` · as on ${shortDate(asOf)}` : ''}`}
+        status={live ? undefined : <Badge tone={stage === 'open' ? 'success' : stage === 'frozen' ? 'warning' : 'neutral'}>{stage === 'open' ? 'Open' : stage === 'frozen' ? 'Inputs frozen' : 'Locked'}</Badge>}
         facts={
-          stage !== 'locked' && (
+          !live && stage !== 'locked' && (
             <span className="yx-tim-row">
               {/* Frozen: the alert below carries the open exceptions and their button, so the facts don't repeat them. */}
               <span className="yx-tim-muted">{ready && exceptions > 0 && stage === 'open' ? 'Open exceptions stop payroll approval · ' : ''}{cutoffPassed ? `Cut-off ${shortDate(cutoff)} has passed` : `Cut-off ${shortDate(cutoff)}`}</span>
@@ -1363,8 +1401,8 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
         }
         actions={
           <div className="yx-tim-row">
-            <Button icon={Download} disabled={!ready} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-2026.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => codeText(cellCode(d.code)))]; })])}>Export</Button>
-            {stage === 'open' && <Button icon={Snowflake} disabled={!ready} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
+            <Button icon={Download} disabled={!ready} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-${year}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days, live ? today : undefined); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => d.leave?.code ?? codeText(cellCode(d.code)))]; })])}>Export</Button>
+            {!live && stage === 'open' && <Button icon={Snowflake} disabled={!ready} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
             {stage === 'frozen' && <Button variant="primary" icon={Lock} disabled={!!lockBlock} onClick={() => setDlg('lock')}>Lock period</Button>}
           </div>
         }
@@ -1383,24 +1421,24 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
         </InlineAlert>
       )}
       {state === 'loading' ? <LoadingBlock rows={10} /> : state === 'error' ? (
-        <ErrorState title="The muster didn't load" description="Try again. If it keeps failing, share the reference with support." onRetry={retry} reference="MUS-0A77" />
+        <ErrorState title="The muster didn't load" description={live ? 'Nothing has changed. Try again in a moment.' : 'Try again. If it keeps failing, share the reference with support.'} onRetry={live ? live.onRetry : retry} reference={live ? undefined : 'MUS-0A77'} />
       ) : state === 'empty' ? (
         <EmptyState
           title="No one on the muster"
-          description={`No one is on the muster for Kaveri Foods Pvt Ltd (Tamil Nadu) in ${monthName}. Add people to this entity in People.`}
-          action={<LinkButton to={STORY.people}>Open People</LinkButton>}
+          description={live ? `No one you can see is on the muster in ${monthName} ${year}. People you manage, or look after in HR, appear here.` : `No one is on the muster for Kaveri Foods Pvt Ltd (Tamil Nadu) in ${monthName}. Add people to this entity in People.`}
+          action={live ? undefined : <LinkButton to={STORY.people}>Open People</LinkButton>}
         />
       ) : (
         <>
-          <div className="yx-tim-row">
+          {!live && <div className="yx-tim-row">
             {stage === 'open' && exceptions > 0 && <><Badge tone="danger">{exceptions} open exceptions</Badge>{openExceptions}</>}
             {bulkable && <span className="yx-tim-muted">Select people to act in bulk.</span>}
             {selected.length > 0 && bulkable && <Button onClick={() => setDlg('bulk')}>Mark present with reason ({selected.length})</Button>}
-          </div>
+          </div>}
           {narrow ? (
             <div className="yx-tim-stack">
               {shown.map((r) => {
-                const s = monthSummary(r.days);
+                const s = monthSummary(r.days, live ? today : undefined);
                 // Pending requests also need HR action: they open the day card, where HR approves them.
                 const fix = r.days.map((d, i) => ({ d, i })).filter(({ d }) => d.code === 'MP' || d.code === 'A' || d.code === 'R');
                 return (
@@ -1427,17 +1465,17 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
             </div>
           ) : (
             <div ref={gridRef} className="yx-tim-muster" data-pinned-totals tabIndex={0} role="region" aria-label="Muster grid, scrolls sideways">
-              <table aria-label={`Muster, ${monthName} 2026`}>
+              <table aria-label={`Muster, ${monthName} ${year}`}>
                 <thead>
                   <tr>
                     <th scope="col">Employee</th>
                     <th scope="col">Payable</th><th scope="col">Unpaid</th><th scope="col">Late</th><th scope="col">OT h</th>
-                    {monthDays.map((d) => <th key={d.date.getDate()} scope="col">{d.date.getDate()}<br />{WEEKDAY2[d.date.getDay()]}</th>)}
+                    {monthDays.map((d) => <th key={d.date.getDate()} scope="col" data-today={live && sameDay(d.date, today) ? true : undefined}>{d.date.getDate()}<br />{WEEKDAY2[d.date.getDay()]}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {shown.map((r) => {
-                    const s = monthSummary(r.days);
+                    const s = monthSummary(r.days, live ? today : undefined);
                     return (
                       <tr key={r.id}>
                         <th scope="row">
@@ -1461,10 +1499,11 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
                               className="yx-tim-cell"
                               data-code={cellCode(d.code)}
                               aria-pressed={cell?.[0] === r.id && cell[1] === i}
-                              aria-label={`${r.name}, ${formatDate(d.date)}: ${DAY_CODE_LABEL[cellCode(d.code)]}${d.lateMin ? ', late' : ''}`}
+                              aria-label={`${r.name}, ${formatDate(d.date)}: ${d.leave?.name ?? DAY_CODE_LABEL[cellCode(d.code)]}${d.lateMin ? ', late' : ''}`}
+                              disabled={Boolean(live) && d.code === 'FUT'}
                               onClick={() => setCell([r.id, i])}
                             >
-                              {codeText(cellCode(d.code)) || '·'}
+                              {d.leave?.code ?? (codeText(cellCode(d.code)) || '·')}
                               {d.lateMin || d.otMin ? <span className="yx-tim-cell__mark">{d.lateMin ? 'late' : 'OT'}</span> : null}
                             </button>
                           </td>
@@ -1481,14 +1520,16 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
               {usedCodes.map((c) => <li key={c}><span className="yx-tim-legend__chip" data-code={c}>{codeText(c) || '·'}</span> {DAY_CODE_LABEL[c]}</li>)}
             </ul>
           )}
-          <p className="yx-tim-note">"late" = arrived after the 10-minute grace · "OT" = overtime worked. Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.</p>
+          <p className="yx-tim-note">"late" = arrived after the {live ? 'grace time' : '10-minute grace'} · "OT" = overtime worked. Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.</p>
         </>
       )}
       <BottomSheet open={!!sheetRow} onOpenChange={(o) => !o && setMonthOf(null)} title={sheetRow ? `${sheetRow.name} · ${monthName}` : ''}>
         {sheetRow && <AttendanceMonth month={monthDays[0].date} days={sheetRow.days} compact onDayClick={(d) => { setMonthOf(null); setCell([sheetRow.id, d.date.getDate() - 1]); }} />}
       </BottomSheet>
       <Drawer open={!!day} onOpenChange={(o) => !o && setCell(null)} title={day ? `${row!.name} · ${formatDate(day.date)}` : ''} subtitle="Day card" size="lg">
-        {day && <DayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} viewer="hr" locked={stage === 'locked'} monthDays={row!.days} />}
+        {day && (live ? (
+          <LiveDayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} load={() => live.onOpenDay(row!.id, isoOf(day.date))} />
+        ) : <DayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} viewer="hr" locked={stage === 'locked'} monthDays={row!.days} />)}
       </Drawer>
       <ConfirmDialog
         open={dlg === 'freeze'}
@@ -1527,6 +1568,24 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
       )}
     </TimePage>
   );
+}
+
+/** The designed day card on a live day: punches and shift from the server; fixes go through the person's own request. */
+export function LiveDayPanel({ day, person, viewer = 'hr', load }: { day: AttendanceDay; person: string; viewer?: 'hr' | 'mgr' | 'emp'; load: () => Promise<DayCard> }) {
+  const [card, setCard] = useState<DayCard | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let on = true;
+    setFailed(false);
+    load().then((c) => on && setCard(c)).catch(() => on && setFailed(true));
+    return () => { on = false; };
+    // Loads once per open (and per Retry); `load` is a new function on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+  if (failed) return <ErrorState title="The day card didn't load" description="Nothing has changed. Try again in a moment." onRetry={() => setAttempt((a) => a + 1)} />;
+  if (!card) return <LoadingBlock rows={4} />;
+  return <DayCardBody live day={day} punches={toPunches(card)} shift={toShift(card)} viewer={viewer} person={person} monthDays={[day]} />;
 }
 
 function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: MusterRow[]; /** The muster's month: only its days can be picked. */ monthDays: AttendanceDay[]; today: Date; onClose: () => void; onDone: (ids: string[], date: Date, reason: string) => void }) {
