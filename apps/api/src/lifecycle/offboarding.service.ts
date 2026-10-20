@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { checkAnswers } from '../rules-engine/forms';
 import { displayName } from '../employee-history/employee-history.service';
@@ -237,6 +237,29 @@ export class OffboardingService {
             canManage: this.reachesAsset(v, 'asset.manage', a),
             holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) } : null,
           };
+        }),
+      };
+    });
+  }
+
+  /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
+  async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { id: true, personId: true } });
+      if (!emp) throw new NotFoundException('Not found');
+      const own = await ownOf(tx, c, v);
+      const team = own.employeeId !== emp.id && covers(await implicitPeriods(tx, c, own.employeeId, emp.id), todayIst());
+      const self = own.employeeId === emp.id;
+      const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId: emp.personId, returnedOn: null }, orderBy: { issuedOn: 'asc' } });
+      const assets = await tx.asset.findMany({ where: { organizationId: org, id: { in: open.map((o) => o.assetId) } } });
+      const shown = assets.filter((a) => self || team || this.reachesAsset(v, 'asset.view', a));
+      if (!self && !team && !v.grants.has('asset.view')) throw new NotFoundException('Not found');
+      return {
+        rows: open.flatMap((o) => {
+          const a = shown.find((x) => x.id === o.assetId);
+          return a ? [{ tag: a.tag, name: a.name, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) }] : [];
         }),
       };
     });

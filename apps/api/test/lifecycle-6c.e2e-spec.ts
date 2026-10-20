@@ -294,6 +294,24 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.probationReview.count({ where: { exitCaseId: k.id } }))).toBe(1);
   });
 
+  it('PPL-03: a manager reads their team member’s assets and leave balances; a peer, another company: not found', async () => {
+    const tag = `TB-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Tablet', name: 'Tab A9', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
+    const assets = (await api('mgr', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.rows;
+    expect(assets).toEqual([expect.objectContaining({ tag, name: 'Tab A9', condition: 'New', acknowledged: false })]);
+    await api('meena', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404); // a peer
+    await api('sita', 'get', `/lifecycle/people/${emp.mgr}/assets`).expect(404); // not one's manager
+    expect((await api('sita', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.rows).toHaveLength(1); // self
+    expect((await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows.find((r: { tag: string }) => r.tag === tag).holder.name).toMatch(/Sita/); // HR unchanged
+    await api('adminB', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    const time = (path: string, who: Who) => request(server()).get(`/api/v1/time${path}`).set('Authorization', `Bearer ${token[who]}`);
+    await time(`/people/${emp.sita}/balances`, 'mgr').expect(200);
+    await time(`/people/${emp.sita}/balances`, 'sita').expect(200);
+    await time(`/people/${emp.sita}/balances`, 'meena').expect(404);
+    await time(`/people/${emp.sita}/balances`, 'adminB').expect(404);
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

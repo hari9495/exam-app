@@ -7,6 +7,7 @@ import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from './files.service';
 import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
+import { covers, implicitPeriods } from '../access/scope';
 
 // LIFE-1.03 person documents (P05 §4.2; YX-DOC-04/05/06/17): typed documents of a person (an employee or a joiner:
 // they follow the person from before day one into the record), with versions, a verification queue and expiry.
@@ -74,9 +75,27 @@ export class DocumentsService {
     if (!(await reachesDocument(tx, c, v, action === 'view' ? 'document.view' : 'document.manage', t.sensitivity, personId, own))) {
       // Managing implies viewing (a verifier must open the file).
       if (action === 'view' && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own))) return { self: false, own };
+      // PPL-03 (founder 20 Oct 2026): a manager (the implicit view) sees the team's documents read-only, never a
+      // Confidential or Special one (PAN, bank proof, passport, Aadhaar).
+      if (action === 'view' && t.sensitivity !== 'confidential' && t.sensitivity !== 'special' && (await this.managesPerson(tx, c, own.employeeId, personId))) return { self: false, own };
       throw new ForbiddenException('You cannot see this document.');
     }
     return { self: false, own };
+  }
+
+  private async managesPerson(tx: Tx, c: CompanyContext, own: string | null, personId: string) {
+    if (!own) return false;
+    const e = await tx.employee.findFirst({ where: { organizationId: c.organizationId, personId }, select: { id: true } });
+    return Boolean(e && e.id !== own && covers(await implicitPeriods(tx, c, own, e.id), todayIst()));
+  }
+
+  /** PPL-03 Documents tab for a manager: the team member's documents below Confidential, nothing to manage. */
+  async forTeam(ctx: TenantContext, user: ScopeUser, personId: string) {
+    const v = await this.viewer(user);
+    const ok = await inCompany(this.tenantPrisma, ctx, async (tx, c) => this.managesPerson(tx, c, (await ownOf(tx, c, v)).employeeId, personId));
+    if (!ok) throw new NotFoundException('Not found');
+    const out = await this.forPerson(ctx, user, personId);
+    return { ...out, askable: [], canManage: false };
   }
 
   private view(d: Doc, t: DocType, extra: { person?: string; file?: { name: string; scanStatus: string; size: number } | null; versions?: number } = {}) {

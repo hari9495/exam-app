@@ -2467,6 +2467,7 @@ model Employee {
   familyName     String?  @map("family_name") @db.VarChar(100)
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
+  workPhone      String?  @map("work_phone") @db.VarChar(16)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2737,6 +2738,7 @@ model EmployeePersonalDetails {
   postalCode     String?   @map("postal_code") @db.VarChar(12)
   country        String?   @db.Char(2)
   hideBirthday   Boolean   @default(false) @map("hide_birthday")
+  maritalStatus  String?   @map("marital_status") @db.VarChar(20)
   updatedBy      String?   @map("updated_by") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2761,6 +2763,10 @@ model EmployeeIdentifiers {
   esicEnc        String?  @map("esic_enc")
   esicHash       String?  @map("esic_hash") @db.Char(64)
   esicLast4      String?  @map("esic_last4") @db.Char(4)
+  passportEnc       String?   @map("passport_enc")
+  passportHash      String?   @map("passport_hash") @db.Char(64)
+  passportLast4     String?   @map("passport_last4") @db.Char(4)
+  passportExpiresOn DateTime? @map("passport_expires_on") @db.Date
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([organizationId, employeeId])
