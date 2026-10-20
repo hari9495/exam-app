@@ -612,6 +612,8 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ maritalStatus: 'complicated' }).expect(400);
       expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal.maritalStatus).toBe('married');
       expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal).toBeNull();
+      // The birthday (Internal, as the directory shows it) is on the record for the manager; never the year.
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.birthday).toBe('05-17');
       // Passport: a change with approval, masked on the record, the number only to identity access.
       await up('imranU');
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728' }, reason: 'New passport' }).expect(400);

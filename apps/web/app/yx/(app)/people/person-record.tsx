@@ -79,8 +79,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const requests = usePeople<{ rows: ProfileRequest[] }>(personId ? '/profile-requests?status=pending' : null);
   const reference = useOrg<Reference>('/reference');
   const self = Boolean(profile.data?.self);
-  const docs = useLife<PersonDocs>(person.data && (self || perms.has('document.view') || perms.has('document.manage')) ? (self ? '/documents/me' : `/documents/people/${id(person.data.id)}`) : null);
+  // A manager (no document keys) reads the team member's documents below Confidential (founder 20 Oct 2026).
+  const teamView = Boolean(profile.data && !profile.data.self && !hr);
+  const docs = useLife<PersonDocs>(
+    self ? '/documents/me' : person.data && (perms.has('document.view') || perms.has('document.manage')) ? `/documents/people/${id(person.data.id)}` : teamView && profile.data?.personId ? `/documents/team/${id(profile.data.personId)}` : null,
+  );
   const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
+  const teamAssets = useLife<{ rows: { tag: string; name: string; issuedOn: string; condition: string; acknowledged: boolean }[] }>(teamView && !perms.has('asset.view') && personId ? `/lifecycle/people/${p}/assets` : null);
+  const teamLeave = useTime<{ balances: Balance[] }>(teamView && !perms.has('leave.view') && personId ? `/people/${p}/balances` : null);
   const myAssets = useLife<{ rows: { assignmentId: string; name: string; tag: string; issuedOn: string; condition: string; acknowledgedAt: string | null }[] }>(self && !perms.has('asset.view') ? '/lifecycle/me/assets' : null);
   const balances = useTime<{ people: { employeeId: string; balances: Balance[] }[] }>(personId && !self && perms.has('leave.view') ? '/hr/balances' : null);
   const myLeave = useTime<{ balances: Balance[] }>(self ? '/me/leave' : null);
@@ -146,7 +152,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         }
       : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };
 
-  const leave = self ? myLeave.data?.balances : balances.data?.people.find((x) => x.employeeId === personId)?.balances;
+  const leave = self ? myLeave.data?.balances : (balances.data?.people.find((x) => x.employeeId === personId)?.balances ?? teamLeave.data?.balances);
   const time: LiveRecord['time'] = leave
     ? {
         balances: leave.filter((b) => b.hasBalance && b.entitlement).map((b) => ({ type: b.name, used: Math.max(0, b.entitlement! - b.available), total: b.entitlement! })),
@@ -160,8 +166,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         ? myAssets.data.rows.map((a) => ({ tag: a.tag, name: a.name, issued: day(a.issuedOn), condition: a.condition, ack: a.acknowledgedAt ? 'Acknowledged' : 'Waiting' }))
         : assets.data && personId
           ? assetRows(assets.data.rows, personId)
-          : null,
-    [self, myAssets.data, assets.data, personId],
+          : teamAssets.data
+            ? teamAssets.data.rows.map((a) => ({ tag: a.tag, name: a.name, issued: day(a.issuedOn), condition: a.condition, ack: a.acknowledged ? 'Acknowledged' : 'Waiting' }))
+            : null,
+    [self, myAssets.data, assets.data, teamAssets.data, personId],
   );
 
   const docAction = async (d: RecordDoc, decision: 'verify' | 'reject', reason?: string) => {
@@ -197,7 +205,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     ],
     events: upcoming(v, h, today, pending.map((r) => r.label), docList),
     // Without the class the design still shows the card, with how many fields are not shown (never their values).
-    personal: prof?.personal ? personalRows(prof.personal) : prof?.classes.internal ? LOCKED_PERSONAL : null,
+    personal: prof?.personal ? personalRows(prof.personal) : prof?.classes.internal ? [...(prof.birthday ? [{ label: 'Birthday (shown in directory)', value: day(`2000-${prof.birthday}`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), cls: 'Internal' as const }] : []), ...LOCKED_PERSONAL] : null,
     identity: prof?.identity ? identityRows(prof, reveal) : prof?.classes.internal ? LOCKED_IDENTITY : null,
     pending: pending.map((r) => ({
       id: r.id,

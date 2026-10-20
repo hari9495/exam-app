@@ -62,7 +62,7 @@ export class PeopleController {
 
   @Get('org-chart')
   async orgChart(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OrgChartQueryDto) {
-    return this.people.orgChart(ctx, await this.viewer(req), q.asOf);
+    return this.people.orgChart(ctx, await this.viewer(req), q.asOf, q.legalEntityId);
   }
 
   @Get('team')

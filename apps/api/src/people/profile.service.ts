@@ -87,6 +87,7 @@ export class ProfileService {
       const details = personal ? await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId } }) : null;
       return {
         employeeId,
+        personId: employee.personId,
         name: displayName(employee),
         self: a.self,
         employeeCode: employment?.employeeCode ?? null,
@@ -102,6 +103,8 @@ export class ProfileService {
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
         // Internal class: the work phone and email (PPL-03 key facts, Message).
         work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
+        // Internal: the birthday as the directory shows it (day and month), unless the person hides it.
+        birthday: internal ? await this.birthday(tx, c, employeeId) : null,
         can: {
           editPersonal: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.profile.edit', employeeId))),
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
@@ -110,6 +113,11 @@ export class ProfileService {
         },
       };
     });
+  }
+
+  private async birthday(tx: Tx, c: CompanyContext, employeeId: string) {
+    const d = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { dateOfBirth: true, hideBirthday: true } });
+    return d?.dateOfBirth && !d.hideBirthday ? isoDate(d.dateOfBirth).slice(5) : null;
   }
 
   private personalView(d: PersonalRow | null) {

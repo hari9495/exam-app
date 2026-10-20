@@ -65,6 +65,10 @@ export const HISTORY_KEYS = [
   'document.view',
   'document.manage',
   'letter.issue',
+  // PPL-02 Position view: open job openings for whoever runs hiring.
+  'pipeline:manage',
+  // PPL-02: future dates on the org chart (scheduled, unannounced changes).
+  'org.structure.view',
 ] as const;
 export type Key = (typeof HISTORY_KEYS)[number];
 export type { Viewer } from '../access/scope';

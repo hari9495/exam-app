@@ -130,6 +130,9 @@ export interface ProfileView {
   identity: IdentityView | null;
   /** Internal class: the work phone. */
   work?: { phone: string | null; email?: string | null } | null;
+  /** Internal: the birthday as MM-DD (null when hidden or unknown). */
+  birthday?: string | null;
+  personId?: string;
   can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean };
 }
 

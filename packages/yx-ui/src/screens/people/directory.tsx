@@ -13,6 +13,8 @@ import { TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { NeedsActionList, type ActionItem } from '../../components/dashboard';
 import { OrgChart, type OrgPerson, type OrgView } from '../../components/orgchart';
+import { exportOrgChart } from '../../components/orgchart-export';
+import { dayKey } from '../../lib/dates';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { Select } from '../../components/select';
@@ -479,6 +481,10 @@ export interface LiveOrgChart {
   truncated: boolean;
   onOpenPerson?: (id: string) => void;
   onExportCsv?: () => void;
+  /** Offer the Position view (open job openings shown as vacant positions). */
+  positions?: boolean;
+  /** The latest date "View as on" may show (today for everyone but HR, founder 20 Oct 2026). */
+  maxAsOn?: Date;
 }
 
 // PPL-02
@@ -499,7 +505,7 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
               <label className="yx-ppl__sub" htmlFor="org-asof">
                 View as on
               </label>
-              <DatePicker id="org-asof" aria-label="View as on" value={asOn} onChange={setAsOn} max={new Date(today.getFullYear() + 1, 11, 31)} />
+              <DatePicker id="org-asof" aria-label="View as on" value={asOn} onChange={setAsOn} max={live?.maxAsOn ?? new Date(today.getFullYear() + 1, 11, 31)} />
             </div>
           ) : undefined
         }
@@ -523,8 +529,8 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
         <OrgChart
           people={people}
           defaultView={defaultView}
-          views={['reporting', 'department']}
-          {...(live.onExportCsv ? { onExport: live.onExportCsv, exportFormats: ['csv' as const] } : {})}
+          views={live.positions ? ['reporting', 'department', 'position'] : ['reporting', 'department']}
+          {...(live.onExportCsv ? { onExport: (f: 'png' | 'pdf' | 'csv') => (f === 'csv' ? live.onExportCsv!() : void exportOrgChart(people, f, live.companyName, `org-chart-${dayKey(asOn ?? today)}`)), exportFormats: ['png' as const, 'pdf' as const, 'csv' as const] } : {})}
           rootLabel={live.companyName}
           meId={live.meId}
           openOnMe={persona !== 'hr' && Boolean(live.meId)}
