@@ -502,7 +502,10 @@
  },
  {
   "account": "hr@demo-org.test",
-  "stories": [],
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-01-entity",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--hr-employees"
+  ],
   "note": "",
   "status": "Not run",
   "runs": [],
