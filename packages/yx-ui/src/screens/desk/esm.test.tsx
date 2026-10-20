@@ -99,6 +99,11 @@ describe('approvals inbox (P03)', () => {
     expect(scroll).toHaveBeenCalled();
   });
 
+  it('a request made for someone without a login is "From" that person, never blank', () => {
+    render(<ApprovalsScreen state="ready" tasks={[{ ...TASK, requester: '', person: 'Meera Iyer' }]} history={null} delegations={[]} onDecide={vi.fn()} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
+    expect(screen.getByText(/From Meera Iyer · step 1 of 2/)).toBeInTheDocument();
+  });
+
   it('approve at once; not approving needs a reason; delegated tasks say for whom', async () => {
     const onDecide = vi.fn(async () => undefined);
     render(<ApprovalsScreen state="ready" tasks={[TASK]} history={null} delegations={[]} onDecide={onDecide} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);

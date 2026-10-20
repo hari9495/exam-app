@@ -103,6 +103,8 @@ export interface ApprovalTask {
   title: string;
   summary: { label: string; value: string }[];
   requester: string;
+  /** Who the request is about; shown when the requester has no login (HR applied for them). */
+  person?: string;
   raisedBy: string | null;
   onBehalfOf: string | null;
   /** Who the request is about (the employee on leave, the claimant); the requester when it names no one. */
