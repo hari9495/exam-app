@@ -1,21 +1,36 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { TeamScreen, type OrgChartData, type TeamMember } from '@yukthix/ui/workforce';
-import { JoiningSoonCard, type Joiner } from '@yukthix/ui/lifecycle';
-import type { PersonOption } from '@yukthix/ui/history';
-import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { useQuery } from '@tanstack/react-query';
+import { useToast, type ActionItem } from '@yukthix/ui';
+import type { ApprovalTask } from '@yukthix/ui/desk';
+import { TeamPage } from '@yukthix/ui/frame';
+import { ChangeDrawer, type PersonOption } from '@yukthix/ui/history';
+import type { Joiner, MyTasks } from '@yukthix/ui/lifecycle';
+import type { Muster, TeamCalendar } from '@yukthix/ui/time';
+import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
+import { apiFetch } from '../../../../../lib/api-client';
+import { useAuth } from '../../../../../lib/auth-context';
+import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, useRaiseChange } from '../../../../../lib/yx-people';
 import { useLife } from '../../../../../lib/yx-lifecycle';
+import { useTime } from '../../../../../lib/yx-time';
+import { clockText, teamRows, teamTasks } from '../../../../../lib/yx-team';
 
 const id = encodeURIComponent;
+const plus = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
-// People › My team (PPL-08; M01 §3.10): the signed-in manager's subtree and dotted-line reports. With
-// request.raise_on_behalf they raise promotions, transfers, re-designations and manager changes for the
-// reporting team; HR approves (YX-SEC-27). The API checks every one.
+// People › My team (PPL-08, design audit step 3; M01 §3.10): the designed team page with the manager's subtree and
+// dotted-line reports, who is in today (team muster), what is coming up (leave, probation ends, joiners), the
+// onboarding and exit tasks they own and what waits for them. With request.raise_on_behalf they raise promotions,
+// transfers, re-designations and manager changes; HR approves (YX-SEC-27). The API checks every call.
 export default function YxTeamPage() {
   const router = useRouter();
+  const { accessToken } = useAuth();
+  const { toast } = useToast();
   const perms = useYxPermissions();
+  const today = todayIst();
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const hrDesk = perms.has('employee.change.manage');
   const canRaise = hrDesk || perms.has('request.raise_on_behalf');
@@ -27,17 +42,56 @@ export default function YxTeamPage() {
   const options = useChangeOptions(subjects, perms.has('employee.salary.manage'), canRaise);
   const raise = useRaiseChange();
   const types = hrDesk ? undefined : (['promotion', 'transfer', 'redesignation', 'manager_change'] as const);
-  // M01 lifecycle 6a (founder D2): joiners are not team members until day one; they show here, above the team.
+  const has = members.length > 0;
+  const muster = useTime<Muster>(has ? `/muster?month=${today.slice(0, 7)}` : null);
+  const calendar = useTime<TeamCalendar>(has ? `/team/calendar?from=${today}&to=${plus(today, 30)}` : null);
+  // M01 lifecycle 6a (founder D2): joiners are not team members until day one; they show with their joining day.
   const soon = useLife<Joiner[]>('/lifecycle/joining-soon');
+  const tasks = useLife<MyTasks>('/lifecycle/my-tasks');
+  const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false });
+  const [raising, setRaising] = useState(false);
+
+  const approvals: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  const myTasks = teamTasks(tasks.data?.tasks ?? []);
+  const rows = teamRows(members, soon.data ?? [], today, muster.data, calendar.data);
+  const asOf = muster.data ? `${new Date(`${today}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, ${clockText(new Date().toISOString())}` : null;
+  const journeyOf = new Map((soon.data ?? []).map((j) => [`joiner:${j.journeyId ?? j.id}`, j.journeyId]));
   return (
-    <TeamScreen
-      aside={soon.data?.length ? <JoiningSoonCard rows={soon.data} today={todayIst()} onOpen={(journeyId) => router.push(`/yx/people/onboarding/${id(journeyId)}`)} /> : undefined}
-      state={loadState(team)}
-      onRetry={() => void team.refetch()}
-      members={members}
-      today={todayIst()}
-      onOpenHistory={(personId) => router.push(`/yx/people/history?person=${id(personId)}`)}
-      raise={canRaise && chart.data ? { options: { ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }, ...raise } : undefined}
-    />
+    <>
+      <TeamPage
+        members={rows}
+        approvals={approvals}
+        tasks={myTasks}
+        today={new Date(`${today}T00:00:00`)}
+        live={{
+          state: team.isError ? 'error' : team.data ? 'ready' : 'loading',
+          onRetry: () => void team.refetch(),
+          asOf,
+          onOpenMember: (memberId) => {
+            const journey = journeyOf.get(memberId);
+            if (journey) router.push(`/yx/people/onboarding/${id(journey)}`);
+            else if (!memberId.startsWith('joiner:')) router.push(`/yx/people/directory/${id(memberId)}`);
+          },
+          ...(canRaise && chart.data && subjects.length ? { onStartChange: () => setRaising(true) } : {}),
+          approvalsHref: '/yx/approvals',
+          onReview: () => router.push('/yx/approvals'),
+          onOpenTask: (taskId) => {
+            const journey = myTasks.find((t) => t.id === taskId)?.journeyId;
+            router.push(journey ? `/yx/people/onboarding/${id(journey)}` : '/yx/people/my-tasks');
+          },
+        }}
+      />
+      {raising && (
+        <ChangeDrawer
+          options={{ ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }}
+          onPreview={raise.onPreview}
+          onSubmit={async (input) => {
+            await raise.onSubmit(input);
+            toast({ tone: 'success', title: `Change for ${subjects.find((s) => s.id === input.employeeId)?.name ?? 'your team member'} sent to HR` });
+          }}
+          onClose={() => setRaising(false)}
+        />
+      )}
+    </>
   );
 }

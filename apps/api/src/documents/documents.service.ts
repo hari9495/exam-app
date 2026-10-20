@@ -136,7 +136,7 @@ export class DocumentsService {
         const d = docs.find((x) => x.typeKey === t.key);
         if (d && seen) {
           const f = await this.fileOf(tx, org, d);
-          out.push(this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }));
+          out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null });
         } else if (!d && manage) askable.push({ key: t.key, name: t.name });
       }
       return { person, personId, documents: out, askable, canManage };

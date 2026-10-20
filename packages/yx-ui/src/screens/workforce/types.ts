@@ -76,6 +76,9 @@ export interface ProbationRow {
   maxTotalMonths: number;
   /** The viewer is the direct manager and the probation is still open (LIFE-3.01 review form). */
   canReview?: boolean;
+  /** Today's designation and manager (the queue's second line and Manager column). */
+  designation?: string | null;
+  manager?: string | null;
 }
 
 /** One row of a bulk change file after the dry run (M01 §3.3). */
@@ -102,7 +105,7 @@ export type BatchStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export interface ChangeBatch {
   id: string;
   status: BatchStatus;
-  source: 'csv' | 'reassign';
+  source: 'csv' | 'reassign' | 'increment' | 'comp_review';
   fileName: string | null;
   reason: string;
   rowCount: number;

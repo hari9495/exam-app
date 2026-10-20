@@ -194,6 +194,10 @@ export interface FieldRow {
   /** Masked form when the viewer may only see it masked. */
   masked?: string;
   mono?: boolean;
+  /** Live: ask the server for the full value (a recorded look). */
+  reveal?: () => Promise<string>;
+  /** Live: the server says whether the viewer may see it in full (no Show button when false). */
+  canReveal?: boolean;
 }
 
 export const ARJUN = {
@@ -343,8 +347,11 @@ export const INCREMENT_LEFT_OUT = [
   { name: 'Meera Iyer', why: 'Resigned · last day 19 Oct 2026' },
   { name: 'Ravi Kumar', why: 'Resigned · last day 30 Oct 2026' },
   { name: 'Sathish Kumar', why: 'Resigned · last day 14 Nov 2026' },
+  { name: 'Nikhil Rao', why: 'No released rating in FY 2025-26 annual review.' },
 ];
 export const INCREMENT_PCT: Record<string, number> = { Exceeds: 12, Meets: 8, Below: 3 };
+/** A sample increment letter PDF for the Letters step's preview (the live app shows the real one). */
+export const INCREMENT_LETTER_PDF = 'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MjkgPj4Kc3RyZWFtCkJUIC9GMSAxMiBUZiA3MiA3NjAgVGQgKEthdmVyaSBGb29kcyBQdnQgTHRkKSBUaiAwIC0yNiBUZCAoUmV2aXNpb24gb2YgeW91ciBwYXkpIFRqIDAgLTIyIFRkIChEYXRlOiAyMCBPY3RvYmVyIDIwMjYpIFRqIDAgLTIyIFRkIChEZWFyIEJhbGEgU2VsdmFtIChLRi0wMDExKSwpIFRqIDAgLTIyIFRkIChGb2xsb3dpbmcgeW91ciBhbm51YWwgcmV2aWV3LCB5b3VyIGFubnVhbCBDVEMgaXMgcmV2aXNlZCBmcm9tIFJzIDgsMjQsMDAwKSBUaiAwIC0xNiBUZCAodG8gUnMgOSwyMiw5MDAgKDEyJSksIGVmZmVjdGl2ZSAxIE9jdG9iZXIgMjAyNi4gQWxsIG90aGVyIHRlcm1zIHN0YXkgdGhlIHNhbWUuKSBUaiAwIC0yNiBUZCAoRm9yIEthdmVyaSBGb29kcyBQdnQgTHRkKSBUaiAwIC0xNiBUZCAoTGFrc2htaSBWZW5rYXRlc2FuLCBIZWFkIG9mIEhSKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDcyMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjc5MQolJUVPRgo=';
 
 /* ------------------------------------------------------------------ onboarding (PPL-11..17) */
 
@@ -601,3 +608,33 @@ export const TEAM_TODAY = [
 ];
 
 export const CUSTOM_FIELDS_NOTE = 'Custom fields come from the employee field set (P18); each has a class and a self-edit flag.';
+
+/** PPL-47: checklist tasks given to Divya's team across joiners, leavers and life events. */
+const task = (id: string, journeyId: string, person: string, journeyKind: 'onboarding' | 'offboarding' | 'new_manager', anchorOn: string, title: string, dueOn: string, kind: 'tick' | 'form' | 'document' | 'letter', extra: Partial<{ overdue: boolean; status: 'open' | 'waiting'; locked: boolean; canSkip: boolean }> = {}) => ({
+  id, key: id, title, kind, ownerType: 'manager' as const, ownerLabel: 'Manager', assignee: 'Divya Raghunathan', dueOn, dueOffsetDays: 0, status: extra.status ?? ('open' as const), overdue: extra.overdue ?? false, required: true, locked: extra.locked ?? false, form: null, documentType: null, answers: null,
+  link: null, completedAt: null, completedBy: null, skipReason: null, canComplete: extra.status !== 'waiting', canSkip: extra.canSkip ?? false, version: 1, journeyId, journeyKind, person, anchorOn,
+});
+export const CHECKLIST_TASKS = [
+  task('t1', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Welcome call with the new hire', '2026-09-30', 'tick', { overdue: true }),
+  task('t2', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Plan the first week', '2026-10-02', 'form'),
+  task('t3', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Day-30 check-in', '2026-11-04', 'tick', { status: 'waiting' }),
+  task('t4', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Handover plan', '2026-10-12', 'form'),
+  task('t5', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Manager sign-off on clearance', '2026-10-17', 'tick', { canSkip: true }),
+  task('t6', 'j3', 'Imran Qureshi', 'new_manager', '2026-10-15', 'One-to-one with each new report', '2026-10-22', 'tick'),
+];
+
+/** PPL-48: running life-event checklists. */
+export const LIFE_JOURNEYS = [
+  { id: 'l1', kind: 'new_manager' as const, kindLabel: 'New manager', person: 'Imran Qureshi', anchorOn: '2026-10-15', progress: 40 },
+  { id: 'l2', kind: 'transfer' as const, kindLabel: 'Transfer', person: 'Sana Menon', anchorOn: '2026-10-03', progress: 75 },
+  { id: 'l3', kind: 'parental_leave' as const, kindLabel: 'Parental leave', person: 'Priya Nair', anchorOn: '2026-11-02', progress: 20 },
+  { id: 'l4', kind: 'return_to_work' as const, kindLabel: 'Return to work', person: 'Deepa Ghosh', anchorOn: '2026-09-21', progress: 100 },
+];
+
+/** PPL-49: retirements in the next year and contracts ending in 90 days. */
+export const UPCOMING_EXITS = [
+  { employeeId: 'u1', name: 'Imran Qureshi', kind: 'contract_end' as const, on: '2026-10-31' },
+  { employeeId: 'u2', name: 'Manoj Patil', kind: 'retirement' as const, on: '2026-10-31' },
+  { employeeId: 'u3', name: 'Sana Menon', kind: 'contract_end' as const, on: '2026-12-15' },
+  { employeeId: 'u4', name: 'Lakshmanan Durai', kind: 'retirement' as const, on: '2027-06-30' },
+];

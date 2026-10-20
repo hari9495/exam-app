@@ -241,6 +241,13 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     const hr = (await api('hrA', 'get', '/workspace/counts').expect(200)).body;
     expect(hr.documentsToVerify).toBe(0);
     expect(hr.exitCases).toBe(0);
+    // People menu counts (PPL designs): each only with its page's key.
+    expect(arjun.readyToOnboard).toBeUndefined();
+    expect(arjun.possibleSamePerson).toBeUndefined();
+    expect(hr.readyToOnboard).toBeUndefined(); // no lifecycle.onboarding.manage
+    expect(hr.probationsDue).toBe(0); // company-wide profile grant
+    expect(hr.possibleSamePerson).toBe(0);
+    expect(hr.clearanceToDo).toBe(0);
     const b = (await api('adminB', 'get', '/workspace/counts').expect(200)).body;
     expect(b.approvals).toBe(0);
     expect(b.notifications).toBe(0);

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database, FileText, Languages, ShieldCheck } from 'lucide-react';
-import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut } from '@yukthix/ui';
+import { Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import type { LegalEntity } from '@yukthix/ui/org';
@@ -18,7 +18,8 @@ import { useBellItems } from '../../../lib/yx-bell';
 import { useYxPalette } from '../../../lib/yx-palette';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
-import { useOrg, useYxPermissions } from '../../../lib/yx-org';
+import { todayIst, useOrg, useYxPermissions } from '../../../lib/yx-org';
+import { hiddenToday, hideForToday, localStore } from '../../../lib/yx-notice';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
 import { ME_SECURITY, activeLink, buildNav, type NavArea } from '../../../lib/yx-nav';
@@ -121,6 +122,11 @@ function Frame({ children }: { children: React.ReactNode }) {
   // The period is for pay, and for the month the HR Home counts (attendance exceptions, joining this month).
   const payPeriods = !support && (perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('attendance.view'));
 
+  // MFA notice: before the deadline the person may hide it until tomorrow (founder 20 Oct 2026); after it, it stays.
+  const userId = me.data?.id;
+  const [mfaHidden, setMfaHidden] = useState(false);
+  useEffect(() => setMfaHidden(Boolean(userId) && hiddenToday(localStore(), 'mfa', userId!, todayIst())), [userId]);
+
   useEffect(() => {
     // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).
     if (!isLoading && !accessToken && !signedOut) router.replace(withNextHere('/yx/sign-in'));
@@ -170,20 +176,25 @@ function Frame({ children }: { children: React.ReactNode }) {
         </InlineAlert>
       )}
       {/* Everywhere except My security itself, where it is set up. */}
-      {mfaMissing && pathname !== ME_SECURITY && (
-        <InlineAlert
-          tone="warning"
-          title="Secure your account"
-          actions={
-            <Button asChild size="sm">
-              <Link href={ME_SECURITY}>Set it up now</Link>
-            </Button>
+      {mfaMissing && pathname !== ME_SECURITY && (mfaOverdue || !mfaHidden) && (
+        <NoticeBar
+          tone={mfaOverdue ? 'danger' : 'warning'}
+          action={
+            <Link className="yx-link" href={ME_SECURITY}>
+              Set it up
+            </Link>
+          }
+          onDismiss={
+            mfaOverdue || !userId
+              ? undefined
+              : () => {
+                  hideForToday(localStore(), 'mfa', userId, todayIst());
+                  setMfaHidden(true);
+                }
           }
         >
-          {mfaOverdue
-            ? 'Your role needs a passkey or an authenticator app. Admin pages are paused until you add one.'
-            : `Your role needs a passkey or an authenticator app. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
-        </InlineAlert>
+          {mfaOverdue ? 'Admin pages are paused until you add a passkey or an authenticator app.' : `Add a passkey or an authenticator app by ${mfaDue}. After that, admin pages pause.`}
+        </NoticeBar>
       )}
     </>
   );

@@ -235,7 +235,7 @@ export class OffboardingService {
             status: a.status,
             version: a.version,
             canManage: this.reachesAsset(v, 'asset.manage', a),
-            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), acknowledged: Boolean(o.ackEvidence) } : null,
+            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) } : null,
           };
         }),
       };

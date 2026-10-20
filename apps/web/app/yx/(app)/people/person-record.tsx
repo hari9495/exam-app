@@ -1,0 +1,302 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ConfirmDialog, FormField, Select, TextArea, useToast } from '@yukthix/ui';
+import { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
+import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
+import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
+import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
+import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
+import { useTime } from '../../../../lib/yx-time';
+import { usePayRead } from '../../../../lib/yx-pay';
+import { assetRows, bankRows, docRows, historyRows, identityRows, jobRows, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+
+const id = encodeURIComponent;
+const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+interface PersonRoles {
+  id: string;
+  primaryEmail: string | null;
+  primaryPhone: string | null;
+  roles: { id: string; roleType: string; startOn: string; endOn: string | null; label: string }[];
+}
+interface Balance {
+  name: string;
+  kind: string;
+  hasBalance: boolean;
+  available: number;
+  entitlement: number | null;
+  takenThisYear: number;
+}
+interface Compensation {
+  validFrom: string;
+  currency: string;
+  annualCtc: string;
+  lines: { name: string; kind: 'earning' | 'deduction' | 'employer'; monthly: string }[];
+}
+interface PersonDocs {
+  personId: string;
+  documents: QueueDocument[];
+  askable: { key: string; name: string }[];
+  canManage: boolean;
+}
+
+const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', joiner: 'Joiner', alumni: 'Former employee' };
+
+// People › person record (PPL-03, design audit step 3): the designed record with the live person. Opened from the
+// Directory (HR, anyone their grants reach), My team (a manager, their team) and Profile (the person). The API decides
+// every class: Personal for the person and personal-data access, identity and bank masked with a recorded "Show",
+// pay only after "Show pay" (R1), documents and assets by their own keys.
+export function PersonRecord({ personParam, path }: { personParam: string | null; path: string }) {
+  const router = useRouter();
+  const params = useSearchParams();
+  const perms = useYxPermissions();
+  const { toast } = useToast();
+  const today = todayIst();
+  const me = usePeople<{ employeeId: string }>('/me');
+  const personId = personParam ?? me.data?.employeeId ?? null;
+  const asOfParam = params.get('asOf');
+  const hr = perms.has('employee.profile.view');
+  const canChange = perms.has('employee.change.manage');
+  const p = id(personId ?? '');
+  const profile = usePeople<ProfileView>(personId ? `/employees/${p}/profile` : null);
+  const view = usePeople<AsOfView>(personId ? `/employees/${p}/as-of?date=${id(asOfParam ?? today)}` : null);
+  const history = usePeople<HistoryView>(personId ? `/employees/${p}/history` : null);
+  const person = usePeople<PersonRoles>(personId ? `/employees/${p}/person` : null);
+  const requests = usePeople<{ rows: ProfileRequest[] }>(personId ? '/profile-requests?status=pending' : null);
+  const reference = useOrg<Reference>('/reference');
+  const self = Boolean(profile.data?.self);
+  const docs = useLife<PersonDocs>(person.data && (self || perms.has('document.view') || perms.has('document.manage')) ? (self ? '/documents/me' : `/documents/people/${id(person.data.id)}`) : null);
+  const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
+  const myAssets = useLife<{ rows: { assignmentId: string; name: string; tag: string; issuedOn: string; condition: string; acknowledgedAt: string | null }[] }>(self && !perms.has('asset.view') ? '/lifecycle/me/assets' : null);
+  const balances = useTime<{ people: { employeeId: string; balances: Balance[] }[] }>(personId && !self && perms.has('leave.view') ? '/hr/balances' : null);
+  const myLeave = useTime<{ balances: Balance[] }>(self ? '/me/leave' : null);
+  const people = usePeople<PersonOption[]>(canChange ? '/employees' : null);
+  const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canChange);
+  const raise = useRaiseChange();
+  const write = usePeopleWrite();
+  const lifeWrite = useLifeWrite();
+  const download = useDocumentDownload();
+  const payRead = usePayRead();
+
+  const [editing, setEditing] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<ProfileRequest | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
+  const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
+
+  const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
+  const done = (title: string) => toast({ tone: 'success', title });
+
+  const v = view.data ?? null;
+  const h = history.data ?? null;
+  const prof = profile.data ?? null;
+  const pending = (requests.data?.rows ?? []).filter((r) => r.employeeId === personId && r.status === 'pending');
+  const docList = docs.data?.documents ?? [];
+  const persona = hr ? 'hr' : self ? 'emp' : 'mgr';
+  const relation = self ? 'self' : hr ? 'other' : 'team';
+  const name = prof?.name ?? v?.employee.name ?? '';
+  const first = name.split(' ')[0];
+
+  const showPay = async () => {
+    setPay({ busy: true, error: null, data: null });
+    try {
+      setPay({ busy: false, error: null, data: await payRead<Compensation>(`/employees/${p}/compensation`) });
+    } catch {
+      setPay({ busy: false, error: `${first}'s pay could not be loaded. Try again in a moment.`, data: null });
+    }
+  };
+  const payState: LiveRecordPay = !v?.payAccess
+    ? { kind: 'none', grantedBy: hr ? 'your company admin' : 'HR, who can give a salary grant for your team' }
+    : pay.data
+      ? {
+          kind: 'shown',
+          ctc: Number(pay.data.annualCtc),
+          currency: pay.data.currency,
+          from: day(pay.data.validFrom),
+          lines: pay.data.lines.filter((l) => l.kind !== 'deduction').map((l) => ({ label: l.name, monthly: Number(l.monthly) })),
+          banks: prof ? bankRows(prof, reveal) : [],
+        }
+      : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };
+
+  const leave = self ? myLeave.data?.balances : balances.data?.people.find((x) => x.employeeId === personId)?.balances;
+  const time: LiveRecord['time'] = leave
+    ? {
+        balances: leave.filter((b) => b.hasBalance && b.entitlement).map((b) => ({ type: b.name, used: Math.max(0, b.entitlement! - b.available), total: b.entitlement! })),
+        unpaid: leave.find((b) => b.kind === 'lop')?.takenThisYear ?? null,
+      }
+    : null;
+
+  const assetList = useMemo(
+    () =>
+      self && myAssets.data
+        ? myAssets.data.rows.map((a) => ({ tag: a.tag, name: a.name, issued: day(a.issuedOn), condition: a.condition, ack: a.acknowledgedAt ? 'Acknowledged' : 'Waiting' }))
+        : assets.data && personId
+          ? assetRows(assets.data.rows, personId)
+          : null,
+    [self, myAssets.data, assets.data, personId],
+  );
+
+  const docAction = async (d: RecordDoc, decision: 'verify' | 'reject', reason?: string) => {
+    const doc = docList.find((x) => x.id === d.id);
+    if (!doc) return;
+    await lifeWrite('POST', `/documents/${id(doc.id)}/decision`, { decision, version: doc.version, ...(reason ? { reason } : {}) });
+    done(decision === 'verify' ? `${d.type} of ${first} verified` : `${d.type} sent back to ${first}`);
+  };
+
+  const a = v?.assignment;
+  const live: LiveRecord = {
+    directoryHref: '/yx/people/directory',
+    name,
+    role: a?.designation?.name ?? '',
+    department: a?.department?.name ?? '',
+    location: a?.location.name ?? '',
+    code: v?.employee.employeeCode ?? prof?.employeeCode ?? '',
+    manager: a?.manager?.name ?? '',
+    joined: v?.employee.joinedOn ? day(v.employee.joinedOn) : null,
+    grade: a?.grade?.name ?? null,
+    badges: [
+      ...(v?.employee.exitedOn ? [{ label: `Left on ${day(v.employee.exitedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`, tone: 'neutral' as const }] : [{ label: 'Active', tone: 'success' as const }]),
+      ...(v?.status?.status === 'probation' ? [{ label: 'On probation', tone: 'warning' as const }] : v?.status?.status === 'notice' ? [{ label: 'Serving notice', tone: 'warning' as const }] : []),
+      ...(!asOfParam ? scheduledNotes(h ?? ({ changes: [] } as unknown as HistoryView)).slice(0, 1).map((s) => ({ label: s.title.replace('Scheduled: ', '').replace(/^./, (c) => c.toUpperCase()), tone: 'info' as const })) : []),
+    ],
+    facts: [
+      ...(person.data?.primaryEmail ? [{ label: 'Work email', value: person.data.primaryEmail }] : []),
+      ...(a?.dottedLineManagers?.length ? [{ label: 'Secondary manager', value: a.dottedLineManagers.map((m) => m.name).join(', ') }] : []),
+      ...(a?.employmentType ? [{ label: 'Employment type', value: a.employmentType.name ?? '' }] : []),
+      ...(v?.employee.legalEntity ? [{ label: 'Legal entity', value: v.employee.legalEntity.name }] : []),
+    ],
+    events: upcoming(v, h, today, pending.length),
+    personal: prof?.personal ? personalRows(prof.personal) : null,
+    identity: prof?.identity ? identityRows(prof, reveal) : null,
+    pending: pending.map((r) => ({
+      id: r.id,
+      label: r.label,
+      detail: `Sent on ${day(r.requestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. ${r.reason}`,
+      ...(r.mine || self ? { onWithdraw: () => setWithdrawing(r) } : {}),
+    })),
+    ...(prof?.can.editPersonal && prof.personal ? { onEditPersonal: () => setEditing(true) } : {}),
+    ...(prof?.can.requestChange ? { onRequestChange: () => setChanging(true) } : {}),
+    job: v ? jobRows(v) : null,
+    scheduled: h ? scheduledNotes(h) : [],
+    pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
+    pay: payState,
+    time,
+    documents: docs.data
+      ? {
+          rows: docRows(docList, today),
+          hidden: 0,
+          ...(docs.data.canManage && docs.data.askable.length ? { onRequest: () => setDocDialog({ kind: 'request' }) } : {}),
+          ...(docs.data.canManage ? { onVerify: (d: RecordDoc) => void docAction(d, 'verify'), onReject: (d: RecordDoc) => setDocDialog({ kind: 'reject', doc: d }) } : {}),
+          onDownload: (d: RecordDoc) => void download(d.id!, `${d.type}.pdf`),
+        }
+      : null,
+    assets: assetList ? { rows: assetList, ...(perms.has('asset.manage') ? { onIssue: () => router.push('/yx/people/assets') } : {}) } : null,
+    history: h
+      ? {
+          rows: historyRows(h, today),
+          roles: (person.data?.roles ?? []).filter((r) => r.roleType !== 'login').map((r) => ({ role: ROLE[r.roleType] ?? r.roleType, from: day(r.startOn), to: r.endOn ? day(r.endOn) : null, link: r.label })),
+        }
+      : null,
+    asOf: asOfParam ? day(asOfParam) : null,
+    onAsOf: (d) => {
+      const q = new URLSearchParams(params.toString());
+      if (d && iso(d) !== today) q.set('asOf', iso(d));
+      else q.delete('asOf');
+      router.replace(`${path}${q.size ? `?${q}` : ''}`);
+    },
+    ...(canChange && !self ? { onStartChange: () => setStarting(true) } : {}),
+    ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
+    onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
+  };
+
+  const failed = [profile, view].find((q) => q.isError)?.error as { status?: number } | undefined;
+  const waiting = (!personId && me.isLoading) || profile.isLoading || view.isLoading || !perms.isFetched;
+  const state = failed ? (failed.status === 403 || failed.status === 404 ? 'not-found' : 'error') : !personId && !me.isLoading ? 'not-found' : waiting ? 'loading' : 'ready';
+
+  live.children = (
+    <>
+      {editing && prof?.personal && (
+        <PersonalDialog
+          initial={prof.personal}
+          states={(reference.data?.states ?? []).filter((s) => s.country === 'IN')}
+          onSave={async (input) => {
+            await write('PUT', `/employees/${p}/personal`, input);
+            done(`${self ? 'Your' : `${first}'s`} personal details saved`);
+          }}
+          onClose={() => setEditing(false)}
+        />
+      )}
+      {changing && (
+        <ChangeDialog
+          pending={pending.map((r) => r.kind)}
+          onRequest={async (input) => {
+            await write('POST', `/employees/${p}/profile-requests`, input);
+            done('Sent for approval');
+          }}
+          onClose={() => setChanging(false)}
+        />
+      )}
+      {withdrawing && (
+        <CancelDialog
+          request={withdrawing}
+          onCancel={async (requestId, reason) => {
+            await write('POST', `/profile-requests/${id(requestId)}/cancel`, { reason });
+            done(`${withdrawing.label} change withdrawn`);
+          }}
+          onClose={() => setWithdrawing(null)}
+        />
+      )}
+      {starting && personId && (
+        <ChangeDrawer
+          options={options}
+          employeeId={personId}
+          onPreview={raise.onPreview}
+          onSubmit={async (input) => {
+            await raise.onSubmit(input);
+            done(`Change for ${first} sent`);
+          }}
+          onClose={() => setStarting(false)}
+        />
+      )}
+      {docDialog && docs.data && <DocDialog dialog={docDialog} name={first} askable={docs.data.askable} onClose={() => setDocDialog(null)} onRequest={async (typeKey, typeName) => {
+        await lifeWrite('POST', '/documents/requests', { personIds: [docs.data!.personId], typeKey });
+        done(`${first} asked to upload the ${typeName}`);
+      }} onReject={(d, reason) => docAction(d, 'reject', reason)} />}
+    </>
+  );
+  return <PersonWorkspace persona={persona} relation={relation} today={day(today)} state={state} live={live} />;
+}
+
+const REJECT_REASONS = ['Name does not match the record', 'Image is unclear', 'Wrong document type', 'Expired document'];
+
+/** Ask for an upload, or send a document back with the reason (the person sees the reason). */
+function DocDialog({ dialog, name, askable, onClose, onRequest, onReject }: { dialog: { kind: 'request' | 'reject'; doc?: RecordDoc }; name: string; askable: { key: string; name: string }[]; onClose: () => void; onRequest: (typeKey: string, typeName: string) => Promise<void>; onReject: (d: RecordDoc, reason: string) => Promise<void> }) {
+  const [type, setType] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
+  const [message, setMessage] = useState('');
+  if (dialog.kind === 'request')
+    return (
+      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" confirmDisabled={!type} onConfirm={async () => (await onRequest(type!, askable.find((x) => x.key === type)?.name ?? 'document'), onClose())}>
+        <FormField id="rq-type" label="Document" required>
+          <Select aria-label="Document" value={type} onChange={setType} options={askable.map((x) => ({ value: x.key, label: x.name }))} />
+        </FormField>
+      </ConfirmDialog>
+    );
+  const d = dialog.doc!;
+  return (
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive confirmDisabled={!reason} onConfirm={async () => (await onReject(d, [reason, message.trim()].filter(Boolean).join('. ')), onClose())}>
+      <FormField id="rj-reason" label="Reason" required>
+        <Select aria-label="Reason" value={reason} onChange={setReason} options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} />
+      </FormField>
+      <FormField id="rj-msg" label={`Message to ${name}`} optional helper="Say what to upload instead.">
+        <TextArea value={message} onChange={setMessage} rows={3} maxLength={400} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}

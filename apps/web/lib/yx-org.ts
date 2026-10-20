@@ -16,6 +16,7 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'employee.salary.view',
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
