@@ -6,4 +6,4 @@ export { OrgChartScreen, type OrgChartScreenProps } from './org-chart';
 export { TeamScreen, type TeamScreenProps } from './team';
 export { ProbationScreen, type ProbationScreenProps } from './probation';
 export { BulkChangesScreen, BULK_TEMPLATE_COLUMNS, type BulkChangesScreenProps } from './bulk';
-export { csvCell, csvText } from './workforce-kit';
+export { csvCell, csvText, downloadText } from './workforce-kit';

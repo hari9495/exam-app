@@ -91,8 +91,10 @@ export interface OrgChartProps {
   onViewChange?: (view: OrgView) => void;
   /** Enter on a card, or "View profile" in the list. */
   onOpenPerson?: (person: OrgPerson) => void;
-  /** Adds Export PNG / Export PDF buttons. */
-  onExport?: (format: 'png' | 'pdf') => void;
+  /** Adds the Export menu. */
+  onExport?: (format: 'png' | 'pdf' | 'csv') => void;
+  /** Formats in the Export menu (default PNG and PDF). */
+  exportFormats?: ('png' | 'pdf' | 'csv')[];
   /** 'list' forces the phone drill-down. Default: tree, list below 768 px. */
   layout?: 'auto' | 'tree' | 'list';
   /** Expanded node ids, or 'all'. Default: top two levels. */
@@ -116,6 +118,7 @@ const VIEWS: { id: OrgView; label: string }[] = [
   { id: 'department', label: 'Department' },
   { id: 'position', label: 'Position' },
 ];
+const EXPORT_LABEL = { png: 'Image (PNG)', pdf: 'PDF', csv: 'Spreadsheet (CSV)' } as const;
 const MIN = 0.4;
 const MAX = 1.6;
 // Fitting never goes below 60 %: the collapse buttons (40 px) stay 24 px targets (WCAG 2.5.8). A wider tree scrolls;
@@ -132,6 +135,7 @@ export function OrgChart({
   onViewChange,
   onOpenPerson,
   onExport,
+  exportFormats = ['png', 'pdf'],
   layout = 'auto',
   defaultExpanded,
   defaultSelected,
@@ -610,8 +614,11 @@ export function OrgChart({
                 </Button>
               </MenuTrigger>
               <MenuContent align="end">
-                <MenuItem onSelect={() => onExport('png')}>Image (PNG)</MenuItem>
-                <MenuItem onSelect={() => onExport('pdf')}>PDF</MenuItem>
+                {exportFormats.map((f) => (
+                  <MenuItem key={f} onSelect={() => onExport(f)}>
+                    {EXPORT_LABEL[f]}
+                  </MenuItem>
+                ))}
               </MenuContent>
             </Menu>
           )}
