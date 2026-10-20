@@ -633,7 +633,7 @@ export function bandNotice(policy: BandPolicy, above: number, held: number): { t
 
 function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating', bandPolicy = 'warn', letterOpen: startLetter = false }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean }) {
   const allDepts = useMemo(() => [...new Set(INCREMENT_ROWS.map((r) => r.department))].sort(), []);
-  const [type, setType] = useState<string | null>('inc');
+  const [type] = useState<string | null>('inc');
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [joinedBefore, setJoinedBefore] = useState<Date | null>(new Date(2026, 3, 1));
   const [depts, setDepts] = useState<string[]>(allDepts);
@@ -691,14 +691,13 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
   const first = rows.find((r) => r.id === letterFor) ?? rows[0];
   return (
     <PeopleFrame active="Bulk changes">
-      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person and letters in bulk." />
+      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person, new pay rounded to whole rupees." />
       <Stepper
         title="Bulk change"
         defaultCurrent={current}
         finishLabel={`Send for approval (${rows.length} people)`}
         finishBlocked={bandPolicy === 'block' && flaggedRows.length ? `${flaggedRows.length} above the band maximum: cap them first.` : undefined}
         onFinish={() => setConfirm(true)}
-        onSaveAndExit={() => {}}
         review={{ description: 'Check the totals before you send this for one approval.' }}
         steps={[
           {
@@ -707,13 +706,10 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
             summary: `${rows.length} employees · ${depts.length === allDepts.length ? 'all departments' : depts.join(', ')} · Kaveri Foods Pvt Ltd · effective ${effective ? formatDate(effective) : '—'}`,
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Change type" required>
-                  <Select options={BULK_TYPES} value={type} onChange={setType} />
-                </FormField>
                 <FormField label="Legal entity" required>
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }]} value="kf" onChange={() => {}} />
                 </FormField>
-                <FormField label="Effective date" required>
+                <FormField label="Effective date" required helper="Payroll pays arrears for a date in a month already paid.">
                   <DatePicker value={effective} onChange={setEffective} />
                 </FormField>
                 <FormField label="Departments" optional helper="Leave empty for everyone.">
@@ -721,6 +717,9 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
                 </FormField>
                 <FormField label="Confirmed employees who joined before" optional>
                   <DatePicker value={joinedBefore} onChange={setJoinedBefore} />
+                </FormField>
+                <FormField label="Reason" required helper="Kept on each person's job history.">
+                  <TextArea rows={2} defaultValue="Annual increment" maxLength={1000} />
                 </FormField>
                 <InlineAlert tone="info" actions={<Button size="sm" onClick={() => setLeftOutOpen(true)}>See who</Button>}>
                   {rows.length} people match. {INCREMENT_LEFT_OUT.length} are left out.
