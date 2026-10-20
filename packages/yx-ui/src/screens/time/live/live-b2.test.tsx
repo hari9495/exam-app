@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { MyOvertimeScreen } from './overtime';
+import { MyOvertimeScreen } from '../my-overtime';
 import { OtReviewScreen, PeriodsScreen, ShiftSwapSheet } from '../requests';
 import { ToastProvider } from '../../../components/notify';
 import { PayrollFeedScreen } from '../payroll-feed';
@@ -130,7 +130,8 @@ describe('Overtime', () => {
   it('an employee claims a worked day with the server’s figures', async () => {
     const data: MyOvertime = { today: '2026-10-09', claims: [], open: [{ on: '2026-10-05', category: 'normal', workedMinutes: 540, scheduledMinutes: 450, eligibleMinutes: 90, payableMinutes: 90, overCapMinutes: 0, settle: 'comp_off', needsApproval: true }] };
     const onClaim = vi.fn(async () => ({}));
-    render(<MyOvertimeScreen state="ready" data={data} onClaim={onClaim} onWithdraw={vi.fn(async () => ({}))} />);
+    render(<ToastProvider><MyOvertimeScreen live={{ state: "ready", data, onClaim, onWithdraw: vi.fn(async () => ({})) }} /></ToastProvider>);
+    expect(screen.getByRole("heading", { name: "My overtime" })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Claim overtime' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Comp-off, added to your leave balance when approved')).toBeInTheDocument();

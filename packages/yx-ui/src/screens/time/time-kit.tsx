@@ -37,7 +37,7 @@ import './time-kit.css';
 
 export type TimeNav =
   | 'Today' | 'Muster' | 'Exceptions' | 'Roster' | 'Team leave' | 'Block leave' | 'Office days' | 'Leave calendar' | 'Requests' | 'Year-end' | 'Periods' | 'Reports'
-  | 'My attendance' | 'My leave' | 'My shifts' | 'My timesheet' | 'My office days'
+  | 'My attendance' | 'My leave' | 'My shifts' | 'My timesheet' | 'My office days' | 'My overtime'
   | 'Shifts & patterns' | 'Leave types & policies' | 'Holiday calendars' | 'Locations & geofences' | 'Devices & kiosks';
 
 /**

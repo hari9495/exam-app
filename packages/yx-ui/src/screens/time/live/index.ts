@@ -13,7 +13,7 @@ export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
 export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { RosterScreen, type LiveRoster } from '../roster';
 export { ShiftsSetupScreen, type ShiftsSetupScreenProps } from './shifts-setup';
-export { MyOvertimeScreen, type MyOvertimeScreenProps } from './overtime';
+export { MyOvertimeScreen, type LiveMyOvertime } from '../my-overtime';
 export { OtReviewScreen, type LiveOtReview } from '../requests';
 export { TimesheetScreen, type LiveTimesheet } from '../ops';
 export { PayrollFeedScreen, type LivePayrollFeed } from '../payroll-feed';
