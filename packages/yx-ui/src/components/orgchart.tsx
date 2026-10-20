@@ -1,35 +1,13 @@
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-} from "react";
-import {
-  ArrowLeft,
-  Building2,
-  ChevronDown,
-  ChevronRight,
-  Crosshair,
-  Download,
-  Maximize,
-  Minus,
-  Plus,
-  UserPlus,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "./menu";
-import { Button, ButtonGroup, IconButton } from "./button";
-import { Avatar } from "./display";
-import { Icon } from "./foundations";
-import { FormField } from "./field";
-import { TextField } from "./inputs";
-import { useControllable } from "./overlay";
-import { useNarrow } from "./stepper";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { ArrowLeft, Building2, ChevronDown, ChevronRight, Crosshair, Download, Maximize, Minus, Plus, UserPlus, ZoomIn, ZoomOut } from 'lucide-react';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
+import { Button, ButtonGroup, IconButton } from './button';
+import { Avatar } from './display';
+import { Icon } from './foundations';
+import { FormField } from './field';
+import { TextField } from './inputs';
+import { useControllable } from './overlay';
+import { useNarrow } from './stepper';
 
 export interface OrgPerson {
   id: string;
@@ -44,11 +22,11 @@ export interface OrgPerson {
   dottedManagerId?: string;
 }
 
-export type OrgView = "reporting" | "department" | "position";
+export type OrgView = 'reporting' | 'department' | 'position';
 
 export interface OrgNode {
   id: string;
-  kind: "person" | "department";
+  kind: 'person' | 'department';
   person?: OrgPerson;
   title: string;
   children: OrgNode[];
@@ -56,51 +34,36 @@ export interface OrgNode {
   size: number;
 }
 
-const DEPT = "dept:";
+const DEPT = 'dept:';
 
-function sized(n: Omit<OrgNode, "size">): OrgNode {
-  const size = n.children.reduce(
-    (a, c) => a + c.size + (c.person && !c.person.vacant ? 1 : 0),
-    0,
-  );
+function sized(n: Omit<OrgNode, 'size'>): OrgNode {
+  const size = n.children.reduce((a, c) => a + c.size + (c.person && !c.person.vacant ? 1 : 0), 0);
   return { ...n, size };
 }
 
 /** Builds the tree for a view. Exported for tests. */
 export function buildOrgTree(people: OrgPerson[], view: OrgView): OrgNode[] {
-  const list = view === "position" ? people : people.filter((p) => !p.vacant);
+  const list = view === 'position' ? people : people.filter((p) => !p.vacant);
   const ids = new Set(list.map((p) => p.id));
   const reports = new Map<string, OrgPerson[]>();
-  for (const p of list)
-    if (p.managerId && ids.has(p.managerId))
-      reports.set(p.managerId, [...(reports.get(p.managerId) ?? []), p]);
+  for (const p of list) if (p.managerId && ids.has(p.managerId)) reports.set(p.managerId, [...(reports.get(p.managerId) ?? []), p]);
   const node = (p: OrgPerson, keep: (r: OrgPerson) => boolean): OrgNode =>
     sized({
       id: p.id,
-      kind: "person",
+      kind: 'person',
       person: p,
       title: p.vacant ? `Vacant · ${p.role}` : p.name,
-      children: (reports.get(p.id) ?? [])
-        .filter(keep)
-        .map((r) => node(r, keep)),
+      children: (reports.get(p.id) ?? []).filter(keep).map((r) => node(r, keep)),
     });
   const isRoot = (p: OrgPerson) => !p.managerId || !ids.has(p.managerId);
-  if (view !== "department")
-    return list.filter(isRoot).map((p) => node(p, () => true));
+  if (view !== 'department') return list.filter(isRoot).map((p) => node(p, () => true));
 
   const byId = new Map(list.map((p) => [p.id, p]));
   const depts = [...new Set(list.map((p) => p.department))];
   return depts.map((d) => {
     const same = (r: OrgPerson) => r.department === d;
-    const tops = list.filter(
-      (p) => same(p) && (isRoot(p) || byId.get(p.managerId!)!.department !== d),
-    );
-    return sized({
-      id: DEPT + d,
-      kind: "department",
-      title: d,
-      children: tops.map((p) => node(p, same)),
-    });
+    const tops = list.filter((p) => same(p) && (isRoot(p) || byId.get(p.managerId!)!.department !== d));
+    return sized({ id: DEPT + d, kind: 'department', title: d, children: tops.map((p) => node(p, same)) });
   });
 }
 
@@ -129,13 +92,13 @@ export interface OrgChartProps {
   /** Enter on a card, or "View profile" in the list. */
   onOpenPerson?: (person: OrgPerson) => void;
   /** Adds the Export menu. */
-  onExport?: (format: "png" | "pdf" | "csv") => void;
+  onExport?: (format: 'png' | 'pdf' | 'csv') => void;
   /** Formats in the Export menu (default PNG and PDF). */
-  exportFormats?: ("png" | "pdf" | "csv")[];
+  exportFormats?: ('png' | 'pdf' | 'csv')[];
   /** 'list' forces the phone drill-down. Default: tree, list below 768 px. */
-  layout?: "auto" | "tree" | "list";
+  layout?: 'auto' | 'tree' | 'list';
   /** Expanded node ids, or 'all'. Default: top two levels. */
-  defaultExpanded?: string[] | "all";
+  defaultExpanded?: string[] | 'all';
   /** Jump to a person on first render (stories, deep links). */
   defaultSelected?: string;
   /** Company name for the list view's first crumb. */
@@ -151,48 +114,38 @@ export interface OrgChartProps {
 }
 
 const VIEWS: { id: OrgView; label: string }[] = [
-  { id: "reporting", label: "Reporting lines" },
-  { id: "department", label: "Department" },
-  { id: "position", label: "Position" },
+  { id: 'reporting', label: 'Reporting lines' },
+  { id: 'department', label: 'Department' },
+  { id: 'position', label: 'Position' },
 ];
-const EXPORT_LABEL = {
-  png: "Image (PNG)",
-  pdf: "PDF",
-  csv: "Spreadsheet (CSV)",
-} as const;
+const EXPORT_LABEL = { png: 'Image (PNG)', pdf: 'PDF', csv: 'Spreadsheet (CSV)' } as const;
 const MIN = 0.4;
 const MAX = 1.6;
 // Fitting never goes below 60 %: the collapse buttons (40 px) stay 24 px targets (WCAG 2.5.8). A wider tree scrolls;
 // zooming out further is still there for whoever wants the whole shape.
 const FIT_MIN = 0.6;
 /** The zoom that fits w x h (at 100 %) into a box: whole tens of a per cent, never above 100 % or below FIT_MIN. */
-export const fitScale = (boxW: number, boxH: number, w: number, h: number) =>
-  Math.max(
-    FIT_MIN,
-    Math.min(1, Math.floor(Math.min(boxW / w, boxH / h) * 10) / 10),
-  );
-const clamp = (n: number) =>
-  Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
-const team = (n: number) =>
-  n === 1 ? "1 person in team" : `${n} people in team`;
+export const fitScale = (boxW: number, boxH: number, w: number, h: number) => Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(boxW / w, boxH / h) * 10) / 10));
+const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
+const team = (n: number) => (n === 1 ? '1 person in team' : `${n} people in team`);
 
 /** Org chart (§21): tree with search, zoom, pan and views; list drill-down on phones. */
 export function OrgChart({
   people,
   view: viewProp,
-  defaultView = "reporting",
+  defaultView = 'reporting',
   onViewChange,
   onOpenPerson,
   onExport,
-  exportFormats = ["png", "pdf"],
-  layout = "auto",
+  exportFormats = ['png', 'pdf'],
+  layout = 'auto',
   defaultExpanded,
   defaultSelected,
-  rootLabel = "Organisation",
+  rootLabel = 'Organisation',
   meId,
   onRequestHire,
   openOnMe = true,
-  views = ["reporting", "department", "position"],
+  views = ['reporting', 'department', 'position'],
 }: OrgChartProps) {
   // Open on the signed-in person when there is one (founder review 1 Oct 2026).
   const startAt = defaultSelected ?? (openOnMe ? meId : undefined);
@@ -200,35 +153,28 @@ export function OrgChart({
   const roots = useMemo(() => buildOrgTree(people, view), [people, view]);
   const tree = useMemo(() => indexTree(roots), [roots]);
   const narrow = useNarrow();
-  const asList = layout === "list" || (layout === "auto" && narrow);
+  const asList = layout === 'list' || (layout === 'auto' && narrow);
 
   const initialExpanded = () => {
-    if (defaultExpanded === "all") return new Set(tree.byId.keys());
+    if (defaultExpanded === 'all') return new Set(tree.byId.keys());
     if (defaultExpanded) return new Set(defaultExpanded);
     // A single top person (the MD) opens showing only the next level, so it fits at a readable size.
     if (roots.length === 1) return new Set(roots.map((r) => r.id));
-    return new Set([
-      ...roots.map((r) => r.id),
-      ...roots.flatMap((r) => r.children.map((c) => c.id)),
-    ]);
+    return new Set([...roots.map((r) => r.id), ...roots.flatMap((r) => r.children.map((c) => c.id))]);
   };
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const s = initialExpanded();
     if (startAt) tree.ancestors(startAt).forEach((a) => s.add(a));
     return s;
   });
-  const [focused, setFocused] = useState<string | null>(
-    startAt ?? roots[0]?.id ?? null,
-  );
+  const [focused, setFocused] = useState<string | null>(startAt ?? roots[0]?.id ?? null);
   const [highlight, setHighlight] = useState<string | null>(startAt ?? null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [scale, setScale] = useState(1);
   // Phone: open at my manager, so I see my manager, my teammates and myself.
-  const [listAt, setListAt] = useState<string | null>(
-    defaultSelected ?? (meId ? (tree.parent.get(meId) ?? null) : null),
-  );
-  const [announce, setAnnounce] = useState("");
+  const [listAt, setListAt] = useState<string | null>(defaultSelected ?? (meId ? tree.parent.get(meId) ?? null : null));
+  const [announce, setAnnounce] = useState('');
   const refs = useRef(new Map<string, HTMLLIElement>());
   const pendingFocus = useRef<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -253,34 +199,21 @@ export function OrgChart({
     const el = refs.current.get(pendingFocus.current);
     pendingFocus.current = null;
     el?.focus();
-    el?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
   });
 
   useEffect(() => {
     if (startAt) {
-      refs.current
-        .get(startAt)
-        ?.scrollIntoView?.({ block: "center", inline: "center" });
+      refs.current.get(startAt)?.scrollIntoView?.({ block: 'center', inline: 'center' });
       // Keep my manager on screen too: centre between me and my manager.
       const vp = viewportRef.current;
       const mgr = tree.parent.get(startAt);
-      const a = refs.current
-        .get(startAt)
-        ?.querySelector(".yx-org__card")
-        ?.getBoundingClientRect();
-      const b = mgr
-        ? refs.current
-            .get(mgr)
-            ?.querySelector(".yx-org__card")
-            ?.getBoundingClientRect()
-        : undefined;
+      const a = refs.current.get(startAt)?.querySelector('.yx-org__card')?.getBoundingClientRect();
+      const b = mgr ? refs.current.get(mgr)?.querySelector('.yx-org__card')?.getBoundingClientRect() : undefined;
       if (vp && a && b) {
         const box = vp.getBoundingClientRect();
-        vp.scrollLeft +=
-          (a.left + a.width / 2 + b.left + b.width / 2) / 2 -
-          (box.left + box.width / 2);
-        vp.scrollTop +=
-          (a.top + b.top) / 2 - (box.top + box.height / 2) + a.height / 2;
+        vp.scrollLeft += (a.left + a.width / 2 + b.left + b.width / 2) / 2 - (box.left + box.width / 2);
+        vp.scrollTop += (a.top + b.top) / 2 - (box.top + box.height / 2) + a.height / 2;
       }
     } else {
       // The top of the organisation opens with its first two levels in the part of the canvas on screen (as designed).
@@ -288,8 +221,8 @@ export function OrgChart({
       const vp = viewportRef.current;
       if (vp) vp.scrollLeft = (vp.scrollWidth - vp.clientWidth) / 2;
       // A banner or notice that loads above the chart pushes it down: fit again until the person zooms themselves.
-      const page = vp?.closest("main")?.firstElementChild;
-      if (page && typeof ResizeObserver !== "undefined") {
+      const page = vp?.closest('main')?.firstElementChild;
+      if (page && typeof ResizeObserver !== 'undefined') {
         const ro = new ResizeObserver(() => !userZoomed.current && fit(true));
         ro.observe(page);
         const stop = setTimeout(() => ro.disconnect(), 5000);
@@ -318,7 +251,7 @@ export function OrgChart({
     tree.ancestors(id).forEach((a) => next.add(a));
     setExpanded(next);
     setHighlight(id);
-    setQuery("");
+    setQuery('');
     setListAt(id);
     moveTo(id);
     setAnnounce(`Showing ${tree.byId.get(id)?.title}`);
@@ -330,31 +263,27 @@ export function OrgChart({
   };
 
   const onTreeKey = (e: KeyboardEvent<HTMLElement>) => {
-    if (
-      (e.target as HTMLElement).getAttribute("role") !== "treeitem" ||
-      !focused
-    )
-      return;
+    if ((e.target as HTMLElement).getAttribute('role') !== 'treeitem' || !focused) return;
     const node = tree.byId.get(focused);
     if (!node) return;
     const sib = siblings(focused);
     const i = sib.findIndex((s) => s.id === focused);
     switch (e.key) {
-      case "ArrowUp":
+      case 'ArrowUp':
         moveTo(tree.parent.get(focused));
         break;
-      case "ArrowDown":
+      case 'ArrowDown':
         if (!node.children.length) return;
         if (!expanded.has(focused)) toggle(focused, true);
         moveTo(node.children[0].id);
         break;
-      case "ArrowLeft":
+      case 'ArrowLeft':
         moveTo(sib[i - 1]?.id);
         break;
-      case "ArrowRight":
+      case 'ArrowRight':
         moveTo(sib[i + 1]?.id);
         break;
-      case "Enter":
+      case 'Enter':
         if (node.person && !node.person.vacant) onOpenPerson?.(node.person);
         else toggle(focused);
         break;
@@ -373,17 +302,10 @@ export function OrgChart({
     let h = ct.scrollHeight / k;
     let boxH = vp.clientHeight;
     if (firstTwoLevels) {
-      // Height down to the lowest card of the first levels; the box is what shows above the fold.
+      // Height down to the lowest card of the first two levels; the box is the part of the canvas above the fold.
       const top = ct.getBoundingClientRect().top;
       const ids = roots.flatMap((r) => [r, ...r.children]).map((n) => n.id);
-      const bottoms = ids.map(
-        (id) =>
-          refs.current
-            .get(id)
-            ?.querySelector(".yx-org__card")
-            ?.getBoundingClientRect().bottom ?? 0,
-      );
-      const deepest = Math.max(...bottoms) - top;
+      const deepest = Math.max(...ids.map((id) => refs.current.get(id)?.querySelector('.yx-org__card')?.getBoundingClientRect().bottom ?? 0)) - top;
       if (deepest > 0) h = (deepest + 24 * k) / k; // + the canvas padding below
       const onScreen = window.innerHeight - vp.getBoundingClientRect().top;
       if (onScreen > 0) boxH = Math.min(boxH, onScreen);
@@ -398,30 +320,19 @@ export function OrgChart({
     setScale(scaleRef.current);
   };
   const onZoomKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).tagName === "INPUT") return;
-    if (e.key === "+" || e.key === "=") zoomBy(0.1);
-    else if (e.key === "-" || e.key === "−") zoomBy(-0.1);
+    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    if (e.key === '+' || e.key === '=') zoomBy(0.1);
+    else if (e.key === '-' || e.key === '−') zoomBy(-0.1);
     else return;
     e.preventDefault();
   };
 
   // Pan by dragging the empty canvas.
-  const drag = useRef<{
-    x: number;
-    y: number;
-    left: number;
-    top: number;
-  } | null>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("button, input, a") || e.button !== 0)
-      return;
+    if ((e.target as HTMLElement).closest('button, input, a') || e.button !== 0) return;
     const vp = viewportRef.current!;
-    drag.current = {
-      x: e.clientX,
-      y: e.clientY,
-      left: vp.scrollLeft,
-      top: vp.scrollTop,
-    };
+    drag.current = { x: e.clientX, y: e.clientY, left: vp.scrollLeft, top: vp.scrollTop };
     vp.setPointerCapture?.(e.pointerId);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -440,14 +351,10 @@ export function OrgChart({
   const [box, setBox] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
     const ct = contentRef.current;
-    if (!ct || asList || view === "department") return setDotted([]);
+    if (!ct || asList || view === 'department') return setDotted([]);
     const base = ct.getBoundingClientRect();
     const k = scale || 1;
-    const card = (id: string) =>
-      refs.current
-        .get(id)
-        ?.querySelector(".yx-org__card")
-        ?.getBoundingClientRect();
+    const card = (id: string) => refs.current.get(id)?.querySelector('.yx-org__card')?.getBoundingClientRect();
     const out: { id: string; d: string }[] = [];
     const active = hovered ?? highlight ?? focused;
     for (const p of people) {
@@ -462,10 +369,7 @@ export function OrgChart({
       const x2 = (b.left + b.width / 2 - base.left) / k;
       const y2 = (b.top - base.top) / k;
       const bend = Math.max(24, Math.abs(y2 - y1) / 2);
-      out.push({
-        id: p.id,
-        d: `M${x1} ${y1} C${x1} ${y1 + bend} ${x2} ${y2 - bend} ${x2} ${y2}`,
-      });
+      out.push({ id: p.id, d: `M${x1} ${y1} C${x1} ${y1 + bend} ${x2} ${y2 - bend} ${x2} ${y2}` });
     }
     setDotted(out);
     setBox({ w: ct.scrollWidth / k, h: ct.scrollHeight / k });
@@ -473,20 +377,12 @@ export function OrgChart({
 
   const matches = query.trim()
     ? people
-        .filter(
-          (p) => (view === "position" || !p.vacant) && tree.byId.has(p.id),
-        )
-        .filter((p) =>
-          `${p.name} ${p.role} ${p.department}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase()),
-        )
+        .filter((p) => (view === 'position' || !p.vacant) && tree.byId.has(p.id))
+        .filter((p) => `${p.name} ${p.role} ${p.department}`.toLowerCase().includes(query.trim().toLowerCase()))
         .slice(0, 8)
     : [];
-  const hasDotted =
-    view !== "department" && people.some((p) => p.dottedManagerId);
-  const vacancies =
-    view === "position" ? people.filter((p) => p.vacant).length : 0;
+  const hasDotted = view !== 'department' && people.some((p) => p.dottedManagerId);
+  const vacancies = view === 'position' ? people.filter((p) => p.vacant).length : 0;
   const showMe = meId && tree.byId.has(meId) && (
     <Button size="sm" icon={Crosshair} onClick={() => jump(meId)}>
       Show me
@@ -497,32 +393,15 @@ export function OrgChart({
   const search = (
     <div className="yx-org__search">
       <FormField label="Find a person" hideLabel>
-        <TextField
-          type="search"
-          placeholder="Find a person"
-          value={query}
-          onChange={setQuery}
-          size="sm"
-          aria-controls={query.trim() ? `${uid}-results` : undefined}
-        />
+        <TextField type="search" placeholder="Find a person" value={query} onChange={setQuery} size="sm" aria-controls={query.trim() ? `${uid}-results` : undefined} />
       </FormField>
       {query.trim() && (
-        <ul
-          className="yx-org__results"
-          id={`${uid}-results`}
-          aria-label="Matching people"
-        >
+        <ul className="yx-org__results" id={`${uid}-results`} aria-label="Matching people">
           {matches.length ? (
             matches.map((p) => (
               <li key={p.id}>
-                <button
-                  type="button"
-                  className="yx-org__result"
-                  onClick={() => jump(p.id)}
-                >
-                  <span className="yx-org__rname">
-                    {p.vacant ? `Vacant · ${p.role}` : p.name}
-                  </span>
+                <button type="button" className="yx-org__result" onClick={() => jump(p.id)}>
+                  <span className="yx-org__rname">{p.vacant ? `Vacant · ${p.role}` : p.name}</span>
                   <span className="yx-org__rrole">
                     {p.vacant ? p.department : `${p.role} · ${p.department}`}
                   </span>
@@ -530,10 +409,7 @@ export function OrgChart({
               </li>
             ))
           ) : (
-            <li className="yx-org__none">
-              No one matches "{query.trim()}". Check the spelling or search by
-              role.
-            </li>
+            <li className="yx-org__none">No one matches "{query.trim()}". Check the spelling or search by role.</li>
           )}
         </ul>
       )}
@@ -543,12 +419,7 @@ export function OrgChart({
   const viewSwitch = (
     <ButtonGroup aria-label="Chart view" className="yx-org__views">
       {VIEWS.filter((v) => views.includes(v.id)).map((v) => (
-        <Button
-          key={v.id}
-          size="sm"
-          aria-pressed={view === v.id}
-          onClick={() => setView(v.id)}
-        >
+        <Button key={v.id} size="sm" aria-pressed={view === v.id} onClick={() => setView(v.id)}>
           {v.label}
         </Button>
       ))}
@@ -557,7 +428,7 @@ export function OrgChart({
 
   const cardBody = (n: OrgNode) => {
     const p = n.person;
-    if (n.kind === "department")
+    if (n.kind === 'department')
       return (
         <>
           <span className="yx-org__dicon">
@@ -565,9 +436,7 @@ export function OrgChart({
           </span>
           <span className="yx-org__text">
             <span className="yx-org__name">{n.title}</span>
-            <span className="yx-org__meta">
-              {n.size === 1 ? "1 person" : `${n.size} people`}
-            </span>
+            <span className="yx-org__meta">{n.size === 1 ? '1 person' : `${n.size} people`}</span>
           </span>
         </>
       );
@@ -597,7 +466,7 @@ export function OrgChart({
           </span>
         </>
       );
-    const position = view === "position";
+    const position = view === 'position';
     return (
       <>
         <Avatar name={p!.name} src={p!.photo} size={40} />
@@ -605,13 +474,9 @@ export function OrgChart({
           <span className="yx-org__name">{position ? p!.role : p!.name}</span>
           <span className="yx-org__role">{position ? p!.name : p!.role}</span>
           {n.size > 0 && <span className="yx-org__meta">{team(n.size)}</span>}
-          {p!.dottedManagerId &&
-            view !== "department" &&
-            nameOf(p!.dottedManagerId) && (
-              <span className="yx-org__meta">
-                Dotted line to {nameOf(p!.dottedManagerId)}
-              </span>
-            )}
+          {p!.dottedManagerId && view !== 'department' && nameOf(p!.dottedManagerId) && (
+            <span className="yx-org__meta">Dotted line to {nameOf(p!.dottedManagerId)}</span>
+          )}
         </span>
       </>
     );
@@ -622,7 +487,7 @@ export function OrgChart({
     const at = listAt ? tree.byId.get(listAt) : undefined;
     const trail = at ? [...tree.ancestors(at.id), at.id] : [];
     const kids = at ? at.children : roots;
-    const back = at ? (tree.parent.get(at.id) ?? null) : null;
+    const back = at ? tree.parent.get(at.id) ?? null : null;
     return (
       <div className="yx-org" data-layout="list">
         <div className="yx-org__toolbar">
@@ -639,11 +504,7 @@ export function OrgChart({
           <ol className="yx-org__trail">
             <li>
               {at ? (
-                <button
-                  type="button"
-                  className="yx-org__crumb"
-                  onClick={() => setListAt(null)}
-                >
+                <button type="button" className="yx-org__crumb" onClick={() => setListAt(null)}>
                   {rootLabel}
                 </button>
               ) : (
@@ -656,11 +517,7 @@ export function OrgChart({
                 {i === trail.length - 1 ? (
                   <span aria-current="page">{tree.byId.get(id)!.title}</span>
                 ) : (
-                  <button
-                    type="button"
-                    className="yx-org__crumb"
-                    onClick={() => setListAt(id)}
-                  >
+                  <button type="button" className="yx-org__crumb" onClick={() => setListAt(id)}>
                     {tree.byId.get(id)!.title}
                   </button>
                 )}
@@ -669,13 +526,7 @@ export function OrgChart({
           </ol>
         </nav>
         {at && (
-          <div
-            className="yx-org__card"
-            data-kind={at.kind}
-            data-vacant={at.person?.vacant || undefined}
-            data-highlight={highlight === at.id || undefined}
-            data-size="lg"
-          >
+          <div className="yx-org__card" data-kind={at.kind} data-vacant={at.person?.vacant || undefined} data-highlight={highlight === at.id || undefined} data-size="lg">
             {cardBody(at)}
             {at.person && !at.person.vacant && onOpenPerson && (
               <Button size="sm" onClick={() => onOpenPerson(at.person!)}>
@@ -685,11 +536,7 @@ export function OrgChart({
           </div>
         )}
         <h3 className="yx-org__lhead">
-          {at
-            ? at.kind === "department"
-              ? `People (${kids.length})`
-              : `Direct reports (${kids.length})`
-            : `Top of the organisation (${kids.length})`}
+          {at ? (at.kind === 'department' ? `People (${kids.length})` : `Direct reports (${kids.length})`) : `Top of the organisation (${kids.length})`}
         </h3>
         {kids.length ? (
           <ul className="yx-org__list">
@@ -700,14 +547,8 @@ export function OrgChart({
                   className="yx-org__litem"
                   data-vacant={k.person?.vacant || undefined}
                   data-highlight={highlight === k.id || undefined}
-                  aria-current={k.id === meId ? "true" : undefined}
-                  onClick={() =>
-                    k.children.length
-                      ? setListAt(k.id)
-                      : k.person && !k.person.vacant
-                        ? onOpenPerson?.(k.person)
-                        : undefined
-                  }
+                  aria-current={k.id === meId ? 'true' : undefined}
+                  onClick={() => (k.children.length ? setListAt(k.id) : k.person && !k.person.vacant ? onOpenPerson?.(k.person) : undefined)}
                 >
                   {cardBody(k)}
                   {k.children.length > 0 && <Icon icon={ChevronRight} />}
@@ -737,7 +578,7 @@ export function OrgChart({
         aria-level={level}
         aria-expanded={hasKids ? open : undefined}
         aria-selected={highlight === n.id}
-        aria-label={`${n.title}${n.person && !n.person.vacant ? `, ${n.person.role}` : ""}${n.size ? `, ${team(n.size)}` : ""}`}
+        aria-label={`${n.title}${n.person && !n.person.vacant ? `, ${n.person.role}` : ''}${n.size ? `, ${team(n.size)}` : ''}`}
         tabIndex={isFocused ? 0 : -1}
         className="yx-org__node"
         data-id={n.id}
@@ -769,9 +610,7 @@ export function OrgChart({
               variant="secondary"
               size="sm"
               className="yx-org__toggle"
-              label={
-                open ? `Hide team of ${n.title}` : `Show team of ${n.title}`
-              }
+              label={open ? `Hide team of ${n.title}` : `Show team of ${n.title}`}
               aria-expanded={open}
               tabIndex={isFocused ? 0 : -1}
               onClick={(e) => {
@@ -781,11 +620,7 @@ export function OrgChart({
             />
           )}
         </div>
-        {hasKids && open && (
-          <ul role="group">
-            {n.children.map((c) => renderNode(c, level + 1))}
-          </ul>
-        )}
+        {hasKids && open && <ul role="group">{n.children.map((c) => renderNode(c, level + 1))}</ul>}
       </li>
     );
   };
@@ -796,35 +631,12 @@ export function OrgChart({
         {search}
         {viewSwitch}
         <div className="yx-org__tools">
-          <IconButton
-            icon={ZoomOut}
-            variant="secondary"
-            size="sm"
-            label="Zoom out (−)"
-            onClick={() => zoomBy(-0.1)}
-            disabled={scale <= MIN}
-          />
+          <IconButton icon={ZoomOut} variant="secondary" size="sm" label="Zoom out (−)" onClick={() => zoomBy(-0.1)} disabled={scale <= MIN} />
           <span className="yx-org__zoom" aria-live="polite">
             {Math.round(scale * 100)}%
           </span>
-          <IconButton
-            icon={ZoomIn}
-            variant="secondary"
-            size="sm"
-            label="Zoom in (+)"
-            onClick={() => zoomBy(0.1)}
-            disabled={scale >= MAX}
-          />
-          <IconButton
-            icon={Maximize}
-            variant="secondary"
-            size="sm"
-            label="Fit to screen"
-            onClick={() => {
-              userZoomed.current = true;
-              fit();
-            }}
-          />
+          <IconButton icon={ZoomIn} variant="secondary" size="sm" label="Zoom in (+)" onClick={() => zoomBy(0.1)} disabled={scale >= MAX} />
+          <IconButton icon={Maximize} variant="secondary" size="sm" label="Fit to screen" onClick={() => ((userZoomed.current = true), fit())} />
           {showMe}
           {onExport && (
             <Menu>
@@ -846,19 +658,9 @@ export function OrgChart({
         </div>
       </div>
       <div className="yx-org__legend" aria-label="Legend">
-        <span className="yx-org__key" data-line="solid">
-          Reports to
-        </span>
-        {hasDotted && (
-          <span className="yx-org__key" data-line="dashed">
-            Dotted-line manager (select a person to see it)
-          </span>
-        )}
-        {vacancies > 0 && (
-          <span className="yx-org__key" data-line="vacant">
-            Vacant position ({vacancies})
-          </span>
-        )}
+        <span className="yx-org__key" data-line="solid">Reports to</span>
+        {hasDotted && <span className="yx-org__key" data-line="dashed">Dotted-line manager (select a person to see it)</span>}
+        {vacancies > 0 && <span className="yx-org__key" data-line="vacant">Vacant position ({vacancies})</span>}
       </div>
       <div
         className="yx-org__viewport"
@@ -868,37 +670,20 @@ export function OrgChart({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        <div
-          className="yx-org__content"
-          ref={contentRef}
-          style={{ zoom: scale }}
-        >
+        <div className="yx-org__content" ref={contentRef} style={{ zoom: scale }}>
           {dotted.length > 0 && (
-            <svg
-              className="yx-org__svg"
-              width={box.w}
-              height={box.h}
-              aria-hidden="true"
-            >
+            <svg className="yx-org__svg" width={box.w} height={box.h} aria-hidden="true">
               {dotted.map((l) => (
                 <path key={l.id} d={l.d} className="yx-org__dotted" />
               ))}
             </svg>
           )}
-          <ul
-            role="tree"
-            aria-label="Org chart"
-            className="yx-org__tree"
-            onKeyDown={onTreeKey}
-          >
+          <ul role="tree" aria-label="Org chart" className="yx-org__tree" onKeyDown={onTreeKey}>
             {roots.map((r) => renderNode(r, 1))}
           </ul>
         </div>
       </div>
-      <p className="yx-org__hint">
-        Arrow keys move between people, Enter opens a profile, + and − zoom.
-        Drag the empty space to move around.
-      </p>
+      <p className="yx-org__hint">Arrow keys move between people, Enter opens a profile, + and − zoom. Drag the empty space to move around.</p>
       <span className="yx-visually-hidden" aria-live="polite">
         {announce}
       </span>
