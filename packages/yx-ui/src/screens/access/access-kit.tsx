@@ -45,9 +45,11 @@ export const KIND_LABEL: Record<RequestKind, string> = {
   uan: 'UAN',
   esic: 'ESIC IP number',
   legal_name: 'Legal name',
+  passport: 'Passport',
 };
 
 export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', transgender: 'Transgender', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say' };
+export const MARITAL_LABEL: Record<string, string> = { single: 'Single', married: 'Married', separated: 'Separated', divorced: 'Divorced', widowed: 'Widowed', prefer_not_to_say: 'Prefer not to say' };
 
 /** "Holder · IFSC · •••• 1234" or the single value. */
 export function shown(v: Record<string, string | null> | null | undefined): string {

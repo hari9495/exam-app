@@ -26,7 +26,7 @@ import {
 } from './dto';
 import { PeopleService } from './people.service';
 import { ProfileService } from './profile.service';
-import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto } from './profile.dto';
+import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
 //   implicit grants (YX-SEC-04)   directory and org chart for employees of the company (Public fields, P02 Q4);
@@ -62,7 +62,7 @@ export class PeopleController {
 
   @Get('org-chart')
   async orgChart(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OrgChartQueryDto) {
-    return this.people.orgChart(ctx, await this.viewer(req), q.asOf);
+    return this.people.orgChart(ctx, await this.viewer(req), q.asOf, q.legalEntityId);
   }
 
   @Get('team')
@@ -129,6 +129,18 @@ export class PeopleController {
   async reveal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RevealDto) {
     ownSession(req);
     return this.profiles.reveal(ctx, await this.viewer(req), id, dto.field);
+  }
+
+  /** PPL-03 Activity: who did what on the record; each kind only where the viewer may see it. */
+  @Get('employees/:id/activity')
+  async activity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.activity(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/work-phone')
+  async workPhone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkPhoneDto) {
+    ownSession(req);
+    return this.profiles.setWorkPhone(ctx, await this.viewer(req), id, dto.workPhone ?? null);
   }
 
   @Put('employees/:id/personal')

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@yukthix/ui';
 import { ChangeActionSheet } from '@yukthix/ui/frame';
 import { ChangeDrawer, ChangeReview, ReasonDialog, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
@@ -33,6 +33,8 @@ export default function YxChangeActionPage() {
   const raise = useRaiseChange();
   const write = usePeopleWrite();
   const [starting, setStarting] = useState<string | null>(null);
+  // Opened from a person's record ("Propose a change"): the change form for that person.
+  useEffect(() => setStarting(new URLSearchParams(window.location.search).get('person')), []);
   const [reviewing, setReviewing] = useState<ChangeRecord | null>(null);
   const [rejecting, setRejecting] = useState<ChangeRecord | null>(null);
   const pending = (rows.data ?? []).filter((r) => r.status === 'pending').sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
