@@ -105,7 +105,7 @@ export type BatchStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export interface ChangeBatch {
   id: string;
   status: BatchStatus;
-  source: 'csv' | 'reassign';
+  source: 'csv' | 'reassign' | 'increment' | 'comp_review';
   fileName: string | null;
   reason: string;
   rowCount: number;

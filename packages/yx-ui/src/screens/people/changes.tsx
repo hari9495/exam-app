@@ -20,6 +20,7 @@ import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
+import { LiveIncrementWizard, type LiveIncrement } from './increment';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
 import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
@@ -613,13 +614,20 @@ export function incrementPreview(pct: Record<string, number>, custom: Record<str
 }
 
 // PPL-06
-export function BulkChangesWizard({ current = 'people', confirmOpen = false }: { current?: string; confirmOpen?: boolean }) {
+export function BulkChangesWizard(props: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; live?: LiveIncrement }) {
+  return props.live ? <LiveIncrementWizard live={props.live} /> : <SampleBulkChangesWizard {...props} />;
+}
+
+function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating' }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent' }) {
   const allDepts = useMemo(() => [...new Set(INCREMENT_ROWS.map((r) => r.department))].sort(), []);
   const [type, setType] = useState<string | null>('inc');
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [joinedBefore, setJoinedBefore] = useState<Date | null>(new Date(2026, 3, 1));
   const [depts, setDepts] = useState<string[]>(allDepts);
   const [pct, setPct] = useState(INCREMENT_PCT);
+  const [mode, setMode] = useState<'rating' | 'percent'>(startMode);
+  const [everyone, setEveryone] = useState<number | null>(6);
+  const [cycle, setCycle] = useState<string | null>('fy26');
   const [custom, setCustom] = useState<Record<string, number>>({});
   const [capped, setCapped] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(confirmOpen);
@@ -628,7 +636,8 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
   // The wizard's content column is narrow, so cards take over below 1024 px.
   const narrow = useNarrow(1023);
   const chosen = useMemo(() => INCREMENT_ROWS.filter((r) => depts.includes(r.department)), [depts]);
-  const rows = useMemo(() => incrementPreview(pct, custom, capped, chosen), [pct, custom, capped, chosen]);
+  const rule = useMemo(() => (mode === 'rating' ? pct : { Exceeds: everyone ?? 0, Meets: everyone ?? 0, Below: everyone ?? 0 }), [mode, pct, everyone]);
+  const rows = useMemo(() => incrementPreview(rule, custom, capped, chosen), [rule, custom, capped, chosen]);
   const before = rows.reduce((s, r) => s + r.ctc, 0);
   const after = rows.reduce((s, r) => s + r.next, 0);
   const flaggedRows = rows.filter((r) => r.flag);
@@ -694,7 +703,7 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
                   <DatePicker value={joinedBefore} onChange={setJoinedBefore} />
                 </FormField>
                 <InlineAlert tone="info" actions={<Button size="sm" onClick={() => setLeftOutOpen(true)}>See who</Button>}>
-                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} people on notice are left out.
+                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} are left out.
                 </InlineAlert>
               </div>
             ),
@@ -702,8 +711,30 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
           {
             id: 'rule',
             title: 'Set the rule',
-            summary: `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%`,
+            summary: mode === 'rating' ? `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%` : `${everyone ?? 0}% for everyone`,
             content: (
+              <div className="yx-ppl__form">
+                <Segment
+                  label="Raise by"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: 'rating', label: 'By rating' },
+                    { value: 'percent', label: 'Same for everyone' },
+                  ]}
+                />
+                {mode === 'percent' ? (
+                  <FormField label="Raise for everyone" required>
+                    <NumberField value={everyone} onChange={setEveryone} decimals suffix="%" />
+                  </FormField>
+                ) : (
+                  <>
+                    <FormField label="Ratings from" required>
+                      <Select options={[{ value: 'fy26', label: 'FY 2025-26 annual review' }]} value={cycle} onChange={setCycle} />
+                    </FormField>
+                    <InlineAlert tone="warning" title="1 person has no rating">
+                      They get no raise by rating. Use &quot;Same for everyone&quot;, or see who under Choose people.
+                    </InlineAlert>
               <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Increase by rating">
                 <table className="yx-ppl__impact">
                   <thead>
@@ -730,6 +761,9 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
                     })}
                   </tbody>
                 </table>
+              </div>
+                  </>
+                )}
               </div>
             ),
           },
@@ -807,7 +841,7 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
         onConfirm={() => setConfirm(false)}
       />
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
-        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'On notice', note: p.why }))} />
+        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'Left out', note: p.why }))} />
       </Dialog>
       <Dialog open={letterOpen} onOpenChange={setLetterOpen} size="md" title={`Increment letter · ${first?.name ?? ''}`} footer={<Button onClick={() => setLetterOpen(false)}>Close</Button>}>
         {first && (

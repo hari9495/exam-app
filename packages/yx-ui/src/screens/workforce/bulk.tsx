@@ -27,7 +27,11 @@ import type { BatchStatus, BulkResult, BulkRowResult, ChangeBatch, LoadState } f
 
 export const BULK_TEMPLATE_COLUMNS = ['employee_code', 'legal_entity', 'change_type', 'effective_date', 'location', 'department', 'designation', 'grade', 'employment_type', 'manager', 'dotted_line_managers', 'cost_centre', 'annual_ctc', 'increase_percent', 'reason'];
 
+const SOURCE: Record<string, string> = { reassign: 'Team move', increment: 'Annual increment', comp_review: 'Comp review' };
+
 export interface BulkChangesScreenProps {
+  /** PPL-06: opens the annual increment wizard (pay grant only, R1). */
+  onIncrement?: () => void;
   state: LoadState;
   onRetry?: () => void;
   batches: ChangeBatch[];
@@ -132,7 +136,7 @@ function BatchDrawer({ id, canApprove, canManage, loadBatch, onApprove, onReject
       open
       onOpenChange={(o) => !o && onClose()}
       size="lg"
-      title={batch ? batch.fileName ?? (batch.source === 'reassign' ? 'Team move' : 'Bulk change') : 'Bulk change'}
+      title={batch ? batch.fileName ?? (SOURCE[batch.source] ?? 'Bulk change') : 'Bulk change'}
       subtitle={batch ? `${batch.rowCount} change${batch.rowCount === 1 ? '' : 's'} · raised ${dateLabel(batch.requestedAt.slice(0, 10))}` : undefined}
       footer={
         <>
@@ -195,7 +199,7 @@ function BatchDrawer({ id, canApprove, canManage, loadBatch, onApprove, onReject
 }
 
 export function BulkChangesScreen(props: BulkChangesScreenProps) {
-  const { state, onRetry, batches, people, canManage, canApprove, canPay, defaultBatchId, onCheckFile, onCheckReassign } = props;
+  const { state, onRetry, batches, people, canManage, canApprove, canPay, defaultBatchId, onCheckFile, onCheckReassign, onIncrement } = props;
   const [tab, setTab] = useState<Tab>(defaultBatchId || !canManage ? 'batches' : 'file');
   const [openId, setOpenId] = useState<string | null>(defaultBatchId ?? null);
   const [file, setFile] = useState<{ name: string; csv: string } | null>(null);
@@ -237,7 +241,7 @@ export function BulkChangesScreen(props: BulkChangesScreenProps) {
       value: (b) => b.fileName ?? b.reason,
       render: (b) => (
         <span className="yx-auth__item-main">
-          <Text weight="medium">{b.fileName ?? (b.source === 'reassign' ? 'Team move' : 'Bulk change')}</Text>
+          <Text weight="medium">{b.fileName ?? (SOURCE[b.source] ?? 'Bulk change')}</Text>
           <Text tone="secondary" size="sm">{`${b.rowCount} change${b.rowCount === 1 ? '' : 's'} · ${b.reason}`}</Text>
         </span>
       ),
@@ -252,7 +256,14 @@ export function BulkChangesScreen(props: BulkChangesScreenProps) {
         breadcrumbs={<Breadcrumbs items={[{ label: 'People' }, { label: 'Bulk changes' }]} />}
         title="Bulk changes"
         description="Change many people at once, from a file or by moving a manager's team. Every row is checked first; the batch is approved as a whole."
-        actions={canManage && state === 'ready' ? <Button icon={Download} onClick={template}>Download template</Button> : undefined}
+        actions={
+          canManage && state === 'ready' ? (
+            <>
+              <Button icon={Download} onClick={template}>Download template</Button>
+              {onIncrement && <Button onClick={onIncrement}>Annual increment</Button>}
+            </>
+          ) : undefined
+        }
       />
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load bulk changes." description="Check your connection and try again." onRetry={onRetry} />}

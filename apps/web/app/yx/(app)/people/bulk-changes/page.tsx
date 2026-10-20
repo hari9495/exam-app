@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner } from '@yukthix/ui';
 import { BulkChangesScreen, type BulkResult, type ChangeBatch, type OrgChartData } from '@yukthix/ui/workforce';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
@@ -13,6 +13,7 @@ const id = encodeURIComponent;
 // batch and approved once by someone outside it (approval is a step-up action, YX-SEC-11).
 function Bulk() {
   const params = useSearchParams();
+  const router = useRouter();
   const perms = useYxPermissions();
   const canManage = perms.has('employee.change.manage');
   const batches = usePeople<ChangeBatch[]>('/change-batches');
@@ -29,6 +30,7 @@ function Bulk() {
       canManage={canManage}
       canApprove={perms.has('employee.change.approve')}
       canPay={perms.has('employee.salary.manage')}
+      {...(perms.has('employee.salary.manage') && perms.has('employee.salary.view') ? { onIncrement: () => router.push('/yx/people/bulk-changes/increment') } : {})}
       defaultBatchId={params.get('batch')}
       onCheckFile={(input) => write<BulkResult>('POST', '/change-batches', input)}
       onCheckReassign={(input) => write<BulkResult>('POST', '/change-batches/reassign', input)}

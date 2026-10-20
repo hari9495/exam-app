@@ -9,6 +9,9 @@ import { ChangeRequestDto } from '../employee-history/dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { CHANGE_TYPES, FoldError } from '../employee-history/history-rules';
 import { CsvProblem, parseBulkCsv, RawRow } from './bulk-csv';
+import { IncrementDto } from './dto';
+import { percentFor, raisedCtc } from './increment';
+import { withPayScope } from '../payroll/pay-access';
 
 // M01 §3.3 bulk job changes (annual increment, reorg, "reassign 6 reports to …", §3.2): many P06 changes raised
 // together, each validated and previewed row by row (dry run), stored all or nothing as one batch, and
@@ -24,6 +27,15 @@ interface Item {
   employeeCode?: string;
   dto?: ChangeRequestDto;
   error?: string;
+}
+
+interface IncrementRows {
+  items: Item[];
+  people: { employeeId: string; name: string; code: string; department: string | null; grade: string | null; rating: string | null; currentCtc: string; percent: string; newCtc: string }[];
+  leftOut: { employeeId: string; name: string; rating: string | null; why: string }[];
+  ratingCycles: { id: string; name: string }[];
+  ratingCycleId: string | null;
+  bands: string[];
 }
 
 const message = (e: unknown) => {
@@ -177,7 +189,7 @@ export class BulkChangesService {
   }
 
   /** Dry run, then (unless only a dry run was asked for) the batch: stored all or nothing, pending approval. */
-  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign'; fileName?: string; reason: string; dryRun: boolean }) {
+  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign' | 'increment'; fileName?: string; reason: string; dryRun: boolean }) {
     const preview = await this.history.preview(ctx, async (tx, c) => this.evaluate(tx, c, v, await build(tx, c)));
     if (!preview.rows.length) throw new BadRequestException('There is nothing to change.');
     if (meta.dryRun) return { batch: null, ...preview };
@@ -232,6 +244,108 @@ export class BulkChangesService {
         }));
     };
     return this.submit(ctx, v, build, { source: 'reassign', reason: dto.reason, dryRun: dto.dryRun === true });
+  }
+
+  /**
+   * PPL-06 annual increment: a salary revision for each confirmed person chosen, by rating (released reviews of a
+   * review cycle) or one percentage, the new CTC rounded to whole rupees. Only people the viewer may change, see the pay
+   * of and change the pay of are ever considered (R1, P02 §4.3); ratings only where perf.review.view reaches. Each row
+   * then goes through the same change path as a single change, and the batch through one approval.
+   */
+  async increment(ctx: TenantContext, v: Viewer, dto: IncrementDto) {
+    if (dto.mode === 'percent' && !dto.percent) throw new BadRequestException('Give the raise for everyone.');
+    if (dto.mode === 'rating' && !dto.byRating?.length && !dto.dryRun) throw new BadRequestException('Give the raise for each rating.');
+    if (dto.mode === 'rating' && !v.grants.has('perf.review.view')) throw new ForbiddenException('A raise by rating needs perf.review.view.');
+    let info: IncrementRows | null = null;
+    const out = await this.submit(
+      ctx,
+      v,
+      async (tx, c) => {
+        info = await this.incrementRows(tx, c, v, dto);
+        return info.items;
+      },
+      { source: 'increment', reason: dto.reason, dryRun: dto.dryRun === true },
+    );
+    const { people, leftOut, ratingCycles, ratingCycleId, bands } = info!;
+    return { ...out, people, leftOut, ratingCycles, ratingCycleId, bands };
+  }
+
+  private async incrementRows(tx: Tx, c: CompanyContext, v: Viewer, dto: IncrementDto): Promise<IncrementRows> {
+    const org = c.organizationId;
+    const on = dto.effectiveDate;
+    const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: org }, select: { id: true } });
+    if (!entity) throw new NotFoundException('Legal entity not found');
+    // Everyone in the entity on the date, with their job then.
+    const placed = await tx.$queryRaw<{ employee_id: string; employment_id: string; department_id: string | null; grade_id: string | null }[]>`
+      SELECT DISTINCT ON (a.employee_id) a.employee_id::text, a.employment_id::text, a.department_id::text, a.grade_id::text
+      FROM employee_assignments a JOIN employments m ON m.organization_id = a.organization_id AND m.id = a.employment_id
+      WHERE a.organization_id = ${org}::uuid AND m.legal_entity_id = ${entity.id}::uuid AND a.superseded_at IS NULL AND m.exited_on IS NULL
+        AND a.valid_from <= ${on}::date AND (a.valid_to IS NULL OR a.valid_to >= ${on}::date)
+      ORDER BY a.employee_id, a.valid_from DESC`;
+    const ids = placed.map((p) => p.employee_id);
+    // R1 / P02 §4.3: nobody outside all three grants is a row, or even counted.
+    const change = await this.reachable(tx, c, v);
+    const payView = await this.history.reachedIds(tx, c, v, 'employee.salary.view', ids);
+    const payManage = await this.history.reachedIds(tx, c, v, 'employee.salary.manage', ids);
+    const scoped = placed.filter((p) => change.has(p.employee_id) && payView.has(p.employee_id) && payManage.has(p.employee_id));
+    const employmentIds = scoped.map((p) => p.employment_id);
+    const jobs = await tx.employment.findMany({ where: { organizationId: org, id: { in: employmentIds } }, select: { id: true, employeeCode: true, joinedOn: true } });
+    const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: scoped.map((p) => p.employee_id) } } });
+    const during = { supersededAt: null, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] };
+    const statuses = await tx.employmentStatusPeriod.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...during } });
+    const departments = await tx.department.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.department_id ? [p.department_id] : [])) } }, select: { id: true, name: true } });
+    const grades = await tx.grade.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.grade_id ? [p.grade_id] : [])) } }, select: { id: true, name: true } });
+    const pays = await withPayScope(tx, [entity.id], () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...during } }));
+    // Ratings: the released reviews of the chosen (or latest) review cycle in this entity, where perf.review.view reaches.
+    const released = await tx.review.groupBy({ by: ['cycleId'], where: { organizationId: org, legalEntityId: entity.id, status: { in: ['released', 'acknowledged'] } }, _max: { releasedAt: true } });
+    const cycles = (await tx.reviewCycle.findMany({ where: { organizationId: org, id: { in: released.map((r) => r.cycleId) } }, select: { id: true, name: true } }))
+      .map((x) => ({ ...x, at: released.find((r) => r.cycleId === x.id)?._max.releasedAt?.getTime() ?? 0 }))
+      .sort((a, b) => b.at - a.at)
+      .map(({ id, name }) => ({ id, name }));
+    const cycle = dto.reviewCycleId ? cycles.find((x) => x.id === dto.reviewCycleId) : cycles[0];
+    if (dto.reviewCycleId && !cycle) throw new NotFoundException('No released ratings in that review cycle for this entity.');
+    const ratingReach = dto.mode === 'rating' && cycle ? await this.history.reachedIds(tx, c, v, 'perf.review.view', scoped.map((p) => p.employee_id)) : new Set<string>();
+    const reviews = cycle && ratingReach.size ? await tx.review.findMany({ where: { organizationId: org, cycleId: cycle.id, status: { in: ['released', 'acknowledged'] }, employeeId: { in: [...ratingReach] } }, select: { employeeId: true, band: true, finalScore: true } }) : [];
+    // The rating labels, best first.
+    const bands = [...new Set([...reviews].filter((r) => r.band).sort((a, b) => Number(b.finalScore ?? 0) - Number(a.finalScore ?? 0)).map((r) => r.band!))];
+    const overrides = new Map((dto.overrides ?? []).map((o) => [o.employeeId, o.percent]));
+    const depts = dto.departmentIds?.length ? new Set(dto.departmentIds) : null;
+    const rows: IncrementRows['people'] = [];
+    const leftOut: IncrementRows['leftOut'] = [];
+    const items: Item[] = [];
+    for (const p of scoped) {
+      const job = jobs.find((j) => j.id === p.employment_id)!;
+      if (depts && (!p.department_id || !depts.has(p.department_id))) continue;
+      if (dto.joinedBefore && isoDate(job.joinedOn) >= dto.joinedBefore) continue;
+      const name = displayName(people.find((x) => x.id === p.employee_id)!);
+      const status = statuses.find((x) => x.employmentId === p.employment_id)?.status;
+      const pay = pays.find((x) => x.employmentId === p.employment_id);
+      const rating = reviews.find((r) => r.employeeId === p.employee_id)?.band ?? null;
+      const skip = (why: string) => leftOut.push({ employeeId: p.employee_id, name, rating, why });
+      if (status === 'notice') {
+        skip('On notice.');
+        continue;
+      }
+      if (status !== 'confirmed') {
+        skip('Not confirmed yet.');
+        continue;
+      }
+      if (!pay) {
+        skip('No current pay on file.');
+        continue;
+      }
+      const percent = percentFor(dto, rating, overrides.get(p.employee_id));
+      if (!percent) {
+        skip(dto.mode === 'percent' ? 'No raise set.' : rating ? `No raise set for the rating ${rating}.` : cycle ? `No released rating in ${cycle.name}.` : 'No released ratings in this entity yet.');
+        continue;
+      }
+      const newCtc = raisedCtc(pay.annualCtc, percent);
+      rows.push({ employeeId: p.employee_id, name, code: job.employeeCode, department: departments.find((d) => d.id === p.department_id)?.name ?? null, grade: grades.find((g) => g.id === p.grade_id)?.name ?? null, rating, currentCtc: pay.annualCtc.toFixed(2), percent, newCtc });
+      items.push({ line: items.length + 1, employeeId: p.employee_id, employeeCode: job.employeeCode, dto: plainToInstance(ChangeRequestDto, { employeeId: p.employee_id, changeType: 'salary_revision', effectiveDate: on, payload: { compensation: { annualCtc: newCtc } }, reason: dto.reason.trim() }) });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    leftOut.sort((a, b) => a.name.localeCompare(b.name));
+    return { items, people: rows, leftOut, ratingCycles: cycles, ratingCycleId: cycle?.id ?? null, bands };
   }
 
   // ---- the batch: one decision for all its changes ----

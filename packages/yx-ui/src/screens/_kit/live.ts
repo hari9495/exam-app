@@ -22,7 +22,8 @@ export { PreboardingBatches, type BatchRow, type LiveBatches } from '../people/o
 export { ProbationQueue, type LiveProbation, type ProbRow, type ProbationDraft, type ProbationOutcome } from '../people/onboarding';
 export { JourneyRecord, type LiveJourney } from '../people/onboarding';
 export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
-export { ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
+export { BulkChangesWizard, ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
+export type { IncrementInput, IncrementResult, LiveIncrement } from '../people/increment';
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';

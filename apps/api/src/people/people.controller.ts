@@ -21,6 +21,7 @@ import {
   ReasonDto,
   ReassignDto,
   ReportsQueryDto,
+  IncrementDto,
 } from './dto';
 import { PeopleService } from './people.service';
 import { ProfileService } from './profile.service';
@@ -203,6 +204,14 @@ export class PeopleController {
   async reassign(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ReassignDto) {
     ownSession(req);
     return this.bulk.reassign(ctx, await this.viewer(req), dto);
+  }
+
+  /** PPL-06 annual increment: pay changes, so both the change and the pay grant (R1). */
+  @Post('change-batches/increment')
+  @RequirePermissions('employee.change.manage', 'employee.salary.manage')
+  async increment(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: IncrementDto) {
+    ownSession(req);
+    return this.bulk.increment(ctx, await this.viewer(req), dto);
   }
 
   @Get('change-batches/:id')

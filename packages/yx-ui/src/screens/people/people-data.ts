@@ -347,6 +347,7 @@ export const INCREMENT_LEFT_OUT = [
   { name: 'Meera Iyer', why: 'Resigned · last day 19 Oct 2026' },
   { name: 'Ravi Kumar', why: 'Resigned · last day 30 Oct 2026' },
   { name: 'Sathish Kumar', why: 'Resigned · last day 14 Nov 2026' },
+  { name: 'Nikhil Rao', why: 'No released rating in FY 2025-26 annual review.' },
 ];
 export const INCREMENT_PCT: Record<string, number> = { Exceeds: 12, Meets: 8, Below: 3 };
 

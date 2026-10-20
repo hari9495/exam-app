@@ -59,6 +59,8 @@ export const HISTORY_KEYS = [
   'employee.identity.manage',
   'employee.identity.approve',
   'employee.aadhaar.view',
+  // PPL-06: the annual increment reads released ratings where this reaches.
+  'perf.review.view',
 ] as const;
 export type Key = (typeof HISTORY_KEYS)[number];
 export type { Viewer } from '../access/scope';
