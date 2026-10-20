@@ -27,7 +27,7 @@ import type { FieldClass,  } from './people-logic';
 import type { Letter as LiveLetter, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
-import { ClassBadge, MeFrame, PeopleFrame,  } from './people-kit';
+import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
 
 const SCAN = (title: string) =>
   'data:image/svg+xml;utf8,' +
@@ -461,6 +461,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           columns={cols}
           rows={live.rows}
           getRowId={(r) => r.id}
+          onExport={exportCsv('letters', live.rows, cols)}
           state={live.state === 'loading' ? 'loading' : 'ready'}
           rowActions={(r) =>
             r.status === 'issued' || r.status === 'superseded' ? (
@@ -480,9 +481,28 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               </>
             ) : null
           }
-          // Issue a correction and export: not in the live app yet (left out).
           defaultSort={{ key: 'issued', dir: 'desc' }}
-          empty={<EmptyState title="No letters issued yet" description="Issue a letter from a template, or in bulk after a change." />}
+          empty={
+            <EmptyState
+              title="No letters issued yet"
+              description="Issue a letter from a template, or in bulk after a change."
+              action={
+                live.issue ? (
+                  <Button
+                    icon={Plus}
+                    onClick={() => {
+                      setType(null);
+                      setWho(null);
+                      setFailed(null);
+                      setIssuing(true);
+                    }}
+                  >
+                    Issue letter
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
         />
       )}
       {live.issue && (
