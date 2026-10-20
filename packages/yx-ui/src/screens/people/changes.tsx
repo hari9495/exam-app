@@ -1,12 +1,12 @@
 // PPL-04 Change action · PPL-05 Scheduled changes · PPL-06 Bulk changes wizard · PPL-07 Employee import
 // PPL-09 Bulk transfer / restructure wizard · PPL-10 Inter-entity continuity checklist (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -22,7 +22,7 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -111,10 +111,80 @@ export interface ChangeActionSheetProps {
   payrollProcessedTo?: Date;
   /** The side panel starts open (stories); false shows the page itself. */
   startOpen?: boolean;
+  live?: LiveChangeAction;
+}
+
+/** The live app's Change action page (design audit step 3): pick a person, start the change; what waits for approval. */
+export interface LiveChangeAction {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  people: { id: string; name: string; role: string; department: string }[];
+  waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
+  onStart: (personId: string) => void;
+  onOpenWaiting: (id: string) => void;
+  /** The change form and the review drawer the page opens. */
+  children?: ReactNode;
+}
+
+function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveChangeAction }) {
+  const mgr = persona === 'mgr';
+  const [whoId, setWhoId] = useState<string | null>(null);
+  return (
+    <PeopleFrame active="Change action" persona={persona}>
+      <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <div className="yx-ppl__grid2">
+          <Card title="Start a change">
+            <div className="yx-ppl__stack">
+              <FormField label="Person" required>
+                <PersonPicker people={live.people.map((p) => ({ id: p.id, name: p.name, role: p.role, department: p.department }))} value={whoId} onChange={setWhoId} placeholder="Find a person" />
+              </FormField>
+              <div>
+                <Button variant="primary" disabled={!whoId} onClick={() => whoId && live.onStart(whoId)}>
+                  Start change
+                </Button>
+              </div>
+            </div>
+          </Card>
+          <Card title={`Waiting for approval (${live.waiting.length})`}>
+            {live.state === 'loading' ? (
+              <ListSkeleton label="Loading changes waiting for approval" rows={2} />
+            ) : live.waiting.length ? (
+              <StatusChecklist
+                label="Changes waiting for approval"
+                rows={live.waiting.map(
+                  (w): ChecklistRow => ({
+                    id: w.id,
+                    title: `${w.name} · ${w.kind}`,
+                    status: 'Pending approval',
+                    note: `Effective ${formatDate(w.effective)} · ${w.note}`,
+                    action: w.canOpen ? (
+                      <Button size="sm" onClick={() => live.onOpenWaiting(w.id)}>
+                        Open
+                      </Button>
+                    ) : undefined,
+                  }),
+                )}
+              />
+            ) : (
+              <Text tone="secondary">Nothing is waiting.</Text>
+            )}
+          </Card>
+        </div>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
 }
 
 // PPL-04
-export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
+export function ChangeActionSheet(props: ChangeActionSheetProps) {
+  return props.live ? <LiveChangeActionPage persona={props.persona} live={props.live} /> : <SampleChangeActionSheet {...props} />;
+}
+
+function SampleChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
   const mgr = persona === 'mgr';
   const people = CHANGE_PEOPLE.filter((p) => !mgr || p.mine);
   const [open, setOpen] = useState(startOpen);
@@ -328,7 +398,7 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
 
 /* ================================================================== PPL-05 scheduled changes */
 
-type Sched = (typeof SCHEDULED)[number];
+export type Sched = (typeof SCHEDULED)[number];
 type Win = 30 | 60 | 90;
 
 /** Effective date plus "in 2 days"; amber within a week. */
@@ -343,7 +413,19 @@ function EffectiveCell({ date, today }: { date: Date; today: Date }) {
 }
 
 // PPL-05
-export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean }) {
+/** The live app's scheduled changes (design audit step 3). */
+export interface LiveScheduled {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  onEdit?: (id: string) => void;
+  onReview?: (id: string) => void;
+  onOpen: (id: string) => void;
+  onCancel?: (id: string, reason: string) => Promise<void>;
+  onStart?: () => void;
+  children?: ReactNode;
+}
+
+export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true, live }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean; live?: LiveScheduled }) {
   const [win, setWin] = useState<Win>(defaultWindow);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [showPay, setShowPay] = useState(false);
@@ -365,7 +447,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
       {r.status === 'Pending approval' && (
         <>
           <Badge tone="warning">Pending approval</Badge>
-          <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>
+          {r.waitingFor && <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>}
         </>
       )}
     </span>
@@ -383,12 +465,26 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
     { key: 'summary', header: 'What changes', value: (r) => r.summary, render: summaryCell, width: 225 },
     { key: 'raisedBy', header: 'Raised by', value: (r) => r.raisedBy, width: 170 },
   ];
-  const edit = () => (
-    <Button size="sm" icon={Pencil}>
-      Edit
-    </Button>
-  );
-  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={<Button variant="primary">Start change</Button>} />;
+  const edit = (r: Sched) =>
+    live ? (
+      r.status === 'Pending approval' && live.onReview ? (
+        <Button size="sm" variant="review" onClick={() => live.onReview!(r.id)}>
+          Review
+        </Button>
+      ) : live.onEdit ? (
+        <Button size="sm" icon={Pencil} onClick={() => live.onEdit!(r.id)}>
+          Edit
+        </Button>
+      ) : null
+    ) : (
+      <Button size="sm" icon={Pencil}>
+        Edit
+      </Button>
+    );
+  const start = live ? live.onStart : () => {};
+  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={start ? <Button variant="primary" onClick={start}>Start change</Button> : undefined} />;
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   return (
     <PeopleFrame active="Scheduled">
       <PageHeader
@@ -415,7 +511,11 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           His {revision.summary.replace('Market correction ', '')} revision on {formatDate(revision.effective)} is worked out on his pay after the {formatDate(earlier.effective)} {earlier.type.toLowerCase()}. Check the amounts before it applies.
         </InlineAlert>
       )}
-      {narrow ? (
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the scheduled changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading scheduled changes" />
+      ) : narrow ? (
         shown.length === 0 ? (
           empty
         ) : (
@@ -426,7 +526,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
                 {changeCell(r)}
                 {summaryCell(r)}
                 <EffectiveCell date={r.effective} today={today} />
-                {edit()}
+                {edit(r)}
               </li>
             ))}
           </ul>
@@ -441,32 +541,52 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           rowButtons={edit}
           rowActions={(r) => (
             <>
-              <MenuItem>Open change</MenuItem>
-              <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
-                Cancel change
-              </MenuItem>
+              <MenuItem onSelect={live ? () => live.onOpen(r.id) : undefined}>{live ? 'Open record' : 'Open change'}</MenuItem>
+              {(!live || live.onCancel) && (
+                <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
+                  Cancel change
+                </MenuItem>
+              )}
             </>
           )}
           defaultSort={{ key: 'effective', dir: 'asc' }}
           defaultColumnState={{ hidden: ['raisedBy'] }}
-          onExport={() => {}}
+          // Export: no export of scheduled changes in the live app yet (left out).
+          {...(live ? {} : { onExport: () => {} })}
         />
       )}
       <ConfirmDialog
         open={!!cancelRow}
         onOpenChange={(o) => !o && setCancelId(null)}
-        title={`Cancel ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
-        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. The approvers are told, and the cancelled change stays on the timeline.` : ''}
+        title={`Cancel the ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
+        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. ${live ? 'The cancelled change stays on the timeline.' : 'The approvers are told, and the cancelled change stays on the timeline.'}` : ''}
         confirmLabel="Cancel change"
         cancelLabel="Keep change"
         destructive
-        confirmDisabled={reason.trim().length < 5}
-        onConfirm={() => setCancelId(null)}
+        confirmDisabled={reason.trim().length < 5 || cancelling}
+        onConfirm={async () => {
+          if (live?.onCancel && cancelRow) {
+            setCancelling(true);
+            setCancelError(null);
+            try {
+              await live.onCancel(cancelRow.id, reason.trim());
+            } catch (e) {
+              setCancelError(e instanceof Error ? e.message : 'The change was not cancelled. Try again.');
+              setCancelling(false);
+              throw e;
+            }
+            setCancelling(false);
+          }
+          setReason('');
+          setCancelId(null);
+        }}
       >
         <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers.">
           <TextArea value={reason} onChange={setReason} rows={2} />
         </FormField>
+        {cancelError && <InlineAlert tone="danger" title={cancelError} />}
       </ConfirmDialog>
+      {live?.children}
     </PeopleFrame>
   );
 }

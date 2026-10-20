@@ -245,7 +245,7 @@ export function RehireImpact({ overridden = false }: { overridden?: boolean }) {
   );
 }
 
-//** A row of the queue: the sample offers, or a live accepted offer. */
+/** A row of the queue: the sample offers, or a live accepted offer. */
 export type ReadyRow = Ready & { live?: { offerId: string; email: string; internal: boolean } };
 
 /** The live app's queue (design audit step 3). */

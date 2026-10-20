@@ -43,9 +43,9 @@ export interface JobChangesScreenProps {
   newChange?: { options: ChangeOptions; onPreview: (input: ChangeInput) => Promise<Impact>; onSubmit: (input: ChangeInput) => Promise<void> };
 }
 
-type Ask = { kind: 'reject' | 'cancel' | 'reschedule'; row: ChangeRecord };
+export type ChangeAsk = { kind: 'reject' | 'cancel' | 'reschedule'; row: ChangeRecord };
 
-function Review({ row, onPreview, onApprove, onReject, onClose }: { row: ChangeRecord; onPreview: (id: string) => Promise<Impact>; onApprove: (confirm: boolean) => Promise<void>; onReject: () => void; onClose: () => void }) {
+export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: ChangeRecord; onPreview: (id: string) => Promise<Impact>; onApprove: (confirm: boolean) => Promise<void>; onReject: () => void; onClose: () => void }) {
   const [impact, setImpact] = useState<Impact | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, error, run } = useRun();
@@ -83,7 +83,7 @@ function Review({ row, onPreview, onApprove, onReject, onClose }: { row: ChangeR
   );
 }
 
-function ReasonDialog({ ask, onDone, onClose, act }: { ask: Ask; onDone: () => void; onClose: () => void; act: (reason: string, date: string | null) => Promise<void> }) {
+export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; onDone: () => void; onClose: () => void; act: (reason: string, date: string | null) => Promise<void> }) {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState<Date | null>(null);
   const copy = {
@@ -129,7 +129,7 @@ const VIEWS: { value: ChangesView; label: string }[] = [
 export function JobChangesScreen({ state, onRetry, today, rows, defaultView = 'pending', canApprove, canManage, personHref, batchHref, onPreview, onApprove, onReject, onCancel, onReschedule, newChange }: JobChangesScreenProps) {
   const [view, setView] = useState<ChangesView>(defaultView);
   const [reviewing, setReviewing] = useState<ChangeRecord | null>(null);
-  const [ask, setAsk] = useState<Ask | null>(null);
+  const [ask, setAsk] = useState<ChangeAsk | null>(null);
   const [raising, setRaising] = useState(false);
   const shown = rows.filter((r) => (view === 'done' ? r.status === 'effective' || r.status === 'rejected' || r.status === 'cancelled' : r.status === view));
   const columns: TableColumn<ChangeRecord>[] = [

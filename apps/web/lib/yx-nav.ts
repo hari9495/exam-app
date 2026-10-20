@@ -101,7 +101,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('Changes', [
         ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
         ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
         ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
       ]),
@@ -109,7 +109,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
         ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
         ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
-        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
       ]),
       ...sec(undefined, [
         ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
@@ -117,7 +117,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-      ...sec('More', when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people'))),
+      ...sec('More', [...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people')), ...when(has('lifecycle.exit.manage'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment'))]),
     ],
   };
 
