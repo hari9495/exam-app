@@ -849,7 +849,7 @@ export function AssetsScreen(p: AssetsScreenProps) {
   );
 }
 
-function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
+export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
   const [category, setCategory] = useState('');
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');

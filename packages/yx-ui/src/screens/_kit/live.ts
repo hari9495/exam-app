@@ -31,3 +31,4 @@ export { VrsScheme, type LiveVrs } from '../people/relations';
 export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { IssuedLettersRegister, type LiveLetters } from '../people/documents';
+export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';

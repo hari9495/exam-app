@@ -46,6 +46,7 @@ export {
   ExitCaseScreen,
   ClearanceScreen,
   AssetsScreen,
+  AddAssetDrawer,
   AlumniScreen,
   MyDocumentsScreen,
   type AlumniScreenProps,
