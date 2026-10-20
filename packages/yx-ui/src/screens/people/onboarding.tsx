@@ -23,6 +23,7 @@ import { formatDate } from '../../lib/format';
 import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
 import { addDays, daysBetween, extensionAllowed, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
+import type { JoinerInput, JoinerPlaces } from './live/types';
 import { BATCHES, BUDDIES, d, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
 import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
@@ -242,35 +243,59 @@ export function RehireImpact({ overridden = false }: { overridden?: boolean }) {
   );
 }
 
+//** A row of the queue: the sample offers, or a live accepted offer. */
+export type ReadyRow = Ready & { live?: { offerId: string; email: string; internal: boolean } };
+
+/** The live app's queue (design audit step 3). */
+export interface LiveReady {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  today: Date;
+  places: JoinerPlaces;
+  onCreate: (row: ReadyRow, input: Omit<JoinerInput, 'email' | 'phone'>) => Promise<void>;
+  /** A current employee moves by a job change, never onboarding. */
+  onJobChange: () => void;
+}
+
 // PPL-12
-export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden }: { rows: Ready[]; defaultOpenId?: string; overridden?: boolean }) {
+export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: { rows: ReadyRow[]; defaultOpenId?: string; overridden?: boolean; live?: LiveReady }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const open = rows.find((r) => r.id === openId);
   const narrow = useNarrow();
-  const cols: TableColumn<Ready>[] = [
-    { key: 'name', header: 'Joiner', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: `${r.role} · ${r.dept}` }), width: 260 },
-    { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} />, width: 190 },
+  const today = live?.today ?? TODAY;
+  const cols: TableColumn<ReadyRow>[] = [
+    { key: 'name', header: 'Joiner', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: [r.role, r.dept].filter(Boolean).join(' · ') }), width: 260 },
+    { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 190 },
     { key: 'personType', header: 'Person type', value: (r) => r.personType, render: (r) => <TypeCell row={r} />, groupable: true, width: 240 },
     { key: 'source', header: 'From', value: (r) => r.source, width: 190, optional: true },
-    { key: 'location', header: 'Location', value: (r) => r.location, width: 150, optional: true },
+    ...(live ? [] : [{ key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>]),
     { key: 'offerAccepted', header: 'Offer accepted', type: 'date', value: (r) => r.offerAccepted, width: 140, optional: true },
   ];
-  const action = (r: Ready) => (
-    <Button size="sm" icon={UserPlus} onClick={() => setOpenId(r.id)}>
-      {r.personType === 'Contract worker conversion' ? 'Convert' : 'Create employee'}
-    </Button>
-  );
+  const action = (r: ReadyRow) =>
+    r.live?.internal ? (
+      <Button size="sm" onClick={live?.onJobChange}>
+        Job change
+      </Button>
+    ) : (
+      <Button size="sm" icon={UserPlus} onClick={() => setOpenId(r.id)}>
+        {r.personType === 'Contract worker conversion' ? 'Convert' : 'Create employee'}
+      </Button>
+    );
   const empty = (
     <EmptyState
       title="No accepted offers are waiting"
       description="Entities set to automatic hand-off create the employee when the offer is accepted, so their joiners go straight to the Onboarding board."
-      action={<Button>Change hand-off setting</Button>}
+      action={live ? undefined : <Button>Change hand-off setting</Button>}
     />
   );
   return (
     <PeopleFrame active="Ready to onboard">
       <PageHeader title="Ready to onboard" description="Accepted offers whose employee isn't created yet, soonest joining first. Create the employee to start pre-boarding; the person type decides the path." />
-      {narrow ? (
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the accepted offers" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading accepted offers" />
+      ) : narrow ? (
         rows.length === 0 ? (
           empty
         ) : (
@@ -278,95 +303,190 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden }: { rows:
             {[...rows].sort((a, b) => a.joining.getTime() - b.joining.getTime()).map((r) => (
               <li key={r.id} className="yx-ppl__rcard">
                 <span className="yx-ppl__rcard-name">{r.name}</span>
-                <span className="yx-ppl__sub">
-                  {r.role} · {r.location}
-                </span>
+                <span className="yx-ppl__sub">{[r.role, r.location].filter(Boolean).join(' · ')}</span>
                 <span className="yx-ppl__row">
                   <TypeCell row={r} />
                 </span>
-                <JoinsCell date={r.joining} />
+                <JoinsCell date={r.joining} today={today} />
                 {action(r)}
               </li>
             ))}
           </ul>
         )
       ) : (
-      <DataTable
-        defaultSort={{ key: 'joining', dir: 'asc' }}
-        defaultColumnState={{ hidden: ['offerAccepted'] }}
-        label="Ready to onboard"
-        columns={cols}
-        rows={rows}
-        getRowId={(r) => r.id}
-        onRowClick={(r) => setOpenId(r.id)}
-        activeRowId={openId}
-        rowButtons={action}
-        rowActions={() => (
-          <>
-            <MenuItem>Open offer</MenuItem>
-            <MenuItem>Mark reneged</MenuItem>
-          </>
-        )}
-        empty={empty}
-      />
+        <DataTable
+          defaultSort={{ key: 'joining', dir: 'asc' }}
+          defaultColumnState={{ hidden: ['offerAccepted'] }}
+          label="Ready to onboard"
+          columns={cols}
+          rows={rows}
+          getRowId={(r) => r.id}
+          onRowClick={(r) => !r.live?.internal && setOpenId(r.id)}
+          activeRowId={openId}
+          rowButtons={action}
+          // Open offer and Mark reneged: no live action for an accepted offer yet (left out).
+          rowActions={
+            live
+              ? undefined
+              : () => (
+                  <>
+                    <MenuItem>Open offer</MenuItem>
+                    <MenuItem>Mark reneged</MenuItem>
+                  </>
+                )
+          }
+          empty={empty}
+        />
       )}
-      <Drawer
-        open={!!open}
-        onOpenChange={(o) => !o && setOpenId(null)}
-        size="lg"
-        title={open?.personType === 'Contract worker conversion' ? `Convert ${open?.name} to employee` : `Create employee: ${open?.name ?? ''}`}
-        subtitle={open ? `${open.personType} · ${open.source}${open.note ? ` · ${open.note}` : ''}` : undefined}
-        footer={
-          <>
-            <Button onClick={() => setOpenId(null)}>Cancel</Button>
-            <Button variant="primary">{open?.personType === 'Contract worker conversion' ? 'Convert and start pre-boarding' : 'Create and start pre-boarding'}</Button>
-          </>
-        }
-      >
-        {open && (
-          <div className="yx-ppl__stack yx-ppl__drawer-body">
-            {/* From the offer, read-only: check before creating. */}
-            <dl className="yx-ppl__dl">
-              <div className="yx-ppl__dl-row"><dt>Name</dt><dd>{open.name}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Role</dt><dd>{open.role}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Department</dt><dd>{open.dept}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{open.location}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Legal entity</dt><dd>{open.entity}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{open.manager}</dd></div>
-              <div className="yx-ppl__dl-row">
-                <dt>Employee code</dt>
-                <dd className="yx-mono">{open.personType === 'Ex-employee rehire' ? 'Reuses KF-0077' : 'KF-0249 (next in series)'}</dd>
+      {live ? (
+        open && <CreateFromOffer row={open} live={live} onClose={() => setOpenId(null)} />
+      ) : (
+        <Drawer
+          open={!!open}
+          onOpenChange={(o) => !o && setOpenId(null)}
+          size="lg"
+          title={open?.personType === 'Contract worker conversion' ? `Convert ${open?.name} to employee` : `Create employee: ${open?.name ?? ''}`}
+          subtitle={open ? `${open.personType} · ${open.source}${open.note ? ` · ${open.note}` : ''}` : undefined}
+          footer={
+            <>
+              <Button onClick={() => setOpenId(null)}>Cancel</Button>
+              <Button variant="primary">{open?.personType === 'Contract worker conversion' ? 'Convert and start pre-boarding' : 'Create and start pre-boarding'}</Button>
+            </>
+          }
+        >
+          {open && (
+            <div className="yx-ppl__stack yx-ppl__drawer-body">
+              {/* From the offer, read-only: check before creating. */}
+              <dl className="yx-ppl__dl">
+                <div className="yx-ppl__dl-row"><dt>Name</dt><dd>{open.name}</dd></div>
+                <div className="yx-ppl__dl-row"><dt>Role</dt><dd>{open.role}</dd></div>
+                <div className="yx-ppl__dl-row"><dt>Department</dt><dd>{open.dept}</dd></div>
+                <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{open.location}</dd></div>
+                <div className="yx-ppl__dl-row"><dt>Legal entity</dt><dd>{open.entity}</dd></div>
+                <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{open.manager}</dd></div>
+                <div className="yx-ppl__dl-row">
+                  <dt>Employee code</dt>
+                  <dd className="yx-mono">{open.personType === 'Ex-employee rehire' ? 'Reuses KF-0077' : 'KF-0249 (next in series)'}</dd>
+                </div>
+              </dl>
+              <div className="yx-ppl__form">
+                <FormField label="Joining date" required helper="Pre-filled from the offer. Tasks are scheduled from this date.">
+                  <DatePicker value={open.joining} onChange={() => {}} />
+                </FormField>
+                <FormField label="Onboarding template" required helper="Chosen from the location. You can change it.">
+                  <Select
+                    options={[{ value: 'plant', label: 'Plant staff · Hosur (13 tasks)' }, { value: 'office', label: 'Office staff (11 tasks)' }]}
+                    value={open.location === 'Hosur plant' ? 'plant' : 'office'}
+                    onChange={() => {}}
+                  />
+                </FormField>
               </div>
-            </dl>
-            <div className="yx-ppl__form">
-              <FormField label="Joining date" required helper="Pre-filled from the offer. Tasks are scheduled from this date.">
-                <DatePicker value={open.joining} onChange={() => {}} />
-              </FormField>
-              <FormField label="Onboarding template" required helper="Chosen from the location. You can change it.">
-                <Select
-                  options={[{ value: 'plant', label: 'Plant staff · Hosur (13 tasks)' }, { value: 'office', label: 'Office staff (11 tasks)' }]}
-                  value={open.location === 'Hosur plant' ? 'plant' : 'office'}
-                  onChange={() => {}}
-                />
-              </FormField>
+              {open.personType === 'Ex-employee rehire' && <RehireImpact overridden={overridden} />}
+              {open.personType === 'Contract worker conversion' && (
+                <InlineAlert tone="info" title="Same person, new role">
+                  {open.name}&apos;s deployments, site attendance and contract-labour records stay on the same timeline. Contract service doesn&apos;t count for probation (company setting). The kiosk enrolment carries over.
+                </InlineAlert>
+              )}
+              <InlineAlert tone="info">An appointment letter task is added for HR, due by the joining date. It can&apos;t be removed.</InlineAlert>
             </div>
-            {open.personType === 'Ex-employee rehire' && <RehireImpact overridden={overridden} />}
-            {open.personType === 'Contract worker conversion' && (
-              <InlineAlert tone="info" title="Same person, new role">
-                {open.name}'s deployments, site attendance and contract-labour records stay on the same timeline. Contract service doesn't count for probation (company setting). The kiosk enrolment carries over.
-              </InlineAlert>
-            )}
-            <InlineAlert tone="info">An appointment letter task is added for HR, due by the joining date. It can't be removed.</InlineAlert>
-          </div>
-        )}
-      </Drawer>
+          )}
+        </Drawer>
+      )}
     </PeopleFrame>
   );
 }
 
+const dayKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Live: the offer's facts, then where the joiner works (the offer does not say), then create. */
+function CreateFromOffer({ row, live, onClose }: { row: ReadyRow; live: LiveReady; onClose: () => void }) {
+  const places = live.places;
+  const [first, ...rest] = row.name.split(' ');
+  const [date, setDate] = useState<Date | null>(row.joining);
+  const [entity, setEntity] = useState<string | null>(places.entities.length === 1 ? places.entities[0].value : null);
+  const [location, setLocation] = useState<string | null>(null);
+  const [dept, setDept] = useState<string | null>(null);
+  const [desig, setDesig] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
+  const [manager, setManager] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const missing = { date: !date, entity: !entity, location: !location };
+  const create = async () => {
+    setTried(true);
+    if (missing.date || missing.entity || missing.location) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onCreate(row, { givenName: first, familyName: rest.join(' ') || null, joiningOn: dayKeyOf(date!), legalEntityId: entity!, locationId: location!, departmentId: dept, designationId: desig, employmentTypeId: type, managerEmployeeId: manager });
+      onClose();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'The joiner was not created. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="lg"
+      title={`Create employee: ${row.name}`}
+      subtitle={`${row.personType} · ${row.source}${row.note ? ` · ${row.note}` : ''}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={() => void create()}>
+            Create and start pre-boarding
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack yx-ppl__drawer-body">
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        <dl className="yx-ppl__dl">
+          <div className="yx-ppl__dl-row"><dt>Name</dt><dd>{row.name}</dd></div>
+          <div className="yx-ppl__dl-row"><dt>Role</dt><dd>{row.role}</dd></div>
+          <div className="yx-ppl__dl-row"><dt>Email</dt><dd>{row.live?.email}</dd></div>
+          <div className="yx-ppl__dl-row"><dt>Start date in the offer</dt><dd>{formatDate(row.joining)}</dd></div>
+        </dl>
+        <div className="yx-ppl__form">
+          <FormField id="ro-date" label="Joining date" required helper="Pre-filled from the offer. Tasks are scheduled from this date." error={tried && missing.date ? 'Choose the joining day.' : null}>
+            <DatePicker value={date} onChange={setDate} aria-label="Joining date" />
+          </FormField>
+          <FormField id="ro-entity" label="Legal entity" required error={tried && missing.entity ? 'Choose the legal entity.' : null}>
+            <Select aria-label="Legal entity" value={entity} onChange={(x) => (setEntity(x), setLocation(null))} options={places.entities} />
+          </FormField>
+          <FormField id="ro-location" label="Location" required helper={entity ? undefined : 'Choose the legal entity first.'} error={tried && missing.location ? 'Choose the location.' : null}>
+            <Select aria-label="Location" value={location} onChange={setLocation} options={places.locations.filter((l) => l.entityId === entity)} disabled={!entity} />
+          </FormField>
+          <FormField id="ro-dept" label="Department" optional>
+            <Select aria-label="Department" value={dept} onChange={setDept} options={places.departments} clearable searchable />
+          </FormField>
+          <FormField id="ro-desig" label="Designation" optional>
+            <Select aria-label="Designation" value={desig} onChange={setDesig} options={places.designations} clearable searchable />
+          </FormField>
+          <FormField id="ro-type" label="Employment type" optional>
+            <Select aria-label="Employment type" value={type} onChange={setType} options={places.employmentTypes} clearable />
+          </FormField>
+          <FormField id="ro-manager" label="Manager" optional helper="They see the joiner under Joining soon and get the manager's tasks.">
+            <Select aria-label="Manager" value={manager} onChange={setManager} options={places.managers} clearable searchable />
+          </FormField>
+        </div>
+        {row.personType === 'Ex-employee rehire' && (
+          <InlineAlert tone="info" title="Worked here before">
+            After you create the joiner, choose the rehire options (code, PF, service, leave) on their checklist.
+          </InlineAlert>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
 /** Joins column: date plus "in 5 days"; within a week it is flagged. */
-function JoinsCell({ date }: { date: Date }) {
-  const n = daysBetween(TODAY, date);
+function JoinsCell({ date, today = TODAY }: { date: Date; today?: Date }) {
+  const n = daysBetween(today, date);
   const soon = n <= 7;
   return (
     <span className="yx-ppl__row">

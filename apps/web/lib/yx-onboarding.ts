@@ -1,4 +1,4 @@
-import { joinerCard, type KanbanColumn } from '@yukthix/ui/frame';
+import { joinerCard, type KanbanColumn, type ReadyRow } from '@yukthix/ui/frame';
 import type { Joiner, OwnerType, ReadyOffer } from '@yukthix/ui/lifecycle';
 
 // People › Onboarding board (PPL-11) from the live API: pure mapping, unit-tested. The stage follows the dates:
@@ -47,3 +47,26 @@ export function boardColumns(joiners: Joiner[], offers: ReadyOffer[] | null, tod
     { id: 'done', title: 'Done', cards: done.map((j) => card(j, daysFrom(j.joiningOn, today))), emptyText: 'No one finished yet' },
   ];
 }
+
+const day = (iso: string) => new Date(`${iso}T00:00:00`);
+const TYPE: Record<ReadyOffer['personType'], string> = { new: 'New person', ex_employee: 'Ex-employee rehire', internal: 'Current employee' };
+
+/** An accepted offer as the designed queue's row. */
+export function readyRow(o: ReadyOffer): ReadyRow {
+  return {
+    id: o.offerId,
+    name: o.name,
+    role: o.jobTitle,
+    dept: '',
+    location: '',
+    entity: '',
+    manager: '',
+    joining: day(o.startDate),
+    offerAccepted: day(o.acceptedOn ?? o.startDate),
+    personType: TYPE[o.personType],
+    source: 'Accepted offer',
+    note: o.personType === 'internal' ? 'Moves by a job change' : o.personType === 'ex_employee' ? 'Worked here before' : '',
+    live: { offerId: o.offerId, email: o.email, internal: o.personType === 'internal' },
+  };
+}
+
