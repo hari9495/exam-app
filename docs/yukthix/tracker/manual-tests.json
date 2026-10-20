@@ -365,8 +365,21 @@
   "account": "arjun@demo-org.test (employee)",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Fail (fixed)",
+    "findings": "Found by Claude while pre-checking: with an older admin session still alive in the browser, signing in as arjun@ greeted 'Good evening, Ramesh' (admin's cached profile) while the data was Arjun's.",
+    "fixedIn": "PR #196 (merged): the app forgets every cached answer when a different person signs in (unit test fails without the fix)"
+   },
+   {
+    "date": "2026-10-20",
+    "result": "Pass",
+    "findings": "Colleagues (Divya, Meera) show name, job and department only; 'salary' and 'access request' give No results; no one else's requests. Follow-up asked: wider account menu (PR #197, 260 px).",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "AF-05",
   "area": "0 App frame (design parity step 1, PR #178)",
