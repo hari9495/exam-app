@@ -25,3 +25,4 @@ export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
 export { ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
+export { ClearanceSignoffs, type LiveClearance } from '../people/exits';

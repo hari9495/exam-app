@@ -25,7 +25,8 @@ import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEER
 import { DueCountdown, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesCard } from './live/special';
-import type { ClearanceItem, ExitStep, ExitWorkspace } from './live/types';
+import type { ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
+import { Segment } from './people-kit';
 
 /* ================================================================== PPL-18 resignation */
 
@@ -645,35 +646,69 @@ export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', varia
 
 type Clear = (typeof CLEARANCE)[number];
 
+/** The live app's clearance (design audit step 3): sign-offs for leavers that I or my team own. */
+export interface LiveClearance {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  rows: MyClearanceItem[];
+  onSignOff: ExitCaseScreenProps['onSignOff'];
+}
+
 // PPL-20
-export function ClearanceSignoffs({ owner }: { owner?: string }) {
-  const rows = owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
-  const cols: TableColumn<Clear>[] = [
-    { key: 'dept', header: 'Department', value: (r) => r.dept, width: 190 },
-    { key: 'item', header: 'Items', value: (r) => r.item, width: 320 },
-    { key: 'owner', header: 'Owner', type: 'person', value: (r) => r.owner, person: (r) => ({ name: r.owner }), width: 200 },
+export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: LiveClearance }) {
+  const [signing, setSigning] = useState<MyClearanceItem | null>(null);
+  const [all, setAll] = useState(false);
+  type Row = Clear & { person?: string; lastDay?: Date };
+  const liveRows: Row[] = (live?.rows ?? [])
+    .filter((r) => all || r.status === 'open')
+    .map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.title, status: r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : 'Pending', recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
+  const rows: Row[] = live ? liveRows : owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
+  const cols: TableColumn<Row>[] = [
+    ...(live ? [{ key: 'person', header: 'Leaver', type: 'person', value: (r: Row) => r.person ?? '', person: (r: Row) => ({ name: r.person ?? '', secondary: r.lastDay ? `Last day ${formatDate(r.lastDay)}` : undefined }), width: 210 } as TableColumn<Row>] : []),
+    { key: 'dept', header: 'Department', value: (r) => r.dept, width: live ? 130 : 190 },
+    { key: 'item', header: 'Items', value: (r) => r.item, ...(live ? { render: (r: Row) => <span className="yx-ppl__type"><span>{r.item}</span><span className="yx-ppl__sub">{r.owner}</span></span> } : {}), width: 320 },
+    // Live: the owner is you or your team, shown under the item instead of its own column.
+    ...(live ? [] : [{ key: 'owner', header: 'Owner', type: 'person', value: (r: Row) => r.owner, person: (r: Row) => ({ name: r.owner }), width: 200 } as TableColumn<Row>]),
     { key: 'recovery', header: 'Recovery', type: 'money', value: (r) => r.recovery, total: 'sum', width: 130 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Blocked' ? 'danger' : 'warning'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Blocked' ? 'danger' : v === 'Waived' ? 'neutral' : 'warning'), width: 120 },
   ];
   const open = CLEARANCE.filter((c) => c.status !== 'Done').length;
+  const liveOpen = (live?.rows ?? []).filter((r) => r.status === 'open').length;
   return (
-    <PeopleFrame active="Clearance" persona={owner ? 'mgr' : 'hr'}>
-      <PageHeader title={owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'} description={`Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`} />
-      {!owner && <InlineAlert tone="warning">{open} of {CLEARANCE.length} sign-offs open. Finance is blocked on an unclaimed advance of {formatINR(5000)}.</InlineAlert>}
-      <DataTable
-        label="Clearance sign-offs"
-        columns={cols}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowButtons={(r) => (r.status === 'Done' ? null : <Button size="sm">Sign off</Button>)}
-        rowActions={() => (
-          <>
-            <MenuItem>Add recovery</MenuItem>
-            <MenuItem>Add note</MenuItem>
-          </>
-        )}
-        empty={<EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
+    <PeopleFrame active="Clearance" persona={owner || live ? 'mgr' : 'hr'}>
+      <PageHeader
+        title={live ? 'Clearance: your sign-offs' : owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'}
+        description={live ? `${liveOpen} ${liveOpen === 1 ? 'sign-off is' : 'sign-offs are'} open for people leaving that you or your team look after. Open items block F&F finalisation, not the exit itself.` : `Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`}
       />
+      {!owner && !live && <InlineAlert tone="warning">{open} of {CLEARANCE.length} sign-offs open. Finance is blocked on an unclaimed advance of {formatINR(5000)}.</InlineAlert>}
+      {live && (
+        <Segment label="Show" value={all ? 'all' : 'open'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />
+      )}
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load your sign-offs" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Clearance sign-offs"
+          columns={cols}
+          rows={rows}
+          getRowId={(r) => r.id}
+          state={live?.state === 'loading' ? 'loading' : 'ready'}
+          rowButtons={(r) => (r.status !== 'Pending' && r.status !== 'Blocked' ? null : <Button size="sm" onClick={live ? () => setSigning(live.rows.find((x) => x.id === r.id) ?? null) : undefined}>Sign off</Button>)}
+          // Live: a recovery and a note are part of the sign-off.
+          rowActions={
+            live
+              ? undefined
+              : () => (
+                  <>
+                    <MenuItem>Add recovery</MenuItem>
+                    <MenuItem>Add note</MenuItem>
+                  </>
+                )
+          }
+          empty={<EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
+        />
+      )}
+      {live && signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={live.onSignOff} />}
     </PeopleFrame>
   );
 }
