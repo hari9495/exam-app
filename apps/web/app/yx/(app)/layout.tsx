@@ -192,13 +192,15 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 
   const entityList = entities.data?.filter((e) => !e.archivedAt) ?? [];
+  // Only Home reads the month (its counts); every other page shows the company alone, as designed (PLT-01, PPL-01).
+  const showPeriod = payPeriods && pathname === '/yx/home';
   const scopePicker =
-    entityList.length > 1 || payPeriods ? (
+    entityList.length > 1 || showPeriod ? (
       <ScopePicker
         entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: e.gstin ?? '', state: stateName(e.registeredAddress?.state) }))] : []}
         entity={scope.entity ?? 'all'}
         onEntityChange={(id) => setScope({ ...scope, entity: !id || id === 'all' ? null : id })}
-        periods={payPeriods ? recentMonths() : undefined}
+        periods={showPeriod ? recentMonths() : undefined}
         period={scope.period}
         onPeriodChange={(p) => p && setScope({ ...scope, period: p })}
       />
