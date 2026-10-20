@@ -16,7 +16,8 @@ import { FieldRow, FormField } from '../../components/field';
 import { PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
-import { Calendar, TeamCalendar, type CalendarEvent } from '../../components/calendar';
+import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
+import type { LoadState, TeamCalendar as TeamCalendarData } from './live/types';
 import { ApprovalTimeline, Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import {
@@ -1168,7 +1169,136 @@ const requestAbsence = (r: LeaveRequestRow): Absence => ({
 /** "1 & 3 Oct · 2 days": a request's dates written the same way as in the Away lists. */
 const reqDates = (r: LeaveRequestRow) => absenceDates(requestAbsence(r));
 
-export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state = 'ready' }: { persona?: 'mgr' | 'hr'; view?: 'team' | 'month'; state?: ViewState }) {
+/** What the live app gives the leave calendar (design audit): who is away in the range asked for. */
+export interface LiveLeaveCalendar {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TeamCalendarData | null;
+  /** yyyy-mm-dd in the company's time. */
+  today: string;
+  /** Load this range (yyyy-mm-dd, inclusive, up to 62 days): the weeks or the month on screen. */
+  onRange: (from: string, to: string) => void;
+  /** Answer a waiting request (the approvals inbox). */
+  onReview?: () => void;
+}
+
+type LeaveCalendarProps = { persona?: 'mgr' | 'hr'; view?: 'team' | 'month'; state?: ViewState; /** The live app's data. Stories leave it out. */ live?: LiveLeaveCalendar };
+
+export function TeamLeaveCalendarScreen(props: LeaveCalendarProps) {
+  return props.live ? <LiveLeaveCalendarView live={props.live} view={props.view} /> : <StoryLeaveCalendar {...props} />;
+}
+
+const isoLocal = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const CAL_SCOPE = { team: 'Your team', granted: 'The people you look after', company: 'All teams · all locations' } as const;
+
+/** The API's leave days as the calendar's absences: one piece per run of the same leave, across the person's offs. */
+function liveAbsences(d: TeamCalendarData): (TeamAbsence & { status: 'pending' | 'approved' })[] {
+  const out: (TeamAbsence & { status: 'pending' | 'approved' })[] = [];
+  for (const p of d.people) {
+    const off = new Set([...(p.offs ?? []), ...p.holidays.map((h) => h.on)]);
+    for (const x of [...p.days].sort((a, b) => a.on.localeCompare(b.on))) {
+      const last = out[out.length - 1];
+      let joins = Boolean(last && last.memberId === p.id && last.code === x.code && last.status === x.status);
+      if (joins) for (let g = addDays(last.end, 1); joins && isoOf(g) < x.on; g = addDays(g, 1)) joins = off.has(isoOf(g));
+      if (joins) last.end = isoLocal(x.on);
+      else out.push({ memberId: p.id, start: isoLocal(x.on), end: isoLocal(x.on), code: x.code, name: x.name, pending: x.status === 'pending', status: x.status });
+    }
+  }
+  return out;
+}
+
+function LiveLeaveCalendarView({ live, view = 'team' }: { live: LiveLeaveCalendar; view?: 'team' | 'month' }) {
+  const d = live.data;
+  const today = isoLocal(live.today);
+  const narrow = useMedia('(max-width: 1100px)');
+  const days = narrow ? 7 : 14;
+  const [start, setStart] = useState(() => addDays(today, -((today.getDay() + 6) % 7)));
+  const [tab, setTab] = useState<string>(view);
+  const [calMonth, setCalMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const from = tab === 'month' ? calMonth : start;
+  const to = tab === 'month' ? new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0) : addDays(start, days - 1);
+  useEffect(() => {
+    live.onRange(isoOf(from), isoOf(to));
+    // The range is the key; onRange is a new function on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isoOf(from), isoOf(to)]);
+  const people = d?.people ?? [];
+  const hr = d ? d.scope !== 'team' : false;
+  const members = people.map((p) => ({ id: p.id, name: p.name, team: hr ? `${p.department ?? ''} · ${p.location ?? ''}` : p.department ?? '' }));
+  const absences = d ? liveAbsences(d) : [];
+  // Holidays everyone shares go in the header; anyone else's holiday or weekly off shades their own row.
+  const shared = (on: string) => people.length > 0 && people.every((p) => p.holidays.some((h) => h.on === on));
+  const holidays = [...new Map(people.flatMap((p) => p.holidays).filter((h) => shared(h.on)).map((h) => [h.on, { date: isoLocal(h.on), name: h.name }])).values()];
+  const offOf = (id: string, day: Date) => {
+    const p = people.find((x) => x.id === id);
+    const on = isoOf(day);
+    return Boolean(p && ((p.offs ?? []).includes(on) || p.holidays.some((h) => h.on === on)));
+  };
+  const everyoneOff = (day: Date) => people.length > 0 && people.every((p) => (p.offs ?? []).includes(isoOf(day)));
+  const pending = absences.filter((a) => a.pending);
+  const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? '';
+  const events: CalendarEvent[] = absences.map((a, i) => {
+    const [fn, ln] = nameOf(a.memberId).split(' ');
+    return { id: `e${i}`, title: `${a.code} · ${fn} ${ln?.[0] ?? ''}.`, start: a.start, end: a.end, allDay: true, type: 'leave', pending: a.pending };
+  });
+  const exLabel = tab === 'month' ? `${MON[calMonth.getMonth()]} ${calMonth.getFullYear()}` : span(from, to);
+  const ready = live.state === 'ready';
+  const exportCsv = () =>
+    downloadCsv(`leave-calendar-${tab === 'month' ? exLabel : `${dm(from)}-${dm(to)}`}.csv`, [
+      ['Person', 'Team', 'Leave', 'From', 'To', 'Status'],
+      ...absences.map((a) => [nameOf(a.memberId), members.find((m) => m.id === a.memberId)?.team ?? '', a.name ?? a.code, formatDate(a.start), formatDate(a.end), a.pending ? 'Pending' : 'Approved']),
+    ]);
+  const pendingList = pending.length > 0 && (
+    <Card title={`Waiting for approval (${pending.length})`}>
+      <ul className="yx-tim-list">
+        {pending.map((a) => (
+          <li key={`${a.memberId}-${a.start.getTime()}`}>
+            <span className="yx-tim-list__main" style={MAIN}><PersonLabel name={nameOf(a.memberId)} secondary={`${a.name ?? a.code} · ${span(a.start, a.end)}`} /></span>
+            {live.onReview && !hr ? <Button variant="review" size="sm" onClick={live.onReview}>Review</Button> : <span className="yx-tim-muted">Waiting for approval</span>}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+  return (
+    <TimePage active="Leave calendar">
+      <PageHeader
+        title="Leave calendar"
+        description={d ? (d.scope === 'team' ? `${CAL_SCOPE.team} · ${plural(members.length, 'person', 'people')}` : CAL_SCOPE[d.scope]) : undefined}
+        actions={!ready || !absences.length ? <span className="yx-tim-row"><span className="yx-tim-muted">{live.state === 'loading' ? 'Loading…' : 'Nothing to export in this range'}</span><Button icon={Download} disabled>Export</Button></span> : <Button icon={Download} onClick={exportCsv}>Export {exLabel}</Button>}
+      />
+      {live.state === 'loading' && !d ? <LoadingBlock rows={8} /> : live.state === 'error' ? (
+        <ErrorState title="The leave calendar didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' || !people.length ? (
+        <EmptyState title="No one to show" description="People you manage, or look after in HR, appear here." />
+      ) : (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList aria-label="Calendar views"><TabsTrigger value="team">People × days</TabsTrigger><TabsTrigger value="month">Month</TabsTrigger></TabsList>
+          <TabsContent value="team">
+            <div className="yx-tim-stack">
+              <div className="yx-tim-row">
+                <Button size="sm" icon={ChevronLeft} onClick={() => setStart(addDays(start, -7))}>Previous week</Button>
+                <Button size="sm" icon={ChevronRight} onClick={() => setStart(addDays(start, 7))}>Next week</Button>
+              </div>
+              <TeamCalendar members={members} absences={absences} holidays={holidays} start={start} days={days} today={today} weeklyOff={everyoneOff} memberOff={offOf} />
+              {pendingList}
+            </div>
+          </TabsContent>
+          <TabsContent value="month">
+            <div className="yx-tim-stack">
+              <Calendar events={events} holidays={holidays} defaultDate={today} month={calMonth} today={today} views={['month']} hideTypeLabel weeklyOff={everyoneOff} onDateChange={(x) => setCalMonth(new Date(x.getFullYear(), x.getMonth(), 1))} aria-label="Team leave, month" />
+              <p className="yx-tim-note">Solid chip: approved · Dashed chip: pending · Shaded day: holiday or weekly off</p>
+              {pendingList}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryLeaveCalendar({ persona = 'mgr', view = 'team', state = 'ready' }: LeaveCalendarProps) {
   const hr = persona === 'hr';
   // HR sees each person's location beside the team (Hosur plant people follow a different calendar).
   const members = (hr ? TEAM : myReports()).map((p) => ({ id: p.id, name: p.name, team: hr ? `${p.dept} · ${p.location}` : p.dept }));

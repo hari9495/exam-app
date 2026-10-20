@@ -3,7 +3,8 @@
 export * from './types';
 export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
 export { HomeClockCard, MyAttendanceScreen, TodayCard, type MyAttendanceScreenProps, type Pin } from './my-attendance';
-export { TeamLeaveScreen, LeaveBalancesScreen, type TeamLeaveScreenProps, type LeaveBalancesScreenProps } from './team';
+export { LeaveBalancesScreen, type LeaveBalancesScreenProps } from './team';
+export { TeamLeaveCalendarScreen, type LiveLeaveCalendar } from '../leave';
 // The designed screens, made live (design audit): one version of each screen.
 export { MusterScreen, type LiveMuster } from '../attendance';
 export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';

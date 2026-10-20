@@ -173,7 +173,7 @@ export interface TeamCalendar {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
+  people: { id: string; name: string; code: string | null; me: boolean; department?: string; location?: string; /** Weekly offs in the range (yyyy-mm-dd). */ offs?: string[]; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
 }
 
 /** What the muster adds to a day: the leave taken, overtime and its state, a request waiting, approved work from home. */

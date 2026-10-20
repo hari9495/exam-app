@@ -589,11 +589,14 @@ export class LeaveService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await this.ownId(tx, c, v);
       const today = new Date().toISOString().slice(0, 10);
-      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; locationId: string }[]>`
-        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, a.location_id::text AS "locationId"
+      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; locationId: string; location: string; department: string }[]>`
+        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, a.location_id::text AS "locationId",
+          l.name::text AS location, dp.name::text AS department
         FROM employees e
         JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND m.exited_on IS NULL
+        JOIN locations l ON l.organization_id = e.organization_id AND l.id = a.location_id
+        JOIN departments dp ON dp.organization_id = e.organization_id AND dp.id = a.department_id
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`e.id`, today)}
           AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
@@ -608,6 +611,17 @@ export class LeaveService implements OnModuleInit {
         : [];
       const holidays = new Map<string, { on: string; name: string; halfDay: boolean }[]>();
       for (const loc of new Set(people.map((p) => p.locationId))) holidays.set(loc, [...(await holidaysFor(tx, c.organizationId, loc, from, to)).map].map(([on, h]) => ({ on, name: h.name, halfDay: h.halfDay })));
+      // Each person's weekly offs in the range (their pattern or location rule; the designed calendar shades them "Off").
+      // ponytail: roster changes to a weekly off are not read here (one query per day per person); add them if planners ask.
+      const book = await ScheduleBook.load(tx, c.organizationId);
+      const offs = new Map<string, string[]>();
+      for (const p of people) {
+        const f = await factsOn(tx, c.organizationId, p.id, from > today ? from : today);
+        if (!f) continue;
+        const list: string[] = [];
+        for (let d = from; d <= to; d = addDays(d, 1)) if ((await book.day(f, d, false)).weeklyOff) list.push(d);
+        offs.set(p.id, list);
+      }
       return {
         from,
         to,
@@ -617,7 +631,10 @@ export class LeaveService implements OnModuleInit {
           name: p.name,
           code: p.code,
           me: p.id === own,
+          location: p.location,
+          department: p.department,
           holidays: holidays.get(p.locationId) ?? [],
+          offs: offs.get(p.id) ?? [],
           days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: d.on, part: d.part, status: d.status === 'pending' ? 'pending' : 'approved', code: d.code, colour: d.colour, name: d.name })),
         })),
       };

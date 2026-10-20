@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { MyAttendanceScreen } from './my-attendance';
 import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
-import { TeamLeaveScreen } from './team';
+import { TeamLeaveCalendarScreen } from '../leave';
 import { MusterScreen } from '../attendance';
-import type { LeavePlan, MyAttendance, MyLeave, Muster, TimeSetup } from './types';
+import type { LeavePlan, MyAttendance, MyLeave, Muster, TeamCalendar, TimeSetup } from './types';
 import { ToastProvider } from '../../../components/notify';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -200,18 +200,16 @@ describe('Me › Attendance', () => {
 });
 
 describe('Team and HR', () => {
-  it('the team calendar marks leave and waiting requests', () => {
-    render(
-      <TeamLeaveScreen
-        state="ready"
-        data={{ from: '2026-10-12', to: '2026-10-14', scope: 'team', people: [{ id: 'a', name: 'Kavya Reddy', code: null, me: false, holidays: [], days: [{ on: '2026-10-12', part: 'full', status: 'pending', code: 'SL', colour: 'orange', name: 'Sick leave' }] }] }}
-        onRange={vi.fn()}
-        approvalsHref="/yx/approvals"
-        onNavigate={vi.fn()}
-      />,
-    );
-    const cell = screen.getByTitle('Sick leave, waiting for approval');
-    expect(cell).toHaveTextContent('SL');
+  it('the designed leave calendar marks leave, waiting requests and each person’s weekly off', async () => {
+    const onRange = vi.fn();
+    const data: TeamCalendar = { from: '2026-10-12', to: '2026-10-25', scope: 'team', people: [{ id: 'a', name: 'Kavya Reddy', code: null, me: false, department: 'Production', location: 'Hosur plant', offs: ['2026-10-18'], holidays: [], days: [{ on: '2026-10-13', part: 'full', status: 'pending', code: 'SL', colour: 'orange', name: 'Sick leave' }] }] };
+    render(<TeamLeaveCalendarScreen live={{ state: 'ready', data, today: '2026-10-12', onRange, onReview: vi.fn() }} />);
+    expect(screen.getByRole('heading', { name: 'Leave calendar' })).toBeInTheDocument();
+    expect(onRange).toHaveBeenCalledWith('2026-10-12', '2026-10-25');
+    expect(screen.getByLabelText(/Kavya Reddy, .*: Sick leave · pending approval/)).toHaveTextContent('SL');
+    expect(screen.getByRole('button', { name: 'Review' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Next week' }));
+    expect(onRange).toHaveBeenLastCalledWith('2026-10-19', '2026-11-01');
   });
 
   it('the designed muster shows leave codes and opens the designed day card with each punch (YX-AT-15)', async () => {
