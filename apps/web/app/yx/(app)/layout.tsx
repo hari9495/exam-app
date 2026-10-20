@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Languages, ShieldCheck, UserRound } from 'lucide-react';
+import { Database, FileText, Languages, ShieldCheck } from 'lucide-react';
 import { Button, CommandPalette, InlineAlert, NotificationCentre, ProfileMenu, ScopePicker, Spinner, ToastProvider, useCommandPaletteShortcut } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
@@ -202,7 +202,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const meHref = (id: string) => nav.flatMap((a) => a.sections.flatMap((s) => s.items)).find((l) => l.id === id)?.href;
   const accountLinks = [
     ...(meHref('my-documents') ? [{ label: 'Documents & letters', icon: FileText, onSelect: () => go(meHref('my-documents')!) }] : []),
-    ...(meHref('my-data') ? [{ label: 'My data', icon: UserRound, onSelect: () => go(meHref('my-data')!) }] : []),
+    ...(meHref('my-data') ? [{ label: 'My data', icon: Database, onSelect: () => go(meHref('my-data')!) }] : []),
     ...(meHref('my-language') ? [{ label: 'Language', icon: Languages, onSelect: () => go(meHref('my-language')!) }] : []),
     { label: 'My security', icon: ShieldCheck, onSelect: () => go(ME_SECURITY) },
   ];

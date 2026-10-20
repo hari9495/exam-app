@@ -220,7 +220,7 @@ export function ProfileScreen(props: ProfileScreenProps) {
   const pending = requests.filter((r) => r.status === 'pending');
   return (
     <div className="yx-auth__page">
-      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'People' }, { label: p?.self ? 'My profile' : 'Profile' }]} />} title={p ? p.name : 'Profile'} description={p?.employeeCode ? `${p.employeeCode}${p.joinedOn ? ` · joined ${dateLabel(p.joinedOn)}` : ''}` : 'Personal, identity and bank details.'} />
+      <PageHeader breadcrumbs={<Breadcrumbs items={p?.self ? [{ label: 'Home' }, { label: 'My profile' }] : [{ label: 'People' }, { label: 'Profile' }]} />} title={p ? p.name : 'Profile'} description={p?.employeeCode ? `${p.employeeCode}${p.joinedOn ? ` · joined ${dateLabel(p.joinedOn)}` : ''}` : 'Personal, identity and bank details.'} />
       {people && onPickPerson && (
         <FormField id="pf-person" label="Person">
           <Select aria-label="Person" value={p?.employeeId ?? null} onChange={(v) => v && onPickPerson(v)} searchable options={people.map((x) => ({ value: x.id, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }))} />
