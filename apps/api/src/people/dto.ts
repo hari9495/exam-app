@@ -45,6 +45,11 @@ export class OrgChartQueryDto {
   @IsDateString({ strict: true })
   @Matches(DATE, { message: 'asOf is a date (YYYY-MM-DD)' })
   asOf?: string;
+
+  /** The top bar's legal entity: only that entity's people (PPL-02, founder 20 Oct 2026). */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class ReportsQueryDto {

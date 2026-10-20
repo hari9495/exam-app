@@ -20,6 +20,8 @@ export interface OrgPerson {
   vacant?: boolean;
   /** Dotted-line manager, drawn as a dashed connector. */
   dottedManagerId?: string;
+  /** A manager outside the chart shown (another legal entity): a quiet line, so nobody silently loses their manager. */
+  reportsTo?: string;
 }
 
 export type OrgView = 'reporting' | 'department' | 'position';
@@ -179,6 +181,31 @@ export function OrgChart({
   const pendingFocus = useRef<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [vpHeight, setVpHeight] = useState<number | null>(null);
+  // The canvas takes the height left on the page (a notice above it shrinks it), so the page itself never scrolls.
+  useLayoutEffect(() => {
+    const vp = viewportRef.current;
+    const main = vp?.closest('main');
+    if (!vp || !main) return;
+    const size = () => {
+      const over = main.scrollHeight - main.clientHeight;
+      const cur = vp.getBoundingClientRect().height;
+      const next = Math.max(120, Math.min(760, Math.round(cur - over)));
+      if (Math.abs(next - cur) > 1) setVpHeight(next);
+    };
+    size();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(size) : null;
+    for (const child of Array.from(main.children)) ro?.observe(child);
+    // A notice added or removed above the chart (View as on) changes the room left.
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestAnimationFrame(size)) : null;
+    mo?.observe(main, { childList: true, subtree: true });
+    window.addEventListener('resize', size);
+    return () => {
+      ro?.disconnect();
+      mo?.disconnect();
+      window.removeEventListener('resize', size);
+    };
+  }, []);
   const scaleRef = useRef(1); // the zoom the cards are laid out at now (fit reads it after a re-layout)
   const userZoomed = useRef(false);
   const uid = useId();
@@ -474,6 +501,7 @@ export function OrgChart({
           <span className="yx-org__name">{position ? p!.role : p!.name}</span>
           <span className="yx-org__role">{position ? p!.name : p!.role}</span>
           {n.size > 0 && <span className="yx-org__meta">{team(n.size)}</span>}
+          {p!.reportsTo && view !== 'department' && <span className="yx-org__meta">Reports to {p!.reportsTo}</span>}
           {p!.dottedManagerId && view !== 'department' && nameOf(p!.dottedManagerId) && (
             <span className="yx-org__meta">Dotted line to {nameOf(p!.dottedManagerId)}</span>
           )}
@@ -665,6 +693,7 @@ export function OrgChart({
       <div
         className="yx-org__viewport"
         ref={viewportRef}
+        style={vpHeight ? { height: vpHeight } : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

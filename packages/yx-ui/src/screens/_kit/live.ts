@@ -9,7 +9,7 @@ export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
-export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordRole, type RecordTab } from '../people/record';
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';

@@ -132,6 +132,17 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     await app.close();
   });
 
+  it('Position view: open job openings as vacancies under their hiring manager, for HR and the hiring manager only', async () => {
+    const job = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.create({ data: { organizationId: org.A.id, title: 'Quality Inspector', status: 'open', createdById: users.hrA, hiringManagerId: users.empA, designationId: ids.desKF, departmentId: ids.deptKF, locationId: ids.locKF, headcount: 2 } }));
+    const hr = (await api('hrA', 'get', '/people/org-chart').expect(200)).body;
+    expect(hr.vacancies).toEqual([{ id: `job:${job.id}`, role: 'Analyst KF', department: 'Dept KF', location: 'Site KF', managerId: ids.arjun, openings: 2 }]);
+    expect(JSON.stringify(hr.vacancies)).not.toMatch(/candidate|applicant/i);
+    expect((await api('empA', 'get', '/people/org-chart').expect(200)).body.vacancies).toHaveLength(1); // the hiring manager's own
+    expect((await api('hrTn', 'get', '/people/org-chart').expect(200)).body.vacancies).toEqual([]); // scoped HR without hiring access
+    expect((await api('adminB', 'get', '/people/org-chart').expect(200)).body.vacancies).toEqual([]);
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.delete({ where: { id: job.id } }));
+  });
+
   it('a colleague sees Public fields only: no ID, status, joining date, phone or consultants', async () => {
     const body = await list('empA');
     expect(body.rows.map((r: { id: string }) => r.id).sort()).toEqual([ids.arjun, ids.meera, ids.imran].sort());
@@ -273,5 +284,23 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     const body = await list('empA');
     expect(byId(body, ids.imran)?.departmentPath).toEqual(['Operations', 'Dept TN']);
     expect(byId(body, ids.arjun)?.departmentPath).toEqual(['Dept KF']);
+  });
+
+  it('the org chart follows the top bar entity; a manager in another entity is a quiet line, never lost', async () => {
+    const ravi = (
+      await api('hrA', 'post', '/people/employees')
+        .send({ legalEntityId: ids.leTN, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, givenName: 'Ravi', workEmail: `ravi-${runId}@dir.test`, assignment: { locationId: ids.locTN, departmentId: ids.deptTN, designationId: ids.desTN, gradeId: ids.gradeTN, employmentTypeId: ids.typeTN, managerEmployeeId: ids.arjun } })
+        .expect(201)
+    ).body.id as string;
+    const tn = (await api('hrA', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.nodes as { id: string; legalEntity: { id: string } | null; managerId: string | null; managerOutside?: { name: string; legalEntity: string | null } }[];
+    expect(tn.map((n) => n.id)).toContain(ravi);
+    expect(tn.every((n) => n.legalEntity?.id === ids.leTN)).toBe(true);
+    expect(tn.map((n) => n.id)).not.toContain(ids.arjun);
+    expect((await api('hrA', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.truncated).toBe(false);
+    expect(tn.find((n) => n.id === ravi)).toMatchObject({ managerId: null, managerOutside: { name: 'Arjun Kulkarni', legalEntity: 'Entity KF' } });
+    const everyone = (await api('hrA', 'get', '/people/org-chart').expect(200)).body.nodes as { id: string; managerId: string | null }[];
+    expect(everyone.find((n) => n.id === ravi)!.managerId).toBe(ids.arjun);
+    // Another company's entity id shows nothing of A.
+    expect((await api('adminB', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.nodes).toEqual([]);
   });
 });
