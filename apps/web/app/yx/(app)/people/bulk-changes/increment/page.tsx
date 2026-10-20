@@ -4,7 +4,7 @@ import { useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { NoAccessState, Spinner, useToast } from '@yukthix/ui';
 import { BulkChangesWizard, type IncrementInput, type IncrementResult } from '@yukthix/ui/frame';
-import { apiFetch } from '../../../../../../lib/api-client';
+import { apiFetch, apiFetchBlob } from '../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { useJoinerPlaces } from '../../../../../../lib/yx-lifecycle';
@@ -29,6 +29,11 @@ export default function YxIncrementPage() {
       today: new Date(),
       canRate: perms.has('perf.review.view'),
       onCheck,
+      onPreviewLetter: async (input: IncrementInput, employeeId: string) => {
+        const { blob } = await apiFetchBlob('/people/change-batches/increment/letter-preview', { method: 'POST', body: JSON.stringify({ ...input, employeeId }) }, accessToken ?? undefined);
+        return URL.createObjectURL(blob);
+      },
+      lettersHref: '/yx/settings/letters',
       onSend: async (input: IncrementInput, people: number) => {
         const r = await write<{ batch: { id: string } }>('POST', '/change-batches/increment', input);
         toast({ tone: 'success', title: `Annual increment for ${people} ${people === 1 ? 'person' : 'people'} sent for approval` });
@@ -36,7 +41,7 @@ export default function YxIncrementPage() {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [places.entities.length, places.departments.length, onCheck],
+    [places.entities.length, places.departments.length, onCheck, accessToken],
   );
   if (!perms.data) return <Spinner label="Loading" size="md" />;
   if (!allowed) return <NoAccessState what="the annual increment" grantedBy="It needs the salary grant and the right to change jobs. HR can grant it." />;

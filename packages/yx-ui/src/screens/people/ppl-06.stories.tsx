@@ -10,6 +10,10 @@ type S = StoryObj;
 export const People: S = { name: 'Step 1 · choose people', render: () => <BulkChangesWizard /> };
 export const Rule: S = { name: 'Step 2 · increment rule', render: () => <BulkChangesWizard current="rule" /> };
 export const Preview: S = { name: 'Step 3 · per-person preview (3 above band)', render: () => <BulkChangesWizard current="preview" /> };
+export const PreviewCap: S = { name: 'Step 3 · company rule: cap at the band maximum', render: () => <BulkChangesWizard current="preview" bandPolicy="cap" /> };
+export const PreviewBlock: S = { name: 'Step 3 · company rule: block above the band', render: () => <BulkChangesWizard current="preview" bandPolicy="block" /> };
+export const Letters: S = { name: 'Step 4 · letters (made after approval)', render: () => <BulkChangesWizard current="letters" /> };
+export const LetterPreview: S = { name: 'Step 4 · one person’s letter', render: () => <BulkChangesWizard current="letters" letterOpen /> };
 export const Review: S = { name: 'Review', render: () => <BulkChangesWizard current={REVIEW_ID} /> };
 export const Confirm: S = { name: 'Send for approval', render: () => <BulkChangesWizard current={REVIEW_ID} confirmOpen /> };
 export const Same: S = { name: 'Step 2 · same raise for everyone', render: () => <BulkChangesWizard current="rule" mode="percent" /> };
@@ -17,8 +21,8 @@ export const Same: S = { name: 'Step 2 · same raise for everyone', render: () =
 /** The live wizard with sample answers from the API (no ratings for one person, one row the change engine refuses). */
 const LIVE_RESULT: IncrementResult = {
   people: [
-    { employeeId: 'e1', name: 'Arjun Kulkarni', code: 'KF-0142', department: 'Quality', grade: 'G5', rating: 'Exceeds', currentCtc: '960000.00', percent: '12', newCtc: '1075200.00' },
-    { employeeId: 'e2', name: 'Kavya Reddy', code: 'KF-0031', department: 'Quality', grade: 'G3', rating: 'Meets', currentCtc: '333333.00', percent: '7.5', newCtc: '358333.00' },
+    { employeeId: 'e1', name: 'Arjun Kulkarni', code: 'KF-0142', department: 'Quality', grade: 'G5', rating: 'Exceeds', currentCtc: '960000.00', percent: '12', newCtc: '1075200.00', bandMax: '1000000.00', aboveBand: true, capped: false },
+    { employeeId: 'e2', name: 'Kavya Reddy', code: 'KF-0031', department: 'Quality', grade: 'G3', rating: 'Meets', currentCtc: '333333.00', percent: '7.5', newCtc: '358333.00', bandMax: null, aboveBand: false, capped: false },
   ],
   leftOut: [
     { employeeId: 'e3', name: 'Nikhil Rao', rating: null, why: 'No released rating in FY 2025-26 annual review.' },
@@ -29,6 +33,8 @@ const LIVE_RESULT: IncrementResult = {
   bands: ['Exceeds', 'Meets'],
   rows: [],
   errors: 0,
+  bandPolicy: 'warn',
+  letterTemplates: [{ id: 'inc', name: 'Increment letter', version: 1 }],
 };
 const live = {
   entities: [{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }],
@@ -37,5 +43,7 @@ const live = {
   canRate: true,
   onCheck: async () => LIVE_RESULT,
   onSend: async () => undefined,
+  onPreviewLetter: async () => 'about:blank',
+  lettersHref: '#settings-letters',
 };
 export const Live: S = { name: 'Live · choose people', render: () => <BulkChangesWizard live={live} /> };

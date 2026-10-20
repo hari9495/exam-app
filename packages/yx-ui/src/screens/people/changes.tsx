@@ -614,11 +614,23 @@ export function incrementPreview(pct: Record<string, number>, custom: Record<str
 }
 
 // PPL-06
-export function BulkChangesWizard(props: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; live?: LiveIncrement }) {
+export function BulkChangesWizard(props: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean; live?: LiveIncrement }) {
   return props.live ? <LiveIncrementWizard live={props.live} /> : <SampleBulkChangesWizard {...props} />;
 }
 
-function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating' }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent' }) {
+/** The company's rule for a raise above the grade's pay range maximum (Settings › Company rules › Pay ranges). */
+export type BandPolicy = 'warn' | 'cap' | 'block';
+
+/** What the Preview step says about people above the band maximum, per company rule. */
+export function bandNotice(policy: BandPolicy, above: number, held: number): { tone: 'warning' | 'danger' | 'info'; title: string; text: string } | null {
+  const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
+  if (policy === 'cap') return held ? { tone: 'info', title: `${people(held)} held at the band maximum`, text: 'Company rule: a raise never goes above the band maximum. Change it in Settings › Company rules.' } : null;
+  if (!above) return null;
+  if (policy === 'block') return { tone: 'danger', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Company rule: raises above the band maximum are not sent. Cap them or lower their raise.' };
+  return { tone: 'warning', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Cap them, change their raise in the table, or leave them for the approver as exceptions.' };
+}
+
+function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating', bandPolicy = 'warn', letterOpen: startLetter = false }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean }) {
   const allDepts = useMemo(() => [...new Set(INCREMENT_ROWS.map((r) => r.department))].sort(), []);
   const [type, setType] = useState<string | null>('inc');
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
@@ -632,19 +644,25 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
   const [capped, setCapped] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(confirmOpen);
   const [leftOutOpen, setLeftOutOpen] = useState(false);
-  const [letterOpen, setLetterOpen] = useState(false);
+  const [letterOpen, setLetterOpen] = useState(startLetter);
+  const [letterFor, setLetterFor] = useState<string | null>(null);
   // The wizard's content column is narrow, so cards take over below 1024 px.
   const narrow = useNarrow(1023);
   const chosen = useMemo(() => INCREMENT_ROWS.filter((r) => depts.includes(r.department)), [depts]);
   const rule = useMemo(() => (mode === 'rating' ? pct : { Exceeds: everyone ?? 0, Meets: everyone ?? 0, Below: everyone ?? 0 }), [mode, pct, everyone]);
-  const rows = useMemo(() => incrementPreview(rule, custom, capped, chosen), [rule, custom, capped, chosen]);
+  const rows = useMemo(() => {
+    const out = incrementPreview(rule, custom, capped, chosen);
+    // Under the "cap" rule everyone above the band is held at its maximum.
+    return bandPolicy === 'cap' ? incrementPreview(rule, custom, [...capped, ...out.filter((r) => r.flag).map((r) => r.id)], chosen) : out;
+  }, [rule, custom, capped, chosen, bandPolicy]);
   const before = rows.reduce((s, r) => s + r.ctc, 0);
   const after = rows.reduce((s, r) => s + r.next, 0);
   const flaggedRows = rows.filter((r) => r.flag);
   const typeLabel = BULK_TYPES.find((t) => t.value === type)?.label ?? 'Bulk change';
   const cap = (ids: string[]) => setCapped([...new Set([...capped, ...ids])]);
+  const notice = bandNotice(bandPolicy, flaggedRows.length, rows.filter((r) => r.capped).length);
   const capBtn = (r: IncRow) =>
-    r.flag ? (
+    r.flag && bandPolicy !== 'cap' ? (
       <Button size="sm" onClick={() => cap([r.id])}>
         Cap at band max
       </Button>
@@ -669,7 +687,7 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
       width: 150,
     },
   ];
-  const first = rows[0];
+  const first = rows.find((r) => r.id === letterFor) ?? rows[0];
   return (
     <PeopleFrame active="Bulk changes">
       <PageHeader title={typeLabel} description="One approval for everyone, a preview per person and letters in bulk." />
@@ -677,6 +695,7 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
         title="Bulk change"
         defaultCurrent={current}
         finishLabel={`Send for approval (${rows.length} people)`}
+        finishBlocked={bandPolicy === 'block' && flaggedRows.length ? `${flaggedRows.length} above the band maximum: cap them first.` : undefined}
         onFinish={() => setConfirm(true)}
         onSaveAndExit={() => {}}
         review={{ description: 'Check the totals before you send this for one approval.' }}
@@ -696,10 +715,10 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
                 <FormField label="Effective date" required>
                   <DatePicker value={effective} onChange={setEffective} />
                 </FormField>
-                <FormField label="Departments" required>
+                <FormField label="Departments" optional helper="Leave empty for everyone.">
                   <MultiSelect options={allDepts.map((d) => ({ value: d, label: d }))} value={depts} onChange={setDepts} />
                 </FormField>
-                <FormField label="Confirmed employees who joined before" required>
+                <FormField label="Confirmed employees who joined before" optional>
                   <DatePicker value={joinedBefore} onChange={setJoinedBefore} />
                 </FormField>
                 <InlineAlert tone="info" actions={<Button size="sm" onClick={() => setLeftOutOpen(true)}>See who</Button>}>
@@ -773,13 +792,9 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
             summary: `${formatINR(before)} → ${formatINR(after)} (${formatINR(after - before)} more a year) · ${flaggedRows.length ? `${flaggedRows.length} above band` : 'all within band'}`,
             content: (
               <div className="yx-ppl__stack">
-                {flaggedRows.length > 0 && (
-                  <InlineAlert
-                    tone="warning"
-                    title={`${flaggedRows.length} ${flaggedRows.length === 1 ? 'person goes' : 'people go'} above the band maximum`}
-                    actions={<Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button>}
-                  >
-                    Cap them, change their raise in the table, or leave them for the approver as exceptions.
+                {notice && (
+                  <InlineAlert tone={notice.tone} title={notice.title} actions={bandPolicy !== 'cap' && flaggedRows.length ? <Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button> : undefined}>
+                    {notice.text}
                   </InlineAlert>
                 )}
                 {narrow ? (
@@ -815,18 +830,21 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
           {
             id: 'letters',
             title: 'Letters',
-            summary: 'Increment letter (template v3) · to each person’s documents and a notification',
+            summary: 'Increment letter (version 3) · to each person’s documents and an email, once approved',
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Letter template" required>
-                  <Select options={[{ value: 'inc3', label: 'Increment letter v3 (approval required)' }]} value="inc3" onChange={() => {}} />
+                <FormField label="Letter template" required helper={<>Change the wording or the merge fields in <a className="yx-link" href="#settings-letters">Settings › Letter templates</a>.</>}>
+                  <Select options={[{ value: 'inc3', label: 'Increment letter (version 3)' }]} value="inc3" onChange={() => {}} />
+                </FormField>
+                <FormField label="Preview the letter for" optional>
+                  <Select options={rows.map((r) => ({ value: r.id, label: r.name }))} value={letterFor ?? rows[0]?.id ?? null} onChange={setLetterFor} searchable />
                 </FormField>
                 <div>
                   <Button icon={FileText} onClick={() => setLetterOpen(true)}>
-                    Preview a letter
+                    Preview letter
                   </Button>
                 </div>
-                <InlineAlert tone="info">Letters are issued after approval and apply on {effective ? formatDate(effective) : 'the effective date'}. Failures are listed for retry.</InlineAlert>
+                <InlineAlert tone="info">Letters are made only after the change is approved, from the approved pay. Each person finds theirs in My documents and letters and gets an email.</InlineAlert>
               </div>
             ),
           },

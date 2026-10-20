@@ -1,6 +1,7 @@
 // PPL-06 Bulk changes wizard, live (annual increment): the designed steps with the company's people, ratings and pay.
 // Pay shows only to people with the salary grant (R1): the page renders this only for them, and the API checks it again.
 import { useEffect, useMemo, useState } from 'react';
+import { FileText } from 'lucide-react';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { Badge } from '../../components/display';
@@ -12,8 +13,11 @@ import { NumberField, TextArea } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Stepper } from '../../components/stepper';
+import { DocumentViewer } from '../../components/document';
+import { Spinner } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { PeopleFrame, Segment, StatusChecklist, type ChecklistRow } from './people-kit';
+import { bandNotice, type BandPolicy } from './changes';
 
 export interface IncrementInput {
   legalEntityId: string;
@@ -25,6 +29,10 @@ export interface IncrementInput {
   percent?: string;
   byRating?: { band: string; percent: string }[];
   overrides?: { employeeId: string; percent: string }[];
+  /** People held at the top of their pay range. */
+  capped?: string[];
+  /** The increment letter template; letters are made only after approval. */
+  letterTemplateId?: string;
   reason: string;
 }
 export interface IncrementPerson {
@@ -37,6 +45,10 @@ export interface IncrementPerson {
   currentCtc: string;
   percent: string;
   newCtc: string;
+  /** The top of their grade's pay range on the date (null: no range set). */
+  bandMax: string | null;
+  aboveBand: boolean;
+  capped: boolean;
 }
 export interface IncrementResult {
   people: IncrementPerson[];
@@ -52,6 +64,10 @@ export interface IncrementResult {
   /** The change engine's dry run, row by row (a clash with another change, a rule broken). */
   rows: { employeeId: string | null; ok: boolean; error: string | null }[];
   errors: number;
+  /** The company's rule for a raise above the pay range (Settings › Company rules). */
+  bandPolicy: BandPolicy;
+  /** Active increment letter templates for the entity. */
+  letterTemplates: { id: string; name: string; version: number }[];
 }
 export interface LiveIncrement {
   entities: { value: string; label: string }[];
@@ -63,6 +79,10 @@ export interface LiveIncrement {
   onCheck: (input: IncrementInput) => Promise<IncrementResult>;
   /** Stores the batch, waiting for one approval. */
   onSend: (input: IncrementInput, people: number) => Promise<void>;
+  /** One person's letter as a preview PDF (an object URL). */
+  onPreviewLetter: (input: IncrementInput, employeeId: string) => Promise<string>;
+  /** Settings › Letter templates, where HR edits the wording. */
+  lettersHref: string;
 }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -86,6 +106,10 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
   const [confirm, setConfirm] = useState(false);
   const [leftOutOpen, setLeftOutOpen] = useState(false);
   const [step, setStep] = useState('people');
+  const [capped, setCapped] = useState<string[]>([]);
+  const [template, setTemplate] = useState<string | null>(null);
+  const [letterFor, setLetterFor] = useState<string | null>(null);
+  const [letter, setLetter] = useState<{ name: string; url: string | null; failed: string | null } | null>(null);
 
   const input = useMemo((): IncrementInput | null => {
     if (!entity || !effective || reason.trim().length < 3) return null;
@@ -107,9 +131,10 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
             })),
           }
         : {}),
+      ...(capped.length ? { capped } : {}),
       reason: reason.trim(),
     };
-  }, [entity, effective, joinedBefore, depts, cycle, mode, everyone, byRating, custom, reason]);
+  }, [entity, effective, joinedBefore, depts, cycle, mode, everyone, byRating, custom, capped, reason]);
   const ready = input && (mode === 'rating' || everyone);
 
   // Every change is checked again (a dry run through the change engine) half a second after the last edit.
@@ -120,7 +145,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
       setChecking(true);
       live
         .onCheck(input)
-        .then((r) => !gone && (setResult(r), setFailed(null), r.ratingCycleId && !cycle && setCycle(r.ratingCycleId)))
+        .then((r) => !gone && (setResult(r), setFailed(null), r.ratingCycleId && !cycle && setCycle(r.ratingCycleId), setTemplate((t) => t ?? r.letterTemplates[0]?.id ?? 'none')))
         .catch((e) => !gone && setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'))
         .finally(() => !gone && setChecking(false));
     }, 500);
@@ -142,6 +167,23 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
   const matched = people.length + unset.length;
   const noRating = leftOut.filter((l) => /No released rating|No released ratings/.test(l.why)).length;
   const errors = people.filter((p) => problem(p.employeeId)).length;
+  const policy = result?.bandPolicy ?? 'warn';
+  const above = people.filter((p) => p.aboveBand);
+  const notice = bandNotice(policy, above.length, people.filter((p) => p.capped).length);
+  const cap = (ids: string[]) => setCapped([...new Set([...capped, ...ids])]);
+  const chosenTemplate = template && template !== 'none' ? template : null;
+  const sendInput = input && chosenTemplate ? { ...input, letterTemplateId: chosenTemplate } : input;
+  const templateName = result?.letterTemplates.find((t) => t.id === chosenTemplate)?.name;
+  const previewFor = people.find((p) => p.employeeId === letterFor) ?? people[0];
+  const openLetter = async () => {
+    if (!sendInput || !previewFor || !chosenTemplate) return;
+    setLetter({ name: previewFor.name, url: null, failed: null });
+    try {
+      setLetter({ name: previewFor.name, url: await live.onPreviewLetter(sendInput, previewFor.employeeId), failed: null });
+    } catch (e) {
+      setLetter({ name: previewFor.name, url: null, failed: e instanceof Error ? e.message : 'The letter could not be shown. Try again.' });
+    }
+  };
   const entityName = live.entities.find((e) => e.value === entity)?.label ?? '';
   const deptText = depts.length
     ? live.departments
@@ -180,7 +222,15 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
         <span className="yx-ppl__type yx-ppl__type--end">
           <strong>{inr(r.newCtc)}</strong>
           <span className="yx-ppl__sub">from {inr(r.currentCtc)}</span>
-          {problem(r.employeeId) ? <Badge tone="danger">Can't change</Badge> : custom[r.employeeId] !== undefined ? <Badge tone="info">Changed here</Badge> : null}
+          {problem(r.employeeId) ? (
+            <Badge tone="danger">Can't change</Badge>
+          ) : r.aboveBand ? (
+            <Badge tone="warning">Above band</Badge>
+          ) : r.capped ? (
+            <Badge tone="info">Capped</Badge>
+          ) : custom[r.employeeId] !== undefined ? (
+            <Badge tone="info">Changed here</Badge>
+          ) : null}
         </span>
       ),
       total: 'sum',
@@ -194,10 +244,26 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
       <Stepper
         title="Bulk change"
         onCurrentChange={setStep}
-        continueBlocked={step === 'people' && (!entity || !effective || reason.trim().length < 3) ? 'Choose the legal entity and the effective date first.' : step === 'rule' && mode === 'percent' && !everyone ? 'Give the raise for everyone first.' : undefined}
+        continueBlocked={
+          step === 'people' && (!entity || !effective || reason.trim().length < 3)
+            ? 'Choose the legal entity and the effective date first.'
+            : step === 'rule' && mode === 'percent' && !everyone
+              ? 'Give the raise for everyone first.'
+              : undefined
+        }
         finishLabel={`Send for approval (${people.length} ${people.length === 1 ? 'person' : 'people'})`}
         onFinish={() => setConfirm(true)}
-        finishBlocked={!people.length ? 'No one gets a raise yet.' : errors ? `${errors} ${errors === 1 ? 'person' : 'people'} can't be changed: see the preview.` : checking ? 'Checking…' : undefined}
+        finishBlocked={
+          !people.length
+            ? 'No one gets a raise yet.'
+            : policy === 'block' && above.length
+              ? `${above.length} above the band maximum: cap them first.`
+              : errors
+                ? `${errors} ${errors === 1 ? 'person' : 'people'} can't be changed: see the preview.`
+                : checking
+                  ? 'Checking…'
+                  : undefined
+        }
         review={{
           description: 'Check the totals before you send this for one approval.',
         }}
@@ -323,6 +389,21 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
             summary: `${formatINR(before)} → ${formatINR(after)} (${formatINR(after - before)} more a year)${unset.length ? ` · ${unset.length} without a raise yet` : ''}`,
             content: (
               <div className="yx-ppl__stack">
+                {notice && (
+                  <InlineAlert
+                    tone={notice.tone}
+                    title={notice.title}
+                    actions={
+                      policy !== 'cap' && above.length ? (
+                        <Button size="sm" onClick={() => cap(above.map((r) => r.employeeId))}>
+                          Cap all {above.length} at band maximum
+                        </Button>
+                      ) : undefined
+                    }
+                  >
+                    {notice.text}
+                  </InlineAlert>
+                )}
                 {errors > 0 && (
                   <InlineAlert tone="danger" title={`${errors} ${errors === 1 ? 'person' : 'people'} can't be changed`}>
                     {people
@@ -335,12 +416,62 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
                 <DataTable
                   label="Per-person preview"
                   columns={cols}
-                  rows={people}
+                  rows={[...people].sort((a, b) => Number(b.aboveBand) - Number(a.aboveBand))}
                   getRowId={(r) => r.employeeId}
                   pageSize={10}
                   state={checking && !result ? 'loading' : 'ready'}
-                  onCellEdit={(r, key, v) => key === 'pct' && typeof v === 'number' && v > 0 && v <= 100 && setCustom({ ...custom, [r.employeeId]: v })}
+                  rowButtons={(r) =>
+                    r.aboveBand && policy !== 'cap' ? (
+                      <Button size="sm" onClick={() => cap([r.employeeId])}>
+                        Cap at band max
+                      </Button>
+                    ) : null
+                  }
+                  // A raise typed for a person replaces a cap on them.
+                  onCellEdit={(r, key, v) => key === 'pct' && typeof v === 'number' && v > 0 && v <= 100 && (setCustom({ ...custom, [r.employeeId]: v }), setCapped(capped.filter((x) => x !== r.employeeId)))}
                 />
+              </div>
+            ),
+          },
+          {
+            id: 'letters',
+            title: 'Letters',
+            summary: chosenTemplate ? `${templateName ?? 'Increment letter'} · to each person's documents and an email, once approved` : 'No letters',
+            content: (
+              <div className="yx-ppl__form">
+                <FormField
+                  label="Letter template"
+                  required
+                  helper={
+                    <>
+                      Change the wording or the merge fields in{' '}
+                      <a className="yx-link" href={live.lettersHref}>
+                        Settings › Letter templates
+                      </a>
+                      .
+                    </>
+                  }
+                >
+                  <Select
+                    options={[...(result?.letterTemplates ?? []).map((t) => ({ value: t.id, label: `${t.name} (version ${t.version})` })), { value: 'none', label: 'No letters' }]}
+                    value={template}
+                    onChange={setTemplate}
+                  />
+                </FormField>
+                {result && !result.letterTemplates.length && <InlineAlert tone="info">No increment letter is switched on yet. Switch one on in Settings › Letter templates, or send this without letters.</InlineAlert>}
+                {chosenTemplate && (
+                  <>
+                    <FormField label="Preview the letter for" optional>
+                      <Select options={people.map((r) => ({ value: r.employeeId, label: r.name }))} value={letterFor ?? people[0]?.employeeId ?? null} onChange={setLetterFor} searchable />
+                    </FormField>
+                    <div>
+                      <Button icon={FileText} onClick={() => void openLetter()} disabled={!previewFor}>
+                        Preview letter
+                      </Button>
+                    </div>
+                  </>
+                )}
+                <InlineAlert tone="info">Letters are made only after the change is approved, from the approved pay. Each person finds theirs in My documents and letters and gets an email.</InlineAlert>
               </div>
             ),
           },
@@ -353,9 +484,18 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
         consequence={`Annual cost goes from ${formatINR(before)} to ${formatINR(after)} (${formatINR(after - before)} more a year). Someone with approval rights, not you, approves it once for everyone. Once approved it applies on ${effective ? formatDate(effective) : 'the effective date'}; later corrections go through a new change and payroll pays arrears.`}
         confirmLabel="Send for approval"
         onConfirm={async () => {
-          if (input) await live.onSend(input, people.length);
+          if (sendInput) await live.onSend(sendInput, people.length);
         }}
       />
+      <Dialog open={Boolean(letter)} onOpenChange={(o) => !o && setLetter(null)} size="md" title={`Increment letter · ${letter?.name ?? ''}`} footer={<Button onClick={() => setLetter(null)}>Close</Button>}>
+        {letter?.failed ? (
+          <InlineAlert tone="danger" title={letter.failed} />
+        ) : letter?.url ? (
+          <DocumentViewer fileName="preview.pdf" mimeType="application/pdf" versions={[{ id: 'p', label: 'Preview', url: letter.url, uploadedBy: '', uploadedAt: live.today, size: 0 }]} />
+        ) : (
+          <Spinner label="Preparing the letter" size="md" />
+        )}
+      </Dialog>
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
         <StatusChecklist
           label="People left out"
