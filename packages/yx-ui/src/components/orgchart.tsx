@@ -190,15 +190,19 @@ export function OrgChart({
     const size = () => {
       const over = main.scrollHeight - main.clientHeight;
       const cur = vp.getBoundingClientRect().height;
-      const next = Math.max(240, Math.min(760, Math.round(cur - over)));
+      const next = Math.max(120, Math.min(760, Math.round(cur - over)));
       if (Math.abs(next - cur) > 1) setVpHeight(next);
     };
     size();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(size) : null;
-    if (ro && main.firstElementChild) ro.observe(main.firstElementChild);
+    for (const child of Array.from(main.children)) ro?.observe(child);
+    // A notice added or removed above the chart (View as on) changes the room left.
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestAnimationFrame(size)) : null;
+    mo?.observe(main, { childList: true, subtree: true });
     window.addEventListener('resize', size);
     return () => {
       ro?.disconnect();
+      mo?.disconnect();
       window.removeEventListener('resize', size);
     };
   }, []);

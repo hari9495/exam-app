@@ -530,7 +530,7 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
           people={people}
           defaultView={defaultView}
           views={live.positions ? ['reporting', 'department', 'position'] : ['reporting', 'department']}
-          {...(live.onExportCsv ? { onExport: (f: 'png' | 'pdf' | 'csv') => (f === 'csv' ? live.onExportCsv!() : void exportOrgChart(people, f, live.companyName, `org-chart-${dayKey(asOn ?? today)}`)), exportFormats: ['png' as const, 'pdf' as const, 'csv' as const] } : {})}
+          {...(live.onExportCsv ? { onExport: (f: 'png' | 'pdf' | 'csv') => (f === 'csv' ? live.onExportCsv!() : void exportOrgChart(people.filter((x) => !x.vacant), f, live.companyName, `org-chart-${dayKey(asOn ?? today)}`)), exportFormats: ['png' as const, 'pdf' as const, 'csv' as const] } : {})}
           rootLabel={live.companyName}
           meId={live.meId}
           openOnMe={persona !== 'hr' && Boolean(live.meId)}

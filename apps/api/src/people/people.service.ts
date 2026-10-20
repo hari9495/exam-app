@@ -186,7 +186,7 @@ export class PeopleService {
       for (const r of rows) if (r.manager_employee_id) reports.set(r.manager_employee_id, (reports.get(r.manager_employee_id) ?? 0) + 1);
       return {
         asOf: date,
-        truncated: rows.length ? Number(rows[0].total) > rows.length : false,
+        truncated: all.length ? Number(all[0].total) > all.length : false,
         otherDates: true,
         futureDates: future,
         nodes: rows.map((r) => ({

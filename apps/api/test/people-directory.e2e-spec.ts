@@ -296,6 +296,7 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     expect(tn.map((n) => n.id)).toContain(ravi);
     expect(tn.every((n) => n.legalEntity?.id === ids.leTN)).toBe(true);
     expect(tn.map((n) => n.id)).not.toContain(ids.arjun);
+    expect((await api('hrA', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.truncated).toBe(false);
     expect(tn.find((n) => n.id === ravi)).toMatchObject({ managerId: null, managerOutside: { name: 'Arjun Kulkarni', legalEntity: 'Entity KF' } });
     const everyone = (await api('hrA', 'get', '/people/org-chart').expect(200)).body.nodes as { id: string; managerId: string | null }[];
     expect(everyone.find((n) => n.id === ravi)!.managerId).toBe(ids.arjun);
