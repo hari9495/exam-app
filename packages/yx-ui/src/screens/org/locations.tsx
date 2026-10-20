@@ -90,68 +90,85 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
   const timeZones = useMemo(() => timeZoneOptions(location?.timezone), [location?.timezone]);
+  const [dialog, ask] = useConfirm();
   const save = () => {
     if (!input) return saveErrors.reveal();
+    // Taking a geofence off opens check-in to anywhere on the site's networks: ask first (founder rule 19 Oct 2026).
+    if (location?.geofence && !input.geofence)
+      return ask({
+        title: `Remove the geofence from ${location.name}?`,
+        consequence: 'People could then check in from anywhere on its office networks.',
+        confirmLabel: 'Remove geofence',
+        cancelLabel: 'Keep it',
+        destructive: true,
+        action: async () => {
+          await onSave(input);
+          onClose();
+        },
+      });
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer
-      open
-      onClose={onClose}
-      dirty={dirty}
-      title={location ? `Edit ${location.name}` : 'Add location'}
-      errors={saveErrors.shownErrors}
-      saving={busy === 'save'}
-      failed={error}
-      saveLabel={location ? 'Save changes' : 'Add location'}
-      onSave={save}
-    >
-      <FormSection title="Site">
-        <FormField id="loc-entity" label="Legal entity" required helper={location ? 'A location stays with its entity.' : undefined} error={errorOf('loc-entity')}>
-          <Select
-            value={draft.legalEntityId}
-            onChange={(legalEntityId) => set({ legalEntityId })}
-            options={entities.filter((e) => !e.archivedAt || e.id === location?.legalEntityId).map((e) => ({ value: e.id, label: e.name }))}
-            disabled={Boolean(location)}
-            aria-label="Legal entity"
-          />
-        </FormField>
-        <FormField id="loc-name" label="Name" required error={errorOf('loc-name')}>
-          <TextField value={draft.name} onChange={(name) => set({ name })} maxLength={200} />
-        </FormField>
-        <FormField id="loc-code" label="Code" optional helper="Made from the name if left empty." error={errorOf('loc-code')}>
-          <TextField value={draft.code} onChange={(code) => set({ code: code.trim() })} maxLength={30} />
-        </FormField>
-        <FormField id="loc-tz" label="Time zone" required helper="Changes take effect at midnight here." error={errorOf('loc-tz')}>
-          <Select value={draft.timezone || null} onChange={(timezone) => set({ timezone: timezone ?? '' })} options={timeZones} searchable searchPlaceholder="Search time zones" aria-label="Time zone" />
-        </FormField>
-        <FormField id="loc-mw" label="Minimum wage zone" optional>
-          <TextField value={draft.minWageZone} onChange={(minWageZone) => set({ minWageZone })} maxLength={40} />
-        </FormField>
-      </FormSection>
-      <FormSection title="Address">
-        <AddressFields prefix="loc-addr" draft={draft.address} onChange={(address) => set({ address })} states={states} errorOf={errorOf} required />
-      </FormSection>
-      <FormSection title="Check-in" description="Mobile check-in is checked against the geofence; web check-in against the networks.">
-        <Checkbox label="Use a geofence" checked={draft.fence} onChange={(fence) => set({ fence })} />
-        {draft.fence && (
-          <FieldRow>
-            <FormField id="loc-lat" label="Latitude" required error={errorOf('loc-lat')}>
-              <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} decimals />
-            </FormField>
-            <FormField id="loc-lng" label="Longitude" required error={errorOf('loc-lng')}>
-              <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} decimals />
-            </FormField>
-            <FormField id="loc-radius" label="Radius" required error={errorOf('loc-radius')}>
-              <NumberField value={draft.radiusM} onChange={(radiusM) => set({ radiusM })} min={10} max={5000} suffix="m" />
-            </FormField>
-          </FieldRow>
-        )}
-        <FormField id="loc-ip" label="Allowed networks" optional helper="One range per line, such as 203.0.113.0/24." error={errorOf('loc-ip')}>
-          <TextArea value={draft.ipRanges} onChange={(ipRanges) => set({ ipRanges })} rows={3} spellCheck={false} />
-        </FormField>
-      </FormSection>
-    </EditorDrawer>
+    <>
+      <EditorDrawer
+        open
+        onClose={onClose}
+        dirty={dirty}
+        title={location ? `Edit ${location.name}` : 'Add location'}
+        errors={saveErrors.shownErrors}
+        saving={busy === 'save'}
+        failed={error}
+        saveLabel={location ? 'Save changes' : 'Add location'}
+        onSave={save}
+      >
+        <FormSection title="Site">
+          <FormField id="loc-entity" label="Legal entity" required helper={location ? 'A location stays with its entity.' : undefined} error={errorOf('loc-entity')}>
+            <Select
+              value={draft.legalEntityId}
+              onChange={(legalEntityId) => set({ legalEntityId })}
+              options={entities.filter((e) => !e.archivedAt || e.id === location?.legalEntityId).map((e) => ({ value: e.id, label: e.name }))}
+              disabled={Boolean(location)}
+              aria-label="Legal entity"
+            />
+          </FormField>
+          <FormField id="loc-name" label="Name" required error={errorOf('loc-name')}>
+            <TextField value={draft.name} onChange={(name) => set({ name })} maxLength={200} />
+          </FormField>
+          <FormField id="loc-code" label="Code" optional helper="Made from the name if left empty." error={errorOf('loc-code')}>
+            <TextField value={draft.code} onChange={(code) => set({ code: code.trim() })} maxLength={30} />
+          </FormField>
+          <FormField id="loc-tz" label="Time zone" required helper="Changes take effect at midnight here." error={errorOf('loc-tz')}>
+            <Select value={draft.timezone || null} onChange={(timezone) => set({ timezone: timezone ?? '' })} options={timeZones} searchable searchPlaceholder="Search time zones" aria-label="Time zone" />
+          </FormField>
+          <FormField id="loc-mw" label="Minimum wage zone" optional>
+            <TextField value={draft.minWageZone} onChange={(minWageZone) => set({ minWageZone })} maxLength={40} />
+          </FormField>
+        </FormSection>
+        <FormSection title="Address">
+          <AddressFields prefix="loc-addr" draft={draft.address} onChange={(address) => set({ address })} states={states} errorOf={errorOf} required />
+        </FormSection>
+        <FormSection title="Check-in" description="Mobile check-in is checked against the geofence; web check-in against the networks.">
+          <Checkbox label="Use a geofence" checked={draft.fence} onChange={(fence) => set({ fence })} />
+          {draft.fence && (
+            <FieldRow>
+              <FormField id="loc-lat" label="Latitude" required error={errorOf('loc-lat')}>
+                <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} decimals />
+              </FormField>
+              <FormField id="loc-lng" label="Longitude" required error={errorOf('loc-lng')}>
+                <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} decimals />
+              </FormField>
+              <FormField id="loc-radius" label="Radius" required error={errorOf('loc-radius')}>
+                <NumberField value={draft.radiusM} onChange={(radiusM) => set({ radiusM })} min={10} max={5000} suffix="m" />
+              </FormField>
+            </FieldRow>
+          )}
+          <FormField id="loc-ip" label="Allowed networks" optional helper="One range per line, such as 203.0.113.0/24." error={errorOf('loc-ip')}>
+            <TextArea value={draft.ipRanges} onChange={(ipRanges) => set({ ipRanges })} rows={3} spellCheck={false} />
+          </FormField>
+        </FormSection>
+      </EditorDrawer>
+      {dialog}
+    </>
   );
 }
 

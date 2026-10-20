@@ -163,7 +163,8 @@ export function workedMinutes(punches: Punch[], now?: number): number {
 
 /**
  * A finished day's worked time from its punches (TIM-03): null when there is no check-out (hours not known).
- * Punched breaks are taken as recorded; with no punched break, the policy break (30 min above 5 h) is deducted.
+ * The time off is the larger of the breaks punched and the policy break (30 min above 5 h), as the server's day engine
+ * works it out (19 Oct 2026): a short punched break never lowers the policy break.
  */
 export function dayWorked(punches: Punch[], rule = { aboveMin: 300, breakMin: 30 }): { worked: number; breakMin: number; punchedBreak: boolean } | null {
   if (!punches.some((p) => p.kind === 'out')) return null;
@@ -172,7 +173,10 @@ export function dayWorked(punches: Punch[], rule = { aboveMin: 300, breakMin: 30
   if (starts.length) {
     const ins = punches.filter((p) => p.kind === 'in').map((p) => toMin(p.time));
     const outs = punches.filter((p) => p.kind === 'out').map((p) => toMin(p.time));
-    return { worked: gross, breakMin: Math.max(...outs) - Math.min(...ins) - gross, punchedBreak: true };
+    const span = Math.max(...outs) - Math.min(...ins);
+    const taken = span - gross;
+    const policy = span > rule.aboveMin ? rule.breakMin : 0;
+    return { worked: span - Math.max(taken, policy), breakMin: Math.max(taken, policy), punchedBreak: taken >= policy };
   }
   const breakMin = gross > rule.aboveMin ? rule.breakMin : 0;
   return { worked: gross - breakMin, breakMin, punchedBreak: false };

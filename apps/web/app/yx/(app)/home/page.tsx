@@ -16,7 +16,8 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, financeHome, hiringHome, homeWidgets, managerHome, myTasks, weekOf, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
 import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
 
@@ -37,7 +38,7 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // - HR: attendance exceptions, not ready for payroll, open cases, joining this month ("vs last month" once on record),
 //   due dates, joiners and leavers this week.
 // - Manager: team today, who's off this week, late check-ins, reviews to write, probation reviews due, 1:1s.
-// - Employee: earned leave left, days present, late marks, requests pending.
+// - Employee: earned leave left, days present, late marks (or their own net pay when HR shows pay), requests pending.
 // - Finance (payroll, statutory): money to pay, net payroll, PF and ESI, TDS, money going out in the next 30 days.
 // Everyone with an attendance record gets the designed "Attendance today" card. Hiring (founder decision 19 Oct 2026):
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
@@ -78,6 +79,8 @@ export default function YxHomePage() {
   const checklist = useLife<{ tasks: { id: string; title: string; dueOn: string }[] }>(asEmployee ? '/lifecycle/my-tasks' : null);
   const feedbackTasks = usePerf<NonNullable<Parameters<typeof myTasks>[0]['feedback']>>('/my-feedback-tasks', asEmployee);
   const myReviews = usePerf<NonNullable<Parameters<typeof myTasks>[0]['reviews']>>('/reviews?view=mine', asEmployee);
+  // Net pay on Home only when the company shows it (the API says; it is always the person's own).
+  const pay = usePay<HomePayResponse>(asEmployee ? '/me/home-pay' : null);
   const mine = useQuery<{ status: string }[]>({ queryKey: ['workflow', '/approvals/mine'], queryFn: () => apiFetch('/workflow/approvals/mine', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && asEmployee, retry: false });
 
   // Manager widgets, each from the page it links to (the API scopes every list to the team).
@@ -137,8 +140,9 @@ export default function YxHomePage() {
           },
         }
       : {}),
-    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals } : {}),
+    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals, onNudge: async (r: { id: string }) => void (await write(`/people/${encodeURIComponent(r.id)}/nudge`, 'POST', undefined, false)) } : {}),
     hiring: hiringView,
+    ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
     quickActions: employee
