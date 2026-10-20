@@ -37,6 +37,7 @@ import { DueBadge, Kpis, ShiftBar, TimePage } from './time-kit';
 import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './time-logic';
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
+import type { LoadState, RosterWeek } from './live/types';
 import './time.css';
 
 /** Opens another screen's story, so buttons that lead to a screen go somewhere. */
@@ -190,15 +191,29 @@ function copyLastWeek(v: RosterValue) {
    TIM-05 · Roster (drag, copy week, swap, conflicts, publish)
    ===================================================================== */
 
+/** The roster a swap is checked against: the story's plant by default, the live week in the app. */
+interface SwapWorld {
+  people: RosterPerson[];
+  /** "Fri 9 Oct" for a day index. */
+  dayLabel: (i: number) => string;
+  days: number;
+  shiftText: (code: string | null | undefined) => string;
+  check: (v: RosterValue) => RosterConflict[];
+  first: string;
+  second: string;
+}
+const PLANT_WORLD: SwapWorld = { people: PLANT_PEOPLE, dayLabel: (i) => `${DAYS[i]} Oct`, days: DAYS.length, shiftText, check: checkPlant, first: 'p5:4', second: 'p8:4' };
+
 /** Runs the grid's rest, leave and night-consent checks on the chosen pair before the swap is allowed. */
-function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void }) {
+function SwapDialog({ open, onOpenChange, value, onSwap, world = PLANT_WORLD }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void; world?: SwapWorld }) {
+  const { people: PEOPLE, dayLabel, shiftText, check } = world;
   // Default pair: two line operators on the same day (Fri 9), so the morning keeps its cover: Jaya takes Selvi's morning, Selvi gets the day off.
-  const [a, setA] = useState('p5:4');
-  const [b, setB] = useState('p8:4');
-  const options = PLANT_PEOPLE.flatMap((p) => DAYS.map((d, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${d} Oct · ${shiftText(value[p.id]?.[i])}` })));
+  const [a, setA] = useState(world.first);
+  const [b, setB] = useState(world.second);
+  const options = PEOPLE.flatMap((p) => Array.from({ length: world.days }, (_, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${dayLabel(i)} · ${shiftText(value[p.id]?.[i])}` })));
   const swapped = useMemo(() => swapCells(value, a, b), [value, a, b]);
-  const before = useMemo(() => checkPlant(value), [value]);
-  const after = useMemo(() => checkPlant(swapped), [swapped]);
+  const before = useMemo(() => check(value), [value, check]);
+  const after = useMemo(() => check(swapped), [swapped, check]);
   const beforeKeys = new Set(before.map(conflictKey));
   const afterKeys = new Set(after.map(conflictKey));
   const added = after.filter((x) => !beforeKeys.has(conflictKey(x)));
@@ -206,15 +221,15 @@ function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOp
   const same = a === b || (value[cellOf(a)[0]]?.[cellOf(a)[1]] ?? null) === (value[cellOf(b)[0]]?.[cellOf(b)[1]] ?? null);
   const blocking = added.filter((x) => BLOCKING_CONFLICTS.includes(x.kind));
   // Skill check: a shift goes only to someone in the same role (a Maintenance Technician can't cover a Shift Supervisor's shift).
-  const pa = PLANT_PEOPLE.find((p) => p.id === cellOf(a)[0])!;
-  const pb = PLANT_PEOPLE.find((p) => p.id === cellOf(b)[0])!;
-  const roleClash = pa.id !== pb.id && pa.role !== pb.role ? `${pa.name} (${pa.role}) and ${pb.name} (${pb.role}) aren't trained for each other's shifts` : '';
+  const pa = PEOPLE.find((p) => p.id === cellOf(a)[0])!;
+  const pb = PEOPLE.find((p) => p.id === cellOf(b)[0])!;
+  const roleClash = pa.id !== pb.id && pa.role && pb.role && pa.role !== pb.role ? `${pa.name} (${pa.role}) and ${pb.name} (${pb.role}) aren't trained for each other's shifts` : '';
   // Cover check: on different days, each working shift that changes day leaves its own day one person short.
   const [ia, ib] = [cellOf(a)[1], cellOf(b)[1]];
   const va = value[pa.id]?.[ia] ?? null;
   const vb = value[pb.id]?.[ib] ?? null;
   const working = (c: string | null) => !!c && c !== 'OFF';
-  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${DAYS[i]} Oct ${shiftText(c).toLowerCase()} would be 1 person short`);
+  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${dayLabel(i)} ${shiftText(c).toLowerCase()} would be 1 person short`);
   // A shift traded for a day off on another date is a move, not a swap.
   const move = ia !== ib && (!working(va) || !working(vb));
   const reason = same ? 'Pick two different shifts' : roleClash ? 'Roles differ' : gaps.length ? `Leaves ${gaps.length === 1 ? 'a shift' : `${gaps.length} shifts`} short` : blocking.length ? `Breaks ${blocking.length === 1 ? 'a rule' : `${blocking.length} rules`}` : '';
@@ -291,7 +306,166 @@ function MyWeekList({ row, pid }: { row: (string | null)[]; pid: string }) {
   );
 }
 
-export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean }) {
+/** What the live app gives the roster (design audit): the week the viewer plans, and the server calls. */
+export interface LiveRoster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: RosterWeek | null;
+  /** Monday of the week shown (yyyy-mm-dd). */
+  week: string;
+  onWeek: (week: string) => void;
+  /** value: a shift id, 'off', or 'pattern' (back to the pattern / location default). */
+  onCells: (cells: { employeeId: string; on: string; value: string }[]) => Promise<unknown>;
+  onCopy: (fromWeek: string, toWeek: string) => Promise<unknown>;
+  onPublish: (week: string) => Promise<unknown>;
+}
+
+type RosterProps = { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; /** The live app's data. Stories leave it out. */ live?: LiveRoster };
+
+export function RosterScreen(props: RosterProps) {
+  return props.live ? <LiveRosterView live={props.live} /> : <StoryRoster {...props} />;
+}
+
+const COLOUR_NUMBER: Record<string, number> = { blue: 1, green: 2, teal: 3, purple: 4, orange: 5, pink: 6, grey: 7, red: 8 };
+const isoLocal = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoDays = (iso: string, n: number) => {
+  const d = addDays(isoLocal(iso), n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const SCOPE_LINE = { team: 'Your team', granted: 'The people you plan', company: 'Everyone' } as const;
+const CHECK_LABEL: Record<string, string> = { night: 'Law', holiday: 'Holiday', overlap: 'Overlap', rest: 'Rest' };
+
+/** TIM-05 on live data: the same header, grid, checks card and dialogs; changes are saved as drafts on the server. */
+function LiveRosterView({ live }: { live: LiveRoster }) {
+  const d = live.data;
+  const [dlg, setDlg] = useState<'copy' | 'swap' | undefined>();
+  const [failed, setFailed] = useState('');
+  const run = (p: Promise<unknown>) => {
+    setFailed('');
+    p.catch((e: unknown) => setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'));
+  };
+  const shifts: Shift[] = useMemo(
+    () => [
+      ...(d?.shifts ?? []).filter((s) => s.start !== null).map((s) => ({ code: s.code, name: s.name, start: hhmm(s.start!), end: hhmm(s.end!), hours: Math.round((((s.end! - s.start! + 1440) % 1440) / 60) * 10) / 10, color: COLOUR_NUMBER[s.colour] ?? 1 })),
+      { code: 'OFF', name: 'Weekly off', hours: 0 },
+    ],
+    [d],
+  );
+  const codeOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.id, s.code])), [d]);
+  const idOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.code, s.id])), [d]);
+  const people: RosterPerson[] = useMemo(() => (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.code ?? undefined })), [d]);
+  // What each cell will be once published: a shift code, OFF, or empty (the pattern or the location's usual shift).
+  const value: RosterValue = useMemo(() => Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.planned ? (c.planned.shiftId ? (codeOf.get(c.planned.shiftId) ?? null) : null) : 'OFF'))])), [d, codeOf]);
+  const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map((k) => ({ personId: x.id, date: isoLocal(c.on), code: k.message.startsWith('Half') ? 'half day' : 'leave' })))), [d]);
+  // The server's night-work guard: someone it flags on a night may not work nights; everyone else may.
+  const rules: RosterRules = useMemo(() => {
+    const barred = new Set((d?.people ?? []).filter((x) => x.cells.some((c) => c.conflicts?.some((k) => k.kind === 'night'))).map((x) => x.id));
+    return { minRestHours: 11, maxWeeklyHours: 48, nightConsent: people.filter((p) => !barred.has(p.id)).map((p) => p.id) };
+  }, [d, people]);
+  const checks = (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind !== 'leave' && k.kind !== 'rest').map((k) => ({ who: x.name, ...k }))));
+  const start = isoLocal(live.week);
+  const world: SwapWorld = useMemo(
+    () => ({
+      people: people.map((p) => ({ id: p.id, name: p.name })),
+      dayLabel: (i) => dayName(addDays(start, i)),
+      days: 7,
+      shiftText: (c) => (!c ? 'Usual shift' : c === 'OFF' ? 'Off' : shifts.find((s) => s.code === c)?.name ?? c),
+      check: (v) => checkRoster({ people, value: v, start, days: 7, shifts, leave, rules }),
+      first: people[0] ? `${people[0].id}:0` : '',
+      second: people[1] ? `${people[1].id}:0` : people[0] ? `${people[0].id}:1` : '',
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [people, shifts, leave, rules, live.week],
+  );
+  const save = (next: RosterValue) => {
+    if (!d) return;
+    const cells: { employeeId: string; on: string; value: string }[] = [];
+    for (const person of d.people)
+      person.cells.forEach((c, i) => {
+        const was = value[person.id]?.[i] ?? null;
+        const now = next[person.id]?.[i] ?? null;
+        if (was === now || !c.employed) return;
+        cells.push({ employeeId: person.id, on: c.on, value: now === null ? 'pattern' : now === 'OFF' ? 'off' : (idOf.get(now) ?? 'pattern') });
+      });
+    if (cells.length) run(live.onCells(cells));
+  };
+  const rostered = (d?.people ?? []).some((x) => x.cells.some((c) => c.source === 'roster'));
+  const ready = live.state === 'ready';
+  const badge = !d ? undefined : d.drafts > 0 ? <Badge tone="warning">{rostered ? 'Unpublished changes' : 'Draft · not visible to staff'}</Badge> : rostered ? <Badge tone="success">Published</Badge> : <Badge tone="neutral">Following shift patterns</Badge>;
+  const lastWeek = isoDays(live.week, -7);
+  return (
+    <TimePage active="Roster">
+      <PageHeader
+        title="Roster"
+        description={d ? `Week of ${longDate(start)} · ${SCOPE_LINE[d.scope]} · minimum rest 11 h · max 48 h a week` : undefined}
+        status={badge}
+        actions={
+          <div className="yx-tim-row">
+            {!ready && live.state !== 'no-access' && <span className="yx-tim-muted">{live.state === 'loading' ? 'Roster is loading' : "Roster didn't load"}</span>}
+            <Button icon={Copy} disabled={!ready || !people.length} onClick={() => setDlg('copy')}>Copy last week</Button>
+            <Button disabled={!ready || people.length === 0} onClick={() => setDlg('swap')}>Swap shifts</Button>
+          </div>
+        }
+      />
+      <div className="yx-tim-row">
+        <Button icon={ChevronLeft} onClick={() => live.onWeek(lastWeek)}>Previous week</Button>
+        <Button icon={ChevronRight} onClick={() => live.onWeek(isoDays(live.week, 7))}>Next week</Button>
+      </div>
+      {failed && <InlineAlert tone="danger" title="That change was not saved">{failed}</InlineAlert>}
+      {live.state === 'loading' ? <LoadingBlock rows={8} /> : live.state === 'error' ? (
+        <ErrorState title="The roster didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' ? (
+        <EmptyState title="You don't plan a roster" description="You plan the roster of your own team. HR can give you more people to plan." />
+      ) : !people.length ? (
+        <EmptyState title="No one to plan" description="You plan the roster of your own team. HR can give you more people to plan." />
+      ) : (
+        <div className="yx-tim-stack">
+          <RosterGrid
+            // A fresh grid after each server refresh, so its own change count starts from what is saved.
+            key={`${d!.week}:${d!.drafts}:${JSON.stringify(value)}`}
+            people={people}
+            start={start}
+            days={7}
+            shifts={shifts}
+            value={value}
+            onChange={save}
+            leave={leave}
+            rules={rules}
+            status={d!.drafts > 0 ? 'draft' : 'published'}
+            // Nothing planned yet: the week follows the patterns, so the grid doesn't call it published.
+            hideStatus={!rostered && d!.drafts === 0}
+            onPublish={() => run(live.onPublish(d!.week))}
+            today={isoLocal(d!.today)}
+          />
+          {checks.length > 0 && (
+            <Card title="Law and licence guards">
+              <ul className="yx-tim-list" aria-label="Roster checks">
+                {checks.map((x, i) => (
+                  <li key={i}>
+                    <span className="yx-tim-list__main"><strong>{x.who} · {dayName(isoLocal(x.on))}</strong><span className="yx-tim-muted">{x.message}</span></span>
+                    <Badge tone={x.kind === 'night' ? 'danger' : 'warning'}>{CHECK_LABEL[x.kind] ?? x.kind}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          <p className="yx-tim-note">Empty cells follow the person's shift pattern or the location's usual shift. Past days and locked months can't change here.</p>
+        </div>
+      )}
+      <ConfirmDialog
+        open={dlg === 'copy'}
+        onOpenChange={(o) => !o && setDlg(undefined)}
+        title={`Copy week of ${shortDate(isoLocal(lastWeek))} into this week?`}
+        consequence="Each day from today takes last week's shift, as a draft. Nothing changes for your team until you publish."
+        confirmLabel="Copy week"
+        onConfirm={() => { setDlg(undefined); run(live.onCopy(lastWeek, live.week)); }}
+      />
+      {dlg === 'swap' && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={save} world={world} />}
+    </TimePage>
+  );
+}
+
+function StoryRoster({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial }: RosterProps) {
   const [dlg, setDlg] = useState(dialog);
   const [st, setSt] = useState<ViewState>(state);
   const [value, setValue] = useState<RosterValue>(state === 'empty' ? {} : status === 'published' ? PUBLISHED_ROSTER : partial ? PART_ROSTER : PLANT_ROSTER);
