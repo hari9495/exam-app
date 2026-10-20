@@ -274,7 +274,7 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 190 },
     { key: 'personType', header: 'Person type', value: (r) => r.personType, render: (r) => <TypeCell row={r} />, groupable: true, width: 240 },
     { key: 'source', header: 'From', value: (r) => r.source, width: 190, optional: true },
-    ...(live ? [] : [{ key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>]),
+    { key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>,
     { key: 'offerAccepted', header: 'Offer accepted', type: 'date', value: (r) => r.offerAccepted, width: 140, optional: true },
   ];
   const action = (r: ReadyRow) =>

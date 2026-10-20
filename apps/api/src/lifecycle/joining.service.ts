@@ -252,12 +252,14 @@ export class JoiningService {
       const out = [];
       for (const o of offers.filter((x) => !taken.has(x.id))) {
         const cand = await tx.candidate.findFirst({ where: { organizationId: org, id: o.candidateId }, select: { name: true, email: true, phone: true } });
-        const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: org, id: o.pipelineEntryId }, select: { job: { select: { title: true } } } });
+        const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: org, id: o.pipelineEntryId }, select: { job: { select: { title: true, location: true, locationId: true } } } });
         if (!cand) continue;
+        // PPL-12: the job's place (the location master's name, else the job's free text).
+        const place = entry?.job.locationId ? (await tx.location.findFirst({ where: { organizationId: org, id: entry.job.locationId }, select: { name: true } }))?.name : null;
         const persons = await tx.person.findMany({ where: { organizationId: org, primaryEmail: cand.email, status: 'active' }, select: { id: true } });
         const emp = await tx.employee.findFirst({ where: { organizationId: org, OR: [{ personId: { in: persons.map((p) => p.id) } }, { workEmail: cand.email }] }, select: { id: true } });
         const current = emp ? await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }) : null;
-        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', acceptedOn: o.respondedAt ? o.respondedAt.toISOString().slice(0, 10) : null, personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
+        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', location: place ?? entry?.job.location ?? null, acceptedOn: o.respondedAt ? o.respondedAt.toISOString().slice(0, 10) : null, personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
       }
       return out;
     });

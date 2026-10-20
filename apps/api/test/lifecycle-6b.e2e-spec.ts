@@ -327,7 +327,7 @@ describe('Lifecycle batch 6b', () => {
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
     const offers = await inA(async (tx) => {
       const o = { organizationId: org.A.id };
-      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', createdById: users.hr } });
+      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', location: 'Hosur plant', createdById: users.hr } });
       const make = async (name: string, mail: string) => {
         const cand = await tx.candidate.create({ data: { ...o, name, email: mail } });
         const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual' } });
@@ -336,7 +336,7 @@ describe('Lifecycle batch 6b', () => {
       return { fresh: await make(`Asha ${run}`, `asha-${run}@mail.test`), internal: await make(`Divya ${run}`, `mgr@life6b-${run}.test`) };
     });
     const ready = (await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body;
-    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', acceptedOn: '2026-10-01' });
+    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', location: 'Hosur plant', acceptedOn: '2026-10-01' });
     await api('mgr', 'get', '/lifecycle/ready-to-onboard').expect(403);
     // The side menu's count (PPL-12 design): accepted offers not yet onboarded, only for those who onboard.
     expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr}`).expect(200)).body.readyToOnboard).toBe(ready.length);

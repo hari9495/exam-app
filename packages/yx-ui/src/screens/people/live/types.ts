@@ -337,6 +337,8 @@ export interface ReadyOffer {
   phone: string | null;
   startDate: string;
   jobTitle: string;
+  /** Where the job is (PPL-12). */
+  location?: string | null;
   /** The day the offer was accepted (null for older offers). */
   acceptedOn?: string | null;
   personType: 'new' | 'ex_employee' | 'internal';

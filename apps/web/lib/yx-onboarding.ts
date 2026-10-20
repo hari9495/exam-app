@@ -59,7 +59,7 @@ export function readyRow(o: ReadyOffer): ReadyRow {
     name: o.name,
     role: o.jobTitle,
     dept: '',
-    location: '',
+    location: o.location ?? '',
     entity: '',
     manager: '',
     joining: day(o.startDate),
