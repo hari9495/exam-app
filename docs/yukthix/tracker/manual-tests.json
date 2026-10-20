@@ -267,7 +267,8 @@
   ],
   "ideas": [
    "Ask before saving a location that removes its geofence ('People could then check in from anywhere on its networks') — suggested 19 Oct, waiting for the founder.",
-   "Build breaks (Start break / End break punches; breaks not counted as worked time), Request work from home, show pay on Home, Nudge — founder pointed out Start break is missing, 19 Oct."
+   "Build breaks (Start break / End break punches; breaks not counted as worked time), Request work from home, show pay on Home, Nudge — founder pointed out Start break is missing, 19 Oct.",
+   "Founder decisions 20 Oct: keep extra People menu pages; build the Bulk changes increment wizard now; Secure-your-account banner one line and dismissible for the day; Time menu names follow the design (Leave calendar, Leave reports); full geofence editor in Time (several fences, office network and Wi-Fi, phone binding); dated versions of leave types."
   ],
   "id": "AF-01",
   "area": "0 App frame (design parity step 1, PR #178)",
