@@ -34,7 +34,7 @@ describe('buildNav: areas', () => {
 describe('buildNav: People', () => {
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person', 'Merged records']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -117,6 +117,12 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('Declarations: the HR diversity role or the compliance officer; each employee has their own (never in a support session)', () => {
+    expect(labels(nav(['employee.disability.manage']), 'people')).toContain('Declarations');
+    expect(labels(nav(['compliance.officer']), 'people')).toContain('Declarations');
+    expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('Declarations');
+    expect(labels(nav([], { employee: true }), 'home')).toContain('Declarations');
+  });
   it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
     expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
     expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));
@@ -143,6 +149,6 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('Me pages for the account menu', () => {
-    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'Declarations', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
   });
 });

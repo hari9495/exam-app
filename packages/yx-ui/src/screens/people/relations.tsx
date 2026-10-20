@@ -1,6 +1,7 @@
 // PPL-36 Possible same person · PPL-37 Merge / unmerge (P01 YX-ORG-26 / 27)
 // PPL-39 Union register · PPL-40 VRS scheme · PPL-42 Re-verification cycles (M01 §3.11).
 import { useState } from 'react';
+import { LiveMergeReview, LiveUnmerge, type LiveMerge, type LiveUnmerge as LiveUnmergeProps } from './declarations-live';
 import { ErrorState } from '../../components/feedback';
 import { ListSkeleton } from './people-kit';
 import { ApplyDialog, ClosureDialog, DecideDialog, SchemeDialog, type RetrenchmentScreenProps } from './live/special';
@@ -100,7 +101,13 @@ const MERGE_FIELDS = [
 ];
 
 // PPL-37
-export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'merge' | 'unmerge'; noteError?: boolean }) {
+export function MergeReview(props: { mode?: 'merge' | 'unmerge'; noteError?: boolean; live?: LiveMerge; liveUnmerge?: LiveUnmergeProps }) {
+  if (props.live) return <LiveMergeReview live={props.live} />;
+  if (props.liveUnmerge) return <LiveUnmerge live={props.liveUnmerge} />;
+  return <SampleMergeReview {...props} />;
+}
+
+function SampleMergeReview({ mode = 'merge', noteError = false }: { mode?: 'merge' | 'unmerge'; noteError?: boolean }) {
   const [picks, setPicks] = useState(Object.fromEntries(MERGE_FIELDS.map((f) => [f.label, f.pick])));
   const [confirm, setConfirm] = useState(false);
   if (mode === 'unmerge')

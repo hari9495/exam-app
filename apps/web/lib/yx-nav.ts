@@ -76,6 +76,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-letters', 'My letters', '/yx/me/letters')),
         ...when(!support, L('delegation', 'Delegation', '/yx/me/delegation')),
         ...when(!support, L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
+        ...when(employee && !support, L('my-declarations', 'Declarations', '/yx/me/declarations')),
         ...when(employee, L('my-data', 'My data', '/yx/me/privacy'), L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language'), L('resign', 'Resign', '/yx/me/resignation')),
         L('me', 'My security', ME_SECURITY),
       ]),
@@ -125,6 +126,10 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('More', [
         ...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
         ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+        // PPL-37: merges of two records, each undoable (company-wide HR; the API checks the scope).
+        ...when(!support && has('employee.change.manage'), L('merges', 'Merged records', '/yx/people/merges')),
+        // PPL-38 the HR diversity role; PPL-43 / 44 the compliance officer (BFSI companies only, said on the page).
+        ...when(any('employee.disability.manage', 'compliance.officer'), L('people-declarations', 'Declarations', '/yx/people/declarations')),
       ]),
     ],
   };

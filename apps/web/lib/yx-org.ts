@@ -20,6 +20,7 @@ export const YX_KEYS = [
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
+  'employee.identity.view',
   'employee.identity.manage',
   'employee.identity.approve',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.

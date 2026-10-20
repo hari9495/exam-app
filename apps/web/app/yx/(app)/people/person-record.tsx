@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { MergeStartDialog, PersonWorkspace, type FieldRow, type IdentityCheckInput, type IdentityData, type IntlAccountInput, type IntlSplitView, type LiveRecord, type LiveRecordPay, type RecordDoc, type WorkAuthInput, type WorkAuthRow } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -115,6 +115,13 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [uploading, setUploading] = useState<string | null | false>(false);
   const [phone, setPhone] = useState('');
+  // PPL-34 / 37 / 45 / 46: identity checks (loaded when the panel opens), merge, work authorisations, international bank.
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const identityChecks = usePeople<IdentityData>(personId && identityOpen ? `/employees/${p}/identity` : null);
+  const confidential = perms.has('employee.identity.view');
+  const workAuth = usePeople<{ designation: string | null; canAdd: boolean; rows: WorkAuthRow[] }>(personId && (profile.data?.self || confidential) ? `/employees/${p}/work-auth` : null);
+  const intlBank = usePeople<{ current: IntlSplitView | null; pending: IntlSplitView | null; indianAccounts: { id: string; label: string }[]; canRequest: boolean; canDecide: boolean }>(personId && (profile.data?.self || confidential) ? `/employees/${p}/intl-bank` : null);
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
@@ -257,6 +264,50 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
         : null,
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
+    ...(confidential && !self && personId
+      ? {
+          identityChecks: {
+            onLoad: () => setIdentityOpen(true),
+            data: identityChecks.data ?? null,
+            state: identityChecks.isError ? ('error' as const) : identityChecks.data ? ('ready' as const) : ('loading' as const),
+            onRetry: () => void identityChecks.refetch(),
+            onRecord: async (input: IdentityCheckInput) => {
+              await write('POST', `/employees/${p}/identity/checks`, input);
+              done(input.result === 'requested' ? `Re-verification asked for ${first}` : `Check recorded for ${first}`);
+            },
+          },
+        }
+      : {}),
+    ...(workAuth.data
+      ? {
+          workAuth: {
+            ...workAuth.data,
+            onAdd: async (input: WorkAuthInput) => {
+              await write('POST', `/employees/${p}/work-auth`, input);
+              done(`${input.type} added for ${first}`);
+            },
+          },
+        }
+      : {}),
+    ...(intlBank.data && (intlBank.data.current || intlBank.data.pending || intlBank.data.canRequest)
+      ? {
+          intlBank: {
+            ...intlBank.data,
+            self,
+            onRequest: async (input: { country: string; currency: string; accounts: IntlAccountInput[] }) => {
+              await write('POST', `/employees/${p}/intl-bank`, input);
+              done(self ? 'Your bank change is sent for approval' : `Bank change for ${first} sent for approval`);
+            },
+            onDecide: async (approve: boolean, note: string | null) => {
+              const r = intlBank.data!.pending!;
+              await write('POST', `/employees/${p}/intl-bank/${id(r.id)}/decide`, { approve, note, version: r.version });
+              done(approve ? `Bank change for ${first} approved` : `Bank change for ${first} rejected`);
+            },
+          },
+        }
+      : {}),
+    // PPL-37: company-wide HR merges another record of this person into this one.
+    ...(canChange && !self && person.data ? { onMerge: () => setMerging(true) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };
 
@@ -335,6 +386,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
             done(`${withdrawing.label} change withdrawn`);
           }}
           onClose={() => setWithdrawing(null)}
+        />
+      )}
+      {merging && person.data && (
+        <MergeStartDialog
+          name={name}
+          onClose={() => setMerging(false)}
+          onSearch={(q) => write('GET', `/merges/persons?q=${id(q)}&not=${id(person.data!.id)}`)}
+          onPick={(other) => router.push(`/yx/people/merge?keep=${id(person.data!.id)}&merge=${id(other)}`)}
         />
       )}
       {starting && personId && (

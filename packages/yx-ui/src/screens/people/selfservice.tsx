@@ -1,6 +1,20 @@
 // PPL-32 Profile change request · PPL-33 My data + Who accessed my data · PPL-38 Disability declaration
 // PPL-43 BFSI declarations · PPL-44 Personal-trading pre-clearance (M01 §3.1, §3.11; P02 §4.5, §6, §7; P08 Q6).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import {
+  LiveBfsiDeclarations,
+  LiveBfsiRegister,
+  LiveDisabilityDeclaration,
+  LiveDisabilityList,
+  LivePreclearanceQueue,
+  LiveTradingPreclearance,
+  type LiveBfsi,
+  type LiveDisability,
+  type LiveDisabilityList as LiveDisabilityListProps,
+  type LivePreclearance,
+  type LivePreclearQueue,
+  type LiveRegister,
+} from './declarations-live';
 import { Download, FileText, Plus, ShieldCheck } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
@@ -273,7 +287,13 @@ function DisabilityFields({ consent, setConsent }: { consent: boolean; setConsen
 }
 
 // PPL-38
-export function DisabilityDeclaration({ declared = false, persona = 'emp' }: { declared?: boolean; persona?: 'emp' | 'hr' }) {
+export function DisabilityDeclaration(props: { declared?: boolean; persona?: 'emp' | 'hr'; live?: LiveDisability; liveList?: LiveDisabilityListProps; tabs?: ReactNode }) {
+  if (props.live) return <LiveDisabilityDeclaration live={props.live} />;
+  if (props.liveList) return <LiveDisabilityList live={props.liveList} tabs={props.tabs} />;
+  return <SampleDisabilityDeclaration {...props} />;
+}
+
+function SampleDisabilityDeclaration({ declared = false, persona = 'emp' }: { declared?: boolean; persona?: 'emp' | 'hr' }) {
   const [consent, setConsent] = useState(declared);
   if (persona === 'hr')
     return (
@@ -349,7 +369,11 @@ const RELATED = [
 ];
 
 // PPL-43
-export function BfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean }) {
+export function BfsiDeclarations(props: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; live?: LiveBfsi }) {
+  return props.live ? <LiveBfsiDeclarations live={props.live} /> : <SampleBfsiDeclarations {...props} />;
+}
+
+function SampleBfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean }) {
   const [t, setT] = useState(tab);
   return (
     <MeFrame active="Declarations">
@@ -428,7 +452,11 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 
 }
 
 // PPL-43 · compliance officer
-export function BfsiComplianceList() {
+export function BfsiComplianceList(props: { live?: LiveRegister; tabs?: ReactNode } = {}) {
+  return props.live ? <LiveBfsiRegister live={props.live} tabs={props.tabs} /> : <SampleBfsiComplianceList />;
+}
+
+function SampleBfsiComplianceList() {
   const rows = [
     { id: '1', name: 'Arjun Kulkarni', type: 'Holdings and relatives (annual)', due: new Date(2026, 9, 15), status: 'Pending' },
     { id: '2', name: 'Suresh Pillai', type: 'Fit and proper (KMP)', due: new Date(2026, 8, 30), status: 'Pending' },
@@ -437,7 +465,7 @@ export function BfsiComplianceList() {
   ];
   return (
     <PeopleFrame active="Declarations">
-      <PageHeader title="Regulated declarations" description="Confidential to the compliance officer. Overdue items escalate to the head of compliance." status={<Badge tone="warning">Confidential</Badge>} actions={<Button icon={FileText}>Export register</Button>} />
+      <PageHeader title="Regulated declarations" description="Confidential to the compliance officer." status={<Badge tone="warning">Confidential</Badge>} actions={<><Button icon={FileText}>Export register</Button><Button>Close trading window</Button><Button variant="primary" icon={Plus}>Add designated person</Button></>} />
       <DataTable
         label="Declarations"
         columns={[
@@ -474,7 +502,11 @@ export function BfsiPhone() {
 export type PreclearView = 'request' | 'approved' | 'blocked' | 'report' | 'expired';
 
 // PPL-44
-export function TradingPreclearance({ view = 'request', today }: { view?: PreclearView; today: Date }) {
+export function TradingPreclearance(props: { view?: PreclearView; today: Date; live?: LivePreclearance }) {
+  return props.live ? <LiveTradingPreclearance live={props.live} /> : <SampleTradingPreclearance {...props} />;
+}
+
+function SampleTradingPreclearance({ view = 'request', today }: { view?: PreclearView; today: Date }) {
   const approvedOn = view === 'expired' ? new Date(2026, 8, 14) : new Date(2026, 8, 28);
   const state = preclearanceState(approvedOn, 7, today, view === 'report', view === 'blocked');
   const validUntil = addDays(approvedOn, 6);
@@ -535,7 +567,11 @@ export function TradingPreclearance({ view = 'request', today }: { view?: Precle
 }
 
 // PPL-44 · compliance officer list
-export function PreclearanceQueue() {
+export function PreclearanceQueue(props: { live?: LivePreclearQueue; tabs?: ReactNode } = {}) {
+  return props.live ? <LivePreclearanceQueue live={props.live} tabs={props.tabs} /> : <SamplePreclearanceQueue />;
+}
+
+function SamplePreclearanceQueue() {
   const rows = [
     { id: '1', name: 'Arjun Kulkarni', trade: 'Sell 350 Deccan Agro Industries Ltd', value: 1225000, requested: new Date(2026, 8, 28), status: 'Pending' },
     { id: '2', name: 'Sana Nizami', trade: 'Buy 500 Coromandel Textiles Ltd', value: 1840000, requested: new Date(2026, 8, 26), status: 'Approved' },

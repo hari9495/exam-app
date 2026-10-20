@@ -39,3 +39,11 @@ export type { ImportFile, ImportInput, ImportResult, LiveImport } from '../peopl
 export { BuddyPanel, type LiveBuddies } from '../people/onboarding';
 export { SuccessionScreen, type LiveSuccession } from '../people/assets';
 export { UnionRegister, type LiveUnionRegister } from '../people/relations';
+// People, the rest of the designed screens: identity checks, work authorisations and international bank (on the record,
+// PPL-34/45/46), merge and unmerge (PPL-37), the disability declaration (PPL-38), BFSI declarations and pre-clearance
+// (PPL-43/44).
+export type { IdentityCheckInput, IdentityData, IntlAccountInput, IntlSplitView, LiveIdentity, LiveIntlBank, LiveWorkAuth, WorkAuthInput, WorkAuthRow } from '../people/record-extra';
+export { MergeReview } from '../people/relations';
+export { BfsiComplianceList, BfsiDeclarations, DisabilityDeclaration, PreclearanceQueue, TradingPreclearance } from '../people/selfservice';
+export { MergeStartDialog, type BfsiDeclarationView, type DisabilityRow, type DisabilityView, type MergeRecordView, type MergeSide, type PreclearView, type QueueRow, type RegisterRow } from '../people/declarations-live';
+export { MergeList } from '../people/declarations-live';

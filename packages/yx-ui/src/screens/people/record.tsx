@@ -1,7 +1,8 @@
 // PPL-03 Person record workspace (DESIGN-SYSTEM §13, M01 §3.1, P06 §7, P05 §7) with
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
 import { useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileText, GitMerge, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
+import { AddWorkAuthDialog, IdentityCheckDialog, LiveIdentityPanel, LiveIntlBankCard, LiveWorkAuthTab, type LiveIdentity, type LiveIntlBank, type LiveWorkAuth } from './record-extra';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -76,6 +77,14 @@ export interface RecordPerformance {
 
 /** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
 export interface LiveRecord {
+  /** PPL-34: the identity panel (Confidential; HR with the identity keys). */
+  identityChecks?: LiveIdentity;
+  /** PPL-45: work authorisations (shown when there are any, or HR may add one). */
+  workAuth?: LiveWorkAuth;
+  /** PPL-46: international bank accounts and split pay, on the Pay tab. */
+  intlBank?: LiveIntlBank;
+  /** PPL-37: HR menu "Merge with another record". */
+  onMerge?: () => void;
   directoryHref: string;
   name: string;
   role: string;
@@ -242,6 +251,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
     ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
     ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
     ...(!live && international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
+    ...(live?.workAuth && (live.workAuth.rows.length || live.workAuth.canAdd) ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: live.workAuth.rows.length || undefined }] : []),
   ];
 
   const header = live ? (
@@ -285,9 +295,19 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 View as on a date
               </MenuItem>
             )}
+            {live.identityChecks && (
+              <MenuItem icon={IdCard} onSelect={() => setSide('identity')}>
+                Identity panel
+              </MenuItem>
+            )}
             {live.history && (
               <MenuItem icon={ShieldCheck} onSelect={() => setSide('roles')}>
                 All roles of this person
+              </MenuItem>
+            )}
+            {live.onMerge && (
+              <MenuItem icon={GitMerge} onSelect={live.onMerge}>
+                Merge with another record
               </MenuItem>
             )}
           </>
@@ -344,6 +364,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
         </Card>
       )}
       {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} onClose={live.activity ? () => setSide('activity') : undefined} />}
+      {side === 'identity' && live.identityChecks && <LiveIdentityPanel live={live.identityChecks} onClose={() => setSide('activity')} />}
     </div>
   ) : (
     <div className="yx-ppl__stack">
@@ -426,7 +447,10 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               </TabsContent>
               <TabsContent value="pay">
                 {live ? (
-                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} onRequestChange={live.onRequestChange} />
+                  <div className="yx-ppl__stack">
+                    <LivePayTab pay={live.pay} name={name} persona={persona} self={self} onRequestChange={live.onRequestChange} />
+                    {live.intlBank && <LiveIntlBankCard live={live.intlBank} />}
+                  </div>
                 ) : payVisible ? (
                   <PayTab persona={persona} self={self} international={international} />
                 ) : (
@@ -459,6 +483,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               {!live && international && persona === 'hr' && (
                 <TabsContent value="work-auth">
                   <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
+                </TabsContent>
+              )}
+              {live?.workAuth && (
+                <TabsContent value="work-auth">
+                  <LiveWorkAuthTab live={live.workAuth} />
                 </TabsContent>
               )}
             </>
@@ -1070,6 +1099,7 @@ export function PersonRolesPanel({ onClose, roles }: { onClose?: () => void; rol
 
 // PPL-34
 export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refused' | 'mismatch'; onClose?: () => void }) {
+  const [ask, setAsk] = useState<'attest' | 'reverify' | null>(null);
   const checks =
     state === 'refused'
       ? IDENTITY.checks.map((c) => ({ ...c, result: c.point === 'Application verification' ? 'ID check only (face consent refused)' : 'Attested', by: c.by === 'System' ? 'Proctor: Kavitha Rao' : c.by }))
@@ -1139,10 +1169,11 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
           </InlineAlert>
         )}
         <div className="yx-ppl__row">
-          <Button icon={IdCard}>Request re-verification</Button>
-          {state !== 'consented' && <Button>Record HR attestation</Button>}
+          <Button icon={IdCard} onClick={() => setAsk('reverify')}>Request re-verification</Button>
+          {state !== 'consented' && <Button onClick={() => setAsk('attest')}>Record HR attestation</Button>}
         </div>
       </div>
+      {ask && <IdentityCheckDialog reverify={ask === 'reverify'} onClose={() => setAsk(null)} onRecord={async () => {}} />}
     </Card>
   );
 }
@@ -1151,6 +1182,7 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
 
 // PPL-45
 export function WorkAuthTab({ rows, today }: { rows: typeof ARJUN_WORK_AUTH; today: Date }) {
+  const [adding, setAdding] = useState(false);
   const cols: TableColumn<(typeof ARJUN_WORK_AUTH)[number]>[] = [
     { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}<Text size="sm" tone="secondary" as="div">{r.country}</Text></span>, width: 200 },
     { key: 'number', header: 'Number', type: 'id', value: (r) => r.number, width: 170 },
@@ -1178,9 +1210,10 @@ export function WorkAuthTab({ rows, today }: { rows: typeof ARJUN_WORK_AUTH; tod
         columns={cols}
         rows={rows}
         getRowId={(r) => r.type + r.country}
-        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={<Button variant="primary">Add document</Button>} />}
-        toolbar={<Button icon={Plus} size="sm">Add document</Button>}
+        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={<Button variant="primary" onClick={() => setAdding(true)}>Add document</Button>} />}
+        toolbar={<Button icon={Plus} size="sm" onClick={() => setAdding(true)}>Add document</Button>}
       />
+      {adding && <AddWorkAuthDialog onClose={() => setAdding(false)} onAdd={async () => {}} />}
     </div>
   );
 }
