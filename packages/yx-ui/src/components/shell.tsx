@@ -567,7 +567,7 @@ export function ProfileMenu({
           <Avatar name={name} src={photoUrl} size={32} />
         </MenuTrigger>
       </Tooltip>
-      <MenuContent align="end">
+      <MenuContent align="end" className="yx-profile-menu">
         <div className="yx-profile-menu__who">
           <span className="yx-profile-menu__name">{name}</span>
           {email && <span className="yx-profile-menu__email">{email}</span>}
