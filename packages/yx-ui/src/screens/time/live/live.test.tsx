@@ -77,6 +77,19 @@ describe('Me › Leave (the designed TIM-17 leave home)', () => {
     expect(screen.queryByRole('dialog', { name: 'Apply leave' })).toBeNull();
   });
 
+  it('a type that can be taken by the hour offers "Some hours" on one day and sends the hours (TIM-27)', async () => {
+    const p = { ...leaveLive(), onPreview: vi.fn(async () => ({ ...PLAN, total: 0.25, type: { ...PLAN.type, rules: { ...PLAN.type.rules, hourly: true } } })) };
+    render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Apply leave' }));
+    const dialog = screen.getByRole('dialog', { name: 'Apply leave' });
+    await typeDate(within(dialog).getByLabelText(/^From/), '20 Oct 2026');
+    await typeDate(within(dialog).getByLabelText(/^To/), '20 Oct 2026');
+    await waitFor(() => expect(p.onPreview).toHaveBeenCalled());
+    await ue.click(await within(dialog).findByRole('combobox', { name: /The day/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Some hours' }));
+    await waitFor(() => expect(p.onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-20', to: '2026-10-20', hours: 2 })));
+  });
+
   it('asking to cancel approved leave needs a reason, then sends it', async () => {
     const p = leaveLive();
     render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
@@ -273,25 +286,29 @@ describe('Team and HR', () => {
     const { unmount } = render(<ToastProvider><GeofenceEditorScreen live={live} /></ToastProvider>);
     await ue.click(screen.getByRole('button', { name: 'Check-in at Hosur plant' }));
     expect(screen.getByRole('heading', { name: 'Hosur plant' })).toBeInTheDocument();
-    // As designed: Locations › Hosur plant, the address and the people, and phone binding on for restricted check-in by default.
+    // As designed: Locations › Hosur plant, the address and the people. Phone binding stays as the site has it (founder, 20 Oct).
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('LocationsHosur plant');
     expect(screen.getByText('22 SIPCOT Industrial Complex, Hosur 635126 · Tamil Nadu · 48 people')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Back to locations' })).toBeNull();
     await ue.click(screen.getByRole('radio', { name: /Field/ }));
-    await ue.click(screen.getByRole('radio', { name: /Restricted/ }));
-    expect(screen.getByRole('switch', { name: /Bind check-in to one phone/ })).toBeChecked();
+    expect(screen.getByRole('switch', { name: /Bind check-in to one phone/ })).not.toBeChecked();
     // Back through the breadcrumb with changes asks first.
     await ue.click(screen.getByRole('link', { name: 'Locations' }));
     await ue.click(within(await screen.findByRole('dialog', { name: 'Leave without saving?' })).getByRole('button', { name: 'Keep editing' }));
     expect(screen.getByRole('heading', { name: 'Hosur plant' })).toBeInTheDocument();
-    await ue.click(screen.getByRole('switch', { name: /Bind check-in to one phone/ }));
+    await ue.click(screen.getByRole('radio', { name: /Restricted/ }));
     await ue.click(screen.getByRole('button', { name: 'Add another point' }));
     await ue.clear(screen.getByLabelText(/^Point name/));
     await ue.type(screen.getByLabelText(/^Point name/), 'Annexe');
     await ue.type(screen.getByLabelText(/^Latitude/), '12.7509');
     await ue.type(screen.getByLabelText(/^Longitude/), '77.8353');
+    // Turning binding on asks first, in the founder's words.
     await ue.click(screen.getByRole('switch', { name: /Bind check-in to one phone/ }));
+    const bindAsk = await screen.findByRole('dialog', { name: 'Bind check-in to one phone?' });
+    expect(within(bindAsk).getByText("People who check in from another phone will be refused from now on. HR can reset a person's phone.")).toBeInTheDocument();
+    await ue.click(within(bindAsk).getByRole('button', { name: 'Turn it on' }));
     expect(screen.getByRole('switch', { name: /Bind check-in to one phone/ })).toBeChecked();
+    expect(screen.getByText(/Shown to people so they join the right network; check-in is checked by office network and location\./)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Save location' }));
     await waitFor(() => expect(onSaveCheckIn).toHaveBeenCalledWith('l1', { fences: [{ name: 'Main block', lat: 12.7409, lng: 77.8253, radiusM: 300 }, { name: 'Annexe', lat: 12.7509, lng: 77.8353, radiusM: 100 }], ipRanges: ['10.20.0.0/16'], wifiNames: [], bindDevice: true }));
     expect((await screen.findAllByText('Saved check-in at Hosur plant')).length).toBeGreaterThan(0);
@@ -319,14 +336,19 @@ describe('Team and HR', () => {
     expect(screen.getByText('Active · version 1')).toBeInTheDocument();
     expect(screen.getByText('No changes yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save as version 2' })).toBeDisabled();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Basics', 'Eligibility', 'Crediting', 'Counting', 'Rules', 'Year end']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Basics', 'Eligibility', 'Crediting', 'Counting', 'Rules', 'Year end', 'Absence & notice']);
+    // The founder's rules (20 Oct): set here, saved with the dated version.
+    await ue.click(screen.getByRole('tab', { name: 'Absence & notice' }));
+    await ue.click(screen.getByRole('radio', { name: 'Not allowed' }));
+    await ue.click(screen.getByRole('tab', { name: 'Rules' }));
+    await ue.type(screen.getByLabelText(/^Most days in a month/), '4');
     await ue.click(screen.getByRole('tab', { name: 'Counting' }));
     await ue.click(screen.getByRole('radio', { name: 'Always count them' }));
     await ue.click(screen.getByRole('button', { name: 'Save as version 2' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save casual leave as version 2?' });
-    expect(within(dialog).getByText(/keeps the rules of version 1/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/keeps the rules and pay of version 1/)).toBeInTheDocument();
     await ue.click(within(dialog).getByRole('button', { name: 'Save version 2' }));
-    await waitFor(() => expect(onSaveType).toHaveBeenCalledWith('cl', expect.objectContaining({ validFrom: '2026-10-09', rules: expect.objectContaining({ sandwich: 'always' }) })));
+    await waitFor(() => expect(onSaveType).toHaveBeenCalledWith('cl', expect.objectContaining({ validFrom: '2026-10-09', rules: expect.objectContaining({ sandwich: 'always', duringNotice: 'blocked', maxDaysPerMonth: 4 }) })));
   });
 
   it('the designed holiday calendars add a holiday to a location (TIM-26)', async () => {

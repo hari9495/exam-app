@@ -230,10 +230,9 @@ export class PeriodsService {
     const ids = people.map((p) => p.id);
     const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } });
     const leavePaid = await tx.$queryRaw<{ employeeId: string; on: string; paid: boolean }[]>`
-      SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, bool_and(t.paid) AS paid FROM leave_request_days d
+      SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, bool_and(leave_type_paid_on(r.organization_id, r.leave_type_id, d.leave_on)) AS paid FROM leave_request_days d
       JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
-      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
-      WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${from}::date AND ${to}::date
+      WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.active AND d.portion > 0 AND d.part <> 'hours' AND d.leave_on BETWEEN ${from}::date AND ${to}::date
       GROUP BY 1, 2`;
     const ot = await tx.overtimeRequest.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } } });
     const night = new Set((await tx.shift.findMany({ where: { organizationId: org, night: true }, select: { id: true } })).map((s) => s.id));

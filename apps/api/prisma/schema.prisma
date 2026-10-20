@@ -2313,7 +2313,7 @@ model Location {
   minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
   ipRanges       String[]  @default([]) @map("ip_ranges")
   wifiNames      String[]  @default([]) @map("wifi_names")
-  bindDevice     Boolean   @default(true) @map("bind_device")
+  bindDevice     Boolean   @default(false) @map("bind_device")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4716,7 +4716,6 @@ model LeaveType {
   code           String   @db.Citext
   name           String   @db.VarChar(60)
   kind           String   @db.VarChar(10)
-  paid           Boolean  @default(true)
   colour         String   @default("blue") @db.VarChar(10)
   active         Boolean  @default(true)
   createdBy      String?  @map("created_by") @db.Uuid
@@ -4734,6 +4733,8 @@ model LeaveTypeVersion {
   version        Int
   validFrom      DateTime @map("valid_from") @db.Date
   rules          Json     @default("{}")
+  /// Pay is dated with the rules (founder decision 20 Oct 2026).
+  paid           Boolean  @default(true)
   note           String?  @db.VarChar(300)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4837,6 +4838,8 @@ model LeaveRequest {
   fromHalf          String    @default("full") @map("from_half") @db.VarChar(6)
   toHalf            String    @default("full") @map("to_half") @db.VarChar(6)
   days              Decimal   @db.Decimal(6, 2)
+  /// Leave by the hour on one day (a rule of the type).
+  hours             Decimal?  @db.Decimal(4, 2)
   status            String    @default("pending") @db.VarChar(14)
   reason            String?   @db.VarChar(1000)
   certificate       String    @default("none") @db.VarChar(8)

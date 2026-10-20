@@ -206,7 +206,7 @@ describe('Organisation structure (P01 §4.1–4.3, §4.6; YX-ORG-01..05, 08, 12,
 
     it('creates a site with a generated code; state and time zone are required and real', async () => {
       const res = await api('adminA', 'post', '/locations').send(body()).expect(201);
-      expect(res.body).toMatchObject({ code: 'BENGALURU-HEAD-OFFICE', state: 'IN-KA', country: 'IN', timezone: 'Asia/Kolkata', fences: [], ipRanges: [], wifiNames: [], bindDevice: true });
+      expect(res.body).toMatchObject({ code: 'BENGALURU-HEAD-OFFICE', state: 'IN-KA', country: 'IN', timezone: 'Asia/Kolkata', fences: [], ipRanges: [], wifiNames: [], bindDevice: false });
       ids.blr = res.body.id;
       ids.hosur = (await api('adminA', 'post', '/locations').send(body({ legalEntityId: ids.tn, name: 'Hosur plant', code: 'HSR', address: address('IN-TN', 'Hosur', '635126') })).expect(201)).body.id;
       await api('adminA', 'post', '/locations').send(body({ name: 'No zone', timezone: undefined })).expect(400);

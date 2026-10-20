@@ -929,6 +929,12 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
                 <ul className="yx-tim-days">{ex.days.map((d) => <li key={d.date.getTime()}><span>{weekday(d.date)} {day(d.date)}</span><strong>{d.kind === 'counted' ? '1' : d.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
                 <Kpis items={[{ label: 'Days counted', value: ex.total }, { label: 'Earned leave balance', value: `${num(elBalance)}${elPending > 0 ? ` (${num(elPending)} pending)` : ''} → ${num(elBalance - elPending - ex.total)}` }]} />
                 <p className="yx-tim-note">{person} is on {EXAMPLE_POLICY.name}, {creditText(EXAMPLE_POLICY, creditBy[EXAMPLE_POLICY.id])}.</p>
+                {/* The type's rules check the example too (founder decision 20 Oct 2026): what would stop it, or that nothing does. */}
+                {maxMonth != null && ex.total > maxMonth ? (
+                  <InlineAlert tone="warning" title="This request would be refused"><ul className="yx-tim-steps"><li>{name} is at most {maxMonth} days in a month.</li></ul></InlineAlert>
+                ) : (
+                  <p className="yx-tim-note">The rules let this request through.</p>
+                )}
               </div>
             </Card>
           )}
@@ -1146,7 +1152,7 @@ export interface LiveLeavePolicies {
   onRemoveAssignment: (id: string) => Promise<unknown>;
 }
 
-export interface TypeExamplePerson { employeeId: string; name: string; balance: number; pending: number; policy: { name: string; annualDays: number; frequency: 'monthly' | 'yearly' } }
+export interface TypeExamplePerson { employeeId: string; name: string; balance: number; pending: number; policy: { name: string; annualDays: number; frequency: 'monthly' | 'yearly' }; joinedOn?: string; category?: string | null; probation?: boolean; noticeUntil?: string | null }
 
 type PoliciesProps = { state?: ViewState; openId?: string; /** The live app's data. Stories leave it out. */ live?: LiveLeavePolicies };
 
@@ -1165,7 +1171,7 @@ const KIND_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 const COLOUR_OPTIONS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
-const BASE_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+const BASE_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, employment: 'all', minServiceMonths: 0, duringProbation: true, maxDaysPerMonth: null, blockedDates: [], hourly: false, longAbsence: 'continue', duringNotice: 'allowed' };
 const STATE_NAMES: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const fromIso = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -1366,8 +1372,33 @@ function LivePolicyDrawer({ live, data, policy, onClose, onSaved }: { live: Live
   );
 }
 
-// TIM-27 sections with a backend; Absence & notice (crediting in long absence, leave during notice) has none yet.
-const LIVE_SECTIONS = { basics: 'Basics', eligibility: 'Eligibility', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end' } as const;
+const LIVE_SECTIONS = { basics: 'Basics', eligibility: 'Eligibility', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end', absence: 'Absence & notice' } as const;
+const EMPLOYMENT_FOR: Record<string, string[] | null> = { all: null, permanent_contract: ['permanent', 'probation', 'fixed_term', 'deployed_contractor', 'consultant', 'retired_reemployed'], permanent: ['permanent', 'probation', 'retired_reemployed'] };
+const EMPLOYMENT_TEXT: Record<string, string> = { permanent: 'permanent staff', permanent_contract: 'permanent and contract staff' };
+/** What the TIM-27 rules (all dated with the version) say about the live example's request, in the server's words. */
+function exampleStops(name: string, r: LeaveRules, p: TypeExamplePerson | null, today: string, days: { on: string; counted: boolean }[], total: number): string[] {
+  const out: string[] = [];
+  const first = days[0]?.on ?? today;
+  const noticeDays = r.noticeDays ?? 0;
+  if (noticeDays && Math.round((fromIso(first).getTime() - fromIso(today).getTime()) / 86_400_000) < noticeDays) out.push(`${name} needs ${noticeDays} ${noticeDays === 1 ? "day's" : "days'"} notice.`);
+  for (const b of r.blockedDates ?? []) {
+    const hit = days.find((d) => d.counted && d.on >= b.from && d.on <= b.to);
+    if (hit) out.push(`${day(fromIso(hit.on))} is a company block date for ${name} (${b.reason}). Pick other dates.`);
+  }
+  if (r.maxDaysPerMonth != null && total > r.maxDaysPerMonth) out.push(`${name} is at most ${num(r.maxDaysPerMonth)} days in a month.`);
+  if (p) {
+    const allowed = EMPLOYMENT_FOR[r.employment ?? 'all'];
+    if (allowed && !allowed.includes(p.category ?? '')) out.push(`${name} is for ${EMPLOYMENT_TEXT[r.employment!]} only.`);
+    if (r.minServiceMonths && p.joinedOn) {
+      const j = fromIso(p.joinedOn);
+      const reach = new Date(j.getFullYear(), j.getMonth() + r.minServiceMonths, j.getDate());
+      if (fromIso(first) < reach) out.push(`${name} can be taken after ${r.minServiceMonths} months of work: from ${day(reach)}.`);
+    }
+    if (r.duringProbation === false && p.probation) out.push(`${name} can't be taken during probation.`);
+    if (p.noticeUntil && first <= p.noticeUntil && r.duringNotice === 'blocked') out.push(`${name} can't be taken during the notice period.`);
+  }
+  return out;
+}
 const WHO_CAN: Record<string, string[] | null> = { all: null, f: ['female'], m: ['male'] };
 
 /** TIM-27 on live data: one leave type's basics, counting, rules and year end, with the live example of a Fri–Mon request. */
@@ -1377,7 +1408,7 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   // The newest version (one still to start, if any) is what a change builds on.
   const latest = row?.versions[0] ?? null;
   const upcoming = latest && latest.validFrom > data.today ? latest : null;
-  const start = { code: row?.code ?? '', name: row?.name ?? '', kind: row?.kind ?? 'other', paid: row?.paid ?? true, colour: row?.colour ?? 'blue', active: row?.active ?? true, rules: { ...BASE_RULES, ...(latest?.rules ?? row?.rules ?? {}) } };
+  const start = { code: row?.code ?? '', name: row?.name ?? '', kind: row?.kind ?? 'other', paid: latest?.paid ?? row?.paid ?? true, colour: row?.colour ?? 'blue', active: row?.active ?? true, rules: { ...BASE_RULES, ...(row ? {} : { longAbsence: 'pause' as const }), ...(latest?.rules ?? row?.rules ?? {}) } };
   const [asking, setAsking] = useState(false);
   const [from, setFrom] = useState<Date | null>(upcoming ? fromIso(upcoming.validFrom) : fromIso(data.today));
   const [form, setForm] = useState(start);
@@ -1389,7 +1420,7 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   const setRules = (patch: Partial<LeaveRules>) => setForm({ ...form, rules: { ...form.rules, ...patch } });
   const dirty = JSON.stringify(form) !== JSON.stringify(start);
   const limitErr = form.rules.minDays != null && form.rules.maxDays != null && form.rules.minDays > form.rules.maxDays ? 'More than the most days in one request.' : null;
-  const saveBlocked = !form.name.trim() ? 'Fill in the name in Basics' : !/^[A-Z][A-Z0-9]{0,7}$/.test(form.code) ? 'Fill in a code of 1 to 8 capital letters in Basics' : limitErr ? 'Fix the request limit in Rules' : null;
+  const saveBlocked = !form.name.trim() ? 'Fill in the name in Basics' : !/^[A-Z][A-Z0-9]{0,7}$/.test(form.code) ? 'Fill in a code of 1 to 8 capital letters in Basics' : limitErr ? 'Fix the request limit in Rules' : !form.paid && form.rules.hourly ? 'Unpaid leave cannot be taken by the hour: see Counting' : null;
   const usedIn = data.policies.filter((x) => (inForce(x, data.today)?.lines ?? []).some((l) => l.leaveTypeId === typeId));
   const back = useCrumbBack(dirty, onBack, (row?.name ?? 'the new leave type').toLowerCase());
   const [examples, setExamples] = useState<TypeExamplePerson[]>([]);
@@ -1405,7 +1436,10 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   const person = examples.find((x) => x.employeeId === exampleId) ?? null;
   // Fri 13 – Mon 16 Nov with Sat 14 and Sun 15 as weekly offs: how this type counts the weekend between.
   const ex = countLeaveDays({ from: new Date(2026, 10, 13), to: new Date(2026, 10, 16), holidays: [], weeklyOffDays: [0, 6], weeklyOffDates: [], sandwich: form.rules.sandwich });
-  const rulesChanged = JSON.stringify(form.rules) !== JSON.stringify(start.rules);
+  // Pay is dated with the rules (founder decision 20 Oct 2026): either asks for the date the new version starts.
+  const rulesChanged = JSON.stringify(form.rules) !== JSON.stringify(start.rules) || form.paid !== start.paid;
+  const [addingDates, setAddingDates] = useState<{ from: Date | null; to: Date | null; reason: string } | null>(null);
+  const monthErr = form.rules.maxDays != null && form.rules.maxDaysPerMonth != null && form.rules.maxDays > form.rules.maxDaysPerMonth ? `More than the monthly limit of ${num(form.rules.maxDaysPerMonth)} days. A request that big can never be approved.` : null;
   const next = upcoming ? upcoming.version : (row?.version ?? 0) + 1;
   const save = async () => {
     setBusy(true);
@@ -1441,12 +1475,34 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
       </div>
       {back.dialog}
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      <ConfirmDialog
+        open={!!addingDates}
+        onOpenChange={(o) => !o && setAddingDates(null)}
+        title="Add dates when no one can take it"
+        confirmLabel="Add dates"
+        confirmDisabled={!addingDates?.from || !addingDates.to || !addingDates.reason.trim() || addingDates.to < addingDates.from}
+        onConfirm={() => {
+          if (!addingDates?.from || !addingDates.to) return;
+          setRules({ blockedDates: [...(form.rules.blockedDates ?? []), { from: isoDate(addingDates.from), to: isoDate(addingDates.to), reason: addingDates.reason.trim() }] });
+          setAddingDates(null);
+        }}
+      >
+        {addingDates && (
+          <div className="yx-tim-form">
+            <FieldRow>
+              <FormField label="From" required><DatePicker value={addingDates.from} onChange={(v) => setAddingDates({ ...addingDates, from: v })} min={fromIso(data.today)} /></FormField>
+              <FormField label="To" required><DatePicker value={addingDates.to} onChange={(v) => setAddingDates({ ...addingDates, to: v })} min={addingDates.from ?? fromIso(data.today)} /></FormField>
+            </FieldRow>
+            <FormField label="Reason" required helper="People see it when they pick these dates."><TextField value={addingDates.reason} maxLength={100} onChange={(v) => setAddingDates({ ...addingDates, reason: v })} /></FormField>
+          </div>
+        )}
+      </ConfirmDialog>
       {upcoming && <InlineAlert tone="info" title={`Version ${upcoming.version} starts on ${day(fromIso(upcoming.validFrom))}`}>You are changing that version. Leave before it follows version {row!.version}.</InlineAlert>}
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
         title={`Save ${title.toLowerCase()} as version ${next}?`}
-        consequence={from ? `Leave that starts before ${day(from)} keeps the rules of version ${row?.version ?? 1}; leave that starts on or after it follows version ${next}. Leave already taken or asked for does not change.` : 'Choose the date the new rules start.'}
+        consequence={from ? `Leave that starts before ${day(from)} keeps the rules and pay of version ${row?.version ?? 1}; leave that starts on or after it follows version ${next}. Leave already taken or asked for, and payslips already made, do not change.` : 'Choose the date the new rules start.'}
         confirmLabel={`Save version ${next}`}
         confirmDisabled={!from || busy}
         onConfirm={() => void save()}
@@ -1475,10 +1531,15 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
             </TabsContent>
             <TabsContent value="eligibility">
               <FormSection title="Who gets it">
+                <FieldRow>
+                  <FormField label="Employment type"><Select value={form.rules.employment ?? 'all'} onChange={(v) => v && setRules({ employment: v as LeaveRules['employment'] })} options={[{ value: 'permanent_contract', label: 'Permanent and contract' }, { value: 'permanent', label: 'Permanent only' }, { value: 'all', label: 'Permanent, contract and interns' }]} /></FormField>
+                  <FormField label="After working (months)"><NumberField value={form.rules.minServiceMonths ?? 0} min={0} max={120} onChange={(v) => setRules({ minServiceMonths: v ?? 0 })} /></FormField>
+                </FieldRow>
+                <Switch label="Available during probation" checked={form.rules.duringProbation ?? true} onChange={(v) => setRules({ duringProbation: v })} />
                 <FormField label="Who can take it">
                   <Select value={Object.keys(WHO_CAN).find((k) => JSON.stringify(WHO_CAN[k]) === JSON.stringify(form.rules.eligibleGenders ?? null)) ?? 'all'} onChange={(v) => v && setRules({ eligibleGenders: WHO_CAN[v] as LeaveRules['eligibleGenders'] })} options={[{ value: 'all', label: 'Everyone' }, { value: 'f', label: 'Women only' }, { value: 'm', label: 'Men only' }]} />
                 </FormField>
-                <p className="yx-tim-note">Who gets it at all is set by the policies it is in.</p>
+                <p className="yx-tim-note">Who gets it at all is set by the policies it is in. HR can let one person through, with a reason.</p>
               </FormSection>
             </TabsContent>
             <TabsContent value="crediting">
@@ -1513,6 +1574,7 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
                 </FormField>
                 <Switch label="Half days (first or second half)" checked={form.rules.halfDays} onChange={(v) => setRules({ halfDays: v })} />
                 <Switch label="A half day next to a weekend also counts the weekend" checked={form.rules.sandwichHalfDays} disabled={form.rules.sandwich === 'none'} onChange={(v) => setRules({ sandwichHalfDays: v })} />
+                <Switch label="Leave by the hour" description={form.paid ? 'People can ask for some hours of one day; they count toward the day.' : 'Only paid leave can be taken by the hour.'} checked={form.rules.hourly ?? false} disabled={!form.paid && !form.rules.hourly} onChange={(v) => setRules({ hourly: v })} />
               </FormSection>
             </TabsContent>
             <TabsContent value="rules">
@@ -1520,7 +1582,8 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
                 <FieldRow>
                   <FormField label="Apply at least (days ahead)"><NumberField value={form.rules.noticeDays} min={0} max={90} onChange={(v) => setRules({ noticeDays: v ?? 0 })} /></FormField>
                   <FormField label="Fewest days in one request" error={limitErr}><NumberField value={form.rules.minDays} decimals min={0.5} max={366} onChange={(v) => setRules({ minDays: v })} /></FormField>
-                  <FormField label="Most days in one request"><NumberField value={form.rules.maxDays} decimals min={0.5} max={366} onChange={(v) => setRules({ maxDays: v })} /></FormField>
+                  <FormField label="Most days in one request" error={monthErr}><NumberField value={form.rules.maxDays} decimals min={0.5} max={366} onChange={(v) => setRules({ maxDays: v })} /></FormField>
+                  <FormField label="Most days in a month"><NumberField value={form.rules.maxDaysPerMonth ?? null} decimals min={0.5} max={31} onChange={(v) => setRules({ maxDaysPerMonth: v })} /></FormField>
                 </FieldRow>
                 <FieldRow>
                   <FormField label="Ask for a certificate when leave is longer than (days)" helper="Leave blank to never ask"><NumberField value={form.rules.certificateAfterDays} min={0} max={366} onChange={(v) => setRules({ certificateAfterDays: v })} /></FormField>
@@ -1528,12 +1591,38 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
                 </FieldRow>
                 <FormField label="HR approves too when longer than (days)" helper="Leave blank for the manager alone"><NumberField value={form.rules.hrApprovalAboveDays} decimals min={0} max={366} onChange={(v) => setRules({ hrApprovalAboveDays: v })} /></FormField>
                 <Switch label="Medical leave" description="The reason and the certificate are seen only by the person and HR." checked={form.rules.medical} onChange={(v) => setRules({ medical: v })} />
+                <FormField label="Dates when no one can take it">
+                  <div className="yx-tim-stack">
+                    {(form.rules.blockedDates ?? []).length === 0 ? (
+                      <p className="yx-tim-muted">None. People can take it on any working day.</p>
+                    ) : (
+                      <ul className="yx-tim-list">
+                        {(form.rules.blockedDates ?? []).map((b, i) => (
+                          <li key={`${b.from}-${i}`}>
+                            <span className="yx-tim-list__main"><strong>{b.from === b.to ? day(fromIso(b.from)) : `${dayShort(fromIso(b.from))} – ${day(fromIso(b.to))}`}</strong><span className="yx-tim-muted">{b.reason}</span></span>
+                            <Button size="sm" aria-label={`Remove the blocked dates ${b.reason}`} onClick={() => setRules({ blockedDates: (form.rules.blockedDates ?? []).filter((_, j) => j !== i) })}>Remove</Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <span><Button icon={Plus} onClick={() => setAddingDates({ from: null, to: null, reason: '' })}>Add dates</Button></span>
+                  </div>
+                </FormField>
               </FormSection>
             </TabsContent>
             <TabsContent value="yearend">
               <FormSection title="Year end">
                 <Switch label="Can be paid out (encashed)" checked={form.rules.encashable} onChange={(v) => setRules({ encashable: v })} />
                 <p className="yx-tim-note">How much carries forward is set for each policy, in Leave policies.</p>
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="absence">
+              <FormSection title="During long absence">
+                <RadioGroup aria-label="Crediting during long absence" value={form.rules.longAbsence ?? 'continue'} onChange={(v) => setRules({ longAbsence: v as LeaveRules['longAbsence'] })} options={[{ value: 'pause', label: 'Stop crediting during a sabbatical or long unpaid leave (default)' }, { value: 'continue', label: 'Keep crediting' }]} />
+                <p className="yx-tim-note">A month spent wholly on unpaid leave earns no monthly credit when crediting stops. Maternity leave always counts as service, so crediting continues by law.</p>
+              </FormSection>
+              <FormSection title="During the notice period">
+                <RadioGroup aria-label="During notice" value={form.rules.duringNotice ?? 'allowed'} onChange={(v) => setRules({ duringNotice: v as LeaveRules['duringNotice'] })} options={[{ value: 'allowed', label: 'Allowed (default)' }, { value: 'unpaid', label: 'Counted as unpaid leave' }, { value: 'extends', label: 'Moves the last working day later' }, { value: 'blocked', label: 'Not allowed' }]} />
               </FormSection>
             </TabsContent>
           </Tabs>
@@ -1546,6 +1635,16 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
               <ul className="yx-tim-days">{ex.days.map((x) => <li key={x.date.getTime()}><span>{weekday(x.date)} {day(x.date)}</span><strong>{x.kind === 'counted' ? '1' : x.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
               <Kpis items={[{ label: 'Days counted', value: ex.total }, ...(person ? [{ label: `${title} balance`, value: `${num(person.balance)}${person.pending > 0 ? ` (${num(person.pending)} pending)` : ''} → ${num(person.balance - person.pending - ex.total)}` }] : [])]} />
               {person && <p className="yx-tim-note">{person.name} is on {person.policy.name}, which credits {num(person.policy.annualDays)} days a year {person.policy.frequency === 'monthly' ? 'month by month' : 'all at once at the start of the leave year'}.</p>}
+              {(() => {
+                const stops = exampleStops(title, form.rules, person, data.today, ex.days.map((x) => ({ on: isoDate(x.date), counted: x.kind === 'counted' || x.kind === 'sandwich' })), ex.total);
+                return stops.length ? (
+                  <InlineAlert tone="warning" title="This request would be refused">
+                    <ul className="yx-tim-steps">{stops.map((m) => <li key={m}>{m}</li>)}</ul>
+                  </InlineAlert>
+                ) : (
+                  <p className="yx-tim-note">The rules let this request through.</p>
+                );
+              })()}
             </div>
           </Card>
         </div>
@@ -2315,7 +2414,8 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   const [wifi, setWifi] = useState(location.wifiNames.join(', '));
   const [mode, setMode] = useState<string>(location.rule.checkIn);
   const [bind, setBind] = useState(location.bindDevice);
-  const [bindTouched, setBindTouched] = useState(false);
+  // Founder decision 20 Oct 2026: HR turns phone binding on per site, after a confirm; existing sites stay as they are.
+  const [askBind, setAskBind] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
@@ -2429,7 +2529,7 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
       <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={shown(ipErr)}>
         <TextArea value={ips} onChange={setIps} rows={3} spellCheck={false} />
       </FormField>
-      <FormField label="Wi-Fi names" optional helper="Separate names with commas. Shown to people as the network to join; check-in is checked against the IP ranges." error={shown(wifiErr)}>
+      <FormField label="Wi-Fi names" optional helper="Shown to people so they join the right network; check-in is checked by office network and location. Separate names with commas." error={shown(wifiErr)}>
         <TextField value={wifi} onChange={setWifi} />
       </FormField>
     </FormSection>
@@ -2469,10 +2569,10 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
             <RadioGroup
               aria-label="Check-in mode"
               value={mode}
-              onChange={(v) => { setMode(v); if (!bindTouched) setBind(v === 'restricted'); }}
+              onChange={setMode}
               options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]}
             />
-            <Switch label="Bind check-in to one phone" description="On by default for restricted check-in" checked={bind} onChange={(v) => { setBind(v); setBindTouched(true); }} />
+            <Switch label="Bind check-in to one phone" description="Off until HR turns it on for this site" checked={bind} onChange={(v) => (v ? setAskBind(true) : setBind(false))} />
             {phones.length > 0 && (
               <ul className="yx-tim-list" aria-label="Phones bound here">
                 {phones.map((x) => (
@@ -2498,6 +2598,14 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
           {saveRow}
         </div>
       </div>
+<ConfirmDialog
+        open={askBind}
+        onOpenChange={setAskBind}
+        title="Bind check-in to one phone?"
+        consequence="People who check in from another phone will be refused from now on. HR can reset a person's phone."
+        confirmLabel="Turn it on"
+        onConfirm={() => { setBind(true); setAskBind(false); }}
+      />
       <ConfirmDialog
         open={askRemove}
         onOpenChange={setAskRemove}
@@ -2622,7 +2730,7 @@ function StoryGeofenceEditor({ view = 'edit', ipError = false }: GeofenceProps) 
   const [ips, setIpsRaw] = useState(ipError ? '10.20.4.0/24\n10.20.300.0/24' : '10.20.4.0/24\n10.20.5.0/24');
   const [mode, setMode] = useState(view === 'field' ? 'field' : 'restricted');
   const [bind, setBind] = useState(view !== 'field');
-  const [bindTouched, setBindTouched] = useState(false);
+  const [askBind, setAskBind] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
   const [saved, setSaved] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -2696,7 +2804,7 @@ function StoryGeofenceEditor({ view = 'edit', ipError = false }: GeofenceProps) 
       <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
         <TextArea value={ips} onChange={setIps} rows={3} />
       </FormField>
-      <FormField label="Wi-Fi names" optional><TextField value={wifi} onChange={setWifi} /></FormField>
+      <FormField label="Wi-Fi names" optional helper="Shown to people so they join the right network; check-in is checked by office network and location."><TextField value={wifi} onChange={setWifi} /></FormField>
     </FormSection>
   );
   const fences = points.flatMap((p) => {
@@ -2727,10 +2835,10 @@ function StoryGeofenceEditor({ view = 'edit', ipError = false }: GeofenceProps) 
             <RadioGroup
               aria-label="Check-in mode"
               value={mode}
-              onChange={(v) => { setMode(v); if (!bindTouched) setBind(v === 'restricted'); setSaved(false); }}
+              onChange={(v) => { setMode(v); setSaved(false); }}
               options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]}
             />
-            <Switch label="Bind check-in to one phone" description="On by default for restricted check-in" checked={bind} onChange={(v) => { setBind(v); setBindTouched(true); setSaved(false); }} />
+            <Switch label="Bind check-in to one phone" description="Off until HR turns it on for this site" checked={bind} onChange={(v) => { if (v) setAskBind(true); else setBind(false); setSaved(false); }} />
           </FormSection>
           {field && !showPoints ? (
             <FormSection title="Points and office network">
@@ -2746,6 +2854,14 @@ function StoryGeofenceEditor({ view = 'edit', ipError = false }: GeofenceProps) 
           {saveRow}
         </div>
       </div>
+      <ConfirmDialog
+        open={askBind}
+        onOpenChange={setAskBind}
+        title="Bind check-in to one phone?"
+        consequence="People who check in from another phone will be refused from now on. HR can reset a person's phone."
+        confirmLabel="Turn it on"
+        onConfirm={() => { setBind(true); setAskBind(false); }}
+      />
     </TimePage>
   );
 }

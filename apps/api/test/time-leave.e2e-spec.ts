@@ -40,6 +40,7 @@ describe('Time and leave batch 1', () => {
   // The company calendar is India time.
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const d = (n: number) => addDays(today, n);
+  const asDay = (on: string) => new Date(`${on}T00:00:00Z`);
   // The test location's only weekly off is the weekday two days from today, so today is always a working day.
   const offWeekday = ((new Date(`${d(2)}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
   const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; requestId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null; step: { name: string } }[];
@@ -459,6 +460,84 @@ describe('Time and leave batch 1', () => {
       expect(example.every((x) => x.policy.name === 'Karnataka staff')).toBe(true);
       // The other company never sees the versions.
       expect((await api('adminB', 'get', '/time/setup').expect(200)).body.types).toEqual([]);
+    });
+  });
+
+  describe('leave type rules enforced on the server (TIM-27, founder decisions 20 Oct 2026)', () => {
+    const rulesType = async (code: string, rules: object, kind = 'other') =>
+      (await api('hrAdmin', 'post', '/time/setup/types').send({ code, name: `${code} leave`, kind, paid: true, rules: { negativeLimit: 30, ...rules } }).expect(201)).body.id as string;
+    const plan = async (who: Who, leaveTypeId: string, from: string, to: string, extra: object = {}) => (await api(who, 'post', '/time/me/leave/preview').send({ leaveTypeId, from, to, ...extra }).expect(200)).body as { total: number; blocks: string[]; warnings: string[] };
+
+    it('notice, blocked dates, months worked, most days in a month and hours: each refused with the rule in plain words', async () => {
+      const id = await rulesType('RL', { noticeDays: 2, blockedDates: [{ from: d(30), to: d(31), reason: 'Year-end audit' }], maxDaysPerMonth: 2, hourly: true });
+      // The type goes into the policy from today, so people can apply for it.
+      const setup = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
+      const lines = setup.policies.find((x: { id: string }) => x.id === ids.policy).versions[0].lines;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.policy}/versions`).send({ validFrom: today, lines: [...lines, { leaveTypeId: id, annualDays: 12, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: null }] }).expect(201);
+      expect((await plan('emp', id, d(1), d(1))).blocks).toContain("RL leave needs 2 days' notice.");
+      expect((await plan('emp', id, d(31), d(31))).blocks.join(' ')).toMatch(/is a company block date for RL leave \(Year-end audit\)\. Pick other dates\./);
+      expect((await plan('emp', id, d(40), d(46))).blocks.join(' ')).toMatch(/RL leave is at most 2 days in a month/);
+      // By the hour: one day, a share of the day; a type without the rule refuses it.
+      const hours = await plan('emp', id, d(5), d(5), { hours: 2 });
+      expect(hours.total).toBeGreaterThan(0);
+      expect(hours.total).toBeLessThan(1);
+      expect(hours.blocks.join(' ')).not.toMatch(/by the hour/);
+      expect((await plan('emp', ids.CL, d(5), d(5), { hours: 2 })).blocks).toContain("Casual leave can't be taken by the hour.");
+      await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: id, from: d(5), to: d(6), hours: 2 }).expect(400);
+      await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: id, from: d(5), to: d(5), hours: 2.2 }).expect(400);
+      // Hours off are applied and stored as hours.
+      const r = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: id, from: d(5), to: d(5), hours: 2, reason: 'Bank visit' }).expect(201)).body;
+      expect(await inA((tx) => tx.leaveRequest.findFirst({ where: { organizationId: org.A.id, id: r.id }, select: { hours: true } }))).toMatchObject({ hours: expect.anything() });
+      // Months worked: emp joined three days ago.
+      const svc = await rulesType('SV', { minServiceMonths: 6 });
+      expect((await plan('emp', svc, d(10), d(10))).blocks.join(' ')).toMatch(/SV leave can be taken after 6 months of work: from /);
+      // Employment types: permanent staff only lets a permanent employee through.
+      const perm = await rulesType('PM', { employment: 'permanent' });
+      expect((await plan('emp', perm, d(10), d(10))).blocks.join(' ')).not.toMatch(/is for permanent staff only/);
+      // Unpaid leave cannot be taken by the hour; a monthly limit below the request limit is refused at set-up.
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'UH', name: 'Unpaid hours', kind: 'other', paid: false, rules: { hourly: true } }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'ML2', name: 'Limits', kind: 'other', paid: true, rules: { maxDays: 5, maxDaysPerMonth: 2 } }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'BD', name: 'Bad dates', kind: 'other', paid: true, rules: { blockedDates: [{ from: d(5), to: d(1), reason: 'x' }] } }).expect(400);
+    });
+
+    it('during notice: not allowed, counted as unpaid leave, or the last working day moves when approved', async () => {
+      // "other" is serving notice until d(40).
+      await inA(async (tx) => {
+        const e = await tx.employee.findFirstOrThrow({ where: { organizationId: org.A.id, id: ids.otherEmp }, select: { personId: true } });
+        const m = await tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.otherEmp }, select: { id: true } });
+        ids.exitCase = (await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: m.id, employeeId: ids.otherEmp, personId: e.personId, exitType: 'resignation', initiatedBy: 'employee', submittedOn: asDay(today), noticePeriod: '30d', standardLwd: asDay(d(40)), approvedLwd: asDay(d(40)), status: 'accepted' } })).id;
+      });
+      const blocked = await rulesType('NB', { duringNotice: 'blocked' });
+      const unpaid = await rulesType('NU', { duringNotice: 'unpaid' });
+      const moves = await rulesType('NE', { duringNotice: 'extends' });
+      const setup = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
+      const lines = setup.policies.find((x: { id: string }) => x.id === ids.policy).versions[0].lines;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.policy}/versions`).send({ validFrom: d(1), lines: [...lines, ...[blocked, unpaid, moves].map((leaveTypeId) => ({ leaveTypeId, annualDays: 12, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: null }))] }).expect(201);
+      expect((await plan('other', blocked, d(5), d(5))).blocks).toContain("NB leave can't be taken during your notice period.");
+      expect((await plan('peer', blocked, d(5), d(5))).blocks.join(' ')).not.toMatch(/notice period/);
+      // Counted as unpaid: recorded as the company's unpaid type.
+      expect((await plan('other', unpaid, d(6), d(6))).warnings).toContain('You are serving notice: these days will be counted as loss of pay.');
+      const u = (await api('other', 'post', '/time/me/leave').send({ leaveTypeId: unpaid, from: d(6), to: d(6), reason: 'Moving house' }).expect(201)).body;
+      expect((await inA((tx) => tx.leaveRequest.findFirstOrThrow({ where: { organizationId: org.A.id, id: u.id } }))).leaveTypeId).toBe(ids.LOP);
+      // Moves the last working day: said when asked, done when approved.
+      expect((await plan('other', moves, d(8), d(8))).warnings.join(' ')).toMatch(/your last working day moves from .* \(1 day\)/);
+      await api('other', 'post', '/time/me/leave').send({ leaveTypeId: moves, from: d(8), to: d(8), reason: 'Exam' }).expect(201);
+      const t = (await inbox('boss')).find((x) => x.title.startsWith('other ') && x.title.includes('NE leave'))!;
+      await decide('boss', t.taskId, 'approve').expect(200);
+      const k = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { organizationId: org.A.id, id: ids.exitCase } }));
+      expect(k.approvedLwd!.toISOString().slice(0, 10)).toBe(d(41));
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'exit.lwd.moved_by_leave' } }))).toBe(1);
+    });
+
+    it('pay is dated: a change to unpaid from a date leaves earlier days paid', async () => {
+      const id = await rulesType('PD', {});
+      await api('hrAdmin', 'put', `/time/setup/types/${id}`).send({ code: 'PD', name: 'PD leave', kind: 'other', paid: false, rules: { negativeLimit: 30 }, validFrom: d(20) }).expect(200);
+      const paidOn = async (on: string) => (await inA((tx) => tx.$queryRaw<{ p: boolean }[]>`SELECT leave_type_paid_on(${org.A.id}::uuid, ${id}::uuid, ${on}::date) AS p`))[0].p;
+      expect(await paidOn(d(5))).toBe(true);
+      expect(await paidOn(d(25))).toBe(false);
+      const t = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === id);
+      expect(t).toMatchObject({ paid: true, version: 1 });
+      expect(t.versions.map((v: { version: number; paid: boolean }) => [v.version, v.paid])).toEqual([[2, false], [1, true]]);
     });
   });
 });

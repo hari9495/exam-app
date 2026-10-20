@@ -30,6 +30,13 @@ export class LeavePlanDto {
   @IsOptional()
   @IsIn(['birth', 'third_child', 'adoption', 'miscarriage', 'tubectomy'])
   maternityCase?: 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
+
+  /** Leave by the hour on one day (when the type allows it): half hours, 0.5 to 12. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  @Max(12)
+  hours?: number;
 }
 
 export class ApplyLeaveDto extends LeavePlanDto {

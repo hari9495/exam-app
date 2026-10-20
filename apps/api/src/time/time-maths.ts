@@ -143,6 +143,11 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
+/** The same day `n` months later (the month's last day when it has no such day): 31 Jan + 1 month = 28/29 Feb. */
+export function addMonths(on: string, n: number): string {
+  return DateTime.fromISO(on, { zone: 'utc' }).plus({ months: n }).toISODate()!;
+}
+
 export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);
@@ -334,6 +339,8 @@ export interface DayInput {
   timesheetMinutes?: number | null;
   /** An approved work-from-home day (TIM-07): present, with or without punches. */
   wfh?: boolean;
+  /** Approved hours off that day (leave by the hour): they count toward the full and half day. */
+  leaveMinutes?: number;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -419,7 +426,8 @@ export function evaluateDay(i: DayInput): DayResult {
     // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
     const t = i.timesheetMinutes;
     if (t === null || t === undefined) return { ...none, ...shown, status: 'no_timesheet', leavePart };
-    const status: DayStatus = t >= r.fullDayMinutes * halfFactor ? 'present' : t >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+    const tt = t + (i.leaveMinutes ?? 0);
+    const status: DayStatus = tt >= r.fullDayMinutes * halfFactor ? 'present' : tt >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
     return { ...none, ...shown, workedMinutes: t, status, leavePart };
   }
   const nowMin = minutesInto(i.on, i.zone, i.now);
@@ -432,6 +440,8 @@ export function evaluateDay(i: DayInput): DayResult {
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
   const worked = netWorked(i.punches, firstIn, lastOut, r);
-  const status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  // Hours off count toward the day's thresholds; the worked minutes shown stay the time actually worked.
+  const counts = worked + (i.leaveMinutes ?? 0);
+  const status: DayStatus = counts >= r.fullDayMinutes * halfFactor ? 'present' : counts >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
   return { status, leavePart, firstIn, lastOut, workedMinutes: worked, lateMinutes: late, regularised };
 }

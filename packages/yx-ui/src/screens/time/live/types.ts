@@ -32,6 +32,8 @@ export interface LeaveRequestRow {
   fromHalf: 'full' | 'second';
   toHalf: 'full' | 'first';
   days: number;
+  /** Leave by the hour: the hours of the one day. */
+  hours?: number | null;
   status: LeaveStatus;
   certificate: 'none' | 'pending' | 'verified';
   reason: string | null;
@@ -72,7 +74,7 @@ export interface LeaveInput {
 export type MaternityCase = 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
 
 export interface LeavePlan {
-  type: { id: string; code: string; name: string; kind: string; rules: { certificateAfterDays: number | null; medical: boolean; halfDays: boolean } };
+  type: { id: string; code: string; name: string; kind: string; rules: { certificateAfterDays: number | null; medical: boolean; halfDays: boolean; hourly?: boolean } };
   days: { on: string; part: Half; portion: number; countedAs: 'leave' | 'sandwich' | 'holiday' | 'weekly_off' }[];
   total: number;
   holidaysExcluded: number;
@@ -231,6 +233,15 @@ export interface LeaveRules {
   hrApprovalAboveDays: number | null;
   /** Who may take it at all (founder decision 9 Oct 2026); null or missing: everyone. */
   eligibleGenders?: string[] | null;
+  // TIM-27 rules (founder decisions 20 Oct 2026); missing on older data means the default shown.
+  employment?: 'all' | 'permanent_contract' | 'permanent';
+  minServiceMonths?: number;
+  duringProbation?: boolean;
+  maxDaysPerMonth?: number | null;
+  blockedDates?: { from: string; to: string; reason: string }[];
+  hourly?: boolean;
+  longAbsence?: 'pause' | 'continue';
+  duringNotice?: 'allowed' | 'unpaid' | 'extends' | 'blocked';
 }
 
 export interface LeaveTypeRow {
@@ -245,7 +256,7 @@ export interface LeaveTypeRow {
   rules: LeaveRules;
   version: number;
   /** Every dated version, newest first: leave follows the version in force on its first day. */
-  versions: { version: number; validFrom: string; rules: LeaveRules; note: string | null }[];
+  versions: { version: number; validFrom: string; paid?: boolean; rules: LeaveRules; note: string | null }[];
 }
 
 export interface PolicyLine {

@@ -11,6 +11,8 @@ import {
   Facts,
   LeaveRules,
   leaveRuleBook,
+  leaveVersionBook,
+  EMPLOYMENT_FOR,
   PolicyLine,
   TIME_KEYS,
   asDate,
@@ -30,7 +32,7 @@ import {
   todayIn,
   visibleSql,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
+import { CountedDay, accrualsDue, addDays, addMonths, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 
@@ -47,6 +49,10 @@ type LeaveTypeRow = Prisma.LeaveTypeGetPayload<object>;
 
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+/** "2 days' notice", "1 day's notice" (founder wording, 20 Oct 2026). */
+const noticeText = (n: number) => `${n} ${n === 1 ? "day's" : "days'"} notice`;
+const monthText = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+const EMPLOYMENT_TEXT: Record<string, string> = { permanent: 'permanent staff', permanent_contract: 'permanent and contract staff' };
 const rangeText = (from: string, to: string) => (from === to ? fmt(from) : `${fmt(from)} to ${fmt(to)}`);
 
 export interface Balance {
@@ -79,6 +85,10 @@ export interface Plan {
   /** Stop the request (YX-LV-05). */
   blocks: string[];
   warnings: string[];
+  /** TIM-27 notice rule: during notice the days are recorded as this (unpaid) type instead. */
+  countAs?: string | null;
+  /** Leave by the hour: the hours asked on the one day. */
+  hours?: number | null;
 }
 
 @Injectable()
@@ -137,7 +147,8 @@ export class LeaveService implements OnModuleInit {
         AND d.leave_on BETWEEN ${year.start}::date AND ${year.end}::date GROUP BY 1`;
     const takenBy = new Map(taken.map((t) => [t.id, t.days]));
     const inPolicy = new Set(lines.map((l) => l.leaveTypeId));
-    const rulesOf = await leaveRuleBook(tx, org);
+    const versionOf = await leaveVersionBook(tx, org);
+    const rulesOf = (id: string, d: string) => versionOf(id, d).rules;
     return types
       .filter((t) => inPolicy.has(t.id) || sums.has(t.id) || !hasBalance(t.kind))
       .map((t) => {
@@ -150,7 +161,7 @@ export class LeaveService implements OnModuleInit {
           name: t.name,
           kind: t.kind,
           colour: t.colour,
-          paid: t.paid,
+          paid: versionOf(t.id, on).paid,
           hasBalance: withBalance,
           balance,
           pending: p,
@@ -163,6 +174,20 @@ export class LeaveService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------------------------------------ planning a request
+
+  /** What the TIM-27 rules look at for a person on a day: employment category, probation, and notice (last working day). */
+  async ruleFacts(tx: Tx, org: string, f: Facts, on: string): Promise<{ category: string | null; probation: boolean; notice: { caseId: string; lwd: string } | null }> {
+    const [row] = await tx.$queryRaw<{ category: string | null; probation: boolean; caseId: string | null; lwd: string | null }[]>`
+      SELECT (SELECT et.category FROM employment_types et WHERE et.organization_id = m.organization_id AND et.id = ${f.employmentTypeId}::uuid) AS category,
+        EXISTS (SELECT 1 FROM employment_status_periods sp WHERE sp.organization_id = m.organization_id AND sp.employment_id = m.id AND sp.superseded_at IS NULL
+          AND sp.status = 'probation' AND ${on}::date <@ daterange(sp.valid_from, sp.valid_to, '[]')) AS probation,
+        x.id::text AS "caseId", coalesce(x.approved_lwd, x.standard_lwd)::text AS lwd
+      FROM employments m
+      LEFT JOIN exit_cases x ON x.organization_id = m.organization_id AND x.employment_id = m.id AND x.status IN ('accepted', 'cleared')
+      WHERE m.organization_id = ${org}::uuid AND m.employee_id = ${f.employeeId}::uuid AND m.exited_on IS NULL
+      ORDER BY m.joined_on DESC LIMIT 1`;
+    return { category: row?.category ?? null, probation: Boolean(row?.probation) || row?.category === 'probation', notice: row?.caseId && row.lwd ? { caseId: row.caseId, lwd: row.lwd } : null };
+  }
 
   private async plan(tx: Tx, c: CompanyContext, f: Facts, dto: LeavePlanDto, today: string): Promise<Plan> {
     const org = c.organizationId;
@@ -177,6 +202,10 @@ export class LeaveService implements OnModuleInit {
     if (dto.to < dto.from) throw new BadRequestException('The last day is before the first day.');
     if (daysBetween(dto.from, dto.to) > 200) throw new BadRequestException('Apply for up to 200 days at a time.');
     if (dto.from === dto.to && fromHalf === 'second' && toHalf === 'first') throw new BadRequestException('Choose the first half or the second half of that day, not both.');
+    const hours = dto.hours ?? null;
+    if (hours !== null && Math.round(hours * 2) !== hours * 2) throw new BadRequestException('Give the hours in half hours, for example 2 or 2.5.');
+    if (hours !== null && (dto.from !== dto.to || fromHalf !== 'full' || toHalf !== 'full')) throw new BadRequestException('Hours off are for one whole day: choose the same first and last day.');
+    if (hours !== null && !rules.hourly) blocks.push(`${t.name} can't be taken by the hour.`);
     const balances = await this.balancesIn(tx, c, f, dto.from < today ? today : dto.from);
     const balance = balances.find((b) => b.leaveTypeId === t.id) ?? null;
     if (!balance) blocks.push(`${t.name} is not part of your leave policy.`);
@@ -186,7 +215,11 @@ export class LeaveService implements OnModuleInit {
     await book.prime([f.employeeId], dto.from, dto.to);
     const offs = new Set<string>();
     for (let d = dto.from; d <= dto.to; d = addDays(d, 1)) if ((await book.day(f, d)).weeklyOff) offs.add(d);
-    const counted = countLeaveDays({ from: dto.from, to: dto.to, fromHalf, toHalf, holidays: map, weeklyOff: (d) => offs.has(d), rules: rules });
+    const byDay = countLeaveDays({ from: dto.from, to: dto.to, fromHalf, toHalf, holidays: map, weeklyOff: (d) => offs.has(d), rules: rules });
+    // Leave by the hour: the hours as a share of that day's full-day minutes (8 hours when there is no shift).
+    const fullDay = hours !== null ? ((await book.day(f, dto.from)).shift?.fullDayMinutes ?? 480) : 480;
+    const share = hours !== null ? Math.min(1, Math.round(((hours * 60) / fullDay) * 100) / 100) : 0;
+    const counted = hours !== null ? { ...byDay, total: byDay.total > 0 ? share : 0, days: byDay.days.map((d) => (d.portion > 0 ? ({ ...d, part: 'hours', portion: share } as unknown as CountedDay) : d)) } : byDay;
     const total = counted.total;
     if (!rules.halfDays && (fromHalf !== 'full' || toHalf !== 'full')) blocks.push(`${t.name} is taken in whole days.`);
     if (total === 0) blocks.push('Those days are holidays or weekly offs. Nothing to apply for.');
@@ -196,7 +229,43 @@ export class LeaveService implements OnModuleInit {
     if (locked.length) blocks.push(`${new Date(`${locked[0]}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })} is locked for attendance and leave. Ask HR to record it.`);
     blocks.push(...(await this.eligibility(tx, org, f, t, rules, dto, today)));
     if (dto.from < addDays(today, -60)) blocks.push('Leave more than 60 days back needs HR. Ask them to record it.');
-    if (rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays) blocks.push(`${t.name} needs ${daysText(rules.noticeDays)} notice.`);
+    if (rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays) blocks.push(`${t.name} needs ${noticeText(rules.noticeDays)}.`);
+    // Dates when no one can take it.
+    for (const b of rules.blockedDates) {
+      const hit = counted.days.find((d) => d.portion > 0 && d.on >= b.from && d.on <= b.to);
+      if (hit) blocks.push(`${fmt(hit.on)} is a company block date for ${t.name} (${b.reason}). Pick other dates.`);
+    }
+    // Most days in a calendar month, with what is already asked for or taken.
+    if (rules.maxDaysPerMonth !== null) {
+      const mine = new Map<string, number>();
+      for (const d of counted.days) if (d.portion > 0) mine.set(d.on.slice(0, 7), (mine.get(d.on.slice(0, 7)) ?? 0) + Number(d.portion));
+      for (const [ym, n] of mine) {
+        const [{ used }] = await tx.$queryRaw<{ used: number }[]>`
+          SELECT coalesce(sum(d.portion), 0)::float AS used FROM leave_request_days d
+          JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+          WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND r.leave_type_id = ${t.id}::uuid AND d.active
+            AND r.status = ANY(${ACTIVE}::text[]) AND to_char(d.leave_on, 'YYYY-MM') = ${ym}`;
+        if (used + n > rules.maxDaysPerMonth) blocks.push(`${t.name} is at most ${daysText(rules.maxDaysPerMonth)} in a month${used ? `: ${monthText(ym)} already has ${daysText(used)}` : ''}.`);
+      }
+    }
+    // Notice period: allowed, counted as unpaid leave, moves the last working day later, or not allowed.
+    let countAs: string | null = null;
+    const facts = await this.ruleFacts(tx, org, f, dto.from);
+    if (facts.notice && dto.from <= facts.notice.lwd) {
+      const lwd = facts.notice.lwd;
+      if (rules.duringNotice === 'blocked') blocks.push(`${t.name} can't be taken during your notice period.`);
+      else if (rules.duringNotice === 'unpaid') {
+        const lop = await tx.leaveType.findFirst({ where: { organizationId: org, kind: 'lop', active: true }, select: { id: true } });
+        if (!lop) blocks.push(`During your notice period ${t.name} counts as unpaid leave, and the company has no unpaid leave type. Ask HR.`);
+        else if (lop.id !== t.id) {
+          countAs = lop.id;
+          warnings.push('You are serving notice: these days will be counted as loss of pay.');
+        }
+      } else if (rules.duringNotice === 'extends') {
+        const n = Math.ceil(total);
+        if (n > 0) warnings.push(`You are serving notice: your last working day moves from ${fmt(lwd)} to ${fmt(addDays(lwd, n))} (${daysText(n)}).`);
+      }
+    }
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
@@ -213,7 +282,8 @@ export class LeaveService implements OnModuleInit {
       ORDER BY 1 LIMIT 1`;
     if (clash.length) blocks.push(`You already have leave on ${fmt(clash[0].on)}.`);
     let balanceAfter: number | null = null;
-    if (balance?.hasBalance) {
+    // Counted as unpaid leave during notice: no balance is used.
+    if (balance?.hasBalance && !countAs) {
       balanceAfter = Math.round((balance.available - total) * 100) / 100;
       if (balanceAfter < -balance.negativeLimit) blocks.push(`Not enough ${t.name}: ${balance.available} available, ${total} asked.`);
       else if (balanceAfter < 0) warnings.push(`This takes your balance to ${balanceAfter}. Future credits repay it first.`);
@@ -231,7 +301,7 @@ export class LeaveService implements OnModuleInit {
           WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.employee_id <> ${f.employeeId}::uuid
             AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date`
       : [{ n: 0 }];
-    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings };
+    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings, countAs, hours };
   }
 
   /**
@@ -243,6 +313,16 @@ export class LeaveService implements OnModuleInit {
   private async eligibility(tx: Tx, org: string, f: Facts, t: LeaveTypeRow, rules: LeaveRules, dto: LeavePlanDto, today: string): Promise<string[]> {
     const out: string[] = [];
     const override = await tx.leaveEligibilityOverride.findFirst({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, validUntil: { gte: asDate(today) } }, orderBy: { createdAt: 'desc' } });
+    if (!override) {
+      const allowed = EMPLOYMENT_FOR[rules.employment];
+      const facts = await this.ruleFacts(tx, org, f, dto.from);
+      if (allowed && !allowed.includes(facts.category ?? '')) out.push(`${t.name} is for ${EMPLOYMENT_TEXT[rules.employment]} only. Ask HR if this is wrong.`);
+      if (rules.minServiceMonths > 0) {
+        const reach = addMonths(f.joinedOn, rules.minServiceMonths);
+        if (dto.from < reach) out.push(`${t.name} can be taken after ${rules.minServiceMonths} ${rules.minServiceMonths === 1 ? 'month' : 'months'} of work: from ${fmt(reach)} ${reach.slice(0, 4)}.`);
+      }
+      if (!rules.duringProbation && facts.probation) out.push(`${t.name} can't be taken during probation.`);
+    }
     if (rules.eligibleGenders?.length && !override) {
       const pd = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: f.employeeId }, select: { gender: true } });
       if (!pd?.gender || !rules.eligibleGenders.includes(pd.gender)) out.push(`${t.name} is not available to you under the leave policy${pd?.gender ? '' : ' (no gender is recorded on your profile)'}. Ask HR if this is wrong.`);
@@ -331,6 +411,7 @@ export class LeaveService implements OnModuleInit {
       fromHalf: r.fromHalf,
       toHalf: r.toHalf,
       days: num(r.days),
+      hours: r.hours === null ? null : num(r.hours),
       status: r.status,
       certificate: r.certificate,
       reason: withReason ? r.reason : null,
@@ -370,7 +451,8 @@ export class LeaveService implements OnModuleInit {
         data: {
           organizationId: org,
           employeeId: f.employeeId,
-          leaveTypeId: p.type.id,
+          leaveTypeId: p.countAs ?? p.type.id,
+          hours: p.hours ?? null,
           fromOn: asDate(dto.from),
           toOn: asDate(dto.to),
           fromHalf: dto.fromHalf ?? 'full',
@@ -458,6 +540,15 @@ export class LeaveService implements OnModuleInit {
     const fullDay = (await tx.leaveRequestDay.count({ where: { organizationId: r.organizationId, requestId: r.id, part: 'full', portion: { gt: 0 } } })) > 0;
     const manages = await tx.employeeAssignment.count({ where: { organizationId: r.organizationId, managerEmployeeId: r.employeeId, supersededAt: null, validFrom: { lte: r.toOn }, OR: [{ validTo: null }, { validTo: { gte: r.fromOn } }] } });
     if (emp?.userId && fullDay && (r.delegateUserId || manages)) await this.engine.delegateForLeave(tx, c, emp.userId, from, to, r.delegateUserId);
+    // TIM-27 "moves the last working day later": approved leave during notice moves it by the days taken (rounded up).
+    const rules = (await leaveRuleBook(tx, r.organizationId, [r.leaveTypeId]))(r.leaveTypeId, from);
+    const f = rules.duringNotice === 'extends' ? await factsOn(tx, r.organizationId, r.employeeId, from) : null;
+    const notice = f ? (await this.ruleFacts(tx, r.organizationId, f, from)).notice : null;
+    if (notice && from <= notice.lwd && Math.ceil(num(r.days)) > 0) {
+      const lwd = addDays(notice.lwd, Math.ceil(num(r.days)));
+      await tx.exitCase.update({ where: { id: notice.caseId }, data: { approvedLwd: asDate(lwd), version: { increment: 1 } } });
+      await audit(tx, c, 'exit.lwd.moved_by_leave', 'exit_case', notice.caseId, { from: notice.lwd, to: lwd, leaveRequestId: r.id });
+    }
     await this.dayEngine.evaluate(tx, c, r.employeeId, from, to);
   }
 
@@ -738,6 +829,7 @@ export class LeaveService implements OnModuleInit {
     return this.tenantPrisma.forTenant(c, async (tx) => {
       const today = now.toISOString().slice(0, 10);
       const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+      const rulesOf = await leaveRuleBook(tx, org);
       const employees = await tx.$queryRaw<{ id: string }[]>`
         SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a JOIN employments m ON m.organization_id = a.organization_id AND m.id = a.employment_id
         WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') AND m.joined_on <= ${today}::date`;
@@ -750,10 +842,21 @@ export class LeaveService implements OnModuleInit {
         if (!policy) continue;
         const ent = await this.entitlements(tx, f, local, policy.lines, [...types.values()]);
         const year = leaveYearOf(local, Number(await settingOn(tx, c, 'leave.year_start_month', f, local)));
+        // TIM-27 "During long absence": a month spent wholly on approved unpaid leave earns no monthly credit when the type says so.
+        const unpaid = new Set(
+          (await tx.$queryRaw<{ ym: string }[]>`
+            SELECT to_char(d.leave_on, 'YYYY-MM') AS ym FROM leave_request_days d
+            JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+            WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.leave_on >= ${year.start}::date
+              AND NOT leave_type_paid_on(r.organization_id, r.leave_type_id, d.leave_on)
+            GROUP BY 1 HAVING count(DISTINCT d.leave_on) = extract(day FROM (date_trunc('month', min(d.leave_on)) + interval '1 month - 1 day'))`).map((x) => x.ym),
+        );
         const data = policy.lines.flatMap((l) => {
           const t = types.get(l.leaveTypeId);
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
-          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local }).map((d) => ({
+          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local })
+            .filter((d) => !(l.frequency === 'monthly' && unpaid.has(d.on.slice(0, 7)) && rulesOf(t.id, d.on).longAbsence === 'pause'))
+            .map((d) => ({
             organizationId: org,
             employeeId: f.employeeId,
             leaveTypeId: t.id,

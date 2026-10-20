@@ -1,4 +1,4 @@
-import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, addMonths, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -208,6 +208,10 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
   it('short days are half days or absent; no punches on a past working day is absent', () => {
     expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('14:00'), kind: 'out' }] }).status).toBe('half_day');
     expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('11:00'), kind: 'out' }] }).status).toBe('absent');
+    // TIM-27 leave by the hour: 2 hours off make a 9:30-14:00 day whole; the worked minutes shown stay the time worked.
+    const off = evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('16:30'), kind: 'out' }], leaveMinutes: 120 });
+    expect(off.status).toBe('present');
+    expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('16:30'), kind: 'out' }] }).status).toBe('half_day');
     expect(evaluateDay(base).status).toBe('absent');
   });
 
@@ -284,5 +288,12 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
     const r = evaluateDay({ ...base, punches: [{ at: at('09:31'), kind: 'in' }], fix: { kind: 'missed_out', inMinute: null, outMinute: 18 * 60 + 10 } });
     expect(r).toMatchObject({ status: 'present', regularised: true });
     expect(evaluateDay({ ...base, fix: { kind: 'full_day', inMinute: null, outMinute: null } }).status).toBe('present');
+  });
+});
+
+describe('addMonths (TIM-27 months worked)', () => {
+  it('keeps the day, or the month end when the month is shorter', () => {
+    expect(addMonths('2026-01-15', 6)).toBe('2026-07-15');
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
   });
 });

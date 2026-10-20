@@ -100,8 +100,8 @@ export async function seedTime(tx: Tx, organizationId: string) {
   const type = async (code: string, name: string, kind: string, paid: boolean, colour: string, r: Partial<LeaveRules>) =>
     (
       await tx.leaveType.create({
-        data: { ...org, code, name, kind, paid, colour, createdBy: hr },
-      }).then(async (t) => (await tx.leaveTypeVersion.create({ data: { ...org, leaveTypeId: t.id, version: 1, validFrom: day('2026-01-01'), rules: rules(r), createdBy: hr } }), t))
+        data: { ...org, code, name, kind, colour, createdBy: hr },
+      }).then(async (t) => (await tx.leaveTypeVersion.create({ data: { ...org, leaveTypeId: t.id, version: 1, validFrom: day('2026-01-01'), paid, rules: rules(r), createdBy: hr } }), t))
     ).id;
   const EL = await type('EL', 'Earned leave', 'earned', true, 'blue', { sandwich: 'sandwich', noticeDays: 3, maxDays: 15, hrApprovalAboveDays: 5, encashable: true });
   const CL = await type('CL', 'Casual leave', 'casual', true, 'green', { maxDays: 3 });

@@ -78,9 +78,9 @@ export class TimeSetupService {
         today,
         types: types.map((t) => {
           // TIM-27: every dated version, newest first; the one in force today (or the first, before it starts).
-          const vs = typeVersions.filter((v) => v.leaveTypeId === t.id).map((v) => ({ version: v.version, validFrom: dateOf(v.validFrom), rules: { ...DEFAULT_RULES, ...(v.rules as object) } as LeaveRules, note: v.note }));
+          const vs = typeVersions.filter((v) => v.leaveTypeId === t.id).map((v) => ({ version: v.version, validFrom: dateOf(v.validFrom), paid: v.paid, rules: { ...DEFAULT_RULES, ...(v.rules as object) } as LeaveRules, note: v.note }));
           const now = vs.find((v) => v.validFrom <= today) ?? vs[vs.length - 1];
-          return { id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: now?.rules ?? DEFAULT_RULES, version: now?.version ?? 1, versions: vs };
+          return { id: t.id, code: t.code, name: t.name, kind: t.kind, paid: now?.paid ?? true, colour: t.colour, active: t.active, rules: now?.rules ?? DEFAULT_RULES, version: now?.version ?? 1, versions: vs };
         }),
         policies: policies.map((p) => ({
           id: p.id,
@@ -148,9 +148,9 @@ export class TimeSetupService {
     return this.run(ctx, user, true, async (tx, c) => {
       const rules = this.checkType(dto);
       if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
-      const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, paid: dto.paid, colour: dto.colour ?? 'blue', active: dto.active ?? true, createdBy: c.userId ?? null } });
-      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, version: 1, validFrom: asDate(todayIst()), rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
+      const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, colour: dto.colour ?? 'blue', active: dto.active ?? true, createdBy: c.userId ?? null } });
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, version: 1, validFrom: asDate(todayIst()), paid: dto.paid, rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, paid: dto.paid, rules });
       return { id: t.id };
     });
   }
@@ -161,7 +161,7 @@ export class TimeSetupService {
       if (!t) throw new NotFoundException('No such leave type.');
       if (dto.code !== t.code) throw new BadRequestException('A leave type keeps its code. Add a new type instead.');
       if (dto.kind !== t.kind) throw new BadRequestException('A leave type keeps its kind. Add a new type instead.');
-      // TIM-27: the rules change from a date, as a new version; leave before it keeps the version it was taken under.
+      // TIM-27: the rules and pay change from a date, as a new version; leave before it (and its payslips) keep the old.
       const today = todayIst();
       const validFrom = dto.validFrom ?? today;
       if (validFrom < today) throw new BadRequestException('A change starts today or later: leave already taken keeps its rules.');
@@ -170,21 +170,21 @@ export class TimeSetupService {
       const old = (base?.rules ?? {}) as Record<string, unknown>;
       // G1 (gap pass T1): the leave type screen does not show pay steps yet, so an edit that leaves them out keeps them.
       const rules = this.checkType({ ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
-      const changed = JSON.stringify({ ...DEFAULT_RULES, ...old }) !== JSON.stringify({ ...DEFAULT_RULES, ...rules });
+      const changed = JSON.stringify({ ...DEFAULT_RULES, ...old }) !== JSON.stringify({ ...DEFAULT_RULES, ...rules }) || (base?.paid ?? true) !== dto.paid;
       // A version that started before today never changes (the database refuses it too).
       if (versions.some((v) => dateOf(v.validFrom) > validFrom)) throw new ConflictException('A later version is already planned. Change that one, or choose a later date.');
       let version = base?.version ?? 1;
       if (changed) {
         // A version starting that same day (today or later) is corrected in place.
         const same = versions.find((v) => dateOf(v.validFrom) === validFrom);
-        if (same) await tx.leaveTypeVersion.update({ where: { id: same.id }, data: { rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
+        if (same) await tx.leaveTypeVersion.update({ where: { id: same.id }, data: { paid: dto.paid, rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
         else {
           version = (versions[versions.length - 1]?.version ?? 0) + 1;
-          await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, version, validFrom: asDate(validFrom), rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
+          await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, version, validFrom: asDate(validFrom), paid: dto.paid, rules: rules as unknown as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
         }
       }
-      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, active: dto.active ?? t.active, updatedAt: new Date() } });
-      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: old, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active }, ...(changed ? { version, validFrom } : {}) });
+      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, colour: dto.colour ?? t.colour, active: dto.active ?? t.active, updatedAt: new Date() } });
+      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: base?.paid ?? true, rules: old, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active }, ...(changed ? { version, validFrom } : {}) });
       return { id: t.id };
     });
   }
@@ -215,7 +215,8 @@ export class TimeSetupService {
         const line = policy?.lines.find((l) => l.leaveTypeId === t.id);
         if (!policy || !line) continue;
         const b = (await this.leave.balancesIn(tx, c, f, today)).find((x) => x.leaveTypeId === t.id);
-        people.push({ employeeId: id, name: f.name, balance: b?.balance ?? 0, pending: b?.pending ?? 0, policy: { name: policy.name, annualDays: line.annualDays, frequency: line.frequency } });
+        const facts = await this.leave.ruleFacts(tx, org, f, today);
+        people.push({ employeeId: id, name: f.name, balance: b?.balance ?? 0, pending: b?.pending ?? 0, policy: { name: policy.name, annualDays: line.annualDays, frequency: line.frequency }, joinedOn: f.joinedOn, category: facts.category, probation: facts.probation, noticeUntil: facts.notice?.lwd ?? null });
       }
       return { people };
     });
@@ -227,6 +228,8 @@ export class TimeSetupService {
     // YX-LV-14: an unpaid type carries no balance, so it has nothing to go below zero.
     if (dto.kind === 'lop' && rules.negativeLimit) throw new BadRequestException('Leave without pay has no balance, so it cannot go below zero.');
     if (!dto.paid && rules.paySteps) throw new BadRequestException('Only paid leave has pay steps.');
+    // Hours off are paid leave: unpaid hours are not cut from pay yet.
+    if (!dto.paid && rules.hourly) throw new BadRequestException('Only paid leave can be taken by the hour.');
     return rules;
   }
 

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScheduleBook, lockedDates } from './schedule';
-import { asDate, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
+import { asDate, factsOn, holidaysFor, leaveDays, leaveMinutes, settingOn, todayIn } from './time-core';
 import { HolidayOn, addDays, daysBetween, eachDay, evaluateDay, type PunchKind } from './time-maths';
 
 // M02 §B3 day engine: works out each day's status from the expected day (the roster / pattern / location shift and
@@ -16,6 +16,7 @@ export class DayEngine {
   async evaluate(tx: Tx, c: CompanyContext, employeeId: string, from: string, to: string, now = new Date(), book?: ScheduleBook): Promise<number> {
     const org = c.organizationId;
     const leave = await leaveDays(tx, org, employeeId, from, to);
+    const hoursOff = await leaveMinutes(tx, org, employeeId, from, to);
     const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' } });
     const approved = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
     const fixes = approved.filter((x) => x.kind !== 'wfh');
@@ -43,6 +44,7 @@ export class DayEngine {
         weeklyOff: day.weeklyOff,
         holiday: holidays.get(f.locationId)!.get(on) ?? null,
         leave: leave.get(on) ?? null,
+        leaveMinutes: hoursOff.get(on) ?? 0,
         punches: punches.filter((p) => p.workOn.toISOString().slice(0, 10) === on).map((p) => ({ at: p.punchedAt, kind: p.kind as PunchKind })),
         fix: fix ? { kind: fix.kind as 'missed_in', inMinute: fix.inMinute, outMinute: fix.outMinute } : null,
         rule,

@@ -381,6 +381,8 @@ export interface ApplyLeaveProps {
   self?: string;
   blocked?: boolean;
   sandwich?: 'none' | 'sandwich' | 'always';
+  /** The type can be taken by the hour (TIM-27 rule): one day offers "Some hours". */
+  hourly?: boolean;
 }
 
 /** Default range Fri 23 – Mon 26 Oct: clear of Divya's own pending 12–13 Oct, with the 4th Saturday and Sunday in between. */
@@ -398,7 +400,7 @@ export interface LeaveDraft { type: LeaveCode; from: Date | null; to: Date | nul
 const countFor = (type: LeaveCode, from: Date, to: Date, fh: Half, th: Half, sandwich: ApplyLeaveProps['sandwich']) =>
   countLeaveDays({ from, to, fromHalf: fh, toHalf: th, holidays: holidayDates, weeklyOffDays: [0], weeklyOffDates: ALT_SAT, sandwich: type === 'CL' || type === 'CO' ? 'none' : sandwich ?? 'sandwich' });
 
-export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: to0 = DEFAULT_TO, fromHalf: fh0 = 'full', toHalf: th0 = 'full', blocked = false, sandwich = 'sandwich', phone, person = ME.name, own = person === ME.name, onDraft, onOpenRequest }: Omit<ApplyLeaveProps, 'self'> & { phone?: boolean; /** Whose leave (HR or a manager applying for someone). */ person?: string; /** The person is applying for themselves. */ own?: boolean; onDraft?: (d: LeaveDraft) => void; onOpenRequest?: (r: LeaveRequestRow) => void }) {
+export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: to0 = DEFAULT_TO, fromHalf: fh0 = 'full', toHalf: th0 = 'full', blocked = false, sandwich = 'sandwich', hourly = false, phone, person = ME.name, own = person === ME.name, onDraft, onOpenRequest }: Omit<ApplyLeaveProps, 'self'> & { phone?: boolean; /** Whose leave (HR or a manager applying for someone). */ person?: string; /** The person is applying for themselves. */ own?: boolean; onDraft?: (d: LeaveDraft) => void; onOpenRequest?: (r: LeaveRequestRow) => void }) {
   const [type, setType] = useState<LeaveCode>(t0);
   const [range, setRange] = useState({ from: f0 as Date | null, to: to0 as Date | null });
   const [fh, setFh] = useState<Half>(fh0);
@@ -421,7 +423,12 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
   const noBal = !typeBal;
   const bal = typeBal ?? BALANCES.find((b) => b.code === type) ?? BALANCES[0];
   const count = useMemo(() => (range.from && range.to ? countFor(type, range.from, range.to, fh, th, sandwich) : null), [range, fh, th, type, sandwich]);
-  const total = count?.total ?? 0;
+  // Leave by the hour: one day, a share of an 8-hour day.
+  const [useHours, setUseHours] = useState(hourly);
+  const [hours, setHours] = useState<number | null>(2);
+  const oneDay = !!range.from && !!range.to && same(range.from, range.to);
+  const byHours = hourly && oneDay && useHours;
+  const total = byHours ? Math.round(((hours ?? 0) / 8) * 100) / 100 : (count?.total ?? 0);
   const daysAhead = range.from ? daysUntil(range.from, TODAY) : 0;
   // Days already pending in other requests are spoken for, so "Balance after" takes them off too.
   const pendingDays = bal.paid && !noBal ? bal.pending : 0;
@@ -527,8 +534,14 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
         </FormField>
         <div id={dateId}><DateRangePicker label="Dates" value={range} onChange={setRange} required helper="Holidays and weekly offs are shown in the calendar" /></div>
         <FieldRow>
-          <FormField label="First day"><Select value={fh} onChange={(v) => v && setFh(v as Half)} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }]} /></FormField>
-          <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as Half)} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+          <FormField label={oneDay ? 'The day' : 'First day'}>
+            <Select value={byHours ? 'hours' : fh} onChange={(v) => { if (!v) return; setUseHours(v === 'hours'); if (v !== 'hours') setFh(v as Half); }} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }, ...(hourly && oneDay ? [{ value: 'hours', label: 'Some hours' }] : [])]} />
+          </FormField>
+          {byHours ? (
+            <FormField label="Hours" required helper="Half hours, for example 2 or 2.5. A full day is 8 hours."><NumberField value={hours} decimals min={0.5} max={7.5} onChange={setHours} /></FormField>
+          ) : (
+            <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as Half)} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+          )}
         </FieldRow>
         <FormField label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
         {type === 'SL' && <div id={certId}><FormField label="Medical certificate" helper="Needed for more than 2 days. Only HR sees the file; your manager sees whether it's attached and verified."><FileUpload upload={async () => {}} accept={['application/pdf', 'image/jpeg', 'image/png']} /></FormField></div>}
@@ -781,7 +794,7 @@ export function LeaveHomeScreen(props: LeaveHomeProps) {
 
 const LIVE_STATUS_LABEL: Record<LiveLeaveRow['status'], string> = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancel_pending: 'Cancellation pending', cancelled: 'Cancelled' };
 const liveTone = (r: LiveLeaveRow, today: string) => (r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : r.status === 'pending' && r.from >= today && daysUntil(isoLocal(r.from), isoLocal(today)) <= 3 ? 'warning' : 'neutral');
-const liveDates = (r: LiveLeaveRow) => `${span(isoLocal(r.from), isoLocal(r.to))}${r.fromHalf === 'second' ? ' (from the second half)' : ''}${r.toHalf === 'first' ? ' (until the first half)' : ''}`;
+const liveDates = (r: LiveLeaveRow) => `${span(isoLocal(r.from), isoLocal(r.to))}${r.hours ? ` (${r.hours} ${r.hours === 1 ? 'hour' : 'hours'})` : ''}${r.fromHalf === 'second' ? ' (from the second half)' : ''}${r.toHalf === 'first' ? ' (until the first half)' : ''}`;
 const MATERNITY_CASES: { value: MaternityCase; label: string }[] = [
   { value: 'birth', label: 'Birth' },
   { value: 'third_child', label: 'Third child or later' },
@@ -918,16 +931,21 @@ function LiveApplyLeavePanel({ live, data, typeId: t0, onClose, onSent }: { live
   const from = iso(range.from);
   const to = iso(range.to ?? range.from);
   const oneDay = !!from && from === to;
-  const input = { leaveTypeId: typeId!, from, to, fromHalf: fh, toHalf: oneDay ? (fh === 'second' ? 'full' : th) : th, ...(maternity ? { expectedOn: iso(expectedOn) || undefined, maternityCase: mCase } : {}) };
+  // Leave by the hour (a rule of the type): one day, some hours.
+  const [useHours, setUseHours] = useState(false);
+  const [hours, setHours] = useState<number | null>(2);
+  const [hourly, setHourly] = useState(false);
+  const byHours = hourly && oneDay && useHours;
+  const input = { leaveTypeId: typeId!, from, to, fromHalf: byHours ? 'full' : fh, toHalf: byHours ? 'full' : oneDay ? (fh === 'second' ? 'full' : th) : th, ...(byHours && hours ? { hours } : {}), ...(maternity ? { expectedOn: iso(expectedOn) || undefined, maternityCase: mCase } : {}) };
   useEffect(() => {
     setPlan(null);
     if (!typeId || !from) return;
     let on = true;
-    const h = setTimeout(() => void live.onPreview(input).then((x) => on && setPlan(x), () => on && setPlan(null)), 300);
+    const h = setTimeout(() => void live.onPreview(input).then((x) => { if (on) { setPlan(x); setHourly(Boolean(x.type.rules.hourly)); } }, () => on && setPlan(null)), 300);
     return () => { on = false; clearTimeout(h); };
     // The preview follows the inputs that change it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId, from, to, fh, th, iso(expectedOn), mCase]);
+  }, [typeId, from, to, fh, th, byHours, hours, iso(expectedOn), mCase]);
   const errors = [...(plan?.blocks ?? []), ...(plan?.certificateNeeded && !certificate ? ['Tick that you will give the certificate to HR.'] : [])];
   const blockedBy = !typeId ? 'Choose the leave type' : !from ? 'Choose the dates' : !plan ? 'Working out the days…' : errors.length ? `Fix ${plural(errors.length, 'thing')} above` : !reason.trim() ? 'Add a reason' : delegate && !delegateTo ? 'Choose who approves for you' : null;
   const send = () => {
@@ -971,10 +989,16 @@ function LiveApplyLeavePanel({ live, data, typeId: t0, onClose, onSent }: { live
             </>
           )}
           <DateRangePicker label="Dates" value={range} onChange={setRange} required helper="Holidays and weekly offs are shown in the summary" />
-          {plan?.type.rules.halfDays !== false && from && (
+          {(plan?.type.rules.halfDays !== false || (hourly && oneDay)) && from && (
             <FieldRow>
-              <FormField label="First day"><Select value={fh} onChange={(v) => v && setFh(v as 'full' | 'second')} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }]} /></FormField>
-              <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+              <FormField label={oneDay ? 'The day' : 'First day'}>
+                <Select value={byHours ? 'hours' : fh} onChange={(v) => { if (!v) return; setUseHours(v === 'hours'); if (v !== 'hours') setFh(v as 'full' | 'second'); }} options={[{ value: 'full', label: 'Full day' }, ...(plan?.type.rules.halfDays !== false ? [{ value: 'second', label: 'Second half only' }] : []), ...(hourly && oneDay ? [{ value: 'hours', label: 'Some hours' }] : [])]} />
+              </FormField>
+              {byHours ? (
+                <FormField label="Hours" required helper="Half hours, for example 2 or 2.5."><NumberField value={hours} decimals min={0.5} max={12} onChange={setHours} /></FormField>
+              ) : (
+                <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, ...(plan?.type.rules.halfDays !== false ? [{ value: 'first', label: 'First half only' }] : [])]} /></FormField>
+              )}
             </FieldRow>
           )}
           <FormField label="Reason" required helper={plan?.type.rules.medical ? 'Only you and HR can read this.' : 'Your approvers see this.'}><TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} /></FormField>
