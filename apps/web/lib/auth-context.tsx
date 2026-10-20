@@ -89,6 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
+    // A token for a different person (someone signs in where another session was still alive):
+    // every cached answer, "who am I" first, belonged to the other person and must go.
+    const before = accessTokenRef.current ? decodeJwtPayload(accessTokenRef.current)?.sub : null;
+    const after = token ? decodeJwtPayload(token)?.sub : null;
+    if (before && after && before !== after) queryClient.clear();
+    accessTokenRef.current = token;
     setAccessToken(token);
     setSessionHint(token !== null);
     const payload = token ? decodeJwtPayload(token) : null;

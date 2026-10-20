@@ -391,6 +391,35 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByText('no-token slug:none')).toBeInTheDocument());
   });
 
+  it('signing in as someone else over a live session shows the new person, not the old one (founder AF-05 walk-through)', async () => {
+    window.localStorage.setItem(SESSION_HINT_KEY, '1');
+    const admin = fakeJwt({ sub: 'admin', organizationId: 'org1', role: 'org_admin' });
+    const arjun = fakeJwt({ sub: 'arjun', organizationId: 'org1', role: 'panel' });
+    global.fetch = jest.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: admin }), { status: 200 });
+      if (u.endsWith('/users/me')) {
+        const who = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? '').includes(arjun) ? 'Arjun' : 'Ramesh';
+        return new Response(JSON.stringify({ id: who, email: `${who}@example.com`, name: who, role: 'panel' }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      const { data } = useCurrentUser();
+      return <p>{data ? `user:${data.name}` : 'no-user'}</p>;
+    }
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('user:Ramesh')).toBeInTheDocument());
+    act(() => auth!.login('kaveri', arjun));
+    await waitFor(() => expect(screen.getByText('user:Arjun')).toBeInTheDocument());
+  });
+
   it('clears the currentUser query cache on logout, so a second user never sees the first user\'s stale profile data', async () => {
     const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
 
