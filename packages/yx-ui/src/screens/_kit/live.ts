@@ -26,3 +26,4 @@ export { ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type 
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
+export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';

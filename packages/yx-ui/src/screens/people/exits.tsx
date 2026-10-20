@@ -25,7 +25,7 @@ import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEER
 import { DueCountdown, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesCard } from './live/special';
-import type { ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
+import type { AbscondingRow, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
 import { Segment } from './people-kit';
 
 /* ================================================================== PPL-18 resignation */
@@ -1089,8 +1089,104 @@ export function DeathInServiceFlow({ current = 'payees', noNomination = false }:
 
 /* ================================================================== PPL-24 absconding */
 
+/** The live app's absconding timelines (design audit step 3): the designed timeline, one person at a time. */
+export interface LiveAbsconding {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  rows: AbscondingRow[];
+  onStart: () => void;
+  onStop: (r: AbscondingRow) => void;
+  onResume: (r: AbscondingRow) => void;
+  onDispatch: (r: AbscondingRow, key: string) => void;
+  onOpenExit: (exitCaseId: string) => void;
+  /** Dialogs the page opens. */
+  children?: ReactNode;
+}
+
+function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbsconding }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const r = live.rows.find((x) => x.id === pick) ?? live.rows.find((x) => x.status === 'running') ?? live.rows[0];
+  const lastPresent = r ? isoDay(r.lastPresentOn) : null;
+  const absentDays = lastPresent ? Math.max(0, daysBetween(lastPresent, today)) : 0;
+  const steps = r?.steps ?? [];
+  const rows: ChecklistRow[] = steps.map((s) => ({
+    id: s.key,
+    title: `Day ${s.day}: ${s.label}`,
+    due: isoDay(s.dueOn),
+    status: s.doneAt ? 'Done' : r!.status === 'stopped' ? 'Draft' : 'Scheduled',
+    note: [s.note, s.dispatchRef ? `registered post ${s.dispatchRef}` : null].filter(Boolean).join(' · ') || undefined,
+    action:
+      s.doneAt && (s.key === 'notice_1' || s.key === 'notice_2') && !s.dispatchRef ? (
+        <Button size="sm" icon={Upload} onClick={() => live.onDispatch(r!, s.key)}>
+          Add dispatch proof
+        </Button>
+      ) : undefined,
+  }));
+  return (
+    <PeopleFrame active="Exit cases">
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the absconding timelines" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' ? (
+        <ListSkeleton label="Loading absconding timelines" />
+      ) : !r ? (
+        <>
+          <PageHeader title="Absconding" description="Unauthorised absence follows the company's timeline: a salary hold and alert, two notices, then deemed abandonment. Stop it at any step if they come back." />
+          <EmptyState title="No absconding timelines" description="Start one when someone stops coming to work without telling anyone." action={<Button variant="primary" onClick={live.onStart}>Start a timeline</Button>} />
+        </>
+      ) : (
+        <>
+          {live.rows.length > 1 && (
+            <div className="yx-ppl__row">
+              <span className="yx-ppl__head-select">
+                <Select aria-label="Timeline for" size="sm" value={r.id} onChange={(v) => setPick(v)} options={live.rows.map((x) => ({ value: x.id, label: `${x.name} · ${ABSC[x.status].label.toLowerCase()}` }))} />
+              </span>
+            </div>
+          )}
+          <ObjectHeader
+            name={`Absconding · ${r.name}`}
+            avatarName={r.name}
+            person
+            secondary={`last present ${formatDate(lastPresent!)}`}
+            status={<Badge tone={ABSC[r.status].tone}>{ABSC[r.status].label}</Badge>}
+            // Policy name and the salary hold date are not on the timeline record yet (left out).
+            facts={[{ label: 'Day of unauthorised absence', value: r.status === 'stopped' ? 'Stopped' : String(absentDays) }]}
+            actions={
+              <>
+                <Button onClick={live.onStart}>Start a timeline</Button>
+                {r.status === 'stopped' ? (
+                  <Button icon={Play} variant="primary" onClick={() => live.onResume(r)}>
+                    Resume timeline
+                  </Button>
+                ) : r.status === 'running' ? (
+                  <Button icon={Pause} onClick={() => live.onStop(r)}>
+                    Stop timeline
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+          {r.status === 'abandoned' && (
+            <InlineAlert tone="warning" title="Deemed abandonment" actions={r.exitCaseId ? <Button size="sm" onClick={() => live.onOpenExit(r.exitCaseId!)}>Open exit case</Button> : undefined}>
+              An exit case of type absconding opened with the last day present as the last working day.
+            </InlineAlert>
+          )}
+          {r.status === 'stopped' && r.stoppedReason && <InlineAlert tone="success" title="Stopped">{r.stoppedReason}</InlineAlert>}
+          <StatusChecklist label="Absconding steps" rows={rows} today={today} />
+        </>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
+}
+
+const ABSC: Record<AbscondingRow['status'], { label: string; tone: 'info' | 'neutral' | 'danger' }> = { running: { label: 'In progress', tone: 'info' }, stopped: { label: 'Stopped', tone: 'neutral' }, abandoned: { label: 'Deemed abandoned', tone: 'danger' } };
+
 // PPL-24
-export function AbscondingTimeline({ today, stopped = false, stopOpen = false }: { today: Date; stopped?: boolean; stopOpen?: boolean }) {
+export function AbscondingTimeline(props: { today: Date; stopped?: boolean; stopOpen?: boolean; live?: LiveAbsconding }) {
+  return props.live ? <LiveAbscondingTimeline today={props.today} live={props.live} /> : <SampleAbscondingTimeline {...props} />;
+}
+
+function SampleAbscondingTimeline({ today, stopped = false, stopOpen = false }: { today: Date; stopped?: boolean; stopOpen?: boolean }) {
   const first = new Date(2026, 8, 21);
   const s = abscondingState(first, today, undefined, stopped);
   const [open, setOpen] = useState(stopOpen);
