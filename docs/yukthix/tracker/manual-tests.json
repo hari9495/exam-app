@@ -538,8 +538,21 @@
   "account": "hr@demo-org.test",
   "stories": [],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Fail (fixed)",
+    "findings": "Another person's record opened the old profile screen with 'Home > Profile'; after #194 the record showed two breadcrumbs.",
+    "fixedIn": "PR #194: designed person record at /yx/people/directory/[id]; the page's own trail replaces the frame's"
+   },
+   {
+    "date": "2026-10-20",
+    "result": "Pass",
+    "findings": "Founder screenshot: People > Directory > Arjun Kulkarni, as designed. Missing fields on the record itself moved to PPL-03 (People builder).",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "AF-10",
   "area": "0 App frame (design parity step 1, PR #178)",
