@@ -59,10 +59,12 @@ export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: 
 export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; onDone: () => void; onClose: () => void; act: (reason: string, date: string | null) => Promise<void> }) {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState<Date | null>(null);
+  // "Joined" is a past-tense label; as the thing being moved or cancelled it reads "joining".
+  const what = ask.row.changeType === 'join' ? 'joining' : TYPE_LABEL[ask.row.changeType].toLowerCase();
   const copy = {
-    reject: { title: `Reject the ${TYPE_LABEL[ask.row.changeType].toLowerCase()} for ${ask.row.employeeName ?? 'this person'}?`, consequence: 'The person who raised it sees your reason.', label: 'Reject change' },
-    cancel: { title: `Cancel the ${TYPE_LABEL[ask.row.changeType].toLowerCase()} for ${ask.row.employeeName ?? 'this person'}?`, consequence: ask.row.status === 'scheduled' ? 'It will not take effect. Later changes fall back on the values before it.' : 'It will not go ahead.', label: 'Cancel change' },
-    reschedule: { title: `Move the ${TYPE_LABEL[ask.row.changeType].toLowerCase()} to another date?`, consequence: 'A new date goes back for approval; until then the change does not take effect.', label: 'Move and send for approval' },
+    reject: { title: `Reject the ${what} for ${ask.row.employeeName ?? 'this person'}?`, consequence: 'The person who raised it sees your reason.', label: 'Reject change' },
+    cancel: { title: `Cancel the ${what} for ${ask.row.employeeName ?? 'this person'}?`, consequence: ask.row.status === 'scheduled' ? 'It will not take effect. Later changes fall back on the values before it.' : 'It will not go ahead.', label: 'Cancel change' },
+    reschedule: { title: `Move the ${what} for ${ask.row.employeeName ?? 'this person'} to another date?`, consequence: 'A new date goes back for approval; until then the change does not take effect.', label: 'Move and send for approval' },
   }[ask.kind];
   const ready = ask.kind === 'reschedule' ? Boolean(date) : reason.trim().length >= 3;
   return (
