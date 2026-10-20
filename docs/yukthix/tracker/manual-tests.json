@@ -5438,6 +5438,12 @@
     "result": "Pass (payroll@)",
     "findings": "Apply leave opens the form; Attendance today shows Wed 21 Oct with Clock in.",
     "fixedIn": ""
+   },
+   {
+    "date": "2026-10-21",
+    "result": "Pass (payroll-approver@)",
+    "findings": "Meena: header buttons, Attendance today Wed 21 Oct with Clock in, October net payroll only (no statutory permission, so no PF/ESI/TDS cards), Money going out, Coming up.",
+    "fixedIn": ""
    }
   ],
   "ideas": []
