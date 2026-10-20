@@ -2239,6 +2239,9 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const [askRemove, setAskRemove] = useState(false);
+  // Field errors show after the first save, never while someone is still typing (founder rule).
+  const [tried, setTried] = useState(false);
+  const shown = (msg: string | null) => (tried ? msg : null);
   const [rule, setRule] = useState(false);
   const [resetting, setResetting] = useState<TimeSetup['phones'][number] | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -2290,12 +2293,15 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
     }
   };
   // Taking every point off opens check-in to anywhere on the site's networks: ask first (founder rule 19 Oct 2026).
-  const trySave = () => (startPoints.length > 0 && points.length === 0 ? setAskRemove(true) : void save());
+  const trySave = () => {
+    if (errors > 0) { setTried(true); return jumpToError(); }
+    return startPoints.length > 0 && points.length === 0 ? setAskRemove(true) : void save();
+  };
   const saveRow = (
     <div className="yx-tim-row">
-      {errors > 0 && <Button size="sm" onClick={jumpToError}>{plural(errors, 'error')} to fix</Button>}
+      {tried && errors > 0 && <Button size="sm" onClick={jumpToError}>{plural(errors, 'error')} to fix</Button>}
       {!dirty && errors === 0 && <span className="yx-tim-muted">No changes yet</span>}
-      <Button variant="primary" disabled={errors > 0 || !dirty} loading={busy} onClick={trySave}>Save location</Button>
+      <Button variant="primary" disabled={!dirty || (tried && errors > 0)} loading={busy} onClick={trySave}>Save location</Button>
     </div>
   );
   const pointsSection = (
@@ -2311,7 +2317,7 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
                 <span className="yx-tim-muted">{p.lat || '—'}, {p.lng || '—'} · {p.r ?? '—'} m</span>
               </span>
               <span className="yx-tim-row">
-                {pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
+                {tried && pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
                 {points.length > 1 && <Button size="sm" disabled={p.id === cur?.id} onClick={() => setSel(p.id)}>{p.id === cur?.id ? 'Editing' : 'Edit'}</Button>}
                 <Button size="sm" aria-label={`Remove ${p.name.trim() || 'this point'}`} onClick={() => { setPoints((ps) => ps.filter((x) => x.id !== p.id)); if (p.id === cur?.id) setSel(points.find((x) => x.id !== p.id)?.id ?? ''); }}>Remove</Button>
               </span>
@@ -2321,12 +2327,12 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
       )}
       {cur && (
         <>
-          <FormField label="Point name" required error={nameError(cur.name)}><TextField value={cur.name} maxLength={60} onChange={(v) => edit({ name: v })} /></FormField>
+          <FormField label="Point name" required error={shown(nameError(cur.name))}><TextField value={cur.name} maxLength={60} onChange={(v) => edit({ name: v })} /></FormField>
           <FieldRow>
-            <FormField label="Latitude" error={latError(cur.lat)}><TextField value={cur.lat} inputMode="decimal" onChange={(v) => edit({ lat: v })} /></FormField>
-            <FormField label="Longitude" error={lngError(cur.lng)}><TextField value={cur.lng} inputMode="decimal" onChange={(v) => edit({ lng: v })} /></FormField>
+            <FormField label="Latitude" error={shown(latError(cur.lat))}><TextField value={cur.lat} inputMode="decimal" onChange={(v) => edit({ lat: v })} /></FormField>
+            <FormField label="Longitude" error={shown(lngError(cur.lng))}><TextField value={cur.lng} inputMode="decimal" onChange={(v) => edit({ lng: v })} /></FormField>
           </FieldRow>
-          <FormField label="Radius (m)" helper="50–1,000 m. Phone GPS is usually accurate to 20–50 m outdoors." error={radiusBad(cur.r) ? 'Enter a radius between 50 and 1,000 m' : null}>
+          <FormField label="Radius (m)" helper="50–1,000 m. Phone GPS is usually accurate to 20–50 m outdoors." error={shown(radiusBad(cur.r) ? 'Enter a radius between 50 and 1,000 m' : null)}>
             <NumberField value={cur.r} onChange={(v) => edit({ r: v })} />
           </FormField>
         </>
@@ -2336,10 +2342,10 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   );
   const networkSection = (
     <FormSection title="Office network (web check-in)">
-      <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
+      <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={shown(ipErr)}>
         <TextArea value={ips} onChange={setIps} rows={3} spellCheck={false} />
       </FormField>
-      <FormField label="Wi-Fi names" optional helper="Separate names with commas. Shown to people as the network to join; check-in is checked against the IP ranges." error={wifiErr}>
+      <FormField label="Wi-Fi names" optional helper="Separate names with commas. Shown to people as the network to join; check-in is checked against the IP ranges." error={shown(wifiErr)}>
         <TextField value={wifi} onChange={setWifi} />
       </FormField>
     </FormSection>
