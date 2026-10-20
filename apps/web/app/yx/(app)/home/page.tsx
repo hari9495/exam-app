@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
@@ -15,7 +16,7 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
 import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
@@ -23,6 +24,14 @@ import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../
 type Probations = { rows: NonNullable<Parameters<typeof managerHome>[0]['probations']> };
 type Reviews = NonNullable<Parameters<typeof managerHome>[0]['reviews']>;
 type Meetings = { meetings: NonNullable<Parameters<typeof managerHome>[0]['meetings']> };
+/** "Hide amounts" is remembered per person on this browser. */
+const readHidden = (key: string) => {
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+};
 const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
 
 // Home (PLT-02, home parity 19 Oct 2026): the designed role home with live data only, widget for widget.
@@ -30,6 +39,7 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 //   due dates, joiners and leavers this week.
 // - Manager: team today, who's off this week, late check-ins, reviews to write, probation reviews due, 1:1s.
 // - Employee: earned leave left, days present, late marks (or their own net pay when HR shows pay), requests pending.
+// - Finance (payroll, statutory): money to pay, net payroll, PF and ESI, TDS, money going out in the next 30 days.
 // Everyone with an attendance record gets the designed "Attendance today" card. Hiring (founder decision 19 Oct 2026):
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
 export default function YxHomePage() {
@@ -56,7 +66,9 @@ export default function YxHomePage() {
   const extra = homeWidgets(widgets.data, today);
   const hiring = hiringHome(widgets.data?.hiring, new Date());
 
-  const own: RoleHomeScreenProps['persona'] = perms.has('employee.profile.view') ? 'hr' : perms.has('payroll.run.approve') || perms.has('payroll.run.view') ? 'finance' : isManager ? 'manager' : 'employee';
+  // Payroll and statutory people get the finance Home first (a Payroll Admin also holds HR's profile key).
+  const payPerson = perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('statutory.filing.view');
+  const own: RoleHomeScreenProps['persona'] = payPerson ? 'finance' : perms.has('employee.profile.view') ? 'hr' : isManager ? 'manager' : 'employee';
   const persona = own === 'employee' && !employee && hiring.view ? 'recruiter' : own;
 
   // Employee cards: this month and last month from the attendance record, leave balances and my requests.
@@ -83,11 +95,17 @@ export default function YxHomePage() {
   const probations = usePeople<Probations>(asManager ? '/probations' : null);
   const manager = asManager ? managerHome({ today, muster: muster.data, musterBefore: musterBefore.data, calendar: calendar.data, reviews: reviews.data, probations: probations.data?.rows, meetings: meetings.data?.meetings }) : {};
 
-  const approvals: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  // Finance: the money cards, money going out and the payroll and payout rows, each from the page that owns it.
+  const fin = persona === 'finance' ? financeHome(widgets.data?.finance, scope.period ?? month, today) : null;
+  const hideKey = fin && widgets.data?.finance && me.data?.id ? `yx-hide-amounts:${me.data.id}` : null;
+  const [hideChoice, setHideChoice] = useState<Record<string, boolean>>({});
+  const hidden = hideKey ? (hideChoice[hideKey] ?? readHidden(hideKey)) : false;
+
+  const approvals: ActionItem[] = (inbox.data ?? []).filter((t) => !fin?.replaces.includes(t.requestId)).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
   // People who are not recruiters get the recruiter widgets only when they hire (jobs, interviews or rows waiting).
   const hiringView = persona === 'recruiter' || hiring.actions.length || hiring.view?.jobs?.length || hiring.view?.interviewsToday.length ? hiring.view : undefined;
-  const actions = [...approvals, ...(hiringView ? hiring.actions : [])];
-  const stats = persona === 'hr' ? extra.stats : persona === 'employee' ? employeeStats({ leave: leave.data, now: attendance.data, before: attendanceBefore.data, waiting: mine.data?.filter((r) => r.status === 'pending').length }) : persona === 'manager' ? manager.stats : [];
+  const actions = [...(fin?.actions ?? []), ...approvals, ...(hiringView ? hiring.actions : [])];
+  const stats = persona === 'hr' ? extra.stats : persona === 'employee' ? employeeStats({ leave: leave.data, now: attendance.data, before: attendanceBefore.data, waiting: mine.data?.filter((r) => r.status === 'pending').length }) : persona === 'manager' ? manager.stats : persona === 'finance' ? fin?.stats : [];
   const live: LiveHome = {
     firstName: (me.data?.name ?? '').split(' ')[0] || 'there',
     company: branding.data?.name || 'your company',
@@ -106,6 +124,22 @@ export default function YxHomePage() {
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
+    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval } : {}),
+    ...(hideKey
+      ? {
+          amounts: {
+            hidden,
+            onToggle: () => {
+              setHideChoice({ ...hideChoice, [hideKey]: !hidden });
+              try {
+                window.localStorage.setItem(hideKey, hidden ? '0' : '1');
+              } catch {
+                /* not remembered in a private window */
+              }
+            },
+          },
+        }
+      : {}),
     ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals, onNudge: async (r: { id: string }) => void (await write(`/people/${encodeURIComponent(r.id)}/nudge`, 'POST', undefined, false)) } : {}),
     hiring: hiringView,
     ...(asEmployee ? { pay: homePay(pay.data) } : {}),
