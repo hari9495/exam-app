@@ -4861,7 +4861,7 @@ model Punch {
   employeeId     String   @map("employee_id") @db.Uuid
   punchedAt      DateTime @map("punched_at") @db.Timestamptz(3)
   workOn         DateTime @map("work_on") @db.Date
-  kind           String   @db.VarChar(3)
+  kind           String   @db.VarChar(11)
   source         String   @default("web") @db.VarChar(10)
   accepted       Boolean
   refusal        String?  @db.VarChar(200)
@@ -10009,4 +10009,19 @@ model Successor {
   @@id([positionId, employeeId])
   @@index([organizationId], map: "successors_org_idx")
   @@map("successors")
+}
+
+// ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
+
+model Nudge {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  item           String   @db.VarChar(20)
+  onDay          DateTime @map("on_day") @db.Date
+  sentBy         String   @map("sent_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, item, onDay], map: "nudges_once_a_day_key")
+  @@map("nudges")
 }

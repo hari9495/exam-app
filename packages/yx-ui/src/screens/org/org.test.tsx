@@ -163,6 +163,26 @@ describe('LocationsScreen (P01 §4.2)', () => {
     );
   });
 
+  it('asks before taking a geofence off: Keep it leaves the drawer as it was; Remove geofence saves without one', async () => {
+    const onSave = ok();
+    render(<LocationsScreen {...props({ onSave })} />);
+    const row = [...screen.getByRole('table', { name: 'Locations' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Hosur plant')) as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Use a geofence' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Remove the geofence from Hosur plant?' });
+    expect(within(dialog).getByText('People could then check in from anywhere on its office networks.')).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Remove the geofence from Hosur plant?' })).toBeNull());
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Edit Hosur plant' })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: 'Use a geofence' })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Remove the geofence from Hosur plant?' })).getByRole('button', { name: 'Remove geofence' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('loc-hsr', expect.objectContaining({ geofence: null, ipRanges: ['10.20.0.0/16'] })));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Hosur plant' })).toBeNull());
+  });
+
   it('time zone is chosen from the IANA list, India first, not typed', async () => {
     const zones = timeZoneOptions('Mars/Olympus_Mons');
     expect(zones[0].value).toBe('Asia/Kolkata');
@@ -356,6 +376,19 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
   });
 
+  it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
+    const onSave = ok();
+    render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('Show net pay on the employee home').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Not shown')).toBeInTheDocument();
+    expect(within(block).getByText('Starter value')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Shown, hidden until the employee asks' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }));
+  });
+
   it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
     const onRemove = ok();
     render(<ToastProvider><CompanySettingsScreen {...base} onRemove={onRemove} /></ToastProvider>);
@@ -372,7 +405,7 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
 
   it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
-    const buttons = screen.getAllByRole('button', { name: 'Change' });
+    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !b.closest('.yx-org__rule')?.textContent?.includes('net pay'));
     expect(buttons).toHaveLength(4);
     buttons.forEach((b) => expect(b).toBeDisabled());
     expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);
