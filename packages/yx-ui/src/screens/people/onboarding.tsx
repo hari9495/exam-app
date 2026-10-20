@@ -114,7 +114,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
       <PageHeader
         title="Onboarding"
         description={
-          total === 0
+          live?.noAccess
+            ? undefined
+            : total === 0
             ? 'No one is onboarding right now.'
             : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}`
         }

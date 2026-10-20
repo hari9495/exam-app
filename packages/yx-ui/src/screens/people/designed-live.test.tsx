@@ -203,7 +203,7 @@ describe('Probation (PPL-16 / PPL-17)', () => {
   const r: ProbRow = { id: 'e', name: 'Arun', role: 'Machine Operator', manager: 'Divya Raghunathan', start: day('2026-08-10'), end: day('2026-10-25'), extended: 0, reviewDone: false, live: { stage: 'review due', reviewDueOn: day('2026-10-10'), canReview: true, maxMonthsLeft: 6 } };
   it('the direct manager reviews: extending sends the months and the comments', async () => {
     const onReview = vi.fn(async () => undefined);
-    render(<ProbationQueue rows={[r]} today={day('2026-10-20')} persona="mgr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: false, onReview, onConfirm: vi.fn(), onExtend: vi.fn(), onOpenApproval: vi.fn() }} />);
+    render(<ProbationQueue rows={[r]} today={day('2026-10-20')} persona="mgr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: false, onReview, onOpenApproval: vi.fn() }} />);
     await ue.click(within(screen.getByRole('row', { name: /Arun/ })).getByRole('button', { name: 'Review' }));
     const sheet = screen.getByRole('dialog');
     await ue.click(within(sheet).getByRole('radio', { name: /Extend/ }));
