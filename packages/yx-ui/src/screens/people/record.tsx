@@ -173,7 +173,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
   const asOf = live ? live.asOf : ownAsOf;
   const setAsOf = live ? live.onAsOf : setOwnAsOf;
   const [revealed, setRevealed] = useState<string[]>([]);
-  const [side, setSide] = useState<RecordPanel>(live ? (live.activity ? 'activity' : 'roles') : panel);
+  // Live: Activity once it has loaded (when the viewer may see any), else the person's roles; the menu switches.
+  const [chosenSide, setSide] = useState<RecordPanel | null>(live ? null : panel);
+  const side: RecordPanel = chosenSide ?? (live?.activity ? 'activity' : 'roles');
   const self = relation === 'self';
   const name = live?.name ?? ARJUN.name;
   const first = name.split(' ')[0];
