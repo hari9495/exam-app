@@ -182,6 +182,10 @@ describe('Lifecycle batch 6e', () => {
     }
     const loi = (await api('hr', 'post', `/lifecycle/batches/${batch.id}/loi`).expect(200)).body;
     expect(loi).toMatchObject({ issued: 2, failed: [] });
+    // PPL-14 "Offers issued": no appointment letter yet; the issued letters of intent are counted per batch.
+    const after = (await api('hr', 'get', '/lifecycle/batches').expect(200)).body.rows.find((x: { id: string }) => x.id === batch.id);
+    const intents = await inA((tx) => tx.letterIssue.count({ where: { personId: { in: after.members.map((m: { personId: string }) => m.personId) }, letterType: 'letter_of_intent', status: 'issued' } }));
+    expect(after).toMatchObject({ offersIssued: 0, lettersOfIntent: intents });
     // The buddy: not the manager; the day-30 check-in then goes to the buddy.
     const pa = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: a.id } }));
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.mgr, version: pa.version }).expect(400);

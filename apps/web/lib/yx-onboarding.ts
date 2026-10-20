@@ -84,8 +84,8 @@ export function batchRows(batches: Batch[], joiners: Joiner[], entities: { value
       joining: day(b.joiningOn),
       members: b.members.length,
       completion: mine.length ? Math.round(mine.reduce((n, j) => n + j.progress, 0) / mine.length) : 0,
-      loi: 0,
-      offers: 0,
+      loi: b.lettersOfIntent ?? 0,
+      offers: b.offersIssued ?? 0,
     };
   });
 }

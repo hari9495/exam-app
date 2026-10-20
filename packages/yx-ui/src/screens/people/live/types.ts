@@ -521,6 +521,9 @@ export interface Batch {
   status: 'open' | 'closed';
   version: number;
   members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+  /** Members with an issued appointment letter; members still on a letter of intent only. */
+  offersIssued?: number;
+  lettersOfIntent?: number;
 }
 export interface Payee {
   id?: string;
