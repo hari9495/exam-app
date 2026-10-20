@@ -284,6 +284,13 @@ describe('Time and leave batch 1', () => {
       const muster = async (who: Who) => ((await api(who, 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string }[]).map((p) => p.id).sort();
       expect(await muster('emp')).toEqual([ids.empEmp]);
       expect(await muster('mgr')).toEqual([ids.empEmp, ids.mgrEmp, ids.peerEmp].sort());
+      // The added details (department, weekly offs, leave, overtime, waiting fixes) come only with people in scope.
+      const mine = ((await cal('emp')).body.people as { id: string; location: string; department: string; offs: string[] }[])[0];
+      expect(mine).toMatchObject({ location: 'Bengaluru', department: 'Ops' });
+      expect(mine.offs).toContain(d(2));
+      const row = ((await api('mgr', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string; department: string; days: Record<string, unknown>[] }[]).find((p) => p.id === ids.empEmp)!;
+      expect(row.department).toBe('Ops');
+      for (const day of row.days) for (const k of ['leave', 'ot', 'waiting', 'wfh', 'lastOut']) expect(day).toHaveProperty(k);
     });
 
     it('a medical reason is Special: never to the manager or the approval card; HR with leave.medical.view reads it, audited', async () => {
@@ -337,7 +344,7 @@ describe('Time and leave batch 1', () => {
       expect(me.next).toBe('out');
       expect(me.fences).toEqual([{ name: 'Bengaluru', lat: 12.9716, lng: 77.5946, radiusM: 150 }]);
       // Day cards: the manager in scope, never the peer or the other company.
-      await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200);
+      expect((await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200)).body).toHaveProperty('shift');
       await api('peer', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
       await api('empB', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
     });
