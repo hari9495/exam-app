@@ -5,7 +5,7 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import { OrgSecretsCryptoService, PrismaService, TenantPrismaService } from '@exam-platform/shared';
-import { hashValue } from '../src/people/profile.service';
+import { hashValue, sealValue } from '../src/people/profile.service';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
@@ -99,7 +99,7 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
     ids.imran = await hire('TN', 'Imran', 'TN0001');
     // Arjun's PAN is on file (approved earlier).
     const crypto = app.get(OrgSecretsCryptoService);
-    await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIdentifiers.create({ data: { organizationId: org.A.id, employeeId: ids.arjun, panHash: hashValue(crypto, org.A.id, 'pan', 'AKDPK4821M'), panLast4: '821M' } }));
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIdentifiers.create({ data: { organizationId: org.A.id, employeeId: ids.arjun, panEnc: sealValue(crypto, org.A.id, ids.arjun, 'AKDPK4821M'), panHash: hashValue(crypto, org.A.id, 'pan', 'AKDPK4821M'), panLast4: '821M' } }));
   }, 180_000);
 
   afterAll(async () => {
@@ -135,6 +135,7 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
     await api('empA', 'post', '/people/employee-import/check').send(body()).expect(403);
     await api('empA', 'post', '/people/employee-import').send(body()).expect(403);
     const read = (await api('hrA', 'post', '/people/employee-import/read').attach('file', csv, 'a.csv').expect(200)).body;
+    expect(read.fields.filter((f: { required: boolean }) => f.required).map((f: { label: string }) => f.label)).toEqual(['Name', 'Joining date', 'Department', 'Designation', 'Location', 'Employment type']);
     expect(read.columns).toEqual([
       { column: 'Emp No', sample: 'KF0300', field: 'code' },
       { column: 'Full Name', sample: 'Ravi', field: 'name' },
@@ -183,7 +184,7 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
     const pan = await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeProfileRequest.findMany({ where: { organizationId: org.A.id, employeeId: harini.employeeId } }));
     expect(pan).toMatchObject([{ kind: 'pan', status: 'pending' }]);
     expect(await audits('employee.created')).toHaveLength(6);
-    expect(await audits('employee.import')).toMatchObject([{ metadata: { fileName: 'kaveri-joiners-oct.csv', rows: 7, created: 3, skipped: 4 } }]);
+    expect((await audits('employee.import')).map((x) => JSON.parse(x.metadataJson ?? '{}'))).toEqual([{ fileName: 'kaveri-joiners-oct.csv', rows: 7, created: 3, skipped: 4 }]);
     // The same file again: everyone is now a duplicate code.
     const again = (await api('hrA', 'post', '/people/employee-import/check').send(body([ROWS[0]])).expect(200)).body;
     expect(again.rows[0].issues).toContainEqual({ field: 'Employee code', message: 'KF0261 already exists. Use a new code or leave it blank.' });
@@ -219,6 +220,14 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
     const b = (await api('hrA', 'get', '/people/buddies').expect(200)).body;
     expect(b.pool).toMatchObject([{ employeeId: ids.divya, name: 'Divya', team: 'Quality KF', location: 'Site KF', cap: 2, load: 1, joiners: [{ name: 'Kavya' }], leavingOn: null }]);
     expect(b.needs).toMatchObject([{ id: ids.murugan, name: 'Murugan', role: 'Analyst KF', team: 'Quality KF', location: 'Site KF', manager: 'Arjun' }]);
+    // Assigning keeps to the cap: Divya looks after 2 at most.
+    await api('hrA', 'put', `/lifecycle/joiners/${ids.murugan}/buddy`).send({ employeeId: ids.divya, version: b.needs[0].version }).expect(200);
+    ids.ravi = await tenantPrisma.forTenant(ctx('A'), async (tx) => {
+      const p = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Ravi' } });
+      return (await tx.preboarding.create({ data: { organizationId: org.A.id, personId: p.id, source: 'direct', joiningOn: new Date(`${addDays(todayIst(), 12)}T00:00:00Z`), legalEntityId: ids.leKF, locationId: ids.locKF, departmentId: ids.deptKF, designationId: ids.desKF, managerEmployeeId: ids.arjun, hrOwnerUserId: users.hrA, status: 'invited' } })).id;
+    });
+    expect((await api('hrA', 'put', `/lifecycle/joiners/${ids.ravi}/buddy`).send({ employeeId: ids.divya, version: 1 }).expect(400)).body.message).toBe('Divya already looks after 2 joiners. Choose another buddy.');
+    expect((await api('hrA', 'get', '/people/buddies').expect(200)).body.pool[0]).toMatchObject({ load: 2, joiners: [{ name: 'Kavya' }, { name: 'Murugan' }] });
     await api('hrNoPan', 'delete', `/people/buddies/${ids.divya}`).expect(200);
     await api('hrA', 'delete', `/people/buddies/${ids.divya}`).expect(404);
     expect(await audits('buddy.pool.added')).toHaveLength(1);

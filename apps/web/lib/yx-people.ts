@@ -32,7 +32,7 @@ export function usePeopleRead() {
 export function usePeopleWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT' | 'GET', path: string, body?: unknown): Promise<T> => {
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'GET' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(`/people${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     if (method !== 'GET') await queryClient.invalidateQueries({ queryKey: ['yx', 'people'] });
     return result as T;

@@ -36,6 +36,8 @@ export interface ReadFile {
   columns: { column: string; sample: string; field: ImportField | null }[];
   /** Data rows, cells in column order, with their row number in the file (the header is row 1). */
   rows: { row: number; cells: string[] }[];
+  /** The fields a column can be matched to, in order, and which ones every row needs. */
+  fields: { key: ImportField; label: string; required: boolean }[];
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -115,7 +117,11 @@ export async function readImportFile(buffer: Buffer, fileName: string): Promise<
   if (data.length > MAX_IMPORT_ROWS) throw new ImportFileProblem(`The file has more than ${MAX_IMPORT_ROWS} rows. Split it into smaller files.`);
   const rows = data.map((r) => ({ row: r.row, cells: headers.map((_, i) => (r.cells[i] ?? '').slice(0, MAX_CELL)) }));
   const fields = guessFields(headers);
-  return { columns: headers.map((column, i) => ({ column, sample: rows.find((r) => r.cells[i])?.cells[i] ?? '', field: fields[i] })), rows };
+  return {
+    columns: headers.map((column, i) => ({ column, sample: rows.find((r) => r.cells[i])?.cells[i] ?? '', field: fields[i] })),
+    rows,
+    fields: FIELD_KEYS.map((key) => ({ key, label: IMPORT_FIELDS[key].label, required: REQUIRED_FIELDS.includes(key) })),
+  };
 }
 
 /** ISO date from "01 Oct 2026", "2026-10-01" or "01/10/2026" (day first), or null. */

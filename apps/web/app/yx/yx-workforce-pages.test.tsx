@@ -113,7 +113,9 @@ describe('/yx/people/directory (PPL-01 live)', () => {
     expect(within(tabs).getAllByRole('tab').map((t) => t.querySelector('.yx-ppl__wf-label')?.textContent)).toEqual(['Employees', 'Consultants', 'All persons']);
     expect(tabs).toHaveTextContent('1 more than September');
     expect(screen.getByRole('columnheader', { name: /^Status/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+    // Import opens People › Import (PPL-07).
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(push).toHaveBeenCalledWith('/yx/people/import');
     await userEvent.click((await screen.findAllByText('Arjun Kulkarni'))[0]);
     await userEvent.click(await screen.findByRole('button', { name: 'Open record' }));
     expect(push).toHaveBeenCalledWith('/yx/people/directory/p-arjun');

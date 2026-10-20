@@ -22,6 +22,7 @@ import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
+import { LiveEmployeeImport, type LiveImport } from './import';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
 import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
@@ -904,7 +905,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; live?: LiveImport }) {
+  return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
+}
+
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});

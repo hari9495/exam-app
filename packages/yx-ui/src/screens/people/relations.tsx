@@ -11,18 +11,19 @@ import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigge
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
-import { TextArea } from '../../components/inputs';
+import { DatePicker } from '../../components/date';
+import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { matchPersons, reverificationDue, type Persona } from './people-logic';
 import { MATCHES, REVERIFY, UNIONS, VRS } from './people-data';
-import { CompareTable, MeFrame, PeopleFrame } from './people-kit';
+import { CompareTable, MeFrame, PeopleFrame, Segment } from './people-kit';
 
 /* ================================================================== PPL-36 same-person queue */
 
@@ -173,22 +174,210 @@ export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'mer
 
 type Union = (typeof UNIONS)[number];
 
+/** One union on the live register (PPL-39). Dates are ISO days. */
+export interface LiveUnion {
+  id: string;
+  name: string;
+  registrationNo: string | null;
+  legalEntityId: string;
+  locationId: string | null;
+  establishment: string;
+  recognition: 'recognised' | 'not_recognised';
+  basis: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  bearers: string | null;
+  /** Workers who signed a check-off authorisation for this union today. */
+  checkOff: number;
+}
+export type UnionInput = Omit<LiveUnion, 'id' | 'establishment' | 'checkOff'>;
+/** The live app's union register: the legal entities whose register the person keeps (industrial relations). */
+export interface LiveUnionRegister {
+  state: 'loading' | 'ready' | 'error' | 'forbidden';
+  onRetry: () => void;
+  data: { entities: { id: string; name: string }[]; unions: LiveUnion[] } | null;
+  locations: { value: string; label: string; entityId: string }[];
+  onSave: (id: string | null, input: UnionInput) => Promise<void>;
+}
+
+const RECOGNITION = [
+  { value: 'recognised' as const, label: 'Recognised' },
+  { value: 'not_recognised' as const, label: 'Not recognised' },
+];
+const isoOf = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null);
+const dayOrNull = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`) : null);
+
+/** Add or edit a union: the establishment, recognition and its basis, the period and the office bearers. */
+export function UnionDialog({ union, entities, locations, onClose, onSave }: { union: LiveUnion | null; entities: { value: string; label: string }[]; locations: { value: string; label: string; entityId: string }[]; onClose: () => void; onSave: (id: string | null, input: UnionInput) => Promise<void> }) {
+  const [entity, setEntity] = useState<string | null>(union?.legalEntityId ?? (entities.length === 1 ? entities[0].value : null));
+  const [name, setName] = useState(union?.name ?? '');
+  const [reg, setReg] = useState(union?.registrationNo ?? '');
+  const [location, setLocation] = useState<string | null>(union?.locationId ?? null);
+  const [recognition, setRecognition] = useState<'recognised' | 'not_recognised'>(union?.recognition ?? 'not_recognised');
+  const [basis, setBasis] = useState(union?.basis ?? '');
+  const [from, setFrom] = useState<Date | null>(dayOrNull(union?.validFrom ?? null));
+  const [to, setTo] = useState<Date | null>(dayOrNull(union?.validTo ?? null));
+  const [bearers, setBearers] = useState(union?.bearers ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const needBasis = recognition === 'recognised' && !basis.trim();
+  const badDates = Boolean(from && to && to < from);
+  const can = Boolean(entity && name.trim().length >= 2 && !needBasis && !badDates);
+  const save = async () => {
+    if (!entity) return;
+    setSaving(true);
+    try {
+      await onSave(union?.id ?? null, { legalEntityId: entity, name: name.trim(), registrationNo: reg.trim() || null, locationId: location, recognition, basis: basis.trim() || null, validFrom: isoOf(from), validTo: isoOf(to), bearers: bearers.trim() || null });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={union ? `Edit ${union.name}` : 'Add a union'}
+      size="md"
+      preventClose={saving}
+      notice={error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!can} loading={saving} onClick={() => void save()}>
+            {union ? 'Save union' : 'Add union'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__form">
+        <FormField label="Legal entity" required>
+          <Select options={entities} value={entity} onChange={(v) => (setEntity(v), setLocation(null))} disabled={!!union} placeholder="Choose a legal entity" />
+        </FormField>
+        <FormField label="Union name" required>
+          <TextField value={name} onChange={setName} maxLength={200} />
+        </FormField>
+        <FormField label="Registration number">
+          <TextField value={reg} onChange={setReg} maxLength={60} />
+        </FormField>
+        <FormField label="Establishment" helper="Leave empty when the union covers the whole legal entity.">
+          <Select options={locations.filter((l) => l.entityId === entity)} value={location} onChange={setLocation} placeholder="The whole legal entity" />
+        </FormField>
+        <FormField label="Recognition" required>
+          <Segment label="Recognition" options={RECOGNITION} value={recognition} onChange={setRecognition} />
+        </FormField>
+        <FormField label="Basis" required={recognition === 'recognised'} error={needBasis ? 'Say on what basis the union is recognised.' : null} helper="For example: sole negotiating union, 58% of workers.">
+          <TextField value={basis} onChange={setBasis} maxLength={200} />
+        </FormField>
+        <div className="yx-ppl__row">
+          <FormField label="Valid from">
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField label="Valid to" error={badDates ? 'The end date must be on or after the start date.' : null}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </div>
+        <FormField label="Office bearers">
+          <TextArea rows={2} value={bearers} onChange={setBearers} maxLength={500} placeholder="President Murugesan V · Secretary Selvi R" />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+function LiveUnionRegisterScreen({ live }: { live: LiveUnionRegister }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LiveUnion | 'new' | null>(null);
+  const rows = live.data?.unions ?? [];
+  const open = rows.find((r) => r.id === openId);
+  const entities = (live.data?.entities ?? []).map((e) => ({ value: e.id, label: e.name }));
+  const recognised = (r: LiveUnion) => (r.recognition === 'recognised' ? 'Recognised' : 'Not recognised');
+  const cols: TableColumn<LiveUnion>[] = [
+    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}{r.registrationNo && <Text size="sm" tone="secondary" as="div" className="yx-mono">{r.registrationNo}</Text>}</span>, width: 210 },
+    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 150 },
+    { key: 'recognised', header: 'Recognition', type: 'status', value: recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 120 },
+    { key: 'to', header: 'Valid to', type: 'date', value: (r) => dayOrNull(r.validTo), width: 110 },
+    { key: 'checkOff', header: 'With check-off', type: 'number', value: (r) => r.checkOff, total: 'sum', width: 100 },
+  ];
+  const add = (
+    <Button variant="primary" icon={Plus} onClick={() => setEditing('new')}>
+      Add union
+    </Button>
+  );
+  if (live.state === 'forbidden')
+    return (
+      <PeopleFrame active="Union register">
+        <PageHeader title="Union register" />
+        <NoAccessState what="the union register" grantedBy="Your HR admin. Union membership is Confidential: HR industrial relations only." />
+      </PeopleFrame>
+    );
+  return (
+    <PeopleFrame active="Union register">
+      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={entities.length ? add : undefined} />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the union register" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : !live.data ? (
+        <ListSkeleton label="Loading the union register" />
+      ) : (
+        <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={entities.length ? add : undefined} />} />
+      )}
+      <Drawer
+        open={!!open}
+        onOpenChange={(o) => !o && setOpenId(null)}
+        title={open?.name ?? ''}
+        subtitle={open?.registrationNo ?? undefined}
+        meta={open && <Badge tone={open.recognition === 'recognised' ? 'success' : 'neutral'}>{recognised(open)}</Badge>}
+        footer={
+          <>
+            <Button onClick={() => setOpenId(null)}>Close</Button>
+            <Button variant="primary" onClick={() => open && setEditing(open)}>
+              Edit union
+            </Button>
+          </>
+        }
+      >
+        {open && (
+          <div className="yx-ppl__stack">
+            <dl className="yx-ppl__rail-facts">
+              <div><dt>Establishment</dt><dd>{open.establishment}</dd></div>
+              <div><dt>Recognition</dt><dd>{recognised(open)}{open.basis ? ` · ${open.basis}` : ''}</dd></div>
+              <div><dt>Valid</dt><dd>{open.validFrom ? `${formatDate(dayOrNull(open.validFrom)!)}${open.validTo ? ` to ${formatDate(dayOrNull(open.validTo)!)}` : ' onwards'}` : '—'}</dd></div>
+              <div><dt>Office bearers</dt><dd>{open.bearers ?? '—'}</dd></div>
+              <div><dt>Check-off</dt><dd>{open.checkOff} {open.checkOff === 1 ? 'worker has' : 'workers have'} signed a check-off authorisation</dd></div>
+            </dl>
+            <InlineAlert tone="info">Lay-off, strike and lockout days from Time appear on each member&apos;s timeline, not here.</InlineAlert>
+          </div>
+        )}
+      </Drawer>
+      {editing && <UnionDialog union={editing === 'new' ? null : editing} entities={entities} locations={live.locations} onClose={() => setEditing(null)} onSave={live.onSave} />}
+    </PeopleFrame>
+  );
+}
+
 // PPL-39
-export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultOpenId?: string }) {
+export function UnionRegister(props: { rows: Union[]; defaultOpenId?: string; live?: LiveUnionRegister }) {
+  return props.live ? <LiveUnionRegisterScreen live={props.live} /> : <SampleUnionRegister {...props} />;
+}
+
+function SampleUnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultOpenId?: string }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const open = rows.find((r) => r.id === openId);
   const cols: TableColumn<Union>[] = [
-    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div" className="yx-mono">{r.reg}</Text></span>, width: 280 },
-    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 200 },
-    { key: 'recognised', header: 'Recognition', type: 'status', value: (r) => r.recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 150 },
-    { key: 'to', header: 'Valid to', type: 'date', value: (r) => r.to, width: 130 },
-    { key: 'members', header: 'Members', type: 'number', value: (r) => r.members, total: 'sum', width: 110 },
+    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div" className="yx-mono">{r.reg}</Text></span>, width: 210 },
+    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 150 },
+    { key: 'recognised', header: 'Recognition', type: 'status', value: (r) => r.recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 120 },
+    { key: 'to', header: 'Valid to', type: 'date', value: (r) => r.to, width: 110 },
+    { key: 'checkOff', header: 'With check-off', type: 'number', value: (r) => Math.round(r.members * 0.9), total: 'sum', width: 100 },
   ];
+  const [editing, setEditing] = useState(false);
   return (
     <PeopleFrame active="Union register">
-      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={<Button variant="primary" icon={Plus}>Add union</Button>} />
-      <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={<Button variant="primary">Add union</Button>} />} />
-      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={open?.name ?? ''} subtitle={open?.reg} meta={open && <Badge tone={open.recognised === 'Recognised' ? 'success' : 'neutral'}>{open.recognised}</Badge>} footer={<><Button onClick={() => setOpenId(null)}>Close</Button><Button variant="primary">Edit union</Button></>}>
+      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={<Button variant="primary" icon={Plus} onClick={() => setEditing(true)}>Add union</Button>} />
+      <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={<Button variant="primary" onClick={() => setEditing(true)}>Add union</Button>} />} />
+      {editing && <UnionDialog union={null} entities={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }]} locations={[{ value: 'hsr', label: 'Hosur plant', entityId: 'kf' }]} onClose={() => setEditing(false)} onSave={async () => {}} />}
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={open?.name ?? ''} subtitle={open?.reg} meta={open && <Badge tone={open.recognised === 'Recognised' ? 'success' : 'neutral'}>{open.recognised}</Badge>} footer={<><Button onClick={() => setOpenId(null)}>Close</Button><Button variant="primary" onClick={() => setEditing(true)}>Edit union</Button></>}>
         {open && (
           <div className="yx-ppl__stack">
             <dl className="yx-ppl__rail-facts">
@@ -196,7 +385,7 @@ export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultO
               <div><dt>Recognition</dt><dd>{open.recognised} · {open.basis}</dd></div>
               <div><dt>Valid</dt><dd>{open.from ? `${formatDate(open.from)} to ${formatDate(open.to)}` : '—'}</dd></div>
               <div><dt>Office bearers</dt><dd>{open.bearers}</dd></div>
-              <div><dt>Members</dt><dd>{open.members} · {Math.round(open.members * 0.9)} with check-off consent</dd></div>
+              <div><dt>Check-off</dt><dd>{Math.round(open.members * 0.9)} workers have signed a check-off authorisation</dd></div>
             </dl>
             <InlineAlert tone="info">Lay-off, strike and lockout days from Time appear on each member's timeline, not here.</InlineAlert>
           </div>

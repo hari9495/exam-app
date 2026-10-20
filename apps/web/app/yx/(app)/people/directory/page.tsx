@@ -117,8 +117,7 @@ export default function YxDirectoryPage() {
     cards,
     sinceMonth,
     ...(d ? { persons: { roles: d.cards.persons.roles, people: d.cards.persons.people } } : {}),
-    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)) } : {}),
-    // No employee import yet (Import stays hidden until there is one).
+    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)), onImport: () => router.push('/yx/people/import') } : {}),
     ...(isHr
       ? {
           onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/directory/${id(r.id)}`),

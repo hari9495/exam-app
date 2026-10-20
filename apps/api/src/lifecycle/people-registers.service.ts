@@ -23,6 +23,8 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const READINESS = { now: 'Ready now', '1_2y': '1–2 years', '3y': '3+ years' } as const;
 /** How long after joining a buddy still looks after the joiner. */
 const LOOK_AFTER_DAYS = 90;
+/** Joiners a buddy looks after now: still to join, or joined in the last LOOK_AFTER_DAYS days. */
+export const lookedAfter = (org: string) => ({ organizationId: org, OR: [{ status: 'invited' }, { status: 'joined', joiningOn: { gte: asDate(new Date(Date.now() - LOOK_AFTER_DAYS * 86_400_000).toISOString().slice(0, 10)) } }] });
 
 @Injectable()
 export class PeopleRegistersService {
@@ -66,8 +68,7 @@ export class PeopleRegistersService {
     this.onboardingReader(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const since = asDate(new Date(Date.now() - LOOK_AFTER_DAYS * 86_400_000).toISOString().slice(0, 10));
-      const all = await tx.preboarding.findMany({ where: { organizationId: org, OR: [{ status: 'invited' }, { status: 'joined', joiningOn: { gte: since } }] }, orderBy: { joiningOn: 'asc' } });
+      const all = await tx.preboarding.findMany({ where: lookedAfter(org), orderBy: { joiningOn: 'asc' } });
       const key = v.grants.has('lifecycle.onboarding.view') ? 'lifecycle.onboarding.view' : 'lifecycle.onboarding.manage';
       const joiners: typeof all = [];
       for (const j of all) if (await joinerInScope(tx, c, v, key, j)) joiners.push(j);
@@ -192,7 +193,7 @@ export class PeopleRegistersService {
 
   async saveUnion(ctx: TenantContext, user: ScopeUser, id: string | null, dto: UnionInput) {
     const v = await this.viewer(user);
-    if (dto.validFrom && dto.validTo && dto.validTo < dto.validFrom) throw new BadRequestException('The end date is on or after the start date.');
+    if (dto.validFrom && dto.validTo && dto.validTo < dto.validFrom) throw new BadRequestException('The end date must be on or after the start date.');
     if (dto.recognition === 'recognised' && !dto.basis?.trim()) throw new BadRequestException('Say on what basis the union is recognised.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
