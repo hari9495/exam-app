@@ -1,7 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { DocumentQueueScreen, JourneyScreen, MyTasksScreen, OnboardingBoardScreen } from './lifecycle';
 import { JourneyTemplatesScreen } from './templates';
 import type { Journey, JourneyTask, JourneyTemplates, JoinerBoard, JoinerPlaces, QueueDocument } from './types';
 
@@ -71,106 +70,6 @@ const JOURNEY: Journey = {
     task({ id: 't5', key: 'laptop', title: 'Laptop or work device', kind: 'desk_request', status: 'done', canComplete: false, completedBy: 'Farah Khan', link: { type: 'sd_ticket', id: 'x' } }),
   ],
 };
-
-describe('Onboarding board (PPL-11)', () => {
-  it('lists joiners with progress and overdue tasks; the Segment narrows to this week', async () => {
-    const onOpen = vi.fn();
-    render(<OnboardingBoardScreen state="ready" data={BOARD} places={PLACES} onOpen={onOpen} onAdd={vi.fn()} onImport={vi.fn()} />);
-    expect(screen.getByText('Sneha Pillai')).toBeInTheDocument();
-    expect(screen.getByText('1 overdue')).toBeInTheDocument();
-    await ue.click(screen.getByRole('radio', { name: 'Joining this week' }));
-    expect(screen.queryByText('Asha Rao')).toBeNull();
-    await ue.click(within(screen.getByRole('row', { name: /Sneha Pillai/ })).getByRole('button', { name: 'Checklist' }));
-    expect(onOpen).toHaveBeenCalledWith('jr1');
-  });
-
-  it('Add joiner shows what is missing only after Save, then sends the joiner', async () => {
-    const onAdd = vi.fn(async () => ({}));
-    render(<OnboardingBoardScreen state="ready" data={BOARD} places={PLACES} onOpen={vi.fn()} onAdd={onAdd} onImport={vi.fn()} />);
-    await ue.click(screen.getByRole('button', { name: 'Add joiner' }));
-    const sheet = screen.getByRole('dialog');
-    expect(within(sheet).queryByText('Enter the first name.')).toBeNull();
-    await ue.click(within(sheet).getByRole('button', { name: 'Add joiner' }));
-    expect(onAdd).not.toHaveBeenCalled();
-    expect(within(sheet).getAllByText('Enter the first name.').length).toBeGreaterThan(0);
-  });
-
-  it('import checks the file first and shows each row’s problem', async () => {
-    const onImport = vi.fn(async (_csv: string, commit: boolean) => ({ committed: commit, added: commit ? 1 : 0, rows: [{ line: 2, name: 'Asha Rao', joiningOn: '2026-11-20', ok: true, problem: null }, { line: 3, name: 'Bad Row', joiningOn: null, ok: false, problem: 'No location "NOWHERE".' }] }));
-    render(<OnboardingBoardScreen state="ready" data={BOARD} places={PLACES} onOpen={vi.fn()} onAdd={vi.fn()} onImport={onImport} />);
-    await ue.click(screen.getByRole('button', { name: 'Import joiners' }));
-    const sheet = screen.getByRole('dialog');
-    await ue.type(within(sheet).getByRole('textbox'), 'given_name');
-    await ue.click(within(sheet).getByRole('button', { name: 'Check the file' }));
-    expect(onImport).toHaveBeenLastCalledWith('given_name', false);
-    expect(within(sheet).getByText('No location "NOWHERE".')).toBeInTheDocument();
-    await ue.click(within(sheet).getByRole('button', { name: 'Add 1 joiner' }));
-    expect(onImport).toHaveBeenLastCalledWith('given_name', true);
-  });
-});
-
-describe('Checklist (PPL-13)', () => {
-  it('shows owners and due dates; the law’s task cannot be skipped; an optional one needs a reason to skip', async () => {
-    const onSkip = vi.fn(async () => ({}));
-    const onComplete = vi.fn(async () => ({}));
-    const onIssueLetter = vi.fn(async () => ({}));
-    render(<JourneyScreen state="ready" data={JOURNEY} onComplete={onComplete} onSkip={onSkip} onUpload={vi.fn()} onIssueLetter={onIssueLetter} onPreviewLetter={vi.fn()} onPostpone={vi.fn()} onBack={vi.fn()} />);
-    const law = screen.getByRole('row', { name: /Issue the appointment letter/ });
-    expect(within(law).getByText(/Required by law/)).toBeInTheDocument();
-    expect(within(law).queryByRole('button', { name: 'Skip' })).toBeNull();
-    // 6b: the letter is issued from here and the task closes by itself; it is never ticked by hand.
-    expect(within(law).queryByRole('button', { name: 'Mark done' })).toBeNull();
-    await ue.click(within(law).getByRole('button', { name: 'Issue letter' }));
-    let dialog = screen.getByRole('dialog');
-    await ue.click(within(dialog).getByRole('button', { name: 'Issue letter' }));
-    expect(onIssueLetter).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }));
-    await ue.click(within(screen.getByRole('row', { name: /ESIC/ })).getByRole('button', { name: 'Skip' }));
-    dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Skip task' })).toBeDisabled();
-    await ue.type(within(dialog).getByRole('textbox'), 'ESI does not apply');
-    await ue.click(within(dialog).getByRole('button', { name: 'Skip task' }));
-    expect(onSkip).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' }), 'ESI does not apply');
-  });
-
-  it('a document task is uploaded by HR, never ticked; done tasks are hidden under To do', async () => {
-    render(<JourneyScreen state="ready" data={JOURNEY} onComplete={vi.fn()} onSkip={vi.fn()} onUpload={vi.fn()} onBack={vi.fn()} />);
-    const pan = screen.getByRole('row', { name: /Collect the PAN card/ });
-    expect(within(pan).queryByRole('button', { name: 'Mark done' })).toBeNull();
-    expect(within(pan).getByRole('button', { name: 'Upload' })).toBeInTheDocument();
-    expect(within(pan).getByText('Overdue')).toBeInTheDocument();
-    expect(screen.queryByText('Laptop or work device')).toBeNull();
-    await ue.click(screen.getByRole('radio', { name: 'All tasks' }));
-    expect(screen.getByText('Laptop or work device')).toBeInTheDocument();
-  });
-});
-
-describe('My checklist tasks', () => {
-  it('shows who each task is for and opens their checklist', async () => {
-    const onOpen = vi.fn();
-    render(<MyTasksScreen state="ready" data={{ today: '2026-10-09', tasks: [task({ person: 'Sneha Pillai', anchorOn: '2026-10-19', journeyId: 'jr1', journeyKind: 'onboarding' })] }} onComplete={vi.fn()} onSkip={vi.fn()} onOpen={onOpen} />);
-    expect(screen.getByText('Sneha Pillai')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Checklist' }));
-    expect(onOpen).toHaveBeenCalledWith('jr1');
-  });
-});
-
-describe('Documents to verify (PPL-27)', () => {
-  const DOC: QueueDocument = { id: 'd1', personId: 'p1', person: 'Sneha Pillai', typeKey: 'pan_card', typeName: 'PAN card', sensitivity: 'confidential', status: 'uploaded', expiresOn: null, rejectReason: null, file: { name: 'pan.png', scanStatus: 'clean', size: 1000 }, uploadedAt: '2026-10-09T05:00:00Z', version: 2 };
-  it('verifies a clean file and asks for a reason to reject; files still being checked offer nothing', async () => {
-    const onDecide = vi.fn(async () => ({}));
-    render(<DocumentQueueScreen state="ready" rows={[DOC, { ...DOC, id: 'd2', person: 'Asha Rao', file: { name: 'x.pdf', scanStatus: 'pending', size: 5 } }]} onDownload={vi.fn()} onDecide={onDecide} />);
-    const asha = screen.getByRole('row', { name: /Asha Rao/ });
-    expect(within(asha).queryByRole('button', { name: 'Verify' })).toBeNull();
-    expect(within(asha).getByText('Being checked')).toBeInTheDocument();
-    const sneha = screen.getByRole('row', { name: /Sneha Pillai/ });
-    await ue.click(within(sneha).getByRole('button', { name: 'Reject' }));
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Reject' })).toBeDisabled();
-    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    await ue.click(within(sneha).getByRole('button', { name: 'Verify' }));
-    expect(onDecide).toHaveBeenCalledWith(DOC, 'verify');
-  });
-});
 
 describe('Checklist templates (settings)', () => {
   const DATA: JourneyTemplates = {

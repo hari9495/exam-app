@@ -23,11 +23,11 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
-import type { FieldClass, Persona } from './people-logic';
+import type { FieldClass,  } from './people-logic';
 import type { Letter as LiveLetter, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
-import { ClassBadge, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
+import { ClassBadge, MeFrame, PeopleFrame,  } from './people-kit';
 
 const SCAN = (title: string) =>
   'data:image/svg+xml;utf8,' +

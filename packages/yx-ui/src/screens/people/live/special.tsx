@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
-import { Badge, type BadgeTone } from '../../../components/display';
+import { Badge,  } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
+import { InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { TextArea, TextField } from '../../../components/inputs';
@@ -12,10 +12,9 @@ import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
-import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { AbscondingRow, Batch, Choice, EditorParagraph, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, Payees, RehireView, UpcomingExit } from './types';
+import { dateText } from '../../time/live/kit';
+import type { Batch, Choice, EditorParagraph, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, Payees, RehireView, UpcomingExit } from './types';
 
 // Lifecycle batch 6e, wired (design §16.5): the rehire options and the buddy on a joiner (PPL-41), campus batches
 // (PPL-14), the payees of a death in service (PPL-23), absconding timelines (PPL-24), upcoming retirements and contract
@@ -142,86 +141,6 @@ export interface BatchesScreenProps {
   onSave: (id: string | null, input: { name: string; legalEntityId: string; joiningOn: string; touchpoints: { title: string; on: string }[]; reason?: string; version?: number }) => Promise<unknown>;
   onAdd: (b: Batch, preboardingIds: string[]) => Promise<unknown>;
   onLoi: (b: Batch) => Promise<{ issued: number; failed: { message: string }[] }>;
-}
-
-export function BatchesScreen(p: BatchesScreenProps) {
-  const [edit, setEdit] = useState<Batch | 'new' | null>(null);
-  const [adding, setAdding] = useState<Batch | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  return (
-    <LivePage
-      title="Campus batches"
-      description="Groups who join on the same day. Moving the batch's day moves every member and their checklist."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="batches"
-      actions={
-        p.canManage ? (
-          <Button variant="primary" onClick={() => setEdit('new')}>
-            New batch
-          </Button>
-        ) : undefined
-      }
-    >
-      {done && (
-        <InlineAlert tone="success" title="Done">
-          {done}
-        </InlineAlert>
-      )}
-      {p.rows && !p.rows.length && <EmptyState compact title="No batches yet." />}
-      {p.rows?.map((b) => (
-        <Card
-          key={b.id}
-          title={`${b.name}: joining ${dateText(b.joiningOn)}`}
-          actions={
-            p.canManage ? (
-              <>
-                <Button size="sm" onClick={() => setEdit(b)}>
-                  Change
-                </Button>
-                <Button size="sm" onClick={() => setAdding(b)}>
-                  Add joiners
-                </Button>
-                <Button
-                  size="sm"
-                  loading={busy === b.id}
-                  disabled={!b.members.length}
-                  onClick={async () => {
-                    setBusy(b.id);
-                    try {
-                      const r = await p.onLoi(b);
-                      setDone(`${r.issued} letter${r.issued === 1 ? '' : 's'} of intent issued${r.failed.length ? `; ${r.failed.length} not: ${r.failed[0].message}` : ''}.`);
-                    } finally {
-                      setBusy(null);
-                    }
-                  }}
-                >
-                  Send letters of intent
-                </Button>
-              </>
-            ) : undefined
-          }
-        >
-          {b.touchpoints.length > 0 && <Text as="p" tone="secondary" size="sm">{`Touchpoints: ${b.touchpoints.map((t) => `${t.title} (${dateText(t.on)})`).join(' · ')}`}</Text>}
-          {b.members.length ? (
-            <ul className="yx-lif-list">
-              {b.members.map((m) => (
-                <li key={m.id}>
-                  <Text>{m.name}</Text>
-                  <Badge tone={m.status === 'joined' ? 'success' : 'neutral'}>{m.status === 'joined' ? 'Joined' : 'Joining'}</Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Text as="p">No one in this batch yet.</Text>
-          )}
-        </Card>
-      ))}
-      {edit && <BatchDialog batch={edit === 'new' ? null : edit} entities={p.entities} today={p.today} onClose={() => setEdit(null)} onSave={p.onSave} />}
-      {adding && <AddMembersDialog batch={adding} joiners={p.joiners.filter((j) => j.entityId === adding.legalEntityId)} onClose={() => setAdding(null)} onAdd={p.onAdd} />}
-    </LivePage>
-  );
 }
 
 export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch: Batch | null; entities: Choice[]; today: string; onClose: () => void; onSave: BatchesScreenProps['onSave'] }) {
@@ -362,106 +281,6 @@ function PayeesDialog({ current, documents, onClose, onSave }: { current: Payee[
   );
 }
 
-// ------------------------------------------------------------------------------------------ absconding (LIFE-5.05)
-
-export interface AbscondingScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: AbscondingRow[] | null;
-  today: string;
-  people: Choice[];
-  onStart: (input: { employeeId: string; lastPresentOn: string }) => Promise<unknown>;
-  onStop: (r: AbscondingRow, reason: string) => Promise<unknown>;
-  onResume: (r: AbscondingRow) => Promise<unknown>;
-  onDispatch: (r: AbscondingRow, key: string, ref: string) => Promise<unknown>;
-}
-
-const TL: Record<AbscondingRow['status'], { label: string; tone: BadgeTone }> = { running: { label: 'Running', tone: 'warning' }, stopped: { label: 'Stopped', tone: 'neutral' }, abandoned: { label: 'Deemed abandoned', tone: 'danger' } };
-
-export function AbscondingScreen(p: AbscondingScreenProps) {
-  const [starting, setStarting] = useState(false);
-  const [stopping, setStopping] = useState<AbscondingRow | null>(null);
-  const [dispatch, setDispatch] = useState<{ r: AbscondingRow; key: string } | null>(null);
-  const [who, setWho] = useState<string | null>(null);
-  const [last, setLast] = useState<Date | null>(null);
-  const [text, setText] = useState('');
-  return (
-    <LivePage
-      title="Absconding"
-      description="Unauthorised absence follows the company's timeline: a salary hold and alert, two notices, then deemed abandonment. Stop it at any step if they come back."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="absconding timelines"
-      actions={
-        <Button variant="primary" onClick={() => setStarting(true)}>
-          Start a timeline
-        </Button>
-      }
-    >
-      {p.rows && !p.rows.length && <EmptyState compact title="No absconding timelines." />}
-      {p.rows?.map((r) => (
-        <Card
-          key={r.id}
-          title={`${r.name}: last present ${dateText(r.lastPresentOn)}`}
-          actions={
-            r.status === 'running' ? (
-              <Button size="sm" onClick={() => { setText(''); setStopping(r); }}>
-                Stop: they came back
-              </Button>
-            ) : r.status === 'stopped' ? (
-              <Button size="sm" onClick={() => void p.onResume(r)}>
-                Resume
-              </Button>
-            ) : undefined
-          }
-        >
-          <Badge tone={TL[r.status].tone}>{TL[r.status].label}</Badge>
-          {r.stoppedReason && <Text as="p" tone="secondary" size="sm">{r.stoppedReason}</Text>}
-          <ul className="yx-lif-list">
-            {r.steps.map((s) => (
-              <li key={s.key}>
-                <Badge tone={s.doneAt ? 'success' : 'neutral'}>{s.doneAt ? 'Done' : `Day ${s.day}`}</Badge>
-                <Text>{`${s.label}: ${dateText(s.dueOn)}`}</Text>
-                {s.note && <Text tone="secondary" size="sm">{s.note}</Text>}
-                {s.dispatchRef && <Text tone="secondary" size="sm">{`Registered post ${s.dispatchRef}`}</Text>}
-                {s.doneAt && (s.key === 'notice_1' || s.key === 'notice_2') && !s.dispatchRef && (
-                  <Button size="sm" onClick={() => { setText(''); setDispatch({ r, key: s.key }); }}>
-                    Record posting
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ))}
-      {starting && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setStarting(false)} size="md" title="Start an absconding timeline" consequence="The steps run on their days. Every step is recorded; you can stop it at any time." confirmLabel="Start timeline" confirmDisabled={!who || !last} onConfirm={async () => { await p.onStart({ employeeId: who!, lastPresentOn: dayKey(last!) }); setStarting(false); }}>
-          <FormField id="ab-who" label="Person" required>
-            <Select aria-label="Person" value={who} onChange={setWho} options={p.people} searchable />
-          </FormField>
-          <FormField id="ab-last" label="Last day present" required>
-            <DatePicker value={last} onChange={setLast} max={fromKey(p.today)} aria-label="Last day present" />
-          </FormField>
-        </ConfirmDialog>
-      )}
-      {stopping && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setStopping(null)} title="Stop the timeline?" consequence="Nothing more happens unless you resume it. Fix the absent days in attendance." confirmLabel="Stop timeline" confirmDisabled={text.trim().length < 3} onConfirm={async () => { await p.onStop(stopping, text.trim()); setStopping(null); }}>
-          <FormField id="ab-why" label="Why" required>
-            <TextArea value={text} onChange={setText} rows={2} maxLength={500} />
-          </FormField>
-        </ConfirmDialog>
-      )}
-      {dispatch && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setDispatch(null)} title="Record the registered post" confirmLabel="Save" confirmDisabled={text.trim().length < 3} onConfirm={async () => { await p.onDispatch(dispatch.r, dispatch.key, text.trim()); setDispatch(null); }}>
-          <FormField id="ab-ref" label="Article number" required>
-            <TextField value={text} onChange={setText} maxLength={60} />
-          </FormField>
-        </ConfirmDialog>
-      )}
-    </LivePage>
-  );
-}
-
 // ------------------------------------------------------------------------------------------ upcoming retirements and contract ends (LIFE-5.06)
 
 export interface UpcomingExitsScreenProps {
@@ -473,56 +292,6 @@ export interface UpcomingExitsScreenProps {
   employmentTypes: Choice[];
   canChange: boolean;
   onContract: (employeeId: string, input: { action: 'set' | 'extend' | 'convert'; contractEndOn?: string; employmentTypeId?: string; reason: string }) => Promise<unknown>;
-}
-
-export function UpcomingExitsScreen(p: UpcomingExitsScreenProps) {
-  const [ask, setAsk] = useState<{ employeeId: string | null; action: 'set' | 'extend' | 'convert' } | null>(null);
-  const columns: TableColumn<UpcomingExit>[] = [
-    { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }), width: 220, hideable: false },
-    { key: 'kind', header: 'What', value: (r) => r.kind, render: (r) => <Badge tone={r.kind === 'retirement' ? 'info' : 'warning'}>{r.kind === 'retirement' ? 'Retires' : 'Contract ends'}</Badge>, width: 150 },
-    { key: 'on', header: 'On', value: (r) => r.on, render: (r) => dateText(r.on), width: 140 },
-  ];
-  return (
-    <LivePage
-      title="Retirements and contract ends"
-      description="Retirements in the next year and fixed-term contracts ending in 90 days. The company policy opens their exits; extend or convert a contract instead."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="upcoming exits"
-      actions={
-        p.canChange ? (
-          <Button onClick={() => setAsk({ employeeId: null, action: 'set' })}>
-            Set a contract end
-          </Button>
-        ) : undefined
-      }
-    >
-      {p.rows && (
-        <DataTable
-          label="Upcoming"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => `${r.employeeId}-${r.kind}`}
-          rowNoun={['person', 'people']}
-          cardSummary
-          empty={<EmptyState compact title="Nothing in the coming months." />}
-          rowButtons={(r) =>
-            p.canChange && r.kind === 'contract_end' ? (
-              <>
-                <Button size="sm" onClick={() => setAsk({ employeeId: r.employeeId, action: 'extend' })}>
-                  Extend
-                </Button>
-                <Button size="sm" onClick={() => setAsk({ employeeId: r.employeeId, action: 'convert' })}>
-                  Make permanent
-                </Button>
-              </>
-            ) : null
-          }
-        />
-      )}
-      {ask && <ContractDialog ask={ask} people={p.people} types={p.employmentTypes} today={p.today} onClose={() => setAsk(null)} onSave={p.onContract} />}
-    </LivePage>
-  );
 }
 
 export function ContractDialog({ ask, people, types, today, onClose, onSave }: { ask: { employeeId: string | null; action: 'set' | 'extend' | 'convert' }; people: Choice[]; types: Choice[]; today: string; onClose: () => void; onSave: UpcomingExitsScreenProps['onContract'] }) {
@@ -578,93 +347,6 @@ export interface RetrenchmentScreenProps {
   onDecide: (r: IrPermission, input: { status: 'granted' | 'deemed' | 'refused'; decidedOn: string }) => Promise<unknown>;
   onClosure: (r: IrPermission, input: { lwd: string; reason: string }) => Promise<{ opened: number }>;
   onScheme: (input: { name: string; legalEntityId: string | null; opensOn: string; closesOn: string; minAge: number; minServiceYears: number }) => Promise<unknown>;
-}
-
-const IR_STATUS: Record<IrPermission['status'], { label: string; tone: BadgeTone }> = { applied: { label: 'Applied', tone: 'warning' }, granted: { label: 'Granted', tone: 'success' }, deemed: { label: 'Deemed granted', tone: 'success' }, refused: { label: 'Refused', tone: 'danger' } };
-
-export function RetrenchmentScreen(p: RetrenchmentScreenProps) {
-  const [ask, setAsk] = useState<'apply' | 'scheme' | { decide: IrPermission } | { close: IrPermission } | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const name = (id: string | null) => p.entities.find((e) => e.value === id)?.label ?? 'All legal entities';
-  return (
-    <LivePage
-      title="Retrenchment and VRS"
-      description="Retrenchment, lay-off and closure need the government's permission at 300 or more workers (IR Code). Voluntary retirement schemes are open to the people they name."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="permissions and schemes"
-      actions={
-        <>
-          <Button onClick={() => setAsk('scheme')}>New VRS scheme</Button>
-          <Button variant="primary" onClick={() => setAsk('apply')}>
-            Record a permission request
-          </Button>
-        </>
-      }
-    >
-      {done && (
-        <InlineAlert tone="success" title="Done">
-          {done}
-        </InlineAlert>
-      )}
-      {p.data && (
-        <>
-          <Text as="p" tone="secondary" size="sm">{`Workers on the rolls: ${p.entities.map((e) => `${e.label} ${p.data!.workers[e.value] ?? 0}`).join(' · ')}`}</Text>
-          <Card title="Government permission requests">
-            {p.data.requests.length ? (
-              <ul className="yx-lif-list">
-                {p.data.requests.map((r) => (
-                  <li key={r.id}>
-                    <Badge tone={IR_STATUS[r.status].tone}>{IR_STATUS[r.status].label}</Badge>
-                    <Text>{`${r.kind[0].toUpperCase()}${r.kind.slice(1)} at ${name(r.legalEntityId)}: ${r.workersAffected} workers, applied ${dateText(r.appliedOn)} to ${r.authority}`}</Text>
-                    {r.status === 'applied' && (
-                      <Button size="sm" onClick={() => setAsk({ decide: r })}>
-                        Record the decision
-                      </Button>
-                    )}
-                    {r.kind === 'closure' && (r.status === 'granted' || r.status === 'deemed') && (
-                      <Button size="sm" onClick={() => setAsk({ close: r })}>
-                        Start the closure exits
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Text as="p">No requests.</Text>
-            )}
-          </Card>
-          <Card title="Voluntary retirement schemes">
-            {p.data.schemes.length ? (
-              <ul className="yx-lif-list">
-                {p.data.schemes.map((s) => (
-                  <li key={s.id}>
-                    <Text>{`${s.name} (${name(s.legalEntityId)}): ${dateText(s.opensOn)} to ${dateText(s.closesOn)}, age ${s.minAge}+, ${s.minServiceYears}+ years of service`}</Text>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Text as="p">No schemes.</Text>
-            )}
-          </Card>
-        </>
-      )}
-      {ask === 'apply' && <ApplyDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onApply={p.onApply} />}
-      {ask === 'scheme' && <SchemeDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onScheme={p.onScheme} />}
-      {ask && typeof ask === 'object' && 'decide' in ask && <DecideDialog r={ask.decide} today={p.today} onClose={() => setAsk(null)} onDecide={p.onDecide} />}
-      {ask && typeof ask === 'object' && 'close' in ask && (
-        <ClosureDialog
-          r={ask.close}
-          today={p.today}
-          onClose={() => setAsk(null)}
-          onClosure={async (r, x) => {
-            const out = await p.onClosure(r, x);
-            setDone(`${out.opened} exits started for the closure.`);
-          }}
-        />
-      )}
-    </LivePage>
-  );
 }
 
 export function ApplyDialog({ entities, today, onClose, onApply }: { entities: Choice[]; today: string; onClose: () => void; onApply: RetrenchmentScreenProps['onApply'] }) {
