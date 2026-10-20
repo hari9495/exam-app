@@ -34,6 +34,7 @@ describe('Lifecycle batch 6a', () => {
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const server = () => app.getHttpServer();
+  const todayUtc = () => new Date().toISOString().slice(0, 10); // createdAt day, as the API reports it
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   type Who = 'adminA' | 'adminB' | 'hr' | 'it' | 'mgr' | 'emp' | 'plantHr';
@@ -202,7 +203,7 @@ describe('Lifecycle batch 6a', () => {
     const dir = (await api('hr', 'get', '/people/directory?q=Kavya').expect(200)).body;
     expect(JSON.stringify(dir)).not.toContain(`Kavya`);
     const board = (await api('hr', 'get', '/lifecycle/joiners').expect(200)).body;
-    expect(board.joiners.find((x: { id: string }) => x.id === ids.joiner)).toMatchObject({ joiningOn: joining, manager: `mgr ${run}` });
+    expect(board.joiners.find((x: { id: string }) => x.id === ids.joiner)).toMatchObject({ joiningOn: joining, manager: `mgr ${run}`, addedOn: todayUtc(), nextTask: { title: expect.any(String), dueOn: expect.any(String), ownerType: expect.any(String) } });
     const soon = (await api('mgr', 'get', '/lifecycle/joining-soon').expect(200)).body;
     expect(soon.map((x: { id: string }) => x.id)).toEqual([ids.joiner]);
     await api('emp', 'get', '/lifecycle/joiners').expect(403);
@@ -338,6 +339,7 @@ describe('Lifecycle batch 6a', () => {
 
   it('expiring documents remind at the type’s days and expire on the day; due and overdue tasks remind once', async () => {
     const passport = (await api('hr', 'post', `/documents/people/${ids.empPerson}/passport`).field('expiresOn', addDays(today, 30)).attach('file', PNG, 'pp.png').expect(201)).body;
+    expect((await api('hr', 'get', `/documents/people/${ids.empPerson}`).expect(200)).body.documents.find((d: { id: string }) => d.id === passport.id)).toMatchObject({ uploadedAt: expect.any(String) });
     expect((await documents.expirySweep(today)).reminded).toBeGreaterThanOrEqual(1);
     expect((await documents.expirySweep(today)).reminded).toBe(0);
     await documents.expirySweep(addDays(today, 30));

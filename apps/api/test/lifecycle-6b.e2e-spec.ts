@@ -331,12 +331,14 @@ describe('Lifecycle batch 6b', () => {
       const make = async (name: string, mail: string) => {
         const cand = await tx.candidate.create({ data: { ...o, name, email: mail } });
         const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual' } });
-        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', letterSubject: 'Offer', letterBody: 'Offer' } })).id;
+        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', respondedAt: new Date('2026-10-01T09:00:00Z'), letterSubject: 'Offer', letterBody: 'Offer' } })).id;
       };
       return { fresh: await make(`Asha ${run}`, `asha-${run}@mail.test`), internal: await make(`Divya ${run}`, `mgr@life6b-${run}.test`) };
     });
     const ready = (await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body;
-    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector' });
+    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', acceptedOn: '2026-10-01' });
+    await api('mgr', 'get', '/lifecycle/ready-to-onboard').expect(403);
+    expect((await api('adminB', 'get', '/lifecycle/ready-to-onboard').expect(200)).body).toEqual([]);
     expect(ready.find((r: { offerId: string }) => r.offerId === offers.internal)).toMatchObject({ personType: 'internal' });
     const body = { givenName: 'Asha', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr };
     await api('hr', 'post', `/lifecycle/ready-to-onboard/${offers.fresh}`).send(body).expect(201);
