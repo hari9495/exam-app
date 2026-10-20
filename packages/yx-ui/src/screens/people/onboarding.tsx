@@ -619,20 +619,46 @@ export function JourneyRecord({ tasks, joining, today, view = 'hr' }: { tasks: J
 /* ================================================================== PPL-14 batches */
 
 type Batch = (typeof BATCHES)[number];
+/** A batch row: the sample, or a live batch (no offer counts on record: that column is left out live). */
+export type BatchRow = Batch;
+
+/** The live app's batches (design audit step 3). */
+export interface LiveBatches {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  today: Date;
+  /** Members of each batch, for "Open batch". */
+  members: Record<string, { id: string; name: string; status: string; joiningOn: Date }[]>;
+  onNew?: () => void;
+  onEdit?: (id: string) => void;
+  onAddMembers?: (id: string) => void;
+  onLetters?: (id: string) => void;
+  /** Moves the batch and every waiting member (with their checklist) to a new day. */
+  onChangeDate?: (id: string, date: Date, reason: string) => Promise<void>;
+  children?: ReactNode;
+}
 
 // PPL-14
-export function PreboardingBatches({ rows, defaultChangeId, defaultDate }: { rows: Batch[]; defaultChangeId?: string; defaultDate?: Date }) {
+export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }: { rows: BatchRow[]; defaultChangeId?: string; defaultDate?: Date; live?: LiveBatches }) {
   const [changeId, setChangeId] = useState<string | null>(defaultChangeId ?? null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState<Date | null>(defaultDate ?? rows.find((b) => b.id === defaultChangeId)?.joining ?? null);
   const [notify, setNotify] = useState(true);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const narrow = useNarrow();
+  const today = live?.today ?? TODAY;
   const target = rows.find((b) => b.id === changeId);
+  const opened = rows.find((b) => b.id === openId);
   const shift = target && newDate ? daysBetween(target.joining, newDate) : 0;
   const moves = target && newDate ? reanchor(ONBOARDING_TASKS, target.joining, newDate) : {};
   const moved = Object.values(moves).filter((m) => m.from.getTime() !== m.to.getTime()).length;
   const openChange = (b: Batch) => {
     setChangeId(b.id);
     setNewDate(b.joining);
+    setReason('');
+    setFailed(null);
   };
   const cols: TableColumn<Batch>[] = [
     {
@@ -642,34 +668,62 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate }: { row
       render: (r) => (
         <span className="yx-ppl__type">
           <span>{r.name}</span>
-          <span className="yx-ppl__sub">{r.location}</span>
+          <span className="yx-ppl__sub">{r.location || r.entity}</span>
         </span>
       ),
       width: 220,
     },
-    { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} />, width: 195 },
-    { key: 'offers', header: 'Offers issued', value: (r) => r.offers, render: (r) => <OffersCell row={r} />, width: 175 },
+    { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 195 },
+    ...(live ? [{ key: 'members', header: 'Members', type: 'number', value: (r: Batch) => r.members, width: 120 } as TableColumn<Batch>] : [{ key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>]),
     { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} />, width: 140 },
     { key: 'entity', header: 'Legal entity', value: (r) => r.entity, width: 260 },
   ];
-  const action = (r: Batch) => (
-    <Button size="sm" icon={CalendarClock} onClick={() => openChange(r)}>
-      Change date
-    </Button>
-  );
-  const menu = (r: Batch) => (
-    <>
-      <MenuItem>Open batch</MenuItem>
-      <MenuItem>Schedule a touchpoint</MenuItem>
-      {r.members > r.offers && <MenuItem>Issue {r.members - r.offers} pending offers</MenuItem>}
-    </>
-  );
-  const empty = <EmptyState title="No batches yet" description="Create a batch for campus hires who join together." action={<Button>New batch</Button>} />;
+  const canChange = !live || Boolean(live.onChangeDate);
+  const action = (r: Batch) =>
+    canChange && (!live || daysBetween(today, r.joining) >= 0) ? (
+      <Button size="sm" icon={CalendarClock} onClick={() => openChange(r)}>
+        Change date
+      </Button>
+    ) : null;
+  const menu = (r: Batch) =>
+    live ? (
+      <>
+        <MenuItem onSelect={() => setOpenId(r.id)}>Open batch</MenuItem>
+        {live.onEdit && <MenuItem onSelect={() => live.onEdit!(r.id)}>Rename or add touchpoints</MenuItem>}
+        {live.onAddMembers && <MenuItem onSelect={() => live.onAddMembers!(r.id)}>Add joiners</MenuItem>}
+        {live.onLetters && r.members > 0 && <MenuItem onSelect={() => live.onLetters!(r.id)}>Send letters of intent</MenuItem>}
+      </>
+    ) : (
+      <>
+        <MenuItem>Open batch</MenuItem>
+        <MenuItem>Schedule a touchpoint</MenuItem>
+        {r.members > r.offers && <MenuItem>Issue {r.members - r.offers} pending offers</MenuItem>}
+      </>
+    );
+  const newBatch = live ? live.onNew : () => {};
+  const empty = <EmptyState title="No batches yet" description="Create a batch for campus hires who join together." action={newBatch ? <Button onClick={newBatch}>New batch</Button> : undefined} />;
   const sorted = [...rows].sort((a, b) => a.joining.getTime() - b.joining.getTime());
+  const save = async () => {
+    if (!live?.onChangeDate || !target || !newDate) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onChangeDate(target.id, newDate, reason.trim());
+      setChangeId(null);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'The date was not changed. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <PeopleFrame active="Batches">
-      <PageHeader title="Pre-boarding batches" description="Campus hires who join on the same date. Change a batch's date and every member's open tasks move with it." actions={<Button variant="primary" icon={Plus}>New batch</Button>} />
-      {narrow ? (
+      <PageHeader title="Pre-boarding batches" description="Campus hires who join on the same date. Change a batch's date and every member's open tasks move with it." actions={newBatch && rows.length > 0 ? <Button variant="primary" icon={Plus} onClick={newBatch}>New batch</Button> : undefined} />
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the batches" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading batches" />
+      ) : narrow ? (
         rows.length === 0 ? (
           empty
         ) : (
@@ -678,10 +732,10 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate }: { row
               <li key={r.id} className="yx-ppl__rcard">
                 <span className="yx-ppl__rcard-name">{r.name}</span>
                 <span className="yx-ppl__sub">
-                  {r.location} · {r.members} members
+                  {r.location || r.entity} · {r.members} members
                 </span>
-                <JoinsCell date={r.joining} />
-                <OffersCell row={r} suffix=" offers issued" />
+                <JoinsCell date={r.joining} today={today} />
+                {!live && <OffersCell row={r} suffix=" offers issued" />}
                 <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}% pre-boarding done`} warnAt={101} />
                 {action(r)}
               </li>
@@ -696,6 +750,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate }: { row
           getRowId={(r) => r.id}
           defaultSort={{ key: 'joining', dir: 'asc' }}
           defaultColumnState={{ hidden: ['entity'] }}
+          {...(live ? { onRowClick: (r: Batch) => setOpenId(r.id) } : {})}
           rowButtons={action}
           rowActions={menu}
           empty={empty}
@@ -709,33 +764,69 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate }: { row
         footer={
           <>
             <Button onClick={() => setChangeId(null)}>Cancel</Button>
-            <Button variant="primary" disabled={shift === 0} onClick={() => setChangeId(null)}>
-              Move {target?.members} members
+            <Button variant="primary" disabled={shift === 0 || (live && reason.trim().length < 3)} loading={busy} onClick={live ? () => void save() : () => setChangeId(null)}>
+              Move {plural(target?.members ?? 0, 'member')}
             </Button>
           </>
         }
       >
         {target && (
           <div className="yx-ppl__stack">
+            {failed && <InlineAlert tone="danger" title={failed} />}
             <dl className="yx-ppl__dl">
               <div className="yx-ppl__dl-row"><dt>Current date</dt><dd>{formatDate(target.joining)}</dd></div>
-              <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{target.location}</dd></div>
+              {target.location && <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{target.location}</dd></div>}
               <div className="yx-ppl__dl-row"><dt>Legal entity</dt><dd>{target.entity}</dd></div>
             </dl>
             <FormField label="New joining date" required>
-              <DatePicker value={newDate} onChange={setNewDate} />
+              <DatePicker value={newDate} onChange={setNewDate} min={live ? today : undefined} />
             </FormField>
             {newDate && shift !== 0 && (
-              <>
-                <InlineAlert tone="info" title={`${plural(moved, 'open task')} per member ${moved === 1 ? 'moves' : 'move'} ${plural(Math.abs(shift), 'day')} ${shift > 0 ? 'later' : 'earlier'}`}>
-                  Done tasks keep their dates. Draft compensation, assignment start and probation dates move too. Engagement touchpoints re-anchor to {formatDate(newDate)}.
-                </InlineAlert>
-                <Checkbox checked={notify} onChange={setNotify} label={`Email the ${target.members} members their new date`} />
-              </>
+              live ? (
+                <>
+                  <InlineAlert tone="info" title={`Every member waiting to join moves ${plural(Math.abs(shift), 'day')} ${shift > 0 ? 'later' : 'earlier'}`}>
+                    Their open checklist tasks move with them. Done tasks keep their dates.
+                  </InlineAlert>
+                  <FormField id="bt-move-why" label="Why the day moves" required>
+                    <TextField value={reason} onChange={setReason} maxLength={300} />
+                  </FormField>
+                </>
+              ) : (
+                <>
+                  <InlineAlert tone="info" title={`${plural(moved, 'open task')} per member ${moved === 1 ? 'moves' : 'move'} ${plural(Math.abs(shift), 'day')} ${shift > 0 ? 'later' : 'earlier'}`}>
+                    Done tasks keep their dates. Draft compensation, assignment start and probation dates move too. Engagement touchpoints re-anchor to {formatDate(newDate)}.
+                  </InlineAlert>
+                  <Checkbox checked={notify} onChange={setNotify} label={`Email the ${target.members} members their new date`} />
+                </>
+              )
             )}
           </div>
         )}
       </Dialog>
+      {live && (
+        <Drawer open={!!opened} onOpenChange={(o) => !o && setOpenId(null)} title={opened?.name ?? ''} subtitle={opened ? `Joins ${formatDate(opened.joining)} · ${opened.entity}` : undefined} footer={<Button onClick={() => setOpenId(null)}>Close</Button>}>
+          {opened && (
+            (live.members[opened.id] ?? []).length ? (
+              <ul className="yx-ppl__checklist" aria-label={`Members of ${opened.name}`}>
+                {live.members[opened.id].map((m) => (
+                  <li key={m.id} className="yx-ppl__check-row">
+                    <div className="yx-ppl__check-main">
+                      <span className="yx-ppl__check-title">{m.name}</span>
+                      <Text size="sm" tone="secondary">
+                        {m.status === 'joined' ? 'Joined' : 'Joins'} {formatDate(m.joiningOn)}
+                      </Text>
+                    </div>
+                    <StatusBadge status={m.status === 'joined' ? 'Done' : 'Scheduled'} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState compact title="No one in this batch yet" description={live.onAddMembers ? 'Add joiners from the batch menu.' : undefined} />
+            )
+          )}
+        </Drawer>
+      )}
+      {live?.children}
     </PeopleFrame>
   );
 }

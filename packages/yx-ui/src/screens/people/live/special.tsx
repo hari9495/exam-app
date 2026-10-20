@@ -224,7 +224,7 @@ export function BatchesScreen(p: BatchesScreenProps) {
   );
 }
 
-function BatchDialog({ batch, entities, today, onClose, onSave }: { batch: Batch | null; entities: Choice[]; today: string; onClose: () => void; onSave: BatchesScreenProps['onSave'] }) {
+export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch: Batch | null; entities: Choice[]; today: string; onClose: () => void; onSave: BatchesScreenProps['onSave'] }) {
   const [name, setName] = useState(batch?.name ?? '');
   const [entity, setEntity] = useState<string | null>(batch?.legalEntityId ?? (entities.length === 1 ? entities[0].value : null));
   const [on, setOn] = useState<Date | null>(batch ? fromKey(batch.joiningOn) : null);
@@ -273,7 +273,7 @@ function BatchDialog({ batch, entities, today, onClose, onSave }: { batch: Batch
   );
 }
 
-function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Batch; joiners: Choice[]; onClose: () => void; onAdd: BatchesScreenProps['onAdd'] }) {
+export function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Batch; joiners: Choice[]; onClose: () => void; onAdd: BatchesScreenProps['onAdd'] }) {
   const [picked, setPicked] = useState<string[]>([]);
   return (
     <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" confirmDisabled={!picked.length} onConfirm={async () => { await onAdd(batch, picked); onClose(); }}>

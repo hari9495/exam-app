@@ -18,3 +18,4 @@ export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../p
 export { OnboardingBoard, joinerCard, type JoinerCard, type LiveBoard } from '../people/onboarding';
 export type { KanbanColumn } from '../../components/kanban';
 export { ReadyToOnboardQueue, type LiveReady, type ReadyRow } from '../people/onboarding';
+export { PreboardingBatches, type BatchRow, type LiveBatches } from '../people/onboarding';

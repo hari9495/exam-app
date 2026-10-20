@@ -61,6 +61,8 @@ export {
   RehireCard,
   BuddyCard,
   BatchesScreen,
+  BatchDialog,
+  AddMembersDialog,
   PayeesCard,
   AbscondingScreen,
   UpcomingExitsScreen,

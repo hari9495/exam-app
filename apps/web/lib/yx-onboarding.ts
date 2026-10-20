@@ -1,5 +1,5 @@
-import { joinerCard, type KanbanColumn, type ReadyRow } from '@yukthix/ui/frame';
-import type { Joiner, OwnerType, ReadyOffer } from '@yukthix/ui/lifecycle';
+import { joinerCard, type BatchRow, type KanbanColumn, type ReadyRow } from '@yukthix/ui/frame';
+import type { Batch, Joiner, OwnerType, ReadyOffer } from '@yukthix/ui/lifecycle';
 
 // People › Onboarding board (PPL-11) from the live API: pure mapping, unit-tested. The stage follows the dates:
 // an accepted offer waiting to become a joiner, pre-boarding before the joining day, day 1 on (or after) the joining
@@ -70,3 +70,21 @@ export function readyRow(o: ReadyOffer): ReadyRow {
   };
 }
 
+
+/** Batches as the designed table's rows: progress is the members' average checklist progress. */
+export function batchRows(batches: Batch[], joiners: Joiner[], entities: { value: string; label: string }[]): BatchRow[] {
+  return batches.map((b) => {
+    const mine = joiners.filter((j) => j.batchId === b.id);
+    return {
+      id: b.id,
+      name: b.name,
+      entity: entities.find((e) => e.value === b.legalEntityId)?.label ?? '',
+      location: '',
+      joining: day(b.joiningOn),
+      members: b.members.length,
+      completion: mine.length ? Math.round(mine.reduce((n, j) => n + j.progress, 0) / mine.length) : 0,
+      loi: 0,
+      offers: 0,
+    };
+  });
+}
