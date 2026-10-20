@@ -695,8 +695,12 @@ export interface LiveHome {
   onReview?: (item: ActionItem) => void;
   /** The person's "Attendance today" card; left out for people with no attendance. */
   clock?: ReactNode;
-  /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. */
-  stats?: { id: string; title: string; label: string; value: number; unit?: string; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
+  /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. money: a rupee amount, masked by "Hide amounts". */
+  stats?: { id: string; title: string; label: string; value: number; unit?: string; money?: boolean; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
+  /** Finance: the "Hide amounts" button; the page remembers the choice for the person. */
+  amounts?: { hidden: boolean; onToggle: () => void };
+  /** Finance: "Money going out" in the next 30 days, by date; an empty list says so, an absent one hides the widget. amount: unknown until calculated. */
+  moneyOut?: { id: string; date: string; what: string; amount: number | null; status: string; tone: BadgeTone; action: string; href: string }[];
   /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. */
   team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string }[] };
   /** Manager: "Who's off this week", day by day. */
@@ -725,7 +729,14 @@ const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 1
 const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
 const fill = (ws: DashboardWidget[], many: WidgetSize = 3) => ws.map((w) => ({ ...w, size: SHARE[ws.length] ?? many }));
 
+const HIDDEN = '₹ ••••••';
+const hideRupees = (t: string) => t.replace(/₹[\d,]+(\.\d+)?/g, HIDDEN);
+
 function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScreenProps['persona']; data: HomeData; loading: boolean; live: LiveHome }) {
+  // Every ₹ figure goes through m() (and titles through hideRupees) so "Hide amounts" masks the whole page.
+  const hide = Boolean(live.amounts?.hidden);
+  const m = (v: number) => (hide ? HIDDEN : formatINR(v));
+  const outTotal = (live.moneyOut ?? []).reduce((t, r) => t + (r.amount ?? 0), 0);
   const hiring = live.hiring ? hiringWidgets(live.hiring, loading) : [];
   // Without a clock, today's interviews sit beside Needs your action (the recruiter home); otherwise they join the
   // small cards at the end.
@@ -739,7 +750,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
       size: live.clock || besideActions.length ? 8 : 12,
       pinned: true,
       bare: true,
-      content: <NeedsActionList items={data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
+      content: <NeedsActionList items={hide ? data.actions.map((x) => ({ ...x, title: hideRupees(x.title) })) : data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
     },
     ...(live.clock ? [{ id: 'clock', pinned: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
     ...besideActions,
@@ -784,8 +795,41 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
         }]
       : []),
     ]),
-    ...fill((live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />))),
+    ...fill((live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} money={x.money} masked={hide && x.money} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />))),
     ...pair([
+    ...(live.moneyOut
+      ? [{
+          id: 'moneyOut',
+          title: 'Money going out',
+          size: 8 as const,
+          content: live.moneyOut.length ? (
+            <div className="yx-plt-stack" data-gap="sm">
+              <p className="yx-plt-muted">
+                <strong className="yx-plt-strong">{m(outTotal)}</strong> due in the next 30 days
+              </p>
+              <ul className="yx-plt-list">
+                {live.moneyOut.map((r) => (
+                  <li key={r.id} className="yx-plt-out">
+                    <span className="yx-plt-out__date">{r.date}</span>
+                    <span className="yx-plt-list__main">
+                      {r.what}
+                      <span className="yx-plt-row"><Badge tone={r.tone}>{r.status}</Badge></span>
+                    </span>
+                    <span className="yx-plt-out__amount">{r.amount === null ? '' : m(r.amount)}</span>
+                    <Button size="sm" asChild>
+                      <a href={r.href}>
+                        <span className="yx-button__label">{r.action}</span>
+                      </a>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="yx-plt-muted">Nothing to pay in the next 30 days.</p>
+          ),
+        }]
+      : []),
     ...(live.due?.length
       ? [{
           id: 'due',
@@ -891,9 +935,14 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
             {formatDate(live.today)} · {greeting}
           </p>
         </div>
-        {live.quickActions?.length ? (
+        {live.quickActions?.length || live.amounts ? (
           <div className="yx-plt-row" role="group" aria-label="Quick actions">
-            {live.quickActions.map((a) => (
+            {live.amounts && (
+              <Button icon={hide ? Eye : EyeOff} aria-pressed={hide} onClick={live.amounts.onToggle}>
+                {hide ? 'Show amounts' : 'Hide amounts'}
+              </Button>
+            )}
+            {(live.quickActions ?? []).map((a) => (
               <Button key={a.href} asChild>
                 <a href={a.href}>
                   <Icon icon={QUICK_ICON[a.kind]} />

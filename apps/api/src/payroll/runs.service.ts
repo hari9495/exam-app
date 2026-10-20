@@ -215,6 +215,45 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return { notReady: blocked.size, people, runId: runs.length === 1 ? runs[0].id : null };
   }
 
+  /**
+   * Home (PLT-02 finance): the regular runs of these months that the person may see (payroll.run.view, prepare or
+   * approve), with headcount, net, pay date, who prepared them and whether the person approves one now. Null without
+   * any of those keys.
+   */
+  async homeRuns(ctx: TenantContext, user: ScopeUser, months: string[], entityId?: string | null) {
+    const v = await payViewer(this.prisma, this.tenantPrisma, user);
+    if (v.actingForOther || !v.userId || !VIEW.some((k) => v.grants.has(k))) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())].filter((id) => !entityId || id === entityId);
+      await payScope(tx, ids);
+      const runs = await tx.payrollRun.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, runType: 'regular', status: { not: 'void' }, periodStart: { in: [...new Set(months)].map((m) => asDate(`${m}-01`)) } }, orderBy: { periodStart: 'asc' } });
+      const groups = await tx.payGroup.findMany({ where: { organizationId: org, id: { in: runs.map((r) => r.payGroupId) } }, select: { id: true, payDay: true } });
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: runs.map((r) => r.preparedBy) } }, select: { id: true, name: true, email: true } });
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: org, id: { in: runs.map((r) => r.legalEntityId) } }, select: { id: true, name: true } });
+      const mine = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId!, status: 'open', requestId: { in: runs.flatMap((r) => (r.wfRequestId ? [r.wfRequestId] : [])) } }, select: { requestId: true } });
+      return runs.map((r) => {
+        const t = (r.totals ?? {}) as { people?: number; net?: string | number };
+        const payDay = groups.find((g) => g.id === r.payGroupId)?.payDay ?? 0;
+        const u = users.find((x) => x.id === r.preparedBy);
+        return {
+          id: r.id,
+          month: this.month(r),
+          entity: entities.find((e) => e.id === r.legalEntityId)?.name ?? '',
+          status: r.status,
+          people: t.people ?? null,
+          net: t.net === undefined ? null : D(t.net).toFixed(2),
+          // The pay calendar's rule (setup): the period's last day, or that many days after it.
+          payOn: addDays(dateOf(r.periodEnd), payDay),
+          preparedBy: u?.name || u?.email || '',
+          preparedByMe: r.preparedBy === v.userId,
+          requestId: r.wfRequestId,
+          approveNow: mine.some((x) => x.requestId === r.wfRequestId) && r.status === 'submitted',
+        };
+      });
+    });
+  }
+
   /** The payroll-run entities this person prepares runs for ([] without the key or when acting for someone else). */
   async preparesFor(ctx: TenantContext, user: ScopeUser): Promise<string[]> {
     const v = await this.viewer(user);

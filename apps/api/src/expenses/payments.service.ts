@@ -223,6 +223,38 @@ export class ExpensePaymentsService implements OnModuleInit {
     });
   }
 
+  /**
+   * Home (PLT-02 finance): what To pay holds for this person, as totals: claims approved and not paid yet (never their
+   * own), and bank files made and not released. Null without expense.payout.manage (or while acting for someone else).
+   */
+  async homeSummary(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const all = await this.entities(tx, org, v);
+      if (!all.length) return null;
+      const ids = all.filter((id) => !entityId || id === entityId);
+      const me = v.userId ? await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true } }) : null;
+      const open = await tx.expenseClaim.aggregate({
+        where: { organizationId: org, legalEntityId: { in: ids }, paymentStatus: { in: [...OPEN] }, ...(me ? { employeeId: { not: me.id } } : {}) },
+        _count: true,
+        _sum: { netPayable: true },
+      });
+      const batches = await tx.expensePayoutBatch.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, status: 'draft' }, orderBy: { createdAt: 'asc' }, take: 20 });
+      const makers = await tx.user.findMany({ where: { organizationId: org, id: { in: batches.map((b) => b.generatedBy) } }, select: { id: true, name: true, email: true } });
+      return {
+        count: open._count,
+        amount: (open._sum.netPayable ?? D(0)).toFixed(2),
+        batches: batches.map((b) => {
+          const m = makers.find((u) => u.id === b.generatedBy);
+          // createBatch names the file after its pay date.
+          const payOn = /expenses-(\d{4}-\d{2}-\d{2})\./.exec(b.fileName)?.[1] ?? iso(b.createdAt);
+          return { id: b.id, rows: b.rowCount, total: b.total.toFixed(2), payOn, madeBy: m?.name || m?.email || '', madeByMe: b.generatedBy === v.userId };
+        }),
+      };
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ direct payout (§10.3)
 
   private open(org: string, employeeId: string, blob: string) {
