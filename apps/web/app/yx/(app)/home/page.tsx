@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
@@ -52,9 +52,21 @@ export default function YxHomePage() {
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
-  const today = todayIndia();
+  // The India date as state: at midnight the page re-renders and the attendance card moves to the new day (founder, 21 Oct).
+  const [today, setToday] = useState(todayIndia);
+  useEffect(() => {
+    const id = setInterval(() => setToday(todayIndia()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const month = today.slice(0, 7);
   const attendance = useTime<MyAttendance>(employee ? `/me/attendance?month=${month}` : null);
+  // A new day after the page loaded: fetch the attendance again (not on the first render, which already fetched it).
+  const [loadedFor, setLoadedFor] = useState(today);
+  useEffect(() => {
+    if (today === loadedFor) return;
+    setLoadedFor(today);
+    void attendance.refetch();
+  }, [today, loadedFor, attendance]);
   const write = useTimeWrite();
   const { scope } = useScope();
   const widgets = useQuery<HomeWidgets>({
@@ -147,7 +159,7 @@ export default function YxHomePage() {
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
     quickActions: employee
       ? [
-          { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },
+          { label: 'Apply leave', href: '/yx/time/leave?apply=1', kind: 'leave' },
           { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
           { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
         ]
