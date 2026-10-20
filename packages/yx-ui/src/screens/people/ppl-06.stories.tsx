@@ -43,7 +43,7 @@ const live = {
   canRate: true,
   onCheck: async () => LIVE_RESULT,
   onSend: async () => undefined,
-  onPreviewLetter: async () => 'about:blank',
+  onPreviewLetter: async () => ({ url: 'about:blank', size: 1 }),
   lettersHref: '#settings-letters',
 };
 export const Live: S = { name: 'Live · choose people', render: () => <BulkChangesWizard live={live} /> };

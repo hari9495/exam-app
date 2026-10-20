@@ -31,7 +31,7 @@ export default function YxIncrementPage() {
       onCheck,
       onPreviewLetter: async (input: IncrementInput, employeeId: string) => {
         const { blob } = await apiFetchBlob('/people/change-batches/increment/letter-preview', { method: 'POST', body: JSON.stringify({ ...input, employeeId }) }, accessToken ?? undefined);
-        return URL.createObjectURL(blob);
+        return { url: URL.createObjectURL(blob), size: blob.size };
       },
       lettersHref: '/yx/settings/letters',
       onSend: async (input: IncrementInput, people: number) => {

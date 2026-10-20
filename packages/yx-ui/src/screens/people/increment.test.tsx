@@ -23,7 +23,7 @@ const live = (over: Partial<LiveIncrement> = {}): LiveIncrement => ({
   canRate: true,
   onCheck: vi.fn(async () => RESULT),
   onSend: vi.fn(async () => undefined),
-  onPreviewLetter: vi.fn(async () => 'about:blank'),
+  onPreviewLetter: vi.fn(async () => ({ url: 'about:blank', size: 1 })),
   lettersHref: '#settings-letters',
   ...over,
 });
@@ -75,7 +75,7 @@ describe('Annual increment, live (PPL-06)', () => {
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     await ue.click(screen.getByRole('button', { name: 'Preview letter' }));
     await waitFor(() => expect(l.onPreviewLetter).toHaveBeenCalledWith(expect.objectContaining({ letterTemplateId: 'inc' }), 'e1'));
-    expect(screen.getByRole('dialog', { name: /Increment letter · Arjun Kulkarni/ })).toBeInTheDocument();
+    expect((await screen.findAllByText('Increment letter, Arjun Kulkarni.pdf')).length).toBeGreaterThan(0);
   });
 
   it('without perf.review.view there is only one raise for everyone', () => {

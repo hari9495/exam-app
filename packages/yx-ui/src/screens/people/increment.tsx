@@ -14,7 +14,6 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Stepper } from '../../components/stepper';
 import { DocumentViewer } from '../../components/document';
-import { Spinner } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { PeopleFrame, Segment, StatusChecklist, type ChecklistRow } from './people-kit';
 import { bandNotice, type BandPolicy } from './changes';
@@ -80,7 +79,7 @@ export interface LiveIncrement {
   /** Stores the batch, waiting for one approval. */
   onSend: (input: IncrementInput, people: number) => Promise<void>;
   /** One person's letter as a preview PDF (an object URL). */
-  onPreviewLetter: (input: IncrementInput, employeeId: string) => Promise<string>;
+  onPreviewLetter: (input: IncrementInput, employeeId: string) => Promise<{ url: string; size: number }>;
   /** Settings › Letter templates, where HR edits the wording. */
   lettersHref: string;
 }
@@ -109,7 +108,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
   const [capped, setCapped] = useState<string[]>([]);
   const [template, setTemplate] = useState<string | null>(null);
   const [letterFor, setLetterFor] = useState<string | null>(null);
-  const [letter, setLetter] = useState<{ name: string; url: string | null; failed: string | null } | null>(null);
+  const [letter, setLetter] = useState<{ name: string; url: string | null; size?: number; failed: string | null } | null>(null);
 
   const input = useMemo((): IncrementInput | null => {
     if (!entity || !effective || reason.trim().length < 3) return null;
@@ -179,7 +178,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
     if (!sendInput || !previewFor || !chosenTemplate) return;
     setLetter({ name: previewFor.name, url: null, failed: null });
     try {
-      setLetter({ name: previewFor.name, url: await live.onPreviewLetter(sendInput, previewFor.employeeId), failed: null });
+      setLetter({ name: previewFor.name, ...(await live.onPreviewLetter(sendInput, previewFor.employeeId)), failed: null });
     } catch (e) {
       setLetter({ name: previewFor.name, url: null, failed: e instanceof Error ? e.message : 'The letter could not be shown. Try again.' });
     }
@@ -487,14 +486,19 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
           if (sendInput) await live.onSend(sendInput, people.length);
         }}
       />
-      <Dialog open={Boolean(letter)} onOpenChange={(o) => !o && setLetter(null)} size="md" title={`Increment letter · ${letter?.name ?? ''}`} footer={<Button onClick={() => setLetter(null)}>Close</Button>}>
-        {letter?.failed ? (
-          <InlineAlert tone="danger" title={letter.failed} />
-        ) : letter?.url ? (
-          <DocumentViewer fileName="preview.pdf" mimeType="application/pdf" versions={[{ id: 'p', label: 'Preview', url: letter.url, uploadedBy: '', uploadedAt: live.today, size: 0 }]} />
-        ) : (
-          <Spinner label="Preparing the letter" size="md" />
-        )}
+      {letter && !letter.failed && (
+        <DocumentViewer
+          inDrawer
+          open
+          onOpenChange={(o) => !o && setLetter(null)}
+          fileName={`Increment letter, ${letter.name}.pdf`}
+          mimeType="application/pdf"
+          state={letter.url ? 'ready' : 'loading'}
+          versions={[{ id: 'p', label: 'Preview', url: letter.url ?? '', uploadedBy: 'Preview, not issued', uploadedAt: live.today, size: letter.size ?? 0 }]}
+        />
+      )}
+      <Dialog open={Boolean(letter?.failed)} onOpenChange={(o) => !o && setLetter(null)} title={`Increment letter · ${letter?.name ?? ''}`} footer={<Button onClick={() => setLetter(null)}>Close</Button>}>
+        <InlineAlert tone="danger" title={letter?.failed ?? ''} />
       </Dialog>
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
         <StatusChecklist

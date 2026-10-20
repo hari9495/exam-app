@@ -18,11 +18,12 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
+import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
-import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
+import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
 import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
@@ -861,17 +862,16 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
         <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'Left out', note: p.why }))} />
       </Dialog>
-      <Dialog open={letterOpen} onOpenChange={setLetterOpen} size="md" title={`Increment letter · ${first?.name ?? ''}`} footer={<Button onClick={() => setLetterOpen(false)}>Close</Button>}>
-        {first && (
-          <div className="yx-ppl__stack">
-            <Text as="p">Dear {first.name.split(' ')[0]},</Text>
-            <Text as="p">
-              Following your annual review, your annual CTC is revised from {formatINR(first.ctc)} to {formatINR(first.next)} ({first.pct}%), effective {effective ? formatDate(effective) : 'the effective date'}. Your grade stays {first.grade}.
-            </Text>
-            <Text as="p">Lakshmi Venkatesan · HR Business Partner · Kaveri Foods Pvt Ltd</Text>
-          </div>
-        )}
-      </Dialog>
+      {letterOpen && first && (
+        <DocumentViewer
+          inDrawer
+          open
+          onOpenChange={setLetterOpen}
+          fileName={`Increment letter, ${first.name}.pdf`}
+          mimeType="application/pdf"
+          versions={[{ id: 'p', label: 'Preview', url: INCREMENT_LETTER_PDF, uploadedBy: 'Preview, not issued', uploadedAt: new Date(2026, 9, 20), size: 1300 }]}
+        />
+      )}
     </PeopleFrame>
   );
 }
