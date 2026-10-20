@@ -507,8 +507,21 @@
    "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--hr-employees"
   ],
   "note": "",
-  "status": "Not run",
-  "runs": [],
+  "status": "Pass",
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Fail (fixed)",
+    "findings": "Company list showed the state code (IN-KA) not the name; no GSTIN as in the design; the Period box showed on every page while the design shows it on Home only.",
+    "fixedIn": "PR #198: state name; GSTIN only for people who may read entity identifiers (founder option A, e2e test); Period on Home only"
+   },
+   {
+    "date": "2026-10-20",
+    "result": "Pass",
+    "findings": "Filters 16 -> 10, list closes, choice kept across pages; HR sees state, payroll sees GSTIN · state. Follow-ups: Directory cards/Import/menu pages (new People builder), payroll Home not as designed (finance-home builder).",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "AF-09",
   "area": "0 App frame (design parity step 1, PR #178)",
