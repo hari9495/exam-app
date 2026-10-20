@@ -195,7 +195,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const scopePicker =
     entityList.length > 1 || payPeriods ? (
       <ScopePicker
-        entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: '', state: stateName(e.registeredAddress?.state) }))] : []}
+        entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: e.gstin ?? '', state: stateName(e.registeredAddress?.state) }))] : []}
         entity={scope.entity ?? 'all'}
         onEntityChange={(id) => setScope({ ...scope, entity: !id || id === 'all' ? null : id })}
         periods={payPeriods ? recentMonths() : undefined}
