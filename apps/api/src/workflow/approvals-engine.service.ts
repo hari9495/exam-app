@@ -769,9 +769,10 @@ export class ApprovalsEngine {
             company,
             subject,
             heading: subject,
-            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+            // The step's own name ("Manager"), never the internal "Leave: Manager" label.
+            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text.split(': ').pop() ?? n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
           });
-        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
+        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: subject.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {
         this.logger.warn(`approval notice not sent: ${(e as Error).message}`);
       }
