@@ -28,10 +28,19 @@ CREATE POLICY tenant_isolation ON "location_fences"
   USING (organization_id = (SELECT app_current_org()) OR (SELECT app_is_super_admin()))
   WITH CHECK (organization_id = (SELECT app_current_org()) OR (SELECT app_is_super_admin()));
 
--- The one geofence each location had becomes its first point (radius kept inside the new 50–1,000 m bounds).
+-- The one geofence each location had becomes its first point (radius kept inside the new 50–1,000 m bounds). Run as the
+-- platform: under forced row-level security the copy would otherwise see no rows (20261201000001 explains).
+SELECT set_config('app.is_super_admin', 'on', true);
 INSERT INTO "location_fences" ("organization_id", "location_id", "name", "lat", "lng", "radius_m")
 SELECT "organization_id", "id", 'Main point', "geo_lat", "geo_lng", LEAST(GREATEST("geo_radius_m", 50), 1000)
 FROM "locations" WHERE "geo_lat" IS NOT NULL AND "geo_lng" IS NOT NULL AND "geo_radius_m" IS NOT NULL;
+-- Nothing is dropped unless every geofence was copied.
+DO $$ BEGIN
+  IF (SELECT count(*) FROM "locations" WHERE "geo_lat" IS NOT NULL AND "geo_lng" IS NOT NULL AND "geo_radius_m" IS NOT NULL) <> (SELECT count(*) FROM "location_fences") THEN
+    RAISE EXCEPTION 'location geofences were not all copied';
+  END IF;
+END $$;
+SELECT set_config('app.is_super_admin', 'off', true);
 
 ALTER TABLE "locations" DROP CONSTRAINT "locations_geofence_check";
 ALTER TABLE "locations" DROP COLUMN "geo_lat", DROP COLUMN "geo_lng", DROP COLUMN "geo_radius_m";

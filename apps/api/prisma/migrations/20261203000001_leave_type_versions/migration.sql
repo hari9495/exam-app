@@ -19,12 +19,13 @@ CREATE TABLE "leave_type_versions" (
 );
 CREATE UNIQUE INDEX "leave_type_versions_number_key" ON "leave_type_versions"("organization_id", "leave_type_id", "version");
 CREATE UNIQUE INDEX "leave_type_versions_from_key" ON "leave_type_versions"("organization_id", "leave_type_id", "valid_from");
--- A version in force is history: the app adds versions and may change one that has not started yet, never removes one.
+-- A version that started before today is history: the app adds versions and may correct one starting today or later
+-- (a same-day correction), never one already used on an earlier day, and never removes one.
 REVOKE DELETE, TRUNCATE ON TABLE "leave_type_versions" FROM app_runtime;
 CREATE FUNCTION leave_type_version_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF OLD.valid_from <= (now() AT TIME ZONE 'Asia/Kolkata')::date THEN
-    RAISE EXCEPTION 'YX_VERSION_IN_FORCE: a leave type version in force does not change' USING ERRCODE = 'check_violation';
+  IF OLD.valid_from < (now() AT TIME ZONE 'Asia/Kolkata')::date THEN
+    RAISE EXCEPTION 'YX_VERSION_IN_FORCE: a leave type version used on an earlier day does not change' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;
@@ -35,7 +36,15 @@ CREATE POLICY tenant_isolation ON "leave_type_versions"
   USING (organization_id = (SELECT app_current_org()) OR (SELECT app_is_super_admin()))
   WITH CHECK (organization_id = (SELECT app_current_org()) OR (SELECT app_is_super_admin()));
 
+-- Run as the platform: under forced row-level security the copy would otherwise see no rows (20261201000001 explains).
+SELECT set_config('app.is_super_admin', 'on', true);
 INSERT INTO "leave_type_versions" ("organization_id", "leave_type_id", "version", "valid_from", "rules", "created_by", "created_at")
 SELECT "organization_id", "id", 1, ("created_at" AT TIME ZONE 'Asia/Kolkata')::date, "rules", "created_by", "created_at" FROM "leave_types";
+DO $$ BEGIN
+  IF (SELECT count(*) FROM "leave_types") <> (SELECT count(*) FROM "leave_type_versions") THEN
+    RAISE EXCEPTION 'leave type rules were not all copied';
+  END IF;
+END $$;
+SELECT set_config('app.is_super_admin', 'off', true);
 
 ALTER TABLE "leave_types" DROP COLUMN "rules", DROP COLUMN "version";
