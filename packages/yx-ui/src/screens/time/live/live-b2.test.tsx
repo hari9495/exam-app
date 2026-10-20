@@ -8,7 +8,7 @@ import { PayrollFeedScreen } from '../payroll-feed';
 import { AttendanceReportsScreen } from '../ops';
 import { RosterScreen } from '../roster';
 import { ShiftsSetupScreen } from './shifts-setup';
-import { MyTimesheetScreen } from './timesheet';
+import { TimesheetScreen } from '../ops';
 import type { MyOvertime, MyShifts, MyTimesheet, Muster, OtReview, PayrollFeed, Periods, Registers, RosterWeek, ShiftSetup } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -162,11 +162,14 @@ describe('Overtime', () => {
 });
 
 describe('Timesheet, periods, registers and the payroll feed', () => {
-  it('the week shows locked days and submits through the API', () => {
+  it('the designed week shows locked days; a sent week can be recalled to edit', async () => {
     const data: MyTimesheet = { week: '2026-09-28', mode: 'timesheet', sheet: { id: 't1', status: 'pending', totalMinutes: 960 }, lines: [{ id: 'l1', projectId: 'pr', activity: 'Docs', billable: false, minutes: [480, 480, 0, 0, 0, 0, 0], note: null }], projects: [{ id: 'pr', code: 'AUDIT', name: 'Audit readiness', billable: false, activities: ['Docs'], active: true }], days: Array.from({ length: 7 }, (_, i) => ({ on: `2026-${i < 3 ? '09' : '10'}-${String(i < 3 ? 28 + i : i - 2).padStart(2, '0')}`, holiday: null, leave: null, locked: i < 3 })), recent: [] };
-    render(<MyTimesheetScreen state="ready" data={data} week="2026-09-28" today="2026-10-09" onWeek={vi.fn()} onSave={vi.fn(async () => ({}))} onSubmit={vi.fn(async () => ({}))} onWithdraw={vi.fn(async () => ({}))} />);
+    const onWithdraw = vi.fn(async () => ({}));
+    render(<ToastProvider><TimesheetScreen live={{ state: 'ready', data, week: '2026-09-28', today: '2026-10-09', onWeek: vi.fn(), onSave: vi.fn(async () => ({})), onSubmit: vi.fn(async () => ({})), onWithdraw }} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'My timesheet' })).toBeInTheDocument();
     expect(screen.getByText('Part of this week is locked')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Withdraw to change it' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Recall to edit' }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith('t1'));
   });
 
   it('locking shows the pre-flight first and refuses while requests wait', async () => {

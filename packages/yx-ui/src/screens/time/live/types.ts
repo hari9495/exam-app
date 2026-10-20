@@ -465,7 +465,7 @@ export interface MyTimesheet {
   sheet: { id: string; status: 'draft' | 'pending' | 'approved' | 'rejected'; totalMinutes: number } | null;
   lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; note: string | null }[];
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
-  days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
+  days: { on: string; holiday: string | null; leave: string | null; locked: boolean; weeklyOff?: boolean; /** The day's shift less its unpaid break. */ expectedMinutes?: number }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
 }
 export interface TimesheetLineInput {

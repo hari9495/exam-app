@@ -1,5 +1,5 @@
 // Devices, timesheets, reports, timesheet pre-fill. TIM-14, TIM-15, TIM-16, TIM-30, TIM-43.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, Download, Link2, LogOut, Plus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { EMPLOYEES, ENTITIES } from '../_kit/data';
@@ -27,7 +27,9 @@ import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
 import { LiveLeaveCard } from './leave';
-import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState, Muster as MusterData, Registers } from './live/types';
+import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState, Muster as MusterData, MyTimesheet, Registers, TimesheetLineInput } from './live/types';
+import { ErrorState, NoAccessState } from '../../components/feedback';
+import { LoadingBlock } from './attendance';
 import { useToast } from '../../components/notify';
 import './time.css';
 
@@ -439,7 +441,119 @@ function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   return [out, [...changed].sort()];
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[] }) {
+/** What the live app gives My timesheet (design audit): the person's week and the calls that save and send it. */
+export interface LiveTimesheet {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyTimesheet | null;
+  /** Monday of the week shown, and today (yyyy-mm-dd). */
+  week: string;
+  today: string;
+  onWeek: (week: string) => void;
+  onSave: (week: string, lines: TimesheetLineInput[]) => Promise<unknown>;
+  onSubmit: (week: string) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+
+type TimesheetProps = { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** The live app's data. Stories leave it out. */ live?: LiveTimesheet };
+
+export function TimesheetScreen(props: TimesheetProps) {
+  return props.live ? <LiveTimesheetView live={props.live} /> : <StoryTimesheet {...props} />;
+}
+
+const TS_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
+const isoLocalDate = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoPlus = (iso: string, n: number) => { const d = isoLocalDate(iso); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/** TIM-15 on live data: the designed grid for the person's week, the week's facts, and Submit week under the hours. */
+function LiveTimesheetView({ live }: { live: LiveTimesheet }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [lines, setLines] = useState<TimesheetLine[]>([]);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) })));
+    setProblems([]);
+  }, [d]);
+  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)) }));
+  const days: TimesheetDay[] = (d?.days ?? []).map((x) => {
+    const expected = Math.round(((x.expectedMinutes ?? 0) / 60) * 100) / 100;
+    return x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : x.weeklyOff ? { expected: 0, kind: 'weekend' } : { expected, kind: 'workday' };
+  });
+  const st: TimesheetStatus = d?.sheet ? TS_STATUS[d.sheet.status] : 'draft';
+  const editable = st === 'draft' || st === 'sent_back';
+  const lockedDays = (d?.days ?? []).filter((x) => x.locked);
+  const range = d ? `${dayMonth(isoLocalDate(d.week))} – ${dayMonth(isoLocalDate(isoPlus(d.week, 6)))}` : '';
+  const act = async (key: string, fn: () => Promise<unknown>, done: string) => {
+    setBusy(key);
+    setFailed('');
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const submit = () => {
+    const p = checkTimesheet(lines).map((x) => x.message);
+    setProblems(p);
+    if (p.length || !d) return;
+    void act('submit', async () => { await live.onSave(d.week, input()); await live.onSubmit(d.week); }, `Timesheet for ${range} sent for approval`);
+  };
+  if (live.state === 'no-access') return <NoAccessState grantedBy="HR" what="your timesheet" />;
+  return (
+    <TimePage active="My timesheet">
+      <PageHeader title="My timesheet" description={d ? `Approver: the project manager of each project${d.mode !== 'timesheet' ? ' · your days come from your check-ins' : ''}` : undefined} />
+      {failed && <InlineAlert tone="danger" title="That did not work">{failed}</InlineAlert>}
+      {lockedDays.length > 0 && (
+        <InlineAlert tone="info" title="Part of this week is locked">
+          {lockedDays.map((x) => dayMonth(isoLocalDate(x.on))).join(', ')}: the month is closed, so those hours can't change.
+        </InlineAlert>
+      )}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? <LoadingBlock rows={6} /> : live.state === 'error' ? (
+        <ErrorState title="Your timesheet didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : d && (
+        <>
+          <TimesheetGrid
+            weekStart={isoLocalDate(d.week)}
+            days={days}
+            status={st}
+            lines={lines}
+            onLinesChange={setLines}
+            projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
+            onPrevWeek={() => live.onWeek(isoPlus(d.week, -7))}
+            onNextWeek={d.week < live.week || isoPlus(d.week, 7) <= live.today ? () => live.onWeek(isoPlus(d.week, 7)) : undefined}
+            onSaveDraft={editable ? () => void act('save', () => live.onSave(d.week, input()), `Draft saved for ${range}`) : undefined}
+            saving={busy === 'save'}
+            today={isoLocalDate(live.today)}
+          />
+          {st === 'submitted' && (
+            <div className="yx-tim-row">
+              <span className="yx-tim-muted">Waiting for approval.</span>
+              <Button size="sm" loading={busy === 'withdraw'} onClick={() => void act('withdraw', () => live.onWithdraw(d.sheet!.id), `Timesheet for ${range} recalled to edit`)}>Recall to edit</Button>
+            </div>
+          )}
+          {st === 'approved' && <p className="yx-tim-muted">Approved.</p>}
+          {editable && (
+            <div className="yx-tim-stack">
+              {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
+              <div className="yx-tim-row">
+                <Button variant="primary" loading={busy === 'submit'} disabled={!lines.some((l) => l.projectId)} onClick={submit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button>
+                <span className="yx-tim-muted">{lines.some((l) => l.projectId) ? 'Goes to the project managers.' : 'Add a row with your hours first.'}</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryTimesheet({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines }: TimesheetProps) {
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
