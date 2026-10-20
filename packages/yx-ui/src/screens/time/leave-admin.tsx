@@ -2139,7 +2139,7 @@ function LiveLocationsView({ live }: { live: LiveLocations }) {
   const [editing, setEditing] = useState<LiveLocation | null>(null);
   const d = live.data;
   const cols: TableColumn<LiveLocation>[] = [
-    { key: 'name', header: 'Location', value: (l) => l.name, render: (l) => <span className="yx-tim-list__main"><strong>{l.name}</strong><span className="yx-tim-muted">{l.state}</span></span> },
+    { key: 'name', header: 'Location', value: (l) => l.name, render: (l) => <span className="yx-tim-list__main"><strong>{l.name}</strong><span className="yx-tim-muted">{STATE_NAMES[l.state] ?? l.state}</span></span> },
     {
       key: 'shift', header: 'Shift', value: (l) => l.rule.shiftName,
       render: (l) => (
@@ -2159,7 +2159,7 @@ function LiveLocationsView({ live }: { live: LiveLocations }) {
         </span>
       ),
     },
-    { key: 'act', header: 'Actions', value: () => '', render: (l) => <Button size="sm" onClick={() => setEditing(l)}>Change {l.name}</Button> },
+    { key: 'act', header: 'Actions', value: () => '', render: (l) => <Button size="sm" aria-label={`Change ${l.name}`} onClick={() => setEditing(l)}>Change</Button> },
   ];
   if (live.state === 'no-access') return <EmptyState title="You can't change locations" description="Location rules need the leave and attendance set-up key." />;
   return (
