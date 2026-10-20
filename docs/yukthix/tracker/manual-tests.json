@@ -4273,6 +4273,12 @@
     "result": "Fail (in progress)",
     "findings": "HR: all controls match except Export (only CSV; design has PNG and PDF) and a page scroll bar when 'View as on' shows its notice. Position view missing (no position data; founder: show job openings as 'Vacant · role'). Org chart ignored the company switcher (founder: option B, follow the switcher). 'View as on' only for HR (founder: past dates for everyone, future dates HR only). Manager: pass.",
     "fixedIn": "People builder, PR #194"
+   },
+   {
+    "date": "2026-10-20",
+    "result": "Pass (employee)",
+    "findings": "Arjun: chart opens on his card, search, views, zoom, Show me, Export (design gives Export to every role). Retest after #194: PNG/PDF export, no scroll with the as-on notice, Position view with vacancies, as-on for everyone (past), company switcher filter (B).",
+    "fixedIn": ""
    }
   ],
   "ideas": []
