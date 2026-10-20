@@ -12,6 +12,10 @@ import { CsvProblem, parseBulkCsv, RawRow } from './bulk-csv';
 import { IncrementDto } from './dto';
 import { percentFor, raisedCtc } from './increment';
 import { withPayScope } from '../payroll/pay-access';
+import { settingFor } from './probation';
+import { LettersService } from '../documents/letters/letters.service';
+import type { LetterPay } from '../documents/letters/fields';
+import { Logger } from '@nestjs/common';
 
 // M01 §3.3 bulk job changes (annual increment, reorg, "reassign 6 reports to …", §3.2): many P06 changes raised
 // together, each validated and previewed row by row (dry run), stored all or nothing as one batch, and
@@ -31,7 +35,11 @@ interface Item {
 
 interface IncrementRows {
   items: Item[];
-  people: { employeeId: string; name: string; code: string; department: string | null; grade: string | null; rating: string | null; currentCtc: string; percent: string; newCtc: string }[];
+  people: { employeeId: string; name: string; code: string; department: string | null; grade: string | null; rating: string | null; currentCtc: string; percent: string; newCtc: string; bandMax: string | null; aboveBand: boolean; capped: boolean }[];
+  /** The company's rule for a raise above the pay range maximum (pay.band.above_max). */
+  bandPolicy: 'warn' | 'cap' | 'block';
+  /** Active increment letter templates for the entity (the person's entity first, then company-wide). */
+  letterTemplates: { id: string; name: string; version: number }[];
   leftOut: { employeeId: string; name: string; rating: string | null; why: string }[];
   ratingCycles: { id: string; name: string }[];
   ratingCycleId: string | null;
@@ -50,7 +58,12 @@ const message = (e: unknown) => {
 
 @Injectable()
 export class BulkChangesService {
-  constructor(private readonly history: EmployeeHistoryService) {}
+  private readonly logger = new Logger(BulkChangesService.name);
+
+  constructor(
+    private readonly history: EmployeeHistoryService,
+    private readonly letters: LettersService,
+  ) {}
 
   // ---- turning file rows into change requests ----
 
@@ -189,7 +202,7 @@ export class BulkChangesService {
   }
 
   /** Dry run, then (unless only a dry run was asked for) the batch: stored all or nothing, pending approval. */
-  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign' | 'increment'; fileName?: string; reason: string; dryRun: boolean }) {
+  private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign' | 'increment'; fileName?: string; reason: string; dryRun: boolean; letterTemplateId?: string }) {
     const preview = await this.history.preview(ctx, async (tx, c) => this.evaluate(tx, c, v, await build(tx, c)));
     if (!preview.rows.length) throw new BadRequestException('There is nothing to change.');
     if (meta.dryRun) return { batch: null, ...preview };
@@ -197,7 +210,7 @@ export class BulkChangesService {
     const batch = await this.history.run(ctx, async (tx, c) => {
       const items = await build(tx, c);
       const row = await tx.employeeChangeBatch.create({
-        data: { organizationId: c.organizationId, source: meta.source, fileName: meta.fileName ?? null, reason: meta.reason.trim(), rowCount: items.length, requestedBy: c.userId ?? null },
+        data: { organizationId: c.organizationId, source: meta.source, fileName: meta.fileName ?? null, reason: meta.reason.trim(), rowCount: items.length, requestedBy: c.userId ?? null, letterTemplateId: meta.letterTemplateId ?? null },
       });
       for (const item of items) {
         if (!item.dto) throw new ConflictException('The data changed while the file was checked. Check it again.');
@@ -264,10 +277,27 @@ export class BulkChangesService {
         info = await this.incrementRows(tx, c, v, dto);
         return info.items;
       },
-      { source: 'increment', reason: dto.reason, dryRun: dto.dryRun === true },
+      { source: 'increment', reason: dto.reason, dryRun: dto.dryRun === true, ...(dto.letterTemplateId ? { letterTemplateId: dto.letterTemplateId } : {}) },
     );
-    const { people, leftOut, ratingCycles, ratingCycleId, bands } = info!;
-    return { ...out, people, leftOut, ratingCycles, ratingCycleId, bands };
+    const { people, leftOut, ratingCycles, ratingCycleId, bands, bandPolicy, letterTemplates } = info!;
+    return { ...out, people, leftOut, ratingCycles, ratingCycleId, bands, bandPolicy, letterTemplates };
+  }
+
+  /**
+   * PPL-06 Letters step: one person's increment letter as it would be made after approval, with the figures the change
+   * engine computes for them now (a preview: never numbered or kept). Only people the increment itself reaches.
+   */
+  async incrementLetterPreview(ctx: TenantContext, v: Viewer, dto: IncrementDto & { employeeId: string }) {
+    if (!dto.letterTemplateId) throw new BadRequestException('Choose the letter template first.');
+    const found = await this.history.preview(ctx, async (tx, c) => {
+      const r = await this.incrementRows(tx, c, v, { ...dto, dryRun: true });
+      const row = r.people.find((p) => p.employeeId === dto.employeeId);
+      const person = row ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: row.employeeId }, select: { personId: true } }) : null;
+      return row && person ? { row, personId: person.personId } : null;
+    });
+    // Outside the people this increment reaches (or not getting a raise): the same answer as an unknown person.
+    if (!found) throw new NotFoundException('No raise for this person in this increment.');
+    return this.letters.previewPay(ctx, { personId: found.personId, templateId: dto.letterTemplateId, pay: { oldCtc: found.row.currentCtc, newCtc: found.row.newCtc, percent: found.row.percent, effectiveDate: dto.effectiveDate } });
   }
 
   private async incrementRows(tx: Tx, c: CompanyContext, v: Viewer, dto: IncrementDto): Promise<IncrementRows> {
@@ -296,6 +326,13 @@ export class BulkChangesService {
     const departments = await tx.department.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.department_id ? [p.department_id] : [])) } }, select: { id: true, name: true } });
     const grades = await tx.grade.findMany({ where: { organizationId: org, id: { in: scoped.flatMap((p) => (p.grade_id ? [p.grade_id] : [])) } }, select: { id: true, name: true } });
     const pays = await withPayScope(tx, [entity.id], () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...during } }));
+    // Pay ranges per grade (Structure › Grades), in force on the date, and the company's rule for going above one.
+    const ranges = await withPayScope(tx, [entity.id], () => tx.gradePayRange.findMany({ where: { organizationId: org, legalEntityId: entity.id, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] } }));
+    const bandPolicy = (await settingFor(tx, c, 'pay.band.above_max', { legalEntityId: entity.id })) as IncrementRows['bandPolicy'];
+    if (dto.letterTemplateId && !(await tx.letterTemplate.findFirst({ where: { organizationId: org, id: dto.letterTemplateId, letterType: 'increment', status: 'active', OR: [{ legalEntityId: entity.id }, { legalEntityId: null }] }, select: { id: true } }))) {
+      throw new BadRequestException('That increment letter template is not active for this legal entity.');
+    }
+    const capAsked = new Set(dto.capped ?? []);
     // Ratings: the released reviews of the chosen (or latest) review cycle in this entity, where perf.review.view reaches.
     const released = await tx.review.groupBy({ by: ['cycleId'], where: { organizationId: org, legalEntityId: entity.id, status: { in: ['released', 'acknowledged'] } }, _max: { releasedAt: true } });
     const cycles = (await tx.reviewCycle.findMany({ where: { organizationId: org, id: { in: released.map((r) => r.cycleId) } }, select: { id: true, name: true } }))
@@ -339,13 +376,30 @@ export class BulkChangesService {
         skip(dto.mode === 'percent' ? 'No raise set.' : rating ? `No raise set for the rating ${rating}.` : cycle ? `No released rating in ${cycle.name}.` : 'No released ratings in this entity yet.');
         continue;
       }
-      const newCtc = raisedCtc(pay.annualCtc, percent);
-      rows.push({ employeeId: p.employee_id, name, code: job.employeeCode, department: departments.find((d) => d.id === p.department_id)?.name ?? null, grade: grades.find((g) => g.id === p.grade_id)?.name ?? null, rating, currentCtc: pay.annualCtc.toFixed(2), percent, newCtc });
+      const grade = grades.find((g) => g.id === p.grade_id)?.name ?? null;
+      const max = ranges.find((r) => r.gradeId === p.grade_id && r.currency === pay.currency)?.max ?? null;
+      let newCtc = raisedCtc(pay.annualCtc, percent);
+      let shown = percent;
+      const capped = Boolean(max && max.lt(newCtc) && (bandPolicy === 'cap' || capAsked.has(p.employee_id)));
+      if (capped) {
+        if (!max!.gt(pay.annualCtc)) {
+          skip(`Already at or above the top of the pay range${grade ? ` for ${grade}` : ''}.`);
+          continue;
+        }
+        newCtc = max!.toFixed(2);
+        shown = max!.minus(pay.annualCtc).div(pay.annualCtc).mul(100).toDecimalPlaces(2).toString();
+      }
+      const aboveBand = Boolean(max && max.lt(newCtc));
+      rows.push({ employeeId: p.employee_id, name, code: job.employeeCode, department: departments.find((d) => d.id === p.department_id)?.name ?? null, grade, rating, currentCtc: pay.annualCtc.toFixed(2), percent: shown, newCtc, bandMax: max ? max.toFixed(2) : null, aboveBand, capped });
       items.push({ line: items.length + 1, employeeId: p.employee_id, employeeCode: job.employeeCode, dto: plainToInstance(ChangeRequestDto, { employeeId: p.employee_id, changeType: 'salary_revision', effectiveDate: on, payload: { compensation: { annualCtc: newCtc } }, reason: dto.reason.trim() }) });
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
     leftOut.sort((a, b) => a.name.localeCompare(b.name));
-    return { items, people: rows, leftOut, ratingCycles: cycles, ratingCycleId: cycle?.id ?? null, bands };
+    // The company's rule (pay.band.above_max = block): nothing above a pay range is sent for approval.
+    const above = rows.filter((r) => r.aboveBand);
+    if (!dto.dryRun && bandPolicy === 'block' && above.length) throw new BadRequestException({ statusCode: 400, code: 'ABOVE_PAY_RANGE', message: `${above.map((r) => r.name).slice(0, 3).join(', ')}${above.length > 3 ? ` and ${above.length - 3} more` : ''} would go above the top of their pay range. Cap them at the maximum or lower their raise.` });
+    const templates = await tx.letterTemplate.findMany({ where: { organizationId: org, letterType: 'increment', status: 'active', OR: [{ legalEntityId: entity.id }, { legalEntityId: null }] }, orderBy: [{ legalEntityId: { sort: 'asc', nulls: 'last' } }, { name: 'asc' }], select: { id: true, name: true, version: true } });
+    return { items, people: rows, leftOut, ratingCycles: cycles, ratingCycleId: cycle?.id ?? null, bands, bandPolicy, letterTemplates: templates };
   }
 
   // ---- the batch: one decision for all its changes ----
@@ -418,8 +472,9 @@ export class BulkChangesService {
   }
 
   /** One approval for every change in the batch, in the order raised; any failure leaves everything as it was. */
-  approve(ctx: TenantContext, v: Viewer, id: string, confirmRebase: boolean, note?: string) {
-    return this.history.run(ctx, async (tx, c) => {
+  async approve(ctx: TenantContext, v: Viewer, id: string, confirmRebase: boolean, note?: string) {
+    let jobs: { personId: string; name: string; templateId: string; changeId: string; pay: LetterPay }[] = [];
+    const view = await this.history.run(ctx, async (tx, c) => {
       const b = await this.visibleBatch(tx, c, v, id);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`batch:${c.organizationId}:${id}`}))`;
       const fresh = await this.batchOr404(tx, c, id);
@@ -448,8 +503,38 @@ export class BulkChangesService {
       for (const a of applied) await this.history.afterApply(tx, c, a.updated, a.impact, a.effectiveNow);
       const updated = await tx.employeeChangeBatch.update({ where: { id }, data: { status: 'approved', decidedBy: c.userId ?? null, decidedAt: new Date(), decisionNote: note?.trim() || null } });
       await audit(tx, c, 'employee.change.batch_approved', 'employee_change_batch', id, { changes: applied.length });
+      if (fresh.source === 'increment' && fresh.letterTemplateId) jobs = await this.letterJobs(tx, c, fresh.letterTemplateId, changes, people);
       return this.batchView(tx, c, v, updated, true);
     });
+    // PPL-06: increment letters only now that the batch is approved, through the letter pipeline (numbered, rendered,
+    // emailed to the person). A letter that cannot be made yet (no signatory, say) is reported; the raises stand.
+    const failed: { name: string; message: string }[] = [];
+    for (const j of jobs) {
+      try {
+        await this.letters.issueSystem(ctx, { letterType: 'increment', personId: j.personId, templateId: j.templateId, pay: j.pay, subjectType: 'change', subjectId: j.changeId });
+      } catch (e) {
+        this.logger.warn(`Increment letter for change ${j.changeId} not made: ${(e as Error).message}`);
+        failed.push({ name: j.name, message: e instanceof HttpException ? message(e) : 'The letter could not be made.' });
+      }
+    }
+    return { ...view, letters: jobs.length ? { issued: jobs.length - failed.length, failed } : null };
+  }
+
+  /** The figures for each approved raise's letter: the pay the day before and from the effective date. */
+  private async letterJobs(tx: Tx, c: CompanyContext, templateId: string, changes: Prisma.EmployeeChangeGetPayload<object>[], people: Prisma.EmployeeGetPayload<object>[]) {
+    const out: { personId: string; name: string; templateId: string; changeId: string; pay: LetterPay }[] = [];
+    for (const ch of changes) {
+      const newCtc = (ch.payload as { compensation?: { annualCtc?: string } }).compensation?.annualCtc;
+      const who = people.find((p) => p.id === ch.employeeId);
+      if (!newCtc || !who) continue;
+      const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: ch.employmentId }, select: { legalEntityId: true } });
+      const before = new Date(ch.effectiveDate.getTime() - 86_400_000);
+      const old = await withPayScope(tx, [e.legalEntityId], () => tx.compensation.findFirst({ where: { organizationId: c.organizationId, employmentId: ch.employmentId, supersededAt: null, validFrom: { lte: before }, OR: [{ validTo: null }, { validTo: { gte: before } }] } }));
+      if (!old) continue;
+      const percent = new Prisma.Decimal(newCtc).minus(old.annualCtc).div(old.annualCtc).mul(100).toDecimalPlaces(2).toString();
+      out.push({ personId: who.personId, name: displayName(who), templateId, changeId: ch.id, pay: { oldCtc: old.annualCtc.toFixed(2), newCtc: new Prisma.Decimal(newCtc).toFixed(2), percent, effectiveDate: isoDate(ch.effectiveDate) } });
+    }
+    return out;
   }
 
   /** Reject (an approver, never the requester) or cancel (the requester or HR): every pending change goes with it. */

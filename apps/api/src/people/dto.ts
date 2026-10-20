@@ -198,6 +198,18 @@ export class IncrementDto {
   @Type(() => PersonRaiseDto)
   overrides?: PersonRaiseDto[];
 
+  /** People to hold at the top of their pay range (the warn or block rule; under "cap" the company caps everyone). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID('all', { each: true })
+  capped?: string[];
+
+  /** The increment letter template; letters are made only once the batch is approved. */
+  @IsOptional()
+  @IsUUID()
+  letterTemplateId?: string;
+
   @IsString()
   @MinLength(3)
   @MaxLength(1000)
@@ -206,6 +218,11 @@ export class IncrementDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
+}
+
+export class IncrementLetterPreviewDto extends IncrementDto {
+  @IsUUID()
+  employeeId!: string;
 }
 
 export class BatchListQueryDto {

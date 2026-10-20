@@ -5,11 +5,12 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
-import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // PPL-06 annual increment end to end against the real database (forced RLS, the pay guard): ratings from a released
 // review cycle, one percentage for everyone, a raise per person; new pay rounded to whole rupees; only the people every
@@ -46,7 +47,7 @@ describe('People annual increment (PPL-06)', () => {
   ];
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }).overrideProvider(BlobStorageService).useValue(createFakeBlobStorage()).compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
@@ -133,6 +134,18 @@ describe('People annual increment (PPL-06)', () => {
       await perf('priya', 'post', `/reviews/${rid}/entries/manager/submit`).send({ answers: r.template.sections.flatMap((s) => s.questions.map((q) => (q.answer === 'text' ? { questionId: q.id, text: 'Notes' } : { questionId: q.id, rating: score }))) }).expect(200);
     }
     await perf('adminA', 'post', `/cycles/${c.id}/release`).expect(200);
+    // The G1 pay range in the entity (Structure › Grades): 6 to 9 lakh. Arjun's 7.25 % (911625) goes above it.
+    await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      await tx.gradePayRange.create({ data: { organizationId: org.A.id, gradeId: ids.grade, legalEntityId: ids.entity, currency: 'INR', min: 600_000, mid: 750_000, max: 900_000, validFrom: new Date('2020-01-01T00:00:00Z') } });
+    });
+    // The increment letter: the starter, previewed and switched on; Arun signs for the entity.
+    const lt = (a: Who, m: 'post' | 'get', path: string) => request(server())[m](`/api/v1${path}`).set('Authorization', `Bearer ${token[a]}`);
+    ids.letter = (await lt('adminA', 'post', '/letters/templates/starter').send({ letterType: 'increment' }).expect(201)).body.id;
+    await lt('adminA', 'get', `/letters/templates/${ids.letter}/preview`).expect(200);
+    await lt('adminA', 'post', `/letters/templates/${ids.letter}/activate`).expect(200);
+    await markSteppedUp(tenantPrisma, token.adminA);
+    await lt('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.head).field('title', 'Managing Director').expect(201);
   }, 300_000);
 
   afterAll(async () => {
@@ -191,13 +204,61 @@ describe('People annual increment (PPL-06)', () => {
     await inc('adminB', { ...base(), mode: 'percent', percent: '5' }).expect(404);
   });
 
-  it('sent as one batch, approved once by someone else, applied through the change engine', async () => {
-    const sent = (await inc('hr', { ...base(), dryRun: false, mode: 'rating', byRating }).expect(201)).body;
+  const policy = (value: string) => request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).send({ key: 'pay.band.above_max', scopeType: 'tenant', value });
+  const of = (r: { people: { employeeId: string }[] }, w: string) => r.people.find((p) => p.employeeId === emp[w]) as Record<string, unknown>;
+
+  it('pay range, company rule "warn": above the maximum is flagged; HR may hold one person at the maximum', async () => {
+    const r = (await inc('hr', { ...base(), mode: 'rating', byRating }).expect(201)).body;
+    expect(r.bandPolicy).toBe('warn');
+    expect(of(r, 'arjun')).toMatchObject({ newCtc: '911625.00', bandMax: '900000.00', aboveBand: true, capped: false });
+    expect(of(r, 'sita')).toMatchObject({ aboveBand: false });
+    const held = (await inc('hr', { ...base(), mode: 'rating', byRating, capped: [emp.arjun] }).expect(201)).body;
+    expect(of(held, 'arjun')).toMatchObject({ newCtc: '900000.00', percent: '5.88', aboveBand: false, capped: true });
+    // HR without settings rights cannot change the company rule.
+    await request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.hr}`).send({ key: 'pay.band.above_max', scopeType: 'tenant', value: 'cap' }).expect(403);
+  });
+
+  it('company rule "cap": everyone above is held at the maximum', async () => {
+    await policy('cap').expect(200);
+    const r = (await inc('hr', { ...base(), mode: 'rating', byRating }).expect(201)).body;
+    expect(of(r, 'arjun')).toMatchObject({ newCtc: '900000.00', capped: true, aboveBand: false });
+  });
+
+  it('company rule "block": nothing above the maximum can be sent; pay never shows without the salary grant', async () => {
+    await policy('block').expect(200);
+    const r = (await inc('hr', { ...base(), mode: 'rating', byRating }).expect(201)).body;
+    expect(of(r, 'arjun')).toMatchObject({ aboveBand: true });
+    expect((await inc('hr', { ...base(), dryRun: false, mode: 'rating', byRating }).expect(400)).body.code).toBe('ABOVE_PAY_RANGE');
+    expect(await inA((tx) => tx.employeeChangeBatch.count({ where: { source: 'increment' } }))).toBe(0);
+    await inc('hrNoPay', { ...base(), mode: 'rating', byRating }).expect(403);
+  });
+
+  it('letters: one preview per person from the chosen template; never for someone outside the increment', async () => {
+    const preview = (who: Who, employeeId: string) =>
+      request(server()).post('/api/v1/people/change-batches/increment/letter-preview').set('Authorization', `Bearer ${token[who]}`).send({ ...base(), mode: 'percent', percent: '5', letterTemplateId: ids.letter, employeeId });
+    const r = await preview('hr', emp.kiran).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    }).expect(200);
+    expect((r.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+    await preview('hrSales', emp.kiran).expect(404);
+    await preview('hrNoPay', emp.kiran).expect(403);
+    expect(await inA((tx) => tx.letterIssue.count({ where: { letterType: 'increment' } }))).toBe(0);
+  });
+
+  it('sent as one batch, approved once by someone else, applied through the change engine; letters only after approval', async () => {
+    const sent = (await inc('hr', { ...base(), dryRun: false, mode: 'rating', byRating, capped: [emp.arjun], letterTemplateId: ids.letter }).expect(201)).body;
     expect(sent.batch).toMatchObject({ status: 'pending', rowCount: 3 });
+    expect(await inA((tx) => tx.letterIssue.count({ where: { letterType: 'increment' } }))).toBe(0);
     const batch = await inA((tx) => tx.employeeChangeBatch.findFirstOrThrow({ where: { id: sent.batch.id } }));
     expect(batch.source).toBe('increment');
     await markSteppedUp(tenantPrisma, token.approver);
-    await request(server()).post(`/api/v1/people/change-batches/${sent.batch.id}/approve`).set('Authorization', `Bearer ${token.approver}`).send({}).expect(201);
+    const approved = (await request(server()).post(`/api/v1/people/change-batches/${sent.batch.id}/approve`).set('Authorization', `Bearer ${token.approver}`).send({}).expect(201)).body;
+    expect(approved.letters).toEqual({ issued: 3, failed: [] });
+    const letters = await inA((tx) => tx.letterIssue.findMany({ where: { letterType: 'increment' } }));
+    expect(letters).toHaveLength(3);
+    expect(letters.every((l) => l.templateId === ids.letter && l.subjectType === 'change')).toBe(true);
     const ctc = await inA(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
       const m = await tx.employment.findFirstOrThrow({ where: { employeeId: emp.meena } });
