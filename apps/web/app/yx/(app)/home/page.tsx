@@ -113,7 +113,7 @@ export default function YxHomePage() {
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
     quickActions: employee
       ? [
-          { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },
+          { label: 'Apply leave', href: '/yx/time/leave?request=apply', kind: 'leave' },
           { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
           { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
         ]

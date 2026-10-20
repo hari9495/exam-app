@@ -17,7 +17,9 @@ import { PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
-import type { LeaveBalanceRow, LedgerRow as LiveLedgerRow, LoadState, TeamCalendar as TeamCalendarData } from './live/types';
+import type { LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveLeaveRow, LedgerRow as LiveLedgerRow, LoadState, MaternityCase, MyLeave as MyLeaveData, PersonOption, TeamCalendar as TeamCalendarData } from './live/types';
+import { NoAccessState } from '../../components/feedback';
+import { LivePicker } from '../desk/service-form';
 import { useToast } from '../../components/notify';
 import { ApprovalTimeline, SYSTEM_ACTOR, Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
@@ -206,12 +208,12 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
                     {onViewPending && <Button size="sm" onClick={onViewPending}>View request</Button>}
                   </div>
                 )}
-                {b.code === 'CO' && b.balance > 0 && !live && (
+                {b.code === 'CO' && b.balance > 0 && (
                   <>
-                    <div className="yx-tim-row">
+                    {!live && <div className="yx-tim-row">
                       <span className="yx-tim-muted">Expires {dm(CO_EXPIRES)}</span>
                       <DueBadge date={CO_EXPIRES} />
-                    </div>
+                    </div>}
                     {onUseCompOff && <div><Button size="sm" onClick={onUseCompOff}>Use comp-off</Button></div>}
                   </>
                 )}
@@ -756,7 +758,400 @@ const OPTIONAL_DEFAULT = ['o1'];
 const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready' }: { persona?: LeavePersona; state?: ViewState }) {
+/** What the live app gives My leave (design audit): the person's balances, requests and holidays, and the calls. */
+export interface LiveMyLeave {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyLeaveData | null;
+  onPreview: (input: Omit<LeaveInput, 'reason' | 'delegateUserId' | 'certificate'>) => Promise<LeavePlan>;
+  onApply: (input: LeaveInput) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+  onCancel: (id: string, reason: string) => Promise<unknown>;
+  onChooseHoliday: (holidayId: string, choose: boolean) => Promise<unknown>;
+  onFindPeople: (q: string) => Promise<PersonOption[]>;
+  /** Open Apply leave (Home's Apply leave); a new n opens it again. */
+  apply?: number;
+}
+
+type LeaveHomeProps = { persona?: LeavePersona; state?: ViewState; /** The live app's data (the employee's own leave). Stories leave it out. */ live?: LiveMyLeave };
+
+export function LeaveHomeScreen(props: LeaveHomeProps) {
+  return props.live ? <LiveLeaveHome live={props.live} /> : <StoryLeaveHome {...props} />;
+}
+
+const LIVE_STATUS_LABEL: Record<LiveLeaveRow['status'], string> = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancel_pending: 'Cancellation pending', cancelled: 'Cancelled' };
+const liveTone = (r: LiveLeaveRow, today: string) => (r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : r.status === 'pending' && r.from >= today && daysUntil(isoLocal(r.from), isoLocal(today)) <= 3 ? 'warning' : 'neutral');
+const liveDates = (r: LiveLeaveRow) => `${span(isoLocal(r.from), isoLocal(r.to))}${r.fromHalf === 'second' ? ' (from the second half)' : ''}${r.toHalf === 'first' ? ' (until the first half)' : ''}`;
+const MATERNITY_CASES: { value: MaternityCase; label: string }[] = [
+  { value: 'birth', label: 'Birth' },
+  { value: 'third_child', label: 'Third child or later' },
+  { value: 'adoption', label: 'Adoption or surrogacy' },
+  { value: 'miscarriage', label: 'Miscarriage' },
+  { value: 'tubectomy', label: 'Tubectomy' },
+];
+
+/** TIM-17 for the employee, on live data: balance cards, My requests, Upcoming holidays, and the designed sheets. */
+function LiveLeaveHome({ live }: { live: LiveMyLeave }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [apply, setApply] = useState<{ n: number; typeId?: string } | null>(null);
+  const [open, setOpen] = useState<{ r: LiveLeaveRow; action?: 'withdraw' | 'cancel' } | null>(null);
+  const [holidays, setHolidays] = useState(false);
+  useEffect(() => {
+    if (live.apply) setApply({ n: live.apply });
+  }, [live.apply]);
+  const visible = d ? sortBalances(d.balances.filter((b) => b.hasBalance || b.kind === 'lop')) : [];
+  const pendingOf = (b: LeaveBalanceRow) => d?.requests.find((r) => r.status === 'pending' && r.type?.id === b.leaveTypeId);
+  const firstPending = d?.requests.find((r) => r.status === 'pending');
+  const compOff = visible.find((b) => b.kind === 'comp_off' && b.available > 0);
+  const cal = d?.holidays.calendar;
+  const optional = (d?.holidays.list ?? []).filter((h) => h.kind === 'optional' || h.kind === 'restricted');
+  const chosen = optional.filter((h) => h.chosen).length;
+  if (live.state === 'no-access') return <NoAccessState grantedBy="HR" what="your leave" />;
+  return (
+    <TimePage active="My leave">
+      <PageHeader
+        title="My leave"
+        description={d ? `Leave year ${dm(isoLocal(d.year.start))} ${d.year.start.slice(0, 4)} – ${dm(isoLocal(d.year.end))} ${d.year.end.slice(0, 4)}${cal ? ` · ${cal.name}` : ''}` : undefined}
+        actions={<Button variant="primary" icon={CalendarPlus} disabled={!d} onClick={() => setApply({ n: (apply?.n ?? 0) + 1 })}>Apply leave</Button>}
+      />
+      {live.state === 'loading' || (!d && live.state === 'ready') ? <LoadingBlock rows={8} /> : live.state === 'error' ? (
+        <ErrorState title="Your leave didn't load" description="Try again. Your requests are safe." onRetry={live.onRetry} />
+      ) : d && (
+        <>
+          {visible.length ? (
+            <BalanceCards
+              live
+              balances={visible.map(toLeaveBalance)}
+              person={d.employee.name}
+              onViewPending={firstPending ? () => setOpen({ r: visible.map(pendingOf).find(Boolean) ?? firstPending }) : undefined}
+              onUseCompOff={compOff ? () => setApply({ n: (apply?.n ?? 0) + 1, typeId: compOff.leaveTypeId }) : undefined}
+            />
+          ) : (
+            <EmptyState compact title="No leave types yet" description="HR has not given you a leave policy yet." />
+          )}
+          <div className="yx-tim-grid">
+            <div data-span="7">
+              <Card title="My requests">
+                {d.requests.length === 0 ? (
+                  <EmptyState compact title="No leave requests yet" description="Apply for leave and it will show here with its status." action={<Button variant="primary" icon={CalendarPlus} onClick={() => setApply({ n: (apply?.n ?? 0) + 1 })}>Apply leave</Button>} />
+                ) : (
+                  <ul className="yx-tim-list">
+                    {d.requests.map((r) => {
+                      const future = r.from >= d.today;
+                      return (
+                        <li key={r.id}>
+                          <span className="yx-tim-list__main" style={MAIN}>
+                            <strong>{r.type?.name ?? 'Leave'} · {liveDates(r)}</strong>
+                            <span className="yx-tim-muted">{plural(r.days, 'day')} · {r.status === 'pending' ? 'Waiting for your manager' : LIVE_STATUS_LABEL[r.status]}</span>
+                            <span className="yx-tim-row">
+                              <Badge tone={liveTone(r, d.today)}>{LIVE_STATUS_LABEL[r.status]}</Badge>
+                              {future && (r.status === 'pending' || r.status === 'approved') && <DueBadge date={isoLocal(r.from)} today={isoLocal(d.today)} />}
+                            </span>
+                          </span>
+                          <span className="yx-tim-row">
+                            <Button size="sm" onClick={() => setOpen({ r })}>View</Button>
+                            {r.status === 'pending' && <Button size="sm" onClick={() => setOpen({ r, action: 'withdraw' })}>Withdraw</Button>}
+                            {r.status === 'approved' && r.to >= addIso(d.today, -31) && <Button size="sm" onClick={() => setOpen({ r, action: 'cancel' })}>Ask to cancel</Button>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            </div>
+            <div data-span="5">
+              <Card title="Upcoming holidays">
+                {!cal ? (
+                  <p className="yx-tim-muted">HR has not set up holidays for your location yet.</p>
+                ) : (
+                  <>
+                    <ul className="yx-tim-list">
+                      {d.holidays.list.filter((h) => h.on >= d.today && (!(h.kind === 'optional' || h.kind === 'restricted') || h.chosen)).map((h) => (
+                        <li key={h.id} style={{ flexWrap: 'nowrap' }}>
+                          <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}{h.halfDay ? ' (half day)' : ''}</span><span className="yx-tim-muted">{wdm(isoLocal(h.on))}{h.chosen ? ' · Optional' : ''}</span></span>
+                          <DueBadge date={isoLocal(h.on)} today={isoLocal(d.today)} />
+                        </li>
+                      ))}
+                    </ul>
+                    {optional.length > 0 && <Button size="sm" onClick={() => setHolidays(true)}>{`Optional holidays · ${chosen} chosen · ${Math.max(0, cal.optionalLimit - chosen)} left`}</Button>}
+                  </>
+                )}
+              </Card>
+            </div>
+          </div>
+          {apply && <LiveApplyLeavePanel key={apply.n} live={live} data={d} typeId={apply.typeId} onClose={() => setApply(null)} onSent={(m) => toast({ tone: 'success', title: m })} />}
+          {open && <LiveLeaveRequestView key={`${open.r.id}-${open.action}`} live={live} data={d} r={open.r} action={open.action} onClose={() => setOpen(null)} />}
+          {holidays && cal && <LiveOptionalHolidays live={live} data={d} onClose={() => setHolidays(false)} />}
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+const addIso = (iso: string, n: number) => {
+  const x = addDays(isoLocal(iso), n);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+const COUNTED: Record<LeavePlan['days'][number]['countedAs'], string> = { leave: 'Leave', sandwich: 'Weekend or holiday · counted', holiday: 'Holiday · not counted', weekly_off: 'Weekly off · not counted' };
+
+/** TIM-18 on live data: the designed two-column apply sheet; the summary comes from the server's own rules. */
+function LiveApplyLeavePanel({ live, data, typeId: t0, onClose, onSent }: { live: LiveMyLeave; data: MyLeaveData; typeId?: string; onClose: () => void; onSent: (message: string) => void }) {
+  const types = sortBalances(data.balances);
+  const [typeId, setTypeId] = useState<string | null>(t0 ?? types[0]?.leaveTypeId ?? null);
+  const [range, setRange] = useState<{ from: Date | null; to: Date | null }>({ from: null, to: null });
+  const [fh, setFh] = useState<'full' | 'second'>('full');
+  const [th, setTh] = useState<'full' | 'first'>('full');
+  const [reason, setReason] = useState('');
+  const [certificate, setCertificate] = useState(false);
+  const [delegate, setDelegate] = useState(false);
+  const [delegateTo, setDelegateTo] = useState<string | null>(null);
+  const [expectedOn, setExpectedOn] = useState<Date | null>(null);
+  const [mCase, setMCase] = useState<MaternityCase>('birth');
+  const [plan, setPlan] = useState<LeavePlan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const chosen = types.find((t) => t.leaveTypeId === typeId);
+  const maternity = chosen?.kind === 'maternity';
+  const iso = (x: Date | null) => (x ? `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` : '');
+  const from = iso(range.from);
+  const to = iso(range.to ?? range.from);
+  const oneDay = !!from && from === to;
+  const input = { leaveTypeId: typeId!, from, to, fromHalf: fh, toHalf: oneDay ? (fh === 'second' ? 'full' : th) : th, ...(maternity ? { expectedOn: iso(expectedOn) || undefined, maternityCase: mCase } : {}) };
+  useEffect(() => {
+    setPlan(null);
+    if (!typeId || !from) return;
+    let on = true;
+    const h = setTimeout(() => void live.onPreview(input).then((x) => on && setPlan(x), () => on && setPlan(null)), 300);
+    return () => { on = false; clearTimeout(h); };
+    // The preview follows the inputs that change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeId, from, to, fh, th, iso(expectedOn), mCase]);
+  const errors = [...(plan?.blocks ?? []), ...(plan?.certificateNeeded && !certificate ? ['Tick that you will give the certificate to HR.'] : [])];
+  const blockedBy = !typeId ? 'Choose the leave type' : !from ? 'Choose the dates' : !plan ? 'Working out the days…' : errors.length ? `Fix ${plural(errors.length, 'thing')} above` : !reason.trim() ? 'Add a reason' : delegate && !delegateTo ? 'Choose who approves for you' : null;
+  const send = () => {
+    setBusy(true);
+    setFailed('');
+    live
+      .onApply({ ...input, reason: reason.trim(), ...(delegate && delegateTo ? { delegateUserId: delegateTo } : {}), ...(certificate ? { certificate: true } : {}) })
+      .then(() => { onSent(`${chosen?.name ?? 'Leave'} ${span(range.from!, range.to ?? range.from!)} sent to your manager`); onClose(); }, (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not sent. Try again.'))
+      .finally(() => setBusy(false));
+  };
+  const total = plan?.total ?? 0;
+  const sandwich = plan?.sandwichDays ?? 0;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Apply leave"
+      size="lg"
+      dirty={Boolean(from || reason)}
+      footer={<DrawerFoot hint={blockedBy} rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" disabled={!!blockedBy} loading={busy} onClick={send}>Send request</Button>} />}
+    >
+      <div className="yx-tim-editor">
+        <div className="yx-tim-form">
+          {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+          {errors.length > 0 && (
+            <InlineAlert tone="danger" title={`Fix ${plural(errors.length, 'thing')} to send this`}>
+              <ul className="yx-tim-steps">{errors.map((e) => <li key={e}>{e}</li>)}</ul>
+            </InlineAlert>
+          )}
+          <FormField label="Leave type" required>
+            <Select value={typeId} onChange={(v) => v && setTypeId(v)} options={types.map((b) => ({ value: b.leaveTypeId, label: b.name, description: b.hasBalance ? `${plural(b.available, 'day')} available` : b.kind === 'lop' ? `${b.takenThisYear} taken this year` : undefined }))} />
+          </FormField>
+          {maternity && (
+            <>
+              <FormField label="Expected date of delivery (or of the event)" required helper="Eligibility counts the days you worked in the 12 months before it.">
+                <DatePicker value={expectedOn} onChange={setExpectedOn} />
+              </FormField>
+              <FormField label="Kind of maternity leave">
+                <Segment label="Kind of maternity leave" value={mCase} onChange={setMCase} options={MATERNITY_CASES} />
+              </FormField>
+            </>
+          )}
+          <DateRangePicker label="Dates" value={range} onChange={setRange} required helper="Holidays and weekly offs are shown in the summary" />
+          {plan?.type.rules.halfDays !== false && from && (
+            <FieldRow>
+              <FormField label="First day"><Select value={fh} onChange={(v) => v && setFh(v as 'full' | 'second')} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }]} /></FormField>
+              <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+            </FieldRow>
+          )}
+          <FormField label="Reason" required helper={plan?.type.rules.medical ? 'Only you and HR can read this.' : 'Your approvers see this.'}><TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} /></FormField>
+          {plan?.certificateNeeded && (
+            <FormField label="Medical certificate" helper="Only HR sees it; your manager sees whether it's in and verified.">
+              <Checkbox label="I will give the certificate to HR" checked={certificate} onChange={setCertificate} />
+            </FormField>
+          )}
+          <Checkbox label="Delegate my approvals while I'm away" checked={delegate} onChange={setDelegate} />
+          {delegate && (
+            <FormField label="Delegate to" required>
+              <LivePicker kind="people" label="Delegate to" value={delegateTo} onChange={setDelegateTo} onPick={(_k, q) => live.onFindPeople(q)} />
+            </FormField>
+          )}
+        </div>
+        <div className="yx-tim-sticky" style={{ maxWidth: 'var(--yx-form-max)', minWidth: 0 }}>
+          <section className="yx-tim-effect" aria-live="polite" aria-label="Leave summary">
+            <strong>Summary</strong>
+            {!plan ? (
+              <p className="yx-tim-muted">{from ? 'Working out the days…' : 'Choose the dates to see the days counted.'}</p>
+            ) : (
+              <>
+                <dl className="yx-tim-stack">
+                  <div className="yx-tim-effect__row"><dt>Days counted</dt><dd>{total}{sandwich > 0 ? ` (incl. ${plural(sandwich, 'weekend or holiday day', 'weekend and holiday days')})` : ''}</dd></div>
+                  {plan.holidaysExcluded > 0 && <div className="yx-tim-effect__row"><dt>Holidays / weekly offs not counted</dt><dd>{plan.holidaysExcluded}</dd></div>}
+                  <div className="yx-tim-effect__row">
+                    <dt>{(plan.balance ? plan.balance.hasBalance : plan.balanceAfter !== null) ? 'Balance after' : 'Unpaid days this year (with this)'}</dt>
+                    <dd>{(plan.balance ? plan.balance.hasBalance : plan.balanceAfter !== null) ? (plan.balanceAfter !== null && plan.balanceAfter < 0 ? <Badge tone="danger">{`−${-plan.balanceAfter} (short by ${-plan.balanceAfter})`}</Badge> : plan.balanceAfter) : (plan.balance?.takenThisYear ?? 0) + total}</dd>
+                  </div>
+                </dl>
+                {(plan.balance?.pending ?? 0) > 0 && <p className="yx-tim-note">Balance after also takes off {plural(plan.balance!.pending, 'day')} already pending for you.</p>}
+                {sandwich > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under your policy.</p>}
+                <ul className="yx-tim-days">
+                  {plan.days.map((x) => <li key={x.on}><span style={{ whiteSpace: 'nowrap' }}>{wdm(isoLocal(x.on))}</span><span>{x.countedAs === 'leave' ? (x.portion === 0.5 ? 'Half day' : 'Leave') : COUNTED[x.countedAs]}</span></li>)}
+                </ul>
+                {plan.warnings.map((x) => <InlineAlert key={x} tone="warning">{x}</InlineAlert>)}
+                <p className="yx-tim-note">Approver: your manager · {plan.othersOff === 0 ? 'no one else off then' : `${plural(plan.othersOff, 'other')} off then`}</p>
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+/** TIM-19 for the person's own request, on live data: status, facts, approval steps; Withdraw or Ask to cancel. */
+function LiveLeaveRequestView({ live, data, r, action, onClose }: { live: LiveMyLeave; data: MyLeaveData; r: LiveLeaveRow; action?: 'withdraw' | 'cancel'; onClose: () => void }) {
+  const { toast } = useToast();
+  const [dlg, setDlg] = useState<'withdraw' | 'cancel' | undefined>(action);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const today = isoLocal(data.today);
+  const past = r.to < data.today;
+  const bal = data.balances.find((b) => b.leaveTypeId === r.type?.id);
+  const name = r.type?.name ?? 'Leave';
+  const dates = liveDates(r);
+  const act = (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setFailed('');
+    fn().then(() => { toast({ tone: 'success', title: done }); onClose(); }, (e: unknown) => { setDlg(undefined); setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'); }).finally(() => setBusy(false));
+  };
+  const footer =
+    r.status === 'pending' ? <DrawerFoot main={<Button onClick={() => setDlg('withdraw')}>Withdraw request</Button>} rest={<Button onClick={onClose}>Close</Button>} />
+      : r.status === 'approved' && r.to >= addIso(data.today, -31) ? <DrawerFoot main={<Button onClick={() => setDlg('cancel')}>Ask to cancel</Button>} rest={<Button onClick={onClose}>Close</Button>} />
+        : <Button onClick={onClose}>Close</Button>;
+  return (
+    <>
+      <Drawer open={!dlg} onOpenChange={(o) => !o && onClose()} title={`${name} · ${data.employee.name}`} subtitle={dates} footer={footer}>
+        <div className="yx-tim-stack">
+          {failed && <InlineAlert tone="danger" title="That did not work">{failed}</InlineAlert>}
+          <div className="yx-tim-row">
+            <Badge tone={liveTone(r, data.today)}>{LIVE_STATUS_LABEL[r.status]}</Badge>
+            {!past && (r.status === 'pending' || r.status === 'approved') && <DueBadge date={isoLocal(r.from)} today={today} prefix="Starts" />}
+          </div>
+          <Kpis items={[{ label: 'Type', value: name }, { label: 'Dates', value: dates }, { label: 'Days', value: r.days }, { label: bal?.hasBalance ? `${name} balance now` : 'Balance', value: bal?.hasBalance ? bal.balance : 'Not counted' }]} />
+          {r.reason && <p><strong>Reason:</strong> {r.reason}</p>}
+          {r.certificate !== 'none' && <div className="yx-tim-row"><Badge tone={r.certificate === 'verified' ? 'success' : 'neutral'}>{r.certificate === 'verified' ? 'Medical certificate verified by HR' : 'Medical certificate · HR to verify'}</Badge></div>}
+          <ApprovalTimeline
+            now={new Date()}
+            steps={[
+              { id: 'a', label: 'Requested', status: 'done', approver: data.employee.name, at: new Date(r.createdAt) },
+              { id: 'b', label: 'Manager approval', status: r.status === 'approved' || r.status === 'cancel_pending' || r.status === 'cancelled' ? 'done' : r.status === 'rejected' ? 'rejected' : r.status === 'withdrawn' ? 'skipped' : 'current', approver: 'Your manager', at: r.decidedAt ? new Date(r.decidedAt) : undefined },
+            ]}
+          />
+        </div>
+      </Drawer>
+      <ConfirmDialog
+        open={dlg === 'withdraw'}
+        onOpenChange={(o) => !o && setDlg(undefined)}
+        title={`Withdraw your ${name.toLowerCase()} request for ${dates}?`}
+        consequence={`It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`}
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep request"
+        destructive
+        confirmDisabled={busy}
+        onConfirm={() => act(() => live.onWithdraw(r.id), `${name} request for ${dates} withdrawn`)}
+      />
+      <ConfirmDialog
+        open={dlg === 'cancel'}
+        onOpenChange={(o) => !o && setDlg(undefined)}
+        title={`Ask to cancel your ${name.toLowerCase()} for ${dates}?`}
+        consequence={`Your manager needs to approve the cancellation. Once approved, the ${plural(r.days, 'day')} ${r.days === 1 ? 'goes' : 'go'} back to your balance.`}
+        confirmLabel="Send cancellation"
+        cancelLabel="Keep leave"
+        destructive
+        confirmDisabled={busy || !note.trim()}
+        onConfirm={() => act(() => live.onCancel(r.id, note.trim()), `Cancellation of ${name.toLowerCase()} for ${dates} sent to your manager`)}
+      >
+        <FormField label="Why" required><TextArea rows={2} value={note} onChange={setNote} placeholder="For example: the trip was called off" /></FormField>
+      </ConfirmDialog>
+    </>
+  );
+}
+
+/** TIM-23 on live data: the location's optional holidays, chosen up to the calendar's limit. */
+function LiveOptionalHolidays({ live, data, onClose }: { live: LiveMyLeave; data: MyLeaveData; onClose: () => void }) {
+  const { toast } = useToast();
+  const cal = data.holidays.calendar!;
+  const optional = data.holidays.list.filter((h) => h.kind === 'optional' || h.kind === 'restricted');
+  const was = optional.filter((h) => h.chosen).map((h) => h.id);
+  const [sel, setSel] = useState<string[]>(was);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const n = cal.optionalLimit;
+  const full = sel.length >= n;
+  const changed = sel.length !== was.length || sel.some((x) => !was.includes(x));
+  const save = async () => {
+    setBusy(true);
+    setFailed('');
+    try {
+      for (const id of was.filter((x) => !sel.includes(x))) await live.onChooseHoliday(id, false);
+      for (const id of sel.filter((x) => !was.includes(x))) await live.onChooseHoliday(id, true);
+      const names = (ids: string[]) => ids.map((id) => optional.find((h) => h.id === id)?.name ?? '').join(' and ');
+      const added = sel.filter((x) => !was.includes(x));
+      toast({ tone: 'success', title: added.length && was.every((x) => sel.includes(x)) ? `${names(added)} added as your optional ${added.length === 1 ? 'holiday' : 'holidays'}` : sel.length ? `Optional holidays saved: ${names(sel)}` : 'Optional holidays cleared' });
+      onClose();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Not saved. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Optional holidays"
+      footer={<DrawerFoot hint={changed ? undefined : full ? 'No changes to save' : 'Tick a holiday to save'} rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" disabled={!changed} loading={busy} onClick={() => void save()}>Save choices</Button>} />}
+    >
+      <div className="yx-tim-form">
+        {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+        <p>Choose <strong>{n}</strong> of {optional.length} optional holidays · {cal.name}.</p>
+        <ul className="yx-tim-check">
+          {optional.map((h) => {
+            const picked = sel.includes(h.id);
+            const gone = h.on < data.today;
+            const reason = gone ? (picked ? 'Taken' : 'Already passed') : !picked && full ? 'Limit reached · untick one to swap' : undefined;
+            const locked = gone || (!picked && full);
+            return (
+              <li key={h.id}>
+                <div className="yx-tim-row">
+                  <Checkbox label={`${h.name} · ${wdm(isoLocal(h.on))}`} description={reason} checked={picked} disabled={locked} onChange={(c) => setSel(c ? [...sel, h.id] : sel.filter((x) => x !== h.id))} />
+                  {!gone && !locked && <DueBadge date={isoLocal(h.on)} today={isoLocal(data.today)} />}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="yx-tim-muted" aria-live="polite">{`${sel.length} chosen · ${Math.max(0, n - sel.length)} left`}</p>
+      </div>
+    </Drawer>
+  );
+}
+
+function StoryLeaveHome({ persona = 'emp', state = 'ready' }: LeaveHomeProps) {
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
   const [apply, setApply] = useState(false);
   // "Use comp-off" opens Apply leave on Comp-off; the header button on the default type.

@@ -1,7 +1,7 @@
 // Time and leave, wired to the API (M02 step 4 batch 1): Me › Leave, Me › Attendance, team leave, the muster,
 // leave balances, and HR set-up. Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
+export { LeaveHomeScreen, type LiveMyLeave } from '../leave';
 export { HomeClockCard, NightWorkCard, type NightWorkProps, type Pin } from './my-attendance';
 export { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';

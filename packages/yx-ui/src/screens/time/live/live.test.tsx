@@ -3,9 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { NightWorkCard } from './my-attendance';
 import { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
-import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
-import { TeamLeaveCalendarScreen } from '../leave';
+import { LeaveHomeScreen, TeamLeaveCalendarScreen } from '../leave';
 import { MusterScreen } from '../attendance';
 import { LeaveReportsScreen } from '../ops';
 import type { HrBalances, LeavePlan, MyAttendance, MyLeave, Muster, TeamCalendar, TimeSetup } from './types';
@@ -30,7 +29,8 @@ const LEAVE: MyLeave = {
 
 const PLAN: LeavePlan = { type: { id: 'el', code: 'EL', name: 'Earned leave', kind: 'earned', rules: { certificateAfterDays: null, medical: false, halfDays: true } }, days: [], total: 2, holidaysExcluded: 0, sandwichDays: 0, balance: null, balanceAfter: 19, othersOff: 1, certificateNeeded: false, blocks: [], warnings: [] };
 
-const leaveProps = () => ({
+
+const leaveLive = () => ({
   state: 'ready' as const,
   data: LEAVE,
   onPreview: vi.fn(async () => PLAN),
@@ -40,43 +40,60 @@ const leaveProps = () => ({
   onChooseHoliday: vi.fn(async () => ({})),
   onFindPeople: vi.fn(async () => []),
 });
+const typeDate = async (field: HTMLElement, text: string) => {
+  await ue.type(field, text);
+  fireEvent.blur(field);
+};
 
-describe('Me › Leave', () => {
-  it('shows the balance to apply for, and "taken this year" for unpaid leave (YX-LV-14)', () => {
-    render(<MyLeaveScreen {...leaveProps()} />);
+describe('Me › Leave (the designed TIM-17 leave home)', () => {
+  it('shows the balance to apply for, "taken this year" for unpaid leave (YX-LV-14), and each request with its next step', () => {
+    render(<ToastProvider><LeaveHomeScreen live={leaveLive()} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'My leave' })).toBeInTheDocument();
     expect(screen.getByText('21')).toBeInTheDocument();
     expect(screen.getByText(/taken this year/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel leave' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask to cancel' })).toBeInTheDocument();
+    expect(screen.getByText('Balipadyami')).toBeInTheDocument();
   });
 
-  it('no errors while typing; the live summary comes from the server; sending calls the API', async () => {
-    const p = leaveProps();
-    render(<MyLeaveScreen {...p} />);
-    await ue.click(screen.getByRole('button', { name: 'Apply for leave' }));
-    const dialog = screen.getByRole('dialog');
-    // Sending with nothing chosen shows what to fix only now.
-    expect(within(dialog).queryByText('Choose the first day.')).not.toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    expect(within(dialog).getAllByText('Choose the first day.').length).toBeGreaterThan(0);
-    fireEvent.change(within(dialog).getByLabelText(/First day/), { target: { value: '2026-10-20' } });
-    fireEvent.change(within(dialog).getByLabelText(/Last day/), { target: { value: '2026-10-21' } });
+  it('applying: Send waits for the dates and a reason (never red while typing); the summary comes from the server; then a toast', async () => {
+    const p = leaveLive();
+    render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Apply leave' }));
+    const dialog = screen.getByRole('dialog', { name: 'Apply leave' });
+    expect(within(dialog).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    expect(within(dialog).getByText('Choose the dates')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    await typeDate(within(dialog).getByLabelText(/^From/), '20 Oct 2026');
+    await typeDate(within(dialog).getByLabelText(/^To/), '21 Oct 2026');
     await waitFor(() => expect(p.onPreview).toHaveBeenCalledWith({ leaveTypeId: 'el', from: '2026-10-20', to: '2026-10-21', fromHalf: 'full', toHalf: 'full' }));
-    expect(await within(dialog).findByText('1 other is off then')).toBeInTheDocument();
-    expect(within(dialog).getByText('19')).toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    await waitFor(() => expect(p.onApply).toHaveBeenCalledWith(expect.objectContaining({ leaveTypeId: 'el', from: '2026-10-20', to: '2026-10-21' })));
+    expect(await within(dialog).findByText('19')).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 other off then/)).toBeInTheDocument();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Family function');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(p.onApply).toHaveBeenCalledWith(expect.objectContaining({ leaveTypeId: 'el', from: '2026-10-20', to: '2026-10-21', reason: 'Family function' })));
+    expect((await screen.findAllByText('Earned leave 20–21 Oct sent to your manager')).length).toBeGreaterThan(0);
   });
 
-  it('cancelling approved leave asks why, then sends it', async () => {
-    const p = leaveProps();
-    render(<MyLeaveScreen {...p} />);
-    await ue.click(screen.getByRole('button', { name: 'Cancel leave' }));
+  it('asking to cancel approved leave needs a reason, then sends it', async () => {
+    const p = leaveLive();
+    render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
     await ue.click(screen.getByRole('button', { name: 'Ask to cancel' }));
-    expect(screen.getByText('Say why you are cancelling.')).toBeInTheDocument();
-    await ue.type(screen.getByLabelText(/Why/), 'Trip called off');
-    await ue.click(screen.getByRole('button', { name: 'Ask to cancel' }));
+    const confirm = screen.getAllByRole('dialog').at(-1)!;
+    expect(within(confirm).getByRole('button', { name: 'Send cancellation' })).toBeDisabled();
+    await ue.type(within(confirm).getByRole('textbox', { name: /Why/ }), 'Trip called off');
+    await ue.click(within(confirm).getByRole('button', { name: 'Send cancellation' }));
     await waitFor(() => expect(p.onCancel).toHaveBeenCalledWith('r2', 'Trip called off'));
+  });
+
+  it('optional holidays: tick one and save', async () => {
+    const p = leaveLive();
+    render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: /Optional holidays · 0 chosen · 2 left/ }));
+    const panel = screen.getByRole('dialog', { name: 'Optional holidays' });
+    await ue.click(within(panel).getByRole('checkbox', { name: /Optional one/ }));
+    await ue.click(within(panel).getByRole('button', { name: 'Save choices' }));
+    await waitFor(() => expect(p.onChooseHoliday).toHaveBeenCalledWith('h2', true));
   });
 });
 
