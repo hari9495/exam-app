@@ -85,6 +85,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
   const [checking, setChecking] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [leftOutOpen, setLeftOutOpen] = useState(false);
+  const [step, setStep] = useState('people');
 
   const input = useMemo((): IncrementInput | null => {
     if (!entity || !effective || reason.trim().length < 3) return null;
@@ -192,6 +193,8 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
       <PageHeader title="Annual increment" description="One approval for everyone, a preview per person, new pay rounded to whole rupees." />
       <Stepper
         title="Bulk change"
+        onCurrentChange={setStep}
+        continueBlocked={step === 'people' && (!entity || !effective || reason.trim().length < 3) ? 'Choose the legal entity and the effective date first.' : step === 'rule' && mode === 'percent' && !everyone ? 'Give the raise for everyone first.' : undefined}
         finishLabel={`Send for approval (${people.length} ${people.length === 1 ? 'person' : 'people'})`}
         onFinish={() => setConfirm(true)}
         finishBlocked={!people.length ? 'No one gets a raise yet.' : errors ? `${errors} ${errors === 1 ? 'person' : 'people'} can't be changed: see the preview.` : checking ? 'Checking…' : undefined}
@@ -202,7 +205,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
           {
             id: 'people',
             title: 'Choose people',
-            summary: `${people.length} ${people.length === 1 ? 'employee' : 'employees'} · ${deptText} · ${entityName} · effective ${effective ? formatDate(effective) : '—'}`,
+            summary: [`${people.length} ${people.length === 1 ? 'employee' : 'employees'}`, deptText, entityName, `effective ${effective ? formatDate(effective) : '—'}`].filter(Boolean).join(' · '),
             content: (
               <div className="yx-ppl__form">
                 <FormField label="Legal entity" required>
