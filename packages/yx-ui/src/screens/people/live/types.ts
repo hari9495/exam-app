@@ -373,6 +373,8 @@ export interface ExitRow extends ExitCase {
   employeeCode: string | null;
   clearance: { open: number; total: number };
   interview: 'sent' | 'submitted' | 'skipped' | null;
+  /** The leaver's manager (the list's Manager column). */
+  manager?: string | null;
   canManage: boolean;
 }
 export interface ClearanceItem {

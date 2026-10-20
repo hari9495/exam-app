@@ -23,3 +23,5 @@ export { ProbationQueue, type LiveProbation, type ProbRow, type ProbationDraft, 
 export { JourneyRecord, type LiveJourney } from '../people/onboarding';
 export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
 export { ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
+export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
+export { ExitCaseWorkspace } from '../people/exits';

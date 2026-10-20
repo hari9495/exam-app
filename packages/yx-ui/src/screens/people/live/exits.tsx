@@ -384,7 +384,7 @@ export function ExitCasesScreen(p: ExitCasesScreenProps) {
   );
 }
 
-function StartExitDialog({ people, permissions, today, onClose, onStart }: { people: Choice[]; permissions: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
+export function StartExitDialog({ people, permissions, today, onClose, onStart }: { people: Choice[]; permissions: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
   const [who, setWho] = useState<string | null>(null);
   const [type, setType] = useState<Exclude<ExitType, 'resignation' | 'vrs'> | null>(null);
   const [basis, setBasis] = useState('');
@@ -462,7 +462,7 @@ export interface ExitCaseScreenProps {
   payeeDocuments?: Choice[];
   onPayees?: (payees: Payee[]) => Promise<unknown>;
 }
-type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
+export type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
 
 export function ExitCaseScreen(p: ExitCaseScreenProps) {
   const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | null>(null);
@@ -553,7 +553,7 @@ export function ExitCaseScreen(p: ExitCaseScreenProps) {
   );
 }
 
-function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today: string; onClose: () => void; onNotice: ExitCaseScreenProps['onNotice'] }) {
+export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today: string; onClose: () => void; onNotice: ExitCaseScreenProps['onNotice'] }) {
   const [kind, setKind] = useState<'early_release' | 'buyout' | 'lwd_change'>('early_release');
   const [lwd, setLwd] = useState<Date | null>(null);
   const [by, setBy] = useState<'employee' | 'company'>('employee');
@@ -596,7 +596,7 @@ function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today
   );
 }
 
-function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () => void; onSave: ExitCaseScreenProps['onHrFacts'] }) {
+export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () => void; onSave: ExitCaseScreenProps['onHrFacts'] }) {
   const h = d.hr!;
   const tri = (b: boolean | null) => (b === null ? 'open' : b ? 'yes' : 'no');
   const fromTri = (s: string) => (s === 'open' ? null : s === 'yes');
@@ -650,7 +650,7 @@ function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () =
   );
 }
 
-function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load: () => Promise<InterviewAnswers>; onNotes: (notes: string) => Promise<unknown> }) {
+export function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load: () => Promise<InterviewAnswers>; onNotes: (notes: string) => Promise<unknown> }) {
   const [data, setData] = useState<InterviewAnswers | null>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -718,7 +718,7 @@ function ClearanceTable({ items, canSign, onSignOff, showPerson }: { items: (Cle
   );
 }
 
-function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceItem; onClose: () => void; onSignOff: SignOffHandler }) {
+export function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceItem; onClose: () => void; onSignOff: SignOffHandler }) {
   const [action, setAction] = useState<'clear' | 'waive'>('clear');
   const [note, setNote] = useState('');
   const [recovery, setRecovery] = useState(false);
@@ -1051,7 +1051,7 @@ function StepsCard({ steps, onRetry, onDone }: { steps: ExitStep[]; onRetry?: (s
   );
 }
 
-function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string; onSettled?: (input: { settledOn: string; reason: string }) => Promise<unknown> }) {
+export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string; onSettled?: (input: { settledOn: string; reason: string }) => Promise<unknown> }) {
   const [settling, setSettling] = useState(false);
   const [on, setOn] = useState<Date | null>(fromKey(today));
   const [reason, setReason] = useState('');
