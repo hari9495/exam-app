@@ -118,7 +118,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Company / period button: people who read the structure, when there is more than one entity; the period for pay.
   const seesEntities = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const entities = useOrg<LegalEntity[]>('/legal-entities', seesEntities);
-  const payPeriods = !support && (perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve'));
+  // The period is for pay, and for the month the HR Home counts (attendance exceptions, joining this month).
+  const payPeriods = !support && (perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('attendance.view'));
 
   useEffect(() => {
     // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).

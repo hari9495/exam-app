@@ -4482,6 +4482,8 @@ model WfRequest {
   summary         Json      @default("[]")
   requesterUserId String?   @map("requester_user_id") @db.Uuid
   raisedByUserId  String?   @map("raised_by_user_id") @db.Uuid
+  /// Who the request is about: the inbox names this person.
+  subjectPersonId String?   @map("subject_person_id") @db.Uuid
   steps           Json
   status          String    @default("pending") @db.VarChar(10)
   currentStep     Int       @default(0) @map("current_step") @db.SmallInt
@@ -9942,4 +9944,17 @@ model WorkforceSnapshot {
   takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("workforce_snapshots")
+}
+
+/// Home count cards (PLT-02): a month's number for "vs last month". scope_id: a legal entity or a help desk; NULL = company.
+model HomeSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  metric         String   @db.VarChar(30)
+  scopeId        String?  @map("scope_id") @db.Uuid
+  month          DateTime @db.Date
+  value          Int
+  takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
+
+  @@map("home_snapshots")
 }

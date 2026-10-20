@@ -270,7 +270,7 @@ export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number
   if (net) return { accepted: true, verdict: 'network', distanceM: nearest?.d ?? null, locationId: net.locationId, message: `On the ${net.name} network` };
   if (!geo.length && !i.fences.some((f) => f.ipRanges.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
   if (i.mode === 'field') return { accepted: true, verdict: 'field', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: 'Checked in, location recorded' };
-  if (!i.pin) return { accepted: false, verdict: 'no_location', distanceM: null, locationId: null, message: 'Turn on location for this site, or connect to the office network' };
+  if (!i.pin) return { accepted: false, verdict: 'no_location', distanceM: null, locationId: null, message: 'Turn on location for this site, or connect to the office network.' };
   if (i.pin.accuracyM > maxAcc) return { accepted: false, verdict: 'coarse', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: `Location accuracy ${Math.round(i.pin.accuracyM)} m. Move outdoors or near a window and try again` };
   if (!nearest) return { accepted: false, verdict: 'outside', distanceM: null, locationId: null, message: 'Connect to the office network to check in' };
   return { accepted: false, verdict: 'outside', distanceM: nearest.d, locationId: nearest.f.locationId, message: `Outside ${nearest.f.name}, ${formatDistance(nearest.d)} away` };

@@ -259,8 +259,8 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     expect((await home('adminB')).attendanceExceptions).toBe(0);
     // No attendance key: no widget at all (not a zero).
     const arjun = await home('arjunA');
-    // (The panel role's hiring keys bring the recruiter part, covered in recruiter-home.e2e-spec.ts.)
-    expect({ ...arjun, hiring: undefined }).toEqual({ month });
+    // (The recruiter part and "Coming up" are covered in recruiter-home and home-parity e2e specs.)
+    expect({ ...arjun, hiring: undefined, celebrations: undefined }).toEqual({ month });
     await api('adminA', 'get', '/workspace/home?month=2026-13').expect(400);
     await api('adminA', 'get', '/workspace/home?legalEntityId=not-a-uuid').expect(400);
     await request(server()).get('/api/v1/workspace/home').expect(401);

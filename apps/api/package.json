@@ -5,7 +5,8 @@
     "start:dev": "nest start --watch",
     "build": "nest build",
     "test": "jest",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "demo:recruiter": "ts-node prisma/demo-recruiter.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

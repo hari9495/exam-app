@@ -1039,12 +1039,14 @@ export interface StatCardProps {
   loading?: boolean;
   /** Hide the amount and its change ("Hide amounts" on a shared screen); the label and drill link stay. */
   masked?: boolean;
+  /** Nothing to count yet, said in words instead of a number, e.g. "No payroll run for October yet". */
+  empty?: string;
   className?: string;
 }
 
 const CHANGE_ICON = { up: TrendingUp, down: TrendingDown, same: Minus } as const;
 
-export function StatCard({ label, value, money, unit, previous, previousLabel = 'last period', trend, drill, loading, masked, className }: StatCardProps) {
+export function StatCard({ label, value, money, unit, previous, previousLabel = 'last period', trend, drill, loading, masked, empty, className }: StatCardProps) {
   if (loading)
     return (
       <section className={cx('yx-stat', className)} aria-busy="true" aria-label={label}>
@@ -1052,6 +1054,17 @@ export function StatCard({ label, value, money, unit, previous, previousLabel = 
         <Skeleton width="50%" height={28} />
         <Skeleton width="70%" />
         <VisuallyHidden>Loading {label}</VisuallyHidden>
+      </section>
+    );
+  if (empty)
+    return (
+      <section className={cx('yx-stat', className)} aria-label={label}>
+        <span className="yx-stat__label">{label}</span>
+        <p className="yx-stat__empty">{empty}</p>
+        <Link className="yx-stat__drill" href={drill.href} onClick={drill.onClick}>
+          {drill.label}
+          <Icon icon={ArrowRight} />
+        </Link>
       </section>
     );
   const change = previous === undefined || masked ? null : changeInWords(value, previous, previousLabel, { money, unit });

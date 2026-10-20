@@ -194,6 +194,7 @@ export const StatCards: S = {
           <StatCard label="Net pay, September" value={2_42_80_000} previous={2_44_00_000} previousLabel="August" money trend={[231, 233, 238, 241, 244, 242.8].map((v) => v * 1_00_000)} drill={{ label: 'Open September payroll', href: '#payroll' }} />
           <StatCard label="Leave balance" value={14} unit="days" previous={16} previousLabel="last month" drill={{ label: 'View leave history', href: '#leave' }} />
           <StatCard label="Headcount" value={0} loading drill={{ label: 'View employees', href: '#people' }} />
+          <StatCard label="Not ready for payroll" value={0} empty="No payroll run for October yet" drill={{ label: 'Open payroll runs', href: '#runs' }} />
         </div>
       </Section>
     </Stack>

@@ -525,7 +525,8 @@ export function NeedsActionList({ items, total = items.length, viewAllHref, onAp
                   <span className="yx-actions__title">{it.title}</span>
                 </div>
                 <div className="yx-actions__meta">
-                  <PersonLabel name={it.who} src={it.whoPhoto} size={20} />
+                  {/* No name, no avatar: an empty circle reads as a broken row. */}
+                  {it.who.trim() && <PersonLabel name={it.who} src={it.whoPhoto} size={20} />}
                   {it.due && <DueText due={it.due} today={today} />}
                   {it.note && <span className="yx-actions__note">{it.note}</span>}
                 </div>

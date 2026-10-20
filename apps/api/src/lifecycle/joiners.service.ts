@@ -5,7 +5,7 @@ import { parse } from 'csv-parse/sync';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer } from '../access/scope';
+import { ScopeUser, Viewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { personForEmployee } from '../people/persons';
 import { joinerInScope, ownOf } from '../documents/person-access';
@@ -42,6 +42,8 @@ const MAX_ROWS = 300;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const JOINING = ['invited', 'accepted', 'joined'];
+const nextMonth = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1));
 const nameOf = (p: { preferredName: string | null; givenName: string; familyName: string | null }) => [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ');
 
 @Injectable()
@@ -242,6 +244,24 @@ export class JoinersService {
     });
   }
 
+  /** Joining in a month (invited, accepted or joined) as far as the viewer's onboarding key reaches. full: company-wide. */
+  async joining(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null): Promise<{ count: number; full: boolean } | null> {
+    const v = await this.journeys.viewer(user);
+    const key = v.grants.has('lifecycle.onboarding.view') ? 'lifecycle.onboarding.view' : 'lifecycle.onboarding.manage';
+    if (!v.grants.has(key)) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const rows = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, status: { in: JOINING }, joiningOn: { gte: asDate(`${month}-01`), lt: nextMonth(month) }, ...(entityId ? { legalEntityId: entityId } : {}) } });
+      let count = 0;
+      for (const r of rows) if (await joinerInScope(tx, c, v, key, r)) count++;
+      return { count, full: tenantWide(v, key) && !v.actingForOther };
+    });
+  }
+
+  /** The whole company's (or one entity's) joining count for the monthly Home snapshot (no viewer). */
+  joiningTotal(tx: Tx, org: string, month: string, entityId: string | null): Promise<number> {
+    return tx.preboarding.count({ where: { organizationId: org, status: { in: JOINING }, joiningOn: { gte: asDate(`${month}-01`), lt: nextMonth(month) }, ...(entityId ? { legalEntityId: entityId } : {}) } });
+  }
+
   private async rowView(tx: Tx, org: string, r: Prisma.PreboardingGetPayload<object>) {
     const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: r.personId } });
     const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: r.id, kind: 'onboarding' } });
@@ -253,6 +273,8 @@ export class JoinersService {
     ]);
     const open = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } } }) : 0;
     const overdue = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] }, dueOn: { lt: asDate(todayIst()) } } }) : 0;
+    // The first few open tasks by name, for the Home's readiness tags.
+    const pending = j ? (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, orderBy: { dueOn: 'asc' }, take: 3, select: { title: true } })).map((t) => t.title) : [];
     return {
       id: r.id,
       personId: r.personId,
@@ -272,6 +294,7 @@ export class JoinersService {
       progress: j?.progress ?? 0,
       openTasks: open,
       overdueTasks: overdue,
+      pendingTasks: pending,
       personType: r.personType,
       batchId: r.batchId,
       buddyEmployeeId: r.buddyEmployeeId,

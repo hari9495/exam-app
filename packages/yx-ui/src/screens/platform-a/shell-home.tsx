@@ -12,7 +12,7 @@ import { Select } from '../../components/select';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { DashboardGrid, NeedsActionList, type ActionItem, type DashboardWidget } from '../../components/dashboard';
+import { DashboardGrid, NeedsActionList, type ActionItem, type DashboardWidget, type WidgetSize } from '../../components/dashboard';
 import { LineChart, StatCard } from '../../components/charts';
 import { Dialog } from '../../components/overlay';
 import { Checkbox } from '../../components/choice';
@@ -693,9 +693,21 @@ export interface LiveHome {
   approvalsHref: string;
   onApprove?: (item: ActionItem) => void;
   onReview?: (item: ActionItem) => void;
-  /** The person's check-in card; left out for people with no attendance. */
+  /** The person's "Attendance today" card; left out for people with no attendance. */
   clock?: ReactNode;
-  stats?: { id: string; title: string; label: string; value: number; unit?: string; drill: { label: string; href: string } }[];
+  /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. */
+  stats?: { id: string; title: string; label: string; value: number; unit?: string; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
+  /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. */
+  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string }[] };
+  /** Manager: "Who's off this week", day by day. */
+  off?: { day: string; who: string }[];
+  offHref?: string;
+  /** Manager: "Goals and 1:1s": the next 1:1s, reviews and goals to look at. */
+  goals?: { text: string; href: string }[];
+  /** Employee: "My tasks": checklist tasks, feedback asked of them and their own review, each linked. */
+  tasks?: { text: string; href: string }[];
+  /** "Coming up": birthdays and work anniversaries in the person's circle, and the next holidays. */
+  coming?: { id: string; kind: 'person' | 'holiday'; name: string; text: string }[];
   quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
   /** "Due dates" (HR): what must be done by when, e.g. locking last month's attendance or probation confirmations. */
   due?: { id: string; text: string; href: string; badge?: { label: string; tone: BadgeTone }; note?: string; action?: string }[];
@@ -709,18 +721,71 @@ export interface LiveHome {
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
 const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
 
+/** Widths that fill each row: n cards share it evenly (live data decides how many cards there are). */
+const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
+const fill = (ws: DashboardWidget[], many: WidgetSize = 3) => ws.map((w) => ({ ...w, size: SHARE[ws.length] ?? many }));
+
 function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScreenProps['persona']; data: HomeData; loading: boolean; live: LiveHome }) {
+  const hiring = live.hiring ? hiringWidgets(live.hiring, loading) : [];
+  // Without a clock, today's interviews sit beside Needs your action (the recruiter home); otherwise they join the
+  // small cards at the end.
+  const besideActions = live.clock ? [] : hiring.filter((w) => w.id === 'interviewsToday');
+  const laterHiring = hiring.filter((w) => !besideActions.includes(w) && w.id !== 'interviewsToday');
+  const pair = (ws: DashboardWidget[]) => (ws.length === 1 ? [{ ...ws[0], size: 12 as const }] : ws);
   const widgets: DashboardWidget[] = [
     {
       id: 'actions',
       title: 'Needs your action',
-      size: live.clock || live.hiring ? 8 : 12,
+      size: live.clock || besideActions.length ? 8 : 12,
       pinned: true,
       bare: true,
       content: <NeedsActionList items={data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
     },
-    ...(live.clock ? [{ id: 'clock', pinned: true, bare: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
-    ...(live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} drill={x.drill} />)),
+    ...(live.clock ? [{ id: 'clock', pinned: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
+    ...besideActions,
+    ...pair([
+    ...(live.team
+      ? [{
+          id: 'today',
+          title: 'Team today',
+          size: 8 as const,
+          actions: <Link href={live.team.href}>{`View all ${live.team.total}`}</Link>,
+          content: (
+            <div className="yx-plt-stack">
+              <p className="yx-plt-muted">{live.team.summary}</p>
+              {live.team.rows.length > 0 && (
+                <ul className="yx-plt-list">
+                  {live.team.rows.map((r) => (
+                    <li key={r.id}><PersonLabel name={r.name} secondary={r.secondary} /></li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ),
+        }]
+      : []),
+    ...(live.off
+      ? [{
+          id: 'off',
+          title: "Who's off this week",
+          size: 4 as const,
+          actions: live.offHref ? <Link href={live.offHref}>Team calendar</Link> : undefined,
+          empty: live.off.length ? undefined : 'No one in your team is off this week.',
+          content: (
+            <ul className="yx-plt-list">
+              {live.off.map((w) => (
+                <li key={w.day} className="yx-plt-off">
+                  <span className="yx-plt-off__day">{w.day}</span>
+                  <span className="yx-plt-off__who">{w.who}</span>
+                </li>
+              ))}
+            </ul>
+          ),
+        }]
+      : []),
+    ]),
+    ...fill((live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />))),
+    ...pair([
     ...(live.due?.length
       ? [{
           id: 'due',
@@ -777,7 +842,44 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           ),
         }]
       : []),
-    ...(live.hiring ? hiringWidgets(live.hiring, loading) : []),
+    ]),
+    ...fill([
+    ...(live.goals
+      ? [{
+          id: 'goals',
+          title: 'Goals and 1:1s',
+          size: 4 as const,
+          empty: live.goals.length ? undefined : 'No 1:1s, reviews or goals to look at.',
+          content: <Bullets items={live.goals.map((g) => <Link href={g.href}>{g.text}</Link>)} />,
+        }]
+      : []),
+    ...(live.tasks
+      ? [{
+          id: 'tasks',
+          title: 'My tasks',
+          size: 4 as const,
+          empty: live.tasks.length ? undefined : 'No tasks for you right now.',
+          content: <Bullets items={live.tasks.map((t) => <Link href={t.href}>{t.text}</Link>)} />,
+        }]
+      : []),
+    ...(live.coming
+      ? [{
+          id: 'coming',
+          title: 'Coming up',
+          size: 4 as const,
+          empty: live.coming.length ? undefined : 'Nothing coming up this week.',
+          content: (
+            <Bullets
+              items={live.coming.map((x) =>
+                x.kind === 'person' ? <PersonLabel name={x.name} secondary={x.text} /> : <span className="yx-plt-list__main">{x.name}<span className="yx-plt-muted">{x.text}</span></span>,
+              )}
+            />
+          ),
+        }]
+      : []),
+    ...hiring.filter((w) => w.id === 'interviewsToday' && !besideActions.includes(w)),
+    ], 4),
+    ...laterHiring,
   ];
   const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
   return (
