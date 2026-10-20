@@ -59,8 +59,10 @@ export function teamRows(members: ApiMember[], joiners: Joiner[], today: string,
 /** Onboarding and exit tasks the manager owns, open ones first by due date. */
 export function teamTasks(tasks: JourneyTask[]): { id: string; journeyId: string | null; title: string; due: Date; kind: string }[] {
   const kind: Record<string, string> = { onboarding: 'Onboarding', offboarding: 'Exit' };
+  // My team lists the tasks owned as someone's manager; HR's own checklist work (for people outside the team) stays
+  // on My checklist tasks (PPL-08 audit).
   return tasks
-    .filter((t) => t.status === 'open' || t.status === 'waiting')
+    .filter((t) => (t.status === 'open' || t.status === 'waiting') && t.ownerType === 'manager')
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn))
     .map((t) => ({ id: t.id, journeyId: t.journeyId ?? null, title: t.person ? `${t.title} · ${t.person}` : t.title, due: new Date(`${t.dueOn}T00:00:00`), kind: kind[t.journeyKind ?? ''] ?? 'Life event' }));
 }

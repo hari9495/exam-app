@@ -574,6 +574,8 @@ export interface LiveTeam {
   onStartChange?: () => void;
   approvalsHref: string;
   onReview: () => void;
+  /** Quick approve of a request that may be decided here (the API checks it again). */
+  onApprove?: (item: ActionItem) => void;
   onOpenTask: (id: string) => void;
 }
 
@@ -593,8 +595,9 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
       value: (r) => r.today,
       render: (r) => (r.today ? <Badge tone={todayTone(r.today)}>{r.today}</Badge> : '—'),
       width: 220,
+      optional: true,
     },
-    { key: 'upcoming', header: 'Upcoming', value: (r) => r.upcoming, width: 240 },
+    { key: 'upcoming', header: 'Upcoming', value: (r) => r.upcoming, width: 240, optional: true },
   ];
   const description = live
     ? `${members.length} ${members.length === 1 ? 'person' : 'people'}${live.asOf ? ` · ${present} present, ${away} on leave, ${late} late as of ${live.asOf}` : ''}`
@@ -656,7 +659,7 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
             )}
           </div>
           <div className="yx-ppl__stack">
-            <NeedsActionList items={approvals} viewAllHref={live?.approvalsHref ?? '#approvals'} today={today} loading={state === 'loading'} title="Waiting for you" onApprove={live ? undefined : () => {}} onReview={live ? live.onReview : () => {}} />
+            <NeedsActionList items={approvals} viewAllHref={live?.approvalsHref ?? '#approvals'} today={today} loading={state === 'loading'} title="Waiting for you" onApprove={live ? live.onApprove : () => {}} onReview={live ? live.onReview : () => {}} />
           </div>
         </div>
       )}

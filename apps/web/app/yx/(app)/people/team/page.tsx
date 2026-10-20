@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast, type ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
 import { TeamPage } from '@yukthix/ui/frame';
@@ -51,7 +51,20 @@ export default function YxTeamPage() {
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false });
   const [raising, setRaising] = useState(false);
 
-  const approvals: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  const qc = useQueryClient();
+  // PPL-08: a quick Approve where the request may be decided here; irreversible ones (decideAt) open their own page.
+  const approvals: ActionItem[] = (inbox.data ?? []).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: t.decideAt ? 'review' : 'approve' }));
+  const approve = async (item: ActionItem) => {
+    const t = (inbox.data ?? []).find((x) => x.taskId === item.id);
+    if (!t) return;
+    try {
+      await apiFetch(`/workflow/approvals/tasks/${id(t.taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision: 'approve' }) }, accessToken ?? undefined);
+      toast({ tone: 'success', title: `Approved: ${t.title}`, ...(t.requester ? { description: `${t.requester} is told by email and in their bell.` } : {}) });
+    } catch (e) {
+      toast({ tone: 'error', title: `Could not approve ${t.title}`, description: (e as Error).message });
+    }
+    await qc.invalidateQueries({ queryKey: ['workflow'] });
+  };
   const myTasks = teamTasks(tasks.data?.tasks ?? []);
   const rows = teamRows(members, soon.data ?? [], today, muster.data, calendar.data);
   const asOf = muster.data ? `${new Date(`${today}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, ${clockText(new Date().toISOString())}` : null;
@@ -75,6 +88,7 @@ export default function YxTeamPage() {
           ...(canRaise && chart.data && subjects.length ? { onStartChange: () => setRaising(true) } : {}),
           approvalsHref: '/yx/approvals',
           onReview: () => router.push('/yx/approvals'),
+          onApprove: (item) => void approve(item),
           onOpenTask: (taskId) => {
             const journey = myTasks.find((t) => t.id === taskId)?.journeyId;
             router.push(journey ? `/yx/people/onboarding/${id(journey)}` : '/yx/people/my-tasks');
