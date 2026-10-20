@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ConfirmDialog, FormField, Select, TextArea, useToast } from '@yukthix/ui';
-import { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
+import { PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -12,7 +12,8 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, docRows, historyRows, identityRows, jobRows, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, bankRows, currentPeriod, docRows, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -37,6 +38,8 @@ interface Compensation {
   currency: string;
   annualCtc: string;
   lines: { name: string; kind: 'earning' | 'deduction' | 'employer'; monthly: string }[];
+  lastNetPay?: { month: string; net: string; paid: boolean } | null;
+  taxRegime?: { regime: string; taxYear: string } | null;
 }
 interface PersonDocs {
   personId: string;
@@ -44,6 +47,12 @@ interface PersonDocs {
   askable: { key: string; name: string }[];
   canManage: boolean;
 }
+
+const LOCKED_PERSONAL: FieldRow[] = ['Date of birth', 'Gender', 'Marital status', 'Personal email', 'Personal phone', 'Home address'].map((label) => ({ label, value: '', cls: 'Personal' as const }));
+const LOCKED_IDENTITY: FieldRow[] = [
+  ...['Legal name', 'PAN', 'UAN', 'Salary account', 'Passport'].map((label) => ({ label, value: '', cls: 'Confidential' as const })),
+  { label: 'Aadhaar', value: '', cls: 'Special' as const },
+];
 
 const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', joiner: 'Joiner', alumni: 'Former employee' };
 
@@ -70,8 +79,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const requests = usePeople<{ rows: ProfileRequest[] }>(personId ? '/profile-requests?status=pending' : null);
   const reference = useOrg<Reference>('/reference');
   const self = Boolean(profile.data?.self);
-  const docs = useLife<PersonDocs>(person.data && (self || perms.has('document.view') || perms.has('document.manage')) ? (self ? '/documents/me' : `/documents/people/${id(person.data.id)}`) : null);
+  // A manager (no document keys) reads the team member's documents below Confidential (founder 20 Oct 2026).
+  const teamView = Boolean(profile.data && !profile.data.self && !hr);
+  const docs = useLife<PersonDocs>(
+    self ? '/documents/me' : person.data && (perms.has('document.view') || perms.has('document.manage')) ? `/documents/people/${id(person.data.id)}` : teamView && profile.data?.personId ? `/documents/team/${id(profile.data.personId)}` : null,
+  );
   const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
+  const teamAssets = useLife<{ rows: { tag: string; name: string; issuedOn: string; condition: string; acknowledged: boolean }[] }>(teamView && !perms.has('asset.view') && personId ? `/lifecycle/people/${p}/assets` : null);
+  const teamLeave = useTime<{ balances: Balance[] }>(teamView && !perms.has('leave.view') && personId ? `/people/${p}/balances` : null);
   const myAssets = useLife<{ rows: { assignmentId: string; name: string; tag: string; issuedOn: string; condition: string; acknowledgedAt: string | null }[] }>(self && !perms.has('asset.view') ? '/lifecycle/me/assets' : null);
   const balances = useTime<{ people: { employeeId: string; balances: Balance[] }[] }>(personId && !self && perms.has('leave.view') ? '/hr/balances' : null);
   const myLeave = useTime<{ balances: Balance[] }>(self ? '/me/leave' : null);
@@ -82,6 +97,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
   const payRead = usePayRead();
+  const activity = usePeople<{ entries: { id: string; kind: ActivityEntry['kind']; actor: string | null; at: string; text: string }[] }>(personId ? `/employees/${p}/activity` : null);
+  // Performance tab: for the person, their managers (the API decides) and perf.goal.view / perf.review.view.
+  const perfAllowed = Boolean(profile.data) && (Boolean(profile.data?.self) || !hr || perms.has('perf.goal.view') || perms.has('perf.review.view'));
+  const periods = usePerf<{ id: string; name: string; fromOn: string; toOn: string; status: string }[]>(perfAllowed ? '/goal-periods' : null);
+  const periodId = periods.data ? currentPeriod(periods.data, today) : null;
+  const goals = usePerf<{ goals: { id: string; title: string; status: string; progress: number }[] }>(perfAllowed && periodId ? `/goals?period=${id(periodId)}&view=${profile.data?.self ? 'mine' : 'employee'}${profile.data?.self ? '' : `&employeeId=${p}`}` : null);
+  const reviews = usePerf<{ employeeId: string; cycle: string; status: string; band: string | null }[]>(perfAllowed ? `/reviews?view=${profile.data?.self ? 'mine' : hr && perms.has('perf.review.view') ? 'scope' : 'team'}` : null);
+  const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
 
   const [editing, setEditing] = useState(false);
   const [changing, setChanging] = useState(false);
@@ -89,6 +112,9 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [starting, setStarting] = useState(false);
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [uploading, setUploading] = useState<string | null | false>(false);
+  const [phone, setPhone] = useState('');
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
@@ -121,10 +147,12 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           from: day(pay.data.validFrom),
           lines: pay.data.lines.filter((l) => l.kind !== 'deduction').map((l) => ({ label: l.name, monthly: Number(l.monthly) })),
           banks: prof ? bankRows(prof, reveal) : [],
+          lastNet: pay.data.lastNetPay ? { amount: Number(pay.data.lastNetPay.net), note: `${day(`${pay.data.lastNetPay.month}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${pay.data.lastNetPay.paid ? ' · paid' : ''}` } : null,
+          taxRegime: pay.data.taxRegime ? { label: pay.data.taxRegime.regime === 'old' ? 'Old' : 'New', note: `FY ${pay.data.taxRegime.taxYear.replace('-', '–')}` } : null,
         }
       : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };
 
-  const leave = self ? myLeave.data?.balances : balances.data?.people.find((x) => x.employeeId === personId)?.balances;
+  const leave = self ? myLeave.data?.balances : (balances.data?.people.find((x) => x.employeeId === personId)?.balances ?? teamLeave.data?.balances);
   const time: LiveRecord['time'] = leave
     ? {
         balances: leave.filter((b) => b.hasBalance && b.entitlement).map((b) => ({ type: b.name, used: Math.max(0, b.entitlement! - b.available), total: b.entitlement! })),
@@ -138,8 +166,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         ? myAssets.data.rows.map((a) => ({ tag: a.tag, name: a.name, issued: day(a.issuedOn), condition: a.condition, ack: a.acknowledgedAt ? 'Acknowledged' : 'Waiting' }))
         : assets.data && personId
           ? assetRows(assets.data.rows, personId)
-          : null,
-    [self, myAssets.data, assets.data, personId],
+          : teamAssets.data
+            ? teamAssets.data.rows.map((a) => ({ tag: a.tag, name: a.name, issued: day(a.issuedOn), condition: a.condition, ack: a.acknowledged ? 'Acknowledged' : 'Waiting' }))
+            : null,
+    [self, myAssets.data, assets.data, teamAssets.data, personId],
   );
 
   const docAction = async (d: RecordDoc, decision: 'verify' | 'reject', reason?: string) => {
@@ -150,6 +180,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   };
 
   const a = v?.assignment;
+  const workEmail = prof?.work?.email ?? person.data?.primaryEmail ?? null;
   const live: LiveRecord = {
     directoryHref: '/yx/people/directory',
     name,
@@ -166,14 +197,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ...(!asOfParam ? scheduledNotes(h ?? ({ changes: [] } as unknown as HistoryView)).slice(0, 1).map((s) => ({ label: s.title.replace('Scheduled: ', '').replace(/^./, (c) => c.toUpperCase()), tone: 'info' as const })) : []),
     ],
     facts: [
-      ...(person.data?.primaryEmail ? [{ label: 'Work email', value: person.data.primaryEmail }] : []),
+      ...(workEmail ? [{ label: 'Work email', value: workEmail }] : []),
+      ...(prof?.work ? [{ label: 'Work phone', value: prof.work.phone ? formatPhone(prof.work.phone) : 'Not on file' }] : []),
       ...(a?.dottedLineManagers?.length ? [{ label: 'Secondary manager', value: a.dottedLineManagers.map((m) => m.name).join(', ') }] : []),
       ...(a?.employmentType ? [{ label: 'Employment type', value: a.employmentType.name ?? '' }] : []),
       ...(v?.employee.legalEntity ? [{ label: 'Legal entity', value: v.employee.legalEntity.name }] : []),
     ],
-    events: upcoming(v, h, today, pending.length),
-    personal: prof?.personal ? personalRows(prof.personal) : null,
-    identity: prof?.identity ? identityRows(prof, reveal) : null,
+    events: upcoming(v, h, today, pending.map((r) => r.label), docList),
+    // Without the class the design still shows the card, with how many fields are not shown (never their values).
+    personal: prof?.personal ? personalRows(prof.personal) : prof?.classes.internal ? [...(prof.birthday ? [{ label: 'Birthday (shown in directory)', value: day(`2000-${prof.birthday}`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), cls: 'Internal' as const }] : []), ...LOCKED_PERSONAL] : null,
+    identity: prof?.identity ? identityRows(prof, reveal) : prof?.classes.internal ? LOCKED_IDENTITY : null,
     pending: pending.map((r) => ({
       id: r.id,
       label: r.label,
@@ -192,6 +225,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           rows: docRows(docList, today),
           hidden: 0,
           ...(docs.data.canManage && docs.data.askable.length ? { onRequest: () => setDocDialog({ kind: 'request' }) } : {}),
+          // HR uploads on the person's behalf (the API checks document.manage in scope and scans the file).
+          ...(docs.data.canManage && !self && docs.data.askable.length ? { onUpload: () => setUploading(null) } : {}),
           ...(docs.data.canManage ? { onVerify: (d: RecordDoc) => void docAction(d, 'verify'), onReject: (d: RecordDoc) => setDocDialog({ kind: 'reject', doc: d }) } : {}),
           onDownload: (d: RecordDoc) => void download(d.id!, `${d.type}.pdf`),
         }
@@ -211,6 +246,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       router.replace(`${path}${q.size ? `?${q}` : ''}`);
     },
     ...(canChange && !self ? { onStartChange: () => setStarting(true) } : {}),
+    // A manager proposes a change for a team member on the change form (raised on their behalf, HR approves).
+    ...(!canChange && !self && !hr && perms.has('request.raise_on_behalf') ? { onStartChange: () => router.push(`/yx/people/changes?person=${p}`) } : {}),
+    // Message: the person's work email in the viewer's mail app (there is no in-app chat).
+    ...(!self && workEmail ? { onMessage: () => window.location.assign(`mailto:${workEmail}`) } : {}),
+    ...(prof?.can.editWork ? { onEditWorkPhone: () => (setPhone(prof.work?.phone ?? ''), setPhoneOpen(true)) } : {}),
+    activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
+    performance:
+      perfAllowed && (goals.data || reviews.data) && personId
+        ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
+        : null,
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };
@@ -221,6 +266,46 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
 
   live.children = (
     <>
+      {uploading !== false && docs.data && (
+        <Dialog open onOpenChange={(o) => !o && setUploading(false)} title={`Upload a document for ${first}`} footer={<Button onClick={() => setUploading(false)}>Close</Button>}>
+          <FormField label="Document" required>
+            <Select options={docs.data.askable.map((t) => ({ value: t.key, label: t.name }))} value={uploading} onChange={setUploading} searchable />
+          </FormField>
+          {uploading && (
+            <FormField label="File" required helper="PDF or an image, up to 10 MB. It is checked for viruses before anyone can open it.">
+              <FileUpload
+                multiple={false}
+                accept={['application/pdf', 'image/png', 'image/jpeg']}
+                upload={async (file) => {
+                  const form = new FormData();
+                  form.append('file', file);
+                  await lifeWrite('POST', `/documents/people/${id(docs.data!.personId)}/${id(uploading)}`, form);
+                  done(`${docs.data!.askable.find((t) => t.key === uploading)?.name ?? 'Document'} uploaded for ${first}`);
+                }}
+              />
+            </FormField>
+          )}
+        </Dialog>
+      )}
+      {phoneOpen && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setPhoneOpen(false)}
+          size="md"
+          title={`Work phone for ${name}`}
+          consequence="The company line shown on the record and in the directory. Leave it empty to clear it."
+          confirmLabel="Save"
+          onConfirm={async () => {
+            await write('PUT', `/employees/${p}/work-phone`, { workPhone: phone.trim() || null });
+            void profile.refetch();
+            done(`${first}'s work phone saved`);
+          }}
+        >
+          <FormField label="Work phone" helper="With the country code, e.g. +91 44 4012 3142.">
+            <TextField type="tel" value={phone} onChange={setPhone} maxLength={30} />
+          </FormField>
+        </ConfirmDialog>
+      )}
       {editing && prof?.personal && (
         <PersonalDialog
           initial={prof.personal}

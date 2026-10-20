@@ -7,6 +7,7 @@ import type { OrgPerson } from '@yukthix/ui';
 import { csvText, downloadText, type OrgChartData } from '@yukthix/ui/workforce';
 import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
+import { useScope } from '../../../../../lib/yx-shell';
 import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
 
 const id = encodeURIComponent;
@@ -22,11 +23,18 @@ export default function YxOrgChartPage() {
   const today = todayIst();
   const [asOf, setAsOf] = useState(today);
   const isHr = perms.has('employee.profile.view');
-  const chart = usePeople<OrgChartData>(asOf === today ? '/org-chart' : `/org-chart?asOf=${id(asOf)}`, { keepPrevious: true });
+  // The top bar's legal entity (option B): only its people; "All entities" is the whole tree.
+  const { scope } = useScope();
+  const q = new URLSearchParams({ ...(asOf !== today ? { asOf } : {}), ...(scope.entity ? { legalEntityId: scope.entity } : {}) }).toString();
+  const chart = usePeople<OrgChartData>(`/org-chart${q ? `?${q}` : ''}`, { keepPrevious: true });
   const me = usePeople<{ employeeId: string }>('/me');
   const data = chart.data;
   const people: OrgPerson[] = useMemo(
-    () => (data?.nodes ?? []).map((n) => ({ id: n.id, name: n.name, role: n.designation?.name ?? '', department: n.department?.name ?? '', managerId: n.managerId, dottedManagerId: n.dottedLineManagerIds[0] })),
+    () => [
+      ...(data?.nodes ?? []).map((n) => ({ id: n.id, name: n.name, role: n.designation?.name ?? '', department: n.department?.name ?? '', managerId: n.managerId, dottedManagerId: n.dottedLineManagerIds[0], ...(n.managerOutside ? { reportsTo: `${n.managerOutside.name}${n.managerOutside.legalEntity ? ` (${n.managerOutside.legalEntity})` : ''}` } : {}) })),
+      // Open job openings (Position view only): "Vacant · role" under the hiring manager.
+      ...(data?.vacancies ?? []).map((v) => ({ id: v.id, name: '', role: v.openings > 1 ? `${v.role} (${v.openings} openings)` : v.role, department: v.department ?? '', managerId: v.managerId, vacant: true })),
+    ],
     [data],
   );
   const exportCsv = () => {
@@ -45,11 +53,14 @@ export default function YxOrgChartPage() {
         state: data ? 'ready' : chart.isError ? 'error' : 'loading',
         onRetry: () => void chart.refetch(),
         companyName: branding.data?.name || 'Organisation',
-        ...(data?.otherDates ? { onAsOn: (d: Date) => setAsOf(iso(d)) } : {}),
+        // Past dates for everyone; future dates (unannounced changes) for HR only, and the API refuses them too.
+        onAsOn: (d: Date) => setAsOf(iso(d)),
+        ...(data && !data.futureDates ? { maxAsOn: day(today) } : {}),
         meId: me.data?.employeeId,
         truncated: Boolean(data?.truncated),
         ...(isHr ? { onOpenPerson: (personId: string) => router.push(`/yx/people/directory/${id(personId)}`) } : {}),
         ...(data?.nodes.length ? { onExportCsv: exportCsv } : {}),
+        ...(data?.vacancies?.length ? { positions: true } : {}),
       }}
     />
   );
