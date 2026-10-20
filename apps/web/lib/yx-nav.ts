@@ -128,9 +128,9 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec(undefined, [
         ...when(manager || has('attendance.view'), L('muster', 'Muster', '/yx/time/muster')),
         ...when(manager || has('roster.manage'), L('roster', 'Roster', '/yx/time/roster')),
-        ...when(manager || has('leave.view'), L('team-leave', 'Team leave', '/yx/time/team')),
+        ...when(manager || has('leave.view'), L('team-leave', 'Leave calendar', '/yx/time/team')),
         ...when(manager || has('attendance.view'), L('overtime-review', 'Overtime', '/yx/time/overtime-review')),
-        ...when(has('leave.view'), L('leave-balances', 'Leave balances', '/yx/time/balances')),
+        ...when(has('leave.view'), L('leave-balances', 'Leave reports', '/yx/time/balances')),
         ...when(has('attendance.lock'), L('periods', 'Periods', '/yx/time/periods')),
         ...when(has('attendance.view'), L('registers', 'Reports', '/yx/time/registers'), L('payroll-feed', 'Payroll feed', '/yx/time/payroll-feed')),
       ]),
