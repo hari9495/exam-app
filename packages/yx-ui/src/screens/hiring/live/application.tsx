@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarPlus, Download, ExternalLink, Mail, MessageSquare, Plus, Sparkles } from 'lucide-react';
+import { CalendarPlus, Check, Download, ExternalLink, Mail, MessageSquare, Plus, Sparkles } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
@@ -9,7 +9,7 @@ import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { TextArea, TextField, TimeField } from '../../../components/inputs';
 import { Drawer } from '../../../components/drawer';
-import { ConfirmDialog } from '../../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { MultiSelect, Select } from '../../../components/select';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
@@ -66,12 +66,19 @@ export interface ApplicationPanelProps {
   onSurvey: (surveyId: string) => Promise<unknown>;
   onOffer: (input: OfferInput) => Promise<unknown>;
   onOfferAction: (offerId: string, action: 'send' | 'approval' | 'withdraw' | 'cancel_approval' | 'pdf') => Promise<unknown>;
+  /** Offers waiting for this person's approval (their approval inbox). */
+  offersToDecide?: string[];
+  /** Approve or turn down an offer at the person's step; a reason goes with a turn-down. */
+  onOfferDecide?: (offerId: string, decision: 'approved' | 'rejected', note?: string) => Promise<unknown>;
 }
 
 export function ApplicationPanel(p: ApplicationPanelProps) {
   const a = p.app;
   const { busy, error, run } = useRun();
   const [rejecting, setRejecting] = useState(false);
+  const [turningDown, setTurningDown] = useState<string | null>(null);
+  const [downReason, setDownReason] = useState('');
+  const [downTried, setDownTried] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [texting, setTexting] = useState<'sms' | 'whatsapp' | null>(null);
@@ -219,6 +226,15 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
                 {a.offers.map((o) => (
                   <Card key={o.id} title={o.compensation}>
                     <Text as="p">{OFFER_LABEL[o.status] ?? o.status} · starts {day(o.startDate)} · answer by {day(o.expiresAt)}</Text>
+                    {o.status === 'pending_approval' && p.offersToDecide?.includes(o.id) && p.onOfferDecide && (
+                      <div className="yx-tim-stack" data-gap="sm">
+                        <Text as="p" tone="secondary">Waiting for your approval.</Text>
+                        <div className="yx-tim-row">
+                          <Button size="sm" variant="approve" icon={Check} loading={busy === `approve-${o.id}`} onClick={() => void run(`approve-${o.id}`, () => p.onOfferDecide!(o.id, 'approved'))}>Approve offer</Button>
+                          <Button size="sm" onClick={() => setTurningDown(o.id)}>Turn down</Button>
+                        </div>
+                      </div>
+                    )}
                     {p.canManage && (
                       <div className="yx-tim-row">
                         <Button size="sm" onClick={() => void run('pdf', () => p.onOfferAction(o.id, 'pdf'))}>Open the letter</Button>
@@ -234,6 +250,39 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsContent>
           </Tabs>
 
+          {turningDown && (
+            <Dialog
+              open
+              onOpenChange={(o) => !o && setTurningDown(null)}
+              title="Turn down this offer"
+              description="Your reason is kept with the decision. The offer goes back to draft for the recruiter to change."
+              footer={
+                <>
+                  <Button onClick={() => setTurningDown(null)}>Cancel</Button>
+                  <Button
+                    variant="danger"
+                    loading={busy === 'turn-down'}
+                    onClick={() => {
+                      setDownTried(true);
+                      if (downReason.trim().length < 3) return;
+                      void run('turn-down', async () => {
+                        await p.onOfferDecide!(turningDown, 'rejected', downReason.trim());
+                        setTurningDown(null);
+                        setDownReason('');
+                        setDownTried(false);
+                      });
+                    }}
+                  >
+                    Turn down
+                  </Button>
+                </>
+              }
+            >
+              <FormField label="Reason" required error={downTried && downReason.trim().length < 3 ? 'Say why, in a few words.' : null}>
+                <TextArea value={downReason} onChange={setDownReason} rows={3} />
+              </FormField>
+            </Dialog>
+          )}
           {rejecting && <RejectDialog count={1} templates={p.templates} onClose={() => setRejecting(false)} onReject={async (i) => { await p.onReject(i); }} />}
           {scheduling && <ScheduleDialog {...p} onClose={() => setScheduling(false)} />}
           {emailing && <EmailDialog count={1} templates={p.templates} senders={p.senders} onClose={() => setEmailing(false)} onSend={async (c) => { await p.onEmail(c); }} />}

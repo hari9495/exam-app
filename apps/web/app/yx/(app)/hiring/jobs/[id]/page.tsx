@@ -148,6 +148,9 @@ function Application(p: { row: Row; jobId: string; stages: PipelineStageConfig[]
   const waTemplates = useApi<{ id: string | null; name: string; body: string; enabled: boolean }[]>(p.canManage ? '/candidate-whatsapp-templates' : null);
   const surveys = useApi<SurveyDefinition[]>(p.canManage ? '/surveys' : null);
   const gate = useApi<{ requisition: boolean; offer: boolean }>('/approvals/gate-status');
+  // Offers waiting for this person's approval: their approval inbox (the API decides who may approve).
+  const inbox = useApi<{ id: string; gate: string; subjectId: string }[]>(p.canManage ? '/approvals/requests?scope=inbox' : null);
+  const toDecide = (inbox.data ?? []).filter((x) => x.gate === 'offer');
   const people = useTeammates();
   const v = profile.data;
   const stage = p.stages.find((s) => s.id === r.stageId);
@@ -227,6 +230,11 @@ function Application(p: { row: Row; jobId: string; stages: PipelineStageConfig[]
           return;
         }
         await write('POST', action === 'send' ? `/offers/${offerId}/send` : action === 'approval' ? `/offers/${offerId}/submit` : action === 'withdraw' ? `/offers/${offerId}/withdraw` : `/offers/${offerId}/approval/cancel`);
+      }}
+      offersToDecide={toDecide.map((x) => x.subjectId)}
+      onOfferDecide={async (offerId, decision, note) => {
+        const req = toDecide.find((x) => x.subjectId === offerId);
+        if (req) await write('POST', `/approvals/requests/${encodeURIComponent(req.id)}/decide`, { decision, ...(note ? { note } : {}) });
       }}
     />
   );
