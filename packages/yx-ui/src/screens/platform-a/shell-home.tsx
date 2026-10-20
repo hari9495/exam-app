@@ -715,6 +715,8 @@ export interface LiveHome {
   amounts?: { hidden: boolean; onToggle: () => void };
   /** Finance: "Money going out" in the next 30 days, by date; an empty list says so, an absent one hides the widget. amount: unknown until calculated. */
   moneyOut?: { id: string; date: string; what: string; amount: number | null; status: string; tone: BadgeTone; action: string; href: string }[];
+  /** Finance: "Payroll cost" against the payroll budget, month by month, oldest first; null = nothing on record that month. budgetHref: where the person sets the budget (only for those who may). */
+  trend?: { months: { label: string; name: string; cost: number | null; budget: number | null }[]; budgetHref?: string };
   /** Finance: "Payroll approval", the run waiting for this person. changePct: net against last month, when on record. */
   approval?: { month: string; preparedBy: string; role?: string; on?: string; previousMonth?: string; changePct?: number; flagged: number; threshold: string; href: string };
   /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. nudge: not checked in yet. */
@@ -770,6 +772,48 @@ const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 1
 /** Widths that fill each row: n cards share it evenly (live data decides how many cards there are). */
 const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
 const fill = (ws: DashboardWidget[], many: WidgetSize = 3) => ws.map((w) => ({ ...w, size: SHARE[ws.length] ?? many }));
+
+/** A round axis floor below the lowest amount, so the months' differences show (the design starts at ₹2 crore). */
+const axisFloor = (values: number[]) => {
+  const low = Math.min(...values) * 0.97;
+  if (!Number.isFinite(low) || low <= 0) return 0;
+  const step = 10 ** (Math.floor(Math.log10(low)) - 1);
+  return Math.floor(low / step) * step;
+};
+
+/** "Payroll cost" (PLT-02 finance): cost to company against the payroll budget; hidden with the amounts; worded when no budget is set. */
+function costTrend(t: NonNullable<LiveHome['trend']>, hide: boolean): DashboardWidget {
+  const span = t.months.length ? `${t.months[0].name} to ${t.months[t.months.length - 1].name}` : '';
+  const values = t.months.flatMap((m) => [m.cost, m.budget]).filter((v): v is number => v !== null);
+  const noBudget = t.months.every((m) => m.budget === null);
+  const content = hide ? (
+    <section className="yx-stat" aria-label="Payroll cost">
+      <span className="yx-stat__label">Payroll cost, last {t.months.length} months</span>
+      <p className="yx-plt-muted">Amounts are hidden. Select Show amounts to see the chart.</p>
+    </section>
+  ) : noBudget ? (
+    <section className="yx-stat" aria-label="Payroll cost">
+      <span className="yx-stat__label">Payroll cost vs budget</span>
+      <p className="yx-plt-muted">No payroll budget set yet, so there is nothing to compare the cost with.</p>
+      {t.budgetHref && <Link className="yx-stat__drill" href={t.budgetHref}>Set the budget</Link>}
+    </section>
+  ) : (
+    <LineChart
+      title="Payroll cost vs budget"
+      description={`Monthly cost to company, ${span}`}
+      money
+      xLabel="Month"
+      height={180}
+      yMin={axisFloor(values)}
+      categories={t.months.map((m) => m.label)}
+      series={[
+        { name: 'Cost', values: t.months.map((m) => m.cost) },
+        { name: 'Budget', values: t.months.map((m) => m.budget) },
+      ]}
+    />
+  );
+  return { id: 'trend', title: 'Payroll cost', size: 4, bare: true, content };
+}
 
 const HIDDEN = '₹ ••••••';
 const hideRupees = (t: string) => t.replace(/₹[\d,]+(\.\d+)?/g, HIDDEN);
@@ -974,6 +1018,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
       : []),
     ]),
     ...fill([
+    ...(live.trend ? [costTrend(live.trend, hide)] : []),
     ...(live.goals
       ? [{
           id: 'goals',

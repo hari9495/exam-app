@@ -463,3 +463,36 @@ export class RuleDraftDto {
   @IsObject({ each: true })
   golden!: { name: string; fn: string; input: Record<string, unknown>; expected: Record<string, unknown> }[];
 }
+
+// ------------------------------------------------------------------------------------------ payroll budget (finance Home)
+
+export class BudgetQueryDto {
+  @IsUUID()
+  entityId!: string;
+
+  /** Financial year, e.g. 2026-27. */
+  @Matches(/^\d{4}-\d{2}$/)
+  taxYear!: string;
+}
+
+export class BudgetMonthDto {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+
+  /** Rupees; null clears the month. */
+  @IsOptional()
+  @Matches(MONEY)
+  amount!: string | null;
+}
+
+export class BudgetDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(12)
+  @ValidateNested({ each: true })
+  @Type(() => BudgetMonthDto)
+  months!: BudgetMonthDto[];
+}

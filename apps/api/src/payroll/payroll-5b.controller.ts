@@ -9,6 +9,8 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import type { ScopeUser } from '../access/scope';
 import {
   AsOnDto,
+  BudgetDto,
+  BudgetQueryDto,
   CompensationChangeDto,
   CompensationInputDto,
   ComponentDto,
@@ -103,6 +105,26 @@ export class Payroll5bController {
   @RequirePermissions('payroll.setup.manage')
   coverage(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.setup.coverage(ctx, this.user(req));
+  }
+
+  // ------------------------------------------------------------------------------------------ payroll budget
+
+  @Get('budgets/entities')
+  @RequireAnyPermission('payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve')
+  budgetEntities(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.setup.budgetEntities(ctx, this.user(req));
+  }
+
+  @Get('budgets')
+  @RequireAnyPermission('payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve')
+  budget(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: BudgetQueryDto) {
+    return this.setup.budget(ctx, this.user(req), dto.entityId, dto.taxYear);
+  }
+
+  @Put('budgets')
+  @RequirePermissions('payroll.setup.manage')
+  saveBudget(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BudgetDto) {
+    return this.setup.saveBudget(ctx, this.user(req), dto);
   }
 
   // ------------------------------------------------------------------------------------------ pay groups

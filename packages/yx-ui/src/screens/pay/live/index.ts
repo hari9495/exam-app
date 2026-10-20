@@ -75,3 +75,5 @@ export { ConsultantsScreen, ConsultantTaxScreen, ConsultantPortalScreen, Invoice
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
 export { SpecialPayScreen, MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, ActuarialScreen, CountryPacksScreen, type SpecialPayScreenProps, type EwaAdminScreenProps, type EquityScreenProps, type ActuarialScreenProps, type CountryPacksScreenProps } from './special';
+// Payroll budget (founder decision 21 Oct 2026): the monthly budget behind the finance Home's "Payroll cost vs budget".
+export { PayrollBudgetScreen, type PayrollBudgetScreenProps, type PayrollBudget, type BudgetMonth } from './budget';

@@ -197,6 +197,23 @@ describe('Finance home, live (20 Oct 2026)', () => {
     expect(screen.getByRole('link', { name: 'Variance vs August · 3 employees above 20% change' })).toBeInTheDocument();
   });
 
+  it('draws payroll cost against the budget, hides it with the amounts, and says when no budget is set', () => {
+    const months = [
+      { label: 'Aug', name: 'August', cost: 21280000, budget: 21400000 },
+      { label: 'Sep', name: 'September', cost: 21560000, budget: 21400000 },
+    ];
+    const { unmount } = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months } }} />);
+    expect(screen.getByText('Payroll cost vs budget')).toBeInTheDocument();
+    expect(screen.getByText('Monthly cost to company, August to September')).toBeInTheDocument();
+    unmount();
+    const r = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months }, amounts: { hidden: true, onToggle: () => {} } }} />);
+    expect(screen.getByText('Amounts are hidden. Select Show amounts to see the chart.')).toBeInTheDocument();
+    r.unmount();
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months: months.map((m) => ({ ...m, budget: null })), budgetHref: '/yx/payroll/budget' } }} />);
+    expect(screen.getByText('No payroll budget set yet, so there is nothing to compare the cost with.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Set the budget' })).toHaveAttribute('href', '/yx/payroll/budget');
+  });
+
   it('says so when nothing goes out, and has no Hide amounts button without pay rights', () => {
     render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, stats: [], moneyOut: [] }} />);
     expect(screen.getByText('Nothing to pay in the next 30 days.')).toBeInTheDocument();

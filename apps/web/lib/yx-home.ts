@@ -29,6 +29,8 @@ export interface HomeWidgets {
 export interface FinanceHome {
   runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean; preparedRole?: string | null; submittedOn?: string | null; variance?: { flagged: number; threshold: string } }[];
   claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  /** The last six months' cost to company against the payroll budget (rupees as decimal strings). */
+  cost?: { canSetBudget: boolean; months: { month: string; cost: string | null; budget: string | null }[] };
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
@@ -321,7 +323,7 @@ const sumOf = <T>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x),
  * run the person approves now, a claims payout file someone else made). Nothing is made up: a part the API left out stays
  * out, and a month with nothing yet is said in words.
  */
-export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval'> & { actions: ActionItem[]; replaces: string[] } {
+export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval' | 'trend'> & { actions: ActionItem[]; replaces: string[] } {
   if (!f) return { actions: [], replaces: [] };
   const prev = prevMonthOf(month);
   const name = monthName(month);
@@ -416,5 +418,12 @@ export function financeHome(f: FinanceHome | undefined, month: string, today: st
       }
     : undefined;
   // The approvals inbox lists the same run; the finance row (with its headcount and net) takes its place.
-  return { stats, moneyOut, ...(approval ? { approval } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
+  // "Payroll cost": cost to company against the budget, the six months up to the chosen one.
+  const trend: LiveHome['trend'] = f.cost
+    ? {
+        months: f.cost.months.map((m) => ({ label: dm(`${m.month}-01`).split(' ')[1], name: monthName(m.month), cost: m.cost === null ? null : rupees(m.cost), budget: m.budget === null ? null : rupees(m.budget) })),
+        ...(f.cost.canSetBudget ? { budgetHref: '/yx/payroll/budget' } : {}),
+      }
+    : undefined;
+  return { stats, moneyOut, ...(approval ? { approval } : {}), ...(trend ? { trend } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
 }
