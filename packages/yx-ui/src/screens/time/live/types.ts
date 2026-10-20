@@ -229,6 +229,8 @@ export interface LeaveRules {
   negativeLimit: number;
   encashable: boolean;
   hrApprovalAboveDays: number | null;
+  /** Who may take it at all (founder decision 9 Oct 2026); null or missing: everyone. */
+  eligibleGenders?: string[] | null;
 }
 
 export interface LeaveTypeRow {
@@ -271,7 +273,7 @@ export interface TimeSetup {
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: { id: string; name: string; locationId: string | null; halfDayOpenHalf: 'first' | 'second'; optionalLimit: number; holidays: HolidayRow[] }[];
-  locations: { id: string; name: string; state: string; timezone: string; fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; address: { lines?: string[]; city?: string; postalCode?: string } | null; people: number; fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean; rule: LocationRule; upcoming: LocationRule[] }[];
   /** People whose check-in is bound to one phone, at their current location. */
   phones: { employeeId: string; name: string; locationId: string | null; boundAt: string }[];
   entities: { id: string; name: string }[];

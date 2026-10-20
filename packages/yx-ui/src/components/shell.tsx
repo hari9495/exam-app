@@ -1038,7 +1038,17 @@ export interface PageHeaderProps {
   actions?: ReactNode;
 }
 
+/** Set by a live app frame: a page header with its own breadcrumbs (a deep page) replaces the frame's Area › Page trail. */
+export const OwnCrumbsContext = createContext<((own: boolean) => void) | null>(null);
+
 export function PageHeader({ title, description, breadcrumbs, status, facts, actions }: PageHeaderProps) {
+  const ownCrumbs = useContext(OwnCrumbsContext);
+  const has = Boolean(breadcrumbs);
+  useEffect(() => {
+    if (!ownCrumbs || !has) return;
+    ownCrumbs(true);
+    return () => ownCrumbs(false);
+  }, [ownCrumbs, has]);
   return (
     <header className="yx-page-header">
       {breadcrumbs}

@@ -1,7 +1,7 @@
 'use client';
 
-import { LeavePoliciesScreen, type TimeSetup } from '@yukthix/ui/time';
-import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { LeavePoliciesScreen, type TimeSetup, type TypeExamplePerson } from '@yukthix/ui/time';
+import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
 const id = encodeURIComponent;
 
@@ -9,6 +9,7 @@ const id = encodeURIComponent;
 export default function YxTimeSetupPage() {
   const setup = useTime<TimeSetup>('/setup');
   const write = useTimeWrite();
+  const read = useTimeRead();
   return (
     <LeavePoliciesScreen
       live={{
@@ -20,6 +21,7 @@ export default function YxTimeSetupPage() {
         onAddVersion: (pid, input) => write(`/setup/policies/${id(pid)}/versions`, 'POST', input),
         onAssign: (pid, input) => write(`/setup/policies/${id(pid)}/assign`, 'POST', input),
         onRemoveAssignment: (aid) => write(`/setup/assignments/${id(aid)}/remove`),
+        onTypeExample: (tid) => read<{ people: TypeExamplePerson[] }>(`/setup/types/${id(tid)}/example`),
       }}
     />
   );

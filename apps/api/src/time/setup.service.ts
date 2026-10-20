@@ -2,11 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
+import { buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 import { isCidr, todayIst } from '../org-structure/org-validation';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, LocationCheckInDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, DEFAULT_RULES, LeaveRules, asDate, dateOf, parseLines, parseRules } from './time-core';
+import { DEFAULT_RULE, DEFAULT_RULES, LeaveRules, asDate, dateOf, factsOn, parseLines, parseRules, policyOn } from './time-core';
 import { WeeklyOffRule } from './time-maths';
 
 // HR › Leave set-up (TIM-26 / 27 / 28) and the attendance basics of each location: company configuration, so the
@@ -55,6 +55,11 @@ export class TimeSetupService {
         tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE' }, orderBy: { jurisdiction: 'asc' } }),
         tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]);
+      const headcount = new Map(
+        (await tx.$queryRaw<{ id: string; n: number }[]>`
+          SELECT a.location_id::text AS id, count(DISTINCT a.employee_id)::int AS n FROM employee_assignments a
+          WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${todayIst()}::date <@ daterange(a.valid_from, a.valid_to, '[]') GROUP BY 1`).map((x) => [x.id, x.n]),
+      );
       const [typeVersions, fences] = await Promise.all([
         tx.leaveTypeVersion.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
         tx.locationFence.findMany({ where: { organizationId: org }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
@@ -100,6 +105,8 @@ export class TimeSetupService {
             name: l.name,
             state: l.state,
             timezone: l.timezone,
+            address: l.address as { lines?: string[]; city?: string; postalCode?: string },
+            people: headcount.get(l.id) ?? 0,
             fences: fences.filter((f) => f.locationId === l.id).map((f) => ({ name: f.name, lat: Number(f.lat), lng: Number(f.lng), radiusM: f.radiusM })),
             ipRanges: l.ipRanges,
             wifiNames: l.wifiNames,
@@ -179,6 +186,38 @@ export class TimeSetupService {
       await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, active: dto.active ?? t.active, updatedAt: new Date() } });
       await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: old, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active }, ...(changed ? { version, validFrom } : {}) });
       return { id: t.id };
+    });
+  }
+
+  /**
+   * TIM-27 live example: a few people whose policy has this type, with their balance and how the policy credits it.
+   * Balances are leave data: only for a viewer who also holds leave.view for the whole company; otherwise no people.
+   */
+  typeExample(ctx: TenantContext, user: ScopeUser, typeId: string) {
+    return this.run(ctx, user, false, async (tx, c) => {
+      const org = c.organizationId;
+      const t = await tx.leaveType.findFirst({ where: { organizationId: org, id: typeId } });
+      if (!t) throw new NotFoundException('No such leave type.');
+      const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['leave.view']);
+      if (!has(v, 'leave.view') || !tenantWide(v, 'leave.view')) return { people: [] };
+      const today = todayIst();
+      const ids = await tx.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT a.employee_id::text AS id, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name
+        FROM employee_assignments a JOIN employees e ON e.organization_id = a.organization_id AND e.id = a.employee_id
+        WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+        ORDER BY name LIMIT 40`;
+      const people = [];
+      for (const { id } of ids) {
+        if (people.length >= 8) break;
+        const f = await factsOn(tx, org, id, today);
+        if (!f) continue;
+        const policy = await policyOn(tx, c, f, today);
+        const line = policy?.lines.find((l) => l.leaveTypeId === t.id);
+        if (!policy || !line) continue;
+        const b = (await this.leave.balancesIn(tx, c, f, today)).find((x) => x.leaveTypeId === t.id);
+        people.push({ employeeId: id, name: f.name, balance: b?.balance ?? 0, pending: b?.pending ?? 0, policy: { name: policy.name, annualDays: line.annualDays, frequency: line.frequency } });
+      }
+      return { people };
     });
   }
 

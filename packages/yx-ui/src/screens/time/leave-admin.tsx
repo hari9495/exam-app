@@ -1136,6 +1136,8 @@ export interface LiveLeavePolicies {
   state: LoadState;
   onRetry?: () => void;
   data: TimeSetup | null;
+  /** TIM-27 live example: a few people with this type in their policy, their balance and how the policy credits it. */
+  onTypeExample?: (typeId: string) => Promise<{ people: TypeExamplePerson[] }>;
   /** A change to the rules applies from `validFrom` (today or later) as a new version; leave before it keeps the old rules. */
   onSaveType: (id: string | null, input: { code: string; name: string; kind: string; paid: boolean; colour: string; rules: LeaveRules; active?: boolean; validFrom?: string }) => Promise<unknown>;
   onCreatePolicy: (name: string) => Promise<unknown>;
@@ -1143,6 +1145,8 @@ export interface LiveLeavePolicies {
   onAssign: (policyId: string, input: { scopeType: string; scopeId?: string; validFrom: string }) => Promise<unknown>;
   onRemoveAssignment: (id: string) => Promise<unknown>;
 }
+
+export interface TypeExamplePerson { employeeId: string; name: string; balance: number; pending: number; policy: { name: string; annualDays: number; frequency: 'monthly' | 'yearly' } }
 
 type PoliciesProps = { state?: ViewState; openId?: string; /** The live app's data. Stories leave it out. */ live?: LiveLeavePolicies };
 
@@ -1362,7 +1366,9 @@ function LivePolicyDrawer({ live, data, policy, onClose, onSaved }: { live: Live
   );
 }
 
-const LIVE_SECTIONS = { basics: 'Basics', counting: 'Counting', rules: 'Rules', yearend: 'Year end' } as const;
+// TIM-27 sections with a backend; Absence & notice (crediting in long absence, leave during notice) has none yet.
+const LIVE_SECTIONS = { basics: 'Basics', eligibility: 'Eligibility', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end' } as const;
+const WHO_CAN: Record<string, string[] | null> = { all: null, f: ['female'], m: ['male'] };
 
 /** TIM-27 on live data: one leave type's basics, counting, rules and year end, with the live example of a Fri–Mon request. */
 function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePolicies; data: TimeSetup; typeId: string; onBack: () => void }) {
@@ -1385,6 +1391,18 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   const limitErr = form.rules.minDays != null && form.rules.maxDays != null && form.rules.minDays > form.rules.maxDays ? 'More than the most days in one request.' : null;
   const saveBlocked = !form.name.trim() ? 'Fill in the name in Basics' : !/^[A-Z][A-Z0-9]{0,7}$/.test(form.code) ? 'Fill in a code of 1 to 8 capital letters in Basics' : limitErr ? 'Fix the request limit in Rules' : null;
   const usedIn = data.policies.filter((x) => (inForce(x, data.today)?.lines ?? []).some((l) => l.leaveTypeId === typeId));
+  const back = useCrumbBack(dirty, onBack, (row?.name ?? 'the new leave type').toLowerCase());
+  const [examples, setExamples] = useState<TypeExamplePerson[]>([]);
+  const [exampleId, setExampleId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!row || !live.onTypeExample) return;
+    let on = true;
+    live.onTypeExample(row.id).then((x) => { if (on) { setExamples(x.people); setExampleId(x.people[0]?.employeeId ?? null); } }, () => undefined);
+    return () => { on = false; };
+    // Loaded once per type.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row?.id]);
+  const person = examples.find((x) => x.employeeId === exampleId) ?? null;
   // Fri 13 – Mon 16 Nov with Sat 14 and Sun 15 as weekly offs: how this type counts the weekend between.
   const ex = countLeaveDays({ from: new Date(2026, 10, 13), to: new Date(2026, 10, 16), holidays: [], weeklyOffDays: [0, 6], weeklyOffDates: [], sandwich: form.rules.sandwich });
   const rulesChanged = JSON.stringify(form.rules) !== JSON.stringify(start.rules);
@@ -1407,18 +1425,21 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
   const title = form.name.trim() || 'New leave type';
   return (
     <TimePage active="Leave types & policies">
+      <div onClickCapture={back.onClickCapture}>
       <PageHeader
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Leave types & policies', href: '#policies' }, { label: title }]} />}
         title={title}
         description={`${form.paid ? 'Paid' : 'Unpaid'} · ${usedIn.length ? `used in ${plural(usedIn.length, 'policy', 'policies')}: ${usedIn.map((x) => x.name).join('; ')}` : 'not in a policy yet'}.`}
         status={row ? <Badge tone={row.active ? 'success' : 'neutral'}>{`${row.active ? 'Active' : 'Not in use'} · version ${row.version}`}</Badge> : <Badge tone="neutral">Not saved yet</Badge>}
         actions={
           <div className="yx-tim-row">
             {!dirty ? <span className="yx-tim-muted">No changes yet</span> : saveBlocked && <span className="yx-tim-muted">{saveBlocked}</span>}
-            <Button onClick={onBack}>Back to policies</Button>
-            <Button variant="primary" disabled={!dirty || !!saveBlocked} loading={busy} onClick={() => (row && rulesChanged ? setAsking(true) : void save())}>{!row ? 'Add leave type' : rulesChanged ? `Save as version ${next}` : 'Save changes'}</Button>
+            <Button variant="primary" disabled={!dirty || !!saveBlocked} loading={busy} onClick={() => (row && rulesChanged ? setAsking(true) : void save())}>{!row ? 'Add leave type' : rulesChanged || !dirty ? `Save as version ${next}` : 'Save changes'}</Button>
           </div>
         }
       />
+      </div>
+      {back.dialog}
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       {upcoming && <InlineAlert tone="info" title={`Version ${upcoming.version} starts on ${day(fromIso(upcoming.validFrom))}`}>You are changing that version. Leave before it follows version {row!.version}.</InlineAlert>}
       <ConfirmDialog
@@ -1450,6 +1471,36 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
                 <FormField label="Pay"><RadioGroup aria-label="Pay" value={form.paid ? 'paid' : 'unpaid'} onChange={(v) => set({ paid: v === 'paid' })} orientation="horizontal" options={[{ value: 'paid', label: 'Paid' }, { value: 'unpaid', label: 'Unpaid (shows days taken, no balance)' }]} /></FormField>
                 <FormField label="Colour"><Select value={form.colour} onChange={(v) => v && set({ colour: v })} options={COLOUR_OPTIONS} /></FormField>
                 {row && <Switch label="In use" description="A type not in use can't be applied for; what was taken stays." checked={form.active} onChange={(v) => set({ active: v })} />}
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="eligibility">
+              <FormSection title="Who gets it">
+                <FormField label="Who can take it">
+                  <Select value={Object.keys(WHO_CAN).find((k) => JSON.stringify(WHO_CAN[k]) === JSON.stringify(form.rules.eligibleGenders ?? null)) ?? 'all'} onChange={(v) => v && setRules({ eligibleGenders: WHO_CAN[v] as LeaveRules['eligibleGenders'] })} options={[{ value: 'all', label: 'Everyone' }, { value: 'f', label: 'Women only' }, { value: 'm', label: 'Men only' }]} />
+                </FormField>
+                <p className="yx-tim-note">Who gets it at all is set by the policies it is in.</p>
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="crediting">
+              <FormSection title="Crediting">
+                <p className="yx-tim-muted">Each policy credits it its own way. The yearly days are set in the policy.</p>
+                {usedIn.length === 0 ? (
+                  <p className="yx-tim-muted">Not in a policy yet, so no one is credited it.</p>
+                ) : (
+                  <ul className="yx-tim-list">
+                    {usedIn.map((x) => {
+                      const l = inForce(x, data.today)!.lines.find((y) => y.leaveTypeId === typeId)!;
+                      return (
+                        <li key={x.id}>
+                          <span className="yx-tim-list__main">
+                            <strong>{x.name}</strong>
+                            <span className="yx-tim-muted">{num(l.annualDays)} days a year · {l.frequency === 'monthly' ? 'credited each month' : 'credited once a year'}{l.proRata ? ' · pro-rata for people who join during the year' : ''}{l.rounding ? ` · rounded to ${num(l.rounding)}` : ''}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </FormSection>
             </TabsContent>
             <TabsContent value="counting">
@@ -1490,9 +1541,11 @@ function LiveLeaveTypeEditor({ live, data, typeId, onBack }: { live: LiveLeavePo
         <div className="yx-tim-sticky">
           <Card title="Live example">
             <div className="yx-tim-stack">
-              <p className="yx-tim-muted">Someone applies Fri 13 Nov – Mon 16 Nov (Sat 14 and Sun 15 Nov are weekly offs)</p>
+              {examples.length > 0 && <FormField label="Preview for"><Select value={exampleId} onChange={setExampleId} options={examples.map((x) => ({ value: x.employeeId, label: x.name }))} /></FormField>}
+              <p className="yx-tim-muted">{person?.name ?? 'Someone'} applies Fri 13 Nov – Mon 16 Nov (Sat 14 and Sun 15 Nov are weekly offs)</p>
               <ul className="yx-tim-days">{ex.days.map((x) => <li key={x.date.getTime()}><span>{weekday(x.date)} {day(x.date)}</span><strong>{x.kind === 'counted' ? '1' : x.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
-              <Kpis items={[{ label: 'Days counted', value: ex.total }]} />
+              <Kpis items={[{ label: 'Days counted', value: ex.total }, ...(person ? [{ label: `${title} balance`, value: `${num(person.balance)}${person.pending > 0 ? ` (${num(person.pending)} pending)` : ''} → ${num(person.balance - person.pending - ex.total)}` }] : [])]} />
+              {person && <p className="yx-tim-note">{person.name} is on {person.policy.name}, which credits {num(person.policy.annualDays)} days a year {person.policy.frequency === 'monthly' ? 'month by month' : 'all at once at the start of the leave year'}.</p>}
             </div>
           </Card>
         </div>
@@ -2223,6 +2276,33 @@ function LiveLocationsView({ live }: { live: LiveLocations }) {
   );
 }
 
+/**
+ * The breadcrumb back to the list on a deep page: it never loses changes silently. A click on a crumb link is taken
+ * before the app frame follows it; with unsaved changes it asks first.
+ */
+function useCrumbBack(dirty: boolean, onBack: () => void, what: string) {
+  const [asking, setAsking] = useState(false);
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('.yx-crumbs__link')) return;
+    e.preventDefault();
+    if (dirty) setAsking(true);
+    else onBack();
+  };
+  const dialog = (
+    <ConfirmDialog
+      open={asking}
+      onOpenChange={setAsking}
+      title="Leave without saving?"
+      consequence={`Your changes to ${what} are not saved.`}
+      cancelLabel="Keep editing"
+      confirmLabel="Leave without saving"
+      destructive
+      onConfirm={() => { setAsking(false); onBack(); }}
+    />
+  );
+  return { onClickCapture, dialog };
+}
+
 const fenceToPoint = (f: LiveLocation['fences'][number], i: number): GeoPoint => ({ id: `p${i}`, name: f.name, lat: String(f.lat), lng: String(f.lng), r: f.radiusM });
 
 /** TIM-31 on live data: the designed editor for one location's points, office network, Wi-Fi and phone binding. */
@@ -2235,6 +2315,7 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   const [wifi, setWifi] = useState(location.wifiNames.join(', '));
   const [mode, setMode] = useState<string>(location.rule.checkIn);
   const [bind, setBind] = useState(location.bindDevice);
+  const [bindTouched, setBindTouched] = useState(false);
   const [showPoints, setShowPoints] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
@@ -2242,7 +2323,6 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   // Field errors show after the first save, never while someone is still typing (founder rule).
   const [tried, setTried] = useState(false);
   const shown = (msg: string | null) => (tried ? msg : null);
-  const [rule, setRule] = useState(false);
   const [resetting, setResetting] = useState<TimeSetup['phones'][number] | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const cur = points.find((p) => p.id === sel) ?? points[0];
@@ -2255,6 +2335,9 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   const ipList = ips.split('\n').map((l) => l.trim()).filter(Boolean);
   const dirty = JSON.stringify(points) !== JSON.stringify(startPoints) || ipList.join('\n') !== location.ipRanges.join('\n') || wifiNames.join(',') !== location.wifiNames.join(',') || mode !== location.rule.checkIn || bind !== location.bindDevice;
   const phones = data.phones.filter((x) => x.locationId === location.id);
+  const back = useCrumbBack(dirty, onBack, location.name);
+  const a = location.address ?? {};
+  const where = [...(a.lines ?? []), [a.city, a.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
   const centre = (() => {
     const first = points.find((p) => !latError(p.lat) && !lngError(p.lng));
     return first ? { lat: Number(first.lat), lng: Number(first.lng) } : { lat: 0, lng: 0 };
@@ -2318,7 +2401,8 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
               </span>
               <span className="yx-tim-row">
                 {tried && pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
-                {points.length > 1 && <Button size="sm" disabled={p.id === cur?.id} onClick={() => setSel(p.id)}>{p.id === cur?.id ? 'Editing' : 'Edit'}</Button>}
+                {/* Same two buttons on every row so Remove lines up (R9). */}
+                <Button size="sm" disabled={p.id === cur?.id} onClick={() => setSel(p.id)}>{p.id === cur?.id ? 'Editing' : 'Edit'}</Button>
                 <Button size="sm" aria-label={`Remove ${p.name.trim() || 'this point'}`} onClick={() => { setPoints((ps) => ps.filter((x) => x.id !== p.id)); if (p.id === cur?.id) setSel(points.find((x) => x.id !== p.id)?.id ?? ''); }}>Remove</Button>
               </span>
             </li>
@@ -2356,17 +2440,15 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
   });
   return (
     <TimePage active="Locations & geofences">
-      <PageHeader
-        title={location.name}
-        description={`${STATE_NAMES[location.state] ?? location.state} · ${location.rule.shiftName} ${clock(location.rule.shiftStart)} to ${clock(location.rule.shiftEnd)}`}
-        status={field ? <Badge tone="info">Field check-in</Badge> : <Badge tone="success">Restricted check-in</Badge>}
-        actions={
-          <div className="yx-tim-row">
-            <Button onClick={onBack}>Back to locations</Button>
-            <Button onClick={() => setRule(true)}>Shift and weekly offs</Button>
-          </div>
-        }
-      />
+      <div onClickCapture={back.onClickCapture}>
+        <PageHeader
+          breadcrumbs={<Breadcrumbs items={[{ label: 'Locations', href: '#locations' }, { label: location.name }]} />}
+          title={location.name}
+          description={[where, STATE_NAMES[location.state] ?? location.state, plural(location.people, 'person', 'people')].filter(Boolean).join(' · ')}
+          status={field ? <Badge tone="info">Field check-in</Badge> : <Badge tone="success">Restricted check-in</Badge>}
+        />
+      </div>
+      {back.dialog}
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       <div className="yx-tim-editor">
         {fences.length ? (
@@ -2387,10 +2469,10 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
             <RadioGroup
               aria-label="Check-in mode"
               value={mode}
-              onChange={setMode}
+              onChange={(v) => { setMode(v); if (!bindTouched) setBind(v === 'restricted'); }}
               options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]}
             />
-            <Switch label="Bind check-in to one phone" description="Each person checks in from the first phone they use here, until HR resets it" checked={bind} onChange={setBind} />
+            <Switch label="Bind check-in to one phone" description="On by default for restricted check-in" checked={bind} onChange={(v) => { setBind(v); setBindTouched(true); }} />
             {phones.length > 0 && (
               <ul className="yx-tim-list" aria-label="Phones bound here">
                 {phones.map((x) => (
@@ -2443,7 +2525,6 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
           ).finally(() => setBusy(false));
         }}
       />
-      {rule && <LiveRuleDrawer today={data.today} location={location} onClose={() => setRule(false)} onSave={live.onSetRule} />}
     </TimePage>
   );
 }

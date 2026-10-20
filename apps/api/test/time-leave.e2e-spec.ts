@@ -92,7 +92,7 @@ describe('Time and leave batch 1', () => {
       await tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, async (tx) => {
         const o = { organizationId: org[k].id };
         ids[`entity${k}`] = (await tx.legalEntity.create({ data: { ...o, name: `Time Foods ${k}`, shortName: `TF${k}-${run}`, isDefault: true } })).id;
-        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } })).id;
+        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata', bindDevice: false } })).id;
         await tx.locationFence.create({ data: { ...o, locationId: ids[`loc${k}`], name: 'Main point', lat: 12.9716, lng: 77.5946, radiusM: 150 } });
         const deptId = randomUUID();
         ids[`dept${k}`] = (await tx.department.create({ data: { ...o, id: deptId, name: 'Ops', code: 'OPS', path: `/${deptId}/` } })).id;
@@ -451,6 +451,12 @@ describe('Time and leave batch 1', () => {
       });
       await expect(inA((tx) => tx.leaveTypeVersion.updateMany({ where: { organizationId: org.A.id, leaveTypeId: old }, data: { note: 'x' } }))).rejects.toThrow(/YX_VERSION_IN_FORCE/);
       await expect(inA((tx) => tx.leaveTypeVersion.deleteMany({ where: { organizationId: org.A.id, leaveTypeId: ids.CL } }))).rejects.toThrow();
+      // The live example: only the set-up key, only this company; balances only with leave.view for the whole company.
+      await api('hrExec', 'get', `/time/setup/types/${ids.CL}/example`).expect(403);
+      await api('adminB', 'get', `/time/setup/types/${ids.CL}/example`).expect(404);
+      const example = (await api('hrAdmin', 'get', `/time/setup/types/${ids.CL}/example`).expect(200)).body.people as { employeeId: string; policy: { name: string } }[];
+      expect(example.length).toBeGreaterThan(0);
+      expect(example.every((x) => x.policy.name === 'Karnataka staff')).toBe(true);
       // The other company never sees the versions.
       expect((await api('adminB', 'get', '/time/setup').expect(200)).body.types).toEqual([]);
     });

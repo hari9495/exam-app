@@ -86,7 +86,7 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       await tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, async (tx) => {
         const o = { organizationId: org[k].id };
         ids[`entity${k}`] = (await tx.legalEntity.create({ data: { ...o, name: `Small Foods ${k}`, shortName: `SF${k}-${run}`, isDefault: true } })).id;
-        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } })).id;
+        ids[`loc${k}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`entity${k}`], name: 'Bengaluru', code: 'BLR', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata', bindDevice: false } })).id;
         await tx.locationFence.create({ data: { ...o, locationId: ids[`loc${k}`], name: 'Main point', lat: 12.9716, lng: 77.5946, radiusM: 150 } });
         const deptId = randomUUID();
         ids[`dept${k}`] = (await tx.department.create({ data: { ...o, id: deptId, name: 'Ops', code: 'OPS', path: `/${deptId}/` } })).id;

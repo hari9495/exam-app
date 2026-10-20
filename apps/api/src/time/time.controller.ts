@@ -238,6 +238,12 @@ export class TimeController {
     return this.setup.removeHoliday(ctx, this.user(req), id);
   }
 
+  @Get('setup/types/:id/example')
+  @RequirePermissions('leave.settings.manage')
+  typeExample(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.typeExample(ctx, this.user(req), id);
+  }
+
   @Put('setup/locations/:id/checkin')
   @RequirePermissions('leave.settings.manage')
   setCheckIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LocationCheckInDto) {

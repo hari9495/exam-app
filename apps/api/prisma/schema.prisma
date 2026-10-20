@@ -2313,7 +2313,7 @@ model Location {
   minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
   ipRanges       String[]  @default([]) @map("ip_ranges")
   wifiNames      String[]  @default([]) @map("wifi_names")
-  bindDevice     Boolean   @default(false) @map("bind_device")
+  bindDevice     Boolean   @default(true) @map("bind_device")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
