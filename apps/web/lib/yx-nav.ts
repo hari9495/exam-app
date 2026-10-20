@@ -135,7 +135,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('attendance.view'), L('registers', 'Reports', '/yx/time/registers'), L('payroll-feed', 'Payroll feed', '/yx/time/payroll-feed')),
       ]),
       ...sec('My time', when(self, L('my-attendance', 'My attendance', '/yx/time/attendance'), L('my-leave', 'My leave', '/yx/time/leave'), L('my-shifts', 'My shifts', '/yx/time/shifts'), L('my-timesheet', 'My timesheet', '/yx/time/timesheet'), L('my-overtime', 'My overtime', '/yx/time/overtime'))),
-      ...sec('Time settings', when(has('leave.settings.manage'), L('shifts-setup', 'Shifts & patterns', '/yx/time/shifts-setup'), L('time-setup', 'Leave types & policies', '/yx/time/setup'))),
+      ...sec('Time settings', when(has('leave.settings.manage'), L('shifts-setup', 'Shifts & patterns', '/yx/time/shifts-setup'), L('time-setup', 'Leave types & policies', '/yx/time/setup'), L('holidays', 'Holiday calendars', '/yx/time/holidays'), L('time-locations', 'Locations', '/yx/time/locations'), L('year-end', 'Leave year-end', '/yx/time/year-end'))),
     ],
   };
 

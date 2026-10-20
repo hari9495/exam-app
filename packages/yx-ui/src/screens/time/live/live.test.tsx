@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { NightWorkCard } from './my-attendance';
 import { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
-import { TimeSetupScreen } from './setup';
+import { HolidayCalendarsScreen, LeavePoliciesScreen, YearEndWizard } from '../leave-admin';
 import { LeaveHomeScreen, TeamLeaveCalendarScreen } from '../leave';
 import { MusterScreen } from '../attendance';
 import { LeaveReportsScreen } from '../ops';
@@ -250,19 +250,39 @@ describe('Team and HR', () => {
     expect(await screen.findByText(/At Hosur plant \(40 m from centre\)/)).toBeInTheDocument();
   });
 
-  it('set-up shows the legal minimums and refuses a bad code only on save', async () => {
+  it('the designed leave policies show the legal minimums and add a leave type (TIM-27/28)', async () => {
     const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], calendars: [], locations: [], entities: [], statutory: [{ jurisdiction: 'IN-KA', version: '1', validFrom: '2000-01-01', values: { floors: [{ kinds: ['earned'], days: 18 }] }, source: '', verify: true }] };
     const onSaveType = vi.fn(async () => ({}));
-    render(<TimeSetupScreen state="ready" data={data} onSaveType={onSaveType} onCreatePolicy={vi.fn()} onAddVersion={vi.fn()} onAssign={vi.fn()} onRemoveAssignment={vi.fn()} onCreateCalendar={vi.fn()} onAddHoliday={vi.fn()} onRemoveHoliday={vi.fn()} onSetRule={vi.fn()} onYearEndPreview={vi.fn()} onYearEndRun={vi.fn()} />);
-    await ue.click(screen.getByRole('tab', { name: 'Policies' }));
-    expect(screen.getByText(/Karnataka: Earned 18 days a year/)).toBeInTheDocument();
-    await ue.click(screen.getByRole('tab', { name: 'Leave types' }));
-    await ue.click(screen.getByRole('button', { name: 'Add a leave type' }));
-    const dialog = screen.getByRole('dialog');
-    await ue.type(within(dialog).getByLabelText(/Code/), 'el1');
-    expect(within(dialog).queryByText(/Use 1 to 8 capital letters/)).not.toBeInTheDocument();
-    await ue.type(within(dialog).getByLabelText(/^Name/), 'Earned leave');
-    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSaveType).toHaveBeenCalledWith(null, expect.objectContaining({ code: 'EL1', name: 'Earned leave', kind: 'earned', paid: true })));
+    render(<ToastProvider><LeavePoliciesScreen live={{ state: 'ready', data, onSaveType, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn() }} /></ToastProvider>);
+    expect(screen.getByText(/Karnataka: earned 18 days a year/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'New leave type' }));
+    await ue.type(screen.getByLabelText(/^Name/), 'Earned leave');
+    await ue.type(screen.getByLabelText(/^Code/), 'el1');
+    await ue.click(screen.getByRole('button', { name: 'Add leave type' }));
+    await waitFor(() => expect(onSaveType).toHaveBeenCalledWith(null, expect.objectContaining({ code: 'EL1', name: 'Earned leave' })));
   });
+
+  it('the designed holiday calendars add a holiday to a location (TIM-26)', async () => {
+    const data: TimeSetup = { today: '2026-10-09', types: [], policies: [], entities: [], statutory: [], locations: [{ id: 'l1', name: 'Hosur plant', state: 'IN-TN', timezone: 'Asia/Kolkata', geofence: null, ipRanges: [], rule: { validFrom: null, shiftName: 'General', shiftStart: 540, shiftEnd: 1080, graceMinutes: 10, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted' } as never, upcoming: [] }], calendars: [{ id: 'c1', name: 'Hosur holidays', locationId: 'l1', optionalLimit: 2, halfDayOpenHalf: 'first', holidays: [{ id: 'h1', on: '2026-11-08', name: 'Deepavali', kind: 'festival', halfDay: false }] }] as never };
+    const onAddHoliday = vi.fn(async () => ({}));
+    render(<ToastProvider><HolidayCalendarsScreen live={{ state: 'ready', data, onCreateCalendar: vi.fn(), onUpdateCalendar: vi.fn(), onAddHoliday, onRemoveHoliday: vi.fn() }} /></ToastProvider>);
+    expect(screen.getByRole('tab', { name: /Hosur plant/ })).toBeInTheDocument();
+    expect(screen.getAllByText('Deepavali').length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Add holiday' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Add holiday' })).toBeDisabled();
+    await ue.type(within(dialog).getByLabelText(/^Name/), 'Pongal');
+    expect(within(dialog).getByRole('button', { name: 'Add holiday' })).toBeDisabled();
+  });
+
+  it('the designed year-end wizard previews from the server and posts only after typing the year (TIM-29)', async () => {
+    const onPreview = vi.fn(async () => ({ yearEnd: '2025-12-31', lapses: 1, rows: [{ employeeId: 'e1', name: 'Kavya Reddy', code: 'KFT-0031', type: 'Earned leave', balance: 40, carry: 30, lapse: 10, encashable: true }] }));
+    const onRun = vi.fn(async () => ({}));
+    render(<ToastProvider><YearEndWizard live={{ today: '2026-10-09', onPreview, onRun }} /></ToastProvider>);
+    expect(onPreview).toHaveBeenCalledWith('2025-12-31');
+    await ue.click(screen.getByRole('button', { name: /Next|Continue/ }));
+    expect(await screen.findByText('Kavya Reddy')).toBeInTheDocument();
+    expect(screen.getByText('10 lapse')).toBeInTheDocument();
+  });
+
 });

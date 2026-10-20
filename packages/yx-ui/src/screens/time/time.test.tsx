@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { composeStories } from '@storybook/react-vite';
+import { ToastProvider } from '../../components/notify';
 import {
   canReopen,
   countLeaveDays,
@@ -254,7 +255,7 @@ describe('Time stories render', () => {
     for (const [name, S] of Object.entries(composeStories(mod))) {
       const Story = S as unknown as () => JSX.Element;
       it(`${file} · ${name}`, () => {
-        const { container, unmount } = render(<Story />);
+        const { container, unmount } = render(<ToastProvider><Story /></ToastProvider>);
         expect(container.ownerDocument.body.textContent?.length).toBeGreaterThan(0);
         unmount();
       });

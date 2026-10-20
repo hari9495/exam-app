@@ -8,7 +8,7 @@ export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
 export { TeamLeaveCalendarScreen, type LiveLeaveCalendar } from '../leave';
 // The designed screens, made live (design audit): one version of each screen.
 export { MusterScreen, type LiveMuster } from '../attendance';
-export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
+export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, YearEndWizard, type LiveHolidayCalendars, type LiveLeavePolicies, type LiveLocations, type LiveYearEnd } from '../leave-admin';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
 export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { RosterScreen, type LiveRoster } from '../roster';
