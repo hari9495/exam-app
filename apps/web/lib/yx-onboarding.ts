@@ -1,4 +1,5 @@
-import { joinerCard, type BatchRow, type KanbanColumn, type ReadyRow } from '@yukthix/ui/frame';
+import { joinerCard, type BatchRow, type KanbanColumn, type ProbRow, type ReadyRow } from '@yukthix/ui/frame';
+import type { ProbationRow } from '@yukthix/ui/workforce';
 import type { Batch, Joiner, OwnerType, ReadyOffer } from '@yukthix/ui/lifecycle';
 
 // People › Onboarding board (PPL-11) from the live API: pure mapping, unit-tested. The stage follows the dates:
@@ -88,3 +89,27 @@ export function batchRows(batches: Batch[], joiners: Joiner[], entities: { value
     };
   });
 }
+
+const PROB_STATE: Record<ProbationRow['stage'], 'running' | 'review due' | 'overdue' | 'waiting'> = { running: 'running', extended: 'running', review_due: 'review due', overdue: 'overdue', awaiting_approval: 'waiting', confirmed: 'running' };
+/** Months a probation runs, start to planned end inclusive (the server checks the exact limit). */
+const monthsRun = (r: ProbationRow) => Math.round((Date.parse(`${r.plannedEndOn}T00:00:00Z`) - Date.parse(`${r.startOn}T00:00:00Z`) + 86_400_000) / 86_400_000 / 30.44);
+
+/** Open probations as the designed queue's rows (recently confirmed ones are left out). */
+export function probationRows(rows: ProbationRow[]): ProbRow[] {
+  return rows
+    .filter((r) => r.stage !== 'confirmed')
+    .map((r) => ({
+      id: r.employeeId,
+      name: r.name,
+      role: r.designation ?? '',
+      manager: r.manager ?? '',
+      start: day(r.startOn),
+      end: day(r.plannedEndOn),
+      extended: r.extendedMonths,
+      reviewDone: false,
+      live: { stage: r.stage === 'overdue' && r.escalatedOn ? 'escalated' : PROB_STATE[r.stage], reviewDueOn: day(r.reviewDueOn), canReview: Boolean(r.canReview), maxMonthsLeft: Math.max(0, r.maxTotalMonths - monthsRun(r)) },
+    }));
+}
+
+/** The design's rating words as the review's 1 to 5 score. */
+export const RATING_SCORE: Record<string, number> = { Below: 2, Meets: 3, Exceeds: 4 };

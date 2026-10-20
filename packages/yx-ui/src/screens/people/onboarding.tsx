@@ -939,19 +939,50 @@ export function PreboardingActionSheet({ action: initial, rehire = false, reason
 /* ================================================================== PPL-16 probation queue */
 
 type Prob = (typeof PROBATIONS)[number];
+type ProbState = 'running' | 'review due' | 'overdue' | 'escalated' | 'waiting';
+
+/** A queue row: the sample, or a live probation with where it stands and what the viewer may do. */
+export type ProbRow = Prob & { live?: { stage: ProbState; reviewDueOn: Date; canReview: boolean; maxMonthsLeft: number } };
+
+/** What the decision form holds (live: sent to the server). */
+export interface ProbationDraft {
+  comments: string;
+  improve: string;
+  rating: string | null;
+  from: Date | null;
+}
+
+/** The live app's queue (design audit step 3). Managers review their direct reports; HR confirms or extends. */
+export interface LiveProbation {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  /** employee.change.manage: confirm (a change someone else approves) or extend. */
+  canDecide: boolean;
+  onReview: (id: string, outcome: ProbationOutcome, months: number | null, draft: ProbationDraft) => Promise<void>;
+  onConfirm: (id: string, from: Date, reason: string) => Promise<void>;
+  onExtend: (id: string, months: number, reason: string) => Promise<void>;
+  /** A confirmation waiting for approval opens the change list. */
+  onOpenApproval: () => void;
+}
+
+const EMPTY_DRAFT: ProbationDraft = { comments: '', improve: '', rating: null, from: null };
 
 // PPL-16
-export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: { rows: Prob[]; today: Date; persona?: Persona; defaultOpenId?: string }) {
+export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, live }: { rows: ProbRow[]; today: Date; persona?: Persona; defaultOpenId?: string; live?: LiveProbation }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const [outcome, setOutcome] = useState<ProbationOutcome>('confirm');
   const [months, setMonths] = useState<number | null>(null);
+  const [draft, setDraft] = useState<ProbationDraft>(EMPTY_DRAFT);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const narrow = useNarrow();
   const mgr = persona === 'mgr';
-  const withState = rows.map((r) => ({ ...r, state: probationState(r.end, today, 15, r.reviewDone) }));
+  const withState = rows.map((r) => ({ ...r, state: (r.live?.stage ?? probationState(r.end, today, 15, r.reviewDone)) as ProbState }));
   type Row = (typeof withState)[number];
   const open = withState.find((r) => r.id === openId);
   const first = open?.name.split(' ')[0] ?? '';
-  const stateText = (r: Row) => (r.state === 'running' ? 'Not due' : r.state === 'review due' ? 'Review due' : r.state === 'overdue' ? 'Overdue' : 'With HR');
+  const stateText = (r: Row) => (r.state === 'running' ? 'Not due' : r.state === 'review due' ? 'Review due' : r.state === 'overdue' ? 'Overdue' : r.state === 'waiting' ? 'Waiting for approval' : 'With HR');
   const cols: TableColumn<Row>[] = [
     { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.role }), width: 215 },
     ...(mgr ? [] : [{ key: 'manager', header: 'Manager', value: (r: Row) => r.manager, width: 187, optional: true } as TableColumn<Row>]),
@@ -961,16 +992,26 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
       header: 'Review',
       type: 'status',
       value: stateText,
-      statusTone: (v) => (v === 'Not due' ? 'neutral' : v === 'Review due' ? 'warning' : 'danger'),
+      statusTone: (v) => (v === 'Not due' || v === 'Waiting for approval' ? 'neutral' : v === 'Review due' ? 'warning' : 'danger'),
       width: 133,
     },
   ];
   const openRow = (r: Row) => {
     setOutcome('confirm');
     setMonths(null);
+    setDraft({ ...EMPTY_DRAFT, from: addDays(r.end, 1) });
+    setTried(false);
+    setFailed(null);
     setOpenId(r.id);
   };
+  // Live: the manager reviews their direct reports; HR decides any open probation. "Remind manager" has no live action yet.
+  const mayAct = (r: Row) => (live ? (mgr ? Boolean(r.live?.canReview) : live.canDecide || Boolean(r.live?.canReview)) : true);
   const action = (r: Row) => {
+    if (live) {
+      if (r.state === 'waiting') return <Button size="sm" variant="review" onClick={live.onOpenApproval}>Review</Button>;
+      if (!mayAct(r)) return null;
+      return <Button size="sm" variant="review" onClick={() => openRow(r)}>{r.live?.canReview ? 'Review' : 'Decide'}</Button>;
+    }
     if (r.state === 'running') return null;
     if (mgr) return <Button size="sm" variant="review" onClick={() => openRow(r)}>Review</Button>;
     if (r.state === 'escalated') return <Button size="sm" variant="review" onClick={() => openRow(r)}>Decide</Button>;
@@ -979,6 +1020,35 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
   const escalated = withState.filter((r) => r.state === 'escalated');
   const empty = <EmptyState title="No one is on probation" description="New joiners appear here with their probation end date." />;
   const sorted = [...withState].sort((a, b) => a.end.getTime() - b.end.getTime());
+  const outcomes: ProbationOutcome[] = live && open && !open.live?.canReview ? ['confirm', 'extend'] : ['confirm', 'extend', 'terminate'];
+  const hrDecides = Boolean(live && open && !open.live?.canReview);
+  const problem =
+    !live || !open
+      ? null
+      : outcome === 'extend' && (!months || months < 1 || months > (open.live?.maxMonthsLeft ?? 0))
+        ? 'months'
+        : hrDecides && outcome === 'confirm' && !draft.from
+          ? 'from'
+          : draft.comments.trim().length < 3
+            ? 'comments'
+            : null;
+  const submit = async () => {
+    if (!live || !open) return;
+    setTried(true);
+    if (problem) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      if (!hrDecides) await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
+      else if (outcome === 'confirm') await live.onConfirm(open.id, draft.from!, draft.comments.trim());
+      else await live.onExtend(open.id, months!, [draft.comments.trim(), draft.improve.trim() && `To improve: ${draft.improve.trim()}`].filter(Boolean).join('\n'));
+      setOpenId(null);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <PeopleFrame active="Probation" persona={persona}>
       <PageHeader title="Probation reviews" description="Managers get the review 15 days before probation ends. Nothing confirms on its own; a missed review goes to HR on the end date." />
@@ -986,14 +1056,18 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
         <InlineAlert
           tone="danger"
           title={`${plural(escalated.length, 'review')} went to HR`}
-          actions={escalated.length === 1 ? <Button size="sm" variant="review" onClick={() => openRow(escalated[0])}>Decide</Button> : undefined}
+          actions={escalated.length === 1 && mayAct(escalated[0]) ? <Button size="sm" variant="review" onClick={() => openRow(escalated[0])}>Decide</Button> : undefined}
         >
           {escalated.length === 1
             ? `${escalated[0].name}'s probation ended on ${formatDate(escalated[0].end)} without a review. Confirm, extend or end it now.`
             : `${escalated.map((r) => r.name).join(', ')} passed their end date without a review. Confirm, extend or end each one now.`}
         </InlineAlert>
       )}
-      {narrow ? (
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load probations" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading probations" />
+      ) : narrow ? (
         rows.length === 0 ? (
           empty
         ) : (
@@ -1001,7 +1075,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
             {sorted.map((r) => (
               <li key={r.id} className="yx-ppl__rcard">
                 <span className="yx-ppl__rcard-name">{r.name}</span>
-                <span className="yx-ppl__sub">{mgr ? r.role : `${r.role} · manager ${r.manager}`}</span>
+                <span className="yx-ppl__sub">{mgr || !r.manager ? r.role : `${r.role} · manager ${r.manager}`}</span>
                 <EndsCell row={r} today={today} />
                 <StatusBadge status={stateText(r)} />
                 {action(r)}
@@ -1016,7 +1090,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
           rows={withState}
           getRowId={(r) => r.id}
           defaultSort={{ key: 'end', dir: 'asc' }}
-          onRowClick={openRow}
+          onRowClick={(r) => (live && r.state === 'waiting' ? live.onOpenApproval() : openRow(r))}
           activeRowId={openId}
           rowButtons={action}
           empty={empty}
@@ -1027,10 +1101,17 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
         onOpenChange={(o) => !o && setOpenId(null)}
         size="lg"
         title={`Probation review: ${open?.name ?? ''}`}
-        subtitle={open ? `${open.role} · probation ${formatDate(open.start)} to ${formatDate(open.end)}` : undefined}
+        subtitle={open ? `${open.role ? `${open.role} · ` : ''}probation ${formatDate(open.start)} to ${formatDate(open.end)}` : undefined}
         footer={
-          open?.state === 'running' ? (
+          open && (live ? !mayAct(open) : open.state === 'running') ? (
             <Button onClick={() => setOpenId(null)}>Close</Button>
+          ) : live ? (
+            <>
+              <Button onClick={() => setOpenId(null)}>Cancel</Button>
+              <Button variant={outcome === 'terminate' ? 'danger' : 'primary'} loading={busy} onClick={() => void submit()}>
+                {outcome === 'confirm' ? (hrDecides ? 'Send for approval' : `Confirm ${first}`) : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
+              </Button>
+            </>
           ) : (
             <>
               <Button onClick={() => setOpenId(null)}>Save draft</Button>
@@ -1041,15 +1122,36 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId }: {
       >
         {open && (
           <div className="yx-ppl__stack yx-ppl__drawer-body">
+            {failed && <InlineAlert tone="danger" title={failed} />}
             {open.state === 'escalated' && (
               <InlineAlert tone="danger">
-                Probation ended on {formatDate(open.end)} and {open.manager} didn't review it, so HR decides. {open.manager} is told the outcome.
+                Probation ended on {formatDate(open.end)} and {open.manager || 'the manager'} didn&apos;t review it, so HR decides.{open.manager ? ` ${open.manager} is told the outcome.` : ''}
               </InlineAlert>
             )}
-            {open.state === 'running' ? (
-              <InlineAlert tone="info">The review opens on {formatDate(addDays(open.end, -15))}. {open.manager} gets the form then.</InlineAlert>
+            {(live ? !mayAct(open) : open.state === 'running') ? (
+              <InlineAlert tone="info">
+                The review opens on {formatDate(open.live?.reviewDueOn ?? addDays(open.end, -15))}. {open.manager || 'The manager'} gets the form then.
+              </InlineAlert>
             ) : (
-              <ProbationFields outcome={outcome} setOutcome={setOutcome} months={months} setMonths={setMonths} first={first} end={open.end} extended={open.extended} />
+              <ProbationFields
+                outcome={outcome}
+                setOutcome={setOutcome}
+                months={months}
+                setMonths={setMonths}
+                first={first}
+                end={open.end}
+                extended={open.extended}
+                {...(live
+                  ? {
+                      outcomes,
+                      draft,
+                      setDraft,
+                      maxMonths: open.live?.maxMonthsLeft ?? 0,
+                      confirmFrom: hrDecides,
+                      errors: tried ? problem : null,
+                    }
+                  : {})}
+              />
             )}
           </div>
         )}
@@ -1080,46 +1182,86 @@ const ROHIT = { name: 'Rohit Menon', first: 'Rohit', role: 'QA Engineer', dept: 
 const ROHIT_COMMENT = 'Owns the regression suite for the label printer; bug reports are clearer since the day-30 check-in.';
 const addMonths = (date: Date, n: number) => new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
 
-function ProbationFields({ outcome, setOutcome, months, setMonths, first, end, extended = 0, comment }: { outcome: ProbationOutcome; setOutcome: (o: ProbationOutcome) => void; months: number | null; setMonths: (m: number | null) => void; first: string; end: Date; extended?: number; comment?: string }) {
+const OUTCOME_TEXT: Record<ProbationOutcome, { label: string; description: (first: string, live: boolean, confirmFrom: boolean) => string }> = {
+  confirm: { label: 'Confirm', description: (_f, live, hr) => (live ? (hr ? 'Sends the confirmation for approval by someone else. They stay on probation until it is approved.' : 'HR approves the confirmation; until then they stay on probation.') : 'Sends a confirmation letter. Notice becomes 60 days and earned leave starts.') },
+  extend: { label: 'Extend', description: () => 'Up to 12 months of probation in total (company policy).' },
+  terminate: { label: 'Recommend ending employment', description: (first) => `HR reviews it and decides. Nothing is shared with ${first} until then.` },
+};
+
+function ProbationFields({
+  outcome,
+  setOutcome,
+  months,
+  setMonths,
+  first,
+  end,
+  extended = 0,
+  comment,
+  outcomes = ['confirm', 'extend', 'terminate'],
+  draft,
+  setDraft,
+  maxMonths,
+  confirmFrom = false,
+  errors = null,
+}: {
+  outcome: ProbationOutcome;
+  setOutcome: (o: ProbationOutcome) => void;
+  months: number | null;
+  setMonths: (m: number | null) => void;
+  first: string;
+  end: Date;
+  extended?: number;
+  comment?: string;
+  /** Live: the outcomes the viewer may choose, the controlled form, the months left and who decides. */
+  outcomes?: ProbationOutcome[];
+  draft?: ProbationDraft;
+  setDraft?: (d: ProbationDraft) => void;
+  maxMonths?: number;
+  confirmFrom?: boolean;
+  errors?: 'months' | 'from' | 'comments' | null;
+}) {
   const [rating, setRating] = useState<string | null>(null);
   const [raised, setRaised] = useState<string | null>(null);
   const [raisedOn, setRaisedOn] = useState<Date | null>(null);
-  const ok = outcome !== 'extend' || !months || extensionAllowed(6, extended, months, 12);
+  const live = Boolean(draft && setDraft);
+  const set = (patch: Partial<ProbationDraft>) => draft && setDraft?.({ ...draft, ...patch });
+  const ok = live ? errors !== 'months' : outcome !== 'extend' || !months || extensionAllowed(6, extended, months, 12);
   return (
     <div className="yx-ppl__form">
       <FormField label="Outcome" required>
         <RadioGroup
           value={outcome}
           onChange={(v) => setOutcome(v as ProbationOutcome)}
-          options={[
-            { value: 'confirm', label: 'Confirm', description: 'Sends a confirmation letter. Notice becomes 60 days and earned leave starts.' },
-            { value: 'extend', label: 'Extend', description: 'Up to 12 months of probation in total (company policy).' },
-            { value: 'terminate', label: 'Recommend ending employment', description: `HR reviews it and decides. Nothing is shared with ${first} until then.` },
-          ]}
+          options={outcomes.map((o) => ({ value: o, label: OUTCOME_TEXT[o].label, description: o === 'extend' && live ? `Up to ${plural(maxMonths ?? 0, 'more month')} (company policy).` : OUTCOME_TEXT[o].description(first, live, confirmFrom) }))}
         />
       </FormField>
+      {outcome === 'confirm' && confirmFrom && (
+        <FormField label="Confirmed from" required helper="Usually the day after the probation ends." error={errors === 'from' ? 'Choose the day the confirmation starts.' : null}>
+          <DatePicker value={draft?.from ?? null} onChange={(v) => set({ from: v })} />
+        </FormField>
+      )}
       {outcome === 'extend' && (
         <>
           <FormField
             label="Extend by (months)"
             required
-            error={ok ? null : 'Extend by 1 to 6 months. Probation can be 12 months at most in total.'}
+            error={ok ? null : live ? `Extend by 1 to ${maxMonths} ${maxMonths === 1 ? 'month' : 'months'}. Probation has a company maximum in total.` : 'Extend by 1 to 6 months. Probation can be 12 months at most in total.'}
             helper={ok && months ? `New end date: ${formatDate(addMonths(end, months))}` : undefined}
           >
             <NumberField value={months} onChange={setMonths} />
           </FormField>
-          <FormField label="What needs to improve" required helper={`${first} sees this, so they know what to work on.`}>
-            <TextArea rows={3} />
+          <FormField label="What needs to improve" required={!live} optional={live} helper={`${first} sees this, so they know what to work on.`}>
+            {live ? <TextArea rows={3} value={draft!.improve} onChange={(v) => set({ improve: v })} maxLength={1000} /> : <TextArea rows={3} />}
           </FormField>
         </>
       )}
       {outcome === 'terminate' && (
         <>
-          <FormField label={`Did you raise these concerns with ${first} earlier?`} required>
+          <FormField label={`Did you raise these concerns with ${first} earlier?`} required={!live} optional={live}>
             <RadioGroup value={raised ?? undefined} onChange={setRaised} orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
           </FormField>
           {raised === 'yes' && (
-            <FormField label="When" required>
+            <FormField label="When" required={!live} optional={live}>
               <DatePicker value={raisedOn} onChange={setRaisedOn} />
             </FormField>
           )}
@@ -1130,11 +1272,13 @@ function ProbationFields({ outcome, setOutcome, months, setMonths, first, end, e
           )}
         </>
       )}
-      <FormField label="Rating" optional>
-        <Select options={['Exceeds', 'Meets', 'Below'].map((x) => ({ value: x, label: x }))} value={rating} onChange={setRating} placeholder="Choose a rating" />
-      </FormField>
-      <FormField label="Comments" required helper={`Shared with HR. ${first} sees the outcome and the letter.`}>
-        <TextArea rows={3} defaultValue={comment} />
+      {!confirmFrom && (
+        <FormField label="Rating" optional>
+          <Select options={['Exceeds', 'Meets', 'Below'].map((x) => ({ value: x, label: x }))} value={live ? draft!.rating : rating} onChange={live ? (v) => set({ rating: v }) : setRating} placeholder="Choose a rating" />
+        </FormField>
+      )}
+      <FormField label={confirmFrom ? 'Reason' : 'Comments'} required helper={confirmFrom ? 'Kept on the record.' : `Shared with HR. ${first} sees the outcome and the letter.`} error={errors === 'comments' ? (confirmFrom ? 'Enter the reason.' : 'Enter your comments.') : null}>
+        {live ? <TextArea rows={3} value={draft!.comments} onChange={(v) => set({ comments: v })} maxLength={2000} /> : <TextArea rows={3} defaultValue={comment} />}
       </FormField>
     </div>
   );
