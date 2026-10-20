@@ -558,10 +558,12 @@ export function ProfileMenu({
   defaultOpen,
   links = [],
 }: ProfileMenuProps) {
+  // The menu hands focus back to the avatar when it closes; that focus must not pop the tooltip up (founder AF-08).
+  const [quiet, setQuiet] = useState(false);
   return (
-    <Menu defaultOpen={defaultOpen} modal={false}>
-      <Tooltip content="Your account">
-        <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`}>
+    <Menu defaultOpen={defaultOpen} modal={false} onOpenChange={(o) => !o && setQuiet(true)}>
+      <Tooltip content="Your account" open={quiet ? false : undefined}>
+        <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`} onPointerLeave={() => setQuiet(false)} onBlur={() => setQuiet(false)}>
           <Avatar name={name} src={photoUrl} size={32} />
         </MenuTrigger>
       </Tooltip>
@@ -675,7 +677,11 @@ export function CommandPalette({
   const [recentCleared, setRecentCleared] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!open) setQ('');
+    if (!open) {
+      setQ('');
+      // The host has cleared its list by now; items opened later must show again next time.
+      setRecentCleared(false);
+    }
   }, [open]);
 
   // Prefix scopes: only when groups declare them (otherwise the text is searched as typed).

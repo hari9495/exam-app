@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { Camera, Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
@@ -91,11 +91,17 @@ export interface ExpensesHomeScreenProps {
   /** E4: trips and advances live on their own pages. */
   onTrips?: () => void;
   onAdvances?: () => void;
+  /** Opens the new-claim sheet at once (the "New expense claim" action in Ctrl K, N E). */
+  startNew?: boolean;
 }
 
 export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
   const [tab, setTab] = useState<'mine' | 'approvals' | 'review'>('mine');
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(p.startNew));
+  // Asked again while already on this page (Ctrl K, N E): open the sheet then too, not only on first load.
+  useEffect(() => {
+    if (p.startNew) setCreating(true);
+  }, [p.startNew]);
   const [title, setTitle] = useState('');
   const h = p.home;
   const rows = tab === 'mine' ? (h?.claims ?? []) : tab === 'approvals' ? (p.approvals ?? []) : (p.review ?? []);
@@ -369,7 +375,7 @@ export function ClaimScreen(p: ClaimScreenProps) {
                   Approve
                 </Button>
                 <Button onClick={() => setDeciding('send_back')}>Send back</Button>
-                <Button variant="danger" onClick={() => setDeciding('reject')}>
+                <Button onClick={() => setDeciding('reject')}>
                   Do not approve
                 </Button>
               </>

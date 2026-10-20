@@ -35,6 +35,10 @@ export interface MyLeaveScreenProps {
 
 export function MyLeaveScreen(p: MyLeaveScreenProps) {
   const [applying, setApplying] = useState(Boolean(p.startApplying));
+  // Asked again while already on this page (Ctrl K, N L): open the sheet then too, not only on first load.
+  useEffect(() => {
+    if (p.startApplying) setApplying(true);
+  }, [p.startApplying]);
   const [cancelling, setCancelling] = useState<LeaveRequestRow | null>(null);
   const [tab, setTab] = useState('requests');
   const d = p.data;

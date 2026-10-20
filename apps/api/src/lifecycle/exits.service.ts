@@ -681,13 +681,17 @@ export class ExitsService implements OnModuleInit {
   }
 
   private async tellClearanceOwners(ctx: CompanyContext, exitCaseId: string) {
-    const items = await this.tenantPrisma.forTenant(ctx, (tx) => tx.clearanceItem.findMany({ where: { organizationId: ctx.organizationId, exitCaseId, status: 'open' }, select: { ownerUserId: true, ownerGroupId: true } }));
+    const { items, who } = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const k = await tx.exitCase.findFirst({ where: { organizationId: ctx.organizationId, id: exitCaseId }, select: { personId: true } });
+      const p = k && (await tx.person.findFirst({ where: { organizationId: ctx.organizationId, id: k.personId }, select: { givenName: true, familyName: true, preferredName: true } }));
+      return { items: await tx.clearanceItem.findMany({ where: { organizationId: ctx.organizationId, exitCaseId, status: 'open' }, select: { ownerUserId: true, ownerGroupId: true } }), who: p ? displayName(p) : null };
+    });
     const groups = [...new Set(items.map((i) => i.ownerGroupId).filter((g): g is string => Boolean(g)))];
     const members = groups.length ? await this.tenantPrisma.forTenant(ctx, (tx) => tx.userGroupMember.findMany({ where: { organizationId: ctx.organizationId, groupId: { in: groups } }, select: { userId: true } })) : [];
     const users = [...new Set([...items.map((i) => i.ownerUserId), ...members.map((m) => m.userId)].filter((u): u is string => Boolean(u)))];
     if (users.length)
       await this.notifications
-        .notifySystem(ctx, users, 'exit.clearance.assigned', { entityType: 'exit_case', entityId: exitCaseId, contextText: 'A leaver needs your clearance sign-off', linkPath: '/yx/people/clearance' }, { subject: 'A clearance sign-off is waiting for you', html: '<p>A clearance item for someone leaving is waiting for you in YukthiX.</p>' })
+        .notifySystem(ctx, users, 'exit.clearance.assigned', { entityType: 'exit_case', entityId: exitCaseId, contextText: who ? `Clearance sign-off for ${who}, who is leaving` : 'A leaver needs your clearance sign-off', linkPath: '/yx/people/clearance' }, { subject: 'A clearance sign-off is waiting for you', html: '<p>A clearance item for someone leaving is waiting for you in YukthiX.</p>' })
         .catch(() => undefined);
   }
 

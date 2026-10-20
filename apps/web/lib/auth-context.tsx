@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, setUnauthorizedHandler, signInPath, STAFF_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
+import { clearAllRecent } from './yx-recent';
 
 interface AuthContextValue {
   accessToken: string | null;
@@ -88,6 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
+    // A token for a different person (someone signs in where another session was still alive):
+    // every cached answer, "who am I" first, belonged to the other person and must go.
+    const before = accessTokenRef.current ? decodeJwtPayload(accessTokenRef.current)?.sub : null;
+    const after = token ? decodeJwtPayload(token)?.sub : null;
+    if (before && after && before !== after) queryClient.clear();
+    accessTokenRef.current = token;
     setAccessToken(token);
     setSessionHint(token !== null);
     const payload = token ? decodeJwtPayload(token) : null;
@@ -263,6 +270,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
       window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
+    // Ctrl K's Recent list (pages and records this person opened) goes with them.
+    clearAllRecent();
     // Every cached answer belonged to the person who left (their permissions, two-step status, records):
     // the next person to sign in on this tab must not see or be routed by any of it.
     queryClient.clear();

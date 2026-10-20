@@ -70,6 +70,9 @@ describe('ProfileMenu links and CommandPalette server search', () => {
     expect(items.indexOf('My security')).toBe(items.indexOf('My profile') + 1);
     await userEvent.click(screen.getByRole('menuitem', { name: 'My security' }));
     expect(onSelect).toHaveBeenCalled();
+    // Focus goes back to the avatar; the "Your account" tooltip must not pop up and stay (founder AF-08).
+    await new Promise((r) => setTimeout(r, 700));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('tells the host what is typed and says it is searching until results come', async () => {

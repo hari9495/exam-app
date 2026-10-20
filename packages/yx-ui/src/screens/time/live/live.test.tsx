@@ -46,6 +46,13 @@ describe('Me › Leave', () => {
     expect(screen.getByRole('button', { name: 'Cancel leave' })).toBeInTheDocument();
   });
 
+  it('asked to apply while already on the page (Ctrl K, N L), the sheet opens', () => {
+    const { rerender } = render(<MyLeaveScreen {...leaveProps()} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerender(<MyLeaveScreen {...leaveProps()} startApplying />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   it('no errors while typing; the live summary comes from the server; sending calls the API', async () => {
     const p = leaveProps();
     render(<MyLeaveScreen {...p} />);
