@@ -2,7 +2,8 @@
 // leave balances, and HR set-up. Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
-export { HomeClockCard, MyAttendanceScreen, TodayCard, type MyAttendanceScreenProps, type Pin } from './my-attendance';
+export { HomeClockCard, NightWorkCard, type NightWorkProps, type Pin } from './my-attendance';
+export { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
 export { TeamLeaveCalendarScreen, type LiveLeaveCalendar } from '../leave';
 // The designed screens, made live (design audit): one version of each screen.

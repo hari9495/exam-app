@@ -24,7 +24,8 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRoute, type PeriodStage } from './time-logic';
 import type { ViewState } from './attendance';
 import { useToast } from '../../components/notify';
-import type { LoadState, OtClaim, OtReview, Periods as PeriodsData, Preflight } from './live/types';
+import type { FixInput, LoadState, MyAttendance, OtClaim, OtReview, Periods as PeriodsData, Preflight, WfhInput } from './live/types';
+import { toDay } from './live/adapt';
 import { ErrorState } from '../../components/feedback';
 import { LoadingBlock } from './attendance';
 import './time.css';
@@ -206,12 +207,28 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
 }
 type ReqState = ReturnType<typeof useAttendanceRequest>;
 
+/** The rules and dates the request form reads: the story's by default, the signed-in person's in the live app. */
+interface ReqWorld {
+  today: Date;
+  /** First day of the open month: earlier days go as late requests. */
+  monthStart: Date;
+  payrollClose: Date | null;
+  regLimit: number;
+  wfhLimit: number;
+  /** Who approves first ("Lakshmi Venkatesan", or "your manager"). */
+  approver: string;
+  latePayroll: string;
+  types: { value: AttReqType; label: string }[];
+  short: { value: AttReqType; label: string }[];
+}
+const STORY_WORLD: ReqWorld = { today: TODAY, monthStart: MONTH_START, payrollClose: PAYROLL_CLOSE, regLimit: REG_LIMIT, wfhLimit: WFH_LIMIT, approver: ME.manager, latePayroll: LATE_PAYROLL, types: TYPE_OPTIONS, short: TYPE_SHORT };
+
 const beforeText = (s: ReqState) =>
   s.type === 'regularise'
     ? s.locked ? 'Absent · unpaid' : s.nothing ? 'Nothing to fix' : s.day?.code === 'L' ? `Late · ${s.day.note ?? ''}` : s.fix === 'out' ? 'Missing check-out' : s.fix === 'in' ? 'Missing check-in' : s.fix === 'full' ? 'No punches' : 'Wrong time recorded'
     : s.type === 'ot' ? 'No OT approved' : 'Expected in office';
 
-function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' | 'phone' }) {
+function AttendanceRequestForm({ s, surface, w = STORY_WORLD }: { s: ReqState; surface?: 'desk' | 'phone'; w?: ReqWorld }) {
   const { type, date, fix, locked, otMin } = s;
   // While the times are incomplete, say what is missing instead of a half-filled result.
   const afterMissing = s.nothing ? 'Pick a day that needs fixing' : s.outErr ? 'Add the check-out time to see the result' : s.odErr ? 'Add the place and times to see the result' : s.otErr ? 'Add the planned hours to see the result' : null;
@@ -225,11 +242,11 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           : s.takeAs === 'pay'
             ? `Up to ${dur(otMin)} OT · paid at 2× (${date ? dayType(date) : 'normal day'})`
             : `Up to ${dur(otMin)} OT · ${otMin >= 240 ? '1 day' : '0.5 day'} comp-off credit`;
-  const approvers = s.steps.map((x) => (x === 'Manager' ? ME.manager : x)).join(' → ');
+  const approvers = s.steps.map((x) => (x === 'Manager' ? w.approver : x)).join(' → ');
   // A fix for a day in the open month is paid this month only if it is approved before payroll closes.
-  const payDeadline = (type === 'regularise' || type === 'on_duty') && !locked && !s.nothing && !!date && date.getMonth() === TODAY.getMonth() && dayStart(date) <= dayStart(TODAY);
+  const payDeadline = !!w.payrollClose && (type === 'regularise' || type === 'on_duty') && !locked && !s.nothing && !!date && date.getMonth() === w.today.getMonth() && dayStart(date) <= dayStart(w.today);
   const lockedMonth = date ? MONTH[date.getMonth()] : '';
-  const lateRule = `Days before 1 ${MON[MONTH_START.getMonth()]} go as a late request (up to ${LATE_DAYS} days back).`;
+  const lateRule = `Days before 1 ${MON[w.monthStart.getMonth()]} go as a late request (up to ${LATE_DAYS} days back).`;
   const helper =
     locked
       ? `${lockedMonth} is locked, so this goes as a late request.`
@@ -240,15 +257,15 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           : type === 'on_duty'
             ? `Up to ${OD_AHEAD} days ahead. ${lateRule}`
             : 'Pick today or a later date.';
-  const min = type === 'regularise' || type === 'on_duty' ? addDays(TODAY, -LATE_DAYS) : dayStart(TODAY);
-  const max = type === 'regularise' ? dayStart(TODAY) : type === 'on_duty' ? addDays(TODAY, OD_AHEAD) : undefined;
+  const min = type === 'regularise' || type === 'on_duty' ? addDays(w.today, -LATE_DAYS) : dayStart(w.today);
+  const max = type === 'regularise' ? dayStart(w.today) : type === 'on_duty' ? addDays(w.today, OD_AHEAD) : undefined;
   return (
     <div className="yx-tim-form">
       <FormField label="Request type" required>
         {surface === 'phone' ? (
-          <Select value={type} onChange={(v) => v && s.setType(v)} options={TYPE_OPTIONS} />
+          <Select value={type} onChange={(v) => v && s.setType(v)} options={w.types} />
         ) : (
-          <Segment label="Request type" value={type} onChange={s.setType} options={TYPE_SHORT} />
+          <Segment label="Request type" value={type} onChange={s.setType} options={w.short} />
         )}
       </FormField>
       <FormField label="Date" required error={s.dateErr} helper={helper}>
@@ -302,27 +319,139 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
         {type === 'wfh' && date && (
           <p className="yx-tim-muted">
             {s.wfhOver
-              ? `This would be WFH day ${s.wfhThisMonth + 1} of ${WFH_LIMIT} in ${MONTH[date.getMonth()]}, so HR approves too.`
-              : `This will be WFH day ${s.wfhThisMonth + 1} of ${WFH_LIMIT} in ${MONTH[date.getMonth()]}.`}
+              ? `This would be WFH day ${s.wfhThisMonth + 1} of ${w.wfhLimit} in ${MONTH[date.getMonth()]}, so HR approves too.`
+              : `This will be WFH day ${s.wfhThisMonth + 1} of ${w.wfhLimit} in ${MONTH[date.getMonth()]}.`}
           </p>
         )}
         {type === 'on_duty' && date && s.off !== 'normal day' && (
           <p className="yx-tim-muted">{dm(date)} is {s.off === 'holiday' ? 'a holiday' : 'your weekly off'}: you can claim the day as comp-off after it is approved.</p>
         )}
         <p className="yx-tim-muted">Approval: {approvers}</p>
-        {payDeadline && (
+        {payDeadline && w.payrollClose && (
           <div className="yx-tim-row">
-            <span className="yx-tim-muted">Approve by {dm(PAYROLL_CLOSE)} to be paid in {MONTH[TODAY.getMonth()]} payroll</span>
-            <DueBadge date={PAYROLL_CLOSE} />
+            <span className="yx-tim-muted">Approve by {dm(w.payrollClose)} to be paid in {MONTH[w.today.getMonth()]} payroll</span>
+            <DueBadge date={w.payrollClose} today={w.today} />
           </div>
         )}
         {locked ? (
-          <p className="yx-tim-muted">Late requests also go to HR. They don't count towards your monthly limit. The fix is paid in {LATE_PAYROLL} payroll.</p>
+          <p className="yx-tim-muted">Late requests also go to HR. They don't count towards your monthly limit. The fix is paid in {w.latePayroll} payroll.</p>
         ) : type === 'regularise' ? (
-          <p className="yx-tim-muted">{s.used >= REG_LIMIT ? `Limit reached (${s.used} of ${REG_LIMIT}): HR approves too.` : `${s.route.left} of ${REG_LIMIT} regularisations left this month.`}</p>
+          <p className="yx-tim-muted">{s.used >= w.regLimit ? `Limit reached (${s.used} of ${w.regLimit}): HR approves too.` : `${s.route.left} of ${w.regLimit} regularisations left this month.`}</p>
         ) : null}
       </section>
     </div>
+  );
+}
+
+/** What the live app gives the request drawer: the person's month and the two requests the API takes. */
+export interface LiveAttendanceRequest {
+  data: MyAttendance;
+  onFix: (input: FixInput) => Promise<unknown>;
+  onWfh: (input: WfhInput) => Promise<unknown>;
+}
+const LIVE_TYPES: { value: AttReqType; label: string }[] = [{ value: 'regularise', label: 'Regularise' }, { value: 'wfh', label: 'Work from home' }];
+const LIVE_SHORT: { value: AttReqType; label: string }[] = [{ value: 'regularise', label: 'Regularise' }, { value: 'wfh', label: 'WFH' }];
+const FIX_KIND = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' } as const;
+const localOf = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const minuteOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : undefined);
+/** An instant as "HH:mm" in the person's zone. */
+const hmIn = (iso: string | null | undefined, zone: string) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: zone }) : null);
+
+/** The request form's state on live data: the same fields the designed form reads, from the person's own days and limits. */
+function useLiveAttendanceRequest(live: LiveAttendanceRequest, t0: AttReqType, d0: Date | null, f0: string) {
+  const d = live.data;
+  const today = localOf(d.today);
+  const [type, setTypeRaw] = useState<AttReqType>(t0);
+  const rowOf = (x: Date | null) => (x ? d.days.find((r) => r.on === isoDay(x)) : undefined);
+  const recorded = (x: Date | null) => ({ in: hmIn(rowOf(x)?.firstIn, d.zone), out: hmIn(rowOf(x)?.lastOut, d.zone) });
+  const [date, setDateRaw] = useState<Date | null>(d0);
+  const [fix, setFix] = useState(f0);
+  const [inT, setIn] = useState<string | null>(recorded(d0).in);
+  const [outT, setOut] = useState<string | null>(recorded(d0).out);
+  const [reason, setReason] = useState('');
+  const setDate = (x: Date | null) => { setDateRaw(x); const r = recorded(x); setIn(r.in); setOut(r.out); };
+  const setType = (t: AttReqType) => { setTypeRaw(t); setDate(t === 'wfh' ? addDays(today, 1) : null); setReason(''); };
+  const waiting = (x: Date) => d.requests.some((r) => r.on === isoDay(x) && r.status === 'pending');
+  const row = rowOf(date);
+  const day = date ? toDay(isoDay(date), row, d.today) : undefined;
+  const when = date ? dm(date) : '';
+  const nothing =
+    type !== 'regularise' || !date || !row ? null
+      : waiting(date) ? `${when} already has a request waiting`
+        : isoDay(date) === d.today ? "Today isn't over yet: check out as usual"
+          : row.status === 'weekly_off' ? `${when} is a weekly off: nothing to fix`
+            : row.status === 'holiday' ? `${when} is a holiday: nothing to fix`
+              : row.status === 'leave' ? `${when} is on approved leave: nothing to fix`
+                : null;
+  const off = row?.status === 'holiday' ? 'holiday' : row?.status === 'weekly_off' ? 'weekly off' : 'normal day';
+  const punched = !!row?.firstIn && !row?.lastOut;
+  const fixOptions = punched ? FIX_OPTIONS.filter((o) => o.value === 'out' || o.value === 'wrong') : FIX_OPTIONS;
+  const fixNow = fixOptions.some((o) => o.value === fix) ? fix : fixOptions[0].value;
+  const used = d.regularise.used;
+  const route = regularisationRoute({ usedThisMonth: type === 'regularise' ? used : 0, limit: d.regularise.limit, dateLocked: false });
+  const wfhThisMonth = date && date.getMonth() === today.getMonth() ? d.wfh.used : 0;
+  const wfhOver = type === 'wfh' && wfhThisMonth >= d.wfh.limit;
+  const steps = wfhOver ? [...route.steps, 'HR'] : route.steps;
+  const past = !!date && dayStart(date) < dayStart(today);
+  const future = !!date && dayStart(date) > dayStart(today);
+  const ago = date ? daysUntil(today, date) : 0;
+  const dateErr = !date
+    ? null
+    : type === 'regularise' && future ? 'Pick today or an earlier date'
+      : type === 'regularise' && ago > LATE_DAYS ? `Pick a date in the last ${LATE_DAYS} days`
+        : type === 'wfh' && past ? 'Pick today or a later date'
+          : type === 'wfh' && waiting(date) ? `${when} already has a request waiting`
+            : type === 'wfh' && off !== 'normal day' ? `${WD[date.getDay()]} ${when} is ${off === 'holiday' ? 'a holiday' : 'your weekly off'}`
+              : nothing;
+  const needIn = fixNow === 'in' || fixNow === 'full' || fixNow === 'wrong';
+  const needOut = fixNow === 'out' || fixNow === 'full' || fixNow === 'wrong';
+  const outErr = type !== 'regularise' || nothing ? null : needOut && !outT && fixNow !== 'wrong' ? 'Enter the check-out time' : needIn && !inT && fixNow !== 'wrong' ? 'Enter the check-in time' : inT && outT && outT <= inT ? 'Enter a check-out time after check-in' : fixNow === 'wrong' && !inT && !outT ? 'Enter the actual time' : null;
+  const blocked = !date ? 'Pick a date' : dateErr ?? outErr ?? (!reason.trim() ? 'Enter a reason' : null);
+  const none = () => {};
+  return {
+    type, setType, date, setDate, day, recIn: recorded(date).in, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut,
+    where: '', setWhere: none, odFrom: null, setOdFrom: none, odTo: null, setOdTo: none, otHours: null, setOtHours: none, otMin: 0, otErr: null, takeAs: 'pay' as const, setTakeAs: none,
+    reason, setReason, route, steps, hr: steps.includes('HR'), locked: false, used, wfhUsed: d.wfh.used, wfhThisMonth, wfhOver, dateErr, outErr, odErr: null, blocked,
+    send: (): Promise<unknown> =>
+      type === 'wfh'
+        ? live.onWfh({ on: isoDay(date!), reason: reason.trim() })
+        : live.onFix({ on: isoDay(date!), kind: FIX_KIND[fixNow as keyof typeof FIX_KIND], ...(needIn && inT ? { inMinute: minuteOf(inT) } : {}), ...(needOut && outT ? { outMinute: minuteOf(outT) } : {}), reason: reason.trim() }),
+  };
+}
+
+/** TIM-07 in the live app: the designed request drawer for a regularisation or a work-from-home day. */
+export function LiveAttendanceRequestDrawer({ live, type = 'regularise', date = null, fix = 'out', onClose }: { live: LiveAttendanceRequest; type?: AttReqType; date?: Date | null; fix?: string; onClose: () => void }) {
+  const { toast } = useToast();
+  const s = useLiveAttendanceRequest(live, type, date, fix);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const today = localOf(live.data.today);
+  const w: ReqWorld = { today, monthStart: new Date(today.getFullYear(), today.getMonth(), 1), payrollClose: null, regLimit: live.data.regularise.limit, wfhLimit: live.data.wfh.limit, approver: 'your manager', latePayroll: MONTH[(today.getMonth() + 1) % 12], types: LIVE_TYPES, short: LIVE_SHORT };
+  const send = () => {
+    setBusy(true);
+    setFailed('');
+    s.send().then(
+      () => {
+        toast({ tone: 'success', title: `${s.type === 'wfh' ? 'Work from home' : 'Regularisation'} for ${dm(s.date!)} sent to your manager${s.hr ? ', then HR' : ''}` });
+        onClose();
+      },
+      (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not sent. Try again.'),
+    ).finally(() => setBusy(false));
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="New attendance request"
+      subtitle={s.hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
+      footer={<>{s.blocked && <FootReason>{s.blocked}</FootReason>}<Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!!s.blocked} loading={busy} onClick={send}>Send request</Button></>}
+    >
+      <div className="yx-tim-stack">
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+        <AttendanceRequestForm s={s as unknown as ReqState} w={w} />
+      </div>
+    </Drawer>
   );
 }
 

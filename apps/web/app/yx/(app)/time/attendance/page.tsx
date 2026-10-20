@@ -1,39 +1,56 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Spinner } from '@yukthix/ui';
-import { MyAttendanceScreen, type MyAttendance, type MyNightWork, type NightCodeSent, type PunchResult } from '@yukthix/ui/time';
-import { browserLocation, timeState, todayIndia, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { AttendanceCalendarScreen, NightWorkCard, type DayCard, type MyAttendance, type MyNightWork, type NightCodeSent } from '@yukthix/ui/time';
+import { timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
-// Me › Attendance (TIM-07 / TIM-12 on the web): no permission key; punches and fixes are the person's own. The
-// location is read only when they press Check in or Check out, and only to send with that punch. Night work: the
-// person's own opt-in and consent confirmation (one-time code) or withdrawal (founder decisions 9 Oct 2026). Work from
-// home (TIM-07): the person's own request; Home's "Request work from home" opens it here (?request=wfh).
+// Me › Attendance (the designed attendance calendar, with TIM-07's request drawer for a fix or work from home): no
+// permission key; days, fixes and requests are the person's own. Checking in and out is on Home's clock card. Night
+// work: the person's own opt-in and consent confirmation (founder decisions 9 Oct 2026). Home's "Request work from
+// home" and its clock's "Regularise" open the drawer here (?request=wfh | regularise); the parameter is then dropped,
+// so asking again from Home opens it again.
 function YxMyAttendanceInner() {
-  const wfh = useSearchParams().get('request') === 'wfh';
+  const params = useSearchParams();
+  const router = useRouter();
+  const path = usePathname();
+  const asked = params.get('request');
+  const [ask, setAsk] = useState<{ type: 'regularise' | 'wfh'; n: number } | undefined>();
+  useEffect(() => {
+    if (asked !== 'wfh' && asked !== 'regularise') return;
+    setAsk((a) => ({ type: asked, n: (a?.n ?? 0) + 1 }));
+    router.replace(path);
+  }, [asked, path, router]);
   const [month, setMonth] = useState(todayIndia().slice(0, 7));
   const att = useTime<MyAttendance>(`/me/attendance?month=${month}`);
   const night = useTime<MyNightWork>('/me/night-work');
+  const read = useTimeRead();
   const write = useTimeWrite();
+  const employeeId = att.data?.employee.id;
   return (
-    <MyAttendanceScreen
-      state={timeState(att)}
-      onRetry={() => void att.refetch()}
-      data={att.data ?? null}
-      month={month}
-      onMonth={setMonth}
-      getLocation={browserLocation}
-      onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
-      onFix={(input) => write('/me/regularise', 'POST', input)}
-      onWithdrawFix={(rid) => write(`/me/regularise/${encodeURIComponent(rid)}/withdraw`)}
-      onWfh={(input) => write('/me/wfh', 'POST', input)}
-      defaultWfhOpen={wfh}
-      night={night.data ?? null}
-      onNightOptIn={(optIn) => write('/me/night-work/opt-in', 'PUT', { optIn })}
-      onNightCode={(id) => write<NightCodeSent>(`/me/night-consents/${encodeURIComponent(id)}/code`, 'POST', undefined, false)}
-      onNightConfirm={(id, code) => write(`/me/night-consents/${encodeURIComponent(id)}/confirm`, 'POST', { code })}
-      onNightWithdraw={(id) => write(`/me/night-consents/${encodeURIComponent(id)}/withdraw`)}
+    <AttendanceCalendarScreen
+      live={{
+        state: timeState(att),
+        onRetry: () => void att.refetch(),
+        data: att.data ?? null,
+        month,
+        onMonth: setMonth,
+        onOpenDay: (on) => read<DayCard>(`/people/${encodeURIComponent(employeeId ?? '')}/days/${on}`),
+        onFix: (input) => write('/me/regularise', 'POST', input),
+        onWfh: (input) => write('/me/wfh', 'POST', input),
+        onWithdraw: (rid) => write(`/me/regularise/${encodeURIComponent(rid)}/withdraw`),
+        ask,
+        extra: night.data ? (
+          <NightWorkCard
+            night={night.data}
+            onNightOptIn={(optIn) => write('/me/night-work/opt-in', 'PUT', { optIn })}
+            onNightCode={(id) => write<NightCodeSent>(`/me/night-consents/${encodeURIComponent(id)}/code`, 'POST', undefined, false)}
+            onNightConfirm={(id, code) => write(`/me/night-consents/${encodeURIComponent(id)}/confirm`, 'POST', { code })}
+            onNightWithdraw={(id) => write(`/me/night-consents/${encodeURIComponent(id)}/withdraw`)}
+          />
+        ) : undefined,
+      }}
     />
   );
 }

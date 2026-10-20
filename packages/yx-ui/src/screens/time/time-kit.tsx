@@ -804,8 +804,8 @@ export function AttendanceMonth({
 const LEGEND_ORDER: DayCode[] = ['P', 'L', 'HD', 'A', 'LOP', 'CL', 'EL', 'SL', 'H', 'WO', 'WFH', 'OD', 'R', 'MP'];
 
 /** Legend with counts per code and the month totals. */
-export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean }) {
-  const s = monthSummary(days);
+export function AttendanceLegend({ days, onFixDay, locked, live }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean; /** Live month: counted to today, without the story company's late-mark allowance. */ live?: boolean }) {
+  const s = monthSummary(days, live ? new Date() : undefined);
   const short = (d: AttendanceDay) => formatDate(d.date).replace(/^0/, '').replace(/ \d{4}$/, '');
   // Today's late check-in is a late mark too (the "Late days" KPI counts it), though its cell reads "Today".
   const legendCount = (c: DayCode) => (s.counts[c] ?? 0) + (c === 'L' ? days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length : 0);
@@ -818,7 +818,7 @@ export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceD
           { label: 'Unpaid leave days', value: s.lop },
           // An absence in an open month can still be fixed: not unpaid until the month locks.
           ...(s.absent ? [{ label: 'Absent', value: s.absent, note: 'not fixed yet' }] : []),
-          { label: 'Late days', value: s.lateMarks, note: '3 allowed a month' },
+          { label: 'Late days', value: s.lateMarks, note: live ? undefined : '3 allowed a month' },
           { label: 'Overtime', value: s.otMin ? fmtDuration(s.otMin) : 'None', note: 'approved only' },
           ...(s.compOffMin ? [{ label: 'Taken as comp-off', value: fmtDuration(s.compOffMin), note: 'overtime not paid' }] : []),
           ...(locked ? [] : [{
@@ -1066,8 +1066,8 @@ export function DayCardBody({
           <span className="yx-tim-row">
             {viewer === 'emp' ? (
               <>
-                <Button size="sm" onClick={onViewRequest}>View request</Button>
-                <Button size="sm" onClick={onWithdraw}>Withdraw</Button>
+                {onViewRequest && <Button size="sm" onClick={onViewRequest}>View request</Button>}
+                {onWithdraw && <Button size="sm" onClick={onWithdraw}>Withdraw</Button>}
               </>
             ) : (
               onViewRequest && <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>

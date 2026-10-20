@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { MyAttendanceScreen } from './my-attendance';
+import { NightWorkCard } from './my-attendance';
+import { AttendanceCalendarScreen, type LiveMyAttendance } from '../attendance';
 import { MyLeaveScreen } from './my-leave';
 import { TimeSetupScreen } from './setup';
 import { TeamLeaveCalendarScreen } from '../leave';
@@ -94,81 +95,62 @@ const ATT: MyAttendance = {
   wfh: { limit: 4, used: 0 },
 };
 
-describe('Me › Attendance', () => {
-  it('a refused check-in says why and offers to retry the location (YX-AT-23)', async () => {
-    const onPunch = vi.fn(async () => ({ accepted: false, duplicate: false, kind: 'in' as const, message: 'Outside Bengaluru head office, 850 m away', verdict: 'outside', distanceM: 850 }));
-    const getLocation = vi.fn(async () => ({ pin: { lat: 12.9, lng: 77.6, accuracyM: 20 } }));
-    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={getLocation} onPunch={onPunch} onFix={vi.fn()} onWithdrawFix={vi.fn()} />);
-    await ue.click(screen.getByRole('button', { name: 'Check in' }));
-    expect(await screen.findByText('Outside Bengaluru head office, 850 m away')).toBeInTheDocument();
-    expect(onPunch).toHaveBeenCalledWith('in', { lat: 12.9, lng: 77.6, accuracyM: 20 });
-    await ue.click(screen.getByRole('button', { name: 'Retry location' }));
-    expect(getLocation).toHaveBeenCalledTimes(2);
-  });
+const attLive = (over: Partial<LiveMyAttendance> = {}): LiveMyAttendance => ({
+  state: 'ready',
+  data: ATT,
+  month: '2026-10',
+  onMonth: vi.fn(),
+  onOpenDay: vi.fn(async () => ({ person: { name: 'Arjun', code: null }, on: '2026-10-06', zone: 'Asia/Kolkata', shift: { name: 'General', start: 570, end: 1110, grace: 10 }, day: null, punches: [] })),
+  onFix: vi.fn(async () => ({})),
+  onWfh: vi.fn(async () => ({})),
+  onWithdraw: vi.fn(async () => ({})),
+  ...over,
+});
 
-  it("breaks: Start break while checked in, End break while on one; today's punches name them", async () => {
-    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'break_end' as const, message: 'Break ended. On the Bengaluru head office network', verdict: 'network', distanceM: null }));
-    const at = (id: string, kind: 'in' | 'break_start', iso: string) => ({ id, kind, at: iso, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
-    const data: MyAttendance = { ...ATT, next: 'out', onBreak: true, punches: [at('p1', 'in', '2026-10-09T03:58:00Z'), at('p2', 'break_start', '2026-10-09T07:30:00Z')] };
-    render(<MyAttendanceScreen state="ready" data={data} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn(async () => ({ pin: null }))} onPunch={onPunch} onFix={vi.fn()} onWithdrawFix={vi.fn()} />);
-    const list = screen.getByRole('list', { name: 'Punches today' });
-    expect(within(list).getByText('Break start')).toBeInTheDocument();
-    expect(screen.getByText('You are on a break. Break time is not counted as worked time.')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'End break' }));
-    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
-  });
-
-  it('work from home: the sheet says what Send needs (never red), shows the effect, sends, then a toast', async () => {
-    const onWfh = vi.fn(async () => undefined);
-    render(
-      <ToastProvider>
-        <MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} onWfh={onWfh} />
-      </ToastProvider>,
-    );
-    await ue.click(screen.getByRole('button', { name: 'Request work from home' }));
-    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
-    expect(within(sheet).getByText('Goes to your manager')).toBeInTheDocument();
+describe('Me › Attendance (the designed calendar)', () => {
+  it('work from home: the designed request drawer says what Send needs (never red), shows the effect, sends, then a toast', async () => {
+    const live = attLive();
+    render(<ToastProvider><AttendanceCalendarScreen live={live} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'My attendance' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Regularise a day' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
     expect(within(sheet).getByText('Work from home · counts as present')).toBeInTheDocument();
-    expect(within(sheet).getByText('This will be work-from-home day 1 of 4 in October.')).toBeInTheDocument();
+    expect(within(sheet).getByText('This will be WFH day 1 of 4 in October.')).toBeInTheDocument();
     expect(within(sheet).getByText('Enter a reason')).toBeInTheDocument();
     expect(within(sheet).queryByRole('alert')).toBeNull();
     expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
     await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber visit');
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
-    await waitFor(() => expect(onWfh).toHaveBeenCalledWith({ on: '2026-10-09', reason: 'Plumber visit' }));
-    expect(await screen.findByText('Sent to your manager')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Request work from home' })).toBeNull());
+    await waitFor(() => expect(live.onWfh).toHaveBeenCalledWith({ on: '2026-10-10', reason: 'Plumber visit' }));
+    expect((await screen.findAllByText('Work from home for 10 Oct sent to your manager')).length).toBeGreaterThan(0);
   });
 
   it('work from home over the monthly limit goes to HR too; a refusal from the server says why', async () => {
-    const onWfh = vi.fn(async () => {
-      throw new Error('Wed 14 Oct is a holiday (Founders Day).');
-    });
-    render(
-      <ToastProvider>
-        <MyAttendanceScreen state="ready" data={{ ...ATT, wfh: { limit: 4, used: 4 } }} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} onWfh={onWfh} defaultWfhOpen />
-      </ToastProvider>,
-    );
-    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    const live = attLive({ data: { ...ATT, wfh: { limit: 4, used: 4 } }, onWfh: vi.fn(async () => { throw new Error('Sat 10 Oct is your weekly off.'); }) });
+    render(<ToastProvider><AttendanceCalendarScreen live={live} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Regularise a day' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
     expect(within(sheet).getByText('Goes to your manager, then HR')).toBeInTheDocument();
-    expect(within(sheet).getByText('Approval: Your manager → HR')).toBeInTheDocument();
+    expect(within(sheet).getByText('Approval: your manager → HR')).toBeInTheDocument();
     await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Family function');
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
-    expect(await within(sheet).findByText('Wed 14 Oct is a holiday (Founders Day).')).toBeInTheDocument();
+    expect(await within(sheet).findByText('Sat 10 Oct is your weekly off.')).toBeInTheDocument();
   });
 
-  it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
-    const onFix = vi.fn(async () => ({}));
-    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={onFix} onWithdrawFix={vi.fn()} />);
-    await ue.click(screen.getByRole('button', { name: 'Fix this day' }));
-    const dialog = screen.getByRole('dialog');
-    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    expect(within(dialog).getAllByText('Give the time you finished.').length).toBeGreaterThan(0);
-    await ue.type(within(dialog).getByLabelText(/Finished at/), '18:10');
-    fireEvent.blur(within(dialog).getByLabelText(/Finished at/));
-    await ue.type(within(dialog).getByLabelText(/What happened/), 'Forgot to check out');
-    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    await waitFor(() => expect(onFix).toHaveBeenCalledWith({ on: '2026-10-06', kind: 'missed_out', outMinute: 1090, reason: 'Forgot to check out' }));
+  it('fixing a missing check-out: the alert offers the day, the drawer needs the time and a reason, then it goes for approval', async () => {
+    const live = attLive();
+    render(<ToastProvider><AttendanceCalendarScreen live={live} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    const out = within(sheet).getByLabelText(/Check-out/);
+    await ue.type(out, '6:10 pm');
+    fireEvent.blur(out);
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Forgot to check out');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(live.onFix).toHaveBeenCalledWith({ on: '2026-10-06', kind: 'missed_out', outMinute: 1090, reason: 'Forgot to check out' }));
   });
 
   it('night work: opt in to the protection, confirm a consent with a one-time code, withdraw it (founder decisions 9 Oct 2026)', async () => {
@@ -177,7 +159,7 @@ describe('Me › Attendance', () => {
     const onNightCode = vi.fn(async () => ({ sentTo: 'your work email', expiresInSeconds: 300, resendAfterSeconds: 60 }));
     const onNightConfirm = vi.fn(async () => ({}));
     const onNightWithdraw = vi.fn(async () => ({}));
-    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} night={night} onNightOptIn={onNightOptIn} onNightCode={onNightCode} onNightConfirm={onNightConfirm} onNightWithdraw={onNightWithdraw} />);
+    render(<NightWorkCard night={night} onNightOptIn={onNightOptIn} onNightCode={onNightCode} onNightConfirm={onNightConfirm} onNightWithdraw={onNightWithdraw} />);
     await ue.click(screen.getByRole('switch', { name: 'Night-work protection' }));
     expect(onNightOptIn).toHaveBeenCalledWith(true);
     expect(screen.getByText('Needs your confirmation')).toBeInTheDocument();
@@ -194,7 +176,7 @@ describe('Me › Attendance', () => {
   });
 
   it('night work: covered by the record, so no switch to turn it off', () => {
-    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} night={{ byRecord: true, optedIn: false, optedInSince: null, consents: [] }} onNightOptIn={vi.fn()} />);
+    render(<NightWorkCard night={{ byRecord: true, optedIn: false, optedInSince: null, consents: [] }} onNightOptIn={vi.fn()} />);
     expect(screen.getByText(/The night-work protection applies to you/)).toBeInTheDocument();
     expect(screen.queryByRole('switch')).toBeNull();
   });

@@ -1,27 +1,21 @@
-import { useState, type ReactNode } from 'react';
-import { House } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
+import { InlineAlert } from '../../../components/feedback';
+import { FormField } from '../../../components/field';
 import { Switch } from '../../../components/choice';
-import { CodeField, TextArea, TimeField } from '../../../components/inputs';
-import { Segment } from '../../../components/segment';
+import { CodeField } from '../../../components/inputs';
 import { Card } from '../../../components/shell';
-import { DatePicker } from '../../../components/date';
-import { useToast } from '../../../components/notify';
-import { dayKey } from '../../../lib/dates';
 import { useRun } from '../../org/org-kit';
-import { ClockCard, KIND_LABEL } from '../time-kit';
+import { ClockCard } from '../time-kit';
 import type { ClockState, Punch } from '../time-logic';
-import { DayStatusBadge, LivePage, MODE_TEXT, clock, dateText, dayText, duration, timeIn } from './kit';
-import type { DayRow, FixInput, FixKind, FixRow, LoadState, MyAttendance, MyNightWork, NightCodeSent, PunchKind, PunchResult, WfhInput } from './types';
+import { dateText } from './kit';
+import type { MyAttendance, MyNightWork, NightCodeSent, PunchKind, PunchResult } from './types';
 
-// Me › Attendance (TIM-07 / TIM-12 on the web): check in and out with the location shown before it counts (YX-AT-23:
-// a refused attempt says why in plain words and is kept), my days this month from the day engine, and fixes
-// (regularisation, Q5) with the monthly allowance. Night work (founder decisions 9 Oct 2026): opt in to the night-work
-// protection (only the person can turn it off), and confirm or withdraw a consent HR recorded, with a one-time code.
+// Me › Attendance pieces that live outside the designed calendar (attendance.tsx, LiveMyAttendance): the Home clock card
+// on the person's live day, and Night work (founder decisions 9 Oct 2026): opt in to the night-work protection (only
+// the person can turn it off), and confirm or withdraw a consent HR recorded, with a one-time code.
 
 export interface Pin {
   lat: number;
@@ -29,382 +23,16 @@ export interface Pin {
   accuracyM: number;
 }
 
-export interface MyAttendanceScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: MyAttendance | null;
-  month: string;
-  onMonth: (month: string) => void;
-  /** The browser's location, or null with the reason (permission refused, no GPS). */
-  getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
-  onPunch: (kind: PunchKind, pin: Pin | null) => Promise<PunchResult>;
-  onFix: (input: FixInput) => Promise<unknown>;
-  onWithdrawFix: (id: string) => Promise<unknown>;
-  /** Request work from home (TIM-07): shows the header button and its sheet. */
-  onWfh?: (input: WfhInput) => Promise<unknown>;
-  /** Open the work-from-home sheet at once (Home's "Request work from home" button links here). */
-  defaultWfhOpen?: boolean;
-  /** Night work: shown when loaded. */
-  night?: MyNightWork | null;
+export interface NightWorkProps {
+  night: MyNightWork;
   onNightOptIn?: (optIn: boolean) => Promise<unknown>;
   onNightCode?: (consentId: string) => Promise<NightCodeSent>;
   onNightConfirm?: (consentId: string, code: string) => Promise<unknown>;
   onNightWithdraw?: (consentId: string) => Promise<unknown>;
 }
 
-const shiftMonth = (month: string, n: number) => {
-  const d = new Date(`${month}-01T00:00:00Z`);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.toISOString().slice(0, 7);
-};
-const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const FIXABLE = new Set(['absent', 'missing_in', 'missing_out', 'half_day']);
-const FIX_TEXT: Record<FixKind, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong times', full_day: 'Present all day' };
-const REQUEST_TEXT: Record<FixRow['kind'], string> = { ...FIX_TEXT, wfh: 'Work from home' };
-
-export function MyAttendanceScreen(p: MyAttendanceScreenProps) {
-  const [fixing, setFixing] = useState<string | null>(null);
-  const [wfhOpen, setWfhOpen] = useState(Boolean(p.defaultWfhOpen));
-  const d = p.data;
-  return (
-    <LivePage
-      title="My attendance"
-      description={d ? `${MODE_TEXT[d.mode]} · ${d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${clock(d.shift.start)} to ${clock(d.shift.end)}`}` : undefined}
-      actions={p.onWfh ? <Button icon={House} onClick={() => setWfhOpen(true)}>Request work from home</Button> : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="your attendance"
-    >
-      {d && (
-        <>
-          <TodayCard data={d} getLocation={p.getLocation} onPunch={p.onPunch} />
-          <Card
-            title={monthText(p.month)}
-            actions={
-              <div className="yx-tim-row">
-                <Button size="sm" onClick={() => p.onMonth(shiftMonth(p.month, -1))}>
-                  Previous month
-                </Button>
-                <Button size="sm" disabled={p.month >= d.today.slice(0, 7)} onClick={() => p.onMonth(shiftMonth(p.month, 1))}>
-                  Next month
-                </Button>
-              </div>
-            }
-          >
-            <Days data={d} onFix={setFixing} />
-          </Card>
-          <Fixes data={d} onWithdraw={p.onWithdrawFix} />
-          {p.night && <NightWork night={p.night} p={p} />}
-          {fixing && <FixDrawer on={fixing} data={d} onClose={() => setFixing(null)} onFix={p.onFix} />}
-          {wfhOpen && p.onWfh && <WfhDrawer data={d} onClose={() => setWfhOpen(false)} onSend={p.onWfh} />}
-        </>
-      )}
-    </LivePage>
-  );
-}
-
-export function TodayCard({ data, getLocation, onPunch }: { data: MyAttendance; getLocation: MyAttendanceScreenProps['getLocation']; onPunch: MyAttendanceScreenProps['onPunch'] }) {
-  const [result, setResult] = useState<PunchResult | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const { busy, error, run } = useRun();
-  const [last, setLast] = useState<PunchKind>(data.next);
-  const punch = (kind: PunchKind) =>
-    void run(kind, async () => {
-      setResult(null);
-      setLast(kind);
-      const loc = await getLocation();
-      setProblem(loc.pin ? null : (loc.problem ?? null));
-      setResult(await onPunch(kind, loc.pin));
-    });
-  const label = data.next === 'in' ? 'Check in' : 'Check out';
-  // Breaks while checked in: Start break, then End break (a break still open ends at check-out).
-  const breakKind: PunchKind | null = data.next === 'out' ? (data.onBreak ? 'break_end' : 'break_start') : null;
-  return (
-    <Card title={`Today, ${dayText(data.today)}`}>
-      <div className="yx-tim-stack">
-        <div className="yx-tim-clock-now">
-          <div className="yx-tim-stack" data-gap="sm">
-            <p className="yx-tim-muted">
-              {data.shift.checkIn === 'field' ? 'Your location is recorded with each punch.' : data.fences.length ? `Check in at ${data.fences.map((f) => `${f.name} (within ${f.radiusM} m)`).join(' or ')}, or from the office network.` : 'Check in from the office network.'}
-            </p>
-            {data.mode !== 'punch' && <p className="yx-tim-note">{data.mode === 'assumed_present' ? 'You are counted present unless you are on leave, so checking in is optional.' : 'Your day comes from your timesheet; punches are kept as a record.'}</p>}
-          </div>
-          <div className="yx-tim-row">
-            {breakKind && (
-              <Button loading={busy === breakKind} onClick={() => punch(breakKind)}>
-                {breakKind === 'break_end' ? 'End break' : 'Start break'}
-              </Button>
-            )}
-            <Button variant="primary" loading={busy === data.next} onClick={() => punch(data.next)}>
-              {label}
-            </Button>
-          </div>
-        </div>
-        {data.onBreak && <p className="yx-tim-note">You are on a break. Break time is not counted as worked time.</p>}
-        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
-        {problem && !result?.accepted && <InlineAlert tone="warning" title="We could not read your location">{problem}</InlineAlert>}
-        {result && (
-          <InlineAlert
-            tone={result.accepted ? 'success' : 'danger'}
-            title={result.accepted ? (result.duplicate ? 'Already recorded' : 'Done') : 'Not recorded'}
-            actions={
-              result.accepted ? undefined : (
-                <Button size="sm" onClick={() => punch(last)}>
-                  Retry location
-                </Button>
-              )
-            }
-          >
-            {result.message}
-          </InlineAlert>
-        )}
-        {data.punches.length > 0 ? (
-          <ul className="yx-tim-stack" data-gap="sm" aria-label="Punches today">
-            {data.punches.map((x) => (
-              <li key={x.id} className="yx-tim-row">
-                <Badge tone={!x.accepted ? 'danger' : x.kind.startsWith('break') ? 'neutral' : 'success'}>{x.accepted ? KIND_LABEL[x.kind] : 'Refused'}</Badge>
-                <span>{timeIn(x.at, data.zone)}</span>
-                <span className="yx-tim-muted">{x.accepted ? (x.where ? `${x.verdict === 'network' ? 'Office network' : 'Inside'} · ${x.where}` : 'Recorded') : x.refusal}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="yx-tim-muted">No punches yet today.</p>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-function Days({ data, onFix }: { data: MyAttendance; onFix: (on: string) => void }) {
-  const pendingDays = new Set(data.requests.filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
-  const homeDays = new Set(data.requests.filter((r) => r.status === 'approved' && r.kind === 'wfh').map((r) => r.on));
-  if (!data.days.length) return <EmptyState compact title="No days yet" description="Days appear here once they have been worked out." />;
-  return (
-    <table className="yx-tim-table" aria-label="My days">
-      <thead>
-        <tr>
-          <th>Day</th>
-          <th>Status</th>
-          <th>In</th>
-          <th>Out</th>
-          <th>Worked</th>
-          <th>
-            <span className="yx-visually-hidden">Fix</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {[...data.days].reverse().map((x: DayRow) => (
-          <tr key={x.on}>
-            <td>{dayText(x.on)}</td>
-            <td>
-              <DayStatusBadge status={x.status} leavePart={x.leavePart} />
-              {x.lateMinutes ? <span className="yx-tim-note"> · late {x.lateMinutes} min</span> : null}
-              {x.regularised ? <span className="yx-tim-note"> · fixed</span> : null}
-              {homeDays.has(x.on) ? <span className="yx-tim-note"> · work from home</span> : null}
-            </td>
-            <td>{timeIn(x.firstIn, data.zone)}</td>
-            <td>{timeIn(x.lastOut, data.zone)}</td>
-            <td className="yx-tim-num">{duration(x.workedMinutes)}</td>
-            <td>
-              {FIXABLE.has(x.status) && data.mode === 'punch' && (pendingDays.has(x.on) ? <Badge tone="info">Fix waiting</Badge> : <Button size="sm" onClick={() => onFix(x.on)}>Fix this day</Button>)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function Fixes({ data, onWithdraw }: { data: MyAttendance; onWithdraw: (id: string) => Promise<unknown> }) {
-  const { busy, error, run } = useRun();
-  if (!data.requests.length) return null;
-  return (
-    <Card title="My fixes and work from home">
-      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
-      <table className="yx-tim-table" aria-label="My fixes and work from home">
-        <thead>
-          <tr>
-            <th>Day</th>
-            <th>Request</th>
-            <th>Status</th>
-            <th>
-              <span className="yx-visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.requests.map((r) => (
-            <tr key={r.id}>
-              <td>{dayText(r.on)}</td>
-              <td>
-                {REQUEST_TEXT[r.kind]}
-                {r.inMinute !== null ? ` · in ${clock(r.inMinute)}` : ''}
-                {r.outMinute !== null ? ` · out ${clock(r.outMinute)}` : ''}
-              </td>
-              <td>
-                <Badge tone={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : r.status === 'pending' ? 'info' : 'neutral'}>{r.status === 'pending' ? 'Waiting for approval' : r.status === 'approved' ? 'Approved' : r.status === 'rejected' ? 'Not approved' : 'Withdrawn'}</Badge>
-              </td>
-              <td>
-                {r.status === 'pending' && (
-                  <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, () => onWithdraw(r.id))}>
-                    Withdraw
-                  </Button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
-
-const toMinute = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
-
-function FixDrawer({ on, data, onClose, onFix }: { on: string; data: MyAttendance; onClose: () => void; onFix: (input: FixInput) => Promise<unknown> }) {
-  const day = data.days.find((x) => x.on === on);
-  const [kind, setKind] = useState<FixKind>(day?.status === 'missing_out' ? 'missed_out' : day?.status === 'missing_in' ? 'missed_in' : 'full_day');
-  const [inTime, setIn] = useState<string | null>(null);
-  const [outTime, setOut] = useState<string | null>(null);
-  const [reason, setReason] = useState('');
-  const { busy, error, run } = useRun();
-  const needIn = kind === 'missed_in' || kind === 'wrong_time';
-  const needOut = kind === 'missed_out' || kind === 'wrong_time';
-  const errors = [
-    ...(needIn && !inTime ? [{ fieldId: 'fx-in', message: 'Give the time you started.' }] : []),
-    ...(needOut && !outTime ? [{ fieldId: 'fx-out', message: 'Give the time you finished.' }] : []),
-    ...(kind === 'wrong_time' && inTime && outTime && toMinute(outTime)! <= toMinute(inTime)! ? [{ fieldId: 'fx-out', message: 'The finish time is before the start time.' }] : []),
-    ...(!reason.trim() ? [{ fieldId: 'fx-reason', message: 'Say what happened.' }] : []),
-  ];
-  const saveErrors = useSaveErrors(errors);
-  const { errorOf } = saveErrors;
-  const left = Math.max(0, data.regularise.limit - data.regularise.used);
-  const send = () => {
-    if (errors.length) return saveErrors.reveal();
-    void run('fix', async () => {
-      await onFix({ on, kind, ...(needIn ? { inMinute: toMinute(inTime)! } : {}), ...(needOut ? { outMinute: toMinute(outTime)! } : {}), reason: reason.trim() });
-      onClose();
-    });
-  };
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={`Fix ${dayText(on)}`}
-      subtitle={day ? `Now: ${day.status.replace('_', ' ')}` : undefined}
-      dirty={Boolean(reason)}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy === 'fix'} onClick={send}>
-            Send for approval
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-tim-form">
-        <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
-        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
-        <p className="yx-tim-muted">{left > 0 ? `Your manager approves this. ${left} of ${data.regularise.limit} fixes left this month without HR.` : 'You have used this month’s fixes, so HR approves this one after your manager.'}</p>
-        <Segment label="What to fix" value={kind} onChange={setKind} options={(Object.keys(FIX_TEXT) as FixKind[]).map((k) => ({ value: k, label: FIX_TEXT[k] }))} />
-        {needIn && (
-          <FormField id="fx-in" label="Started at" required error={errorOf('fx-in')}>
-            <TimeField value={inTime} onChange={setIn} />
-          </FormField>
-        )}
-        {needOut && (
-          <FormField id="fx-out" label="Finished at" required error={errorOf('fx-out')}>
-            <TimeField value={outTime} onChange={setOut} />
-          </FormField>
-        )}
-        <FormField id="fx-reason" label="What happened" required error={errorOf('fx-reason')}>
-          <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
-        </FormField>
-      </div>
-    </Drawer>
-  );
-}
-
-const MONTH_NAME = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
-/** The reason Send is not ready yet, on its own line above the footer buttons (TIM-07). Never red. */
-const FootReason = ({ children }: { children: ReactNode }) => <span className="yx-tim-muted" style={{ width: '100%', minWidth: 0 }}>{children}</span>;
-
-/**
- * Request work from home (TIM-07, the "Work from home" request made live): a day from today on and a reason, with the
- * effect before sending. The manager approves; past the monthly limit HR approves too. The server checks the day again
- * (weekly offs, holidays, one request a day) and says why in plain words when it cannot be sent.
- */
-export function WfhDrawer({ data, onClose, onSend }: { data: MyAttendance; onClose: () => void; onSend: (input: WfhInput) => Promise<unknown> }) {
-  const today = new Date(`${data.today}T00:00:00`);
-  const [date, setDate] = useState<Date | null>(today);
-  const [reason, setReason] = useState('');
-  const { busy, error, run } = useRun();
-  const { toast } = useToast();
-  const on = date ? dayKey(date) : null;
-  const usedThen = on && on.slice(0, 7) === data.today.slice(0, 7) ? data.wfh.used : 0;
-  const hr = usedThen >= data.wfh.limit;
-  const blocked = !on ? 'Pick a date' : on < data.today ? 'Pick today or a later date' : !reason.trim() ? 'Enter a reason' : null;
-  const send = () => {
-    if (blocked || !on) return;
-    void run('send', async () => {
-      await onSend({ on, reason: reason.trim() });
-      toast({ tone: 'success', title: hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `Work from home on ${dayText(on)}. You will get a notification when it is decided.` });
-      onClose();
-    });
-  };
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title="Request work from home"
-      subtitle={hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
-      dirty={Boolean(reason)}
-      footer={
-        <>
-          {blocked && <FootReason>{blocked}</FootReason>}
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={Boolean(blocked)} loading={busy === 'send'} onClick={send}>
-            Send request
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-tim-form">
-        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
-        <FormField id="wfh-date" label="Date" required helper="Pick the day you will work from home.">
-          <DatePicker value={date} onChange={setDate} min={today} aria-label="Date" />
-        </FormField>
-        <FormField id="wfh-reason" label="Reason" required>
-          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
-        </FormField>
-        <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
-          <strong>Effect on {on ? dateText(on) : 'the day'}</strong>
-          <div className="yx-tim-effect__line">
-            <span className="yx-tim-muted">Now</span>
-            <Badge tone="neutral">Expected in office</Badge>
-          </div>
-          <div className="yx-tim-effect__line">
-            <span className="yx-tim-muted">After</span>
-            <Badge tone="success">Work from home · counts as present</Badge>
-          </div>
-          {on && (
-            <p className="yx-tim-muted">
-              {hr
-                ? `This would be work-from-home day ${usedThen + 1} in ${MONTH_NAME(on)}, over the ${data.wfh.limit} your manager approves alone, so HR approves too.`
-                : `This will be work-from-home day ${usedThen + 1} of ${data.wfh.limit} in ${MONTH_NAME(on)}.`}
-            </p>
-          )}
-          <p className="yx-tim-muted">On the day you can check in from anywhere: your location is recorded, not checked.</p>
-          <p className="yx-tim-muted">Approval: {hr ? 'Your manager → HR' : 'Your manager'}</p>
-        </section>
-      </div>
-    </Drawer>
-  );
-}
-
-function NightWork({ night, p }: { night: MyNightWork; p: MyAttendanceScreenProps }) {
+/** Me › Attendance › Night work: the opt-in and the consents HR recorded, confirmed or withdrawn with a one-time code. */
+export function NightWorkCard({ night, ...p }: NightWorkProps) {
   const { busy, error, run } = useRun();
   const [sent, setSent] = useState<{ id: string; to: string } | null>(null);
   const [code, setCode] = useState('');
@@ -499,8 +127,9 @@ const hhmmOf = (minute: number) => `${String(Math.floor(minute / 60) % 24).padSt
 export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref, onRegularise }: {
   data: MyAttendance;
   now: Date;
-  getLocation: MyAttendanceScreenProps['getLocation'];
-  onPunch: MyAttendanceScreenProps['onPunch'];
+  /** The browser's location, or null with the reason (permission refused, no GPS). */
+  getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
+  onPunch: (kind: PunchKind, pin: Pin | null) => Promise<PunchResult>;
   attendanceHref: string;
   onRegularise: () => void;
 }) {

@@ -53,7 +53,9 @@ import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummar
 import { VISITS } from '../ops/visitors-data';
 import { NoAccessState } from '../../components/feedback';
 import { localDate, monthDays as liveMonthDays, toPunches, toShift } from './live/adapt';
-import type { DayCard, LoadState, Muster as LiveMusterData } from './live/types';
+import type { DayCard, FixInput, FixRow, LoadState, MyAttendance as MyAttendanceData, Muster as LiveMusterData, WfhInput } from './live/types';
+import { LiveAttendanceRequestDrawer } from './requests';
+import { useToast } from '../../components/notify';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -718,7 +720,157 @@ function exportMonth(who: string, label: string, days: AttendanceDay[]) {
   ]);
 }
 
-export function AttendanceCalendarScreen({ persona = 'emp', defaultMonth = 'sep', openDay, state: stateProp = 'ready', person: personProp = 'Meera Krishnan' }: AttendanceCalendarProps) {
+/** What the live app gives My attendance (design audit): the person's month, their day cards and their requests. */
+export interface LiveMyAttendance {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyAttendanceData | null;
+  /** The month shown (yyyy-mm). */
+  month: string;
+  onMonth: (month: string) => void;
+  onOpenDay: (on: string) => Promise<DayCard>;
+  onFix: (input: FixInput) => Promise<unknown>;
+  onWfh: (input: WfhInput) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+  /** Extra cards under the month totals (night work). */
+  extra?: ReactNode;
+  /** Open the request drawer (Home's Request work from home, or Regularise on its clock); a new n opens it again. */
+  ask?: { type: 'regularise' | 'wfh'; n: number };
+}
+
+export function AttendanceCalendarScreen(props: AttendanceCalendarProps & { live?: LiveMyAttendance }) {
+  return props.live ? <LiveMyAttendanceView live={props.live} /> : <StoryAttendanceCalendar {...props} />;
+}
+
+const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day', wfh: 'Work from home' };
+const shiftMonthIso = (month: string, n: number) => {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+const clockText = (min: number) => fmt12(`${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`);
+
+/** The designed attendance calendar on the person's own month: fix alert, calendar, totals, waiting requests, day cards. */
+function LiveMyAttendanceView({ live }: { live: LiveMyAttendance }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const narrow = useNarrow();
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const [req, setReq] = useState<{ type: 'regularise' | 'wfh'; date: Date | null; fix: string; n: number } | null>(null);
+  const [withdraw, setWithdraw] = useState<FixRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const thisMonth = d ? d.today.slice(0, 7) : live.month;
+  const days = useMemo(() => (d ? liveMonthDays(live.month, d.days, d.today) : []), [d, live.month]);
+  const waitingOn = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
+  // A day with a fix waiting reads as "waiting", not as a day to fix.
+  const shown = days.map((x) => (waitingOn.has(isoOf(x.date)) && (x.code === 'A' || x.code === 'MP') ? { ...x, code: 'R' as DayCode } : x));
+  const today = d ? localDate(d.today) : new Date();
+  const toFix = d?.mode === 'punch' ? monthSummary(shown, today).toFix : [];
+  const pending = (d?.requests ?? []).filter((r) => r.status === 'pending' && r.on.slice(0, 7) >= live.month.slice(0, 7));
+  const monthLabel = days[0] ? days[0].date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : '';
+  const open = openOn ? shown.find((x) => isoOf(x.date) === openOn) ?? null : null;
+  const ask = (type: 'regularise' | 'wfh', date: Date | null, fix = 'out') => setReq({ type, date, fix, n: (req?.n ?? 0) + 1 });
+  const fixFor = (x: AttendanceDay) => (x.code === 'A' ? 'full' : x.code === 'MP' ? (x.note === 'No check-in' ? 'in' : 'out') : 'wrong');
+  const ready = live.state === 'ready' && !!d;
+  useEffect(() => {
+    if (!live.ask || !d) return;
+    const t = localDate(d.today);
+    ask(live.ask.type, live.ask.type === 'wfh' ? new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1) : t, 'wrong');
+    // Opens once per ask (its n), when the month has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.ask?.n, Boolean(d)]);
+  if (live.state === 'no-access') return <NoAccessState grantedBy="HR" what="your attendance" />;
+  return (
+    <TimePage active="My attendance">
+      <PageHeader
+        title="My attendance"
+        description={d ? [d.fences[0]?.name, d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${clockText(d.shift.start)} – ${clockText(d.shift.end)}`].filter(Boolean).join(' · ') : undefined}
+        actions={
+          <div className="yx-tim-row">
+            <Button icon={Download} disabled={!ready} onClick={() => exportMonth(d!.employee.name, monthLabel, shown)}>Export month</Button>
+            <Button variant="primary" disabled={!ready} onClick={() => ask('regularise', null, 'wrong')}>Regularise a day</Button>
+          </div>
+        }
+      />
+      <div className="yx-tim-row yx-tim-monthnav">
+        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => { live.onMonth(shiftMonthIso(live.month, -1)); setOpenOn(null); }} disabled={!ready} />
+        <h2 className="yx-tim-h2" aria-live="polite">{monthLabel}</h2>
+        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => { live.onMonth(shiftMonthIso(live.month, 1)); setOpenOn(null); }} disabled={!ready || live.month >= thisMonth} />
+      </div>
+      {ready && toFix.length > 0 && (
+        <InlineAlert
+          tone="danger"
+          title={`${toFix.length} ${toFix.length === 1 ? 'day needs' : 'days need'} fixing before payroll`}
+          actions={toFix.map((x) => <Button key={x.date.getTime()} size="sm" onClick={() => ask('regularise', x.date, fixFor(x))}>Fix {shortDate(x.date)}</Button>)}
+        >
+          {toFix.map((x) => `${shortDate(x.date)}: ${(x.note ?? DAY_CODE_LABEL[x.code]).toLowerCase()}`).join(' · ')}
+        </InlineAlert>
+      )}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? (
+        <LoadingBlock rows={8} />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load your attendance" description="Check your connection and try again. Your punches are safe." onRetry={live.onRetry} />
+      ) : (
+        <div className="yx-tim-grid">
+          <div data-span="8">
+            <AttendanceMonth month={days[0].date} days={shown} compact={narrow} selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+          </div>
+          <div data-span="4" className="yx-tim-stack">
+            <Card title={`${monthLabel} totals`}>
+              <AttendanceLegend days={shown} live />
+            </Card>
+            {pending.length > 0 && (
+              <Card title="Waiting for approval">
+                <ul className="yx-tim-list">
+                  {pending.map((r) => (
+                    <li key={r.id}>
+                      <span className="yx-tim-list__main"><strong>{shortDate(localDate(r.on))} · {KIND_TEXT[r.kind] ?? r.kind}</strong><span className="yx-tim-muted">With your manager</span></span>
+                      {r.kind === 'wfh' ? <Button size="sm" onClick={() => setWithdraw(r)}>Withdraw</Button> : <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+            {live.extra}
+          </div>
+        </div>
+      )}
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? `${open.date.toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(open.date)}` : ''} subtitle="Your day card" size="lg">
+        {open && d && (
+          <LiveDayPanel
+            key={openOn}
+            day={open}
+            person={d.employee.name}
+            viewer="emp"
+            load={() => live.onOpenDay(openOn!)}
+            onFix={open.code === 'MP' || open.code === 'A' ? () => { setOpenOn(null); ask('regularise', open.date, fixFor(open)); } : undefined}
+            onWithdraw={open.code === 'R' ? () => { const r = d.requests.find((x) => x.on === openOn && x.status === 'pending'); if (r) setWithdraw(r); } : undefined}
+          />
+        )}
+      </Drawer>
+      {req && d && <LiveAttendanceRequestDrawer key={req.n} live={{ data: d, onFix: live.onFix, onWfh: live.onWfh }} type={req.type} date={req.date} fix={req.fix} onClose={() => setReq(null)} />}
+      <ConfirmDialog
+        open={!!withdraw}
+        onOpenChange={(o) => !o && setWithdraw(null)}
+        title={withdraw ? `Withdraw the ${(KIND_TEXT[withdraw.kind] ?? '').toLowerCase()} request for ${shortDate(localDate(withdraw.on))}?` : ''}
+        consequence="Your manager no longer sees it. You can send a new request later."
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep request"
+        onConfirm={() => {
+          const r = withdraw!;
+          setBusy(true);
+          live.onWithdraw(r.id).then(
+            () => { toast({ tone: 'success', title: `Request for ${shortDate(localDate(r.on))} withdrawn` }); setWithdraw(null); setOpenOn(null); },
+            (e: unknown) => toast({ tone: 'error', title: 'Not withdrawn', description: e instanceof Error ? e.message : 'Try again.' }),
+          ).finally(() => setBusy(false));
+        }}
+        confirmDisabled={busy}
+      />
+    </TimePage>
+  );
+}
+
+function StoryAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openDay, state: stateProp = 'ready', person: personProp = 'Meera Krishnan' }: AttendanceCalendarProps) {
   const [state, retry] = useViewState(stateProp);
   const [month, setMonth] = useState(defaultMonth);
   const reports = myReports();
@@ -1571,7 +1723,7 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
 }
 
 /** The designed day card on a live day: punches and shift from the server; fixes go through the person's own request. */
-export function LiveDayPanel({ day, person, viewer = 'hr', load }: { day: AttendanceDay; person: string; viewer?: 'hr' | 'mgr' | 'emp'; load: () => Promise<DayCard> }) {
+export function LiveDayPanel({ day, person, viewer = 'hr', load, onFix, onWithdraw }: { day: AttendanceDay; person: string; viewer?: 'hr' | 'mgr' | 'emp'; load: () => Promise<DayCard>; /** The person fixes their own day (employee view). */ onFix?: () => void; onWithdraw?: () => void }) {
   const [card, setCard] = useState<DayCard | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -1585,7 +1737,7 @@ export function LiveDayPanel({ day, person, viewer = 'hr', load }: { day: Attend
   }, [attempt]);
   if (failed) return <ErrorState title="The day card didn't load" description="Nothing has changed. Try again in a moment." onRetry={() => setAttempt((a) => a + 1)} />;
   if (!card) return <LoadingBlock rows={4} />;
-  return <DayCardBody live day={day} punches={toPunches(card)} shift={toShift(card)} viewer={viewer} person={person} monthDays={[day]} />;
+  return <DayCardBody live day={day} punches={toPunches(card)} shift={toShift(card)} viewer={viewer} person={person} monthDays={[day]} onFix={onFix} onWithdraw={onWithdraw} />;
 }
 
 function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: MusterRow[]; /** The muster's month: only its days can be picked. */ monthDays: AttendanceDay[]; today: Date; onClose: () => void; onDone: (ids: string[], date: Date, reason: string) => void }) {

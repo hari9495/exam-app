@@ -101,7 +101,7 @@ export default function YxHomePage() {
         getLocation={browserLocation}
         onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
         attendanceHref="/yx/time/attendance"
-        onRegularise={() => router.push('/yx/time/attendance')}
+        onRegularise={() => router.push('/yx/time/attendance?request=regularise')}
       />
     ) : undefined,
     stats,
