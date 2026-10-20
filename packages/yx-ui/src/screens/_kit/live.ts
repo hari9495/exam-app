@@ -27,3 +27,4 @@ export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../p
 export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
+export { VrsScheme, type LiveVrs } from '../people/relations';

@@ -667,7 +667,7 @@ export function RetrenchmentScreen(p: RetrenchmentScreenProps) {
   );
 }
 
-function ApplyDialog({ entities, today, onClose, onApply }: { entities: Choice[]; today: string; onClose: () => void; onApply: RetrenchmentScreenProps['onApply'] }) {
+export function ApplyDialog({ entities, today, onClose, onApply }: { entities: Choice[]; today: string; onClose: () => void; onApply: RetrenchmentScreenProps['onApply'] }) {
   const [entity, setEntity] = useState<string | null>(entities.length === 1 ? entities[0].value : null);
   const [kind, setKind] = useState<IrPermission['kind']>('retrenchment');
   const [workers, setWorkers] = useState('');
@@ -699,7 +699,7 @@ function ApplyDialog({ entities, today, onClose, onApply }: { entities: Choice[]
   );
 }
 
-function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission; today: string; onClose: () => void; onDecide: RetrenchmentScreenProps['onDecide'] }) {
+export function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission; today: string; onClose: () => void; onDecide: RetrenchmentScreenProps['onDecide'] }) {
   const [status, setStatus] = useState<'granted' | 'deemed' | 'refused'>('granted');
   const [on, setOn] = useState<Date | null>(fromKey(today));
   return (
@@ -712,7 +712,7 @@ function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission; today:
   );
 }
 
-function ClosureDialog({ r, today, onClose, onClosure }: { r: IrPermission; today: string; onClose: () => void; onClosure: (r: IrPermission, input: { lwd: string; reason: string }) => Promise<unknown> }) {
+export function ClosureDialog({ r, today, onClose, onClosure }: { r: IrPermission; today: string; onClose: () => void; onClosure: (r: IrPermission, input: { lwd: string; reason: string }) => Promise<unknown> }) {
   const [lwd, setLwd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
   return (
@@ -727,7 +727,7 @@ function ClosureDialog({ r, today, onClose, onClosure }: { r: IrPermission; toda
   );
 }
 
-function SchemeDialog({ entities, today, onClose, onScheme }: { entities: Choice[]; today: string; onClose: () => void; onScheme: RetrenchmentScreenProps['onScheme'] }) {
+export function SchemeDialog({ entities, today, onClose, onScheme }: { entities: Choice[]; today: string; onClose: () => void; onScheme: RetrenchmentScreenProps['onScheme'] }) {
   const [name, setName] = useState('');
   const [entity, setEntity] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(fromKey(today));

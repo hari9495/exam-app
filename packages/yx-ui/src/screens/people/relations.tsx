@@ -1,6 +1,10 @@
 // PPL-36 Possible same person · PPL-37 Merge / unmerge (P01 YX-ORG-26 / 27)
 // PPL-39 Union register · PPL-40 VRS scheme · PPL-42 Re-verification cycles (M01 §3.11).
 import { useState } from 'react';
+import { ErrorState } from '../../components/feedback';
+import { ListSkeleton } from './people-kit';
+import { ApplyDialog, ClosureDialog, DecideDialog, SchemeDialog, type RetrenchmentScreenProps } from './live/special';
+import type { IrPermission } from './live/types';
 import { FileText, GitMerge, Mail, Plus, Split } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -206,8 +210,137 @@ export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultO
 
 type VrsApp = (typeof VRS.applications)[number];
 
+/** The live app's VRS schemes and government permissions (design audit step 3). */
+export type LiveVrs = RetrenchmentScreenProps & {
+  /** VRS applications are exit cases of type VRS. */
+  applications: { id: string; name: string; status: string; lastDay: string }[];
+  onOpenCase: (id: string) => void;
+};
+
+const IR_LABEL: Record<IrPermission['status'], { label: string; tone: 'warning' | 'success' | 'danger' }> = { applied: { label: 'Applied', tone: 'warning' }, granted: { label: 'Granted', tone: 'success' }, deemed: { label: 'Deemed granted', tone: 'success' }, refused: { label: 'Refused', tone: 'danger' } };
+const KIND_LABEL: Record<IrPermission['kind'], string> = { retrenchment: 'Retrenchment', layoff: 'Lay-off', closure: 'Closure' };
+const dayOf = (iso: string) => new Date(`${iso}T00:00:00`);
+
+function LiveVrsScheme({ live: p }: { live: LiveVrs }) {
+  const [t, setT] = useState<'applications' | 'setup' | 'permissions'>('applications');
+  const [pick, setPick] = useState<string | null>(null);
+  const [ask, setAsk] = useState<'apply' | 'scheme' | { decide: IrPermission } | { close: IrPermission } | null>(null);
+  const d = p.data;
+  const scheme = d?.schemes.find((s) => s.id === pick) ?? d?.schemes[0] ?? null;
+  const entity = (id: string | null) => p.entities.find((e) => e.value === id)?.label ?? 'All legal entities';
+  const open = scheme ? dayOf(scheme.opensOn) <= dayOf(p.today) && dayOf(scheme.closesOn) >= dayOf(p.today) : false;
+  type App = LiveVrs['applications'][number];
+  const cols: TableColumn<App>[] = [
+    { key: 'name', header: 'Applicant', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: `Last day ${formatDate(dayOf(r.lastDay))}` }), width: 240 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (/accepted|cleared|exited|closed/i.test(String(v)) ? 'success' : /withdrawn|not accepted/i.test(String(v)) ? 'neutral' : 'warning'), width: 240 },
+  ];
+  const permCols: TableColumn<IrPermission>[] = [
+    { key: 'kind', header: 'For', value: (r) => KIND_LABEL[r.kind], render: (r) => <span className="yx-ppl__type"><span>{KIND_LABEL[r.kind]}</span><span className="yx-ppl__sub">{entity(r.legalEntityId)}</span></span>, width: 220 },
+    { key: 'workers', header: 'Workers', type: 'number', value: (r) => r.workersAffected, width: 100 },
+    { key: 'applied', header: 'Applied', type: 'date', value: (r) => dayOf(r.appliedOn), width: 130 },
+    { key: 'authority', header: 'Authority', value: (r) => r.authority, width: 200 },
+    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={IR_LABEL[r.status].tone}>{IR_LABEL[r.status].label}</Badge>, width: 140 },
+  ];
+  return (
+    <PeopleFrame active="VRS schemes">
+      {p.state === 'error' ? (
+        <ErrorState title="We couldn't load the schemes" description="Check your connection and try again." onRetry={p.onRetry} />
+      ) : !d ? (
+        <ListSkeleton label="Loading VRS schemes" />
+      ) : (
+        <>
+          {d.schemes.length > 1 && (
+            <div className="yx-ppl__row">
+              <span className="yx-ppl__head-select">
+                <Select aria-label="Scheme" size="sm" value={scheme?.id ?? null} onChange={setPick} options={d.schemes.map((s) => ({ value: s.id, label: s.name }))} />
+              </span>
+            </div>
+          )}
+          <ObjectHeader
+            name={scheme?.name ?? 'VRS schemes'}
+            icon={FileText}
+            secondary={scheme ? `Window ${formatDate(dayOf(scheme.opensOn))} to ${formatDate(dayOf(scheme.closesOn))} · ${entity(scheme.legalEntityId)}` : 'No voluntary retirement scheme yet.'}
+            status={scheme ? <Badge tone={open ? 'success' : 'neutral'}>{open ? 'Open' : dayOf(scheme.opensOn) > dayOf(p.today) ? 'Not open yet' : 'Closed'}</Badge> : undefined}
+            // Issue scheme letters: no bulk scheme letter in the live app yet (left out).
+            actions={
+              <>
+                <Button onClick={() => setAsk('apply')}>Record a permission request</Button>
+                <Button variant="primary" icon={Plus} onClick={() => setAsk('scheme')}>
+                  New VRS scheme
+                </Button>
+              </>
+            }
+          />
+          <Tabs value={t} onValueChange={(v) => setT(v as typeof t)}>
+            <TabsList aria-label="VRS scheme">
+              <TabsTrigger value="applications" count={p.applications.length || undefined}>Applications</TabsTrigger>
+              <TabsTrigger value="setup">Set-up</TabsTrigger>
+              <TabsTrigger value="permissions" count={d.requests.length || undefined}>Government permission</TabsTrigger>
+            </TabsList>
+            <TabsContent value="applications">
+              <DataTable
+                label="VRS applications"
+                columns={cols}
+                rows={p.applications}
+                getRowId={(r) => r.id}
+                onRowClick={(r) => p.onOpenCase(r.id)}
+                rowButtons={(r) => <Button size="sm" onClick={() => p.onOpenCase(r.id)}>Open exit case</Button>}
+                empty={<EmptyState title="No applications yet" description="Eligible employees apply from Resign while a scheme is open. Each application is an exit case of type VRS, approved like any exit." />}
+              />
+            </TabsContent>
+            <TabsContent value="setup">
+              {scheme ? (
+                <div className="yx-ppl__form">
+                  <FormField label="Eligibility rule">
+                    <Text as="p">{`Age ${scheme.minAge}+ and ${scheme.minServiceYears}+ years of service${scheme.legalEntityId ? ` at ${entity(scheme.legalEntityId)}` : ''}`}</Text>
+                  </FormField>
+                  <FormField label="Window">
+                    <Text as="p">{`${formatDate(dayOf(scheme.opensOn))} to ${formatDate(dayOf(scheme.closesOn))}`}</Text>
+                  </FormField>
+                  <InlineAlert tone="info">Approved applications open exit cases of type VRS. Gratuity, leave encashment and notice rules apply on top of the scheme benefit.</InlineAlert>
+                </div>
+              ) : (
+                <EmptyState title="No VRS scheme yet" description="Open a scheme with its window and who may apply." action={<Button onClick={() => setAsk('scheme')}>New VRS scheme</Button>} />
+              )}
+            </TabsContent>
+            <TabsContent value="permissions">
+              <div className="yx-ppl__stack">
+                <Text size="sm" tone="secondary" as="p">
+                  Retrenchment, lay-off and closure need the government&apos;s permission at 300 or more workers (IR Code). Workers on the rolls: {p.entities.map((e) => `${e.label} ${d.workers[e.value] ?? 0}`).join(' · ')}.
+                </Text>
+                <DataTable
+                  label="Government permission requests"
+                  columns={permCols}
+                  rows={d.requests}
+                  getRowId={(r) => r.id}
+                  rowButtons={(r) =>
+                    r.status === 'applied' ? (
+                      <Button size="sm" onClick={() => setAsk({ decide: r })}>Record the decision</Button>
+                    ) : r.kind === 'closure' && (r.status === 'granted' || r.status === 'deemed') ? (
+                      <Button size="sm" onClick={() => setAsk({ close: r })}>Start the closure exits</Button>
+                    ) : null
+                  }
+                  empty={<EmptyState title="No permission requests" description="Record a request when you apply to the government for a retrenchment, lay-off or closure." />}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
+      {ask === 'apply' && <ApplyDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onApply={p.onApply} />}
+      {ask === 'scheme' && <SchemeDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onScheme={p.onScheme} />}
+      {ask && typeof ask === 'object' && 'decide' in ask && <DecideDialog r={ask.decide} today={p.today} onClose={() => setAsk(null)} onDecide={p.onDecide} />}
+      {ask && typeof ask === 'object' && 'close' in ask && <ClosureDialog r={ask.close} today={p.today} onClose={() => setAsk(null)} onClosure={p.onClosure} />}
+    </PeopleFrame>
+  );
+}
+
 // PPL-40
-export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = true }: { tab?: 'setup' | 'applications'; persona?: Persona; eligible?: boolean }) {
+export function VrsScheme(props: { tab?: 'setup' | 'applications' | 'permissions'; persona?: Persona; eligible?: boolean; live?: LiveVrs }) {
+  return props.live ? <LiveVrsScheme live={props.live} /> : <SampleVrsScheme {...props} />;
+}
+
+function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true }: { tab?: 'setup' | 'applications' | 'permissions'; persona?: Persona; eligible?: boolean }) {
   const [t, setT] = useState(tab);
   if (persona === 'emp')
     return (
@@ -243,10 +376,11 @@ export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = tru
   return (
     <PeopleFrame active="VRS schemes">
       <ObjectHeader name={VRS.name} icon={FileText} secondary={`Window ${formatDate(VRS.window[0])} to ${formatDate(VRS.window[1])} · ${VRS.eligible} eligible`} status={<Badge tone="success">Open</Badge>} actions={<Button variant="primary" icon={Mail}>Issue scheme letters</Button>} />
-      <Tabs value={t} onValueChange={(v) => setT(v as 'setup' | 'applications')}>
+      <Tabs value={t} onValueChange={(v) => setT(v as 'setup' | 'applications' | 'permissions')}>
         <TabsList aria-label="VRS scheme">
           <TabsTrigger value="applications" count={VRS.applications.length}>Applications</TabsTrigger>
           <TabsTrigger value="setup">Set-up</TabsTrigger>
+          <TabsTrigger value="permissions" count={1}>Government permission</TabsTrigger>
         </TabsList>
         <TabsContent value="applications">
           <DataTable label="VRS applications" columns={cols} rows={VRS.applications} getRowId={(r) => r.id} rowButtons={(r) => (r.status.startsWith('Pending HR') ? (<><Button size="sm">Reject</Button><Button variant="approve" size="sm">Approve</Button></>) : null)} rowActions={() => <MenuItem>Open exit case</MenuItem>} empty={<EmptyState title="No applications yet" description="Eligible employees can apply from Me while the window is open." />} />
@@ -263,6 +397,19 @@ export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = tru
               <Select options={[{ value: 'm-hr', label: 'Manager, then HR head' }]} value="m-hr" onChange={() => {}} />
             </FormField>
             <InlineAlert tone="info">Approved applications open exit cases of type VRS. Gratuity, leave encashment and notice rules apply on top of the scheme benefit.</InlineAlert>
+          </div>
+        </TabsContent>
+        <TabsContent value="permissions">
+          <div className="yx-ppl__stack">
+            <Text size="sm" tone="secondary" as="p">
+              Retrenchment, lay-off and closure need the government&apos;s permission at 300 or more workers (IR Code). Workers on the rolls: Kaveri Foods Pvt Ltd 186 · Kaveri Foods Pvt Ltd (Tamil Nadu) 342.
+            </Text>
+            <ul className="yx-ppl__successors">
+              <li>
+                <span>Lay-off at Kaveri Foods Pvt Ltd (Tamil Nadu): 40 workers, applied 14 Sep 2026 to the Labour Commissioner, Chennai</span>
+                <Badge tone="warning">Applied</Badge>
+              </li>
+            </ul>
           </div>
         </TabsContent>
       </Tabs>
