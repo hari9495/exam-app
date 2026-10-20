@@ -21,6 +21,11 @@ describe('re-verification maths (PPL-42)', () => {
     expect(dueOn({ ...base, onRoleChange: true, roleEnteredOn: '2020-01-06' })).toBe('2028-01-10'); // joined into it
   });
 
+  it('never due before the rule started', () => {
+    expect(dueOn({ lastVerified: null, joinedOn: '2014-04-01', everyMonths: 24, onRoleChange: false, roleEnteredOn: null, notBefore: '2026-01-01' })).toBe('2026-01-01');
+    expect(dueOn({ lastVerified: '2025-06-01', joinedOn: '2014-04-01', everyMonths: 24, onRoleChange: false, roleEnteredOn: null, notBefore: '2026-01-01' })).toBe('2027-06-01');
+  });
+
   it('overdue, due soon (30 days) or not due', () => {
     expect(dueStatus('2026-10-19', '2026-10-20')).toBe('overdue');
     expect(dueStatus('2026-10-20', '2026-10-20')).toBe('due soon');

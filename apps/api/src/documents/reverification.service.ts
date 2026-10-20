@@ -19,6 +19,7 @@ import { dueOn, dueStatus, remindNow } from './reverification-rules';
 const KEYS = ['document.manage', 'document.view'] as const;
 const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const asDate = (s: string) => new Date(`${s}T00:00:00Z`);
+const said = (s: string) => asDate(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 interface RuleIn {
   legalEntityId?: string | null;
@@ -165,7 +166,7 @@ export class ReverificationService {
         const latest = asks.find((x) => x.ruleId === r.id && x.employeeId === p.employee_id) ?? null;
         const open = latest && !(d?.status === 'verified' && d.verifiedAt && d.verifiedAt > latest.askedAt) ? latest : null;
         const lastVerified = open ? iso(open.lastVerified) : iso(d?.verifiedAt);
-        const due = open ? iso(open.dueOn)! : dueOn({ lastVerified, joinedOn: iso(p.joined_on)!, everyMonths: r.everyMonths, onRoleChange: r.onRoleChange, roleEnteredOn: entered });
+        const due = open ? iso(open.dueOn)! : dueOn({ lastVerified, joinedOn: iso(p.joined_on)!, everyMonths: r.everyMonths, onRoleChange: r.onRoleChange, roleEnteredOn: entered, notBefore: iso(r.validFrom)! });
         out.push({ rule: r, person: p, doc: d, lastVerified, due, ask: open, roleEntered: entered });
       }
     }
@@ -196,7 +197,7 @@ export class ReverificationService {
           name,
           typeName: t.name,
           sensitivity: t.sensitivity,
-          why: x.rule.onRoleChange && x.roleEntered && (!x.lastVerified || x.roleEntered > x.lastVerified) && x.due === x.roleEntered ? `Moved into the role on ${x.roleEntered}` : `Every ${x.rule.everyMonths} months`,
+          why: x.rule.onRoleChange && x.roleEntered && (!x.lastVerified || x.roleEntered > x.lastVerified) && x.due === x.roleEntered ? `Moved into the role on ${said(x.roleEntered)}` : `Every ${x.rule.everyMonths} months`,
           lastVerified: x.lastVerified,
           due: x.due,
           status: dueStatus(x.due, today),

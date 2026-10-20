@@ -122,7 +122,7 @@ describe('People: re-verification cycles (PPL-42)', () => {
     await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'nope_type', everyMonths: 12, validFrom: today }).expect(400);
     await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'pan_card', everyMonths: 0, validFrom: today }).expect(400);
     await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'pan_card', everyMonths: 12, validFrom: today, onRoleChange: true }).expect(400);
-    ids.panRule = (await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'pan_card', everyMonths: 12, validFrom: today }).expect(201)).body.id;
+    ids.panRule = (await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'pan_card', everyMonths: 12, validFrom: addMonths(today, -6) }).expect(201)).body.id;
     // Entity HR: not a company-wide rule, not another entity, but its own entity.
     await api('entHr', 'post', '/documents/reverification/rules').send({ typeKey: 'photo', everyMonths: 6, validFrom: today }).expect(403);
     await api('entHr', 'post', '/documents/reverification/rules').send({ legalEntityId: ids.e1, typeKey: 'photo', everyMonths: 6, validFrom: today }).expect(403);
@@ -150,13 +150,17 @@ describe('People: re-verification cycles (PPL-42)', () => {
     expect(rows.map((r) => r.due)).toEqual([...rows.map((r) => r.due)].sort());
     // The photo rule is for the second entity only.
     expect((await due('hr')).filter((r) => r.ruleId === ids.photoRule).map((r) => r.employeeId)).toEqual([ids.oldEmp]);
+    // A new rule does not make people years overdue: due no earlier than the rule's first day.
+    const fresh = (await api('hr', 'post', '/documents/reverification/rules').send({ legalEntityId: ids.e2, typeKey: 'experience', everyMonths: 12, validFrom: today }).expect(201)).body.id;
+    expect((await due('hr')).find((r) => r.ruleId === fresh && r.employeeId === ids.oldEmp)).toMatchObject({ due: today, status: 'due soon' });
+    await api('hr', 'post', `/documents/reverification/rules/${fresh}/end`).send({}).expect(200);
     // A rule that starts tomorrow is not in force yet.
     const later = (await api('hr', 'post', '/documents/reverification/rules').send({ typeKey: 'education', everyMonths: 1, validFrom: addDays(today, 1) }).expect(201)).body.id;
     expect((await due('hr')).some((r) => r.ruleId === later)).toBe(false);
   });
 
   it('the document class of each type and the scope decide the rows; no key, no list', async () => {
-    const rows = await due('entHr');
+    const rows = (await due('entHr')).filter((r) => [ids.panRule, ids.photoRule].includes(r.ruleId));
     // HR Executive in the second entity: the Personal photo there, not the Confidential PAN card, not the first entity.
     expect(rows.map((r) => `${r.ruleId}:${r.employeeId}`)).toEqual([`${ids.photoRule}:${ids.oldEmp}`]);
     await api('mgr', 'get', '/documents/reverification/due').expect(403);
@@ -220,7 +224,7 @@ describe('People: re-verification cycles (PPL-42)', () => {
   });
 
   it('ending a rule keeps it in the list, dated; once ended it is out of the due list', async () => {
-    await api('hr', 'post', `/documents/reverification/rules/${ids.panRule}/end`).send({ validTo: addDays(today, -1) }).expect(400); // before it starts
+    await api('hr', 'post', `/documents/reverification/rules/${ids.panRule}/end`).send({ validTo: addMonths(today, -7) }).expect(400); // before it starts
     await api('hr', 'post', `/documents/reverification/rules/${ids.panRule}/end`).send({}).expect(200);
     await api('hr', 'post', `/documents/reverification/rules/${ids.panRule}/end`).send({}).expect(409);
     expect((await api('hr', 'get', '/documents/reverification/rules').expect(200)).body.rules.find((x: { id: string }) => x.id === ids.panRule)).toMatchObject({ validTo: today, active: true }); // its last day

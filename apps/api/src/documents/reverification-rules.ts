@@ -12,12 +12,13 @@ export function addMonths(date: string, months: number): string {
 /**
  * When the next re-check is due: every N months after the last verification (or after joining, if never verified);
  * and, for a rule that also applies on a move into its roles, at once from the day of a move that came after the last
- * verification.
+ * verification. Never before the rule itself started (`notBefore`): a new rule does not make people years overdue.
  */
-export function dueOn(i: { lastVerified: string | null; joinedOn: string; everyMonths: number; onRoleChange: boolean; roleEnteredOn: string | null }): string {
+export function dueOn(i: { lastVerified: string | null; joinedOn: string; everyMonths: number; onRoleChange: boolean; roleEnteredOn: string | null; notBefore?: string }): string {
   const periodic = addMonths(i.lastVerified ?? i.joinedOn, i.everyMonths);
   const moved = i.onRoleChange && i.roleEnteredOn && i.roleEnteredOn > i.joinedOn && (!i.lastVerified || i.roleEnteredOn > i.lastVerified) ? i.roleEnteredOn : null;
-  return moved && moved < periodic ? moved : periodic;
+  const due = moved && moved < periodic ? moved : periodic;
+  return i.notBefore && due < i.notBefore ? i.notBefore : due;
 }
 
 /** Overdue after the due date; due soon within `soonDays` of it; otherwise not due yet. */
