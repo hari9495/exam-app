@@ -5425,7 +5425,7 @@
    "http://localhost:6106/iframe.html?viewMode=story&id=screens-platform-shell-homes--plt-02-finance-live-hidden"
   ],
   "note": "",
-  "status": "Not run",
+  "status": "Pass",
   "runs": [
    {
     "date": "2026-10-21",
@@ -5443,6 +5443,12 @@
     "date": "2026-10-21",
     "result": "Pass (payroll-approver@)",
     "findings": "Meena: header buttons, Attendance today Wed 21 Oct with Clock in, October net payroll only (no statutory permission, so no PF/ESI/TDS cards), Money going out, Coming up.",
+    "fixedIn": ""
+   },
+   {
+    "date": "2026-10-21",
+    "result": "Pass (hr@)",
+    "findings": "Lakshmi keeps the HR Home (no Hide amounts); Apply leave and Attendance today correct.",
     "fixedIn": ""
    }
   ],
