@@ -103,6 +103,8 @@ export interface ApprovalTask {
   title: string;
   summary: { label: string; value: string }[];
   requester: string;
+  /** Who the request is about; shown when the requester has no login (HR applied for them). */
+  person?: string;
   raisedBy: string | null;
   onBehalfOf: string | null;
   step: { index: number; of: number; name: string; need: number; approvers: number };

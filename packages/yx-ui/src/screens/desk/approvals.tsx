@@ -86,7 +86,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                       }
                     >
                       <p className="yx-ops-muted">
-                        From {t.requester}
+                        From {t.requester || t.person}
                         {t.raisedBy ? `, raised by ${t.raisedBy}` : ''} · step {t.step.index} of {t.step.of}: {t.step.name}
                         {t.step.approvers > 1 ? ` (${t.step.need === t.step.approvers ? 'all' : t.step.need} of ${t.step.approvers} approve)` : ''}
                         {t.onBehalfOf ? ` · you answer for ${t.onBehalfOf}` : ''}
