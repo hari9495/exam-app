@@ -627,3 +627,11 @@ export const LIFE_JOURNEYS = [
   { id: 'l3', kind: 'parental_leave' as const, kindLabel: 'Parental leave', person: 'Priya Nair', anchorOn: '2026-11-02', progress: 20 },
   { id: 'l4', kind: 'return_to_work' as const, kindLabel: 'Return to work', person: 'Deepa Ghosh', anchorOn: '2026-09-21', progress: 100 },
 ];
+
+/** PPL-49: retirements in the next year and contracts ending in 90 days. */
+export const UPCOMING_EXITS = [
+  { employeeId: 'u1', name: 'Imran Qureshi', kind: 'contract_end' as const, on: '2026-10-31' },
+  { employeeId: 'u2', name: 'Manoj Patil', kind: 'retirement' as const, on: '2026-10-31' },
+  { employeeId: 'u3', name: 'Sana Menon', kind: 'contract_end' as const, on: '2026-12-15' },
+  { employeeId: 'u4', name: 'Lakshmanan Durai', kind: 'retirement' as const, on: '2027-06-30' },
+];

@@ -67,6 +67,7 @@ export {
   PayeesCard,
   AbscondingScreen,
   UpcomingExitsScreen,
+  ContractDialog,
   RetrenchmentScreen,
   VrsCard,
   LetterEditor,

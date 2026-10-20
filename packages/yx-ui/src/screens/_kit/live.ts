@@ -28,3 +28,4 @@ export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
 export { VrsScheme, type LiveVrs } from '../people/relations';
+export { UpcomingExits } from '../people/upcoming';

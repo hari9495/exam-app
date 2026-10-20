@@ -525,7 +525,7 @@ export function UpcomingExitsScreen(p: UpcomingExitsScreenProps) {
   );
 }
 
-function ContractDialog({ ask, people, types, today, onClose, onSave }: { ask: { employeeId: string | null; action: 'set' | 'extend' | 'convert' }; people: Choice[]; types: Choice[]; today: string; onClose: () => void; onSave: UpcomingExitsScreenProps['onContract'] }) {
+export function ContractDialog({ ask, people, types, today, onClose, onSave }: { ask: { employeeId: string | null; action: 'set' | 'extend' | 'convert' }; people: Choice[]; types: Choice[]; today: string; onClose: () => void; onSave: UpcomingExitsScreenProps['onContract'] }) {
   const [who, setWho] = useState<string | null>(ask.employeeId);
   const [end, setEnd] = useState<Date | null>(null);
   const [type, setType] = useState<string | null>(null);
