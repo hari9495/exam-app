@@ -968,19 +968,15 @@ export class EmployeeHistoryService {
     if (!covers(periods, today)) throw new NotFoundException('No open employment for that employee');
   }
 
-  /**
-   * Validate and store a requested change (pending). `payRoute`: payroll's own pay-revision route (founder 21 Oct 2026,
-   * payroll holds no job-change key): a salary revision may then rest on employee.salary.manage alone.
-   */
-  async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto, payRoute = false) {
+  /** Validate and store a requested change (pending). */
+  async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto) {
     const payload = toPayload(dto.payload);
     this.checkPayload(dto.changeType, payload, v);
     const e = await this.openEmployment(tx, c, dto.employeeId);
     await this.lockEmployment(tx, c, e.id);
     // HR within its scope (P02 §4.3), else a manager raising on behalf for their team (YX-SEC-27).
     // The grant covers every day the change will shape, from its date on (P06 fold), not just the date itself.
-    const payOnly = payRoute && dto.changeType === 'salary_revision' && (await this.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate));
-    if (!payOnly && !(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, dto.effectiveDate))) await this.checkOnBehalf(tx, c, v, dto.changeType, e.employeeId);
+    if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, dto.effectiveDate))) await this.checkOnBehalf(tx, c, v, dto.changeType, e.employeeId);
     if (payload.compensation) await this.checkPayReach(tx, c, v, e, dto.effectiveDate);
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);

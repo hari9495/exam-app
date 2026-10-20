@@ -138,7 +138,9 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5G Org ${k}`, slug: `pay5g-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Raising a pay change needs the job-change key, which the Payroll Admin template no longer holds (founder 21 Oct
+    // 2026; who changes pay is still open): these pay tests give it to their payroll fixture.
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : [])];
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],

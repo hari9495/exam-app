@@ -351,7 +351,7 @@ export class PayStructuresService {
         if ((await this.history.ownEmployeeId(tx, c, v)) === dto.employeeId) throw new ForbiddenException('Someone else changes your own pay (YX-SEC-11).');
         await payScope(tx, [e.legalEntityId]);
         const { b, components } = await this.work(tx, c.organizationId, e, dto);
-        const { ch } = await this.history.createChange(tx, c, v, { employeeId: dto.employeeId, changeType: 'salary_revision', effectiveDate: dto.effectiveDate, payload: { compensation: { currency: 'INR', annualCtc: b.annualCtc.toFixed(2) } }, reason: dto.reason, overrideReason: dto.overrideReason }, true);
+        const { ch } = await this.history.createChange(tx, c, v, { employeeId: dto.employeeId, changeType: 'salary_revision', effectiveDate: dto.effectiveDate, payload: { compensation: { currency: 'INR', annualCtc: b.annualCtc.toFixed(2) } }, reason: dto.reason, overrideReason: dto.overrideReason });
         await payScope(tx, [e.legalEntityId]);
         const pkg = await tx.compensationPackage.create({
           data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, changeId: ch.id, templateVersionId: dto.templateVersionId, entryMode: dto.entryMode, payBasis: dto.payBasis ?? 'monthly', annualCtc: b.annualCtc, rate: dto.rate ?? null, otMultiplier: dto.otMultiplier ?? null, holidayMultiplier: dto.holidayMultiplier ?? null, monthlyGross: b.monthlyGross, minWageCheck: (breakupJson(b).minWage ?? {}) as Prisma.InputJsonValue, codeWageAddBack: b.codeWageAddBack, createdBy: c.userId },

@@ -78,7 +78,9 @@ describe('Payroll batch 5b', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5B Org ${k}`, slug: `pay5b-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Raising a pay change needs the job-change key, which the Payroll Admin template no longer holds (founder 21 Oct
+    // 2026; who changes pay is still open): these pay tests give it to their payroll fixture.
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : [])];
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
@@ -284,8 +286,8 @@ describe('Payroll batch 5b', () => {
     expect(ch).toMatchObject({ status: 'pending', annualCtc: '726000.00' });
     // The pay guard: without the entity in this transaction's pay scope the package is invisible, even inside company A.
     expect(await inA((tx) => tx.compensationPackage.count())).toBe(0);
-    // Its values change only in Payroll (the breakup goes with them); payroll holds no job-change key (founder 21 Oct 2026).
-    await api('payAdmin', 'put', `/people/changes/${ch.changeId}`).send({ payload: { compensation: { annualCtc: '900000.00' } } }).expect(403);
+    // Its values change only in Payroll (the breakup goes with them).
+    expect((await api('payAdmin', 'put', `/people/changes/${ch.changeId}`).send({ payload: { compensation: { annualCtc: '900000.00' } } }).expect(409)).body.message).toMatch(/Payroll/);
 
     await stepUp('payAdmin');
     await api('payAdmin', 'post', `/people/changes/${ch.changeId}/approve`).send({}).expect(403);
