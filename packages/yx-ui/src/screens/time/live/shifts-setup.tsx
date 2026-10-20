@@ -13,14 +13,12 @@ import { useRun } from '../../org/org-kit';
 import { LivePage, clock, dateText } from './kit';
 import type { LoadState, OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftRow, ShiftSetup } from './types';
 
-// HR › Shifts set-up (M02 §B2, Q2, Q7, §B7): shifts with times from a date (a night shift ends the next morning),
-// weekly and rotating patterns and who follows them, overtime rules by scope and date, timesheet projects, and the
-// women's night-work records the law needs (consents and the establishment's safeguards, OSH Code). Company-wide.
+// HR › Shifts & patterns, the parts the TIM-06 design does not cover yet (M02 Q7, §B7, OSH Code): overtime rules by
+// scope and date, timesheet projects, and the women's night-work records the law needs (consents and the
+// establishment's safeguards). They show as tabs of the designed screen (roster.tsx, LiveShiftEditor). Company-wide.
 
+/** The calls the shifts set-up makes (TIM-06 on live data, and the sections below that have no design yet). */
 export interface ShiftsSetupScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: ShiftSetup | null;
   onCreateShift: (input: ShiftInput) => Promise<unknown>;
   onShiftTimes: (id: string, input: Omit<ShiftInput, 'code' | 'name' | 'colour' | 'night'>) => Promise<unknown>;
   onShiftDetails: (id: string, input: { name: string; colour: string; night: boolean; active: boolean }) => Promise<unknown>;
@@ -48,330 +46,7 @@ const toMinute = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 
 const fromMinute = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const minutes = (m: number | null) => (m === null ? 'none' : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m / 60} h`);
 
-export function ShiftsSetupScreen(p: ShiftsSetupScreenProps) {
-  const [tab, setTab] = useState('shifts');
-  const d = p.data;
-  return (
-    <LivePage title="Shifts set-up" description="Shifts, patterns, overtime, timesheet projects and night-work records for the whole company. Changes start on their date." state={p.state} onRetry={p.onRetry} what="the shifts set-up" grantedBy="your HR admin">
-      {d && (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList aria-label="Shifts set-up">
-            <TabsTrigger value="shifts">Shifts</TabsTrigger>
-            <TabsTrigger value="patterns">Patterns</TabsTrigger>
-            <TabsTrigger value="overtime">Overtime</TabsTrigger>
-            <TabsTrigger value="projects">Timesheet projects</TabsTrigger>
-            <TabsTrigger value="night">Night work</TabsTrigger>
-          </TabsList>
-          <TabsContent value="shifts">
-            <Shifts {...p} data={d} />
-          </TabsContent>
-          <TabsContent value="patterns">
-            <Patterns {...p} data={d} />
-          </TabsContent>
-          <TabsContent value="overtime">
-            <Overtime {...p} data={d} />
-          </TabsContent>
-          <TabsContent value="projects">
-            <Projects {...p} data={d} />
-          </TabsContent>
-          <TabsContent value="night">
-            <Night {...p} data={d} />
-          </TabsContent>
-        </Tabs>
-      )}
-    </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ shifts
-
-function Shifts({ data, onCreateShift, onShiftTimes, onShiftDetails }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onCreateShift' | 'onShiftTimes' | 'onShiftDetails'>) {
-  const [editing, setEditing] = useState<{ row: ShiftRow | null; times: boolean } | null>(null);
-  const { busy, error, run } = useRun();
-  return (
-    <div className="yx-tim-stack">
-      <div>
-        <Button variant="primary" onClick={() => setEditing({ row: null, times: true })}>
-          Add a shift
-        </Button>
-      </div>
-      {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-      {data.shifts.length ? (
-        <table className="yx-tim-table" aria-label="Shifts">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Times</th>
-              <th>Rules</th>
-              <th>
-                <span className="yx-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.shifts.map((s) => {
-              const v = s.versions.find((x) => x.validFrom <= data.today) ?? s.versions[s.versions.length - 1];
-              return (
-                <tr key={s.id}>
-                  <td>{s.code}</td>
-                  <td>
-                    {s.name} {s.night && <Badge tone="info">Night allowance</Badge>} {!s.active && <Badge tone="neutral">Not in use</Badge>}
-                  </td>
-                  <td>
-                    {v ? `${clock(v.start)} to ${clock(v.end)}${v.end < v.start ? ' (next day)' : ''}` : '—'}
-                    {s.versions.some((x) => x.validFrom > data.today) && <span className="yx-tim-note"> · a change is waiting</span>}
-                  </td>
-                  <td className="yx-tim-note">{v ? `${v.graceMinutes} min grace · full day ${minutes(v.fullDayMinutes)} · half day ${minutes(v.halfDayMinutes)} · ${v.breakMinutes} min break above ${minutes(v.breakAboveMinutes)}` : ''}</td>
-                  <td>
-                    <div className="yx-tim-row">
-                      <Button size="sm" onClick={() => setEditing({ row: s, times: true })}>
-                        Change times
-                      </Button>
-                      <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => onShiftDetails(s.id, { name: s.name, colour: s.colour, night: s.night, active: !s.active }))}>
-                        {s.active ? 'Stop using' : 'Use again'}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      ) : (
-        <EmptyState compact title="No shifts yet" description="Without shifts, each location's usual hours apply." />
-      )}
-      {editing && <ShiftDrawer row={editing.row} today={data.today} onClose={() => setEditing(null)} onCreate={onCreateShift} onTimes={onShiftTimes} />}
-    </div>
-  );
-}
-
-function ShiftDrawer({ row, today, onClose, onCreate, onTimes }: { row: ShiftRow | null; today: string; onClose: () => void; onCreate: ShiftsSetupScreenProps['onCreateShift']; onTimes: ShiftsSetupScreenProps['onShiftTimes'] }) {
-  const v = row?.versions.find((x) => x.validFrom <= today) ?? row?.versions[0];
-  const [code, setCode] = useState(row?.code ?? '');
-  const [name, setName] = useState(row?.name ?? '');
-  const [colour, setColour] = useState<string | null>(row?.colour ?? 'blue');
-  const [night, setNight] = useState(row?.night ?? false);
-  const [validFrom, setValidFrom] = useState(today);
-  const [start, setStart] = useState<string | null>(v ? fromMinute(v.start) : '09:00');
-  const [end, setEnd] = useState<string | null>(v ? fromMinute(v.end) : '17:30');
-  const [grace, setGrace] = useState<number | null>(v?.graceMinutes ?? 10);
-  const [full, setFull] = useState<number | null>(v?.fullDayMinutes ?? 450);
-  const [half, setHalf] = useState<number | null>(v?.halfDayMinutes ?? 240);
-  const [brk, setBrk] = useState<number | null>(v?.breakMinutes ?? 30);
-  const [brkAbove, setBrkAbove] = useState<number | null>(v?.breakAboveMinutes ?? 300);
-  const { busy, error, run } = useRun();
-  const errors = [
-    ...(!row && !/^[A-Z][A-Z0-9]{0,5}$/.test(code) ? [{ fieldId: 'sh-code', message: 'Use 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' }] : []),
-    ...(!row && !name.trim() ? [{ fieldId: 'sh-name', message: 'Name the shift.' }] : []),
-    ...(!validFrom || validFrom < today ? [{ fieldId: 'sh-from', message: 'Choose today or a later date.' }] : []),
-    ...(!start || !end || start === end ? [{ fieldId: 'sh-end', message: 'Give a start and an end that differ.' }] : []),
-    ...(full === null || half === null || half > full ? [{ fieldId: 'sh-half', message: 'A half day needs fewer minutes than a full day.' }] : []),
-  ];
-  const saveErrors = useSaveErrors(errors);
-  const { errorOf } = saveErrors;
-  const times = { validFrom, start: toMinute(start)!, end: toMinute(end)!, graceMinutes: grace ?? 0, halfDayMinutes: half ?? 240, fullDayMinutes: full ?? 480, breakMinutes: brk ?? 0, breakAboveMinutes: brkAbove ?? 0 };
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={row ? `Change ${row.name} from a date` : 'Add a shift'}
-      size="lg"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'save'}
-            onClick={() => {
-              if (errors.length) return saveErrors.reveal();
-              void run('save', async () => {
-                if (row) await onTimes(row.id, times);
-                else await onCreate({ code, name: name.trim(), colour: colour ?? 'blue', night, ...times });
-                onClose();
-              });
-            }}
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-tim-form">
-        <ErrorSummary errors={saveErrors.shownErrors} />
-        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-        {!row && (
-          <>
-            <div className="yx-tim-row">
-              <FormField id="sh-code" label="Code" required helper="Shown in every roster cell." error={errorOf('sh-code')}>
-                <TextField value={code} onChange={(x) => setCode(x.toUpperCase())} maxLength={6} />
-              </FormField>
-              <FormField id="sh-name" label="Name" required error={errorOf('sh-name')}>
-                <TextField value={name} onChange={setName} maxLength={60} />
-              </FormField>
-            </div>
-            <FormField id="sh-colour" label="Colour">
-              <Select value={colour} onChange={setColour} options={COLOURS} />
-            </FormField>
-            <Checkbox label="Night shift (counts for the night allowance)" description="The women's night-work rules always follow the legal night window, whatever this says." checked={night} onChange={setNight} />
-          </>
-        )}
-        <FormField id="sh-from" label="From" required helper="What is already in force stays as it was." error={errorOf('sh-from')}>
-          <TextField type="date" value={validFrom} min={today} onChange={setValidFrom} />
-        </FormField>
-        <div className="yx-tim-row">
-          <FormField id="sh-start" label="Starts" required>
-            <TimeField value={start} onChange={setStart} />
-          </FormField>
-          <FormField id="sh-end" label="Ends" required helper="Before the start for a night shift: it ends the next morning and counts for the day it starts." error={errorOf('sh-end')}>
-            <TimeField value={end} onChange={setEnd} />
-          </FormField>
-        </div>
-        <div className="yx-tim-row">
-          <FormField id="sh-grace" label="Grace (minutes)">
-            <NumberField value={grace} onChange={setGrace} min={0} max={120} />
-          </FormField>
-          <FormField id="sh-full" label="Full day from (minutes worked)">
-            <NumberField value={full} onChange={setFull} min={30} max={960} />
-          </FormField>
-          <FormField id="sh-half" label="Half day from (minutes worked)" error={errorOf('sh-half')}>
-            <NumberField value={half} onChange={setHalf} min={30} max={960} />
-          </FormField>
-        </div>
-        <div className="yx-tim-row">
-          <FormField id="sh-break" label="Unpaid break (minutes)">
-            <NumberField value={brk} onChange={setBrk} min={0} max={120} />
-          </FormField>
-          <FormField id="sh-break-above" label="Taken off above (minutes worked)">
-            <NumberField value={brkAbove} onChange={setBrkAbove} min={0} max={960} />
-          </FormField>
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ patterns
-
-function Patterns({ data, onCreatePattern, onAssignPattern, onRemoveAssignment }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onCreatePattern' | 'onAssignPattern' | 'onRemoveAssignment'>) {
-  const [adding, setAdding] = useState(false);
-  const [assigning, setAssigning] = useState<ShiftSetup['patterns'][number] | null>(null);
-  const { busy, error, run } = useRun();
-  const code = (id: string | null) => (id ? (data.shifts.find((s) => s.id === id)?.code ?? '?') : 'Off');
-  return (
-    <div className="yx-tim-stack">
-      <div>
-        <Button variant="primary" disabled={!data.shifts.length} onClick={() => setAdding(true)}>
-          Add a pattern
-        </Button>
-      </div>
-      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
-      {data.patterns.map((pt) => (
-        <Card
-          key={pt.id}
-          title={pt.name}
-          actions={
-            <Button size="sm" disabled={!pt.active} onClick={() => setAssigning(pt)}>
-              Apply to
-            </Button>
-          }
-        >
-          <div className="yx-tim-stack">
-            <p className="yx-tim-muted">
-              {pt.kind === 'weekly' ? 'Every week: ' : `A ${pt.cycle.length}-day cycle: `}
-              {pt.cycle.map((c, i) => (pt.kind === 'weekly' ? `${WEEK[i]} ${code(c)}` : code(c))).join(' · ')}
-            </p>
-            <div className="yx-tim-row">
-              {pt.assignments.map((a) => (
-                <span key={a.id} className="yx-tim-row">
-                  <Badge tone="info">
-                    {a.scopeName} from {dateText(a.validFrom)}
-                    {a.offsetDays ? ` · starts on day ${a.offsetDays + 1}` : ''}
-                  </Badge>
-                  {a.removable && (
-                    <Button size="sm" loading={busy === a.id} onClick={() => void run(a.id, () => onRemoveAssignment(a.id))}>
-                      Remove
-                    </Button>
-                  )}
-                </span>
-              ))}
-              {!pt.assignments.length && <span className="yx-tim-muted">Not applied to anyone yet.</span>}
-            </div>
-          </div>
-        </Card>
-      ))}
-      {!data.patterns.length && <EmptyState compact title="No patterns yet" description="A pattern repeats shifts and weekly offs, every week or in a cycle (4 on, 2 off; a 3-shift rotation)." />}
-      {adding && <PatternDrawer data={data} onClose={() => setAdding(false)} onCreate={onCreatePattern} />}
-      {assigning && <AssignDrawer data={data} pattern={assigning} onClose={() => setAssigning(null)} onAssign={onAssignPattern} />}
-    </div>
-  );
-}
-
-function PatternDrawer({ data, onClose, onCreate }: { data: ShiftSetup; onClose: () => void; onCreate: ShiftsSetupScreenProps['onCreatePattern'] }) {
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<'weekly' | 'cycle'>('weekly');
-  const [length, setLength] = useState<number | null>(7);
-  const [cells, setCells] = useState<(string | null)[]>(Array(56).fill(null));
-  const { busy, error, run } = useRun();
-  const n = kind === 'weekly' ? 7 : Math.min(56, Math.max(1, length ?? 7));
-  const options = [{ value: 'off', label: 'Weekly off' }, ...data.shifts.filter((s) => s.active).map((s) => ({ value: s.id, label: `${s.code} · ${s.name}` }))];
-  const cycle = cells.slice(0, n);
-  const errors = [...(!name.trim() ? [{ fieldId: 'pt-name', message: 'Name the pattern.' }] : []), ...(cycle.every((c) => c === null) ? [{ fieldId: 'pt-days', message: 'Give at least one day a shift.' }] : [])];
-  const saveErrors = useSaveErrors(errors);
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title="Add a pattern"
-      size="lg"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'save'}
-            onClick={() => {
-              if (errors.length) return saveErrors.reveal();
-              void run('save', async () => {
-                await onCreate({ name: name.trim(), kind, cycle });
-                onClose();
-              });
-            }}
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-tim-form">
-        <ErrorSummary errors={saveErrors.shownErrors} />
-        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-        <FormField id="pt-name" label="Name" required error={saveErrors.errorOf('pt-name')}>
-          <TextField value={name} onChange={setName} maxLength={60} />
-        </FormField>
-        <FormField id="pt-kind" label="Repeats">
-          <Segment label="Repeats" value={kind} onChange={setKind} options={[{ value: 'weekly', label: 'Every week' }, { value: 'cycle', label: 'In a cycle of days' }]} />
-        </FormField>
-        {kind === 'cycle' && (
-          <FormField id="pt-length" label="Days in the cycle" helper="Day 1 is the date the pattern applies from (crews can start on a later day).">
-            <NumberField value={length} onChange={setLength} min={1} max={56} />
-          </FormField>
-        )}
-        <FormField id="pt-days" label="Days" error={saveErrors.errorOf('pt-days')}>
-          <div className="yx-tim-days-grid">
-            {cycle.map((c, i) => (
-              <FormField key={i} id={`pt-day-${i}`} label={kind === 'weekly' ? WEEK[i] : `Day ${i + 1}`}>
-                <Select value={c ?? 'off'} onChange={(v) => setCells((x) => x.map((y, j) => (j === i ? (v === 'off' || !v ? null : v) : y)))} options={options} />
-              </FormField>
-            ))}
-          </div>
-        </FormField>
-      </div>
-    </Drawer>
-  );
-}
-
-function AssignDrawer({ data, pattern, onClose, onAssign }: { data: ShiftSetup; pattern: ShiftSetup['patterns'][number]; onClose: () => void; onAssign: ShiftsSetupScreenProps['onAssignPattern'] }) {
+export function AssignPatternDrawer({ data, pattern, onClose, onAssign }: { data: ShiftSetup; pattern: ShiftSetup['patterns'][number]; onClose: () => void; onAssign: ShiftsSetupScreenProps['onAssignPattern'] }) {
   const [scopeType, setScopeType] = useState<string | null>('employee');
   const [scopeId, setScopeId] = useState<string | null>(null);
   const [validFrom, setValidFrom] = useState(data.today);
@@ -437,7 +112,7 @@ function AssignDrawer({ data, pattern, onClose, onAssign }: { data: ShiftSetup; 
 
 // ------------------------------------------------------------------------------------------ overtime rules
 
-function Overtime({ data, onCreateOtRule, onRemoveOtRule }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onCreateOtRule' | 'onRemoveOtRule'>) {
+export function OtRulesPanel({ data, onCreateOtRule, onRemoveOtRule }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onCreateOtRule' | 'onRemoveOtRule'>) {
   const [adding, setAdding] = useState(false);
   const { busy, error, run } = useRun();
   return (
@@ -607,7 +282,7 @@ function OtDrawer({ data, onClose, onCreate }: { data: ShiftSetup; onClose: () =
 
 // ------------------------------------------------------------------------------------------ timesheet projects
 
-function Projects({ data, onSaveProject }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onSaveProject'>) {
+export function ProjectsPanel({ data, onSaveProject }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onSaveProject'>) {
   const [editing, setEditing] = useState<ProjectRow | 'new' | null>(null);
   return (
     <div className="yx-tim-stack">
@@ -713,7 +388,7 @@ function ProjectDrawer({ data, row, onClose, onSave }: { data: ShiftSetup; row: 
 
 // ------------------------------------------------------------------------------------------ night work (OSH Code)
 
-function Night({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onAddConsent' | 'onWithdrawConsent' | 'onAttest'>) {
+export function NightPanel({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onAddConsent' | 'onWithdrawConsent' | 'onAttest'>) {
   const [recording, setRecording] = useState(false);
   const [attesting, setAttesting] = useState<{ locationId: string; item: string; label: string } | null>(null);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);

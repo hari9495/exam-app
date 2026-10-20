@@ -7,7 +7,7 @@ import { ToastProvider } from '../../../components/notify';
 import { PayrollFeedScreen } from '../payroll-feed';
 import { AttendanceReportsScreen } from '../ops';
 import { RosterScreen } from '../roster';
-import { ShiftsSetupScreen } from './shifts-setup';
+import { ShiftEditorScreen } from '../roster';
 import { TimesheetScreen } from '../ops';
 import type { MyOvertime, MyShifts, MyTimesheet, Muster, OtReview, PayrollFeed, Periods, Registers, RosterWeek, ShiftSetup } from './types';
 
@@ -103,26 +103,30 @@ const setupProps = () => ({
   onAttest: vi.fn(async () => ({})),
 });
 
-describe('Shifts set-up', () => {
-  it('lists shifts with the next-morning end, patterns with crews, and the night-work checklist', async () => {
-    render(<ShiftsSetupScreen {...setupProps()} />);
-    expect(screen.getByText(/10:00 pm to 6:00 am \(next day\)/)).toBeInTheDocument();
+describe('Shifts & patterns (the designed TIM-06)', () => {
+  it('opens the first shift in the designed editor, patterns with who follows them, and the night-work checklist', async () => {
+    render(<ToastProvider><ShiftEditorScreen live={setupProps()} /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Night shift' })).toBeInTheDocument();
+    expect(screen.getByText('Ends next day; the day belongs to the start date')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save shift' })).toBeDisabled();
     await ue.click(screen.getByRole('tab', { name: 'Patterns' }));
-    expect(screen.getByText(/Murugan Selvam from/)).toHaveTextContent('starts on day 8');
+    expect(screen.getByText('Murugan Selvam')).toBeInTheDocument();
+    expect(screen.getByText(/starts on day 8/)).toBeInTheDocument();
     await ue.click(screen.getByRole('tab', { name: 'Night work' }));
     expect(screen.getByText('Not checked')).toBeInTheDocument();
     expect(screen.getByText(/There is no override/)).toBeInTheDocument();
   });
 
-  it('a new shift shows what to fix only on save', async () => {
+  it('a new shift: Save waits for a name and code (never red while typing), then creates it with the times', async () => {
     const p = setupProps();
-    render(<ShiftsSetupScreen {...p} />);
-    await ue.click(screen.getByRole('button', { name: 'Add a shift' }));
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).queryByText(/Use 1 to 6 capital letters/)).not.toBeInTheDocument();
-    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(within(dialog).getAllByText(/Use 1 to 6 capital letters/).length).toBeGreaterThan(0);
-    expect(p.onCreateShift).not.toHaveBeenCalled();
+    render(<ToastProvider><ShiftEditorScreen live={p} /></ToastProvider>);
+    await ue.click(screen.getByRole('button', { name: 'New shift' }));
+    expect(screen.getByText('Enter a name')).toBeInTheDocument();
+    expect(screen.queryByText(/Fix 1 thing/)).toBeNull();
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'General');
+    await ue.type(screen.getByRole('textbox', { name: /^Code/ }), 'g');
+    await ue.click(screen.getByRole('button', { name: 'Save shift' }));
+    await waitFor(() => expect(p.onCreateShift).toHaveBeenCalledWith(expect.objectContaining({ code: 'G', name: 'General', start: 570, end: 1110, graceMinutes: 10, fullDayMinutes: 450, halfDayMinutes: 240 })));
   });
 });
 

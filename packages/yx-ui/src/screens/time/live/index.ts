@@ -12,7 +12,7 @@ export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
 export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { RosterScreen, type LiveRoster } from '../roster';
-export { ShiftsSetupScreen, type ShiftsSetupScreenProps } from './shifts-setup';
+export { ShiftEditorScreen, type LiveShiftEditor } from '../roster';
 export { MyOvertimeScreen, type LiveMyOvertime } from '../my-overtime';
 export { OtReviewScreen, type LiveOtReview } from '../requests';
 export { TimesheetScreen, type LiveTimesheet } from '../ops';
