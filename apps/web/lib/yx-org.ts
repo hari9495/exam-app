@@ -94,6 +94,8 @@ export const YX_KEYS = [
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
   'succession.manage',
+  'employee.disability.manage',
+  'compliance.officer',
   'asset.view',
   'asset.manage',
   // M05 expenses E1.

@@ -24,6 +24,8 @@ import { ExpenseTripsController } from '../expenses/trips.controller';
 import { ExpenseReportsController } from '../expenses/reports.controller';
 import { EmployeeImportController } from '../people/employee-import.controller';
 import { PeopleRegistersController } from '../lifecycle/people-registers.controller';
+import { PeopleExtraController } from '../people-extra/people-extra.controller';
+import { ComplianceController } from '../people-extra/compliance.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -84,11 +86,15 @@ const IMPLICIT: Record<string, string[]> = {
   // People › Import, buddies, union register and succession: every route has its key.
   EmployeeImportController: [],
   PeopleRegistersController: [],
+  // The person's own work authorisations, bank details and disability declaration (the service checks self or the key).
+  PeopleExtraController: ['workAuth', 'intlBank', 'requestIntlBank', 'myDisability', 'declare', 'withdraw'],
+  // A designated person's own declarations and pre-clearance (the service checks they are designated).
+  ComplianceController: ['me', 'save', 'otp', 'submit', 'request', 'report'],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, EmployeeImportController, PeopleRegistersController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, EmployeeImportController, PeopleRegistersController, PeopleExtraController, ComplianceController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

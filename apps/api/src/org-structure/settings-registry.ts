@@ -21,6 +21,9 @@ export interface SettingDef {
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
+  // PPL-43 / PPL-44 (founder 21 Oct 2026): regulated companies (banks, NBFCs, insurers, listed) switch on designated
+  // persons' declarations and trading pre-clearance; others never see them.
+  'people.bfsi_compliance': { label: 'Regulated declarations and trading pre-clearance (BFSI)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', guard: 'access.role.manage' },
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.
   'org.master.default_ownership': { label: 'New masters are', scopes: ['tenant'], dated: false, values: ['shared', 'entity_only'], default: 'shared' },
