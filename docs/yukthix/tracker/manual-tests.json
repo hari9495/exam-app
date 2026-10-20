@@ -4197,5 +4197,1189 @@
    }
   ],
   "ideas": []
+ },
+ {
+  "id": "PPL-01",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Directory",
+  "url": "",
+  "account": "hr@demo-org.test (HR); panel@demo-org.test (manager, Divya); arjun@demo-org.test (employee); plant-hr@demo-org.test (HR for one plant); payroll@demo-org.test (payroll)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--hr-employees",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--hr-contract-workers",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--hr-all-persons",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--employee",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--quick-view",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--filtered",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--load-error",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--phone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--phone-no-match",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--live-hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--live-hr-trend",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--live-employee",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-01-%C2%B7-directory--live-phone"
+  ],
+  "note": "Story names: HR · employees with workforce card; HR · contract workers; HR · all persons; Employee · public fields only; Quick view drawer; · filtered to nothing; · empty (first use); · loading; · error; · phone; · phone, no match; Live · HR, first month (no change line yet); Live · HR, with last month; Live · employee (quick chips from the person); Live · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-02",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Org chart",
+  "url": "",
+  "account": "hr@demo-org.test (HR); panel@demo-org.test (manager, Divya); arjun@demo-org.test (employee)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--reporting",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--department",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--positions",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--as-on-past",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--as-on-future",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-02-%C2%B7-org-chart--employee-view"
+  ],
+  "note": "Story names: Reporting lines (today); Department view; Position view with vacancies; As on 1 Jul 2026; As on 1 Oct 2026 (scheduled changes); Employee view",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-03",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Person record",
+  "url": "",
+  "account": "hr@demo-org.test (HR); panel@demo-org.test (manager, Divya); arjun@demo-org.test (employee); payroll@demo-org.test (payroll); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--hr-overview",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--employee-self",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--manager-team",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--job",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--pay-hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--pay-gated",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--pay-grant",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--time",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--documents",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--documents-manager",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--performance",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--learning",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--assets",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--history",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--as-of-past",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--as-of-future",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--load-error",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-03-%C2%B7-person-record--not-found"
+  ],
+  "note": "Story names: HR · overview (masked IDs with audited reveal); Employee · own record; Manager · team member (Personal hidden); Job tab; Pay tab · HR; Pay tab · manager without salary grant; Pay tab · manager with salary grant; Time tab; Documents tab · HR verify; Documents tab · manager (restricted classes hidden); Performance tab; Learning tab; Assets tab; History tab (timeline, corrections, roles); History · as on 1 Jul 2024; History · as on 1 Oct 2026 (scheduled); · loading; · error; · not found (restricted or missing)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-04",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Change action",
+  "url": "",
+  "account": "hr@demo-org.test (HR); panel@demo-org.test (manager, Divya)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--start",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--promotion",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--transfer",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--inter-entity",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--retro",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-04-%C2%B7-change-action--manager"
+  ],
+  "note": "Story names: HR · find a person, changes waiting; HR · promotion with pay change; HR · transfer with impact preview (PT state); HR · inter-entity transfer options; HR · correction into processed payroll; Manager · promotion without salary grant",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-05",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Scheduled changes",
+  "url": "",
+  "account": "hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-05-%C2%B7-scheduled-changes--next-30",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-05-%C2%B7-scheduled-changes--next-90",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-05-%C2%B7-scheduled-changes--cancel",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-05-%C2%B7-scheduled-changes--empty"
+  ],
+  "note": "Story names: Next 30 days; Next 90 days (two changes for one person); Cancel with reason; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-06",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Bulk changes wizard",
+  "url": "",
+  "account": "payroll@demo-org.test (payroll); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--people",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--rule",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--preview",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--preview-cap",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--preview-block",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--letters",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--letter-preview",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--review",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--confirm",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--same",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-06-%C2%B7-bulk-changes-wizard--live"
+  ],
+  "note": "Story names: Step 1 · choose people; Step 2 · increment rule; Step 3 · per-person preview (3 above band); Step 3 · company rule: cap at the band maximum; Step 3 · company rule: block above the band; Step 4 · letters (made after approval); Step 4 · one person’s letter; Review; Send for approval; Step 2 · same raise for everyone; Live · choose people",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-07",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Employee import",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-07-%C2%B7-employee-import--upload",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-07-%C2%B7-employee-import--map",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-07-%C2%B7-employee-import--validation",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-07-%C2%B7-employee-import--clean",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-07-%C2%B7-employee-import--review"
+  ],
+  "note": "Story names: Upload; Match columns; Validation preview with problems; Validation preview, all ready; Review",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-08",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Team page",
+  "url": "",
+  "account": "panel@demo-org.test (manager, Divya)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-08-%C2%B7-team-page--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-08-%C2%B7-team-page--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-08-%C2%B7-team-page--empty"
+  ],
+  "note": "Story names: Manager · team today; · loading; · empty (new manager)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-09",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Bulk transfer and restructure",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-09-%C2%B7-bulk-transfer-and-restructure--scope",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-09-%C2%B7-bulk-transfer-and-restructure--options",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-09-%C2%B7-bulk-transfer-and-restructure--close-blocked",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-09-%C2%B7-bulk-transfer-and-restructure--close-ready",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-09-%C2%B7-bulk-transfer-and-restructure--confirm"
+  ],
+  "note": "Story names: Step 1 · merge scope; Step 2 · transfer options and overrides; Step 3 · close blocked (payroll not locked); Step 3 · close checks pass; Review and send for approval (typed)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-10",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Inter-entity continuity checklist",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-10-%C2%B7-inter-entity-continuity-checklist--open",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-10-%C2%B7-inter-entity-continuity-checklist--done"
+  ],
+  "note": "Story names: Items open (payroll pre-flight); All items done",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-11",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Onboarding board",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-11-%C2%B7-onboarding-board--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-11-%C2%B7-onboarding-board--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-11-%C2%B7-onboarding-board--empty"
+  ],
+  "note": "Story names: Board with progress rings; · loading; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-12",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Ready to onboard",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--queue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--create-new",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--rehire",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--rehire-override",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--conversion",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-12-%C2%B7-ready-to-onboard--empty"
+  ],
+  "note": "Story names: Queue by person type; Create employee (new person); Create employee (rehire impact preview); Rehire with an override (reason required); Contract worker conversion; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-13",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Journey record",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-13-%C2%B7-journey-record--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-13-%C2%B7-journey-record--it",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-13-%C2%B7-journey-record--manager",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-13-%C2%B7-journey-record--new-hire",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-13-%C2%B7-journey-record--letter-overdue"
+  ],
+  "note": "Story names: HR · all tasks with owners and relative dates; IT · own tasks; Manager · manager and buddy tasks; New hire · own tasks; Appointment letter overdue (compliance alert)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-14",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Pre-boarding batches",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-14-%C2%B7-pre-boarding-batches--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-14-%C2%B7-pre-boarding-batches--change-date",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-14-%C2%B7-pre-boarding-batches--empty"
+  ],
+  "note": "Story names: Campus batches; Change batch joining date (re-anchor); · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-15",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Pre-boarding actions",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-15-%C2%B7-pre-boarding-actions--postpone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-15-%C2%B7-pre-boarding-actions--did-not-join",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-15-%C2%B7-pre-boarding-actions--reneged",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-15-%C2%B7-pre-boarding-actions--withdraw",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-15-%C2%B7-pre-boarding-actions--rehire"
+  ],
+  "note": "Story names: Postpone (re-anchor preview); Did not join (unwind); Reneged; Withdraw offer · reason missing; Rehire pre-boarder · did not join (rehire impact)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-16",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Probation reviews queue",
+  "url": "",
+  "account": "hr@demo-org.test (HR); panel@demo-org.test (manager, Divya)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-16-%C2%B7-probation-reviews-queue--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-16-%C2%B7-probation-reviews-queue--manager",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-16-%C2%B7-probation-reviews-queue--decide",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-16-%C2%B7-probation-reviews-queue--empty"
+  ],
+  "note": "Story names: HR · due, overdue, escalated; Manager · my team; HR · decide an escalated review; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-17",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Probation review form",
+  "url": "",
+  "account": "panel@demo-org.test (manager, Divya); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-17-%C2%B7-probation-review-form--confirm",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-17-%C2%B7-probation-review-form--extend-over-limit",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-17-%C2%B7-probation-review-form--terminate",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-17-%C2%B7-probation-review-form--phone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-17-%C2%B7-probation-review-form--phone-extend"
+  ],
+  "note": "Story names: Manager · confirm; Extend beyond the policy maximum; End employment (goes to HR); · phone; · phone, extend 3 months",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-18",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Resignation",
+  "url": "",
+  "account": "arjun@demo-org.test (employee); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-18-%C2%B7-resignation--form",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-18-%C2%B7-resignation--shortfall",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-18-%C2%B7-resignation--pending",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-18-%C2%B7-resignation--accepted",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-18-%C2%B7-resignation--phone"
+  ],
+  "note": "Story names: Employee · resign with standard notice; Early last day (notice shortfall); Submitted, pending (withdraw directly); Accepted (withdraw needs approval); · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-19",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Exit cases",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--list",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--manager-list",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--case",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--case-manager",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--held",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-19-%C2%B7-exit-cases--empty"
+  ],
+  "note": "Story names: HR · exit cases; Manager · my team; HR · case stepper with deprovisioning; Manager · case (no HR-only flags); HR · open case holds letters; · loading; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-20",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Clearance sign-offs",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-20-%C2%B7-clearance-sign-offs--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-20-%C2%B7-clearance-sign-offs--it-owner",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-20-%C2%B7-clearance-sign-offs--finance-owner",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-20-%C2%B7-clearance-sign-offs--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-20-%C2%B7-clearance-sign-offs--phone"
+  ],
+  "note": "Story names: HR · all departments; IT owner · own items; Finance owner · blocked item; · empty; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-21",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Exit interview",
+  "url": "",
+  "account": "arjun@demo-org.test (employee); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-21-%C2%B7-exit-interview--employee",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-21-%C2%B7-exit-interview--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-21-%C2%B7-exit-interview--phone"
+  ],
+  "note": "Story names: Employee · survey; HR · answers and notes (confidential); · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-22",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "F&F calculator",
+  "url": "",
+  "account": "payroll@demo-org.test (payroll); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-22-%C2%B7-f-f-calculator--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-22-%C2%B7-f-f-calculator--due-soon",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-22-%C2%B7-f-f-calculator--overdue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-22-%C2%B7-f-f-calculator--held",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-22-%C2%B7-f-f-calculator--absconding"
+  ],
+  "note": "Story names: Explained lines with deadline countdown; One working day left (holiday skipped); Overdue; Part held for an open case; Recovery-only (absconding)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-23",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Death in service",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-23-%C2%B7-death-in-service--payees",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-23-%C2%B7-death-in-service--legal-heirs",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-23-%C2%B7-death-in-service--dues",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-23-%C2%B7-death-in-service--forms",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-23-%C2%B7-death-in-service--letters"
+  ],
+  "note": "Story names: Payees per nominations; No valid nomination (legal heirs); Dues split by share; Claim forms checklist; Letters and nominee access",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-24",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Absconding timeline",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-24-%C2%B7-absconding-timeline--running",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-24-%C2%B7-absconding-timeline--stop-dialog",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-24-%C2%B7-absconding-timeline--stopped",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-24-%C2%B7-absconding-timeline--deemed"
+  ],
+  "note": "Story names: Running (day 9, notice 1 sent); Stop with reason; Stopped (returned); Deemed abandonment (day 23)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-25",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Asset register",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--register",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--issue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--return",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--acknowledge",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-25-%C2%B7-asset-register--acknowledged"
+  ],
+  "note": "Story names: Admin · register; Issue dialog; Return dialog with recovery; · empty; Employee · acknowledge (phone); Employee · acknowledged (phone)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-26",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Succession",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-26-%C2%B7-succession--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-26-%C2%B7-succession--risk",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-26-%C2%B7-succession--all-covered",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-26-%C2%B7-succession--manager"
+  ],
+  "note": "Story names: HR · critical positions and readiness; No ready successor risk view; · risk view, nothing at risk; Manager · no access",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-27",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Document verification queue",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-27-%C2%B7-document-verification-queue--queue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-27-%C2%B7-document-verification-queue--review",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-27-%C2%B7-document-verification-queue--reject",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-27-%C2%B7-document-verification-queue--special",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-27-%C2%B7-document-verification-queue--empty"
+  ],
+  "note": "Story names: HR · queue with automated checks; Review drawer (penny drop failed); Reject with reason; Special class (Aadhaar) review; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-28",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Issue letters",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--issue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--approval",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--missing",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--bulk",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--bulk-confirm",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--register",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-28-%C2%B7-issue-letters--empty"
+  ],
+  "note": "Story names: Issue letter · preview with real data; Issue letter · approval before issue; Issue letter · missing fields block generation; Bulk issue · preview with failures; Bulk issue · typed confirmation; Issued letters register (superseded, held); · register empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-29",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Letter templates",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--list",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--upload",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--editor",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--fields",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--test-render",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-29-%C2%B7-letter-templates--empty"
+  ],
+  "note": "Story names: Templates list; Word upload with validation report; In-app editor with merge fields; Field cheat-sheet; Test render (activate after viewing); · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-30",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "My documents and letters",
+  "url": "",
+  "account": "arjun@demo-org.test (employee)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--desktop",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--share",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--phone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--camera",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-30-%C2%B7-my-documents-and-letters--phone-empty"
+  ],
+  "note": "Story names: Employee · documents and letters; Share an expiring link; · empty; · phone; · phone, camera upload; · phone, empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-31",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Certificate request",
+  "url": "",
+  "account": "arjun@demo-org.test (employee); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-31-%C2%B7-certificate-request--request",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-31-%C2%B7-certificate-request--instant",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-31-%C2%B7-certificate-request--needs-approval",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-31-%C2%B7-certificate-request--phone"
+  ],
+  "note": "Story names: Employee · choose certificate; Generated instantly with QR code; NOC · needs HR approval; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-32",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Profile change request",
+  "url": "",
+  "account": "arjun@demo-org.test (employee); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--bank",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--legal-name",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--pan-invalid",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--submitted",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--phone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-32-%C2%B7-profile-change-request--phone-pan"
+  ],
+  "note": "Story names: Employee · bank account (old to new, proof, cooling period); Legal name (dated); PAN · invalid format; Submitted · approved, cooling period; · phone; · phone, PAN invalid",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-33",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "My data and who accessed it",
+  "url": "",
+  "account": "arjun@demo-org.test (employee)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-33-%C2%B7-my-data-and-who-accessed-it--my-data",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-33-%C2%B7-my-data-and-who-accessed-it--accessed",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-33-%C2%B7-my-data-and-who-accessed-it--off",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-33-%C2%B7-my-data-and-who-accessed-it--phone"
+  ],
+  "note": "Story names: My data (classes, retention, download, correction); Who accessed my data; Who accessed · turned off by the company; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-34",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Identity panel",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-34-%C2%B7-identity-panel--on-record",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-34-%C2%B7-identity-panel--refused",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-34-%C2%B7-identity-panel--mismatch"
+  ],
+  "note": "Story names: On the person record (consented); Face consent refused (ID check and attestation); Day-1 mismatch flagged for HR review",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-35",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Person roles panel",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-35-%C2%B7-person-roles-panel--on-record",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-35-%C2%B7-person-roles-panel--panel"
+  ],
+  "note": "Story names: On the person record; Panel alone (contract worker to employee, nominee)",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-36",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Possible same person",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-36-%C2%B7-possible-same-person--queue",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-36-%C2%B7-possible-same-person--compare",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-36-%C2%B7-possible-same-person--face-match",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-36-%C2%B7-possible-same-person--empty"
+  ],
+  "note": "Story names: HR · proposals (name-only match never listed); Evidence side by side; Consented face match proposal; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-37",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Merge and unmerge",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-37-%C2%B7-merge-and-unmerge--merge",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-37-%C2%B7-merge-and-unmerge--note-missing",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-37-%C2%B7-merge-and-unmerge--unmerge",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-37-%C2%B7-merge-and-unmerge--unmerge-confirm"
+  ],
+  "note": "Story names: HR · field-by-field merge; Audit note missing; Unmerge restores the split; Unmerge · confirm with note",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-38",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Disability declaration",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-38-%C2%B7-disability-declaration--form",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-38-%C2%B7-disability-declaration--declared",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-38-%C2%B7-disability-declaration--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-38-%C2%B7-disability-declaration--phone"
+  ],
+  "note": "Story names: Employee · consent first; Employee · declared (withdraw); HR diversity role · list; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-39",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Union register",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-39-%C2%B7-union-register--list",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-39-%C2%B7-union-register--record",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-39-%C2%B7-union-register--empty"
+  ],
+  "note": "Story names: HR · unions and recognition; Union record (office bearers); · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-40",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "VRS scheme",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-40-%C2%B7-vrs-scheme--applications",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-40-%C2%B7-vrs-scheme--setup",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-40-%C2%B7-vrs-scheme--apply",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-40-%C2%B7-vrs-scheme--not-eligible",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-40-%C2%B7-vrs-scheme--permissions"
+  ],
+  "note": "Story names: HR · applications and approvals; HR · scheme set-up; Employee · apply with estimate; Employee · not eligible; HR · government permission requests",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-41",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Buddy panel",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-41-%C2%B7-buddy-panel--hr",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-41-%C2%B7-buddy-panel--assign",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-41-%C2%B7-buddy-panel--empty"
+  ],
+  "note": "Story names: HR · pool, load and check-ins; HR · assign a buddy to a joiner; · empty pool",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-42",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Re-verification cycles",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-42-%C2%B7-re-verification-cycles--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-42-%C2%B7-re-verification-cycles--empty"
+  ],
+  "note": "Story names: HR · rules, due list and outcomes; · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-43",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "BFSI declarations",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--holdings",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--related",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--conflict",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--attest",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--officer",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-43-%C2%B7-bfsi-declarations--phone"
+  ],
+  "note": "Story names: Employee · holdings; Employee · related persons; Employee · conflict of interest; Employee · attestation with OTP; Compliance officer · register; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-44",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Trading pre-clearance",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--request",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--approved",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--blocked",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--expired",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--reported",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--officer",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-44-%C2%B7-trading-pre-clearance--phone"
+  ],
+  "note": "Story names: Employee · request; Approved · validity window and trade report; Blocked · trading window closed; Expired without report; Trade reported; Compliance officer · decisions; · phone",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-45",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Work authorisations tab",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-45-%C2%B7-work-authorisations-tab--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-45-%C2%B7-work-authorisations-tab--empty"
+  ],
+  "note": "Story names: On the record (visa expiring, occupation differs); · empty",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-46",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "International bank details",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--split-pay",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--on-pay-tab",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--invalid-iban",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--over-split",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--phone",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-46-%C2%B7-international-bank-details--phone-invalid"
+  ],
+  "note": "Story names: HR · IBAN and split pay across 3 accounts; On the Pay tab; Invalid IBAN and BIC; Split more than net pay; Employee · phone; Employee · phone, invalid IBAN",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-47",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "My checklist tasks",
+  "url": "",
+  "account": "arjun@demo-org.test (employee); panel@demo-org.test (manager, Divya); hr@demo-org.test (HR)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-47-%C2%B7-my-checklist-tasks--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-47-%C2%B7-my-checklist-tasks--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-47-%C2%B7-my-checklist-tasks--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-47-%C2%B7-my-checklist-tasks--load-error"
+  ],
+  "note": "Story names: Manager · tasks by person; · nothing to do; · loading; · error",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-48",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Life events",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-48-%C2%B7-life-events--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-48-%C2%B7-life-events--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-48-%C2%B7-life-events--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-48-%C2%B7-life-events--load-error"
+  ],
+  "note": "Story names: HR · running checklists; · none running; · loading; · error",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
+ },
+ {
+  "id": "PPL-49",
+  "area": "People (page by page, every role; plan agreed 20 Oct 2026)",
+  "screen": "Retirements and contract ends",
+  "url": "",
+  "account": "hr@demo-org.test (HR); plant-hr@demo-org.test (HR for one plant)",
+  "steps": [
+   "Open the page as each role listed, next to the design story for that role.",
+   "Check every field, button, count and message against the design.",
+   "Check what the role must NOT see."
+  ],
+  "expected": "Live matches the design for each role; each role sees only what it may.",
+  "stories": [
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-49-%C2%B7-retirements-and-contract-ends--default",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-49-%C2%B7-retirements-and-contract-ends--view-only",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-49-%C2%B7-retirements-and-contract-ends--empty",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-49-%C2%B7-retirements-and-contract-ends--loading",
+   "http://localhost:6106/iframe.html?viewMode=story&id=screens-people-ppl-49-%C2%B7-retirements-and-contract-ends--load-error"
+  ],
+  "note": "Story names: HR · coming exits; HR · view only (no change key); · nothing coming; · loading; · error",
+  "status": "Not run",
+  "runs": [],
+  "ideas": []
  }
 ]
