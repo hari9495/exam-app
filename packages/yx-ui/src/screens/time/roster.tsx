@@ -342,9 +342,10 @@ function LiveRosterView({ live }: { live: LiveRoster }) {
   const d = live.data;
   const [dlg, setDlg] = useState<'copy' | 'swap' | undefined>();
   const [failed, setFailed] = useState('');
-  const run = (p: Promise<unknown>) => {
+  const { toast } = useToast();
+  const run = (p: Promise<unknown>, done?: string) => {
     setFailed('');
-    p.catch((e: unknown) => setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'));
+    p.then(() => done && toast({ tone: 'success', title: done }), (e: unknown) => setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'));
   };
   const shifts: Shift[] = useMemo(
     () => [
@@ -436,7 +437,7 @@ function LiveRosterView({ live }: { live: LiveRoster }) {
             status={d!.drafts > 0 ? 'draft' : 'published'}
             // Nothing planned yet: the week follows the patterns, so the grid doesn't call it published.
             hideStatus={!rostered && d!.drafts === 0}
-            onPublish={() => run(live.onPublish(d!.week))}
+            onPublish={() => run(live.onPublish(d!.week), `Roster for the week of ${shortDate(isoLocal(d!.week))} published to your team`)}
             today={isoLocal(d!.today)}
           />
           {checks.length > 0 && (
@@ -460,7 +461,7 @@ function LiveRosterView({ live }: { live: LiveRoster }) {
         title={`Copy week of ${shortDate(isoLocal(lastWeek))} into this week?`}
         consequence="Each day from today takes last week's shift, as a draft. Nothing changes for your team until you publish."
         confirmLabel="Copy week"
-        onConfirm={() => { setDlg(undefined); run(live.onCopy(lastWeek, live.week)); }}
+        onConfirm={() => { setDlg(undefined); run(live.onCopy(lastWeek, live.week), `Week of ${shortDate(isoLocal(lastWeek))} copied into this week as a draft`); }}
       />
       {dlg === 'swap' && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={save} world={world} />}
     </TimePage>

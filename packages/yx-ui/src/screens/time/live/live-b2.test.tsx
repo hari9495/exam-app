@@ -42,7 +42,7 @@ describe('Roster planner (YX-AT-07)', () => {
   it('shows the planned week and the server’s checks; a change is saved as a draft, publish calls the API', async () => {
     const onCells = vi.fn(async () => ({}));
     const onPublish = vi.fn(async () => ({}));
-    render(<RosterScreen live={{ state: 'ready', data: ROSTER, week: '2026-10-12', onWeek: vi.fn(), onCells, onCopy: vi.fn(async () => ({})), onPublish }} />);
+    render(<ToastProvider><RosterScreen live={{ state: 'ready', data: ROSTER, week: '2026-10-12', onWeek: vi.fn(), onCells, onCopy: vi.fn(async () => ({})), onPublish }} /></ToastProvider>);
     expect(screen.getByRole('heading', { name: 'Roster' })).toBeInTheDocument();
     expect(screen.getByText('Draft · not visible to staff')).toBeInTheDocument();
     expect(screen.getByText('Murugan Selvam')).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe('Roster planner (YX-AT-07)', () => {
     expect(screen.getByRole('button', { name: 'Publish roster' })).toBeDisabled();
     cleanup();
     const clear: RosterWeek = { ...ROSTER, people: ROSTER.people.map((x) => ({ ...x, cells: x.cells.map((c) => ({ ...c, conflicts: [] })) })) };
-    render(<RosterScreen live={{ state: 'ready', data: clear, week: '2026-10-12', onWeek: vi.fn(), onCells, onCopy: vi.fn(async () => ({})), onPublish }} />);
+    render(<ToastProvider><RosterScreen live={{ state: 'ready', data: clear, week: '2026-10-12', onWeek: vi.fn(), onCells, onCopy: vi.fn(async () => ({})), onPublish }} /></ToastProvider>);
     await ue.click(screen.getByRole('button', { name: 'Publish roster' }));
     await ue.click(screen.getAllByRole('button', { name: 'Publish roster' })[0]);
     await waitFor(() => expect(onPublish).toHaveBeenCalledWith('2026-10-12'));

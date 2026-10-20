@@ -935,7 +935,7 @@ function LiveApplyLeavePanel({ live, data, typeId: t0, onClose, onSent }: { live
     setFailed('');
     live
       .onApply({ ...input, reason: reason.trim(), ...(delegate && delegateTo ? { delegateUserId: delegateTo } : {}), ...(certificate ? { certificate: true } : {}) })
-      .then(() => { onSent(`${chosen?.name ?? 'Leave'} ${span(range.from!, range.to ?? range.from!)} sent to your manager`); onClose(); }, (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not sent. Try again.'))
+      .then((r) => { onSent(`${chosen?.name ?? 'Leave'} request sent to ${(r as { approver?: string | null } | undefined)?.approver ?? 'your manager'} for ${span(range.from!, range.to ?? range.from!)}`); onClose(); }, (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not sent. Try again.'))
       .finally(() => setBusy(false));
   };
   const total = plan?.total ?? 0;

@@ -8,6 +8,7 @@ import { Switch } from '../../../components/choice';
 import { CodeField } from '../../../components/inputs';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
+import { useToast } from '../../../components/notify';
 import { ClockCard } from '../time-kit';
 import type { ClockState, Punch } from '../time-logic';
 import { dateText } from './kit';
@@ -34,6 +35,7 @@ export interface NightWorkProps {
 /** Me › Attendance › Night work: the opt-in and the consents HR recorded, confirmed or withdrawn with a one-time code. */
 export function NightWorkCard({ night, ...p }: NightWorkProps) {
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const [sent, setSent] = useState<{ id: string; to: string } | null>(null);
   const [code, setCode] = useState('');
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function NightWorkCard({ night, ...p }: NightWorkProps) {
             description="Placed on a shift between 7 pm and 6 am only with your consent, confirmed by you here, and the workplace safeguards in place. HR can see this. Only you can turn it off."
             checked={night.optedIn}
             disabled={busy === 'opt' || !p.onNightOptIn}
-            onChange={(on) => void run('opt', () => p.onNightOptIn!(on))}
+            onChange={(on) => void run('opt', async () => { await p.onNightOptIn!(on); toast({ tone: 'success', title: on ? 'Night-work protection turned on' : 'Night-work protection turned off' }); })}
           />
         )}
         {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
@@ -84,7 +86,7 @@ export function NightWorkCard({ night, ...p }: NightWorkProps) {
             <FormField id="nw-code" label={`The 6-digit code sent to ${sent.to}`} required>
               <CodeField value={code} onChange={setCode} />
             </FormField>
-            <Button variant="primary" disabled={code.length !== 6} loading={busy === 'confirm'} onClick={() => void run('confirm', async () => (await p.onNightConfirm!(sent.id, code), setSent(null), setCode('')))}>
+            <Button variant="primary" disabled={code.length !== 6} loading={busy === 'confirm'} onClick={() => void run('confirm', async () => (await p.onNightConfirm!(sent.id, code), toast({ tone: 'success', title: 'Night-work consent confirmed' }), setSent(null), setCode('')))}>
               Confirm my consent
             </Button>
           </div>
@@ -98,7 +100,7 @@ export function NightWorkCard({ night, ...p }: NightWorkProps) {
           footer={
             <>
               <Button onClick={() => setWithdrawing(null)}>Cancel</Button>
-              <Button variant="primary" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => (await p.onNightWithdraw!(withdrawing), setWithdrawing(null)))}>
+              <Button variant="primary" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => (await p.onNightWithdraw!(withdrawing), toast({ tone: 'success', title: 'Night-work consent withdrawn' }), setWithdrawing(null)))}>
                 Withdraw
               </Button>
             </>

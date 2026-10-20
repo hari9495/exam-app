@@ -10,6 +10,7 @@ import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
+import { useToast } from '../../../components/notify';
 import { dateText } from './kit';
 import type { OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftSetup } from './types';
 
@@ -48,6 +49,7 @@ export function AssignPatternDrawer({ data, pattern, onClose, onAssign }: { data
   const [validFrom, setValidFrom] = useState(data.today);
   const [offset, setOffset] = useState<number | null>(0);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const list = scopeType === 'employee' ? data.people.map((x) => ({ value: x.id, label: x.code ? `${x.name} (${x.code})` : x.name })) : scopeType === 'location' ? data.locations.map((x) => ({ value: x.id, label: x.name })) : scopeType === 'department' ? data.departments.map((x) => ({ value: x.id, label: x.name })) : scopeType === 'legal_entity' ? data.entities.map((x) => ({ value: x.id, label: x.name })) : [];
   const errors = [...(scopeType !== 'tenant' && !scopeId ? [{ fieldId: 'pa-who', message: 'Choose who the pattern is for.' }] : []), ...(validFrom < data.today ? [{ fieldId: 'pa-from', message: 'Choose today or a later date.' }] : [])];
   const saveErrors = useSaveErrors(errors);
@@ -66,6 +68,7 @@ export function AssignPatternDrawer({ data, pattern, onClose, onAssign }: { data
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onAssign(pattern.id, { scopeType: scopeType!, ...(scopeType === 'tenant' ? {} : { scopeId: scopeId! }), validFrom, offsetDays: offset ?? 0 });
+                toast({ tone: 'success', title: `${pattern.name} applied from ${dateText(validFrom)}` });
                 onClose();
               });
             }}
@@ -111,6 +114,7 @@ export function AssignPatternDrawer({ data, pattern, onClose, onAssign }: { data
 export function OtRulesPanel({ data, onCreateOtRule, onRemoveOtRule }: { data: ShiftSetup } & Pick<ShiftsSetupScreenProps, 'onCreateOtRule' | 'onRemoveOtRule'>) {
   const [adding, setAdding] = useState(false);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   return (
     <div className="yx-tim-stack">
       <div>
@@ -148,7 +152,7 @@ export function OtRulesPanel({ data, onCreateOtRule, onRemoveOtRule }: { data: S
                 <td>{r.settle === 'comp_off' ? `Comp-off (half day from ${minutes(r.compOffHalfMinutes)}, full day from ${minutes(r.compOffFullMinutes)})` : 'Paid in payroll'}</td>
                 <td>
                   {r.removable && (
-                    <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, () => onRemoveOtRule(r.id))}>
+                    <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, async () => { await onRemoveOtRule(r.id); toast({ tone: 'success', title: `Removed the ${r.name} overtime rule` }); })}>
                       Remove
                     </Button>
                   )}
@@ -179,6 +183,7 @@ function OtDrawer({ data, onClose, onCreate }: { data: ShiftSetup; onClose: () =
   const [half, setHalf] = useState<number | null>(240);
   const [full, setFull] = useState<number | null>(480);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const list = scopeType === 'location' ? data.locations.map((x) => ({ value: x.id, label: x.name })) : scopeType === 'department' ? data.departments.map((x) => ({ value: x.id, label: x.name })) : scopeType === 'legal_entity' ? data.entities.map((x) => ({ value: x.id, label: x.name })) : scopeType === 'employee' ? data.people.map((x) => ({ value: x.id, label: x.name })) : [];
   const errors = [
     ...(!name.trim() ? [{ fieldId: 'ot-name', message: 'Name the rule.' }] : []),
@@ -204,6 +209,7 @@ function OtDrawer({ data, onClose, onCreate }: { data: ShiftSetup; onClose: () =
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onCreate({ name: name.trim(), scopeType: scopeType!, ...(scopeType === 'tenant' ? {} : { scopeId: scopeId! }), validFrom, minMinutes: min ?? 0, roundMinutes: Number(round), dailyCapMinutes: cap, rateNormal: rates[0] ?? 2, rateWeeklyOff: rates[1] ?? 2, rateHoliday: rates[2] ?? 2, needsApproval, settle, compOffHalfMinutes: half ?? 240, compOffFullMinutes: full ?? 480 });
+                toast({ tone: 'success', title: `Saved the ${name.trim()} overtime rule · from ${dateText(validFrom)}` });
                 onClose();
               });
             }}
@@ -334,6 +340,7 @@ function ProjectDrawer({ data, row, onClose, onSave }: { data: ShiftSetup; row: 
   const [activities, setActivities] = useState((row?.activities ?? []).join(', '));
   const [active, setActive] = useState(row?.active ?? true);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const errors = [...(!/^[A-Z][A-Z0-9-]{0,11}$/.test(code) ? [{ fieldId: 'pr-code', message: 'Use 1 to 12 capital letters, digits or dashes, starting with a letter.' }] : []), ...(!name.trim() ? [{ fieldId: 'pr-name', message: 'Name the project.' }] : [])];
   const saveErrors = useSaveErrors(errors);
   return (
@@ -351,6 +358,7 @@ function ProjectDrawer({ data, row, onClose, onSave }: { data: ShiftSetup; row: 
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onSave(row?.id ?? null, { code, name: name.trim(), managerUserId: manager, billable, activities: activities.split(',').map((a) => a.trim()).filter(Boolean), active });
+                toast({ tone: 'success', title: `${row ? 'Saved' : 'Added'} project ${name.trim()}` });
                 onClose();
               });
             }}
@@ -390,6 +398,7 @@ export function NightPanel({ data, onAddConsent, onWithdrawConsent, onAttest }: 
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   const [withdrawOn, setWithdrawOn] = useState(data.today);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   return (
     <div className="yx-tim-stack">
       <InlineAlert tone="info" title="The law guard">
@@ -472,7 +481,7 @@ export function NightPanel({ data, onAddConsent, onWithdrawConsent, onAttest }: 
           footer={
             <>
               <Button onClick={() => setWithdrawing(null)}>Cancel</Button>
-              <Button variant="primary" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => (await onWithdrawConsent(withdrawing, withdrawOn), setWithdrawing(null)))}>
+              <Button variant="primary" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => (await onWithdrawConsent(withdrawing, withdrawOn), toast({ tone: 'success', title: `Withdrawal of consent recorded from ${dateText(withdrawOn)}` }), setWithdrawing(null)))}>
                 Record
               </Button>
             </>
@@ -497,6 +506,7 @@ function ConsentDrawer({ data, onClose, onAdd }: { data: ShiftSetup; onClose: ()
   const [givenOn, setGivenOn] = useState(data.today);
   const [reference, setReference] = useState('');
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const errors = [...(!who ? [{ fieldId: 'nc-who', message: 'Choose the person.' }] : []), ...(!loc ? [{ fieldId: 'nc-loc', message: 'Choose the establishment.' }] : []), ...(!reference.trim() ? [{ fieldId: 'nc-ref', message: 'Say where the signed form is kept.' }] : [])];
   const saveErrors = useSaveErrors(errors);
   return (
@@ -514,6 +524,7 @@ function ConsentDrawer({ data, onClose, onAdd }: { data: ShiftSetup; onClose: ()
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onAdd({ employeeId: who!, locationId: loc!, givenOn, reference: reference.trim() });
+                toast({ tone: 'success', title: `Consent of ${data.people.find((x) => x.id === who)?.name ?? 'the person'} recorded` });
                 onClose();
               });
             }}
@@ -548,6 +559,7 @@ function AttestDrawer({ today, target, onClose, onAttest }: { today: string; tar
   const [reviewDue, setReviewDue] = useState('');
   const [note, setNote] = useState('');
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const errors = [...(!reviewDue || reviewDue <= attestedOn ? [{ fieldId: 'sg-review', message: 'Choose a review date after the check.' }] : []), ...(attestedOn > today ? [{ fieldId: 'sg-on', message: 'A check is recorded once it is done.' }] : []), ...(!note.trim() ? [{ fieldId: 'sg-note', message: 'Say what was checked.' }] : [])];
   const saveErrors = useSaveErrors(errors);
   return (
@@ -565,6 +577,7 @@ function AttestDrawer({ today, target, onClose, onAttest }: { today: string; tar
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onAttest({ locationId: target.locationId, item: target.item, attestedOn, reviewDue, note: note.trim() });
+                toast({ tone: 'success', title: `Recorded: ${target.label}` });
                 onClose();
               });
             }}

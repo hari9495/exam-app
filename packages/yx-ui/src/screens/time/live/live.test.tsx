@@ -57,7 +57,7 @@ describe('Me › Leave (the designed TIM-17 leave home)', () => {
   });
 
   it('applying: Send waits for the dates and a reason (never red while typing); the summary comes from the server; then a toast', async () => {
-    const p = leaveLive();
+    const p = { ...leaveLive(), onApply: vi.fn(async () => ({ approver: 'Kavya Reddy' })) };
     render(<ToastProvider><LeaveHomeScreen live={p} /></ToastProvider>);
     await ue.click(screen.getByRole('button', { name: 'Apply leave' }));
     const dialog = screen.getByRole('dialog', { name: 'Apply leave' });
@@ -72,7 +72,9 @@ describe('Me › Leave (the designed TIM-17 leave home)', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Family function');
     await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));
     await waitFor(() => expect(p.onApply).toHaveBeenCalledWith(expect.objectContaining({ leaveTypeId: 'el', from: '2026-10-20', to: '2026-10-21', reason: 'Family function' })));
-    expect((await screen.findAllByText('Earned leave 20–21 Oct sent to your manager')).length).toBeGreaterThan(0);
+    // The founder's rule: a toast names the approver and the dates (20 Oct 2026).
+    expect((await screen.findAllByText('Earned leave request sent to Kavya Reddy for 20–21 Oct')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('dialog', { name: 'Apply leave' })).toBeNull();
   });
 
   it('asking to cancel approved leave needs a reason, then sends it', async () => {
@@ -176,7 +178,7 @@ describe('Me › Attendance (the designed calendar)', () => {
     const onNightCode = vi.fn(async () => ({ sentTo: 'your work email', expiresInSeconds: 300, resendAfterSeconds: 60 }));
     const onNightConfirm = vi.fn(async () => ({}));
     const onNightWithdraw = vi.fn(async () => ({}));
-    render(<NightWorkCard night={night} onNightOptIn={onNightOptIn} onNightCode={onNightCode} onNightConfirm={onNightConfirm} onNightWithdraw={onNightWithdraw} />);
+    render(<ToastProvider><NightWorkCard night={night} onNightOptIn={onNightOptIn} onNightCode={onNightCode} onNightConfirm={onNightConfirm} onNightWithdraw={onNightWithdraw} /></ToastProvider>);
     await ue.click(screen.getByRole('switch', { name: 'Night-work protection' }));
     expect(onNightOptIn).toHaveBeenCalledWith(true);
     expect(screen.getByText('Needs your confirmation')).toBeInTheDocument();
@@ -193,7 +195,7 @@ describe('Me › Attendance (the designed calendar)', () => {
   });
 
   it('night work: covered by the record, so no switch to turn it off', () => {
-    render(<NightWorkCard night={{ byRecord: true, optedIn: false, optedInSince: null, consents: [] }} onNightOptIn={vi.fn()} />);
+    render(<ToastProvider><NightWorkCard night={{ byRecord: true, optedIn: false, optedInSince: null, consents: [] }} onNightOptIn={vi.fn()} /></ToastProvider>);
     expect(screen.getByText(/The night-work protection applies to you/)).toBeInTheDocument();
     expect(screen.queryByRole('switch')).toBeNull();
   });
