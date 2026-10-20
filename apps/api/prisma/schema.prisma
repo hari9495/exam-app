@@ -9156,6 +9156,13 @@ model Union {
   legalEntityId  String   @map("legal_entity_id") @db.Uuid
   name           String   @db.VarChar(200)
   registrationNo String?  @map("registration_no") @db.VarChar(60)
+  /// PPL-39 union register: the establishment, recognition and basis, its period and office bearers.
+  locationId     String?   @map("location_id") @db.Uuid
+  recognition    String    @default("not_recognised") @db.VarChar(16)
+  basis          String?   @db.VarChar(200)
+  validFrom      DateTime? @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  bearers        String?   @db.VarChar(500)
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -9957,4 +9964,42 @@ model HomeSnapshot {
   takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("home_snapshots")
+}
+
+/// PPL-41: colleagues who volunteer as buddies, and how many joiners each looks after at a time.
+model BuddyPool {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  cap            Int      @default(2) @db.SmallInt
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("buddy_pool")
+}
+
+/// PPL-26: a critical position and its nominated successors (Confidential, succession.manage).
+model SuccessionPosition {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  title               String   @db.VarChar(120)
+  incumbentEmployeeId String?  @map("incumbent_employee_id") @db.Uuid
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("succession_positions")
+}
+
+model Successor {
+  organizationId String   @map("organization_id") @db.Uuid
+  positionId     String   @map("position_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  /// now · 1_2y · 3y
+  readiness      String   @db.VarChar(8)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([positionId, employeeId])
+  @@index([organizationId], map: "successors_org_idx")
+  @@map("successors")
 }

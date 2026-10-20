@@ -9,6 +9,8 @@ import { PeopleService } from './people.service';
 import { WorkforceController } from './workforce.controller';
 import { WorkforceService } from './workforce.service';
 import { WorkforceJobs } from './workforce-jobs';
+import { EmployeeImportController } from './employee-import.controller';
+import { EmployeeImportService } from './employee-import.service';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 
 // People core on top of the P06 history engine (step 2c): directory, org chart, team, persons, probation and
@@ -16,8 +18,8 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
   imports: [EmployeeHistoryModule, CryptoModule, EmailModule],
-  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
-  controllers: [PeopleController, WorkforceController],
+  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
+  controllers: [PeopleController, WorkforceController, EmployeeImportController],
   exports: [PeopleService, ProfileService],
 })
 export class PeopleModule {}
