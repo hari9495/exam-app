@@ -25,7 +25,7 @@ import { LiveIncrementWizard, type LiveIncrement } from './increment';
 import { LiveEmployeeImport, type LiveImport } from './import';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -546,6 +546,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
+          {...(live ? { onExport: exportCsv('scheduled-changes', shown, cols) } : {})}
           empty={empty}
           rowButtons={edit}
           rowActions={(r) => (

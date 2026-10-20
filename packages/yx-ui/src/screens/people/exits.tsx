@@ -22,7 +22,7 @@ import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noticeOutcome, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
-import { DueCountdown, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesCard } from './live/special';
 import type { AbscondingRow, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
@@ -220,8 +220,9 @@ export function ExitCasesList({ rows, persona = 'hr', state: ownState = 'ready',
           defaultSort={{ key: 'lwd', dir: 'asc' }}
           onRowClick={(r) => live?.onOpen(r.id)}
           rowButtons={open}
-          // Live: F&F opens inside the case; export of exit cases is not in the live app yet (left out).
+          // Live: F&F opens inside the case.
           rowActions={live ? undefined : () => <MenuItem>Open F&F</MenuItem>}
+          {...(live && hr ? { onExport: exportCsv('exit-cases', shown, cols) } : {})}
           empty={empty}
           onExport={hr && !live ? () => {} : undefined}
         />

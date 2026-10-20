@@ -20,7 +20,7 @@ import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { successionRisk, type Persona, type Readiness } from './people-logic';
 import { ASSETS, SUCCESSION } from './people-data';
-import { ListSkeleton, PeopleFrame, Segment, StatusBadge } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge } from './people-kit';
 import type { AssetRow } from './live/types';
 
 /* ================================================================== PPL-25 asset register */
@@ -200,6 +200,7 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
           rows={shown}
           getRowId={(r) => r.id}
           state={live.state === 'loading' ? 'loading' : 'ready'}
+          onExport={exportCsv('assets', shown, cols)}
           filtered={filters.length > 0 || q !== ''}
           onClearFilters={() => {
             setFilters([]);
