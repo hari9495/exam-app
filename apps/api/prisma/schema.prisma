@@ -9965,3 +9965,39 @@ model HomeSnapshot {
 
   @@map("home_snapshots")
 }
+
+// ---- PPL-42 re-verification cycles (migration 20261204000000_reverification). RLS lives in the migration.
+
+model ReverificationRule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String?   @map("legal_entity_id") @db.Uuid
+  typeKey        String    @map("type_key") @db.VarChar(40)
+  everyMonths    Int       @map("every_months")
+  departmentIds  String[]  @default([]) @map("department_ids") @db.Uuid
+  designationIds String[]  @default([]) @map("designation_ids") @db.Uuid
+  onRoleChange   Boolean   @default(false) @map("on_role_change")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("reverification_rules")
+}
+
+model ReverificationAsk {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  ruleId         String    @map("rule_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  documentId     String    @map("document_id") @db.Uuid
+  dueOn          DateTime  @map("due_on") @db.Date
+  lastVerified   DateTime? @map("last_verified") @db.Date
+  askedAt        DateTime  @default(now()) @map("asked_at") @db.Timestamptz(3)
+  askedBy        String?   @map("asked_by") @db.Uuid
+  remindedOn     DateTime? @map("reminded_on") @db.Date
+
+  @@unique([organizationId, ruleId, employeeId, dueOn], map: "reverification_asks_once_key")
+  @@map("reverification_asks")
+}

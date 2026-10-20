@@ -7,6 +7,7 @@ import { EmployeeHistoryController } from '../employee-history/employee-history.
 import { OrgStructureController } from '../org-structure/org-structure.controller';
 import { LifecycleController } from '../lifecycle/lifecycle.controller';
 import { DocumentsController } from '../documents/documents.controller';
+import { ReverificationController } from '../documents/reverification.controller';
 import { LettersController } from '../documents/letters/letters.controller';
 import { ExitsController } from '../lifecycle/exits.controller';
 import { PerformanceSetupController } from '../performance/setup.controller';
@@ -50,6 +51,7 @@ const IMPLICIT: Record<string, string[]> = {
   AccessController: [],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
+  ReverificationController: ['forPerson'], // PPL-42: the person, HR in scope or the manager (decided by the service)
   DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam'], // PPL-03: a manager's read-only view of the team's Public and Internal documents
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
   LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
@@ -83,7 +85,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);
