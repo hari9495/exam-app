@@ -605,3 +605,25 @@ export const TEAM_TODAY = [
 ];
 
 export const CUSTOM_FIELDS_NOTE = 'Custom fields come from the employee field set (P18); each has a class and a self-edit flag.';
+
+/** PPL-47: checklist tasks given to Divya's team across joiners, leavers and life events. */
+const task = (id: string, journeyId: string, person: string, journeyKind: 'onboarding' | 'offboarding' | 'new_manager', anchorOn: string, title: string, dueOn: string, kind: 'tick' | 'form' | 'document' | 'letter', extra: Partial<{ overdue: boolean; status: 'open' | 'waiting'; locked: boolean; canSkip: boolean }> = {}) => ({
+  id, key: id, title, kind, ownerType: 'manager' as const, ownerLabel: 'Manager', assignee: 'Divya Raghunathan', dueOn, dueOffsetDays: 0, status: extra.status ?? ('open' as const), overdue: extra.overdue ?? false, required: true, locked: extra.locked ?? false, form: null, documentType: null, answers: null,
+  link: null, completedAt: null, completedBy: null, skipReason: null, canComplete: extra.status !== 'waiting', canSkip: extra.canSkip ?? false, version: 1, journeyId, journeyKind, person, anchorOn,
+});
+export const CHECKLIST_TASKS = [
+  task('t1', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Welcome call with the new hire', '2026-09-30', 'tick', { overdue: true }),
+  task('t2', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Plan the first week', '2026-10-02', 'form'),
+  task('t3', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Day-30 check-in', '2026-11-04', 'tick', { status: 'waiting' }),
+  task('t4', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Handover plan', '2026-10-12', 'form'),
+  task('t5', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Manager sign-off on clearance', '2026-10-17', 'tick', { canSkip: true }),
+  task('t6', 'j3', 'Imran Qureshi', 'new_manager', '2026-10-15', 'One-to-one with each new report', '2026-10-22', 'tick'),
+];
+
+/** PPL-48: running life-event checklists. */
+export const LIFE_JOURNEYS = [
+  { id: 'l1', kind: 'new_manager' as const, kindLabel: 'New manager', person: 'Imran Qureshi', anchorOn: '2026-10-15', progress: 40 },
+  { id: 'l2', kind: 'transfer' as const, kindLabel: 'Transfer', person: 'Sana Menon', anchorOn: '2026-10-03', progress: 75 },
+  { id: 'l3', kind: 'parental_leave' as const, kindLabel: 'Parental leave', person: 'Priya Nair', anchorOn: '2026-11-02', progress: 20 },
+  { id: 'l4', kind: 'return_to_work' as const, kindLabel: 'Return to work', person: 'Deepa Ghosh', anchorOn: '2026-09-21', progress: 100 },
+];

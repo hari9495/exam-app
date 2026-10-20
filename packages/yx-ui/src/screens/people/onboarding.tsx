@@ -24,7 +24,8 @@ import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
 import { addDays, daysBetween, extensionAllowed, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
 import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData } from './live/types';
-import { CONTENT_ASK, PostponeDialog, TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
+import { PostponeDialog, TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
+import { taskButtons, taskRow } from './checklists';
 import { BATCHES, BUDDIES, d, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
 import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
@@ -583,35 +584,7 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
     { id: 'day', title: words[1], test: (o: number) => o === 0 },
     { id: 'after', title: words[2], test: (o: number) => o > 0 },
   ];
-  const actionFor = (t: (typeof tasks)[number]) => {
-    if (done(t)) return undefined;
-    const buttons: ReactNode[] = [];
-    if (t.canComplete) buttons.push(<Button key="do" size="sm" onClick={() => setAsk({ kind: CONTENT_ASK[t.kind]?.ask ?? 'done', task: t })}>{CONTENT_ASK[t.kind]?.button ?? 'Mark done'}</Button>);
-    if (j.canManage && live.actions.onIssueLetter && t.kind === 'letter' && t.status === 'open') buttons.push(<Button key="letter" size="sm" icon={FileText} onClick={() => setAsk({ kind: 'letter', task: t })}>Issue letter</Button>);
-    if (j.canManage && live.actions.onUpload && t.kind === 'document' && t.status === 'open') buttons.push(<Button key="up" size="sm" onClick={() => setAsk({ kind: 'upload', task: t })}>Upload</Button>);
-    if (t.canSkip) buttons.push(<Button key="skip" size="sm" onClick={() => setAsk({ kind: 'skip', task: t })}>Skip</Button>);
-    if (t.status === 'waiting' && !buttons.length) buttons.push(<Button key="wait" size="sm" disabled>Mark done</Button>);
-    return buttons.length ? <>{buttons}</> : undefined;
-  };
-  const rowOf = (t: (typeof tasks)[number]): ChecklistRow => ({
-    id: t.id,
-    title: (
-      <span className="yx-ppl__row">
-        {t.title}
-        {t.locked && (
-          <Badge tone="neutral">
-            <Icon icon={Lock} size="sm" /> Required by law
-          </Badge>
-        )}
-      </span>
-    ),
-    owner: t.assignee ?? t.ownerLabel,
-    due: fromKey(t.dueOn),
-    when: liveWhen(t.dueOffsetDays, j.kind),
-    status: t.status === 'done' ? 'Done' : t.status === 'skipped' ? 'Skipped' : t.status === 'waiting' ? 'Blocked' : 'Pending',
-    note: t.status === 'waiting' ? 'Waiting for an earlier task' : t.status === 'skipped' && t.skipReason ? t.skipReason : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
-    action: actionFor(t),
-  });
+  const rowOf = (t: (typeof tasks)[number]) => taskRow(t, liveWhen(t.dueOffsetDays, j.kind), taskButtons(t, setAsk, { manage: j.canManage, actions: live.actions }));
   const daysLeft = daysBetween(today, anchor);
   const kindTitle = LIVE_TITLE[j.kind];
   const where = [live.joiner?.role, live.joiner?.location].filter(Boolean).join(' · ');

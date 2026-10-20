@@ -14,7 +14,7 @@ import './people.css';
 
 export type PeoplePage =
   | 'Directory' | 'Org chart' | 'My team'
-  | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies'
+  | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies' | 'Life events' | 'My checklist tasks'
   | 'Change action' | 'Scheduled' | 'Bulk changes' | 'Restructure' | 'Import'
   | 'Exit cases' | 'F&F' | 'Clearance'
   | 'Documents & letters' | 'Assets' | 'Succession'
@@ -33,7 +33,7 @@ export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelS
     ];
   return [
     { items: (['Directory', 'Org chart'] as PeoplePage[]).map(it) },
-    { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies'] as PeoplePage[]).map(it) },
+    { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies', 'Life events', 'My checklist tasks'] as PeoplePage[]).map(it) },
     { label: 'Changes', items: (['Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import'] as PeoplePage[]).map(it) },
     { label: 'Exits', items: (['Exit cases', 'F&F', 'Clearance'] as PeoplePage[]).map(it) },
     { items: (['Documents & letters', 'Assets', 'Succession'] as PeoplePage[]).map(it) },

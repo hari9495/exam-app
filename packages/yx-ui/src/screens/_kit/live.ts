@@ -21,3 +21,4 @@ export { ReadyToOnboardQueue, type LiveReady, type ReadyRow } from '../people/on
 export { PreboardingBatches, type BatchRow, type LiveBatches } from '../people/onboarding';
 export { ProbationQueue, type LiveProbation, type ProbRow, type ProbationDraft, type ProbationOutcome } from '../people/onboarding';
 export { JourneyRecord, type LiveJourney } from '../people/onboarding';
+export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
