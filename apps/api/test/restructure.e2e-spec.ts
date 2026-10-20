@@ -29,7 +29,7 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
-  type Who = 'hrA' | 'approverA' | 'empA' | 'adminB';
+  type Who = 'hrA' | 'hr2A' | 'payrollA' | 'empA' | 'adminB';
   const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
@@ -93,11 +93,13 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
 
     const profile = (keys: string[], name: string) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } })).then((p) => p.id);
     const hr = await profile(['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage'], 'HR');
-    const approver = await profile(['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view'], 'Approver');
+    // Founder decision 21 Oct 2026: payroll does no HR work. Payroll may hold the approval key, yet never decides a restructure.
+    const payroll = await profile(['employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'payroll.run.prepare'], 'Payroll');
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string | null][] = [
       ['hrA', 'A', 'panel', hr],
-      ['approverA', 'A', 'panel', approver],
+      ['hr2A', 'A', 'panel', hr],
+      ['payrollA', 'A', 'panel', payroll],
       ['empA', 'A', 'panel', null],
       ['adminB', 'B', 'org_admin', null],
     ];
@@ -107,7 +109,8 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     for (const [name, k] of roster.map((r) => [r[0], r[1]] as const)) {
       token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
     }
-    await markSteppedUp(tenantPrisma, token.approverA);
+    await markSteppedUp(tenantPrisma, token.hr2A);
+    await markSteppedUp(tenantPrisma, token.payrollA);
     await markSteppedUp(tenantPrisma, token.hrA);
     const hire = async (tag: string, givenName: string, code: string, o: Record<string, unknown> = {}) =>
       (
@@ -117,7 +120,7 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
       ).body as { id: string; payChangeId: string | null };
     const divya = await hire('TN', 'Divya', 'TN0001', { compensation: { currency: 'INR', annualCtc: '900000.00' } });
     ids.divya = divya.id;
-    await api('approverA', 'post', `/people/changes/${divya.payChangeId}/approve`).send({}).expect(201);
+    await api('hr2A', 'post', `/people/changes/${divya.payChangeId}/approve`).send({}).expect(201);
     ids.arjun = (await hire('TN', 'Arjun', 'TN0002', { status: 'probation', joinedOn: addDays(today, -30), overrideReason: undefined })).id;
     ids.imran = (await hire('TN', 'Imran', 'TN0003')).id;
     ids.kiran = (await hire('KF', 'Kiran', 'KF0001')).id;
@@ -153,7 +156,8 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
   it('keys: sending needs employee.change.manage; another company sees nothing and cannot plan with our entities', async () => {
     await api('empA', 'get', '/people/restructures/setup').expect(403);
     await api('empA', 'post', '/people/restructures/preview').send(merge()).expect(403);
-    await api('approverA', 'post', '/people/restructures').send(merge()).expect(403);
+    await api('payrollA', 'post', '/people/restructures').send(merge()).expect(403);
+    await api('payrollA', 'get', '/people/restructures/setup').expect(403);
     const setup = (await api('hrA', 'get', '/people/restructures/setup').expect(200)).body;
     expect(setup.entities.find((e: { id: string }) => e.id === ids.leTN).people).toBe(4);
     expect(setup.departments.find((d: { id: string }) => d.id === ids.plant)).toMatchObject({ openTo: [ids.leTN], byEntity: { [ids.leTN]: 1 } });
@@ -187,11 +191,14 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     const { id } = (await api('hrA', 'post', '/people/restructures').send(merge()).expect(201)).body;
     ids.merge = id;
     await api('adminB', 'get', `/people/restructures/${id}`).expect(404);
-    // The sender never approves their own plan.
-    await api('hrA', 'post', `/people/restructures/${id}/approve`).send({}).expect(403);
+    // The sender never approves their own plan, and payroll never approves one (no HR work); a second HR person does.
+    expect((await api('hrA', 'post', `/people/restructures/${id}/approve`).send({}).expect(403)).body.message).toBe('You sent this restructure, so someone else in HR approves it.');
+    await api('payrollA', 'post', `/people/restructures/${id}/approve`).send({}).expect(403);
+    await api('payrollA', 'post', `/people/restructures/${id}/reject`).send({ reason: 'Not ours' }).expect(403);
+    await api('payrollA', 'get', `/people/restructures/${id}`).expect(403);
     // After sending, Imran gets a change on the move date: he alone cannot move.
     await api('hrA', 'post', '/people/changes').send({ employeeId: ids.imran, changeType: 'transfer', effectiveDate: addDays(today, 5), payload: { assignment: { departmentId: ids.labs } }, reason: 'Labs need him' }).expect(201);
-    const done = (await api('approverA', 'post', `/people/restructures/${id}/approve`).send({ note: 'Board approved' }).expect(200)).body;
+    const done = (await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({ note: 'Board approved' }).expect(200)).body;
     expect(done).toMatchObject({ status: 'done', moved: 3, failed: 1 });
     expect(done.people.find((p: { name: string }) => p.name === 'Imran')).toMatchObject({ status: 'failed', reason: expect.stringMatching(/^Has a transfer on .* on or after the move date\. Decide or cancel it first\.$/) });
     // Divya: the old employment ends the day before, the new one keeps the code, the service and the pay.
@@ -220,7 +227,7 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     const actions = (await asSuper((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { startsWith: 'restructure.' } }, orderBy: { createdAt: 'asc' } }))).map((a) => a.action);
     expect(actions).toEqual(['restructure.requested', 'restructure.approved', 'restructure.done']);
     expect(await asSuper((tx) => tx.eventOutbox.count({ where: { organizationId: org.A.id, eventType: 'employee.joined', payload: { path: ['employeeId'], equals: ids.divya } } }))).toBe(1);
-    await api('approverA', 'post', `/people/restructures/${id}/approve`).send({}).expect(409);
+    await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({}).expect(409);
   });
 
   it('continuity checklist: open items for payroll, kept by HR', async () => {
@@ -232,6 +239,10 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     const esi = items.find((i: { key: string }) => i.key === 'esi');
     await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(200);
     await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(409);
+    // Payroll keeps its own items of the new entity.
+    const uan = items.find((i: { key: string }) => i.key === 'uan');
+    await api('payrollA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(200);
+    await api('payrollA', 'put', `/people/restructures/continuity/${uan.id}`).send({ done: true, version: uan.version }).expect(200);
   });
 
   it('inside one entity: a department and manager move through the change engine; reject and cancel keep everyone in place', async () => {
@@ -241,20 +252,20 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     expect(pre.people.find((p: { name: string }) => p.name === 'Divya')).toMatchObject({ status: 'failed', reason: 'Cannot be their own manager.' });
     const sent = await api('hrA', 'post', '/people/restructures').send({ ...within, overrides: [{ employeeId: ids.divya, leaveOut: true, reason: 'She leads Labs' }] }).expect(201);
     const rejected = await api('hrA', 'post', '/people/restructures').send({ ...within, overrides: [{ employeeId: ids.divya, leaveOut: true, reason: 'She leads Labs' }] }).expect(201);
-    await api('approverA', 'post', `/people/restructures/${rejected.body.id}/reject`).send({ reason: 'Not this quarter' }).expect(200);
-    await api('approverA', 'post', `/people/restructures/${rejected.body.id}/approve`).send({}).expect(409);
-    const done = (await api('approverA', 'post', `/people/restructures/${sent.body.id}/approve`).send({}).expect(200)).body;
+    await api('hr2A', 'post', `/people/restructures/${rejected.body.id}/reject`).send({ reason: 'Not this quarter' }).expect(200);
+    await api('hr2A', 'post', `/people/restructures/${rejected.body.id}/approve`).send({}).expect(409);
+    const done = (await api('hr2A', 'post', `/people/restructures/${sent.body.id}/approve`).send({}).expect(200)).body;
     expect(done).toMatchObject({ status: 'done', moved: 3, failed: 0 });
     expect(done.people.find((p: { name: string }) => p.name === 'Divya')).toMatchObject({ status: 'left_out', reason: 'Left out: She leads Labs' });
     const kiran = await asSuper((tx) => tx.employeeAssignment.findFirst({ where: { employeeId: ids.kiran, supersededAt: null, validTo: null } }));
     expect(kiran).toMatchObject({ departmentId: ids.labs, managerEmployeeId: ids.divya });
     const change = await asSuper((tx) => tx.employeeChange.findFirst({ where: { employeeId: ids.kiran, changeType: 'transfer' } }));
-    expect(change).toMatchObject({ requestedBy: users.hrA, decidedBy: users.approverA });
+    expect(change).toMatchObject({ requestedBy: users.hrA, decidedBy: users.hr2A });
   });
 
   it('a future date: approved now, moved on the day (scheduled)', async () => {
     const { id } = (await api('hrA', 'post', '/people/restructures').send(merge({ kind: 'demerge', locationIds: [ids.locTN], effectiveDate: addDays(today, 40), overrides: [] })).expect(201)).body;
-    const out = (await api('approverA', 'post', `/people/restructures/${id}/approve`).send({}).expect(200)).body;
+    const out = (await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({}).expect(200)).body;
     expect(out.status).toBe('scheduled');
     expect((await employment(ids.imran, ids.leTN))!.exitedOn).toBeNull();
   });

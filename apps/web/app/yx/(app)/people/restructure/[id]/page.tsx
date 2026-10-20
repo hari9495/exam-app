@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { RestructureRecord, type ContinuityItemData, type RestructureRecordData } from '@yukthix/ui/frame';
-import { todayIst } from '../../../../../../lib/yx-org';
+import { loadState, todayIst } from '../../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../../lib/yx-people';
 
 const enc = encodeURIComponent;
@@ -19,7 +19,7 @@ export default function YxRestructureRecordPage() {
   const r = data.data;
   return (
     <RestructureRecord
-      state={data.isError ? 'error' : r ? 'ready' : 'loading'}
+      state={loadState(data) === 'no-access' ? 'forbidden' : data.isError ? 'error' : r ? 'ready' : 'loading'}
       onRetry={() => void data.refetch()}
       data={r ?? null}
       today={new Date(`${todayIst()}T00:00:00`)}

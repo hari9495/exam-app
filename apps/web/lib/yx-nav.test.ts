@@ -117,6 +117,10 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('Restructure is HR work: a payroll role with the approval key does not see it', () => {
+    expect(labels(nav(['employee.change.approve', 'payroll.run.prepare']), 'people')).not.toContain('Restructure');
+    expect(labels(nav(['employee.change.manage']), 'people')).toContain('Restructure');
+  });
   it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
     expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
     expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));

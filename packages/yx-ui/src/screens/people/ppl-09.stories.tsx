@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { REVIEW_ID } from '../../components/stepper';
 import { RestructureWizard } from './changes';
-import { RestructureList, RestructureRecord, type ContinuityItemData, type RestructureRecordData, type RestructureSummary } from './restructure';
+import { RestructureRecord, type ContinuityItemData, type RestructureRecordData } from './restructure';
 import { d } from './people-data';
 
 const meta: Meta = { title: 'Screens/People/PPL-09 · Bulk transfer and restructure', parameters: { layout: 'fullscreen' } };
@@ -75,8 +75,4 @@ const noop = async () => {};
 export const Record: S = { name: 'Restructure record · approver', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={RECORD} today={d(2026, 9, 28)} onApprove={noop} onReject={noop} /> };
 export const Done: S = { name: 'Restructure record · done, one person could not move', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} onLetters={() => {}} /> };
 export const Checklist: S = { name: 'PPL-10 · continuity checklist (live items)', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} defaultChecklistFor="p1" /> };
-const LIST: RestructureSummary[] = [
-  { id: 'r1', kind: 'merge', title: RECORD.title, effectiveDate: '2026-10-01', status: 'pending', count: 2, moved: 0, failed: 0, requestedBy: 'Lakshmi Venkatesan', mine: false },
-  { id: 'r2', kind: 'within', title: 'Move people inside Kaveri Foods Pvt Ltd', effectiveDate: '2026-09-01', status: 'done', count: 14, moved: 14, failed: 0, requestedBy: 'Lakshmi Venkatesan', mine: false },
-];
-export const List: S = { name: 'Approver · restructures', render: () => <RestructureList state="ready" onRetry={() => {}} rows={LIST} onOpen={() => {}} /> };
+export const PayrollNoAccess: S = { name: 'Payroll · no access (HR decides restructures)', render: () => <RestructureRecord state="forbidden" onRetry={() => {}} data={null} today={d(2026, 10, 12)} /> };

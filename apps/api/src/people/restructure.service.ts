@@ -98,6 +98,9 @@ const endOfMonth = (iso: string) => addDays(isoDate(new Date(Date.UTC(Number(iso
 const ACROSS: Kind[] = ['merge', 'close', 'demerge'];
 const CLOSES: Kind[] = ['merge', 'close'];
 
+/** HR decides restructures (founder decision 21 Oct 2026: payroll does no HR work): the change and approval keys. */
+const hrApprover = (v: Viewer) => has(v, 'employee.change.manage') && has(v, 'employee.change.approve');
+
 /** A person cannot move: the reason, in plain words. */
 class Stop extends Error {}
 
@@ -299,7 +302,8 @@ export class RestructureService {
     if (!(await this.history.reachesFrom(tx, c, sender, 'employee.change.manage', e, eff))) throw new Stop(approver ? 'The person who sent this can no longer change this employee.' : 'You cannot change this employee.');
     if (approver) {
       if ((await this.history.ownEmployeeId(tx, c, approver)) === e.employeeId) throw new Stop('A move about the approver is approved by someone else.');
-      if (!(await this.history.reachesFrom(tx, c, approver, 'employee.change.approve', e, eff))) throw new Stop('Your approval does not reach this employee.');
+      // HR approves (founder decision 21 Oct 2026): both HR change keys reach the person; a payroll-only role never does.
+      if (!(await this.history.reachesFrom(tx, c, approver, 'employee.change.approve', e, eff)) || !(await this.history.reachesFrom(tx, c, approver, 'employee.change.manage', e, eff))) throw new Stop('Your approval does not reach this employee.');
     }
     const from = { id: h.fromEntityId, name: names.ent.get(h.fromEntityId)! };
     const lockedFrom = await this.lockedOn(tx, c, from, eff);
@@ -560,7 +564,7 @@ export class RestructureService {
       return p ? displayName(p) : '';
     };
     const own = await this.history.ownEmployeeId(tx, c, v);
-    const canDecide = r.status === 'pending' && has(v, 'employee.change.approve') && !v.actingForOther && r.requestedBy !== v.userId && !rows.some((x) => x.employeeId === own);
+    const canDecide = r.status === 'pending' && hrApprover(v) && !v.actingForOther && r.requestedBy !== v.userId && !rows.some((x) => x.employeeId === own);
     return {
       ...(await this.summary(tx, c, v, r)),
       reason: r.reason,
@@ -596,7 +600,8 @@ export class RestructureService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`restructure:${c.organizationId}:${id}`}))`;
       const r = await this.restructureOr404(tx, c, id);
       if (r.status !== 'pending') throw new ConflictException(`This restructure is ${r.status}.`);
-      if (r.requestedBy === c.userId) throw new ForbiddenException('You sent this restructure, so someone else approves it.');
+      if (!hrApprover(v)) throw new ForbiddenException('HR approves a restructure: it needs employee.change.manage and employee.change.approve.');
+      if (r.requestedBy === c.userId) throw new ForbiddenException('You sent this restructure, so someone else in HR approves it.');
       const own = await this.history.ownEmployeeId(tx, c, v);
       if (own && (await tx.restructurePerson.findFirst({ where: { organizationId: c.organizationId, restructureId: id, employeeId: own } }))) throw new ForbiddenException('This restructure moves you, so someone else approves it.');
       const today = todayIst();
@@ -658,7 +663,8 @@ export class RestructureService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`restructure:${c.organizationId}:${id}`}))`;
       const r = await this.restructureOr404(tx, c, id);
       if (r.status !== 'pending') throw new ConflictException(`This restructure is ${r.status}.`);
-      if (outcome === 'rejected' && (r.requestedBy === c.userId || !has(v, 'employee.change.approve'))) throw new ForbiddenException('You sent this restructure: cancel it instead.');
+      if (outcome === 'rejected' && !hrApprover(v)) throw new ForbiddenException('HR rejects a restructure: it needs employee.change.manage and employee.change.approve.');
+      if (outcome === 'rejected' && r.requestedBy === c.userId) throw new ForbiddenException('You sent this restructure: cancel it instead.');
       if (outcome === 'cancelled' && r.requestedBy !== c.userId && !has(v, 'employee.change.manage')) throw new ForbiddenException('You cannot cancel this restructure.');
       await tx.restructure.update({ where: { id }, data: { status: outcome, decidedBy: c.userId ?? null, decidedAt: new Date(), decisionNote: reason.trim(), version: { increment: 1 } } });
       await audit(tx, c, `restructure.${outcome}`, 'restructure', id, { reason: reason.trim() });

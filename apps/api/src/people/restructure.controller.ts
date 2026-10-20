@@ -76,7 +76,8 @@ const UUID_MAP = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
 // People › Restructure (PPL-09) and the continuity checklist (PPL-10). Keys, checked again person by person:
 //   employee.change.manage    plan, check and send (each person in reach; hiring into the new entity in reach)
-//   employee.change.approve   approve or reject, never one's own and never a plan that moves oneself (YX-SEC-11)
+//   employee.change.approve   with employee.change.manage (HR, founder decision 21 Oct 2026: payroll does no HR work):
+//                             approve or reject, never one's own and never a plan that moves oneself (YX-SEC-11)
 //   payroll.run.prepare       payroll of the new entity keeps the continuity checklist too
 @Controller('people/restructures')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -106,7 +107,7 @@ export class RestructureController {
   }
 
   @Get()
-  @RequireAnyPermission('employee.change.manage', 'employee.change.approve')
+  @RequirePermissions('employee.change.manage')
   async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.restructures.list(ctx, await this.viewer(req));
   }
@@ -140,7 +141,7 @@ export class RestructureController {
   }
 
   @Get(':id')
-  @RequireAnyPermission('employee.change.manage', 'employee.change.approve')
+  @RequirePermissions('employee.change.manage')
   async get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.restructures.get(ctx, await this.viewer(req), id);
   }
@@ -148,7 +149,7 @@ export class RestructureController {
   /** Approving moves many people at once: a fresh second factor, as for bulk changes (P12 YX-IAM-02). */
   @Post(':id/approve')
   @HttpCode(200)
-  @RequirePermissions('employee.change.approve')
+  @RequirePermissions('employee.change.manage', 'employee.change.approve')
   @RequireStepUp()
   async approve(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDto) {
     ownSession(req);
@@ -157,7 +158,7 @@ export class RestructureController {
 
   @Post(':id/reject')
   @HttpCode(200)
-  @RequirePermissions('employee.change.approve')
+  @RequirePermissions('employee.change.manage', 'employee.change.approve')
   async reject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CloseDto) {
     ownSession(req);
     return this.restructures.close(ctx, await this.viewer(req), id, 'rejected', dto.reason);

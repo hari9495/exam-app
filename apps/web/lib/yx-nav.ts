@@ -103,7 +103,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Changes', [
         ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
         ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('restructure', 'Restructure', '/yx/people/restructure')),
+        // Founder decision 21 Oct 2026: HR plans and approves restructures; payroll does no HR work.
+        ...when(has('employee.change.manage'), L('restructure', 'Restructure', '/yx/people/restructure')),
         ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
         ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
         ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ListChecks, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -313,8 +313,19 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
     <PeopleFrame active="Restructure">
       <PageHeader title={heading} description={`Moves ${preview ? ready.length : 'the'} ${preview && ready.length === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then the old entity can be closed' : ''}.`} />
       {s.open.length > 0 && (
-        <InlineAlert tone="info" title={`${s.open.length} ${s.open.length === 1 ? 'restructure is' : 'restructures are'} open`} actions={<Button size="sm" onClick={() => live.onOpen(s.open[0].id)}>Open {s.open[0].title}</Button>}>
-          {s.open.map((o) => `${o.title} (${o.status === 'pending' ? 'waiting for approval' : `moves on ${formatDate(day(o.effectiveDate))}`})`).join('; ')}.
+        <InlineAlert tone="info" title={`${s.open.length} ${s.open.length === 1 ? 'restructure is' : 'restructures are'} open`}>
+          <ul className="yx-ppl__stack" aria-label="Open restructures">
+            {s.open.map((o) => (
+              <li key={o.id} className="yx-ppl__row yx-ppl__row--between">
+                <span>
+                  {o.title} · {o.status === 'pending' ? (o.mine ? 'waiting for another HR person to approve' : 'waiting for your approval') : `moves on ${formatDate(day(o.effectiveDate))}`}
+                </span>
+                <Button size="sm" onClick={() => live.onOpen(o.id)}>
+                  Open
+                </Button>
+              </li>
+            ))}
+          </ul>
         </InlineAlert>
       )}
       <Stepper
@@ -587,7 +598,8 @@ export interface ContinuityItemData {
   version: number;
 }
 export interface RestructureRecordProps {
-  state: 'loading' | 'ready' | 'error';
+  /** forbidden: not HR (founder decision 21 Oct 2026: payroll does no HR work). */
+  state: 'loading' | 'ready' | 'error' | 'forbidden';
   onRetry: () => void;
   data: RestructureRecordData | null;
   today: Date;
@@ -662,6 +674,14 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
     };
   }, [listFor]); // eslint-disable-line react-hooks/exhaustive-deps
   if (state === 'error') return <PeopleFrame active="Restructure"><ErrorState title="We couldn't load this restructure" description="Check your connection and try again." onRetry={onRetry} /></PeopleFrame>;
+  if (state === 'forbidden')
+    return (
+      <PeopleFrame active="Restructure">
+        <PageHeader title="Restructure" />
+        <NoAccessState what="restructures" grantedBy="your HR admin" />
+        <Text size="sm" tone="secondary" as="p">HR plans and approves restructures. Payroll keeps its continuity items in the payroll checks.</Text>
+      </PeopleFrame>
+    );
   if (!d) return <PeopleFrame active="Restructure"><ListSkeleton label="Loading the restructure" /></PeopleFrame>;
   const across = d.kind !== 'within';
   type Row = RestructureRecordData['people'][number];
@@ -737,29 +757,6 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
           </FormField>
         </ConfirmDialog>
       ) : null}
-    </PeopleFrame>
-  );
-}
-
-/** For approvers: the restructures waiting, and the recent ones. */
-export function RestructureList({ state, onRetry, rows, onOpen }: { state: 'loading' | 'ready' | 'error'; onRetry: () => void; rows: RestructureSummary[] | null; onOpen: (id: string) => void }) {
-  const cols: TableColumn<RestructureSummary>[] = [
-    { key: 'title', header: 'Restructure', value: (r) => r.title, width: 320 },
-    { key: 'date', header: 'Effective', type: 'date', value: (r) => day(r.effectiveDate), width: 130 },
-    { key: 'people', header: 'People', type: 'number', value: (r) => r.count, width: 100 },
-    { key: 'by', header: 'Sent by', value: (r) => r.requestedBy ?? '', width: 180 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => STATUS_TEXT[r.status], statusTone: (v) => (v === 'Waiting for approval' ? 'warning' : v === 'Done' ? 'success' : v === 'Scheduled' ? 'info' : 'neutral'), width: 170 },
-  ];
-  return (
-    <PeopleFrame active="Restructure">
-      <PageHeader title="Restructures" description="Bulk moves inside a legal entity or between legal entities, each approved once by someone other than the sender." />
-      {state === 'error' ? (
-        <ErrorState title="We couldn't load the restructures" description="Check your connection and try again." onRetry={onRetry} />
-      ) : !rows ? (
-        <ListSkeleton label="Loading the restructures" />
-      ) : (
-        <DataTable label="Restructures" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => onOpen(r.id)} rowButtons={(r) => <Button size="sm" onClick={() => onOpen(r.id)}>Open</Button>} empty={<EmptyState title="No restructures yet" description="HR sends a restructure from this page; it waits here for your approval." />} />
-      )}
     </PeopleFrame>
   );
 }

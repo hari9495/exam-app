@@ -41,4 +41,4 @@ export { SuccessionScreen, type LiveSuccession } from '../people/assets';
 export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 // People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
 export { RestructureWizard } from '../people/changes';
-export { RestructureList, RestructureRecord, type ContinuityItemData, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
+export { RestructureRecord, type ContinuityItemData, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
