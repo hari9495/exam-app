@@ -363,8 +363,8 @@ export interface TaskActions {
   onIssueLetter?: (task: JourneyTask) => Promise<unknown>;
 }
 
-type Ask = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload' | 'read' | 'watch' | 'survey'; task: JourneyTask };
-const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: Ask['kind']; button: string; confirm: string }>> = {
+export type TaskAsk = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload' | 'read' | 'watch' | 'survey'; task: JourneyTask };
+export const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: TaskAsk['kind']; button: string; confirm: string }>> = {
   form: { ask: 'form', button: 'Fill in', confirm: 'Submit' },
   letter: { ask: 'letter', button: 'Record the letter', confirm: 'Issue letter' },
   read: { ask: 'read', button: 'Read', confirm: 'I have read this' },
@@ -373,7 +373,7 @@ const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: Ask['kind']; butto
 };
 
 function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { tasks: JourneyTask[]; today: string; showPerson?: boolean; actions: TaskActions; onOpen?: (journeyId: string) => void; canUpload?: boolean }) {
-  const [ask, setAsk] = useState<Ask | null>(null);
+  const [ask, setAsk] = useState<TaskAsk | null>(null);
   const columns: TableColumn<JourneyTask>[] = [
     ...(showPerson
       ? [{ key: 'person', header: 'For', type: 'person' as const, value: (r: JourneyTask) => r.person ?? '', person: (r: JourneyTask) => ({ name: r.person ?? '', secondary: r.anchorOn ? `${ANCHOR_WORD[r.journeyKind ?? 'onboarding']} ${dateText(r.anchorOn)}` : undefined }), width: 220, hideable: false }]
@@ -473,7 +473,7 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
   );
 }
 
-function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions; onClose: () => void }) {
+export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: TaskActions; onClose: () => void }) {
   const t = ask.task;
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -679,7 +679,7 @@ export function JourneyScreen(p: JourneyScreenProps) {
   );
 }
 
-function PostponeDialog({ current, today, onClose, onPostpone }: { current: string; today: string; onClose: () => void; onPostpone: (joiningOn: string, reason: string) => Promise<unknown> }) {
+export function PostponeDialog({ current, today, onClose, onPostpone }: { current: string; today: string; onClose: () => void; onPostpone: (joiningOn: string, reason: string) => Promise<unknown> }) {
   const [date, setDate] = useState<Date | null>(fromKey(current));
   const [reason, setReason] = useState('');
   const ready = Boolean(date) && dayKey(date!) !== current && reason.trim().length >= 3;

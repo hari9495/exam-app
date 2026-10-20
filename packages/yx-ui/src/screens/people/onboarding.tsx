@@ -23,7 +23,8 @@ import { formatDate } from '../../lib/format';
 import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
 import { addDays, daysBetween, extensionAllowed, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
-import type { JoinerInput, JoinerPlaces } from './live/types';
+import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData } from './live/types';
+import { CONTENT_ASK, PostponeDialog, TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
 import { BATCHES, BUDDIES, d, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
 import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
@@ -525,7 +526,157 @@ const PHASES: { id: string; title: string; test: (t: JourneyTask) => boolean }[]
 /** The joiner shown on the journey record (Kavya Reddy, Quality, Hosur plant). */
 const KAVYA = { name: 'Kavya Reddy', role: 'Quality Inspector', location: 'Hosur plant', manager: 'Divya Menon', buddy: 'Lakshmi Gowda' };
 
-export function JourneyRecord({ tasks, joining, today, view = 'hr' }: { tasks: JourneyTask[]; joining: Date; today: Date; view?: JourneyView }) {
+/** The live app's checklist (design audit step 3): any journey (onboarding, leaving, life events), its tasks in phases. */
+export interface LiveJourney {
+  state: 'ready' | 'loading' | 'error' | 'not-found';
+  onRetry: () => void;
+  journey: LiveJourneyData | null;
+  /** The joiner's role, place and people, when the journey is an onboarding HR runs. */
+  joiner?: { role: string | null; location: string; manager: string | null; buddy: string | null } | null;
+  actions: TaskActions;
+  onPostpone?: (joiningOn: string, reason: string) => Promise<unknown>;
+  /** Joiner details and actions (forms, checks, joined, rehire options, buddy), shown under the tasks. */
+  children?: ReactNode;
+}
+
+const LIVE_PHASE_WORD: Record<LiveJourneyData['kind'], [string, string, string]> = {
+  onboarding: ['Before joining', 'Joining day', 'After joining'],
+  offboarding: ['Before the last day', 'Last working day', 'After leaving'],
+  new_manager: ['Before the start', 'First day', 'After the start'],
+  transfer: ['Before the move', 'Moving day', 'After the move'],
+  parental_leave: ['Before the leave', 'First day of leave', 'After the leave starts'],
+  return_to_work: ['Before the return', 'Return day', 'After the return'],
+};
+const LIVE_ANCHOR: Record<LiveJourneyData['kind'], string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on' };
+const LIVE_ANCHOR_PAST: Record<LiveJourneyData['kind'], string> = { onboarding: 'joined', offboarding: 'left', new_manager: 'managing since', transfer: 'moved', parental_leave: 'leave from', return_to_work: 'back since' };
+const LIVE_TITLE: Record<LiveJourneyData['kind'], string> = { onboarding: 'onboarding', offboarding: 'leaving', new_manager: 'new manager', transfer: 'transfer', parental_leave: 'parental leave', return_to_work: 'return to work' };
+const liveWhen = (offset: number, kind: LiveJourneyData['kind']) => {
+  const [before, day, after] = LIVE_PHASE_WORD[kind];
+  return offset === 0 ? `on ${day.toLowerCase()}` : offset < 0 ? `${plural(-offset, 'day')} ${before.toLowerCase()}` : `${plural(offset, 'day')} ${after.toLowerCase()}`;
+};
+
+function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) {
+  const j = live.journey;
+  const [ask, setAsk] = useState<TaskAsk | null>(null);
+  const [moving, setMoving] = useState(false);
+  const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
+  if (live.state !== 'ready' || !j)
+    return (
+      <PeopleFrame active="Onboarding board">
+        {live.state === 'error' ? (
+          <ErrorState title="We couldn't load this checklist" description="Check your connection and try again." onRetry={live.onRetry} />
+        ) : live.state === 'not-found' ? (
+          <EmptyState title="Not found" description="This checklist doesn't exist or you can't open it." />
+        ) : (
+          <ListSkeleton label="Loading the checklist" />
+        )}
+      </PeopleFrame>
+    );
+  const anchor = fromKey(j.anchorOn);
+  const tasks = j.tasks.filter((t) => t.status !== 'cancelled');
+  const done = (t: (typeof tasks)[number]) => t.status === 'done' || t.status === 'skipped';
+  const late = tasks.filter((t) => t.overdue);
+  const letterLate = late.find((t) => t.locked && t.kind === 'letter');
+  const words = LIVE_PHASE_WORD[j.kind];
+  const phases = [
+    { id: 'before', title: words[0], test: (o: number) => o < 0 },
+    { id: 'day', title: words[1], test: (o: number) => o === 0 },
+    { id: 'after', title: words[2], test: (o: number) => o > 0 },
+  ];
+  const actionFor = (t: (typeof tasks)[number]) => {
+    if (done(t)) return undefined;
+    const buttons: ReactNode[] = [];
+    if (t.canComplete) buttons.push(<Button key="do" size="sm" onClick={() => setAsk({ kind: CONTENT_ASK[t.kind]?.ask ?? 'done', task: t })}>{CONTENT_ASK[t.kind]?.button ?? 'Mark done'}</Button>);
+    if (j.canManage && live.actions.onIssueLetter && t.kind === 'letter' && t.status === 'open') buttons.push(<Button key="letter" size="sm" icon={FileText} onClick={() => setAsk({ kind: 'letter', task: t })}>Issue letter</Button>);
+    if (j.canManage && live.actions.onUpload && t.kind === 'document' && t.status === 'open') buttons.push(<Button key="up" size="sm" onClick={() => setAsk({ kind: 'upload', task: t })}>Upload</Button>);
+    if (t.canSkip) buttons.push(<Button key="skip" size="sm" onClick={() => setAsk({ kind: 'skip', task: t })}>Skip</Button>);
+    if (t.status === 'waiting' && !buttons.length) buttons.push(<Button key="wait" size="sm" disabled>Mark done</Button>);
+    return buttons.length ? <>{buttons}</> : undefined;
+  };
+  const rowOf = (t: (typeof tasks)[number]): ChecklistRow => ({
+    id: t.id,
+    title: (
+      <span className="yx-ppl__row">
+        {t.title}
+        {t.locked && (
+          <Badge tone="neutral">
+            <Icon icon={Lock} size="sm" /> Required by law
+          </Badge>
+        )}
+      </span>
+    ),
+    owner: t.assignee ?? t.ownerLabel,
+    due: fromKey(t.dueOn),
+    when: liveWhen(t.dueOffsetDays, j.kind),
+    status: t.status === 'done' ? 'Done' : t.status === 'skipped' ? 'Skipped' : t.status === 'waiting' ? 'Blocked' : 'Pending',
+    note: t.status === 'waiting' ? 'Waiting for an earlier task' : t.status === 'skipped' && t.skipReason ? t.skipReason : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
+    action: actionFor(t),
+  });
+  const daysLeft = daysBetween(today, anchor);
+  const kindTitle = LIVE_TITLE[j.kind];
+  const where = [live.joiner?.role, live.joiner?.location].filter(Boolean).join(' · ');
+  const doneCount = tasks.filter(done).length;
+  return (
+    <PeopleFrame active="Onboarding board">
+      <ObjectHeader
+        name={`${j.person} · ${kindTitle}`}
+        avatarName={j.person}
+        person
+        secondary={`${where ? `${where} · ` : ''}${daysLeft < 0 ? LIVE_ANCHOR_PAST[j.kind] : LIVE_ANCHOR[j.kind]} ${formatDate(anchor)}${daysLeft < 0 ? '' : ` (${daysLeft === 0 ? 'today' : `in ${plural(daysLeft, 'day')}`})`}`}
+        status={<ProgressRing value={j.progress} label={kindTitle} />}
+        facts={[
+          { label: 'Template', value: j.template },
+          ...(live.joiner?.buddy ? [{ label: 'Buddy', value: live.joiner.buddy }] : []),
+          ...(live.joiner?.manager ? [{ label: 'Manager', value: live.joiner.manager }] : j.owner ? [{ label: 'Run by', value: j.owner }] : []),
+          { label: 'Tasks done', value: `${doneCount} of ${tasks.length}` },
+        ]}
+        // Add task: no way to add a one-off task to a running checklist yet (left out).
+        actions={j.canManage && j.status === 'active' && live.onPostpone ? <Button icon={CalendarClock} onClick={() => setMoving(true)}>Change joining day</Button> : undefined}
+      />
+      {j.status !== 'active' && <InlineAlert tone={j.status === 'done' ? 'success' : 'info'}>{j.status === 'done' ? 'This checklist is complete.' : 'This checklist was cancelled.'}</InlineAlert>}
+      {letterLate && j.canManage && (
+        <InlineAlert tone="danger" title={`${letterLate.title} is overdue`} actions={live.actions.onIssueLetter ? <Button size="sm" icon={FileText} onClick={() => setAsk({ kind: 'letter', task: letterLate })}>Issue letter</Button> : undefined}>
+          Due {formatDate(fromKey(letterLate.dueOn))}. It is required by law.
+        </InlineAlert>
+      )}
+      {late.length > 0 && !letterLate && j.canManage && <InlineAlert tone="warning">{plural(late.length, 'task is', 'tasks are')} past the due date.</InlineAlert>}
+      {!j.canManage && <Text as="p" className="yx-ppl__muted">You can do the tasks that have a button. HR runs the rest.</Text>}
+      <div className="yx-ppl__phases">
+        {phases.map((ph) => {
+          const items = tasks.filter((t) => ph.test(t.dueOffsetDays));
+          if (!items.length) return null;
+          const open = items.filter((t) => !done(t));
+          const closed = items.filter(done);
+          return (
+            <section key={ph.id} aria-labelledby={`phase-${ph.id}`}>
+              <div className="yx-ppl__phase-head">
+                <h2 className="yx-ppl__phase-title" id={`phase-${ph.id}`}>
+                  {ph.title}
+                </h2>
+                <Text size="sm" tone="secondary">
+                  {closed.length} of {items.length} done
+                </Text>
+              </div>
+              {open.length > 0 && <StatusChecklist label={`${ph.title}: open tasks`} rows={open.map(rowOf)} today={today} />}
+              {closed.length > 0 && (
+                <details className="yx-ppl__done-fold">
+                  <summary>Done ({closed.length})</summary>
+                  <StatusChecklist label={`${ph.title}: done tasks`} rows={closed.map(rowOf)} today={today} />
+                </details>
+              )}
+            </section>
+          );
+        })}
+      </div>
+      {live.children}
+      {ask && <TaskDialog ask={ask} actions={live.actions} onClose={() => setAsk(null)} />}
+      {moving && live.onPostpone && <PostponeDialog current={j.anchorOn} today={j.today} onClose={() => setMoving(false)} onPostpone={live.onPostpone} />}
+    </PeopleFrame>
+  );
+}
+
+export function JourneyRecord({ tasks, joining, today, view = 'hr', live }: { tasks: JourneyTask[]; joining: Date; today: Date; view?: JourneyView; live?: LiveJourney }) {
+  if (live) return <LiveJourneyRecord live={live} today={today} />;
   const owners = VIEW_OWNERS[view];
   const mine = owners ? tasks.filter((t) => owners.includes(t.owner)) : tasks;
   const progress = journeyProgress(tasks);
