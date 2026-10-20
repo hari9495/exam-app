@@ -421,7 +421,14 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Pre-checked by Claude",
+    "findings": "Walked through as arjun@ at 1278 x 635: Help opens a solid drawer from the top bar (Service down notice, Raise a ticket form), Esc closes it, no floating Help button. Account menu: name and email, My profile, Documents & letters, My data, Language, My security, Preferences, density, theme (Dark switches the whole app), Sign out.",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "AF-07",
   "area": "0 App frame (design parity step 1, PR #178)",
@@ -437,7 +444,14 @@
   "stories": [],
   "note": "",
   "status": "Not run",
-  "runs": [],
+  "runs": [
+   {
+    "date": "2026-10-20",
+    "result": "Pre-checked by Claude",
+    "findings": "Walked through as arjun@ at 1278 x 635: Help opens a solid drawer from the top bar (Service down notice, Raise a ticket form), Esc closes it, no floating Help button. Account menu: name and email, My profile, Documents & letters, My data, Language, My security, Preferences, density, theme (Dark switches the whole app), Sign out.",
+    "fixedIn": ""
+   }
+  ],
   "ideas": [],
   "id": "AF-08",
   "area": "0 App frame (design parity step 1, PR #178)",
