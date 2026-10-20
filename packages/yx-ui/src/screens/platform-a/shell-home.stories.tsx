@@ -260,6 +260,21 @@ function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden
 export const PLT02FinanceLive: S = { name: 'PLT-02 · Role home · finance, live', render: () => <FinanceLive /> };
 export const PLT02FinanceLiveHidden: S = { name: 'PLT-02 · Role home · finance, live, amounts hidden', render: () => <FinanceLive hidden /> };
 export const PLT02FinanceLiveQuiet: S = { name: 'PLT-02 · Role home · finance, live, nothing yet', render: () => <FinanceLive quiet /> };
+// The payroll preparer with no employee record (Suresh in the demo): the run he prepared waits for someone else, so
+// nothing needs his action; no clock, leave or payslip buttons without an employee record; no claims card without the
+// payout key.
+function FinancePreparer() {
+  const [hidden, setHidden] = useState(false);
+  const { clock: _c, quickActions: _q, ...rest } = LIVE_FIN;
+  const live: LiveHome = {
+    ...rest,
+    amounts: { hidden, onToggle: () => setHidden(!hidden) },
+    stats: LIVE_FIN.stats!.slice(1).map((x) => (x.id === 'net' ? { ...x, drill: { label: 'Open run', href: '#run' } } : x)),
+    moneyOut: LIVE_FIN.moneyOut!.filter((r) => r.id !== 'o2').map((r) => (r.id === 'o1' ? { ...r, status: 'Waiting for approval' } : r)),
+  };
+  return <RoleHomeScreen persona="finance" data={{ actions: [] }} live={live} />;
+}
+export const PLT02FinanceLivePreparer: S = { name: 'PLT-02 · Role home · finance, live, preparer (nothing to approve)', render: () => <FinancePreparer /> };
 export const PLT02FirstRun: S = { name: 'PLT-02 · Role home · employee first login (tour)', render: () => <RoleHomeScreen persona="employee" data={NEW_JOINER} firstRun /> };
 export const PLT02Loading: S = { name: 'PLT-02 · Role home · loading', render: () => <RoleHomeScreen persona="manager" data={MGR} loading /> };
 export const PLT02PartlyLoaded: S = {
