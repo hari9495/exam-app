@@ -100,8 +100,8 @@ export class ProfileService {
         },
         personal: personal ? this.personalView(details) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
-        // Internal class: the work phone (PPL-03 key facts).
-        work: internal ? { phone: employee.workPhone ?? null } : null,
+        // Internal class: the work phone and email (PPL-03 key facts, Message).
+        work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
         can: {
           editPersonal: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.profile.edit', employeeId))),
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),

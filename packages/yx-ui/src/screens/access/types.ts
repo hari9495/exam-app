@@ -129,7 +129,7 @@ export interface ProfileView {
   personal: PersonalDetails | null;
   identity: IdentityView | null;
   /** Internal class: the work phone. */
-  work?: { phone: string | null } | null;
+  work?: { phone: string | null; email?: string | null } | null;
   can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean };
 }
 

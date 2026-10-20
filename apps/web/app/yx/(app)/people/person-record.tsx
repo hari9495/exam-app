@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
+import { PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -38,6 +38,8 @@ interface Compensation {
   currency: string;
   annualCtc: string;
   lines: { name: string; kind: 'earning' | 'deduction' | 'employer'; monthly: string }[];
+  lastNetPay?: { month: string; net: string; paid: boolean } | null;
+  taxRegime?: { regime: string; taxYear: string } | null;
 }
 interface PersonDocs {
   personId: string;
@@ -45,6 +47,12 @@ interface PersonDocs {
   askable: { key: string; name: string }[];
   canManage: boolean;
 }
+
+const LOCKED_PERSONAL: FieldRow[] = ['Date of birth', 'Gender', 'Marital status', 'Personal email', 'Personal phone', 'Home address'].map((label) => ({ label, value: '', cls: 'Personal' as const }));
+const LOCKED_IDENTITY: FieldRow[] = [
+  ...['Legal name', 'PAN', 'UAN', 'Salary account', 'Passport'].map((label) => ({ label, value: '', cls: 'Confidential' as const })),
+  { label: 'Aadhaar', value: '', cls: 'Special' as const },
+];
 
 const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', joiner: 'Joiner', alumni: 'Former employee' };
 
@@ -99,6 +107,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [uploading, setUploading] = useState<string | null | false>(false);
   const [phone, setPhone] = useState('');
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
@@ -132,6 +141,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           from: day(pay.data.validFrom),
           lines: pay.data.lines.filter((l) => l.kind !== 'deduction').map((l) => ({ label: l.name, monthly: Number(l.monthly) })),
           banks: prof ? bankRows(prof, reveal) : [],
+          lastNet: pay.data.lastNetPay ? { amount: Number(pay.data.lastNetPay.net), note: `${day(`${pay.data.lastNetPay.month}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${pay.data.lastNetPay.paid ? ' · paid' : ''}` } : null,
+          taxRegime: pay.data.taxRegime ? { label: pay.data.taxRegime.regime === 'old' ? 'Old' : 'New', note: `FY ${pay.data.taxRegime.taxYear.replace('-', '–')}` } : null,
         }
       : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };
 
@@ -161,6 +172,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   };
 
   const a = v?.assignment;
+  const workEmail = prof?.work?.email ?? person.data?.primaryEmail ?? null;
   const live: LiveRecord = {
     directoryHref: '/yx/people/directory',
     name,
@@ -177,15 +189,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ...(!asOfParam ? scheduledNotes(h ?? ({ changes: [] } as unknown as HistoryView)).slice(0, 1).map((s) => ({ label: s.title.replace('Scheduled: ', '').replace(/^./, (c) => c.toUpperCase()), tone: 'info' as const })) : []),
     ],
     facts: [
-      ...(person.data?.primaryEmail ? [{ label: 'Work email', value: person.data.primaryEmail }] : []),
+      ...(workEmail ? [{ label: 'Work email', value: workEmail }] : []),
       ...(prof?.work ? [{ label: 'Work phone', value: prof.work.phone ? formatPhone(prof.work.phone) : 'Not on file' }] : []),
       ...(a?.dottedLineManagers?.length ? [{ label: 'Secondary manager', value: a.dottedLineManagers.map((m) => m.name).join(', ') }] : []),
       ...(a?.employmentType ? [{ label: 'Employment type', value: a.employmentType.name ?? '' }] : []),
       ...(v?.employee.legalEntity ? [{ label: 'Legal entity', value: v.employee.legalEntity.name }] : []),
     ],
     events: upcoming(v, h, today, pending.map((r) => r.label), docList),
-    personal: prof?.personal ? personalRows(prof.personal) : null,
-    identity: prof?.identity ? identityRows(prof, reveal) : null,
+    // Without the class the design still shows the card, with how many fields are not shown (never their values).
+    personal: prof?.personal ? personalRows(prof.personal) : prof?.classes.internal ? LOCKED_PERSONAL : null,
+    identity: prof?.identity ? identityRows(prof, reveal) : prof?.classes.internal ? LOCKED_IDENTITY : null,
     pending: pending.map((r) => ({
       id: r.id,
       label: r.label,
@@ -204,6 +217,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           rows: docRows(docList, today),
           hidden: 0,
           ...(docs.data.canManage && docs.data.askable.length ? { onRequest: () => setDocDialog({ kind: 'request' }) } : {}),
+          // HR uploads on the person's behalf (the API checks document.manage in scope and scans the file).
+          ...(docs.data.canManage && !self && docs.data.askable.length ? { onUpload: () => setUploading(null) } : {}),
           ...(docs.data.canManage ? { onVerify: (d: RecordDoc) => void docAction(d, 'verify'), onReject: (d: RecordDoc) => setDocDialog({ kind: 'reject', doc: d }) } : {}),
           onDownload: (d: RecordDoc) => void download(d.id!, `${d.type}.pdf`),
         }
@@ -223,8 +238,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       router.replace(`${path}${q.size ? `?${q}` : ''}`);
     },
     ...(canChange && !self ? { onStartChange: () => setStarting(true) } : {}),
+    // A manager proposes a change for a team member on the change form (raised on their behalf, HR approves).
+    ...(!canChange && !self && !hr && perms.has('request.raise_on_behalf') ? { onStartChange: () => router.push(`/yx/people/changes?person=${p}`) } : {}),
     // Message: the person's work email in the viewer's mail app (there is no in-app chat).
-    ...(!self && person.data?.primaryEmail ? { onMessage: () => window.location.assign(`mailto:${person.data!.primaryEmail}`) } : {}),
+    ...(!self && workEmail ? { onMessage: () => window.location.assign(`mailto:${workEmail}`) } : {}),
     ...(prof?.can.editWork ? { onEditWorkPhone: () => (setPhone(prof.work?.phone ?? ''), setPhoneOpen(true)) } : {}),
     activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
     performance:
@@ -241,6 +258,27 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
 
   live.children = (
     <>
+      {uploading !== false && docs.data && (
+        <Dialog open onOpenChange={(o) => !o && setUploading(false)} title={`Upload a document for ${first}`} footer={<Button onClick={() => setUploading(false)}>Close</Button>}>
+          <FormField label="Document" required>
+            <Select options={docs.data.askable.map((t) => ({ value: t.key, label: t.name }))} value={uploading} onChange={setUploading} searchable />
+          </FormField>
+          {uploading && (
+            <FormField label="File" required helper="PDF or an image, up to 10 MB. It is checked for viruses before anyone can open it.">
+              <FileUpload
+                multiple={false}
+                accept={['application/pdf', 'image/png', 'image/jpeg']}
+                upload={async (file) => {
+                  const form = new FormData();
+                  form.append('file', file);
+                  await lifeWrite('POST', `/documents/people/${id(docs.data!.personId)}/${id(uploading)}`, form);
+                  done(`${docs.data!.askable.find((t) => t.key === uploading)?.name ?? 'Document'} uploaded for ${first}`);
+                }}
+              />
+            </FormField>
+          )}
+        </Dialog>
+      )}
       {phoneOpen && (
         <ConfirmDialog
           open

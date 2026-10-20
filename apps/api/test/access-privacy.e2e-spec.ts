@@ -629,7 +629,7 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('imranU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(403);
       await api('arjunU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
       await api('adminB', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
-      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.work).toEqual({ phone: '+914440123142' });
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.work).toMatchObject({ phone: '+914440123142' });
       // Activity: identity requests only for the person and identity keys; nobody outside the record.
       const mine = (await api('imranU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string; actor: string | null }[];
       expect(mine.some((e) => e.text === 'Asked to change the passport')).toBe(true);

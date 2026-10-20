@@ -63,7 +63,7 @@ export interface RecordEvent {
 export type LiveRecordPay =
   | { kind: 'none'; grantedBy: string }
   | { kind: 'ask'; onShow: () => void; busy?: boolean; error?: string | null }
-  | { kind: 'shown'; ctc: number; currency: string; from: Date; next?: string; lines: { label: string; monthly: number }[]; banks: FieldRow[] };
+  | { kind: 'shown'; ctc: number; currency: string; from: Date; next?: string; lines: { label: string; monthly: number }[]; banks: FieldRow[]; lastNet?: { amount: number; note: string } | null; taxRegime?: { label: string; note: string } | null };
 
 /** The Performance tab: the current goal period's goals, the last shared review and the next 1:1. */
 export interface RecordPerformance {
@@ -707,7 +707,7 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
   );
 }
 
-/** Pay tab, live: the same cards, from the person's current pay. Last net pay and tax regime are not on the record yet. */
+/** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
 function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; onRequestChange?: () => void }) {
   if (pay.kind === 'none') return <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />;
   if (pay.kind === 'ask')
@@ -737,6 +737,18 @@ function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRe
             {pay.next ? ` · ${pay.next}` : ''}
           </Text>
         </Card>
+        {pay.lastNet && (
+          <Card title="Last net pay">
+            <span className="yx-ppl__num yx-figure" data-size="lg">{money(pay.lastNet.amount)}</span>
+            <Text size="sm" tone="secondary" as="p">{pay.lastNet.note}</Text>
+          </Card>
+        )}
+        {pay.taxRegime && (
+          <Card title="Tax regime">
+            <span className="yx-figure" data-size="lg">{pay.taxRegime.label}</span>
+            <Text size="sm" tone="secondary" as="p">{pay.taxRegime.note}</Text>
+          </Card>
+        )}
       </div>
       {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} />}
       {pay.banks.length > 0 && (
