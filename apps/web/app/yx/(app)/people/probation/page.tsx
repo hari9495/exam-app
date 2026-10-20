@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { ProbationQueue } from '@yukthix/ui/frame';
 import type { ProbationRow } from '@yukthix/ui/workforce';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { probationRows, RATING_SCORE } from '../../../../../lib/yx-onboarding';
@@ -33,7 +33,7 @@ export default function YxProbationPage() {
       today={day(list.data?.today ?? todayIst())}
       persona={hr ? 'hr' : 'mgr'}
       live={{
-        state: list.isError ? 'error' : list.data ? 'ready' : 'loading',
+        state: loadState(list),
         onRetry: () => void list.refetch(),
         canDecide: perms.has('employee.change.manage'),
         onReview: async (employeeId, outcome, months, draft) => {

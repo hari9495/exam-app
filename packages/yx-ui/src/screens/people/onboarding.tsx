@@ -10,7 +10,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Meter } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -73,6 +73,8 @@ const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || 
 /** The live app's board (design audit step 3). Stages follow the dates, so cards are not moved by hand. */
 export interface LiveBoard {
   error: boolean;
+  /** The board answered 403: the person has no onboarding grant. */
+  noAccess?: boolean;
   onRetry: () => void;
   onAdd?: () => void;
   onImport?: () => void;
@@ -137,7 +139,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
           </div>
         }
       />
-      {live?.error ? (
+      {live?.noAccess ? (
+        <NoAccessState what="the onboarding board" grantedBy="your HR admin" />
+      ) : live?.error ? (
         <ErrorState title="We couldn't load the onboarding board" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : state === 'loading' ? (
         <ListSkeleton label="Loading onboarding board" rows={5} />
@@ -250,7 +254,7 @@ export type ReadyRow = Ready & { live?: { offerId: string; email: string; intern
 
 /** The live app's queue (design audit step 3). */
 export interface LiveReady {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   places: JoinerPlaces;
@@ -293,7 +297,9 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
   return (
     <PeopleFrame active="Ready to onboard">
       <PageHeader title="Ready to onboard" description="Accepted offers whose employee isn't created yet, soonest joining first. Create the employee to start pre-boarding; the person type decides the path." />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the accepted offers" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the accepted offers" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading accepted offers" />
@@ -529,7 +535,7 @@ const KAVYA = { name: 'Kavya Reddy', role: 'Quality Inspector', location: 'Hosur
 
 /** The live app's checklist (design audit step 3): any journey (onboarding, leaving, life events), its tasks in phases. */
 export interface LiveJourney {
-  state: 'ready' | 'loading' | 'error' | 'not-found';
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'not-found';
   onRetry: () => void;
   journey: LiveJourneyData | null;
   /** The joiner's role, place and people, when the journey is an onboarding HR runs. */
@@ -564,7 +570,9 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
   if (live.state !== 'ready' || !j)
     return (
       <PeopleFrame active="Onboarding board">
-        {live.state === 'error' ? (
+        {live.state === 'no-access' ? (
+          <NoAccessState what="this checklist" grantedBy="your HR admin" />
+        ) : live.state === 'error' ? (
           <ErrorState title="We couldn't load this checklist" description="Check your connection and try again." onRetry={live.onRetry} />
         ) : live.state === 'not-found' ? (
           <EmptyState title="Not found" description="This checklist doesn't exist or you can't open it." />
@@ -748,7 +756,7 @@ export type BatchRow = Batch;
 
 /** The live app's batches (design audit step 3). */
 export interface LiveBatches {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   /** Members of each batch, for "Open batch". */
@@ -843,7 +851,9 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
   return (
     <PeopleFrame active="Batches">
       <PageHeader title="Pre-boarding batches" description="Campus hires who join on the same date. Change a batch's date and every member's open tasks move with it." actions={newBatch && rows.length > 0 ? <Button variant="primary" icon={Plus} onClick={newBatch}>New batch</Button> : undefined} />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the batches" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the batches" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading batches" />
@@ -1078,7 +1088,7 @@ export interface ProbationDraft {
 
 /** The live app's queue (design audit step 3). Managers review their direct reports; HR confirms or extends. */
 export interface LiveProbation {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** employee.change.manage: confirm (a change someone else approves) or extend. */
   canDecide: boolean;
@@ -1187,7 +1197,9 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             : `${escalated.map((r) => r.name).join(', ')} passed their end date without a review. Confirm, extend or end each one now.`}
         </InlineAlert>
       )}
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="probations" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load probations" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading probations" />
@@ -1507,7 +1519,7 @@ const joinText = (date: Date) => {
 
 /** The live app's buddy pool (PPL-41): the API names joiners only where the onboarding keys reach. */
 export interface LiveBuddies {
-  state: 'loading' | 'ready' | 'error';
+  state: 'loading' | 'ready' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   data: {
@@ -1696,7 +1708,9 @@ function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
   return (
     <PeopleFrame active="Buddies">
       <PageHeader title="Buddies" description="A buddy is a colleague from the same team or location, never the joiner's manager. Each buddy looks after a set number of joiners at a time." actions={addBtn} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the buddy pool" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the buddy pool" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : !d ? (
         <ListSkeleton label="Loading the buddy pool" />

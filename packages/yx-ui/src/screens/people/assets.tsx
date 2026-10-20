@@ -43,7 +43,7 @@ export type AssetDialog = 'issue' | 'return' | null;
 
 /** The live app's asset register (design audit step 3). */
 export interface LiveAssets {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** Live rows: the design's row plus the API row it came from. */
   rows: (Asset & { live: AssetRow })[];
@@ -189,7 +189,9 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
         // Import and export of assets: not in the live app yet (left out).
         actions={live.onAdd ? <Button variant="primary" icon={Plus} onClick={live.onAdd}>Add asset</Button> : undefined}
       />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the assets" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the assets" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable
@@ -414,7 +416,7 @@ export interface LiveSuccessionPosition {
 }
 /** The live app's succession plans (PPL-26): Confidential, company-wide holders of succession.manage only. */
 export interface LiveSuccession {
-  state: 'loading' | 'ready' | 'error' | 'forbidden';
+  state: 'loading' | 'ready' | 'error' | 'no-access' | 'forbidden';
   onRetry: () => void;
   data: { updatedOn: string | null; positions: LiveSuccessionPosition[] } | null;
   /** Current employees to choose from. */
@@ -496,7 +498,7 @@ function LiveSuccessionScreen({ live }: { live: LiveSuccession }) {
     return (
       <PeopleFrame active="Succession">
         <PageHeader title="Succession" />
-        <NoAccessState what="succession plans" grantedBy="Your HR admin. Succession is Confidential: HR and leadership only." />
+        <NoAccessState what="succession plans" grantedBy="your HR admin" note="Succession is Confidential: HR and leadership only." />
       </PeopleFrame>
     );
   const positions = live.data?.positions ?? [];
@@ -511,7 +513,9 @@ function LiveSuccessionScreen({ live }: { live: LiveSuccession }) {
   return (
     <PeopleFrame active="Succession">
       <PageHeader title="Succession" description="Critical positions with nominated successors and readiness." status={<Badge tone="warning">Confidential</Badge>} actions={add} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the succession plans" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the succession plans" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : !live.data ? (
         <ListSkeleton label="Loading the succession plans" />
@@ -594,7 +598,7 @@ function SampleSuccessionScreen({ positions, persona = 'hr', riskOnly = false }:
     return (
       <PeopleFrame active="Succession" persona={persona}>
         <PageHeader title="Succession" />
-        <NoAccessState what="succession plans" grantedBy="The Head of People (Lakshmi Venkatesan). Succession is Confidential: HR and leadership only." />
+        <NoAccessState what="succession plans" grantedBy="the Head of People (Lakshmi Venkatesan)" note="Succession is Confidential: HR and leadership only." />
       </PeopleFrame>
     );
   const shown = positions.filter((p) => !onlyRisk || successionRisk(p.successors) !== 'Covered');

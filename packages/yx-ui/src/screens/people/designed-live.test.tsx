@@ -303,6 +303,15 @@ describe('Absconding (PPL-24)', () => {
   });
 });
 
+describe('No access (people audit, cross-cutting a)', () => {
+  it('a page opened without the permission shows the designed no-access state, never "check your connection"', () => {
+    wrap(<AssetRegister rows={[]} live={{ state: 'no-access', onRetry: vi.fn(), rows: [], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn: vi.fn() }} />);
+    expect(screen.getByText("You don't have access to the assets")).toBeInTheDocument();
+    expect(screen.getByText('Ask your HR admin to give you access.')).toBeInTheDocument();
+    expect(screen.queryByText(/Check your connection/)).toBeNull();
+  });
+});
+
 describe('Assets (PPL-25)', () => {
   const api: AssetRow = { id: 'a', category: 'Laptop', name: 'ThinkPad', tag: 'LT-1', serial: null, legalEntityId: null, locationId: null, purchasedOn: '2026-04-01', cost: '62000.00', status: 'assigned', version: 1, canManage: true, holder: { assignmentId: 'x', employeeId: 'e', name: 'Ravi', issuedOn: '2026-10-01', condition: 'New', acknowledged: false } };
   const row: Asset & { live: AssetRow } = { id: 'a', tag: 'LT-1', type: 'Laptop', name: 'ThinkPad', serial: '', location: 'Hosur plant', status: 'Assigned', holder: 'Ravi', cost: 62000, purchased: day('2026-04-01'), live: api };

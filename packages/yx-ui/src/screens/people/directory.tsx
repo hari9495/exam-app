@@ -7,7 +7,7 @@ import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type ColumnState, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
 import { Avatar, Badge } from '../../components/display';
 import { TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
@@ -114,7 +114,7 @@ export interface DirectoryScreenProps {
   persona: Persona;
   rows: WorkforceRow[];
   defaultFilter?: WorkforceFilter;
-  state?: 'ready' | 'loading' | 'error';
+  state?: 'ready' | 'loading' | 'error' | 'no-access';
   defaultQuery?: string;
   defaultFilters?: FilterValue[];
   defaultOpenId?: string;
@@ -254,7 +254,9 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
         <p className="yx-ppl__sub">{personsLine(live ? live.persons ?? { roles: rows.length, people: rows.length } : { roles: rows.length, people: DISTINCT_PERSONS })}</p>
       )}
       {persona !== 'hr' && me && <QuickChips value={quick} onChange={setQuick} />}
-      {state === 'error' ? (
+      {state === 'no-access' ? (
+        <NoAccessState what="the directory" grantedBy="your HR admin" />
+      ) : state === 'error' ? (
         <ErrorState title="We couldn't load the directory" description="Check your connection and retry. Your filters are kept." onRetry={live ? live.onRetry : () => {}} reference={live ? undefined : 'REF-PPL01-7F2A'} />
       ) : (
         <DataTable
@@ -472,7 +474,7 @@ export interface OrgChartScreenProps {
 }
 
 export interface LiveOrgChart {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   companyName: string;
   /** Company-wide HR may look at another date; others see today. */
@@ -564,7 +566,7 @@ export interface TeamMember {
 
 /** The live app's team (design audit step 3). Stories leave it out. */
 export interface LiveTeam {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** "as of 20 Oct 2026, 9:42 am"; null when there is no attendance to count. */
   asOf: string | null;
@@ -629,7 +631,7 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
               columns={cols}
               rows={members}
               getRowId={(r) => r.id}
-              state={state === 'error' ? 'ready' : state}
+              state={state === 'loading' ? 'loading' : 'ready'}
               {...(live?.onOpenMember ? { onRowClick: (r: TeamMember) => live.onOpenMember!(r.id) } : {})}
               rowButtons={live ? undefined : () => <Button size="sm">Nudge</Button>}
             />

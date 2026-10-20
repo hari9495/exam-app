@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@yukthix/ui';
 import { UpcomingExits } from '@yukthix/ui/frame';
 import { ContractDialog, type UpcomingExit } from '@yukthix/ui/lifecycle';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 
 // People › Retirements and contract ends (PPL-49, designed 20 Oct 2026; LIFE-5.06, YX-LC-19 / 20).
@@ -23,7 +23,7 @@ export default function YxUpcomingExitsPage() {
       <UpcomingExits
         rows={data.data?.rows ?? []}
         today={new Date(`${today}T00:00:00`)}
-        state={data.isError ? 'error' : data.data ? 'ready' : 'loading'}
+        state={loadState(data)}
         onRetry={() => void data.refetch()}
         {...(canChange
           ? {

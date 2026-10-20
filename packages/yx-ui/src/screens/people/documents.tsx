@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
@@ -43,7 +43,7 @@ type Verify = (typeof VERIFY_QUEUE)[number];
 
 /** The live app's verification queue (design audit step 3). */
 export interface LiveDocQueue {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: QueueDocument[];
   /** The file as a local URL for the viewer (the API checks access; it opens only after the virus check). */
@@ -107,7 +107,9 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
   return (
     <PeopleFrame active="Documents & letters">
       <PageHeader title="Document verification" description="PAN, Aadhaar, bank proof, education and experience proofs must be verified before payroll, payouts or filings use them. Open each one, then verify it or send it back with the reason." />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the documents to verify" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the documents to verify" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable
@@ -378,7 +380,7 @@ function IssuedLettersBody({ rows }: { rows: Letter[] }) {
 
 /** The live app's letters register (design audit step 3). */
 export interface LiveLetters {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: LiveLetter[];
   verifyUrl: (code: string) => string;
@@ -449,7 +451,9 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           ) : undefined
         }
       />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the letters" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the letters" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable

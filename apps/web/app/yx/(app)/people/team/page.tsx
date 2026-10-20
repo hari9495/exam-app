@@ -12,7 +12,7 @@ import type { Muster, TeamCalendar } from '@yukthix/ui/time';
 import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, useRaiseChange } from '../../../../../lib/yx-people';
 import { useLife } from '../../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../../lib/yx-time';
@@ -64,7 +64,7 @@ export default function YxTeamPage() {
         tasks={myTasks}
         today={new Date(`${today}T00:00:00`)}
         live={{
-          state: team.isError ? 'error' : team.data ? 'ready' : 'loading',
+          state: loadState(team),
           onRetry: () => void team.refetch(),
           asOf,
           onOpenMember: (memberId) => {

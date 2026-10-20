@@ -372,6 +372,8 @@ export class WorkspaceService {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    // Possible same person is company-wide HR work (the page checks the same): a plant HR's scoped key does not count.
+    const linksPeople = !support && keys.has('employee.change.manage') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.change.manage']), 'employee.change.manage');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -405,7 +407,7 @@ export class WorkspaceService {
       out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
         WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
           AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
-      if (!support && keys.has('employee.change.manage')) {
+      if (linksPeople) {
         out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM persons p
           JOIN person_roles r ON r.organization_id = p.organization_id AND r.person_id = p.id AND r.role_type = 'login' AND r.source_table = 'users' AND r.end_on IS NULL
           JOIN users u ON u.organization_id = r.organization_id AND u.id = r.source_id

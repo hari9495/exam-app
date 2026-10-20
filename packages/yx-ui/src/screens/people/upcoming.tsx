@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { CalendarClock, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState } from '../../components/feedback';
 import { PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Segment } from '../../components/segment';
@@ -17,7 +17,7 @@ import type { UpcomingExit } from './live/types';
 export interface UpcomingExitsProps {
   rows: UpcomingExit[];
   today: Date;
-  state?: 'ready' | 'loading' | 'error';
+  state?: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry?: () => void;
   /** employee.change.manage: set, extend or convert a contract. Stories leave them out. */
   onSet?: () => void;
@@ -60,7 +60,9 @@ export function UpcomingExits({ rows, today, state = 'ready', onRetry, onSet, on
         description="Retirements in the next year and fixed-term contracts ending in 90 days. The company policy opens their exits; extend or convert a contract instead."
         actions={onSet ? <Button variant="primary" icon={Plus} onClick={onSet}>Set a contract end</Button> : undefined}
       />
-      {state === 'error' ? (
+      {state === 'no-access' ? (
+        <NoAccessState what="the coming exits" grantedBy="your HR admin" />
+      ) : state === 'error' ? (
         <ErrorState title="We couldn't load the coming exits" description="Check your connection and try again." onRetry={onRetry} />
       ) : state === 'loading' ? (
         <ListSkeleton label="Loading the coming exits" />
