@@ -1,7 +1,7 @@
 // PPL-03 Person record workspace (DESIGN-SYSTEM §13, M01 §3.1, P06 §7, P05 §7) with
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
 import { useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Plus, ShieldCheck, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -65,6 +65,15 @@ export type LiveRecordPay =
   | { kind: 'ask'; onShow: () => void; busy?: boolean; error?: string | null }
   | { kind: 'shown'; ctc: number; currency: string; from: Date; next?: string; lines: { label: string; monthly: number }[]; banks: FieldRow[] };
 
+/** The Performance tab: the current goal period's goals, the last shared review and the next 1:1. */
+export interface RecordPerformance {
+  period: string | null;
+  goals: { id: string; title: string; status: string; tone: BadgeTone }[];
+  lastReview: string | null;
+  nextOneOnOne: string | null;
+  onOpenGoals?: () => void;
+}
+
 /** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
 export interface LiveRecord {
   directoryHref: string;
@@ -98,6 +107,14 @@ export interface LiveRecord {
   asOf: Date | null;
   onAsOf: (d: Date | null) => void;
   onStartChange?: () => void;
+  /** Header "Message": writes to the person (their work email). Not on one's own record. */
+  onMessage?: () => void;
+  /** HR menu: change the work phone (Internal). */
+  onEditWorkPhone?: () => void;
+  /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
+  activity?: ActivityEntry[] | null;
+  /** Performance tab (only for viewers who may see this person's goals or reviews). */
+  performance?: RecordPerformance | null;
   onIssueLetter?: () => void;
   onRetry?: () => void;
   /** Dialogs and drawers the page opens. */
@@ -156,7 +173,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
   const asOf = live ? live.asOf : ownAsOf;
   const setAsOf = live ? live.onAsOf : setOwnAsOf;
   const [revealed, setRevealed] = useState<string[]>([]);
-  const [side, setSide] = useState<RecordPanel>(live ? 'roles' : panel);
+  const [side, setSide] = useState<RecordPanel>(live ? (live.activity ? 'activity' : 'roles') : panel);
   const self = relation === 'self';
   const name = live?.name ?? ARJUN.name;
   const first = name.split(' ')[0];
@@ -185,9 +202,16 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
       <Button variant="primary" onClick={live.onRequestChange}>Request a change</Button>
     ) : null
   ) : null;
-  // Message: no messaging in the live app yet (left out until there is one).
+  // Message writes to the person at their work email (there is no in-app chat).
   const actions = live ? (
-    changeButton
+    <>
+      {live.onMessage && (
+        <Button icon={MessageSquare} onClick={live.onMessage}>
+          Message
+        </Button>
+      )}
+      {changeButton}
+    </>
   ) : persona === 'hr' ? (
     <>
       <Button icon={MessageSquare}>Message</Button>
@@ -210,8 +234,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
     { id: 'pay', label: 'Pay' },
     ...(!live || live.time ? [{ id: 'time' as const, label: 'Time' }] : []),
     ...(!live || live.documents ? [{ id: 'documents' as const, label: 'Documents', count: docCount }] : []),
-    // Performance and Learning: no per-person view in the live app yet (left out).
-    ...(!live ? [{ id: 'performance' as const, label: 'Performance' }, { id: 'learning' as const, label: 'Learning' }] : []),
+    ...(!live || live.performance ? [{ id: 'performance' as const, label: 'Performance' }] : []),
+    // Learning: there is no learning module in the live app yet (left out).
+    ...(!live ? [{ id: 'learning' as const, label: 'Learning' }] : []),
     ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
     ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
     ...(!live && international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
@@ -246,6 +271,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             {live.onIssueLetter && (
               <MenuItem icon={FileText} onSelect={live.onIssueLetter}>
                 Issue letter
+              </MenuItem>
+            )}
+            {live.onEditWorkPhone && (
+              <MenuItem icon={Phone} onSelect={live.onEditWorkPhone}>
+                Change work phone
               </MenuItem>
             )}
             {live.history && (
@@ -287,6 +317,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
         persona === 'hr' ? (
           <>
             <MenuItem icon={FileText}>Issue letter</MenuItem>
+            <MenuItem icon={Phone}>Change work phone</MenuItem>
             <MenuItem icon={History} onSelect={() => setTab('history')}>
               View as on a date
             </MenuItem>
@@ -305,8 +336,12 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
   const rail = live ? (
     <div className="yx-ppl__stack">
       <FactRail facts={live.facts} events={live.events} />
-      {/* Activity: no per-person activity feed in the live app yet; the rail shows the person's roles instead. */}
-      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} />}
+      {side === 'activity' && live.activity && (
+        <Card title="Activity">
+          {live.activity.length ? <ActivityFeed entries={live.activity} today={today} /> : <Text size="sm" tone="secondary" as="p">Nothing yet.</Text>}
+        </Card>
+      )}
+      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} onClose={live.activity ? () => setSide('activity') : undefined} />}
     </div>
   ) : (
     <div className="yx-ppl__stack">
@@ -409,15 +444,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                   <DocumentsTab persona={persona} rows={ARJUN_DOCS.filter((d) => fieldVisibility(d.cls, persona, relation) !== 'hidden')} hidden={ARJUN_DOCS.filter((d) => fieldVisibility(d.cls, persona, relation) === 'hidden').length} />
                 )}
               </TabsContent>
+              <TabsContent value="performance">{live ? live.performance && <PerformanceTab persona={persona} data={live.performance} /> : <PerformanceTab persona={persona} />}</TabsContent>
               {!live && (
-                <>
-                  <TabsContent value="performance">
-                    <PerformanceTab persona={persona} />
-                  </TabsContent>
-                  <TabsContent value="learning">
-                    <LearningTab />
-                  </TabsContent>
-                </>
+                <TabsContent value="learning">
+                  <LearningTab />
+                </TabsContent>
               )}
               <TabsContent value="assets">{live ? live.assets && <AssetsTab name={name} rows={live.assets.rows} onIssue={persona === 'hr' ? live.assets.onIssue : undefined} /> : <AssetsTab name={ARJUN.name} rows={ARJUN_ASSETS} onIssue={persona === 'hr' ? () => {} : undefined} />}</TabsContent>
               <TabsContent value="history">
@@ -831,7 +862,32 @@ function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Perso
   );
 }
 
-function PerformanceTab({ persona }: { persona: Persona }) {
+function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerformance }) {
+  if (data)
+    return (
+      <div className="yx-ppl__grid2">
+        <Card title={data.period ? `Goals, ${data.period}` : 'Goals'} actions={data.onOpenGoals ? <Button size="sm" onClick={data.onOpenGoals}>Open goals</Button> : undefined}>
+          {data.goals.length ? (
+            <ul className="yx-ppl__successors">
+              {data.goals.map((g) => (
+                <li key={g.id}>
+                  <span>{g.title}</span>
+                  <Badge tone={g.tone}>{g.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">No goals in this period yet.</Text>
+          )}
+        </Card>
+        <Card title="Reviews">
+          <dl className="yx-ppl__rail-facts">
+            <div><dt>Last review</dt><dd>{data.lastReview ?? 'None shared yet'}</dd></div>
+            {data.nextOneOnOne && <div><dt>Next 1:1</dt><dd>{data.nextOneOnOne}</dd></div>}
+          </dl>
+        </Card>
+      </div>
+    );
   return (
     <div className="yx-ppl__grid2">
       <Card title="Goals, 2026–27" actions={<Button size="sm">Open goals</Button>}>

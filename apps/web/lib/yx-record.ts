@@ -1,5 +1,5 @@
 import { formatPhone } from '@yukthix/ui';
-import type { FieldRow, JobChange, RecordDoc, RecordEvent } from '@yukthix/ui/frame';
+import type { FieldRow, JobChange, RecordDoc, RecordEvent, RecordPerformance } from '@yukthix/ui/frame';
 import type { AsOfView, ChangeRecord, HistoryView } from '@yukthix/ui/history';
 import type { ProfileView, RevealField } from '@yukthix/ui/access';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -11,6 +11,7 @@ const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const dateText = (iso: string) => day(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const GENDER: Record<string, string> = { male: 'Man', female: 'Woman', non_binary: 'Non-binary', other: 'Other', undisclosed: 'Prefer not to say' };
 const STATUS: Record<string, string> = { probation: 'On probation', confirmed: 'Confirmed', notice: 'Serving notice' };
+const MARITAL: Record<string, string> = { single: 'Single', married: 'Married', separated: 'Separated', divorced: 'Divorced', widowed: 'Widowed', prefer_not_to_say: 'Prefer not to say' };
 
 /** Personal fields (P02 Personal; the birthday line is Internal). */
 export function personalRows(p: NonNullable<ProfileView['personal']>): FieldRow[] {
@@ -18,6 +19,7 @@ export function personalRows(p: NonNullable<ProfileView['personal']>): FieldRow[
   return [
     { label: 'Date of birth', value: p.dateOfBirth ? dateText(p.dateOfBirth) : 'Not on file', cls: 'Personal' },
     { label: 'Gender', value: p.gender ? (GENDER[p.gender] ?? p.gender) : 'Not on file', cls: 'Personal' },
+    { label: 'Marital status', value: p.maritalStatus ? (MARITAL[p.maritalStatus] ?? p.maritalStatus) : 'Not on file', cls: 'Personal' },
     { label: 'Personal email', value: p.personalEmail ?? 'Not on file', cls: 'Personal' },
     { label: 'Personal phone', value: p.personalPhone ? formatPhone(p.personalPhone) : 'Not on file', cls: 'Personal' },
     { label: 'Home address', value: address || 'Not on file', cls: 'Personal' },
@@ -38,7 +40,17 @@ export function identityRows(p: ProfileView, reveal: (field: RevealField) => Pro
     row('UAN', 'uan', id.uan, p.can.reveal),
     row('ESIC IP number', 'esic', id.esic, p.can.reveal),
     ...bankRows(p, reveal),
+    passportRow(p, reveal),
   ];
+}
+
+/** Passport: the masked number and its expiry; "Show" asks the API for the number (a recorded look). */
+export function passportRow(p: ProfileView, reveal: (field: RevealField) => Promise<string>): FieldRow {
+  const id = p.identity;
+  if (!id?.passport) return { label: 'Passport', value: 'Not on file', cls: 'Confidential' };
+  const expires = id.passportExpiresOn ? ` · expires ${dateText(id.passportExpiresOn)}` : '';
+  const masked = `${id.passport}${expires}`;
+  return { label: 'Passport', value: masked, masked, cls: 'Confidential', mono: true, canReveal: p.can.reveal, ...(p.can.reveal ? { reveal: async () => `${await reveal('passport')}${expires}` } : {}) };
 }
 
 export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise<string>): FieldRow[] {
@@ -176,7 +188,7 @@ export function assetRows(rows: AssetRow[], employeeId: string) {
 }
 
 /** Rail "Coming up": scheduled changes, probation end, the next work anniversary, waiting identity changes. */
-export function upcoming(v: AsOfView | null, h: HistoryView | null, today: string, pending: number): RecordEvent[] {
+export function upcoming(v: AsOfView | null, h: HistoryView | null, today: string, pending: string[], docs: QueueDocument[] = []): RecordEvent[] {
   const out: RecordEvent[] = [];
   for (const c of h?.changes.filter((x) => x.status === 'scheduled') ?? []) out.push({ label: `${TYPE[c.changeType] ?? c.changeType} effective`, date: day(c.effectiveDate), tone: 'info' });
   if (v?.status?.status === 'probation' && v.status.validTo) out.push({ label: 'Probation ends', date: day(v.status.validTo), tone: 'warning' });
@@ -188,6 +200,45 @@ export function upcoming(v: AsOfView | null, h: HistoryView | null, today: strin
     const years = next.getFullYear() - joined.getFullYear();
     if (years > 0) out.push({ label: `Work anniversary (${years} year${years === 1 ? '' : 's'})`, date: next });
   }
-  if (pending) out.push({ label: `${pending} pending request${pending === 1 ? '' : 's'}`, note: 'Identity or bank change' });
+  // Documents that expire within 60 days (or have expired): a licence, a passport, a visa.
+  const soon = day(today);
+  soon.setDate(soon.getDate() + 60);
+  for (const d of docs.filter((x) => x.expiresOn && (x.status === 'verified' || x.status === 'expired') && day(x.expiresOn) <= soon)) out.push({ label: `${d.typeName} ${d.status === 'expired' || d.expiresOn! < today ? 'expired' : 'expires'}`, date: day(d.expiresOn!), tone: 'warning' });
+  if (pending.length) out.push({ label: `${pending.length} pending request${pending.length === 1 ? '' : 's'}`, note: pending.map((l) => `Profile change: ${l.toLowerCase()}`).join(', ') });
   return out;
+}
+
+const GOAL: Record<string, { label: string; tone: RecordPerformance['goals'][number]['tone'] }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
+  submitted: { label: 'Waiting for approval', tone: 'info' },
+  active: { label: 'In progress', tone: 'info' },
+  done: { label: 'Done', tone: 'success' },
+};
+
+/** Performance tab: goals of the open (or latest) period, the last released review, the next 1:1 with the viewer. */
+export function performanceData(
+  periods: { id: string; name: string; fromOn: string; toOn: string; status: string }[],
+  periodId: string | null,
+  goals: { id: string; title: string; status: string; progress: number }[],
+  reviews: { employeeId: string; cycle: string; status: string; band: string | null }[],
+  meetings: { with: string; on: string; status: string }[],
+  employeeId: string,
+  name: string,
+  today: string,
+): RecordPerformance {
+  const period = periods.find((x) => x.id === periodId) ?? null;
+  const last = reviews.filter((r) => r.employeeId === employeeId && r.band && ['released', 'acknowledged'].includes(r.status)).at(-1);
+  const next = meetings.filter((m) => m.with === name && m.status === 'scheduled' && m.on >= today).sort((a, b) => a.on.localeCompare(b.on))[0];
+  return {
+    period: period?.name ?? null,
+    goals: goals.map((g) => ({ id: g.id, title: g.title, status: g.status === 'active' ? `${Math.round(g.progress)}% done` : (GOAL[g.status]?.label ?? g.status), tone: GOAL[g.status]?.tone ?? 'neutral' })),
+    lastReview: last ? `${last.band} (${last.cycle})` : null,
+    nextOneOnOne: next ? dateText(next.on) : null,
+  };
+}
+
+/** The current goal period: open and covering today, else the latest open one. */
+export function currentPeriod(periods: { id: string; fromOn: string; toOn: string; status: string }[], today: string): string | null {
+  const open = periods.filter((p) => p.status === 'open');
+  return (open.find((p) => p.fromOn <= today && today <= p.toOn) ?? open[0] ?? periods[0])?.id ?? null;
 }

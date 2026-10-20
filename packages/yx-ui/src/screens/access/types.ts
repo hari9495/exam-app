@@ -101,10 +101,11 @@ export interface PersonalDetails {
   postalCode: string | null;
   country: string | null;
   hideBirthday: boolean;
+  maritalStatus?: string | null;
 }
 
-export type RevealField = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'bank_salary' | 'bank_reimbursement';
-export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name';
+export type RevealField = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport' | 'bank_salary' | 'bank_reimbursement';
+export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name' | 'passport';
 
 export interface IdentityView {
   legalName: string | null;
@@ -112,6 +113,8 @@ export interface IdentityView {
   aadhaar: string | null;
   uan: string | null;
   esic: string | null;
+  passport?: string | null;
+  passportExpiresOn?: string | null;
   bankAccounts: { purpose: 'salary' | 'reimbursement'; holderName: string; ifsc: string; account: string | null; usableFrom: string }[];
   pending: { requestId: string; kind: RequestKind }[];
 }
@@ -125,12 +128,14 @@ export interface ProfileView {
   classes: { internal: boolean; personal: boolean; identity: boolean; aadhaar: boolean; pay: boolean };
   personal: PersonalDetails | null;
   identity: IdentityView | null;
-  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean };
+  /** Internal class: the work phone. */
+  work?: { phone: string | null } | null;
+  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean };
 }
 
 export interface ProfileRequestInput {
   kind: RequestKind;
-  value: Partial<Record<'pan' | 'aadhaar' | 'uan' | 'esic' | 'legalName' | 'holderName' | 'accountNumber' | 'ifsc', string>>;
+  value: Partial<Record<'pan' | 'aadhaar' | 'uan' | 'esic' | 'legalName' | 'holderName' | 'accountNumber' | 'ifsc' | 'passport' | 'passportExpiresOn', string>>;
   reason: string;
 }
 

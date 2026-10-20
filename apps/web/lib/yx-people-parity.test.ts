@@ -74,6 +74,6 @@ describe('person record (PPL-03)', () => {
   it('coming up: probation end and the next work anniversary', () => {
     const v = as<AsOfView>({ status: { status: 'probation', validTo: '2026-12-01' }, employee: { joinedOn: '2024-11-05', exitedOn: null } });
     const h = as<HistoryView>({ changes: [] });
-    expect(upcoming(v, h, '2026-10-20', 1).map((e) => e.label)).toEqual(['Probation ends', 'Work anniversary (2 years)', '1 pending request']);
+    expect(upcoming(v, h, '2026-10-20', ['Salary bank account']).map((e) => [e.label, e.note])).toEqual([['Probation ends', undefined], ['Work anniversary (2 years)', undefined], ['1 pending request', 'Profile change: salary bank account']]);
   });
 });

@@ -42,6 +42,8 @@ const IMPLICIT: Record<string, string[]> = {
     'profileRequests', // own requests and those in scope
     'cancelProfileChange', // the requester or the person
     'probations', // HR in scope, or the manager's team
+    'activity', // anyone who may open the record; each kind of entry by its own key (checked by the service)
+    'workPhone', // employee.profile.edit in scope (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
   OrgStructureController: ['reference'], // public reference data (states, regions)

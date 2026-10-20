@@ -606,6 +606,41 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       expect((await auditRows('employee.aadhaar.viewed')).map((a) => [a.actor, a.entityId])).toEqual([[users.payrollTn, ids.imran]]);
     });
 
+    it('PPL-03 record parity: marital status (Personal), passport by approved request, work phone (Internal), activity by key', async () => {
+      // Marital status: the person edits it; HR with Personal access reads it; a manager never.
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ maritalStatus: 'married' }).expect(200);
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ maritalStatus: 'complicated' }).expect(400);
+      expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal.maritalStatus).toBe('married');
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal).toBeNull();
+      // Passport: a change with approval, masked on the record, the number only to identity access.
+      await up('imranU');
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728' }, reason: 'New passport' }).expect(400);
+      const pp = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728', passportExpiresOn: '2031-02-08' }, reason: 'New passport' }).expect(201)).body.id;
+      await up('payrollTn');
+      await api('payrollTn', 'post', `/people/profile-requests/${pp}/approve`).send({}).expect(201);
+      expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.identity).toMatchObject({ passport: '•••• 7728', passportExpiresOn: '2031-02-08' });
+      await up('payrollTn');
+      expect((await api('payrollTn', 'post', `/people/employees/${ids.imran}/identity/reveal`).send({ field: 'passport' }).expect(201)).body.value).toBe('Z4417728');
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.identity).toBeNull();
+      // Work phone: HR with employee.profile.edit sets it; Internal, so the manager reads it; nobody else writes it.
+      await api('hrAll', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 3142' }).expect(200);
+      await api('hrAll', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: 'call me' }).expect(400);
+      await api('lakshmiU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(403);
+      await api('imranU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(403);
+      await api('arjunU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
+      await api('adminB', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.work).toEqual({ phone: '+914440123142' });
+      // Activity: identity requests only for the person and identity keys; nobody outside the record.
+      const mine = (await api('imranU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string; actor: string | null }[];
+      expect(mine.some((e) => e.text === 'Asked to change the passport')).toBe(true);
+      expect(mine.some((e) => e.text === 'Approved the passport change')).toBe(true);
+      const mgr = (await api('lakshmiU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string }[];
+      expect(mgr.some((e) => /passport|bank|PAN/i.test(e.text))).toBe(false);
+      expect(JSON.stringify(mgr)).not.toMatch(/Z4417728|7728/);
+      await api('arjunU', 'get', `/people/employees/${ids.imran}/activity`).expect(404);
+      await api('adminB', 'get', `/people/employees/${ids.imran}/activity`).expect(404);
+    });
+
     it('pay: only with a salary grant reaching the person, audited; a department head with team salary sees their subtree (Q3)', async () => {
       const tn = (await api('payrollTn', 'get', `/people/employees/${ids.imran}/history?pay=true`).expect(200)).body;
       expect(tn.compensation.map((r: { annualCtc: string }) => r.annualCtc)).toEqual(['610000.00']);

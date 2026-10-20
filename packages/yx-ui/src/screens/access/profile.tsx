@@ -9,7 +9,7 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
-import { GENDER_LABEL, KIND_LABEL,  } from './access-kit';
+import { GENDER_LABEL, KIND_LABEL, MARITAL_LABEL } from './access-kit';
 import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
 
 // People › the person record's dialogs (PPL-03 / PPL-32; P02 §4.4–4.5), used by the designed record: personal details
@@ -38,7 +38,7 @@ export interface ProfileScreenProps {
 
 const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']; label: string; check: (v: string) => string | null }[]> = {
+const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']; label: string; check: (v: string) => string | null; date?: boolean }[]> = {
   pan: [{ key: 'pan', label: 'New PAN', check: (v) => (PAN.test(v) ? null : 'Enter a PAN like ABCPE1234F') }],
   aadhaar: [{ key: 'aadhaar', label: 'New Aadhaar number', check: (v) => (/^[2-9][0-9]{11}$/.test(v) ? null : 'Enter the 12-digit Aadhaar number') }],
   uan: [{ key: 'uan', label: 'New UAN', check: (v) => (/^[0-9]{12}$/.test(v) ? null : 'Enter the 12-digit UAN') }],
@@ -50,6 +50,10 @@ const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']
     { key: 'ifsc', label: 'IFSC', check: (v) => (IFSC.test(v) ? null : 'Enter an IFSC like HDFC0001234') },
   ],
   bank_reimbursement: [],
+  passport: [
+    { key: 'passport', label: 'Passport number', check: (v) => (/^[A-Z0-9]{6,9}$/.test(v) ? null : 'Enter the passport number, like Z4417728') },
+    { key: 'passportExpiresOn', label: 'Expires on', date: true, check: (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? null : 'Choose the expiry date') },
+  ],
 };
 KIND_FIELDS.bank_reimbursement = KIND_FIELDS.bank_salary;
 
@@ -94,6 +98,9 @@ export function PersonalDialog({ initial, states, onSave, onClose }: { initial: 
       </FormField>
       <FormField id="pd-gender" label="Gender">
         <Select aria-label="Gender" value={d.gender} onChange={(v) => set('gender', v)} clearable options={Object.entries(GENDER_LABEL).map(([value, label]) => ({ value, label }))} />
+      </FormField>
+      <FormField id="pd-marital" label="Marital status">
+        <Select aria-label="Marital status" value={d.maritalStatus ?? null} onChange={(v) => set('maritalStatus', v)} clearable options={Object.entries(MARITAL_LABEL).map(([value, label]) => ({ value, label }))} />
       </FormField>
       <FormField id="pd-email" label="Personal email">
         <TextField type="email" value={d.personalEmail ?? ''} onChange={(v) => set('personalEmail', v || null)} maxLength={254} />
@@ -154,7 +161,11 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
       </FormField>
       {fields.map((f, i) => (
         <FormField key={f.key} id={`cr-${f.key}`} label={f.label} required error={touched ? problems[i] : null}>
-          <TextField value={value[f.key] ?? ''} onChange={(v) => setValue((x) => ({ ...x, [f.key]: f.key === 'pan' || f.key === 'ifsc' ? v.toUpperCase() : v }))} onBlur={() => setTouched(true)} autoComplete="off" />
+          {f.date ? (
+            <DatePicker value={value[f.key] ? new Date(`${value[f.key]}T00:00:00`) : null} onChange={(v) => setValue((x) => ({ ...x, [f.key]: v ? dayKey(v) : '' }))} min={new Date()} />
+          ) : (
+            <TextField value={value[f.key] ?? ''} onChange={(v) => setValue((x) => ({ ...x, [f.key]: f.key === 'pan' || f.key === 'ifsc' || f.key === 'passport' ? v.toUpperCase() : v }))} onBlur={() => setTouched(true)} autoComplete="off" />
+          )}
         </FormField>
       ))}
       <FormField id="cr-reason" label="Reason" required helper="For example: new bank, correction of a typo.">

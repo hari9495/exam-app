@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ConfirmDialog, FormField, Select, TextArea, useToast } from '@yukthix/ui';
+import { ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
 import { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
@@ -12,7 +12,8 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, docRows, historyRows, identityRows, jobRows, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, bankRows, currentPeriod, docRows, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -82,6 +83,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
   const payRead = usePayRead();
+  const activity = usePeople<{ entries: { id: string; kind: ActivityEntry['kind']; actor: string | null; at: string; text: string }[] }>(personId ? `/employees/${p}/activity` : null);
+  // Performance tab: for the person, their managers (the API decides) and perf.goal.view / perf.review.view.
+  const perfAllowed = Boolean(profile.data) && (Boolean(profile.data?.self) || !hr || perms.has('perf.goal.view') || perms.has('perf.review.view'));
+  const periods = usePerf<{ id: string; name: string; fromOn: string; toOn: string; status: string }[]>(perfAllowed ? '/goal-periods' : null);
+  const periodId = periods.data ? currentPeriod(periods.data, today) : null;
+  const goals = usePerf<{ goals: { id: string; title: string; status: string; progress: number }[] }>(perfAllowed && periodId ? `/goals?period=${id(periodId)}&view=${profile.data?.self ? 'mine' : 'employee'}${profile.data?.self ? '' : `&employeeId=${p}`}` : null);
+  const reviews = usePerf<{ employeeId: string; cycle: string; status: string; band: string | null }[]>(perfAllowed ? `/reviews?view=${profile.data?.self ? 'mine' : hr && perms.has('perf.review.view') ? 'scope' : 'team'}` : null);
+  const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
 
   const [editing, setEditing] = useState(false);
   const [changing, setChanging] = useState(false);
@@ -89,6 +98,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [starting, setStarting] = useState(false);
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phone, setPhone] = useState('');
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
@@ -167,11 +178,12 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     ],
     facts: [
       ...(person.data?.primaryEmail ? [{ label: 'Work email', value: person.data.primaryEmail }] : []),
+      ...(prof?.work ? [{ label: 'Work phone', value: prof.work.phone ? formatPhone(prof.work.phone) : 'Not on file' }] : []),
       ...(a?.dottedLineManagers?.length ? [{ label: 'Secondary manager', value: a.dottedLineManagers.map((m) => m.name).join(', ') }] : []),
       ...(a?.employmentType ? [{ label: 'Employment type', value: a.employmentType.name ?? '' }] : []),
       ...(v?.employee.legalEntity ? [{ label: 'Legal entity', value: v.employee.legalEntity.name }] : []),
     ],
-    events: upcoming(v, h, today, pending.length),
+    events: upcoming(v, h, today, pending.map((r) => r.label), docList),
     personal: prof?.personal ? personalRows(prof.personal) : null,
     identity: prof?.identity ? identityRows(prof, reveal) : null,
     pending: pending.map((r) => ({
@@ -211,6 +223,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       router.replace(`${path}${q.size ? `?${q}` : ''}`);
     },
     ...(canChange && !self ? { onStartChange: () => setStarting(true) } : {}),
+    // Message: the person's work email in the viewer's mail app (there is no in-app chat).
+    ...(!self && person.data?.primaryEmail ? { onMessage: () => window.location.assign(`mailto:${person.data!.primaryEmail}`) } : {}),
+    ...(prof?.can.editWork ? { onEditWorkPhone: () => (setPhone(prof.work?.phone ?? ''), setPhoneOpen(true)) } : {}),
+    activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
+    performance:
+      perfAllowed && (goals.data || reviews.data) && personId
+        ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
+        : null,
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };
@@ -221,6 +241,25 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
 
   live.children = (
     <>
+      {phoneOpen && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setPhoneOpen(false)}
+          size="md"
+          title={`Work phone for ${name}`}
+          consequence="The company line shown on the record and in the directory. Leave it empty to clear it."
+          confirmLabel="Save"
+          onConfirm={async () => {
+            await write('PUT', `/employees/${p}/work-phone`, { workPhone: phone.trim() || null });
+            void profile.refetch();
+            done(`${first}'s work phone saved`);
+          }}
+        >
+          <FormField label="Work phone" helper="With the country code, e.g. +91 44 4012 3142.">
+            <TextField type="tel" value={phone} onChange={setPhone} maxLength={30} />
+          </FormField>
+        </ConfirmDialog>
+      )}
       {editing && prof?.personal && (
         <PersonalDialog
           initial={prof.personal}
