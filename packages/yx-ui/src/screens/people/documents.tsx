@@ -1,7 +1,7 @@
 // PPL-27 Document verification queue · PPL-28 Issue letter + bulk issue + issued letters register · PPL-29 Letter templates
 // PPL-30 My documents & letters · PPL-31 Self-service certificate request (P05 §4.2–4.6, §7, Q7, Q8).
-import { useState } from 'react';
-import { Camera, Copy, Download, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Camera, Copy, Download, FileText, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
@@ -23,7 +23,9 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
-import type { Persona } from './people-logic';
+import type { FieldClass, Persona } from './people-logic';
+import type { Letter as LiveLetter, QueueDocument } from './live/types';
+import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
 
@@ -39,8 +41,152 @@ const KAVERI = { name: 'Kaveri Foods Pvt Ltd', address: ['4th Floor, Prestige Me
 
 type Verify = (typeof VERIFY_QUEUE)[number];
 
+/** The live app's verification queue (design audit step 3). */
+export interface LiveDocQueue {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  rows: QueueDocument[];
+  /** The file as a local URL for the viewer (the API checks access; it opens only after the virus check). */
+  loadFile: (d: QueueDocument) => Promise<{ url: string; name: string; type: string }>;
+  onDownload: (d: QueueDocument) => void;
+  onDecide: (d: QueueDocument, decision: 'verify' | 'reject', reason?: string) => Promise<void>;
+}
+
+const REJECT_REASONS = ['Name does not match the record', 'Image is unclear', 'Wrong document type', 'Expired document'];
+const CLS: Record<string, FieldClass> = { public: 'Public', internal: 'Internal', personal: 'Personal', confidential: 'Confidential', special: 'Special' };
+
+function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'view' | 'reject'>('view');
+  const [file, setFile] = useState<{ url: string; name: string; type: string } | 'loading' | 'error' | null>(null);
+  const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const open = live.rows.find((r) => r.id === openId) ?? null;
+  const first = open?.person?.split(' ')[0] ?? 'the person';
+  const status = (r: QueueDocument) => (r.file?.scanStatus === 'clean' ? 'Needs review' : r.file?.scanStatus === 'infected' ? 'Blocked: virus found' : 'Scanning');
+  const show = async (r: QueueDocument) => {
+    setOpenId(r.id);
+    setMode('view');
+    setFailed(null);
+    setReason(REJECT_REASONS[0]);
+    setMessage('');
+    if (r.file?.scanStatus !== 'clean') return setFile(null);
+    setFile('loading');
+    try {
+      setFile(await live.loadFile(r));
+    } catch {
+      setFile('error');
+    }
+  };
+  const close = () => {
+    if (file && typeof file === 'object') URL.revokeObjectURL(file.url);
+    setFile(null);
+    setOpenId(null);
+  };
+  const decide = async (decision: 'verify' | 'reject') => {
+    if (!open) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onDecide(open, decision, decision === 'reject' ? [reason, message.trim()].filter(Boolean).join('. ') : undefined);
+      close();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cols: TableColumn<QueueDocument>[] = [
+    { key: 'name', header: 'Employee', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200 },
+    { key: 'type', header: 'Document', value: (r) => r.typeName, render: (r) => <span className="yx-ppl__row">{r.typeName} <ClassBadge cls={CLS[r.sensitivity] ?? 'Internal'} /></span>, groupable: true, width: 260 },
+    { key: 'uploaded', header: 'Uploaded', type: 'date', value: (r) => (r.uploadedAt ? new Date(r.uploadedAt) : null), width: 130 },
+    { key: 'status', header: 'Status', type: 'status', value: status, statusTone: (v) => (v === 'Scanning' ? 'info' : String(v).startsWith('Blocked') ? 'danger' : 'warning'), width: 170 },
+  ];
+  return (
+    <PeopleFrame active="Documents & letters">
+      <PageHeader title="Document verification" description="PAN, Aadhaar, bank proof, education and experience proofs must be verified before payroll, payouts or filings use them. Open each one, then verify it or send it back with the reason." />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the documents to verify" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Documents to verify"
+          columns={cols}
+          rows={live.rows}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : 'ready'}
+          onRowClick={(r) => void show(r)}
+          activeRowId={openId}
+          rowButtons={(r) => (r.file?.scanStatus === 'clean' ? <Button variant="review" size="sm" onClick={() => void show(r)}>Review</Button> : null)}
+          // Ask several people to re-upload at once: not in the live app yet (left out); Reject asks one person.
+          empty={<EmptyState title="Nothing to verify" description="New uploads that need a check appear here. Payroll pre-flight lists anyone still unverified." />}
+        />
+      )}
+      <Drawer
+        open={!!open}
+        onOpenChange={(o) => !o && close()}
+        size="lg"
+        title={`${open?.typeName ?? ''} · ${open?.person ?? ''}`}
+        subtitle={open ? `${open.uploadedAt ? `Uploaded ${formatDate(new Date(open.uploadedAt))} · ` : ''}${open.file?.scanStatus === 'clean' ? 'virus scan passed' : open.file?.scanStatus === 'infected' ? 'a virus was found: the file is blocked' : 'virus scan running'}` : undefined}
+        meta={open && <ClassBadge cls={CLS[open.sensitivity] ?? 'Internal'} />}
+        footer={
+          open?.file?.scanStatus !== 'clean' ? (
+            <Button onClick={close}>Close</Button>
+          ) : mode === 'reject' ? (
+            <>
+              <Button onClick={() => setMode('view')}>Back</Button>
+              <Button variant="danger" loading={busy} disabled={!reason} onClick={() => void decide('reject')}>
+                Reject and ask to re-upload
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button onClick={() => setMode('reject')}>Reject</Button>
+              <Button variant="primary" loading={busy} onClick={() => void decide('verify')}>
+                Mark verified
+              </Button>
+            </>
+          )
+        }
+      >
+        {open && (
+          <div className="yx-ppl__stack">
+            {failed && <InlineAlert tone="danger" title={failed} />}
+            {open.sensitivity === 'special' && <Text size="sm" tone="secondary" as="p">Special class: this view is recorded.</Text>}
+            {mode === 'reject' ? (
+              <div className="yx-ppl__form">
+                <FormField label="Reason" required>
+                  <Select options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} value={reason} onChange={setReason} />
+                </FormField>
+                <FormField label={`Message to ${first}`} optional helper="Say what to upload instead.">
+                  <TextArea rows={3} value={message} onChange={setMessage} maxLength={400} />
+                </FormField>
+              </div>
+            ) : open.file?.scanStatus !== 'clean' ? (
+              <InlineAlert tone={open.file?.scanStatus === 'infected' ? 'danger' : 'info'}>{open.file?.scanStatus === 'infected' ? `Ask ${first} to upload a clean copy.` : 'The file opens once the virus scan finishes.'}</InlineAlert>
+            ) : (
+              <DocumentViewer
+                fileName={file && typeof file === 'object' ? file.name : (open.file?.name ?? open.typeName)}
+                {...(file && typeof file === 'object' ? { mimeType: file.type } : {})}
+                state={file === 'error' ? 'error' : file === 'loading' || !file ? 'loading' : 'ready'}
+                onDownload={() => live.onDownload(open)}
+                versions={[{ id: 'current', label: `Version ${open.versions ?? 1}`, url: file && typeof file === 'object' ? file.url : '', uploadedBy: open.person ?? '', uploadedAt: open.uploadedAt ? new Date(open.uploadedAt) : new Date(), size: open.file?.size ?? 0 }]}
+              />
+            )}
+          </div>
+        )}
+      </Drawer>
+    </PeopleFrame>
+  );
+}
+
 // PPL-27
-export function DocumentVerificationQueue({ rows, defaultOpenId, rejecting = false }: { rows: Verify[]; defaultOpenId?: string; rejecting?: boolean }) {
+export function DocumentVerificationQueue(props: { rows: Verify[]; defaultOpenId?: string; rejecting?: boolean; live?: LiveDocQueue }) {
+  return props.live ? <LiveDocumentQueue live={props.live} /> : <SampleDocumentQueue {...props} />;
+}
+
+function SampleDocumentQueue({ rows, defaultOpenId, rejecting = false }: { rows: Verify[]; defaultOpenId?: string; rejecting?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const [mode, setMode] = useState<'view' | 'reject'>(rejecting ? 'reject' : 'view');
   const open = rows.find((r) => r.id === openId);
@@ -230,8 +376,154 @@ function IssuedLettersBody({ rows }: { rows: Letter[] }) {
   );
 }
 
+/** The live app's letters register (design audit step 3). */
+export interface LiveLetters {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  rows: LiveLetter[];
+  verifyUrl: (code: string) => string;
+  onDownload: (l: LiveLetter) => void;
+  /** letter.issue with active templates: issue one letter, or many. */
+  issue?: { types: { value: string; label: string }[]; people: { value: string; label: string }[]; onPreview: (letterType: string, personId: string) => Promise<unknown>; onIssue: (letterType: string, personId: string) => Promise<void>; onBulk: () => void };
+  /** Dialogs the page opens (the bulk issue). */
+  children?: ReactNode;
+}
+
+const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Rejected', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+
+function LiveLettersRegister({ live }: { live: LiveLetters }) {
+  const [issuing, setIssuing] = useState(false);
+  const [type, setType] = useState<string | null>(null);
+  const [who, setWho] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'preview' | 'issue' | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const cols: TableColumn<LiveLetter>[] = [
+    { key: 'ref', header: 'Reference', type: 'id', value: (r) => r.referenceNo ?? '', width: 190 },
+    { key: 'type', header: 'Letter', value: (r) => r.title.split(': ')[0], groupable: true, width: 190 },
+    { key: 'to', header: 'To', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200 },
+    { key: 'issued', header: 'Issued', type: 'date', value: (r) => (r.issuedAt ? new Date(r.issuedAt) : null), width: 130 },
+    { key: 'esign', header: 'Signature', value: (r) => (!r.personSigns ? 'Not needed' : r.acceptedAt ? `Accepted ${formatDate(new Date(r.acceptedAt))}` : r.signature?.status === 'declined' ? 'Declined' : 'Not yet'), width: 180 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => LETTER_STATE[r.status], statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' ? 'neutral' : v === 'Rejected' ? 'danger' : 'warning'), width: 170 },
+  ];
+  const run = async (what: 'preview' | 'issue') => {
+    if (!live.issue || !type || !who) return;
+    setBusy(what);
+    setFailed(null);
+    try {
+      if (what === 'preview') await live.issue.onPreview(type, who);
+      else {
+        await live.issue.onIssue(type, who);
+        setIssuing(false);
+      }
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <PeopleFrame active="Documents & letters">
+      <PageHeader
+        title="Letters"
+        description="Issued letters with reference numbers. Numbers are gap-free per entity and letter type."
+        actions={
+          live.issue ? (
+            <>
+              <Button icon={FileUp} onClick={live.issue.onBulk}>
+                Bulk issue
+              </Button>
+              <Button
+                variant="primary"
+                icon={Plus}
+                onClick={() => {
+                  setType(null);
+                  setWho(null);
+                  setFailed(null);
+                  setIssuing(true);
+                }}
+              >
+                Issue letter
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the letters" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Issued letters"
+          columns={cols}
+          rows={live.rows}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : 'ready'}
+          rowActions={(r) =>
+            r.status === 'issued' || r.status === 'superseded' ? (
+              <>
+                <MenuItem icon={Download} onSelect={() => live.onDownload(r)}>
+                  Download PDF
+                </MenuItem>
+                {r.verifyCode && (
+                  <MenuItem
+                    onSelect={() => {
+                      void navigator.clipboard?.writeText(live.verifyUrl(r.verifyCode!)).then(() => toast({ tone: 'success', title: `Check link for ${r.referenceNo ?? 'the letter'} copied` }));
+                    }}
+                  >
+                    Copy verification link
+                  </MenuItem>
+                )}
+              </>
+            ) : null
+          }
+          // Issue a correction and export: not in the live app yet (left out).
+          defaultSort={{ key: 'issued', dir: 'desc' }}
+          empty={<EmptyState title="No letters issued yet" description="Issue a letter from a template, or in bulk after a change." />}
+        />
+      )}
+      {live.issue && (
+        <Drawer
+          open={issuing}
+          onOpenChange={setIssuing}
+          size="lg"
+          title="Issue a letter"
+          subtitle="Letter type and person; download a preview with the person's real data, then issue"
+          footer={
+            <>
+              <Button onClick={() => setIssuing(false)}>Cancel</Button>
+              <Button variant="primary" disabled={!type || !who} loading={busy === 'issue'} onClick={() => void run('issue')}>
+                Issue letter
+              </Button>
+            </>
+          }
+        >
+          <div className="yx-ppl__stack">
+            {failed && <InlineAlert tone="danger" title={failed} />}
+            <div className="yx-ppl__form">
+              <FormField label="Employee" required>
+                <Select aria-label="Employee" options={live.issue.people} value={who} onChange={setWho} searchable />
+              </FormField>
+              <FormField label="Letter type" required>
+                <Select aria-label="Letter type" options={live.issue.types} value={type} onChange={setType} />
+              </FormField>
+            </div>
+            <div>
+              <Button icon={FileText} disabled={!type || !who} loading={busy === 'preview'} onClick={() => void run('preview')}>
+                Download a preview
+              </Button>
+            </div>
+            <Text size="sm" tone="secondary" as="p">Issued letters are final: a reference number, a QR verification code and a sealed PDF. Letters that need approval go to the signatory first. A correction is a new letter that supersedes this one.</Text>
+          </div>
+        </Drawer>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
+}
+
 // PPL-28 · register
-export function IssuedLettersRegister({ rows }: { rows: Letter[] }) {
+export function IssuedLettersRegister({ rows, live }: { rows: Letter[]; live?: LiveLetters }) {
+  if (live) return <LiveLettersRegister live={live} />;
   return (
     <PeopleFrame active="Documents & letters">
       <IssuedLettersBody rows={rows} />
