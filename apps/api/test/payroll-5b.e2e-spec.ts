@@ -284,8 +284,8 @@ describe('Payroll batch 5b', () => {
     expect(ch).toMatchObject({ status: 'pending', annualCtc: '726000.00' });
     // The pay guard: without the entity in this transaction's pay scope the package is invisible, even inside company A.
     expect(await inA((tx) => tx.compensationPackage.count())).toBe(0);
-    // Its values change only in Payroll (the breakup goes with them).
-    expect((await api('payAdmin', 'put', `/people/changes/${ch.changeId}`).send({ payload: { compensation: { annualCtc: '900000.00' } } }).expect(409)).body.message).toMatch(/Payroll/);
+    // Its values change only in Payroll (the breakup goes with them); payroll holds no job-change key (founder 21 Oct 2026).
+    await api('payAdmin', 'put', `/people/changes/${ch.changeId}`).send({ payload: { compensation: { annualCtc: '900000.00' } } }).expect(403);
 
     await stepUp('payAdmin');
     await api('payAdmin', 'post', `/people/changes/${ch.changeId}/approve`).send({}).expect(403);

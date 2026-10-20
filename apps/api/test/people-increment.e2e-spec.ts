@@ -11,6 +11,9 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
+import { HR_ADMIN, PAYROLL_ADMIN } from '../prisma/seed-org-structure';
+import { PAYROLL_ADMIN_5A } from '../prisma/seed-pay';
 
 // PPL-06 annual increment end to end against the real database (forced RLS, the pay guard): ratings from a released
 // review cycle, one percentage for everyone, a raise per person; new pay rounded to whole rupees; only the people every
@@ -26,7 +29,7 @@ describe('People annual increment (PPL-06)', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'meena' | 'kiran' | 'hr' | 'hrNoPay' | 'hrNoRate' | 'hrSales' | 'approver';
+  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'meena' | 'kiran' | 'hr' | 'hrNoPay' | 'hrNoRate' | 'hrSales' | 'approver' | 'payrollTpl' | 'payrollDemo' | 'hrDemo';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -90,6 +93,10 @@ describe('People annual increment (PPL-06)', () => {
       ['hrNoRate', 'A', 'panel', PAY],
       ['hrSales', 'A', 'panel', null],
       ['approver', 'A', 'panel', ['employee.profile.view', 'employee.change.approve', 'employee.salary.view']],
+      // Founder 21 Oct 2026: payroll (the template and the demo profile) does no HR work; the demo HR sees pay.
+      ['payrollTpl', 'A', 'panel', [...ROLE_TEMPLATES.find((t) => t.key === 'payroll_admin')!.permissions]],
+      ['payrollDemo', 'A', 'panel', [...PAYROLL_ADMIN, ...PAYROLL_ADMIN_5A]],
+      ['hrDemo', 'A', 'panel', HR_ADMIN],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -267,5 +274,23 @@ describe('People annual increment (PPL-06)', () => {
     expect(ctc.annualCtc.toFixed(2)).toBe('717501.00');
     const changes = await inA((tx) => tx.employeeChange.findMany({ where: { batchId: sent.batch.id } }));
     expect(changes.map((x) => x.changeType)).toEqual(['salary_revision', 'salary_revision', 'salary_revision']);
+  });
+
+  it('payroll does no HR work: no annual increment, no adding people, no probation decision (founder 21 Oct 2026)', async () => {
+    for (const who of ['payrollTpl', 'payrollDemo'] as Who[]) {
+      await inc(who, { ...base(), mode: 'percent', percent: '5' }).expect(403);
+      await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token[who]}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Nope', familyName: run, joinedOn: today, assignment: { locationId: ids.loc, departmentId: ids.ops, designationId: ids.desig, gradeId: ids.grade, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(403);
+      await request(server()).post(`/api/v1/lifecycle/probations/${emp.kiran}/review`).set('Authorization', `Bearer ${token[who]}`).send({ outcome: 'confirm', comments: 'Good work' }).expect((r) => expect([403, 404]).toContain(r.status));
+      // Payroll keeps its pay work: it still reads pay.
+      const pay = (await request(server()).get(`/api/v1/people/employees/${emp.kiran}/as-of?date=${today}&pay=true`).set('Authorization', `Bearer ${token[who]}`).expect(200)).body;
+      expect(pay.compensation.annualCtc).toBe('333333.00');
+    }
+  });
+
+  it('the demo HR sees pay and runs the annual increment (founder 21 Oct 2026)', async () => {
+    const pay = (await request(server()).get(`/api/v1/people/employees/${emp.kiran}/as-of?date=${today}&pay=true`).set('Authorization', `Bearer ${token.hrDemo}`).expect(200)).body;
+    expect(pay.compensation.annualCtc).toBe('333333.00');
+    const r = (await inc('hrDemo', { ...base(), mode: 'percent', percent: '5' }).expect(201)).body;
+    expect(r.people.find((p: { employeeId: string }) => p.employeeId === emp.kiran)).toMatchObject({ newCtc: '350000.00' });
   });
 });

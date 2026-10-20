@@ -76,8 +76,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     name: 'Payroll Admin',
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
-    cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
+    // Founder 21 Oct 2026: payroll does not do HR work (job changes, adding people, probation, the annual increment).
+    cannot: 'HR settings, job changes, adding people, probation decisions.',
+    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
