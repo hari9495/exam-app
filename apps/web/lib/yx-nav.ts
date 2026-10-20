@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson';
 
 export interface NavLink {
   id: string;
@@ -91,13 +91,13 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
       ...sec(team ? 'For my team' : 'Onboarding', [
         ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
-        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard'), L('batches', 'Batches', '/yx/people/batches')),
-        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation')),
+        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
+        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
         ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
         ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
         ...when(team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
         ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
       ]),
       ...sec('Changes', [
         ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
@@ -107,7 +107,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('Exits', [
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
         ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
         ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
       ]),
@@ -117,7 +117,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-      ...sec('More', [...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people')), ...when(has('lifecycle.exit.manage'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment'))]),
+      ...sec('More', [...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')), ...when(has('lifecycle.exit.manage'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment'))]),
     ],
   };
 

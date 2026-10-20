@@ -338,6 +338,9 @@ describe('Lifecycle batch 6b', () => {
     const ready = (await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body;
     expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', acceptedOn: '2026-10-01' });
     await api('mgr', 'get', '/lifecycle/ready-to-onboard').expect(403);
+    // The side menu's count (PPL-12 design): accepted offers not yet onboarded, only for those who onboard.
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr}`).expect(200)).body.readyToOnboard).toBe(ready.length);
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.mgr}`).expect(200)).body.readyToOnboard).toBeUndefined();
     expect((await api('adminB', 'get', '/lifecycle/ready-to-onboard').expect(200)).body).toEqual([]);
     expect(ready.find((r: { offerId: string }) => r.offerId === offers.internal)).toMatchObject({ personType: 'internal' });
     const body = { givenName: 'Asha', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr };
