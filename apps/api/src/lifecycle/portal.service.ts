@@ -205,9 +205,10 @@ export class PreboardingPortalService {
       await audit(tx, c, 'preboarding.section.saved', 'preboarding', pb.id, { section: key });
       const first = completion === 100 && pb.completion < 100;
       if (first) await tx.eventOutbox.create({ data: { organizationId: s.org, eventType: 'preboarding.completed', payload: { preboardingId: pb.id } } });
-      return { completion, first, hr: pb.hrOwnerUserId, org: s.org, pbId: pb.id };
+      const p = first ? await tx.person.findFirst({ where: { organizationId: s.org, id: pb.personId }, select: { givenName: true, familyName: true, preferredName: true } }) : null;
+      return { completion, first, hr: pb.hrOwnerUserId, org: s.org, pbId: pb.id, who: p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : null };
     });
-    if (done.first) await this.notifications.notifySystem({ organizationId: done.org, isSuperAdmin: false }, [done.hr], 'preboarding.completed', { entityType: 'preboarding', entityId: done.pbId, contextText: 'A joiner finished their pre-boarding forms', linkPath: '/yx/people/onboarding' }, { subject: 'A joiner finished their forms', html: '<p>A joiner finished their pre-boarding forms in YukthiX.</p>' }).catch(() => undefined);
+    if (done.first) await this.notifications.notifySystem({ organizationId: done.org, isSuperAdmin: false }, [done.hr], 'preboarding.completed', { entityType: 'preboarding', entityId: done.pbId, contextText: done.who ? `${done.who} finished their pre-boarding forms` : 'A joiner finished their pre-boarding forms', linkPath: '/yx/people/onboarding' }, { subject: 'A joiner finished their forms', html: '<p>A joiner finished their pre-boarding forms in YukthiX.</p>' }).catch(() => undefined);
     return { completion: done.completion };
   }
 

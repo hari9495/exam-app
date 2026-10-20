@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { button, details, noticeEmail } from '../email/account-emails';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -94,6 +95,20 @@ export interface SubmitInput {
   risk?: 'high';
 }
 
+/**
+ * The email subject of an approval notice in plain words: who asks, and for what (founder review 19 Oct 2026), never the
+ * step's internal name ("Leave: Manager: …"). `who` is the person the request is from; a title that already starts with
+ * their name ("Arjun Kulkarni: Casual leave, 21 Oct (1 day)") is not repeated.
+ */
+export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
+  const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
+  const asks = who ? `${who} asks for ${what}` : `A request waits for you: ${what}`;
+  if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
+  if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
+  if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;
+  return `${n.text}: ${n.title}`;
+}
+
 export interface Notice {
   to: string[];
   requestId: string;
@@ -101,6 +116,10 @@ export interface Notice {
   title: string;
   link: string;
   text: string;
+  /** The person the request is from, shown on the bell row (founder review 19 Oct 2026); the approver sees them anyway. */
+  actor?: string | null;
+  /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
+  toRequester?: string;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
@@ -209,6 +228,11 @@ export class ApprovalsEngine {
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
     this.types.set(t.key, t);
+  }
+
+  /** The person-facing name of a request type ("Leave", "Expense claim"), for search results. */
+  typeLabel(key: string): string {
+    return this.types.get(key)?.label ?? key.replace(/[._]/g, ' ');
   }
 
   private type(key: string): RequestType {
@@ -367,7 +391,7 @@ export class ApprovalsEngine {
     }
     const updated = await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, currentStep: next, version: { increment: 1 }, updatedAt: now } });
     const holders = (await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id, step: next, status: 'open' }, select: { assigneeUserId: true } })).map((t) => t.assigneeUserId);
-    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: '/yx/approvals', text: `${this.type(req.requestType).label}: ${s.name}` });
+    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `${this.type(req.requestType).label}: ${s.name}`, actor: req.requesterUserId });
     return updated;
   }
 
@@ -377,7 +401,7 @@ export class ApprovalsEngine {
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
     await this.type(req.requestType).onDecided(tx, after, outcome);
-    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved' });
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId });
     return after;
   }
 
@@ -392,7 +416,7 @@ export class ApprovalsEngine {
       await tx.wfTask.update({ where: { id: t.id }, data: { status: 'closed', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       await this.log(tx, org, req.id, t.id, step, null, null, 'closed', why, 'system');
     }
-    if (open.length) notices.push({ to: open.map((t) => t.assigneeUserId), requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: '/yx/approvals', text: why });
+    if (open.length) notices.push({ to: open.map((t) => t.assigneeUserId), requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: `/yx/approvals?request=${req.id}`, text: why });
   }
 
   /** Applies a step verdict: next step, or the end of the request. */
@@ -508,7 +532,7 @@ export class ApprovalsEngine {
         const steps = req.steps as unknown as FrozenStep[];
         if (!steps[t.step].approverIds.includes(boss)) steps[t.step].approverIds.push(boss);
         await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
-        notices.push({ to: [boss], requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: '/yx/approvals', text: `Escalated to you: ${s.name}` });
+        notices.push({ to: [boss], requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `Escalated to you: ${s.name}`, actor: req.requesterUserId });
       }
       await tx.wfTask.update({ where: { id: t.id }, data: { dueAt: null, escalatedAt: now, version: { increment: 1 }, updatedAt: now } });
       await this.log(tx, org, req.id, t.id, t.step, null, null, 'escalated', ok ? 'No answer in time: sent to their manager too' : 'No answer in time (no manager to send it to)', 'system');
@@ -518,7 +542,7 @@ export class ApprovalsEngine {
       const more = t.reminders + 1 < 3 && s.remindAfterHours;
       await tx.wfTask.update({ where: { id: t.id }, data: { reminders: { increment: 1 }, remindAt: more ? new Date(now.getTime() + hours(s.remindAfterHours!)) : null, version: { increment: 1 }, updatedAt: now } });
       await this.log(tx, org, req.id, t.id, t.step, null, null, 'reminded', null, 'system');
-      notices.push({ to: [t.assigneeUserId], requestId: req.id, type: 'workflow.approval.reminder', title: req.title, link: '/yx/approvals', text: `Still waiting for you: ${s.name}` });
+      notices.push({ to: [t.assigneeUserId], requestId: req.id, type: 'workflow.approval.reminder', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `Still waiting for you: ${s.name}`, actor: req.requesterUserId });
       return 1;
     }
     return 0;
@@ -731,9 +755,24 @@ export class ApprovalsEngine {
       const to = [...new Set(n.to)];
       if (!to.length) continue;
       try {
-        const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
         const url = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}${n.link}`;
-        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: `${n.title} · ${n.text}`.slice(0, 300), linkPath: n.link }, { subject: `${n.text}: ${n.title}`.slice(0, 150), html: `<p>${esc(n.text)}: <strong>${esc(n.title)}</strong></p><p><a href="${esc(url)}">Open in YukthiX</a></p>` });
+        const from = n.actor ?? n.toRequester ?? null;
+        const { who, company } = await this.tenantPrisma.forTenant(ctx, async (tx) => ({
+          who: from ? ((await this.names(tx, ctx.organizationId as string, [from])).get(from) ?? null) : null,
+          company: (await tx.organization.findUnique({ where: { id: ctx.organizationId as string }, select: { name: true } }))?.name ?? null,
+        }));
+        const subject = approvalSubject(n, who, Boolean(n.toRequester)).slice(0, 150);
+        // The designed YukthiX email (as the sign-in and account emails), one per recipient so its footer names them.
+        const email = (address: string) =>
+          noticeEmail({
+            to: address,
+            company,
+            subject,
+            heading: subject,
+            // The step's own name ("Manager"), never the internal "Leave: Manager" label.
+            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text.split(': ').pop() ?? n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+          });
+        await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: subject.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {
         this.logger.warn(`approval notice not sent: ${(e as Error).message}`);
       }

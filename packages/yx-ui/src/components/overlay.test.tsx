@@ -195,6 +195,32 @@ describe('NotificationCentre', () => {
     expect(screen.queryByText('Payslip for August is ready')).toBeNull();
     expect(dayLabel(new Date(2026, 8, 28, 23, 59), now)).toBe('Yesterday');
   });
+
+  // Founder review 19 Oct 2026: opening a notification navigates, so the panel must close; Esc closes it too.
+  it('closes when an item is opened and on Esc; system notices show a bell, not initials', async () => {
+    const u = userEvent.setup();
+    const opened = vi.fn();
+    const items = [
+      { id: '1', actor: { name: 'Arjun Mehta' }, text: 'Arjun Mehta applied for casual leave', at: now, read: false, href: '#leave' },
+      { id: '2', actor: { name: 'YukthiX' }, system: true, text: 'Overdue: Collect bank proof for Arjun Mehta', at: now, read: false, href: '#tasks' },
+    ];
+    render(<NotificationCentre now={now} settingsHref="#settings" allHref="#all" onMarkAllRead={() => {}} onOpenItem={opened} items={items} />);
+    const bell = screen.getByRole('button', { name: 'Notifications, 2 unread' });
+    await u.click(bell);
+    const panel = screen.getByRole('dialog', { name: 'Notifications' });
+    expect(within(panel).getByText('AM')).toBeInTheDocument();
+    expect(within(panel).queryByText('Y')).toBeNull();
+    // The footer links are separate links, not one run of text.
+    expect(within(panel).getByRole('link', { name: 'See all notifications' })).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: 'Notification settings' })).toBeInTheDocument();
+    await u.click(within(panel).getByRole('link', { name: 'Arjun Mehta applied for casual leave' }));
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull());
+    await u.click(bell);
+    expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull());
+  });
 });
 
 /* ---------- Approvals inbox ---------- */
