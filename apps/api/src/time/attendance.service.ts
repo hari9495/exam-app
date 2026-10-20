@@ -491,7 +491,7 @@ export class AttendanceService implements OnModuleInit {
   }
 }
 
-async function countExceptions(tx: Tx, c: CompanyContext, from: string, to: string, entityId: string | null | undefined, inScope: Prisma.Sql): Promise<number> {
+export async function countExceptions(tx: Tx, c: CompanyContext, from: string, to: string, entityId: string | null | undefined, inScope: Prisma.Sql): Promise<number> {
   const [r] = await tx.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n FROM attendance_days d
     WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')

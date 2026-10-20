@@ -72,7 +72,7 @@ describe('buildNav: People', () => {
 describe('buildNav: Time, Pay, Compliance', () => {
   it('an employee has My time; a manager adds the team pages', () => {
     expect(labels(nav([], { employee: true }), 'time')).toEqual(['My attendance', 'My leave', 'My shifts', 'My timesheet', 'My overtime']);
-    expect(labels(nav([], { employee: true, manager: true }), 'time').slice(0, 4)).toEqual(['Muster', 'Roster', 'Leave calendar', 'Overtime']);
+    expect(labels(nav([], { employee: true, manager: true }), 'time').slice(0, 4)).toEqual(['Muster', 'Roster', 'Leave calendar', 'Requests']);
     expect(sections(nav(['leave.settings.manage']), 'time')).toEqual(['Time settings']);
   });
 

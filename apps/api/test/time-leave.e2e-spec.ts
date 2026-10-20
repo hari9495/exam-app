@@ -547,4 +547,26 @@ describe('Time and leave batch 1', () => {
       expect(t.versions.map((v: { version: number; paid: boolean }) => [v.version, v.paid])).toEqual([[2, false], [1, true]]);
     });
   });
+
+  describe('Time menu counts (TIM nav)', () => {
+    it('exceptions and requests only for someone who may open their page, in scope and in their company', async () => {
+      const counts = async (who: Who) => (await api(who, 'get', '/workspace/counts').expect(200)).body as { timeExceptions?: number; timeRequests?: number };
+      // No grant and no team: no count at all.
+      const emp = await counts('emp');
+      expect(emp.timeExceptions).toBeUndefined();
+      expect(emp.timeRequests).toBeUndefined();
+      expect((await counts('empB')).timeRequests).toBeUndefined();
+      // A manager sees their team's waiting requests, not the exceptions (no attendance.view).
+      const mgr = await counts('mgr');
+      expect(mgr.timeExceptions).toBeUndefined();
+      const waiting = await inA((tx) => tx.leaveRequest.count({ where: { organizationId: org.A.id, status: { in: ['pending', 'cancel_pending'] }, employeeId: { in: [ids.empEmp, ids.peerEmp] } } }));
+      expect(mgr.timeRequests).toBeGreaterThanOrEqual(waiting);
+      // HR with attendance.view and leave.view sees both, for the whole company.
+      const hr = await counts('hrExec');
+      expect(typeof hr.timeExceptions).toBe('number');
+      expect(hr.timeRequests).toBeGreaterThanOrEqual(mgr.timeRequests!);
+      // The other company's admin counts only their own company's requests.
+      expect((await counts('adminB')).timeRequests ?? 0).toBe(0);
+    });
+  });
 });
