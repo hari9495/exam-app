@@ -113,6 +113,8 @@ export interface OrgChartProps {
   openOnMe?: boolean;
   /** Views offered (default all three); companies without positions leave out 'position'. */
   views?: OrgView[];
+  /** Said in the Position view when no position is open, e.g. "No open positions on this date". */
+  noPositionsText?: string;
 }
 
 const VIEWS: { id: OrgView; label: string }[] = [
@@ -128,6 +130,8 @@ const MAX = 1.6;
 const FIT_MIN = 0.6;
 /** The zoom that fits w x h (at 100 %) into a box: whole tens of a per cent, never above 100 % or below FIT_MIN. */
 export const fitScale = (boxW: number, boxH: number, w: number, h: number) => Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(boxW / w, boxH / h) * 10) / 10));
+/** The canvas height that makes the page content end at the bottom of the visible area (120 to 760 px). */
+export const canvasHeight = (current: number, contentBottom: number, visibleBottom: number) => Math.max(120, Math.min(760, Math.round(current - (contentBottom - visibleBottom))));
 const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
 const team = (n: number) => (n === 1 ? '1 person in team' : `${n} people in team`);
 
@@ -148,6 +152,7 @@ export function OrgChart({
   onRequestHire,
   openOnMe = true,
   views = ['reporting', 'department', 'position'],
+  noPositionsText = 'No open positions',
 }: OrgChartProps) {
   // Open on the signed-in person when there is one (founder review 1 Oct 2026).
   const startAt = defaultSelected ?? (openOnMe ? meId : undefined);
@@ -188,9 +193,13 @@ export function OrgChart({
     const main = vp?.closest('main');
     if (!vp || !main) return;
     const size = () => {
-      const over = main.scrollHeight - main.clientHeight;
+      // Measured from the content's bottom, not scrollHeight: scrollHeight never shows room to spare, so a canvas
+      // shrunk once (a notice, a small window) never grew back.
+      const kids = Array.from(main.children).filter((c) => !/fixed|absolute/.test(getComputedStyle(c).position));
+      if (!kids.length) return;
+      const bottom = Math.max(...kids.map((c) => c.getBoundingClientRect().bottom)) + main.scrollTop + (parseFloat(getComputedStyle(main).paddingBottom) || 0);
       const cur = vp.getBoundingClientRect().height;
-      const next = Math.max(120, Math.min(760, Math.round(cur - over)));
+      const next = canvasHeight(cur, bottom, main.getBoundingClientRect().top + main.clientHeight);
       if (Math.abs(next - cur) > 1) setVpHeight(next);
     };
     size();
@@ -689,6 +698,11 @@ export function OrgChart({
         <span className="yx-org__key" data-line="solid">Reports to</span>
         {hasDotted && <span className="yx-org__key" data-line="dashed">Dotted-line manager (select a person to see it)</span>}
         {vacancies > 0 && <span className="yx-org__key" data-line="vacant">Vacant position ({vacancies})</span>}
+        {view === 'position' && vacancies === 0 && (
+          <span className="yx-org__note" role="status">
+            {noPositionsText}
+          </span>
+        )}
       </div>
       <div
         className="yx-org__viewport"

@@ -208,36 +208,49 @@ export class PeopleService {
           directReports: reports.get(r.id) ?? 0,
           ...(r.in_scope ? { employeeCode: r.employee_code } : {}),
         })),
-        vacancies: await this.vacancies(tx, c, v, present, date, entityId),
+        ...(await this.vacancies(tx, c, v, present, date, entityId)),
       };
     });
   }
 
   /**
-   * The Position view (PPL-02): open job openings as vacant positions under their hiring manager. Only today's chart,
-   * only for people who run hiring (pipeline:manage) or company-wide HR, plus a hiring manager's own openings. No
-   * candidate data: the role, department, location and how many are open.
+   * The Position view (PPL-02): open job openings as vacant positions under their hiring manager. Only for people who
+   * run hiring (pipeline:manage) or company-wide HR, plus a hiring manager's own openings. No candidate data: the role,
+   * department, location and how many are open. Openings are not dated, so only today's chart has them; the switch
+   * stays for whoever may use it (`positions`), and the screen says why it is empty.
+   * The legal entity of an opening (founder 21 Oct 2026): the job's own entity, else its location's, else its hiring
+   * manager's today; an opening with none of these belongs to the company and shows under "All entities" only.
    */
   private async vacancies(tx: Tx, c: CompanyContext, v: Viewer, present: Set<string>, date: string, entityId?: string) {
-    if (date !== todayIst() || v.actingForOther) return [];
+    if (v.actingForOther) return { positions: false, vacancies: [] };
     const all = v.grants.has('pipeline:manage') || tenantWide(v, 'employee.profile.view');
-    const jobs = await tx.job.findMany({ where: { organizationId: c.organizationId, status: 'open', deletedAt: null, ...(entityId ? { legalEntityId: entityId } : {}), ...(all ? {} : { hiringManagerId: v.userId ?? '00000000-0000-0000-0000-000000000000' }) }, select: { id: true, title: true, hiringManagerId: true, designationId: true, departmentId: true, department: true, locationId: true, location: true, headcount: true }, take: 500 });
-    if (!jobs.length) return [];
-    const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { in: jobs.flatMap((j) => (j.hiringManagerId ? [j.hiringManagerId] : [])) } }, select: { id: true, userId: true } });
+    const open = await tx.job.findMany({ where: { organizationId: c.organizationId, status: 'open', deletedAt: null, ...(all ? {} : { hiringManagerId: v.userId ?? '00000000-0000-0000-0000-000000000000' }) }, select: { id: true, title: true, hiringManagerId: true, designationId: true, departmentId: true, department: true, locationId: true, location: true, legalEntityId: true, headcount: true }, take: 500 });
+    const positions = all || open.length > 0;
+    if (date !== todayIst() || !open.length) return { positions, vacancies: [] };
+    const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { in: open.flatMap((j) => (j.hiringManagerId ? [j.hiringManagerId] : [])) } }, select: { id: true, userId: true } });
+    const locations = await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: open.flatMap((j) => (j.locationId ? [j.locationId] : [])) } }, select: { id: true, name: true, legalEntityId: true } });
+    const employments = managers.length ? await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId: { in: managers.map((m) => m.id) }, joinedOn: { lte: new Date(`${date}T00:00:00Z`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: new Date(`${date}T00:00:00Z`) } }] }, select: { employeeId: true, legalEntityId: true } }) : [];
+    const entityOf = (j: (typeof open)[number]) => {
+      const m = managers.find((x) => x.userId === j.hiringManagerId)?.id;
+      return j.legalEntityId ?? locations.find((l) => l.id === j.locationId)?.legalEntityId ?? (m ? employments.find((e) => e.employeeId === m)?.legalEntityId : undefined) ?? null;
+    };
+    const jobs = entityId ? open.filter((j) => entityOf(j) === entityId) : open;
     const designations = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.designationId ? [j.designationId] : [])) } }, select: { id: true, name: true } });
     const departments = await tx.department.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.departmentId ? [j.departmentId] : [])) } }, select: { id: true, name: true } });
-    const locations = await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.locationId ? [j.locationId] : [])) } }, select: { id: true, name: true } });
-    return jobs.map((j) => {
-      const m = managers.find((x) => x.userId === j.hiringManagerId)?.id ?? null;
-      return {
-        id: `job:${j.id}`,
-        role: designations.find((d) => d.id === j.designationId)?.name ?? j.title,
-        department: departments.find((d) => d.id === j.departmentId)?.name ?? j.department ?? null,
-        location: locations.find((l) => l.id === j.locationId)?.name ?? j.location ?? null,
-        managerId: m && present.has(m) ? m : null,
-        openings: j.headcount ?? 1,
-      };
-    });
+    return {
+      positions,
+      vacancies: jobs.map((j) => {
+        const m = managers.find((x) => x.userId === j.hiringManagerId)?.id ?? null;
+        return {
+          id: `job:${j.id}`,
+          role: designations.find((d) => d.id === j.designationId)?.name ?? j.title,
+          department: departments.find((d) => d.id === j.departmentId)?.name ?? j.department ?? null,
+          location: locations.find((l) => l.id === j.locationId)?.name ?? j.location ?? null,
+          managerId: m && present.has(m) ? m : null,
+          openings: j.headcount ?? 1,
+        };
+      }),
+    };
   }
 
   /**
