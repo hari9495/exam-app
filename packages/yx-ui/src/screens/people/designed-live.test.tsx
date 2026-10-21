@@ -371,11 +371,21 @@ describe('Org chart (PPL-02) and My team (PPL-08)', () => {
     expect(screen.queryByLabelText('View as on')).toBeNull();
     expect(screen.queryByRole('button', { name: /Export/ })).toBeNull();
     rerender(<OrgChartScreen people={people} asOn={day('2026-08-01')} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), companyName: 'Kaveri Foods', truncated: false, onAsOn: vi.fn(), onExportCsv }} />);
-    expect(screen.getByText('Showing the org as on 1 Aug 2026')).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: 'Position' })).toBeNull();
+    expect(screen.getByText(/^Showing the org as on 1 Aug 2026\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Position' })).toBeNull();
     await ue.click(screen.getByRole('button', { name: /Export/ }));
     await ue.click(await screen.findByRole('menuitem', { name: 'Spreadsheet (CSV)' }));
     expect(onExportCsv).toHaveBeenCalled();
+  });
+
+  it('the Position switch stays when nothing is open, and says why: a past date, or a company with no openings', async () => {
+    const base = { state: 'ready' as const, onRetry: vi.fn(), companyName: 'Kaveri Foods', truncated: false, onAsOn: vi.fn(), positions: true };
+    const { rerender } = render(<OrgChartScreen people={people} asOn={day('2026-08-01')} today={day('2026-10-20')} live={base} />);
+    await ue.click(screen.getByRole('button', { name: 'Position' }));
+    expect(screen.getByText('No open positions on this date. Openings show on today’s chart.')).toBeInTheDocument();
+    rerender(<OrgChartScreen people={people} asOn={day('2026-10-20')} today={day('2026-10-20')} live={{ ...base, noPositionsText: 'No open positions for Kaveri Foods Pvt Ltd' }} />);
+    await ue.click(screen.getByRole('button', { name: 'Position' }));
+    expect(screen.getByText('No open positions for Kaveri Foods Pvt Ltd')).toBeInTheDocument();
   });
 
   it('My team: today and upcoming per person; a row opens the record; no Nudge', async () => {
