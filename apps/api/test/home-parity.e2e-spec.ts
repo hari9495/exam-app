@@ -141,7 +141,7 @@ describe('Home parity (PLT-02)', () => {
   it('"vs last month" comes from the stored month, only for a company-wide viewer, never from another company', async () => {
     expect(await workspace.snapshot(org.A.id)).toBeGreaterThan(0);
     const stored = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.homeSnapshot.findMany({ where: { organizationId: org.A.id, month: new Date(`${month}-01T00:00:00Z`), scopeId: null } }));
-    expect(stored.map((r) => r.metric).sort()).toEqual(['attendance_exceptions', 'joining']);
+    expect(stored.map((r) => r.metric).sort()).toEqual(['attendance_exceptions', 'claims_to_pay', 'joining']);
     // Last month on record for A; a bigger number for B's same month must never reach A.
     for (const [k, value] of [['A', 5], ['B', 999]] as const)
       await tenantPrisma.forTenant(ctx(k), (tx) => tx.homeSnapshot.createMany({ data: ['attendance_exceptions', 'joining'].map((metric) => ({ organizationId: org[k].id, metric, month: new Date(`${lastMonth}-01T00:00:00Z`), value })) }));

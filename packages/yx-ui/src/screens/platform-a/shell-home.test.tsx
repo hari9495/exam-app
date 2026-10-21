@@ -151,6 +151,61 @@ describe('Live home parity (19 Oct 2026)', () => {
   });
 });
 
+describe('Finance home, live (20 Oct 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const base = {
+    firstName: 'Suresh',
+    company: 'Kaveri Foods',
+    today,
+    approvalsHref: '/yx/approvals',
+    stats: [
+      { id: 'net', title: 'Payroll net', label: 'September net payroll', value: 18240500, money: true, previous: 17985200, previousLabel: 'August', drill: { label: 'Open run', href: '/yx/payroll/runs/r1' } },
+      { id: 'tds', title: 'TDS', label: 'TDS to deposit', value: 0, money: true, empty: 'Nothing due for September yet', drill: { label: 'View TDS', href: '/yx/payroll/statutory' } },
+    ],
+    moneyOut: [{ id: 'o1', date: '30 Sep', what: 'September salaries', amount: 18240500, status: 'Waiting for your approval', tone: 'warning' as const, action: 'Open run', href: '/yx/payroll/runs/r1' }],
+  };
+  const run = { id: 'f1', type: 'Payroll run', title: 'Approve September payroll · 248 employees · ₹1,82,40,500 net', who: 'Anita Desai', kind: 'review' as const, href: '/yx/payroll/runs/r1', actionLabel: 'Open' };
+
+  it('shows the money cards in Indian format, the money going out and the greeting', () => {
+    render(<RoleHomeScreen persona="finance" data={{ actions: [run] }} live={{ ...base, amounts: { hidden: false, onToggle: () => {} } }} />);
+    expect(screen.getByText('Money to pay, payroll to approve and statutory dues.', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'September net payroll' })).toHaveTextContent('₹1,82,40,500');
+    expect(screen.getByRole('region', { name: 'TDS to deposit' })).toHaveTextContent('Nothing due for September yet');
+    const out = screen.getByRole('region', { name: 'Money going out' });
+    expect(out).toHaveTextContent('₹1,82,40,500 due in the next 30 days');
+    expect(within(out).getByRole('link', { name: 'Open run' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    expect(screen.getByText(/Approve September payroll · 248 employees · ₹1,82,40,500 net/)).toBeInTheDocument();
+  });
+
+  it('hides every amount when asked, keeping labels and links', () => {
+    let toggled = 0;
+    render(<RoleHomeScreen persona="finance" data={{ actions: [run] }} live={{ ...base, amounts: { hidden: true, onToggle: () => toggled++ } }} />);
+    expect(document.body).not.toHaveTextContent('1,82,40,500');
+    expect(screen.getByRole('region', { name: 'September net payroll' })).toHaveTextContent('Open run');
+    expect(screen.getByText(/Approve September payroll · 248 employees · ₹ •••••• net/)).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Show amounts' }).click();
+    expect(toggled).toBe(1);
+  });
+
+  it('shows the run waiting for approval with its change, and hides the change with the amounts', () => {
+    const approval = { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '/yx/payroll/runs/r1' };
+    const { unmount } = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, approval, amounts: { hidden: false, onToggle: () => {} } }} />);
+    const card = screen.getByRole('region', { name: 'Payroll approval' });
+    expect(card).toHaveTextContent('September run prepared by Anita Desai, payroll executive, on 28 Sep. You approve it; the person who prepares a run can never approve it.');
+    expect(within(card).getByRole('link', { name: 'Variance vs August +1.4% · 3 employees above 20% change' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    expect(within(card).getByRole('link', { name: 'Open run for approval' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    unmount();
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, approval, amounts: { hidden: true, onToggle: () => {} } }} />);
+    expect(screen.getByRole('link', { name: 'Variance vs August · 3 employees above 20% change' })).toBeInTheDocument();
+  });
+
+  it('says so when nothing goes out, and has no Hide amounts button without pay rights', () => {
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, stats: [], moneyOut: [] }} />);
+    expect(screen.getByText('Nothing to pay in the next 30 days.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /amounts/ })).not.toBeInTheDocument();
+  });
+});
+
 describe('Command palette by role (founder review 30 Sep 2026)', () => {
   const labels = (p: Parameters<typeof paletteFor>[0]) => paletteFor(p).flatMap((g) => g.items.map((i) => i.label));
   it('never suggests payroll or candidates to a manager', () => {

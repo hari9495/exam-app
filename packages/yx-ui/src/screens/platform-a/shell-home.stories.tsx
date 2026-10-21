@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { d } from './platform-data';
 import {
-  AccessStatePhone, AccessStateScreen, AppShellScreen, CommandPaletteScreen, MobileSearchScreen, RoleHomeScreen, SearchResultsScreen, SettingsHomeScreen, type HomeData, type SearchHit,
+  AccessStatePhone, AccessStateScreen, AppShellScreen, CommandPaletteScreen, MobileSearchScreen, RoleHomeScreen, SearchResultsScreen, SettingsHomeScreen, type HomeData, type LiveHome, type SearchHit,
 } from './shell-home';
 import { ShieldCheck, UserRound } from 'lucide-react';
 import { CommandPalette, ProfileMenu } from '../../components/shell';
@@ -233,6 +234,70 @@ export const PLT02FinanceHidden: S = {
   render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts />,
 };
 export const PLT02Finance: S = { name: 'PLT-02 · Role home · finance', render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts={false} /> };
+// Finance, live (home parity 20 Oct 2026): the designed finance widgets with live data only. Left out until they have a
+// source: "Payroll cost" against budget, Announcements, Coming up, the professional tax
+// row (no due date on record) and "All payments" (no such page yet).
+const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
+  ...LIVE_HR,
+  firstName: 'Suresh',
+  quickActions: [
+    { label: 'Apply leave', href: '#leave', kind: 'leave' },
+    { label: 'Request work from home', href: '#wfh', kind: 'wfh' },
+    { label: 'Download payslip', href: '#payslip', kind: 'payslip' },
+  ],
+  stats: [
+    { id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: 184250, money: true, previous: 162300, previousLabel: 'August', drill: { label: 'View 23 claims', href: '#to-pay' } },
+    { id: 'net', title: 'Payroll net', label: 'September net payroll', value: 18240500, money: true, previous: 17985200, previousLabel: 'August', drill: { label: 'Open run for approval', href: '#run' } },
+    { id: 'pf', title: 'Statutory due', label: 'PF and ESI due 15 Oct', value: 2968400, money: true, previous: 2931000, previousLabel: 'August', drill: { label: 'View challans', href: '#statutory' } },
+    { id: 'tds', title: 'TDS', label: 'TDS to deposit by 7 Oct', value: 1482600, money: true, previous: 1455000, previousLabel: 'August', drill: { label: 'View TDS', href: '#tds' } },
+  ],
+  moneyOut: [
+    { id: 'o1', date: '30 Sep', what: 'September salaries', amount: 18240500, status: 'Waiting for your approval', tone: 'warning', action: 'Open run', href: '#run' },
+    { id: 'o2', date: '1 Oct', what: 'Expense claims payout · 23 claims', amount: 184250, status: 'File ready', tone: 'success', action: 'Release', href: '#to-pay' },
+    { id: 'o3', date: '7 Oct', what: 'TDS on salaries', amount: 1482600, status: 'Challan ready', tone: 'success', action: 'Pay', href: '#statutory' },
+    { id: 'o4', date: '15 Oct', what: 'Provident Fund', amount: 2412100, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
+    { id: 'o5', date: '15 Oct', what: 'ESI', amount: 556300, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
+  ],
+  approval: { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '#run' },
+  due: undefined,
+  moves: undefined,
+};
+function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden?: boolean }) {
+  const [hidden, setHidden] = useState(start);
+  const live: LiveHome = quiet
+    ? {
+        ...LIVE_FIN,
+        amounts: { hidden, onToggle: () => setHidden(!hidden) },
+        // Nothing approved or calculated yet: no numbers, the designed words instead.
+        stats: [
+          { id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: 0, money: true, empty: 'No approved claims waiting', drill: { label: 'Open To pay', href: '#to-pay' } },
+          { id: 'net', title: 'Payroll net', label: 'October net payroll', value: 0, money: true, empty: 'No payroll run for October yet', drill: { label: 'Open payroll runs', href: '#runs' } },
+          { id: 'pf', title: 'Statutory due', label: 'PF and ESI due', value: 0, money: true, empty: 'Nothing due for October yet', drill: { label: 'View challans', href: '#statutory' } },
+          { id: 'tds', title: 'TDS', label: 'TDS to deposit', value: 0, money: true, empty: 'Nothing due for October yet', drill: { label: 'View TDS', href: '#tds' } },
+        ],
+        moneyOut: [],
+        approval: undefined,
+      }
+    : { ...LIVE_FIN, amounts: { hidden, onToggle: () => setHidden(!hidden) } };
+  return <RoleHomeScreen persona="finance" data={quiet ? { actions: [] } : FIN} live={live} />;
+}
+export const PLT02FinanceLive: S = { name: 'PLT-02 · Role home · finance, live', render: () => <FinanceLive /> };
+export const PLT02FinanceLiveHidden: S = { name: 'PLT-02 · Role home · finance, live, amounts hidden', render: () => <FinanceLive hidden /> };
+export const PLT02FinanceLiveQuiet: S = { name: 'PLT-02 · Role home · finance, live, nothing yet', render: () => <FinanceLive quiet /> };
+// The payroll preparer (Suresh in the demo): the run he prepared waits for someone else, so nothing needs his action
+// and there is no "Payroll approval" card; no claims card without the payout key.
+function FinancePreparer() {
+  const [hidden, setHidden] = useState(false);
+  const { approval: _a, ...rest } = LIVE_FIN;
+  const live: LiveHome = {
+    ...rest,
+    amounts: { hidden, onToggle: () => setHidden(!hidden) },
+    stats: LIVE_FIN.stats!.slice(1).map((x) => (x.id === 'net' ? { ...x, drill: { label: 'Open run', href: '#run' } } : x)),
+    moneyOut: LIVE_FIN.moneyOut!.filter((r) => r.id !== 'o2').map((r) => (r.id === 'o1' ? { ...r, status: 'Waiting for approval' } : r)),
+  };
+  return <RoleHomeScreen persona="finance" data={{ actions: [] }} live={live} />;
+}
+export const PLT02FinanceLivePreparer: S = { name: 'PLT-02 · Role home · finance, live, preparer (nothing to approve)', render: () => <FinancePreparer /> };
 export const PLT02FirstRun: S = { name: 'PLT-02 · Role home · employee first login (tour)', render: () => <RoleHomeScreen persona="employee" data={NEW_JOINER} firstRun /> };
 export const PLT02Loading: S = { name: 'PLT-02 · Role home · loading', render: () => <RoleHomeScreen persona="manager" data={MGR} loading /> };
 export const PLT02PartlyLoaded: S = {

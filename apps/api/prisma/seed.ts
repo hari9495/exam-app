@@ -3,7 +3,7 @@ import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
-import { seedEmployees } from './seed-employees';
+import { seedEmployees, seedFinanceEmployees } from './seed-employees';
 import { seedGlobal } from './seed-global';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
@@ -444,6 +444,8 @@ async function main() {
       await seedPay5j(tx, demoOrg.id, panelHash);
       // Batch G1: India set up through the "Add a country" guide; leave and job names in Hindi and Tamil.
       await seedGlobal(tx, demoOrg.id);
+      // Founder decision 20 Oct 2026: Suresh, Meena and Neha are employees too, so their finance Home has its clock and quick actions.
+      await seedFinanceEmployees(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.
