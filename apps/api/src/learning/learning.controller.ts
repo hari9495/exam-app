@@ -2,8 +2,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
-import { Transform } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -14,9 +14,12 @@ import type { ScopeUser } from '../access/scope';
 import { LearningService } from './learning.service';
 import { LearningAssignService } from './learning-assign.service';
 import { LearningReportsService } from './learning-reports.service';
+import { LearningSessionsService } from './learning-sessions.service';
 
 export class CourseDto {
   @IsString() @MinLength(2) @MaxLength(200) title!: string;
+  @IsOptional() @IsIn(['self_paced', 'classroom', 'virtual']) type?: 'self_paced' | 'classroom' | 'virtual';
+  @IsOptional() @IsInt() @Min(1) @Max(100) attendancePct?: number;
   @IsOptional() @IsString() @MaxLength(2000) description?: string | null;
   @IsIn(['company', 'provider', 'partner']) source!: 'company' | 'provider' | 'partner';
   @IsOptional() @IsString() @MaxLength(120) provider?: string | null;
@@ -74,6 +77,78 @@ export class RuleUpdateDto extends RuleDto {
 
 export class EnrolDto {
   @IsOptional() @IsBoolean() acceptBond?: boolean;
+  @IsOptional() @IsUUID() sessionId?: string;
+}
+
+export class TrainerDto {
+  @IsBoolean() external!: boolean;
+  @IsOptional() @IsUUID() employeeId?: string | null;
+  @IsOptional() @IsString() @MaxLength(200) name?: string | null;
+  @IsOptional() @IsString() @MaxLength(200) orgName?: string | null;
+  @IsOptional() @IsString() @MaxLength(254) email?: string | null;
+}
+
+export class SlotDto {
+  @IsISO8601() startsAt!: string;
+  @IsISO8601() endsAt!: string;
+}
+
+export class CostLineDto {
+  @IsString() @MinLength(2) @MaxLength(100) label!: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000) amount!: number;
+}
+
+export class SessionDto {
+  @IsUUID() courseId!: string;
+  @IsIn(['classroom', 'virtual']) mode!: 'classroom' | 'virtual';
+  @IsString() @MinLength(3) @MaxLength(300) venue!: string;
+  @IsUUID() trainerId!: string;
+  @IsInt() @Min(1) @Max(500) seats!: number;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SlotDto) slots!: SlotDto[];
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => CostLineDto) costLines!: CostLineDto[];
+}
+
+export class SessionUpdateDto {
+  @IsOptional() @IsIn(['classroom', 'virtual']) mode?: 'classroom' | 'virtual';
+  @IsOptional() @IsString() @MinLength(3) @MaxLength(300) venue?: string;
+  @IsOptional() @IsUUID() trainerId?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(500) seats?: number;
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SlotDto) slots?: SlotDto[];
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => CostLineDto) costLines?: CostLineDto[];
+  @IsOptional() @IsBoolean() cancel?: boolean;
+  @IsInt() @Min(1) version!: number;
+}
+
+export class VersionDto {
+  @IsInt() @Min(1) version!: number;
+}
+
+export class WithdrawDto {
+  @IsUUID() enrolmentId!: string;
+}
+
+export class NominateDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsUUID('all', { each: true }) employeeIds!: string[];
+}
+
+export class MarkDto {
+  @IsUUID() enrolmentId!: string;
+  @IsIn(['present', 'late', 'absent']) status!: 'present' | 'late' | 'absent';
+}
+
+export class MarksDto {
+  @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => MarkDto) marks!: MarkDto[];
+}
+
+export class CheckInDto {
+  @IsUUID() sessionId!: string;
+  @IsUUID() slotId!: string;
+  @Matches(/^\d{6}$/) code!: string;
+  @IsIn(['qr', 'code']) via!: 'qr' | 'code';
+}
+
+export class DeclineDto {
+  @IsString() @MinLength(10) @MaxLength(500) reason!: string;
 }
 
 export class ExternalDto {
@@ -108,6 +183,7 @@ export class LearningController {
     private readonly learning: LearningService,
     private readonly assign: LearningAssignService,
     private readonly reports: LearningReportsService,
+    private readonly sessions: LearningSessionsService,
   ) {}
 
   private user(req: Request) {
@@ -254,6 +330,106 @@ export class LearningController {
   updateRule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RuleUpdateDto) {
     ownSession(req);
     return this.assign.update(ctx, this.user(req), id, dto);
+  }
+
+  // ---- sessions, trainers, nominations, attendance (LRN-04, 05, 06)
+
+  @Get('trainers')
+  @RequirePermissions('learning.manage')
+  trainers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.sessions.trainers(ctx, this.user(req));
+  }
+
+  @Post('trainers')
+  @RequirePermissions('learning.manage')
+  addTrainer(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TrainerDto) {
+    ownSession(req);
+    return this.sessions.addTrainer(ctx, this.user(req), dto);
+  }
+
+  @Get('sessions')
+  sessionList(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.sessions.list(ctx, this.user(req));
+  }
+
+  @Post('sessions')
+  @RequirePermissions('learning.manage')
+  schedule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SessionDto) {
+    ownSession(req);
+    return this.sessions.create(ctx, this.user(req), dto);
+  }
+
+  @Get('courses/:id/sessions')
+  upcoming(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sessions.upcoming(ctx, id);
+  }
+
+  @Get('sessions/:id')
+  sessionPage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sessions.page(ctx, this.user(req), id);
+  }
+
+  @Patch('sessions/:id')
+  @RequirePermissions('learning.manage')
+  reschedule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SessionUpdateDto) {
+    ownSession(req);
+    return this.sessions.update(ctx, this.user(req), id, dto);
+  }
+
+  @Post('sessions/:id/withdraw')
+  @HttpCode(200)
+  @RequirePermissions('learning.manage')
+  withdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WithdrawDto) {
+    ownSession(req);
+    return this.sessions.withdraw(ctx, this.user(req), id, dto.enrolmentId);
+  }
+
+  @Post('sessions/:id/nominate')
+  @HttpCode(200)
+  nominate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NominateDto) {
+    ownSession(req);
+    return this.sessions.nominate(ctx, this.user(req), id, dto.employeeIds);
+  }
+
+  @Get('sessions/:id/slots/:slotId/code')
+  checkinCode(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('slotId', ParseUUIDPipe) slotId: string) {
+    return this.sessions.checkinCode(ctx, this.user(req), id, slotId);
+  }
+
+  @Post('sessions/:id/slots/:slotId/close')
+  @HttpCode(200)
+  closeCheckin(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('slotId', ParseUUIDPipe) slotId: string) {
+    ownSession(req);
+    return this.sessions.closeCheckin(ctx, this.user(req), id, slotId);
+  }
+
+  @Post('sessions/:id/slots/:slotId/attendance')
+  @HttpCode(200)
+  mark(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('slotId', ParseUUIDPipe) slotId: string, @Body() dto: MarksDto) {
+    ownSession(req);
+    return this.sessions.mark(ctx, this.user(req), id, slotId, dto.marks);
+  }
+
+  @Post('sessions/:id/confirm')
+  @HttpCode(200)
+  @RequirePermissions('learning.manage')
+  confirm(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
+    ownSession(req);
+    return this.sessions.confirm(ctx, this.user(req), id, dto.version);
+  }
+
+  @Post('check-in')
+  @HttpCode(200)
+  checkIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CheckInDto) {
+    ownSession(req);
+    return this.sessions.checkIn(ctx, dto);
+  }
+
+  @Post('enrolments/:id/decline')
+  @HttpCode(200)
+  decline(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeclineDto) {
+    ownSession(req);
+    return this.sessions.decline(ctx, id, dto.reason);
   }
 
   // ---- compliance (LRN-08)

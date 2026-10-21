@@ -9985,6 +9985,8 @@ model LearningCourse {
   needsApproval     Boolean  @default(false) @map("needs_approval")
   certificate       Boolean  @default(false)
   certificateMonths Int?     @map("certificate_months")
+  /// Share of session slots attended that completes a classroom or virtual course.
+  attendancePct     Int      @default(75) @map("attendance_pct")
   skills            String[] @default([])
   /// draft · published · retired
   status            String   @default("draft") @db.VarChar(10)
@@ -10047,8 +10049,16 @@ model LearningEnrolment {
   ruleId         String?   @map("rule_id") @db.Uuid
   assignedOn     DateTime  @map("assigned_on") @db.Date
   dueOn          DateTime? @map("due_on") @db.Date
-  /// requested · enrolled · in_progress · completed · cancelled · declined (overdue is enrolled or in_progress past due_on)
+  /// requested · waitlisted · enrolled · in_progress · completed · no_show · failed · cancelled · declined
+  /// (overdue is enrolled or in_progress past due_on)
   status         String    @default("enrolled") @db.VarChar(12)
+  /// The session the seat or waitlist place is in (classroom and virtual courses).
+  sessionId      String?   @map("session_id") @db.Uuid
+  waitlistedAt   DateTime? @map("waitlisted_at") @db.Timestamptz(3)
+  /// Why a nomination was declined (seen by the manager).
+  declineReason  String?   @map("decline_reason") @db.VarChar(500)
+  /// Why a session result is what it is ("Attended 1 of 2 slots; needs 75%").
+  resultReason   String?   @map("result_reason") @db.VarChar(200)
   /// The approval request (LRN-06) when the course needs approval.
   wfRequestId    String?   @map("wf_request_id") @db.Uuid
   bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
@@ -10121,4 +10131,71 @@ model LearningExternalRequest {
 
   @@index([organizationId, employeeId], map: "learning_external_requests_employee_idx")
   @@map("learning_external_requests")
+}
+
+/// LRN-04: a trainer: an employee (internal) or someone from a training company (external).
+model LearningTrainer {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  orgName        String?  @map("org_name") @db.VarChar(200)
+  external       Boolean
+  employeeId     String?  @map("employee_id") @db.Uuid
+  email          String?  @db.VarChar(254)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("learning_trainers")
+}
+
+/// LRN-04: a classroom or virtual session of a course: seats, a trainer, slots and cost lines.
+model LearningSession {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  courseId              String    @map("course_id") @db.Uuid
+  /// classroom · virtual
+  mode                  String    @db.VarChar(10)
+  /// A room and site, or the meeting link.
+  venue                 String    @db.VarChar(300)
+  trainerId             String    @map("trainer_id") @db.Uuid
+  seats                 Int
+  /// scheduled · completed · cancelled
+  status                String    @default("scheduled") @db.VarChar(12)
+  /// [{ label, amount }]
+  costLines             Json      @default("[]") @map("cost_lines")
+  attendanceConfirmedAt DateTime? @map("attendance_confirmed_at") @db.Timestamptz(3)
+  createdBy             String?   @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version               Int       @default(1)
+
+  @@index([organizationId, courseId], map: "learning_sessions_course_idx")
+  @@map("learning_sessions")
+}
+
+model LearningSessionSlot {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  sessionId       String    @map("session_id") @db.Uuid
+  position        Int
+  startsAt        DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime  @map("ends_at") @db.Timestamptz(3)
+  checkinClosedAt DateTime? @map("checkin_closed_at") @db.Timestamptz(3)
+
+  @@unique([sessionId, position], map: "learning_session_slots_position_key")
+  @@map("learning_session_slots")
+}
+
+model LearningAttendance {
+  organizationId String   @map("organization_id") @db.Uuid
+  slotId         String   @map("slot_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// present · late · absent
+  status         String   @db.VarChar(8)
+  /// qr · code · manual
+  method         String   @db.VarChar(10)
+  markedBy       String?  @map("marked_by") @db.Uuid
+  markedAt       DateTime @default(now()) @map("marked_at") @db.Timestamptz(3)
+
+  @@id([slotId, enrolmentId])
+  @@map("learning_attendance")
 }

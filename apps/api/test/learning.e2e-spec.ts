@@ -259,6 +259,77 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(await audits('learning.external.approved')).toHaveLength(1);
   });
 
+  it('sessions: trainers, a seat or the waitlist, withdraw moves the next up, decline with a reason, QR check-in, confirm gives results', async () => {
+    await api('arjunU', 'get', '/learning/trainers').expect(403);
+    await api('ldA', 'post', '/learning/trainers').send({ external: false, employeeId: randomUUID() }).expect(400);
+    const internal = (await api('ldA', 'post', '/learning/trainers').send({ external: false, employeeId: ids.divya }).expect(201)).body.id;
+    await api('ldA', 'post', '/learning/trainers').send({ external: false, employeeId: ids.divya }).expect(409);
+    await api('ldA', 'post', '/learning/trainers').send({ external: true, name: 'Ramesh Kamath', orgName: 'Safe Works Training' }).expect(201);
+    expect((await api('ldA', 'get', '/learning/trainers').expect(200)).body.map((t: { name: string; external: boolean }) => [t.name, t.external])).toEqual([['Divya', false], ['Ramesh Kamath', true]]);
+    // A classroom course: no content item needed; half the slots complete it.
+    const forklift = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'Forklift refresher', type: 'classroom', attendancePct: 50, mandatory: false }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${forklift}/status`).send({ status: 'published', version: 1 }).expect(200);
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const slots = [{ startsAt: at(24), endsAt: at(26) }, { startsAt: at(48), endsAt: at(50) }];
+    await api('ldA', 'post', '/learning/sessions').send({ courseId: ids.course, mode: 'classroom', venue: 'Room 2', trainerId: internal, seats: 1, slots, costLines: [] }).expect(400);
+    await api('ldA', 'post', '/learning/sessions').send({ courseId: forklift, mode: 'classroom', venue: 'Room 2', trainerId: internal, seats: 1, slots: [slots[1], slots[0]], costLines: [] }).expect(400);
+    const sid = (await api('ldA', 'post', '/learning/sessions').send({ courseId: forklift, mode: 'classroom', venue: 'Hosur plant, training room 2', trainerId: internal, seats: 1, slots, costLines: [{ label: 'Trainer fee', amount: 12000 }, { label: 'Materials', amount: 1800 }] }).expect(201)).body.id;
+    await api('adminB', 'get', `/learning/sessions/${sid}`).expect(404);
+    await api('arjunU', 'get', `/learning/sessions/${sid}`).expect(404);
+    // Nominations: L&D anyone; one seat, so the second waits. Someone with no learning key and no team may not.
+    await api('hrTn', 'post', `/learning/sessions/${sid}/nominate`).send({ employeeIds: [ids.arjun] }).expect(403);
+    expect((await api('ldA', 'post', `/learning/sessions/${sid}/nominate`).send({ employeeIds: [ids.arjun, ids.imran] }).expect(200)).body.result).toEqual([
+      { name: 'Arjun', result: 'Enrolled' },
+      { name: 'Imran', result: 'Waitlist, position 1' },
+    ]);
+    expect(await bells('imranU', 'learning.nominated')).toBe(1);
+    let page = (await api('ldA', 'get', `/learning/sessions/${sid}`).expect(200)).body;
+    expect([page.enrolled.map((e: { name: string }) => e.name), page.waitlist.map((e: { name: string }) => e.name)]).toEqual([['Arjun'], ['Imran']]);
+    // Withdrawing Arjun moves Imran up and tells him.
+    const arjunSeat = page.enrolled[0].enrolmentId;
+    expect((await api('ldA', 'post', `/learning/sessions/${sid}/withdraw`).send({ enrolmentId: arjunSeat }).expect(200)).body).toEqual({ promoted: 'Imran' });
+    expect(await bells('imranU', 'learning.waitlist_promoted')).toBe(1);
+    // His manager (Divya, also the trainer) nominates Arjun again: the waitlist. He declines with a reason; she is told.
+    expect((await api('mgrU', 'post', `/learning/sessions/${sid}/nominate`).send({ employeeIds: [ids.arjun] }).expect(200)).body.result).toEqual([{ name: 'Arjun', result: 'Waitlist, position 1' }]);
+    const arjunEnrol = ((await api('arjunU', 'get', '/learning/me').expect(200)).body.enrolments as { id: string; course: { title: string }; status: string }[]).find((e) => e.course.title === 'Forklift refresher')!;
+    expect(arjunEnrol.status).toBe('Waitlisted');
+    await api('arjunU', 'post', `/learning/enrolments/${arjunEnrol.id}/decline`).send({ reason: 'short' }).expect(400);
+    await api('arjunU', 'post', `/learning/enrolments/${arjunEnrol.id}/decline`).send({ reason: 'I am on leave the whole week of the session.' }).expect(200);
+    expect(await bells('mgrU', 'learning.nomination_declined')).toBe(1);
+    // A mandatory course's nomination can't be declined.
+    const fire = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'Fire drill', type: 'classroom' }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${fire}/status`).send({ status: 'published', version: 1 }).expect(200);
+    const fs = (await api('ldA', 'post', '/learning/sessions').send({ courseId: fire, mode: 'classroom', venue: 'Yard', trainerId: internal, seats: 5, slots: [slots[0]], costLines: [] }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/sessions/${fs}/nominate`).send({ employeeIds: [ids.arjun] }).expect(200);
+    const drill = ((await api('arjunU', 'get', '/learning/me').expect(200)).body.enrolments as { id: string; course: { title: string } }[]).find((e) => e.course.title === 'Fire drill')!;
+    await api('arjunU', 'post', `/learning/enrolments/${drill.id}/decline`).send({ reason: 'I am on leave the whole week of the session.' }).expect(409);
+    await api('ldA', 'post', `/learning/admin/courses/${fire}/status`).send({ status: 'retired', version: 2 }).expect(200);
+    // Attendance: the trainer shows the code; Imran checks in with it; a stale code and people without a seat are refused.
+    page = (await api('ldA', 'get', `/learning/sessions/${sid}`).expect(200)).body;
+    const [slot1, slot2] = page.session.slots.map((x: { id: string }) => x.id);
+    const shown = (await api('mgrU', 'get', `/learning/sessions/${sid}/slots/${slot1}/code`).expect(200)).body;
+    expect(shown).toMatchObject({ closed: false, code: expect.stringMatching(/^\d{6}$/), expected: [{ name: 'Imran' }], present: [] });
+    await api('imranU', 'post', '/learning/check-in').send({ sessionId: sid, slotId: slot1, code: shown.code === '000000' ? '111111' : '000000', via: 'qr' }).expect(400);
+    await api('arjunU', 'post', '/learning/check-in').send({ sessionId: sid, slotId: slot1, code: shown.code, via: 'qr' }).expect(404);
+    expect((await api('imranU', 'post', '/learning/check-in').send({ sessionId: sid, slotId: slot1, code: shown.code, via: 'qr' }).expect(200)).body.status).toMatch(/Present|Late/);
+    await api('mgrU', 'post', `/learning/sessions/${sid}/slots/${slot1}/close`).expect(200);
+    await api('imranU', 'post', '/learning/check-in').send({ sessionId: sid, slotId: slot1, code: shown.code, via: 'qr' }).expect(409);
+    await api('mgrU', 'post', `/learning/sessions/${sid}/slots/${slot2}/attendance`).send({ marks: [{ enrolmentId: page.enrolled[0].enrolmentId, status: 'absent' }] }).expect(200);
+    await api('arjunU', 'post', `/learning/sessions/${sid}/slots/${slot2}/attendance`).send({ marks: [] }).expect(404);
+    // Confirm only after the last slot; then 1 of 2 slots at 50% completes it, with the certificate.
+    await api('ldA', 'post', `/learning/sessions/${sid}/confirm`).send({ version: page.session.version }).expect(409);
+    await tenantPrisma.forTenant(SUPER, async (tx) => {
+      await tx.$executeRaw`UPDATE learning_session_slots SET starts_at = starts_at - interval '60 hours', ends_at = ends_at - interval '60 hours' WHERE session_id = ${sid}::uuid`;
+    });
+    expect((await api('ldA', 'post', `/learning/sessions/${sid}/confirm`).send({ version: page.session.version }).expect(200)).body).toEqual({ completed: 1, no_show: 0, failed: 0 });
+    await api('ldA', 'post', `/learning/sessions/${sid}/confirm`).send({ version: page.session.version + 1 }).expect(409);
+    page = (await api('ldA', 'get', `/learning/sessions/${sid}`).expect(200)).body;
+    expect(page.results).toEqual([{ name: 'Imran', status: 'Completed', reason: 'Attended 1 of 2 slots' }]);
+    expect(page.attendance[0]).toMatchObject({ name: 'Imran', method: expect.stringContaining('QR') });
+    expect(((await api('imranU', 'get', '/learning/me').expect(200)).body.certificates as { title: string }[]).map((x) => x.title)).toContain('Forklift refresher');
+    expect(await audits('learning.attendance.confirmed')).toHaveLength(1);
+  });
+
   it('reminders 7 and 2 days ahead, the manager the day after, training reports after 7 days; each once', async () => {
     const remind = app.get(LearningAssignService);
     const setDue = (id: string, day: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.update({ where: { id }, data: { dueOn: new Date(`${day}T00:00:00Z`) } }));

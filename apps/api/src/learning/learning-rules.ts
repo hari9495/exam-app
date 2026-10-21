@@ -67,12 +67,13 @@ export function reminderDue(dueOn: string, today: string): ReminderKind | null {
   return null;
 }
 
-export type ShownStatus = 'Requested' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue';
+export type ShownStatus = 'Requested' | 'Waitlisted' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue';
 
 /** The status word on My learning and the record (never colour only): past due and not completed is Overdue. */
 export function shownStatus(e: { status: string; dueOn: string | null }, today: string): ShownStatus {
   if (e.status === 'completed') return 'Completed';
   if (e.status === 'requested') return 'Requested';
+  if (e.status === 'waitlisted') return 'Waitlisted';
   if (e.dueOn && e.dueOn < today) return 'Overdue';
   return e.status === 'in_progress' ? 'In progress' : 'Enrolled';
 }

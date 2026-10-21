@@ -11,6 +11,7 @@ import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.servi
 import { holdersOf } from '../time/time-core';
 import { LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-core';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
+import { placeInSession } from './session-place';
 
 // Learning for the learner and L&D (LRN-01 My learning and catalogue, LRN-02 course player, LRN-03 course builder):
 // published courses are the company's catalogue; a person enrols (or asks, when the course needs approval), works
@@ -29,6 +30,8 @@ type Course = Prisma.LearningCourseGetPayload<object>;
 
 export interface CourseInput {
   title: string;
+  type?: 'self_paced' | 'classroom' | 'virtual';
+  attendancePct?: number;
   description?: string | null;
   source: 'company' | 'provider' | 'partner';
   provider?: string | null;
@@ -113,6 +116,8 @@ export class LearningService implements OnModuleInit {
       approval: c.needsApproval,
       certificate: c.certificate,
       certificateMonths: c.certificateMonths,
+      typeKey: c.type,
+      attendancePct: c.attendancePct,
       status: c.status,
       version: c.version,
     };
@@ -176,7 +181,7 @@ export class LearningService implements OnModuleInit {
    * Enrol myself in a published course, or ask when it needs approval (LRN-06): the request goes to my manager, then to
    * L&D (learning.manage over me; the company's admins when nobody holds it). Above the bond threshold I accept the bond.
    */
-  async enrol(ctx: TenantContext, courseId: string, opts: { acceptBond?: boolean } = {}) {
+  async enrol(ctx: TenantContext, courseId: string, opts: { acceptBond?: boolean; sessionId?: string } = {}) {
     let notices: Notice[] = [];
     const out = await this.run(ctx, async (tx, c) => {
       const me = await ownEmployee(tx, c);
@@ -185,10 +190,14 @@ export class LearningService implements OnModuleInit {
       if (!course) throw new NotFoundException('No such course.');
       const bond = Number(course.cost) > BOND_ABOVE;
       if (bond && !opts.acceptBond) throw new BadRequestException('Accept the training bond terms to continue.');
-      const status = course.needsApproval ? 'requested' : 'enrolled';
+      const sessions = course.type === 'classroom' || course.type === 'virtual';
+      if (sessions && !opts.sessionId) throw new BadRequestException('Choose a session.');
+      // Asking first: the seat is taken when the request is approved.
+      const place = sessions && !course.needsApproval ? await placeInSession(tx, c, opts.sessionId!, courseId) : null;
+      const status = course.needsApproval ? 'requested' : (place?.status ?? 'enrolled');
       let e: Prisma.LearningEnrolmentGetPayload<object>;
       try {
-        e = await tx.learningEnrolment.create({ data: { organizationId: c.organizationId, employeeId: me, courseId, source: 'self', assignedOn: asDate(todayIst()), status, bondAcceptedAt: bond ? new Date() : null, createdBy: c.userId ?? null } });
+        e = await tx.learningEnrolment.create({ data: { organizationId: c.organizationId, employeeId: me, courseId, source: 'self', assignedOn: asDate(todayIst()), status, sessionId: sessions ? opts.sessionId! : null, waitlistedAt: place?.waitlistedAt ?? null, dueOn: place?.dueOn ?? null, bondAcceptedAt: bond ? new Date() : null, createdBy: c.userId ?? null } });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException(`You are already enrolled in ${course.title}.`);
         throw err;
@@ -203,7 +212,7 @@ export class LearningService implements OnModuleInit {
         notices = sub.notices;
       }
       await audit(tx, c, status === 'requested' ? 'learning.enrolment.requested' : 'learning.enrolled', 'learning_enrolment', e.id, { course: course.title, ...(bond ? { bond: true } : {}) });
-      return { id: e.id, status: status === 'requested' ? 'Requested' : 'Enrolled' };
+      return { id: e.id, status: status === 'requested' ? 'Requested' : status === 'waitlisted' ? 'Waitlisted' : 'Enrolled' };
     });
     if (notices.length) await this.engine.send(ctx, notices);
     return out;
@@ -277,7 +286,9 @@ export class LearningService implements OnModuleInit {
     const e = await tx.learningEnrolment.findFirst({ where: { organizationId: org, wfRequestId: req.id } });
     if (!e || e.status !== 'requested') return;
     const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
-    await tx.learningEnrolment.update({ where: { id: e.id }, data: outcome === 'approved' ? { status: 'enrolled', assignedOn: asDate(todayIst()), version: { increment: 1 } } : { status: 'declined', version: { increment: 1 } } });
+    // Approved for a session: a seat if one is free, else the waitlist (the session may have filled while it waited).
+    const place = outcome === 'approved' && e.sessionId ? await placeInSession(tx, c, e.sessionId, e.courseId).catch(() => null) : null;
+    await tx.learningEnrolment.update({ where: { id: e.id }, data: outcome === 'approved' ? { status: place?.status ?? 'enrolled', waitlistedAt: place?.waitlistedAt ?? null, dueOn: place?.dueOn ?? e.dueOn, assignedOn: asDate(todayIst()), version: { increment: 1 } } : { status: 'declined', version: { increment: 1 } } });
     await audit(tx, c, outcome === 'approved' ? 'learning.enrolment.approved' : 'learning.enrolment.declined', 'learning_enrolment', e.id, {});
   }
 
@@ -317,7 +328,7 @@ export class LearningService implements OnModuleInit {
       await tx.learningItemProgress.upsert({ where: { enrolmentId_itemId: { enrolmentId: e.id, itemId } }, create: { organizationId: c.organizationId, enrolmentId: e.id, itemId }, update: {} });
       const required = await tx.learningCourseItem.findMany({ where: { organizationId: c.organizationId, courseId: e.courseId, required: true }, select: { id: true } });
       const done = await tx.learningItemProgress.count({ where: { organizationId: c.organizationId, enrolmentId: e.id, itemId: { in: required.map((r) => r.id) } } });
-      if (required.length && done >= required.length) return { completed: true, certificateId: await this.complete(tx, c, e.id) };
+      if (required.length && done >= required.length) return { completed: true, certificateId: await this.completeIn(tx, c, e.id) };
       // Optimistic: one change at a time on the enrolment.
       const moved = await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version }, data: { status: 'in_progress', startedAt: e.startedAt ?? new Date(), version: { increment: 1 } } });
       if (!moved.count) throw new ConflictException('This course changed. Reload it.');
@@ -325,7 +336,8 @@ export class LearningService implements OnModuleInit {
     });
   }
 
-  private async complete(tx: Tx, c: CompanyContext, enrolmentId: string): Promise<string | null> {
+  /** Completes an enrolment (and issues the certificate when the course has one); sessions use it on confirmed attendance. */
+  async completeIn(tx: Tx, c: CompanyContext, enrolmentId: string): Promise<string | null> {
     const today = todayIst();
     const e = await tx.learningEnrolment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: enrolmentId } });
     const moved = await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version, status: { in: ['enrolled', 'in_progress'] } }, data: { status: 'completed', startedAt: e.startedAt ?? new Date(), completedAt: new Date(), version: { increment: 1 } } });
@@ -459,6 +471,8 @@ export class LearningService implements OnModuleInit {
   private courseData(dto: CourseInput) {
     return {
       title: dto.title.trim(),
+      ...(dto.type ? { type: dto.type } : {}),
+      ...(dto.attendancePct ? { attendancePct: dto.attendancePct } : {}),
       description: dto.description?.trim() || null,
       source: dto.source,
       provider: dto.source === 'company' ? null : dto.provider!.trim(),
@@ -544,7 +558,8 @@ export class LearningService implements OnModuleInit {
       return this.run(ctx, async (tx, c) => {
         const course = await tx.learningCourse.findFirst({ where: { organizationId: c.organizationId, id: courseId } });
         if (!course) throw new NotFoundException('No such course.');
-        if (status === 'published' && !(await tx.learningCourseItem.count({ where: { organizationId: c.organizationId, courseId, required: true } }))) throw new BadRequestException('Mark at least one item as required before publishing.');
+        const sessions = course.type === 'classroom' || course.type === 'virtual';
+        if (status === 'published' && !sessions && !(await tx.learningCourseItem.count({ where: { organizationId: c.organizationId, courseId, required: true } }))) throw new BadRequestException('Mark at least one item as required before publishing.');
         if (status === 'retired' && (await tx.learningRule.count({ where: { organizationId: c.organizationId, courseId, active: true } }))) throw new ConflictException('An active assignment rule uses this course. Pause the rule first.');
         const moved = await tx.learningCourse.updateMany({ where: { id: courseId, version }, data: { status, updatedAt: new Date(), version: { increment: 1 } } });
         if (!moved.count) throw new ConflictException('Someone else changed this course. Reload it.');

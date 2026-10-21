@@ -51,7 +51,8 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
 // Learning: courses, rules, enrolments, progress, certificates and the reminder log.
-const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests'];
+const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests',
+  'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));

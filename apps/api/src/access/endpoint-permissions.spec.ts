@@ -68,7 +68,7 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceSetupController: [],
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
-  LearningController: ['me', 'external', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
+  LearningController: ['me', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'checkIn', 'drop', 'cascade'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
