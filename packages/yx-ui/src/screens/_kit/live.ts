@@ -14,6 +14,9 @@ export type { FieldRow, JobChange } from '../people/people-data';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
 export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';
+// PPL-08 "Request a hire": the designed HIR-02 requisition sheet.
+export { RequisitionSheet, type LiveRequisitionSheet } from '../hiring/hiring-plan';
+export type { PlanLine } from '../hiring/hiring-logic';
 // Onboarding (PPL-11 to PPL-17, PPL-41) with live data.
 export { OnboardingBoard, joinerCard, type JoinerCard, type LiveBoard } from '../people/onboarding';
 export type { KanbanColumn } from '../../components/kanban';

@@ -25,7 +25,7 @@ describe('Recruitment batch AT2', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrPlan' | 'fin' | 'rec' | 'approver';
+  type Who = 'adminA' | 'adminB' | 'hrPlan' | 'fin' | 'rec' | 'approver' | 'mgr';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -65,6 +65,7 @@ describe('Recruitment batch AT2', () => {
       ['fin', 'A', 'panel', ['ats.headcount.manage']],
       ['rec', 'A', 'panel', ['ats.job.manage', 'ats.candidate.manage']],
       ['approver', 'A', 'panel', []],
+      ['mgr', 'A', 'panel', ['ats.requisition.raise']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -169,4 +170,27 @@ describe('Recruitment batch AT2', () => {
     expect((await api('adminB', 'get', '/hiring/plans').expect(200)).body).toEqual([]);
     await expect(inA((tx) => tx.$executeRaw`DELETE FROM headcount_plans WHERE id = ${ids.plan}::uuid`)).rejects.toThrow(/permission denied/);
   });
+
+  it('PPL-08 Request a hire: a manager raises a requisition that always goes for approval (recruiting when there is no route)', async () => {
+    await api('adminA', 'put', '/organizations/approvals/chains/requisition').send({ enabled: false, steps: [] }).expect(200);
+    await api('mgr', 'post', '/jobs').send({ title: `Not mine ${run}` }).expect(403); // raising is not running jobs
+    await api('approver', 'post', '/jobs/requisitions').send({ title: 'Analyst', requisitionReason: 'new', outsidePlan: true, outsidePlanReason: 'Team grows', headcount: 1 }).expect(403);
+    const r = (await api('mgr', 'post', '/jobs/requisitions').send({ title: `Analyst ${run}`, requisitionReason: 'new', outsidePlan: true, outsidePlanReason: 'Team grows', headcount: 2, budgetAmount: 600000 }).expect(201)).body;
+    expect(r.status).toBe('pending_approval'); // never opened by the manager alone
+    const job = await inA((tx) => tx.job.findFirstOrThrow({ where: { id: r.id } }));
+    expect(job).toMatchObject({ status: 'pending_approval', hiringManagerId: users.mgr, headcount: 2 });
+    const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: r.id } }));
+    expect((req.steps as { name: string }[]).length).toBeGreaterThan(0); // outside the plan: the extra step decides
+    await decide('hrPlan');
+    expect((await inA((tx) => tx.job.findFirstOrThrow({ where: { id: r.id } }))).status).toBe('open');
+    // In the plan and with no requisition route: recruiting (the job managers) approves it, never the manager alone.
+    const inPlan = (await api('mgr', 'post', '/jobs/requisitions').send({ title: 'Accountant', requisitionReason: 'new', headcountPlanLineId: ids.line, headcount: 1, budgetAmount: 500000 }).expect(201)).body;
+    expect(inPlan.status).toBe('pending_approval');
+    const job2 = await inA((tx) => tx.job.findFirstOrThrow({ where: { id: inPlan.id } }));
+    expect(job2).toMatchObject({ departmentId: ids.fin, designationId: ids.acct, hiringManagerId: users.mgr });
+    const req2 = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: inPlan.id } }));
+    expect((req2.steps as { name: string }[]).map((x) => x.name)).toEqual(['Recruiting']);
+    await api('mgr', 'post', '/jobs/requisitions').send({ title: 'Accountant', requisitionReason: 'new', headcountPlanLineId: randomUUID(), headcount: 1 }).expect(400);
+  });
+
 });

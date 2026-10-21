@@ -374,3 +374,12 @@ describe('MethodCards', () => {
     expect(screen.getByRole('button', { name: 'Authenticator app' })).toBeDisabled();
   });
 });
+
+describe('NoAccessState', () => {
+  it('names who grants access in one sentence; a note stays its own sentence (people audit c)', async () => {
+    const { NoAccessState } = await import('./feedback');
+    render(<NoAccessState what="the annual increment" grantedBy="HR" note="It needs the salary grant and the right to change jobs." />);
+    expect(screen.getByText("You don't have access to the annual increment")).toBeInTheDocument();
+    expect(screen.getByText('It needs the salary grant and the right to change jobs. Ask HR to give you access.')).toBeInTheDocument();
+  });
+});

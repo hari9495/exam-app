@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ConfirmDialog, DatePicker, FormField, Select, TextArea, TextField, dayKey, useToast } from '@yukthix/ui';
 import { AbscondingTimeline } from '@yukthix/ui/frame';
 import type { AbscondingRow } from '@yukthix/ui/lifecycle';
-import { todayIst } from '../../../../../lib/yx-org';
+import { todayIst, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 
 const id = encodeURIComponent;
@@ -30,7 +30,7 @@ export default function YxAbscondingPage() {
     <AbscondingTimeline
       today={day(today)}
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         rows: data.data?.rows ?? [],
         onStart: () => {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { ExitCasesList } from '@yukthix/ui/frame';
 import { StartExitDialog, type ExitRow, type IrOverview } from '@yukthix/ui/lifecycle';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 import { exitRows } from '../../../../../lib/yx-exits';
@@ -31,7 +31,7 @@ export default function YxExitsPage() {
       persona={perms.has('employee.profile.view') || perms.has('lifecycle.exit.view') || canStart ? 'hr' : 'mgr'}
       today={new Date(`${today}T00:00:00`)}
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         onOpen: open,
         ...(canStart ? { onStart: () => setStarting(true) } : {}),

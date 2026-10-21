@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Meter } from '../../components/feedback';
 import { Icon, Text } from '../../components/foundations';
 import { PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -58,7 +58,7 @@ export function taskRow(t: JourneyTask, when: string | undefined, action: ReactN
 export interface MyChecklistTasksProps {
   tasks: JourneyTask[];
   today: Date;
-  state?: 'ready' | 'loading' | 'error';
+  state?: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry?: () => void;
   /** Do, upload, issue, skip (live). Stories leave it out: the buttons show but do nothing. */
   actions?: TaskActions;
@@ -136,7 +136,7 @@ export function MyChecklistTasks({ tasks, today, state = 'ready', onRetry, actio
 export interface LifeEventsListProps {
   rows: LifeJourneyRow[];
   today: Date;
-  state?: 'ready' | 'loading' | 'error';
+  state?: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry?: () => void;
   onOpen?: (journeyId: string) => void;
 }
@@ -167,7 +167,9 @@ export function LifeEventsList({ rows, today, state = 'ready', onRetry, onOpen }
   return (
     <PeopleFrame active="Life events">
       <PageHeader title="Life events" description="Checklists for new managers, transfers, parental leave and return to work. Each starts by itself once the company turns it on in Settings › Checklists." />
-      {state === 'error' ? (
+      {state === 'no-access' ? (
+        <NoAccessState what="the life-event checklists" grantedBy="your HR admin" />
+      ) : state === 'error' ? (
         <ErrorState title="We couldn't load the life-event checklists" description="Check your connection and try again." onRetry={onRetry} />
       ) : state === 'loading' ? (
         <ListSkeleton label="Loading life-event checklists" />

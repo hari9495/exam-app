@@ -44,7 +44,7 @@ export default function YxIncrementPage() {
     [places.entities.length, places.departments.length, onCheck, accessToken],
   );
   if (!perms.data) return <Spinner label="Loading" size="md" />;
-  if (!allowed) return <NoAccessState what="the annual increment" grantedBy="It needs the salary grant and the right to change jobs. HR can grant it." />;
+  if (!allowed) return <NoAccessState what="the annual increment" grantedBy="HR" note="It needs the salary grant and the right to change jobs." />;
   if (!places.entities.length) return <Spinner label="Loading" size="md" />;
   return <BulkChangesWizard live={live} />;
 }

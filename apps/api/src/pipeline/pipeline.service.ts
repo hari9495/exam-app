@@ -9,6 +9,7 @@ import {
   CustomFieldDefinitionLite,
   CustomFieldRead,
 } from '../custom-fields/custom-field-values';
+import type { RaiseRequisitionDto } from './dto/create-job.dto';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
 import { BulkPatchEntriesDto } from './dto/bulk-patch-entries.dto';
@@ -237,12 +238,14 @@ export class PipelineService {
       budgetAmount?: number | null;
       targetStart?: string | null;
     },
+    asDraft = false,
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
+    // A manager's request (raiseRequisition) is always a draft that goes for approval.
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
     // but only when the org has actually turned the gate on -- an org with no chain configured
     // keeps today's behavior of jobs opening immediately.
     // M10 AT2: a new job is a draft requisition when the company's requisition chain is on or the plan is required.
-    const status = (await this.hiring.startsAsDraft(context)) ? 'draft' : 'open';
+    const status = asDraft || (await this.hiring.startsAsDraft(context)) ? 'draft' : 'open';
     const pipelineId = await this.resolvePipelineId(context, dto.pipelineId);
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -682,6 +685,25 @@ export class PipelineService {
   // Submits the job's requisition through the approvals engine. Only a draft job can be
   // submitted -- one already open, pending, or closed has either cleared this gate already or
   // isn't eligible for it. Mirrors the auto-pass/pending split ApprovalsService.submit returns.
+  /**
+   * PPL-08 "Request a hire" (ats.requisition.raise): the place comes from an approved plan line, the raiser is the hiring
+   * manager, and it goes for approval at once. With no requisition route, recruiting (the job managers) approves it, so a
+   * manager never opens a job alone.
+   */
+  async raiseRequisition(context: TenantContext, actorUserId: string, dto: RaiseRequisitionDto) {
+    const place = dto.headcountPlanLineId
+      ? await this.tenantPrisma.forTenant(context, async (tx) => {
+          const line = await tx.headcountPlanLine.findFirst({ where: { organizationId: context.organizationId as string, id: dto.headcountPlanLineId! } });
+          const plan = line ? await tx.headcountPlan.findFirst({ where: { organizationId: context.organizationId as string, id: line.planId, status: 'approved' } }) : null;
+          if (!line || !plan) throw new BadRequestException('Choose a line of an approved headcount plan.');
+          return { legalEntityId: plan.legalEntityId, departmentId: plan.departmentId, designationId: line.designationId, gradeId: line.gradeId, locationId: line.locationId };
+        })
+      : {};
+    const job = await this.createJob(context, actorUserId, { ...dto, ...place, hiringManagerId: actorUserId }, true);
+    const sent = await this.hiring.submit(context, actorUserId, job.id, true);
+    return { id: job.id, title: job.title, ...sent };
+  }
+
   async submitRequisition(context: TenantContext, actorUserId: string, jobId: string): Promise<SubmitResult> {
     const job = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } }),

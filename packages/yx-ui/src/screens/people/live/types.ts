@@ -337,6 +337,8 @@ export interface ReadyOffer {
   phone: string | null;
   startDate: string;
   jobTitle: string;
+  /** Where the job is (PPL-12). */
+  location?: string | null;
   /** The day the offer was accepted (null for older offers). */
   acceptedOn?: string | null;
   personType: 'new' | 'ex_employee' | 'internal';
@@ -521,6 +523,9 @@ export interface Batch {
   status: 'open' | 'closed';
   version: number;
   members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+  /** Members with an issued appointment letter; members still on a letter of intent only. */
+  offersIssued?: number;
+  lettersOfIntent?: number;
 }
 export interface Payee {
   id?: string;

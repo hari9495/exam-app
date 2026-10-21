@@ -163,6 +163,7 @@ export const YX_KEYS = [
   'results:view',
   // AT2: headcount plans and the hiring approval routes.
   'ats.headcount.manage',
+  'ats.requisition.raise',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

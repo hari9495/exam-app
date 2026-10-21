@@ -10,7 +10,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Meter } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -73,6 +73,8 @@ const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || 
 /** The live app's board (design audit step 3). Stages follow the dates, so cards are not moved by hand. */
 export interface LiveBoard {
   error: boolean;
+  /** The board answered 403: the person has no onboarding grant. */
+  noAccess?: boolean;
   onRetry: () => void;
   onAdd?: () => void;
   onImport?: () => void;
@@ -112,7 +114,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
       <PageHeader
         title="Onboarding"
         description={
-          total === 0
+          live?.noAccess
+            ? undefined
+            : total === 0
             ? 'No one is onboarding right now.'
             : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}`
         }
@@ -137,7 +141,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
           </div>
         }
       />
-      {live?.error ? (
+      {live?.noAccess ? (
+        <NoAccessState what="the onboarding board" grantedBy="your HR admin" />
+      ) : live?.error ? (
         <ErrorState title="We couldn't load the onboarding board" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : state === 'loading' ? (
         <ListSkeleton label="Loading onboarding board" rows={5} />
@@ -250,7 +256,7 @@ export type ReadyRow = Ready & { live?: { offerId: string; email: string; intern
 
 /** The live app's queue (design audit step 3). */
 export interface LiveReady {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   places: JoinerPlaces;
@@ -270,7 +276,7 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 190 },
     { key: 'personType', header: 'Person type', value: (r) => r.personType, render: (r) => <TypeCell row={r} />, groupable: true, width: 240 },
     { key: 'source', header: 'From', value: (r) => r.source, width: 190, optional: true },
-    ...(live ? [] : [{ key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>]),
+    { key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>,
     { key: 'offerAccepted', header: 'Offer accepted', type: 'date', value: (r) => r.offerAccepted, width: 140, optional: true },
   ];
   const action = (r: ReadyRow) =>
@@ -293,7 +299,9 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
   return (
     <PeopleFrame active="Ready to onboard">
       <PageHeader title="Ready to onboard" description="Accepted offers whose employee isn't created yet, soonest joining first. Create the employee to start pre-boarding; the person type decides the path." />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the accepted offers" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the accepted offers" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading accepted offers" />
@@ -529,7 +537,7 @@ const KAVYA = { name: 'Kavya Reddy', role: 'Quality Inspector', location: 'Hosur
 
 /** The live app's checklist (design audit step 3): any journey (onboarding, leaving, life events), its tasks in phases. */
 export interface LiveJourney {
-  state: 'ready' | 'loading' | 'error' | 'not-found';
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'not-found';
   onRetry: () => void;
   journey: LiveJourneyData | null;
   /** The joiner's role, place and people, when the journey is an onboarding HR runs. */
@@ -564,7 +572,9 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
   if (live.state !== 'ready' || !j)
     return (
       <PeopleFrame active="Onboarding board">
-        {live.state === 'error' ? (
+        {live.state === 'no-access' ? (
+          <NoAccessState what="this checklist" grantedBy="your HR admin" />
+        ) : live.state === 'error' ? (
           <ErrorState title="We couldn't load this checklist" description="Check your connection and try again." onRetry={live.onRetry} />
         ) : live.state === 'not-found' ? (
           <EmptyState title="Not found" description="This checklist doesn't exist or you can't open it." />
@@ -748,7 +758,7 @@ export type BatchRow = Batch;
 
 /** The live app's batches (design audit step 3). */
 export interface LiveBatches {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   /** Members of each batch, for "Open batch". */
@@ -798,7 +808,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
       width: 220,
     },
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 195 },
-    ...(live ? [{ key: 'members', header: 'Members', type: 'number', value: (r: Batch) => r.members, width: 120 } as TableColumn<Batch>] : [{ key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>]),
+    { key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>,
     { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} />, width: 140 },
     { key: 'entity', header: 'Legal entity', value: (r) => r.entity, width: 260 },
   ];
@@ -843,7 +853,9 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
   return (
     <PeopleFrame active="Batches">
       <PageHeader title="Pre-boarding batches" description="Campus hires who join on the same date. Change a batch's date and every member's open tasks move with it." actions={newBatch && rows.length > 0 ? <Button variant="primary" icon={Plus} onClick={newBatch}>New batch</Button> : undefined} />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the batches" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the batches" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading batches" />
@@ -1078,13 +1090,11 @@ export interface ProbationDraft {
 
 /** The live app's queue (design audit step 3). Managers review their direct reports; HR confirms or extends. */
 export interface LiveProbation {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** employee.change.manage: confirm (a change someone else approves) or extend. */
   canDecide: boolean;
   onReview: (id: string, outcome: ProbationOutcome, months: number | null, draft: ProbationDraft) => Promise<void>;
-  onConfirm: (id: string, from: Date, reason: string) => Promise<void>;
-  onExtend: (id: string, months: number, reason: string) => Promise<void>;
   /** A confirmation waiting for approval opens the change list. */
   onOpenApproval: () => void;
 }
@@ -1144,16 +1154,15 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
   const escalated = withState.filter((r) => r.state === 'escalated');
   const empty = <EmptyState title="No one is on probation" description="New joiners appear here with their probation end date." />;
   const sorted = [...withState].sort((a, b) => a.end.getTime() - b.end.getTime());
-  const outcomes: ProbationOutcome[] = live && open && !open.live?.canReview ? ['confirm', 'extend'] : ['confirm', 'extend', 'terminate'];
-  const hrDecides = Boolean(live && open && !open.live?.canReview);
+  // PPL-16: HR decides with the same review as the manager (confirm, extend or recommend ending, rating, comments);
+  // the API takes HR's review on everyone its job-change grant reaches.
+  const outcomes: ProbationOutcome[] = ['confirm', 'extend', 'terminate'];
   const problem =
     !live || !open
       ? null
       : outcome === 'extend' && (!months || months < 1 || months > (open.live?.maxMonthsLeft ?? 0))
         ? 'months'
-        : hrDecides && outcome === 'confirm' && !draft.from
-          ? 'from'
-          : draft.comments.trim().length < 3
+        : draft.comments.trim().length < 3
             ? 'comments'
             : null;
   const submit = async () => {
@@ -1163,9 +1172,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
     setBusy(true);
     setFailed(null);
     try {
-      if (!hrDecides) await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
-      else if (outcome === 'confirm') await live.onConfirm(open.id, draft.from!, draft.comments.trim());
-      else await live.onExtend(open.id, months!, [draft.comments.trim(), draft.improve.trim() && `To improve: ${draft.improve.trim()}`].filter(Boolean).join('\n'));
+      await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
       setOpenId(null);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -1187,7 +1194,9 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             : `${escalated.map((r) => r.name).join(', ')} passed their end date without a review. Confirm, extend or end each one now.`}
         </InlineAlert>
       )}
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="probations" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load probations" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading probations" />
@@ -1233,7 +1242,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             <>
               <Button onClick={() => setOpenId(null)}>Cancel</Button>
               <Button variant={outcome === 'terminate' ? 'danger' : 'primary'} loading={busy} onClick={() => void submit()}>
-                {outcome === 'confirm' ? (hrDecides ? 'Send for approval' : `Confirm ${first}`) : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
+                {outcome === 'confirm' ? `Confirm ${first}` : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
               </Button>
             </>
           ) : (
@@ -1271,7 +1280,6 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
                       draft,
                       setDraft,
                       maxMonths: open.live?.maxMonthsLeft ?? 0,
-                      confirmFrom: hrDecides,
                       errors: tried ? problem : null,
                     }
                   : {})}
@@ -1507,7 +1515,7 @@ const joinText = (date: Date) => {
 
 /** The live app's buddy pool (PPL-41): the API names joiners only where the onboarding keys reach. */
 export interface LiveBuddies {
-  state: 'loading' | 'ready' | 'error';
+  state: 'loading' | 'ready' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   data: {
@@ -1696,7 +1704,9 @@ function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
   return (
     <PeopleFrame active="Buddies">
       <PageHeader title="Buddies" description="A buddy is a colleague from the same team or location, never the joiner's manager. Each buddy looks after a set number of joiners at a time." actions={addBtn} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the buddy pool" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the buddy pool" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : !d ? (
         <ListSkeleton label="Loading the buddy pool" />

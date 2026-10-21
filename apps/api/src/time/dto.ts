@@ -102,8 +102,8 @@ export class RangeEntityQueryDto extends RangeQueryDto {
 }
 
 export class PunchDto {
-  @IsIn(['in', 'out'])
-  kind!: 'in' | 'out';
+  @IsIn(['in', 'out', 'break_start', 'break_end'])
+  kind!: 'in' | 'out' | 'break_start' | 'break_end';
 
   @IsOptional()
   @IsNumber()
@@ -122,6 +122,17 @@ export class PunchDto {
   @Min(0)
   @Max(100000)
   accuracyM?: number;
+}
+
+export class WfhDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class RegulariseDto {

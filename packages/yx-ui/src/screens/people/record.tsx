@@ -455,7 +455,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                   <PayTab persona={persona} self={self} international={international} />
                 ) : (
                   <div className="yx-ppl__stack">
-                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR (Lakshmi Venkatesan) can grant a salary grant for your team" />
+                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR (Lakshmi Venkatesan)" note="Pay needs a salary grant for your team." />
                     <div>
                       <Button>Request access</Button>
                     </div>

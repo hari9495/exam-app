@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { OrgChartScreen } from '@yukthix/ui/frame';
 import type { OrgPerson } from '@yukthix/ui';
 import { csvText, downloadText, type OrgChartData } from '@yukthix/ui/workforce';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
 import { useScope } from '../../../../../lib/yx-shell';
 import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
@@ -50,7 +50,7 @@ export default function YxOrgChartPage() {
       today={day(today)}
       persona={isHr ? 'hr' : 'emp'}
       live={{
-        state: data ? 'ready' : chart.isError ? 'error' : 'loading',
+        state: data ? 'ready' : chart.isError ? loadState(chart) : 'loading',
         onRetry: () => void chart.refetch(),
         companyName: branding.data?.name || 'Organisation',
         // Past dates for everyone; future dates (unannounced changes) for HR only, and the API refuses them too.

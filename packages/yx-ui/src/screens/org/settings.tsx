@@ -40,6 +40,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'probation.auto_confirm_after_days': { off: 'Never (HR confirms)', '0': 'On the end date', '7': '7 days after', '15': '15 days after', '30': '30 days after' },
   'access.manager.view_scope': { all_reports: 'Everyone under them', direct_reports: 'Direct reports only' },
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
+  'home.pay_on_employee_home': { off: 'Not shown', on: 'Shown, hidden until the employee asks' },
   'attendance.mode': { punch: 'Punch in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' },
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
   'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
@@ -72,6 +73,7 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
     { title: 'Special permissions', description: 'A role that opens identity or bank data for many people asks for a confirmation first.', keys: ['access.risk.confidential_threshold'] },
     { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way.', keys: ['privacy.who_accessed'] },
     { title: 'Bank details', description: 'Protects pay from a hijacked account change.', keys: ['employee.bank_change.cooling_hours'] },
+    { title: 'Home page', description: 'What employees see on their home. When net pay is shown, the amount stays hidden until the person selects Show amount, and hides again on every visit. Only their own pay, never anyone else’s.', keys: ['home.pay_on_employee_home'] },
   ],
 };
 

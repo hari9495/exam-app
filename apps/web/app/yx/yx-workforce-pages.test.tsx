@@ -159,12 +159,12 @@ describe('/yx/people/probation', () => {
     route({
       [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'],
       'GET /people/probations': { today: '2026-10-07', rows: [{ employeeId: 'p-kiran', name: 'Kiran Joshi', employeeCode: 'KF-0151', startOn: '2026-04-15', originalEndOn: '2026-10-14', plannedEndOn: '2026-10-14', extendedMonths: 0, reviewDueOn: '2026-09-29', escalatedOn: null, confirmedFrom: null, pendingConfirmationId: null, stage: 'review_due', maxTotalMonths: 12 }] },
-      'POST /people/employees/p-kiran/probation/extend': (_: string, init: RequestInit) => {
+      'POST /lifecycle/probations/p-kiran/review': (_: string, init: RequestInit) => {
         posted.push(JSON.parse(String(init.body)));
-        return { plannedEndOn: '2027-01-14', extendedMonths: 3 };
+        return { ok: true };
       },
     });
-    // The designed queue (PPL-16): HR decides; extending sends the months and the reason.
+    // The designed queue (PPL-16): HR decides with the review; extending sends the months and the comments.
     wrap(<YxProbationPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Decide' }));
     const dialog = await screen.findByRole('dialog');
@@ -172,7 +172,7 @@ describe('/yx/people/probation', () => {
     await userEvent.type(within(dialog).getByRole('textbox', { name: /Extend by/ }), '3');
     await userEvent.type(within(dialog).getByRole('textbox', { name: /Reason|Comments/ }), 'More time on audits');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Extend probation' }));
-    await waitFor(() => expect(posted).toEqual([{ months: 3, reason: 'More time on audits' }]));
+    await waitFor(() => expect(posted).toEqual([{ outcome: 'extend', months: 3, comments: 'More time on audits' }]));
   });
 });
 

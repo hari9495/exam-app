@@ -51,7 +51,9 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
 // People (PPL-17 buddies, PPL-30 succession): personal rows.
-const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors'];
+const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors',
+  // PPL-34, 37, 38, 43, 44, 45, 46: identity, merges, disability (Special), BFSI, work authorisations and bank splits.
+  'identity_checks', 'person_merges', 'disability_declarations', 'work_authorisations', 'pay_split_requests', 'designated_persons', 'bfsi_declarations', 'trading_windows', 'preclearance_requests'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
