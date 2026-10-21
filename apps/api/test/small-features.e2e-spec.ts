@@ -300,6 +300,9 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect((await nudge('mgr', ids.quietEmp).expect(409)).body.message).toBe(`quiet ${run} was already reminded today. You can remind them again tomorrow.`);
       // HR sees everyone, but the person was already reminded today.
       await nudge('hrAdmin', ids.quietEmp).expect(409);
+      // The muster says so, so Home shows "Reminded" after a reload.
+      const muster = (await api('mgr', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body as { people: { id: string; remindedOn: string[] }[] };
+      expect(muster.people.find((p) => p.id === ids.quietEmp)?.remindedOn).toEqual([today]);
       expect((await bell('quiet')).filter((x) => x.type === 'nudge.reminder')).toHaveLength(1);
     });
 

@@ -196,6 +196,17 @@ describe('Organisation structure (P01 §4.1–4.3, §4.6; YX-ORG-01..05, 08, 12,
       for (const v of Object.values(IDS)) expect(JSON.stringify(trail)).not.toContain(v);
     });
 
+    it('the list carries the GSTIN only for someone who may read the identifiers (founder option A); never PAN, TAN or CIN', async () => {
+      const mineList = await api('payrollA', 'get', '/legal-entities').expect(200);
+      const kfpl = mineList.body.find((e: { id: string }) => e.id === ids.kfpl);
+      expect(kfpl.gstin).toBe(IDS.gstin);
+      expect(kfpl).not.toHaveProperty('pan');
+      expect(kfpl).not.toHaveProperty('tan');
+      expect(kfpl).not.toHaveProperty('cin');
+      const theirs = await api('adminA', 'get', '/legal-entities').expect(200);
+      expect(theirs.body.find((e: { id: string }) => e.id === ids.kfpl)).not.toHaveProperty('gstin');
+    });
+
     it('another company cannot read them, even with the grant', async () => {
       await api('payrollA', 'get', `/legal-entities/${ids.bEntity}/statutory`).expect(404);
     });
