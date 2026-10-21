@@ -381,7 +381,15 @@ export class PayStructuresService {
         const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: c.organizationId, packageId: pkg.id } }) : [];
         const comps = await tx.payComponent.findMany({ where: { organizationId: c.organizationId, id: { in: lines.map((l) => l.componentId) } } });
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.viewed', 'employee', employeeId, { asOn });
+        // PPL-03 Pay tab: the last approved payslip's net pay and the tax regime of the current tax year (same grant, R1).
+        await payScope(tx, [e.legalEntityId]);
+        const slip = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, employeeId, status: 'approved', runType: 'regular' }, orderBy: [{ periodStart: 'desc' }, { version: 'desc' }] });
+        const [y, m] = asOn.split('-').map(Number);
+        const taxYear = m >= 4 ? `${y}-${String((y + 1) % 100).padStart(2, '0')}` : `${y - 1}-${String(y % 100).padStart(2, '0')}`;
+        const tax = await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear }, select: { regime: true, taxYear: true } });
         return {
+          lastNetPay: slip ? { month: slip.periodStart.toISOString().slice(0, 7), net: slip.net.toFixed(2), paid: slip.paymentStatus === 'paid' } : null,
+          taxRegime: tax ? { regime: tax.regime, taxYear: tax.taxYear } : null,
           validFrom: iso(comp.validFrom),
           validTo: iso(comp.validTo),
           currency: comp.currency,

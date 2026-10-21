@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
@@ -46,4 +46,52 @@ export class PersonDocsParamDto {
   @IsString()
   @MaxLength(40)
   typeKey!: string;
+}
+
+/** PPL-42 re-verification rules: dated, per legal entity (or the whole company when none). */
+export class ReverificationRuleDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string | null;
+
+  @Matches(/^[a-z][a-z0-9_]{1,39}$/)
+  typeKey!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  everyMonths!: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  departmentIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  designationIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  onRoleChange?: boolean;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  validFrom!: string;
+}
+
+export class ReverificationEndDto {
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  validTo?: string;
+}
+
+export class ReverificationAskDto {
+  @IsUUID()
+  ruleId!: string;
+
+  @IsUUID()
+  employeeId!: string;
 }

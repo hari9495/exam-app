@@ -26,7 +26,7 @@ jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), API_BASE: 'https
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
-jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
+jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { id: 'u-divya', name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
 jest.mock('@simplewebauthn/browser', () => ({
   startAuthentication: jest.fn(),
   startRegistration: jest.fn(),
@@ -912,15 +912,22 @@ describe('/yx layout', () => {
     (usePathname as jest.Mock).mockReturnValue('/yx/settings/security');
     route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2026-01-01T00:00:00Z' } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByRole('link', { name: 'Set it up now' })).toHaveAttribute('href', '/yx/me/security');
+    expect(await screen.findByRole('link', { name: 'Set it up' })).toHaveAttribute('href', '/yx/me/security');
+    // Past the deadline it cannot be hidden.
+    expect(screen.queryByRole('button', { name: 'Hide until tomorrow' })).toBeNull();
   });
 
   it('reminds an admin in the grace period, with the date, and lets them work', async () => {
     (usePathname as jest.Mock).mockReturnValue('/yx/settings/security');
     route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2099-10-21T00:00:00Z' } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByText(/Set it up by 21 Oct 2099/)).toBeInTheDocument();
+    expect(await screen.findByText(/by 21 Oct 2099/)).toBeInTheDocument();
     expect(screen.getByText('page')).toBeInTheDocument();
+    // One line, hidden for the rest of the day with the close button (founder 20 Oct 2026).
+    await userEvent.click(screen.getByRole('button', { name: 'Hide until tomorrow' }));
+    expect(screen.queryByText(/by 21 Oct 2099/)).toBeNull();
+    expect(Object.keys(window.localStorage).some((k) => k.includes('mfa:u-divya'))).toBe(true);
+    window.localStorage.clear();
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {

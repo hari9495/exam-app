@@ -8,6 +8,7 @@ import { PAN } from '../org-structure/org-validation';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const GENDERS = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'] as const;
+export const MARITAL = ['single', 'married', 'separated', 'divorced', 'widowed', 'prefer_not_to_say'] as const;
 
 /** Personal class fields; null clears one, absent leaves it. */
 export class PersonalDetailsDto {
@@ -43,9 +44,18 @@ export class PersonalDetailsDto {
 
   @IsOptional() @IsBoolean()
   hideBirthday?: boolean;
+
+  @IsOptional() @IsIn(MARITAL)
+  maritalStatus?: string | null;
 }
 
-export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name'] as const;
+/** Work phone (Internal): HR with employee.profile.edit; null clears it. */
+export class WorkPhoneDto {
+  @IsOptional() @IsString() @MaxLength(30)
+  workPhone!: string | null;
+}
+
+export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
 /** The proposed value; only the part the kind needs is read (the rest must be absent). */
@@ -65,6 +75,13 @@ export class ProposedValueDto {
 
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(1) @MaxLength(200)
   legalName?: string;
+
+  // A passport number: 6 to 9 capital letters and digits (India: a letter and 7 digits).
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z0-9]{6,9}$/, { message: 'passport is 6 to 9 capital letters and digits' })
+  passport?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsDateString({ strict: true }) @Matches(DATE, { message: 'passportExpiresOn is a date (YYYY-MM-DD)' })
+  passportExpiresOn?: string;
 
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(1) @MaxLength(200)
   holderName?: string;
@@ -103,7 +120,7 @@ export class ProfileReasonDto {
   reason!: string;
 }
 
-export const REVEAL_FIELDS = ['pan', 'aadhaar', 'uan', 'esic', 'bank_salary', 'bank_reimbursement'] as const;
+export const REVEAL_FIELDS = ['pan', 'aadhaar', 'uan', 'esic', 'passport', 'bank_salary', 'bank_reimbursement'] as const;
 export class RevealDto {
   @IsIn(REVEAL_FIELDS)
   field!: (typeof REVEAL_FIELDS)[number];
@@ -121,6 +138,7 @@ export const KIND_FIELDS: Record<RequestKind, (keyof ProposedValueDto)[]> = {
   uan: ['uan'],
   esic: ['esic'],
   legal_name: ['legalName'],
+  passport: ['passport', 'passportExpiresOn'],
   bank_salary: ['holderName', 'accountNumber', 'ifsc'],
   bank_reimbursement: ['holderName', 'accountNumber', 'ifsc'],
 };

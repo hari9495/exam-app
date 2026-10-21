@@ -34,7 +34,7 @@ describe('buildNav: areas', () => {
 describe('buildNav: People', () => {
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Bulk changes', 'Job history', 'Possible same person']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -54,7 +54,7 @@ describe('buildNav: People', () => {
     expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Life events']);
     expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Life events', 'My checklist tasks']);
     expect(labels(nav(['lifecycle.exit.manage', 'employee.profile.view']), 'people')).toEqual(expect.arrayContaining(['Exit cases', 'Clearance', 'Retirements and contracts', 'Absconding', 'VRS schemes']));
-    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters']);
+    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters', 'Re-verification']); // PPL-42 under More
     expect(nav(['document.manage'])[1].sections[0].items[0].count).toBe('documentsToVerify');
     expect(labels(nav([], { tasks: true }), 'people')).toEqual(['My checklist tasks']);
   });
