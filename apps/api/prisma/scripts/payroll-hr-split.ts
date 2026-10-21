@@ -1,10 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { HR_PAY } from '../seed-org-structure';
+import { HR_IDENTITY_APPROVE, HR_PAY } from '../seed-org-structure';
 import { PAYROLL_NOT_HR } from '../seed-pay';
 
 // One-off for an already seeded database (founder decisions 21 Oct 2026), the same change the seed now makes:
 // - demo-org's "Payroll Admin" profile loses the HR keys (job changes, adding people, probation, the annual increment);
-// - demo-org's "HR Admin" profile (hr@, Lakshmi) gains the salary grant and pay ranges, so HR runs the increment.
+// - demo-org's "HR Admin" profile (hr@, Lakshmi) gains the salary grant and pay ranges, so HR runs the increment;
+// - bank and identity changes are approved by HR only: Payroll Admin and Payroll Approver lose the approve key, HR gains it.
+// Only HR changes pay (option A): payroll is refused by the job-change key it no longer holds.
 // Safe to run again: a second run changes nothing.  Run from apps/api:  npx ts-node prisma/scripts/payroll-hr-split.ts
 const prisma = new PrismaClient();
 (async () => {
@@ -23,7 +25,8 @@ const prisma = new PrismaClient();
         out.push(`${name}: removed [${before.filter((k) => remove.includes(k)).join(', ')}], added [${add.filter((k) => !before.includes(k)).join(', ')}]`);
       };
       await change('Payroll Admin', [], PAYROLL_NOT_HR);
-      await change('HR Admin', HR_PAY, []);
+      await change('Payroll Approver', [], HR_IDENTITY_APPROVE);
+      await change('HR Admin', [...HR_PAY, ...HR_IDENTITY_APPROVE], []);
       return out;
     },
     { timeout: 120000 },

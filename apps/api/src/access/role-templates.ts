@@ -61,7 +61,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     key: 'hr_executive',
@@ -75,10 +75,11 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     key: 'payroll_admin',
     name: 'Payroll Admin',
     typicalScope: 'legal_entity',
-    summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
-    // Founder 21 Oct 2026: payroll does not do HR work (job changes, adding people, probation, the annual increment).
-    cannot: 'HR settings, job changes, adding people, probation decisions.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
+    summary: 'Pay, pay ranges and entity tax identifiers; reads approved bank details to pay people.',
+    // Founder 21 Oct 2026: payroll does not do HR work (job changes, adding people, probation, the annual increment,
+    // changing pay) and does not approve bank or identity changes (HR does).
+    cannot: 'HR settings, job changes, adding people, probation decisions, approving bank and identity changes.',
+    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
@@ -86,7 +87,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Checks and approves pay changes, bank account changes and payroll files prepared by others; the first check of a request to reopen a locked month.',
     cannot: 'Prepare pay changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
+    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
   },
   {
     key: 'finance',

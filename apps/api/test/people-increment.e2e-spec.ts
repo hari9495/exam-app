@@ -298,4 +298,16 @@ describe('People annual increment (PPL-06)', () => {
     await request(server()).post('/api/v1/people/changes').set('Authorization', `Bearer ${token.hrDemo}`).send({ employeeId: emp.kiran, changeType: 'salary_revision', effectiveDate: effective, payload: { compensation: { currency: 'INR', annualCtc: '400000' } }, reason: 'Market correction' }).expect(201);
     expect(r.people.find((p: { employeeId: string }) => p.employeeId === emp.kiran)).toMatchObject({ newCtc: '350000.00' });
   });
+
+  it('bank and identity changes are approved by HR only; payroll reads the approved details (founder 21 Oct 2026)', async () => {
+    const bank = { kind: 'bank_salary', value: { holderName: 'Kiran', accountNumber: '123456789012', ifsc: 'HDFC0001234' }, reason: 'New salary account' };
+    await markSteppedUp(tenantPrisma, token.kiran);
+    const req = (await request(server()).post(`/api/v1/people/employees/${emp.kiran}/profile-requests`).set('Authorization', `Bearer ${token.kiran}`).send(bank).expect(201)).body.id as string;
+    for (const who of ['payrollTpl', 'payrollDemo'] as Who[]) {
+      await markSteppedUp(tenantPrisma, token[who]);
+      await request(server()).post(`/api/v1/people/profile-requests/${req}/approve`).set('Authorization', `Bearer ${token[who]}`).send({}).expect(403);
+    }
+    await markSteppedUp(tenantPrisma, token.hrDemo);
+    await request(server()).post(`/api/v1/people/profile-requests/${req}/approve`).set('Authorization', `Bearer ${token.hrDemo}`).send({}).expect(201);
+  });
 });
