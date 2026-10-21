@@ -357,8 +357,6 @@ export class StatutoryProfileDto {
   @IsIn(['yes', 'no', 'by_wage'])
   esi!: 'yes' | 'no' | 'by_wage';
 
-  @IsOptional() @IsBoolean() pwdCeilingConsent?: boolean;
-
   @IsOptional()
   @Matches(STATE)
   ptState?: string;

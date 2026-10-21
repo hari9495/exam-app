@@ -130,7 +130,7 @@ export function LiveDisabilityDeclaration({ live }: { live: LiveDisability }) {
         <>
           <div className="yx-ppl__form">
             <InlineAlert tone="info" title="This is voluntary">
-              You can skip it or withdraw it at any time. It is Special data: you and the HR diversity role can see it. Your manager never does. Reports show only totals.
+              You can skip it or withdraw it at any time. It is Special data: you, the HR diversity role and payroll (only the ESI flag it needs) can see it. Your manager never does. Reports show only totals.
             </InlineAlert>
             <Checkbox checked={consent} onChange={setConsent} label={`I agree ${live.company} may record this to provide reasonable adjustments and apply the correct ESI ceiling`} />
             <FormField label="Do you have a disability you want to declare?" required>
@@ -221,7 +221,7 @@ export function LiveDisabilityList({ live, tabs }: { live: LiveDisabilityList; t
   ];
   return (
     <PeopleFrame active="Declarations">
-      <PageHeader title="Disability declarations" description="Special class. Visible to the HR diversity role. Managers never see this." status={<Badge tone="danger">Special</Badge>} />
+      <PageHeader title="Disability declarations" description="Special class. Visible to the HR diversity role; payroll sees only the ESI flag. Managers never see this." status={<Badge tone="danger">Special</Badge>} />
       {tabs}
       <InlineAlert tone="info">Totals in reports are hidden for groups under 5 people.</InlineAlert>
       {live.state === 'error' ? (

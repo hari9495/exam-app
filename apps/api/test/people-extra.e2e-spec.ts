@@ -10,6 +10,9 @@ import { EmailService } from '../src/email/email.service';
 import { OtpService } from '../src/auth/otp.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import type Redis from 'ioredis';
+import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
+import { esiPwdFlags } from '../src/people-extra/esi-flag';
 
 // People, the rest of the designed screens, against the real database (forced RLS): identity checks (PPL-34), merge and
 // unmerge (PPL-37), the disability declaration (PPL-38), work authorisations (PPL-45), international bank details with
@@ -32,7 +35,7 @@ describe('People: identity, merge, disability, work authorisations, internationa
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
-  type Who = 'hrA' | 'approverA' | 'diversityA' | 'officerA' | 'arjunU' | 'adminB';
+  type Who = 'hrA' | 'hrApproverA' | 'approverA' | 'diversityA' | 'officerA' | 'arjunU' | 'adminB';
   const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
@@ -50,6 +53,10 @@ describe('People: identity, merge, disability, work authorisations, internationa
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    // Earlier runs from this machine count against the per-IP code limit; start clean, as the ATS suites do.
+    const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
+    const ipKeys = await redis.keys('auth:otp:ip:*');
+    if (ipKeys.length) await redis.del(...ipKeys);
     // The attestation code is read here instead of from a phone.
     const otp = app.get(OtpService);
     const issue = otp.issue.bind(otp);
@@ -79,12 +86,15 @@ describe('People: identity, merge, disability, work authorisations, internationa
 
     const profile = (keys: string[], name: string) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } })).then((p) => p.id);
     const hr = await profile(['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.identity.view', 'employee.identity.manage'], 'HR');
-    const approver = await profile(['employee.profile.view', 'employee.identity.view', 'employee.identity.approve'], 'Bank approver');
+    // Payroll holds the approval key but no HR key: it reads the accounts and never decides (founder 21 Oct 2026).
+    const approver = await profile(['employee.profile.view', 'employee.identity.view', 'employee.identity.approve'], 'Payroll approver');
+    const hrApprover = await profile(['employee.profile.view', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve'], 'HR approver');
     const diversity = await profile(['employee.disability.manage'], 'HR diversity');
     const officer = await profile(['compliance.officer'], 'Compliance officer');
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string | null][] = [
       ['hrA', 'A', 'panel', hr],
+      ['hrApproverA', 'A', 'panel', hrApprover],
       ['approverA', 'A', 'panel', approver],
       ['diversityA', 'A', 'panel', diversity],
       ['officerA', 'A', 'panel', officer],
@@ -160,7 +170,7 @@ describe('People: identity, merge, disability, work authorisations, internationa
 
   // ------------------------------------------------------------------------------------------ PPL-46 international bank
 
-  it('international bank: IBAN and split checked at the server; one approval by someone else; the old split ends', async () => {
+  it('international bank: IBAN and split checked at the server; a second HR person approves, never payroll; the old split ends', async () => {
     const accounts = [
       { kind: 'iban', iban: 'AE07 0331 2345 6789 0123 456', bic: 'ECBKAEAD', bankName: 'Emirates Crescent Bank', rule: 'remainder', value: 0 },
       { kind: 'iban', iban: 'AE73 0260 0010 1523 4567 801', bic: 'GSBKAEAD', rule: 'percent', value: 10 },
@@ -172,18 +182,22 @@ describe('People: identity, merge, disability, work authorisations, internationa
     // The person raises their own change.
     const { id } = (await api('arjunU', 'post', `/people/employees/${ids.arjun}/intl-bank`).send(body).expect(201)).body;
     await api('hrA', 'post', `/people/employees/${ids.arjun}/intl-bank`).send(body).expect(409);
-    const seen = (await api('approverA', 'get', `/people/employees/${ids.arjun}/intl-bank`).expect(200)).body;
+    const seen = (await api('hrApproverA', 'get', `/people/employees/${ids.arjun}/intl-bank`).expect(200)).body;
     expect(seen.pending.accounts.map((a: { label: string }) => a.label)).toEqual(['Emirates Crescent Bank · AE•• •••• 3456', 'AE•• •••• 7801']);
     expect(seen.canDecide).toBe(true);
+    expect((await api('approverA', 'get', `/people/employees/${ids.arjun}/intl-bank`).expect(200)).body.canDecide).toBe(false);
+    await api('approverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: true, version: 1 }).expect(403);
     expect(JSON.stringify(await asSuper((tx) => tx.paySplitRequest.findFirstOrThrow({ where: { id } })))).not.toContain('0331');
     await api('hrA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: true, version: 1 }).expect(403);
-    await api('approverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: false, version: 1 }).expect(400);
-    await api('approverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: true, version: 1 }).expect(200);
+    await api('hrApproverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: false, version: 1 }).expect(400);
+    await api('hrApproverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${id}/decide`).send({ approve: true, version: 1 }).expect(200);
     const now = (await api('arjunU', 'get', `/people/employees/${ids.arjun}/intl-bank`).expect(200)).body;
     expect(now.current.accounts).toHaveLength(2);
+    // Payroll sees the approved accounts it pays into.
+    expect((await api('approverA', 'get', `/people/employees/${ids.arjun}/intl-bank`).expect(200)).body.current.accounts).toHaveLength(2);
     // A second change replaces it after approval; the first stops (kept, with its end).
     const second = (await api('hrA', 'post', `/people/employees/${ids.arjun}/intl-bank`).send({ ...body, accounts: [accounts[0]] }).expect(201)).body.id;
-    await api('approverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${second}/decide`).send({ approve: true, version: 1 }).expect(200);
+    await api('hrApproverA', 'post', `/people/employees/${ids.arjun}/intl-bank/${second}/decide`).send({ approve: true, version: 1 }).expect(200);
     const all = await asSuper((tx) => tx.paySplitRequest.findMany({ where: { employeeId: ids.arjun }, orderBy: { requestedAt: 'asc' } }));
     expect(all.map((r) => [r.status, r.validTo !== null])).toEqual([['approved', true], ['approved', false]]);
     expect(all[1].usableFrom!.getTime()).toBeGreaterThan(Date.now() + 3_600_000);
@@ -206,10 +220,16 @@ describe('People: identity, merge, disability, work authorisations, internationa
     await api('adminB', 'get', '/people/disability').expect(403);
     const list = (await api('diversityA', 'get', '/people/disability').expect(200)).body;
     expect(list).toMatchObject([{ name: 'Arjun', category: 'Locomotor disability', percent: 45, shown: 'Needs review', canVerify: true }]);
+    expect((await tenantPrisma.forTenant(ctx('A'), (tx) => esiPwdFlags(tx, org.A.id, [ids.arjun], today))).size).toBe(0);
     await api('diversityA', 'post', `/people/disability/${list[0].id}/verify`).send({ version: 1 }).expect(200);
     expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration.status).toBe('verified');
+    // Payroll learns one yes/no (the PwD ESI ceiling), only once verified, and never past the certificate's end date.
+    const flag = (on: string) => tenantPrisma.forTenant(ctx('A'), (tx) => esiPwdFlags(tx, org.A.id, [ids.arjun, ids.divya], on));
+    expect([...(await flag(today))]).toEqual([ids.arjun]);
+    expect((await flag(addDays(today, 1601))).size).toBe(0);
     await api('arjunU', 'post', '/people/me/disability/withdraw').expect(200);
     expect((await api('diversityA', 'get', '/people/disability').expect(200)).body).toEqual([]);
+    expect((await flag(today)).size).toBe(0);
     expect((await audits('employee.disability.declared')).length + (await audits('employee.disability.verified')).length + (await audits('employee.disability.withdrawn')).length).toBe(3);
     expect(await audits('employee.disability.list_viewed')).toHaveLength(2);
   });

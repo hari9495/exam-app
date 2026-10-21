@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { esiPwdFlags } from '../people-extra/esi-flag';
 import { has, tenantWide, type ScopeUser, type Viewer } from '../access/scope';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { RuleError } from '../rules-engine/conditions';
@@ -265,7 +266,7 @@ export class PayStructuresService {
       pf: prof ? prof.pf === 'yes' : d!['IN.PF'] === 'mandatory',
       pfOnActualWage: prof?.pfOnActualWage ?? option?.value === 'yes',
       esi: prof ? (prof.esi as Facts['esi']) : d!['IN.ESI'] === 'excluded' ? 'no' : 'by_wage',
-      pwd: prof?.pwdCeilingConsent ?? false,
+      pwd: (await esiPwdFlags(tx, org, [e.employeeId], on)).has(e.employeeId),
       // The state minimum-wage zone of the place of work (5b-D1); the skill class is not on the record yet, so the lowest class applies.
       zone: loc.minWageZone,
       skill: a.skillClass,
@@ -447,7 +448,7 @@ export class PayStructuresService {
   }
 
   private profileView(r: Prisma.EmployeeStatutoryGetPayload<object>) {
-    return { id: r.id, validFrom: iso(r.validFrom), validTo: iso(r.validTo), pf: r.pf, eps: r.eps, pre2014Member: r.pre2014Member, higherPension: r.higherPension, vpfPercent: r.vpfPercent.toFixed(2), pfOnActualWage: r.pfOnActualWage, internationalWorker: r.internationalWorker, esi: r.esi, pwdCeilingConsent: r.pwdCeilingConsent, ptState: r.ptState, lwfState: r.lwfState, reason: r.reason };
+    return { id: r.id, validFrom: iso(r.validFrom), validTo: iso(r.validTo), pf: r.pf, eps: r.eps, pre2014Member: r.pre2014Member, higherPension: r.higherPension, vpfPercent: r.vpfPercent.toFixed(2), pfOnActualWage: r.pfOnActualWage, internationalWorker: r.internationalWorker, esi: r.esi, ptState: r.ptState, lwfState: r.lwfState, reason: r.reason };
   }
 
   statutoryProfile(ctx: TenantContext, user: ScopeUser, employeeId: string) {
@@ -481,7 +482,7 @@ export class PayStructuresService {
           await tx.employeeStatutory.update({ where: { id: open.id }, data: { validTo: asDate(addDays(dto.validFrom, -1)) } });
         }
         const row = await tx.employeeStatutory.create({
-          data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId, employmentId: e.id, validFrom: asDate(dto.validFrom), pf: dto.pf, eps: dto.eps ?? dto.pf === 'yes', pre2014Member: !!dto.pre2014Member, higherPension: !!dto.higherPension, vpfPercent: dto.vpfPercent ?? '0', pfOnActualWage: dto.pfOnActualWage ?? null, internationalWorker: !!dto.internationalWorker, esi: dto.esi, pwdCeilingConsent: !!dto.pwdCeilingConsent, ptState: dto.ptState ?? null, lwfState: dto.lwfState ?? null, reason: dto.reason, createdBy: c.userId },
+          data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId, employmentId: e.id, validFrom: asDate(dto.validFrom), pf: dto.pf, eps: dto.eps ?? dto.pf === 'yes', pre2014Member: !!dto.pre2014Member, higherPension: !!dto.higherPension, vpfPercent: dto.vpfPercent ?? '0', pfOnActualWage: dto.pfOnActualWage ?? null, internationalWorker: !!dto.internationalWorker, esi: dto.esi, ptState: dto.ptState ?? null, lwfState: dto.lwfState ?? null, reason: dto.reason, createdBy: c.userId },
         });
         await audit(tx, c, 'payroll.statutory_profile.saved', 'employee', employeeId, { validFrom: dto.validFrom, pf: dto.pf, esi: dto.esi });
         return this.profileView(row);

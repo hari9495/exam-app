@@ -13,7 +13,8 @@ import { compact, isBic, isIban, splitProblem } from './bank-check';
 // authorisations (PPL-45) and international bank accounts with split pay (PPL-46). Keys, checked against the person:
 //   employee.identity.view     read them (every read is audited: "who accessed my data")
 //   employee.identity.manage   record a check or a re-verification request, add a document, raise a bank change
-//   employee.identity.approve  approve a bank change (never one's own request, never about oneself)
+//   employee.identity.approve  with employee.identity.manage (HR, founder 21 Oct 2026): approve a bank change, never
+//                              one's own request or about oneself. Payroll reads the approved accounts but never decides.
 // The person sees their own work authorisations and bank details, and raises their own bank change.
 
 export const EXTRA_KEYS = [...HISTORY_KEYS, 'employee.disability.manage', 'compliance.officer'] as const;
@@ -185,7 +186,7 @@ export class RecordsService {
         pending: p,
         indianAccounts: india.map((b) => ({ id: b.id, label: `${b.holderName} · XXXX ${b.accountLast4}` })),
         canRequest: self || (has(v, 'employee.identity.manage') && !v.actingForOther),
-        canDecide: Boolean(pending) && !self && own !== e.id && has(v, 'employee.identity.approve') && !v.actingForOther && pending!.requestedBy !== v.userId,
+        canDecide: Boolean(pending) && !self && own !== e.id && has(v, 'employee.identity.approve') && has(v, 'employee.identity.manage') && !v.actingForOther && pending!.requestedBy !== v.userId,
       };
     });
   }
@@ -237,6 +238,7 @@ export class RecordsService {
       if (r.status !== 'pending') throw new ConflictException(`This request is ${r.status}.`);
       if (r.version !== dto.version) throw new ConflictException('Someone else changed this request. Reload it.');
       if (self || r.requestedBy === c.userId) throw new ForbiddenException('Someone else approves this change.');
+      if (!(await this.history.reaches(tx, c, v, 'employee.identity.manage', e.id, todayIst()))) throw new ForbiddenException('HR approves bank changes.');
       if (!dto.approve && !dto.note?.trim()) throw new BadRequestException('Say why it is rejected.');
       const now = new Date();
       if (!dto.approve) {
