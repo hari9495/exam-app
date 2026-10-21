@@ -24,7 +24,8 @@ function Letters() {
   const types = [...new Map((templates.data?.templates ?? []).filter((t) => t.status === 'active').map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
   const choices = (people.data ?? []).filter((x) => x.personId).map((x) => ({ value: x.personId!, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }));
   // Issue letter from the directory: ?people= the employee records chosen there, opened in the bulk issue.
-  const asked = new Set((useSearchParams()?.get('people') ?? '').split(',').filter(Boolean));
+  const params = useSearchParams();
+  const asked = new Set((params?.get('people') ?? '').split(',').filter(Boolean));
   const picked = (people.data ?? []).filter((x) => asked.has(x.id) && x.personId).map((x) => x.personId!);
   const [bulk, setBulk] = useState<boolean | null>(null);
   const bulkOpen = bulk ?? picked.length > 0;
@@ -59,6 +60,7 @@ function Letters() {
             types={types}
             people={choices}
             defaultPicked={picked}
+            defaultType={params?.get('type') ?? null}
             onClose={() => setBulk(false)}
             onIssue={async (letterType, personIds) => {
               const r = await write<{ issued: number; failed: { personId: string; message: string }[] }>('POST', '/letters/bulk', { letterType, personIds });

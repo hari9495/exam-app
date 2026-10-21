@@ -44,7 +44,7 @@ export default function YxRestructureRecordPage() {
         await write('PUT', `/restructures/continuity/${enc(item.id)}`, { done, version: item.version });
         toast({ tone: 'success', title: done ? `“${item.title}” done` : `“${item.title}” reopened` });
       }}
-      onLetters={(people) => router.push(`/yx/people/letters?people=${people.map(enc).join(',')}`)}
+      onLetters={(people, letterType) => router.push(`/yx/people/letters?people=${people.map(enc).join(',')}${letterType ? `&type=${enc(letterType)}` : ''}`)}
     />
   );
 }

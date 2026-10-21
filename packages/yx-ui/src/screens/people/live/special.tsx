@@ -568,8 +568,8 @@ export function LetterEditor(p: LetterEditorProps) {
   );
 }
 
-export function BulkLetterDialog({ types, people, onClose, onIssue, defaultPicked = [] }: { types: Choice[]; people: Choice[]; onClose: () => void; onIssue: (letterType: string, personIds: string[]) => Promise<unknown>; defaultPicked?: string[] }) {
-  const [type, setType] = useState<string | null>(null);
+export function BulkLetterDialog({ types, people, onClose, onIssue, defaultPicked = [], defaultType = null }: { types: Choice[]; people: Choice[]; onClose: () => void; onIssue: (letterType: string, personIds: string[]) => Promise<unknown>; defaultPicked?: string[]; defaultType?: string | null }) {
+  const [type, setType] = useState<string | null>(types.some((t) => t.value === defaultType) ? defaultType : null);
   const [picked, setPicked] = useState<string[]>(defaultPicked);
   return (
     <ConfirmDialog

@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { addDays, asDate, isoDate, todayIst } from '../org-structure/org-validation';
+import { addDays, asDate, IN_STATES, isoDate, todayIst } from '../org-structure/org-validation';
 import { buildViewer, has, tenantWide } from '../access/scope';
 import { displayName, EmployeeHistoryService, RequestUser, Viewer } from '../employee-history/employee-history.service';
 import type { ChangeRequestDto, EmployeeCreateDto } from '../employee-history/dto';
@@ -47,6 +47,8 @@ export interface Plan {
   target: { departmentId?: string; locationId?: string; managerEmployeeId?: string | null; costCentreId?: string };
   defaults: MoveOptions;
   overrides: Override[];
+  /** The letter template for the transfer letters (offered in the bulk issue after approval). */
+  letterType?: string;
 }
 export interface RestructureInput extends Plan {
   kind: Kind;
@@ -55,6 +57,12 @@ export interface RestructureInput extends Plan {
   effectiveDate: string;
   reason: string;
   overrideReason?: string | null;
+  /** The saved draft this plan came from: deleted once sent. */
+  draftId?: string;
+}
+export interface DraftInput {
+  title: string;
+  state: object;
 }
 
 interface Who {
@@ -164,7 +172,7 @@ export class RestructureService {
         };
       const [entities, locations, departments, costCentres, open] = await Promise.all([
         tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, shortName: true } }),
-        tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, legalEntityId: true } }),
+        tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, legalEntityId: true, state: true } }),
         tx.department.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, ownerLegalEntityId: true, appliesToEntities: true } }),
         tx.costCentre.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, legalEntityId: true } }),
         tx.restructure.findMany({ where: { organizationId: org, status: { in: ['pending', 'scheduled'] } }, orderBy: { requestedAt: 'desc' } }),
@@ -172,7 +180,7 @@ export class RestructureService {
       return {
         today,
         entities: entities.map((e) => ({ ...e, people: sum((r) => r.legal_entity_id === e.id) })),
-        locations: locations.map((l) => ({ ...l, people: sum((r) => r.location_id === l.id) })),
+        locations: locations.map((l) => ({ ...l, state: IN_STATES[l.state] ?? l.state, people: sum((r) => r.location_id === l.id) })),
         departments: departments.map(shape('department', 'department_id')),
         masters: [...designations.map(shape('designation', 'designation_id')), ...types.map(shape('employmentType', 'employment_type_id')), ...grades.map(shape('grade', 'grade_id'))],
         costCentres,
@@ -274,8 +282,22 @@ export class RestructureService {
   }
 
   /** Checks for the whole plan: payroll months, and (closing an entity) its last payroll month locked. */
-  private async checks(tx: Tx, c: CompanyContext, h: Head, ents: { from: { id: string; name: string }; into: { id: string; name: string } | null }) {
-    const out: { id: string; title: string; status: 'Ready' | 'Blocked' | 'Done'; note?: string }[] = [];
+  private async checks(tx: Tx, c: CompanyContext, h: Head, ents: { from: { id: string; name: string }; into: { id: string; name: string } | null }, people: Who[]) {
+    const out: { id: string; title: string; status: 'Ready' | 'Blocked' | 'Done'; note?: string; payrollRunId?: string; month?: string }[] = [];
+    const org = c.organizationId;
+    if (ents.into) {
+      // What moves with the people (the person record stays the same): open journeys, approvals and service-desk cases.
+      const ids = people.filter((w) => !this.optionsFor(h, w.employeeId).leaveOut).map((w) => w.employeeId);
+      const persons = (await tx.employee.findMany({ where: { organizationId: org, id: { in: ids } }, select: { personId: true } })).map((e) => e.personId);
+      const [journeys, approvals, cases] = await Promise.all([
+        tx.journey.count({ where: { organizationId: org, personId: { in: persons }, status: 'active' } }),
+        tx.wfRequest.count({ where: { organizationId: org, subjectPersonId: { in: persons }, status: 'pending' } }),
+        tx.sdTicket.count({ where: { organizationId: org, systemState: { notIn: ['solved', 'closed'] }, OR: [{ requesterPersonId: { in: persons } }, { requestedForPersonId: { in: persons } }] } }),
+      ]);
+      const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+      out.push({ id: 'journeys', title: `${n(journeys, 'open onboarding or exit journey', 'open onboarding and exit journeys')} will move with them`, status: 'Ready' });
+      out.push({ id: 'approvals', title: `${n(approvals, 'approval', 'approvals')} and ${n(cases, 'case', 'cases')} will move with them`, status: 'Ready' });
+    }
     const eff = h.effectiveDate;
     for (const e of [ents.from, ...(ents.into ? [ents.into] : [])]) {
       const locked = await this.lockedOn(tx, c, e, eff);
@@ -288,7 +310,11 @@ export class RestructureService {
       if (!p) out.push({ id: 'last', title: `No ${monthOf(last)} payroll of ${ents.from.name} in YukthiX`, status: 'Ready' });
       else if (isoDate(p.periodEnd) >= eff) out.push({ id: 'last', title: `${ents.from.name} closes at the end of a payroll month`, status: 'Blocked', note: `Choose ${showDay(addDays(isoDate(p.periodEnd), 1))}, the first day after its ${monthOf(isoDate(p.periodStart))} payroll.` });
       else if (p.stage === 'locked' || p.stage === 'filed') out.push({ id: 'last', title: `Last payroll month (${monthOf(last)}) of ${ents.from.name} run and locked`, status: 'Done' });
-      else out.push({ id: 'last', title: `Last payroll month (${monthOf(last)}) of ${ents.from.name} run and locked`, status: 'Blocked', note: `${monthOf(last)} payroll is not locked yet. Lock it first.` });
+      else {
+        // The payroll to open from the blocked row: the latest regular run of that month.
+        const run = await tx.payrollRun.findFirst({ where: { organizationId: org, legalEntityId: ents.from.id, periodStart: p.periodStart, runType: 'regular' }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+        out.push({ id: 'last', title: `Last payroll month (${monthOf(last)}) of ${ents.from.name} run and locked`, status: 'Blocked', note: `${monthOf(last)} payroll is not locked yet. Lock it first.`, month: MONTHS[Number(last.slice(5, 7)) - 1], ...(run ? { payrollRunId: run.id } : {}) });
+      }
     }
     return out;
   }
@@ -521,7 +547,7 @@ export class RestructureService {
       reason: dto.reason.trim(),
       overrideReason: dto.overrideReason?.trim() || null,
       requestedBy,
-      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [] },
+      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [], ...(dto.letterType ? { letterType: dto.letterType } : {}) },
     };
   }
 
@@ -531,7 +557,7 @@ export class RestructureService {
     await tx.restructure.create({ data: { id: h.id, organizationId: c.organizationId, kind: h.kind, fromEntityId: h.fromEntityId, intoEntityId: h.intoEntityId, effectiveOn: asDate(h.effectiveDate), plan: h.plan as unknown as Prisma.InputJsonObject, reason: h.reason, requestedBy: c.userId! } });
     const people = await this.who(tx, c, h);
     if (ents.into) await this.checkMappings(tx, c, h, ents.into, people);
-    const checks = await this.checks(tx, c, h, ents);
+    const checks = await this.checks(tx, c, h, ents, people);
     const rows = await this.movePeople(tx, c, h, people, v, null);
     return { people: rows.map(({ newEmploymentId: _n, changeId: _c, ...r }) => r), checks, counts: { ready: rows.filter((r) => r.status === 'ready').length, failed: rows.filter((r) => r.status === 'failed').length, leftOut: rows.filter((r) => r.status === 'left_out').length } };
   }
@@ -562,8 +588,55 @@ export class RestructureService {
           return { organizationId: c.organizationId, restructureId: id, employeeId: p.employeeId, employmentId: p.employmentId, options: opts as unknown as Prisma.InputJsonObject, status: leaveOut ? 'left_out' : 'pending', failReason: leaveOut ? `Left out: ${leaveOut}`.slice(0, 500) : null };
         }),
       });
+      if (dto.draftId) await tx.restructureDraft.deleteMany({ where: { organizationId: c.organizationId, id: dto.draftId, createdBy: c.userId! } });
       await audit(tx, c, 'restructure.requested', 'restructure', id, { kind: h.kind, fromEntityId: h.fromEntityId, intoEntityId: h.intoEntityId, effectiveDate: h.effectiveDate, people: people.length });
       return { id };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ drafts ("Save and exit")
+
+  /** One of the signed-in person's own drafts; anyone else's (or another company's) is never found. */
+  private async draftOr404(tx: Tx, c: CompanyContext, id: string) {
+    const d = await tx.restructureDraft.findFirst({ where: { organizationId: c.organizationId, id, createdBy: this.me(c) } });
+    if (!d) throw new NotFoundException('No such draft.');
+    return d;
+  }
+  private me(c: CompanyContext) {
+    if (!c.userId) throw new ForbiddenException('Sign in again.');
+    return c.userId;
+  }
+
+  drafts(ctx: TenantContext) {
+    return this.history.run(ctx, (tx, c) => tx.restructureDraft.findMany({ where: { organizationId: c.organizationId, createdBy: this.me(c) }, orderBy: { updatedAt: 'desc' }, take: 50, select: { id: true, title: true, updatedAt: true } }));
+  }
+
+  draft(ctx: TenantContext, id: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const d = await this.draftOr404(tx, c, id);
+      return { id: d.id, title: d.title, updatedAt: d.updatedAt, state: d.payload };
+    });
+  }
+
+  /** Saves the wizard as it was left. Its contents are only a starting point: sending checks the whole plan again. */
+  saveDraft(ctx: TenantContext, id: string | null, dto: DraftInput) {
+    const payload = JSON.parse(JSON.stringify(dto.state)) as Prisma.InputJsonObject;
+    if (JSON.stringify(payload).length > 256_000) throw new BadRequestException('The draft is too large to save.');
+    return this.history.run(ctx, async (tx, c) => {
+      const select = { id: true, title: true, updatedAt: true } as const;
+      if (id) {
+        await this.draftOr404(tx, c, id);
+        return tx.restructureDraft.update({ where: { id }, data: { title: dto.title.trim(), payload }, select });
+      }
+      if ((await tx.restructureDraft.count({ where: { organizationId: c.organizationId, createdBy: this.me(c) } })) >= 20) throw new BadRequestException('You have 20 saved drafts. Delete one first.');
+      return tx.restructureDraft.create({ data: { organizationId: c.organizationId, createdBy: this.me(c), title: dto.title.trim(), payload }, select });
+    });
+  }
+
+  deleteDraft(ctx: TenantContext, id: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      await this.draftOr404(tx, c, id);
+      await tx.restructureDraft.delete({ where: { id } });
     });
   }
 

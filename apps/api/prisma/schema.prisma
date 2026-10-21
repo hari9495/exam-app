@@ -10081,6 +10081,20 @@ model ContinuityItem {
   @@map("continuity_items")
 }
 
+/// PPL-09 "Save and exit": a half-planned restructure, seen and changed only by its creator. RLS in migration 20261204000001_restructure_drafts.
+model RestructureDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  title          String   @db.VarChar(200)
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy, updatedAt], map: "restructure_drafts_owner_idx")
+  @@map("restructure_drafts")
+}
+
 // ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
 
 model Nudge {

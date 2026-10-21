@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { RestructureWizard } from './changes';
-import { RestructureRecord, shortReason, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
+import { quarterOf, RestructureRecord, shortReason, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
 
 // People › Restructure (PPL-09) and the continuity checklist (PPL-10) with the live app's data.
 
@@ -36,7 +36,7 @@ describe('Restructure wizard (PPL-09)', () => {
         { id: 'tn', name: 'Kaveri TN', shortName: 'TN', people: 2 },
       ],
       locations: [
-        { id: 'hsr', name: 'Hosur plant', legalEntityId: 'tn', people: 2 },
+        { id: 'hsr', name: 'Hosur plant', legalEntityId: 'tn', people: 2, state: 'Karnataka' },
         { id: 'blr', name: 'Bengaluru', legalEntityId: 'kf', people: 152 },
       ],
       departments: [],
@@ -118,6 +118,67 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(screen.getByRole('combobox', { name: 'Department in Kaveri Foods for Quality' })).toHaveTextContent('quality');
     expect(screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' })).toHaveTextContent('Choose…');
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  const DRAFT = { id: 'd1', state: { kind: 'merge' as const, fromEntityId: 'tn', intoEntityId: 'kf', effectiveDate: '2026-11-01', locationMap: { hsr: 'blr' }, reason: 'Merger', step: 'close' } };
+
+  it('continues a saved draft; step 3 lists what moves with the people, opens the blocked payroll and itemises what follows from the plan', async () => {
+    const l = live({
+      draft: DRAFT,
+      letterTypes: [{ value: 'appointment', label: 'Appointment letter' }, { value: 'transfer', label: 'Transfer letter' }],
+      onSaveDraft: vi.fn(async () => undefined),
+      onOpenPayroll: vi.fn(),
+      onPreview: vi.fn(async (): Promise<RestructurePreview> => ({
+        people: [person('Divya')],
+        checks: [
+          { id: 'journeys', title: '3 open onboarding and exit journeys will move with them', status: 'Ready' },
+          { id: 'approvals', title: '11 approvals and 2 cases will move with them', status: 'Ready' },
+          { id: 'last', title: 'Last payroll month (October 2026) of Kaveri TN run and locked', status: 'Blocked', note: 'October 2026 payroll is not locked yet. Lock it first.', payrollRunId: 'run1', month: 'October' },
+        ],
+        counts: { ready: 1, failed: 0, leftOut: 0 },
+      })),
+    });
+    wrap(<RestructureWizard live={l} />);
+    expect(await screen.findByText('3 open onboarding and exit journeys will move with them', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText('11 approvals and 2 cases will move with them')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open October payroll' }));
+    expect(l.onOpenPayroll).toHaveBeenCalledWith('run1');
+    // After approval: the month, the quarter and the state come from the plan (move on 1 Nov: October, Q3, Karnataka).
+    expect(screen.getByText('Final PF and ESI challans for October filed')).toBeInTheDocument();
+    expect(screen.getByText('TDS return for Q3 (Oct–Dec) filed')).toBeInTheDocument();
+    expect(screen.getByText('Part-year Form 16 from Kaveri TN for moved staff')).toBeInTheDocument();
+    expect(screen.getByText('Karnataka professional tax final return filed')).toBeInTheDocument();
+    expect(screen.getByText('PF, ESI and PT registrations surrendered')).toBeInTheDocument();
+    expect(screen.queryByText(/Tamil Nadu|September/)).toBeNull();
+    // Letters: the transfer letter template starts chosen; bulk issue after approval.
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('combobox', { name: /Letter template/ })).toHaveTextContent('Transfer letter');
+    expect(screen.getByText(/opens the bulk issue for the 1 people who moved/)).toBeInTheDocument();
+    // Save and exit keeps the wizard as it was left, on the same draft.
+    await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
+    expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'merge', fromEntityId: 'tn', intoEntityId: 'kf', effectiveDate: '2026-11-01', locationMap: { hsr: 'blr' }, reason: 'Merger', letterType: 'transfer', step: 'letters' }), 'Merge Kaveri TN into Kaveri Foods', 'd1');
+  });
+
+  it('the start page lists the person’s saved drafts: continue one, or delete it after confirming', async () => {
+    const l = live({ drafts: [{ id: 'd1', title: 'Merge Kaveri TN into Kaveri Foods', updatedAt: '2026-10-20T10:00:00Z' }], onContinueDraft: vi.fn(), onDeleteDraft: vi.fn(async () => undefined), onSaveDraft: vi.fn(async () => undefined) });
+    wrap(<RestructureWizard live={l} />);
+    const list = screen.getByRole('list', { name: 'Saved drafts' });
+    expect(within(list).getByText('Merge Kaveri TN into Kaveri Foods')).toBeInTheDocument();
+    await ue.click(within(list).getByRole('button', { name: 'Continue' }));
+    expect(l.onContinueDraft).toHaveBeenCalledWith('d1');
+    await ue.click(within(list).getByRole('button', { name: 'Delete' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete draft' }));
+    await waitFor(() => expect(l.onDeleteDraft).toHaveBeenCalledWith('d1'));
+    // A new plan saved from the start: no draft id yet.
+    await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
+    expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'merge', fromEntityId: null, step: 'scope' }), 'Restructure', null);
+  });
+
+  it('names the financial-year quarter of a day', () => {
+    expect(quarterOf(new Date(2026, 9, 31))).toBe('Q3 (Oct–Dec)');
+    expect(quarterOf(new Date(2026, 8, 30))).toBe('Q2 (Jul–Sep)');
+    expect(quarterOf(new Date(2027, 0, 5))).toBe('Q4 (Jan–Mar)');
+    expect(quarterOf(new Date(2026, 3, 1))).toBe('Q1 (Apr–Jun)');
   });
 
   it('says each reason in plain words, never a permission key', () => {
