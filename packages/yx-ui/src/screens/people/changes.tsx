@@ -6,7 +6,7 @@ import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -25,7 +25,7 @@ import { LiveIncrementWizard, type LiveIncrement } from './increment';
 import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -119,7 +119,7 @@ export interface ChangeActionSheetProps {
 
 /** The live app's Change action page (design audit step 3): pick a person, start the change; what waits for approval. */
 export interface LiveChangeAction {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   people: { id: string; name: string; role: string; department: string }[];
   waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
@@ -135,7 +135,9 @@ function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveC
   return (
     <PeopleFrame active="Change action" persona={persona}>
       <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the changes" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the changes" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <div className="yx-ppl__grid2">
@@ -418,7 +420,7 @@ function EffectiveCell({ date, today }: { date: Date; today: Date }) {
 // PPL-05
 /** The live app's scheduled changes (design audit step 3). */
 export interface LiveScheduled {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   onEdit?: (id: string) => void;
   onReview?: (id: string) => void;
@@ -501,20 +503,24 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           ) : undefined
         }
       />
-      <div className="yx-ppl__filterbar">
-        <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
+      {live?.state !== 'no-access' && (
+        <div className="yx-ppl__filterbar">
+          <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
         <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>
           {pendingOnly && <Icon icon={Check} size="sm" />}
-          Only pending approval ({pending.length})
-        </button>
-      </div>
+            Only pending approval ({pending.length})
+          </button>
+        </div>
+      )}
       {showPay && <Text size="sm" tone="secondary" as="p">Pay is showing. Each time you show it is recorded.</Text>}
       {revision && earlier && (
         <InlineAlert tone="warning" title={`${revision.name} has two changes`} actions={<Button size="sm">Open revision</Button>}>
           His {revision.summary.replace('Market correction ', '')} revision on {formatDate(revision.effective)} is worked out on his pay after the {formatDate(earlier.effective)} {earlier.type.toLowerCase()}. Check the amounts before it applies.
         </InlineAlert>
       )}
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the scheduled changes" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the scheduled changes" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading scheduled changes" />
@@ -540,6 +546,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
+          {...(live ? { onExport: exportCsv('scheduled-changes', shown, cols) } : {})}
           empty={empty}
           rowButtons={edit}
           rowActions={(r) => (

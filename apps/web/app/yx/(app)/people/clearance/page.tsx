@@ -4,6 +4,7 @@ import { useToast } from '@yukthix/ui';
 import { ClearanceSignoffs } from '@yukthix/ui/frame';
 import type { MyClearanceItem } from '@yukthix/ui/lifecycle';
 import { useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { loadState } from '../../../../../lib/yx-org';
 
 // People › Clearance (PPL-20, design audit step 3; design §10.6): sign-offs for leavers that I or my team own.
 export default function YxClearancePage() {
@@ -13,7 +14,7 @@ export default function YxClearancePage() {
   return (
     <ClearanceSignoffs
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         rows: data.data?.rows ?? [],
         onSignOff: async (item, x) => {

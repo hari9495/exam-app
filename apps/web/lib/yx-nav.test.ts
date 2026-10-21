@@ -32,8 +32,18 @@ describe('buildNav: areas', () => {
 });
 
 describe('buildNav: People', () => {
+  it('payroll does no HR work: no Probation, Change action, Bulk changes or Import (founder 21 Oct 2026)', () => {
+    const n = nav(['employee.profile.view', 'employee.change.approve', 'employee.salary.manage', 'payroll.fnf.manage']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Scheduled', 'Job history', 'F&F']);
+  });
+
+  it('a menu item never shows where the page says no access: Possible same person only when the server counts it', () => {
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage']), 'people')).not.toContain('Possible same person');
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true }), 'people')).toContain('Possible same person');
+  });
+
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
-    const n = nav(['employee.profile.view', 'employee.change.manage']);
+    const n = nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true });
     expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');

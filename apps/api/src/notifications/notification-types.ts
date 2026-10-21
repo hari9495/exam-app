@@ -88,6 +88,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },
+  // PLT-02 Team today: a manager or HR reminded you about something still waiting (today: checking in).
+  { type: 'nudge.reminder', group: 'reminders', label: 'Your manager or HR reminded you about something waiting' },
   // M05 E3: payment of approved claims.
   { type: 'expense.payment.update', group: 'reminders', label: 'An expense claim was paid, or its payment did not go through' },
 ];

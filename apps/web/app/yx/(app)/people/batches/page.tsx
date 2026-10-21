@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@yukthix/ui';
 import { PreboardingBatches } from '@yukthix/ui/frame';
 import { AddMembersDialog, BatchDialog, type Batch, type JoinerBoard } from '@yukthix/ui/lifecycle';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { batchRows } from '../../../../../lib/yx-onboarding';
 
@@ -34,7 +34,7 @@ export default function YxBatchesPage() {
     <PreboardingBatches
       rows={batchRows(batches, joiners, places.entities)}
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         today: day(today),
         members: Object.fromEntries(batches.map((b) => [b.id, b.members.map((m) => ({ id: m.id, name: m.name, status: m.status, joiningOn: day(m.joiningOn) }))])),

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
 import { IssuedLettersRegister } from '@yukthix/ui/frame';
 import { BulkLetterDialog, type Letter, type LetterTemplates } from '@yukthix/ui/lifecycle';
-import { useYxPermissions } from '../../../../../lib/yx-org';
+import { useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useLetterDownload, useLife, useLifeWrite, usePdfPost } from '../../../../../lib/yx-lifecycle';
 import { usePeople } from '../../../../../lib/yx-people';
 import { verifyUrl } from '../../../../../lib/yx-pay';
@@ -35,7 +35,7 @@ function Letters() {
     <IssuedLettersRegister
       rows={[]}
       live={{
-        state: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
+        state: loadState(rows),
         onRetry: () => void rows.refetch(),
         rows: rows.data ?? [],
         verifyUrl,

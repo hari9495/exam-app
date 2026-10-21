@@ -7,7 +7,7 @@ import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -22,7 +22,7 @@ import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noticeOutcome, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
-import { DueCountdown, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesCard } from './live/special';
 import type { AbscondingRow, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
@@ -156,7 +156,7 @@ function StageCell({ r, today, holidays }: { r: ExitRow; today: Date; holidays?:
 // PPL-19
 /** The live app's exit cases (design audit step 3). */
 export interface LiveExits {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   onOpen: (id: string) => void;
   onStart?: () => void;
@@ -187,7 +187,9 @@ export function ExitCasesList({ rows, persona = 'hr', state: ownState = 'ready',
   return (
     <PeopleFrame active="Exit cases" persona={persona}>
       <PageHeader title="Exit cases" description="From approval and notice to clearance, exit interview, F&F and documents." actions={live ? (live.onStart ? <Button variant="primary" onClick={live.onStart}>Start exit</Button> : undefined) : hr ? <Button variant="primary">Start exit</Button> : undefined} />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the exit cases" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the exit cases" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : narrow && state === 'ready' ? (
         shown.length === 0 ? (
@@ -214,12 +216,13 @@ export function ExitCasesList({ rows, persona = 'hr', state: ownState = 'ready',
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
-          state={state}
+          state={state === 'loading' ? 'loading' : 'ready'}
           defaultSort={{ key: 'lwd', dir: 'asc' }}
           onRowClick={(r) => live?.onOpen(r.id)}
           rowButtons={open}
-          // Live: F&F opens inside the case; export of exit cases is not in the live app yet (left out).
+          // Live: F&F opens inside the case.
           rowActions={live ? undefined : () => <MenuItem>Open F&F</MenuItem>}
+          {...(live && hr ? { onExport: exportCsv('exit-cases', shown, cols) } : {})}
           empty={empty}
           onExport={hr && !live ? () => {} : undefined}
         />
@@ -648,7 +651,7 @@ type Clear = (typeof CLEARANCE)[number];
 
 /** The live app's clearance (design audit step 3): sign-offs for leavers that I or my team own. */
 export interface LiveClearance {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: MyClearanceItem[];
   onSignOff: ExitCaseScreenProps['onSignOff'];
@@ -1091,7 +1094,7 @@ export function DeathInServiceFlow({ current = 'payees', noNomination = false }:
 
 /** The live app's absconding timelines (design audit step 3): the designed timeline, one person at a time. */
 export interface LiveAbsconding {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: AbscondingRow[];
   onStart: () => void;
@@ -1124,7 +1127,9 @@ function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbscon
   }));
   return (
     <PeopleFrame active="Exit cases">
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the absconding timelines" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the absconding timelines" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live.state === 'loading' ? (
         <ListSkeleton label="Loading absconding timelines" />

@@ -117,12 +117,15 @@ export function ErrorState({ title, description, onRetry, reference }: ErrorStat
 }
 
 /** Page or section the user cannot open: say who can grant access (§26). */
-export function NoAccessState({ grantedBy, what = 'this page' }: { grantedBy: ReactNode; what?: ReactNode }) {
+/** `grantedBy` names who can give access ("HR"); `note` is an optional extra sentence (why, or what it needs). */
+export function NoAccessState({ grantedBy, what = 'this page', note }: { grantedBy: ReactNode; what?: ReactNode; note?: ReactNode }) {
   return (
     <div className="yx-empty">
       <Icon icon={Lock} size="md" />
       <p className="yx-empty__title">You don't have access to {what}</p>
-      <p className="yx-empty__desc">Ask {grantedBy} to give you access.</p>
+      <p className="yx-empty__desc">
+        {note ? <>{note} </> : null}Ask {grantedBy} to give you access.
+      </p>
     </div>
   );
 }
