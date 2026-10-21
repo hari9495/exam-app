@@ -1,19 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { TeamLeaveScreen, type TeamCalendar } from '@yukthix/ui/time';
+import { TeamLeaveCalendarScreen, type TeamCalendar } from '@yukthix/ui/time';
 import { timeState, todayIndia, useTime } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
-const plus = (iso: string, n: number) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
-
-// Team › Leave calendar (TIM-20, YX-AT-14): a manager's team, HR's people in leave.view scope. Approving happens in
-// the shared Approvals inbox (P03).
+// Leave calendar (TIM-20, the designed screen; YX-AT-14): a manager's team, HR's people in leave.view scope. The screen
+// asks for the range on screen (the weeks or the month); answering happens in the shared Approvals inbox (P03).
 export default function YxTeamLeavePage() {
   const sp = useScopeParams();
   const router = useRouter();
-  const [from, setFrom] = useState(todayIndia());
-  const cal = useTime<TeamCalendar>(withParams(`/team/calendar?from=${from}&to=${plus(from, 27)}`, sp.entity));
-  return <TeamLeaveScreen state={timeState(cal)} onRetry={() => void cal.refetch()} data={cal.data ?? null} onRange={setFrom} approvalsHref="/yx/approvals" onNavigate={(href) => router.push(href)} />;
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+  const cal = useTime<TeamCalendar>(range ? withParams(`/team/calendar?from=${range.from}&to=${range.to}`, sp.entity) : null);
+  // Keep the last range on screen while the next one loads (no blank page on Next week).
+  const [last, setLast] = useState<TeamCalendar | null>(null);
+  useEffect(() => {
+    if (cal.data) setLast(cal.data);
+  }, [cal.data]);
+  return (
+    <TeamLeaveCalendarScreen
+      live={{
+        state: cal.isError ? timeState(cal) : (cal.data ?? last) ? 'ready' : 'loading',
+        onRetry: () => void cal.refetch(),
+        data: cal.data ?? last,
+        today: todayIndia(),
+        onRange: (from, to) => setRange((r) => (r?.from === from && r.to === to ? r : { from, to })),
+        onReview: () => router.push('/yx/approvals'),
+      }}
+    />
+  );
 }

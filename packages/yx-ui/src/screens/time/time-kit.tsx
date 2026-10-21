@@ -37,7 +37,7 @@ import './time-kit.css';
 
 export type TimeNav =
   | 'Today' | 'Muster' | 'Exceptions' | 'Roster' | 'Team leave' | 'Block leave' | 'Office days' | 'Leave calendar' | 'Requests' | 'Year-end' | 'Periods' | 'Reports'
-  | 'My attendance' | 'My leave' | 'My shifts' | 'My timesheet' | 'My office days'
+  | 'My attendance' | 'My leave' | 'My shifts' | 'My timesheet' | 'My office days' | 'My overtime'
   | 'Shifts & patterns' | 'Leave types & policies' | 'Holiday calendars' | 'Locations & geofences' | 'Devices & kiosks';
 
 /**
@@ -100,7 +100,7 @@ export const SOURCE_LABEL: Record<Punch['source'], string> = {
   desktop: 'Desktop agent',
   field: 'Field visit',
 };
-const KIND_LABEL: Record<Punch['kind'], string> = { in: 'In', out: 'Out', break_start: 'Break start', break_end: 'Break end' };
+export const KIND_LABEL: Record<Punch['kind'], string> = { in: 'In', out: 'Out', break_start: 'Break start', break_end: 'Break end' };
 /** Sources with no GPS: a fixed reader, kiosk, Teams or desktop agent gets no distance, only the site it is fixed at. */
 const NO_VERDICT: Punch['source'][] = ['biometric', 'kiosk', 'teams', 'desktop'];
 /** Site name from a punch's place ("Chennai office · Gate 2 reader" → "Chennai office"). */
@@ -109,7 +109,8 @@ const siteOf = (where: string) => LOCATIONS.find((l) => where.startsWith(l.name)
 function verdictOf(p: Punch): { label: string; tone: BadgeTone } | null {
   const site = siteOf(p.where);
   if (NO_VERDICT.includes(p.source)) return site ? { label: `At ${site}`, tone: 'success' } : null;
-  if (p.verdict === 'inside') return { label: `At ${site ?? 'the office'}${p.distanceM ? ` (${formatDistance(p.distanceM)} from centre)` : ''}`, tone: 'success' };
+  // A live site is named by its punch ("Hosur plant"), not the sample locations.
+  if (p.verdict === 'inside') return { label: `At ${site ?? (p.where.split(' · ')[0] || 'the office')}${p.distanceM ? ` (${formatDistance(p.distanceM)} from centre)` : ''}`, tone: 'success' };
   if (p.verdict === 'outside') return { label: `Outside the office${p.distanceM ? ` (${formatDistance(p.distanceM)} away)` : ''}`, tone: 'danger' };
   if (p.verdict === 'network') return { label: 'Office network', tone: 'success' };
   return { label: 'Location recorded', tone: 'info' };
@@ -454,8 +455,8 @@ export interface ClockCardProps {
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
   /** Live app: records the punch on the server; the card shows the refusal, the parent reloads the day. */
-  onPunch?: (kind: 'in' | 'out') => Promise<{ accepted: boolean; message: string }>;
-  /** Breaks are punched (Start break / End break). The live app has no break punch yet. */
+  onPunch?: (kind: Punch['kind']) => Promise<{ accepted: boolean; message: string }>;
+  /** Breaks are punched (Start break / End break). */
   breaks?: boolean;
   /** Where "Today's punches" opens on the home card. */
   punchesHref?: string;
@@ -463,6 +464,10 @@ export interface ClockCardProps {
   lateMarksBefore?: number;
   /** Not a working day for this person: "On leave today", "Weekly off today", "Holiday: Diwali". No clock-in. */
   dayOff?: string;
+  /** Today is an approved work-from-home day: the badge shows and the place never blocks clock-in. */
+  wfhToday?: boolean;
+  /** The shift allows clocking in again after clocking out (split shifts, field staff; HR turns it on). */
+  reclockIn?: boolean;
 }
 
 // A break is normal, not a risk: neutral.
@@ -493,14 +498,14 @@ export function ClockCard(p: ClockCardProps) {
     dayOff,
   } = p;
   const [refused, setRefused] = useState<string | null>(null);
-  const [punching, setPunching] = useState(false);
+  const [punching, setPunching] = useState<Punch['kind'] | null>(null);
   const [stateInner, setStateInner] = useState<ClockState>(p.defaultState ?? 'not_in');
   const state = p.state ?? stateInner;
   const [punchesInner, setPunchesInner] = useState<Punch[]>(p.defaultPunches ?? []);
   const punches = p.punches ?? punchesInner;
   const [noteOpen, setNoteOpen] = useState(defaultNoteOpen);
   const [note, setNote] = useState('');
-  const [workMode, setWorkMode] = useState(defaultWorkMode);
+  const [workMode, setWorkMode] = useState(p.wfhToday ? 'wfh' : defaultWorkMode);
   const [tick, setTick] = useState(0);
   const [announce, setAnnounce] = useState('');
   const [rechecked, setRechecked] = useState('');
@@ -529,6 +534,7 @@ export function ClockCard(p: ClockCardProps) {
     mode: workMode === 'office' ? mode : 'field',
     deviceApproved,
     outAt,
+    reclockIn: p.reclockIn,
   };
   const evaluated = evaluateClock(ctx);
   const { actions, block } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
@@ -565,14 +571,14 @@ export function ClockCard(p: ClockCardProps) {
 
   const act = (a: ClockAction) => {
     const kind: Punch['kind'] = a === 'clock_in' ? 'in' : a === 'clock_out' ? 'out' : a === 'start_break' ? 'break_start' : 'break_end';
-    if (p.onPunch && (kind === 'in' || kind === 'out')) {
+    if (p.onPunch) {
       setRefused(null);
-      setPunching(true);
+      setPunching(kind);
       void p
         .onPunch(kind)
         .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
         .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
-        .finally(() => setPunching(false));
+        .finally(() => setPunching(null));
       return;
     }
     const next = nextClockState(state, a);
@@ -624,7 +630,7 @@ export function ClockCard(p: ClockCardProps) {
             {workMode === 'wfh' && <Badge tone="info">Work from home</Badge>}
             {workMode === 'on_duty' && <Badge tone="info">On duty</Badge>}
           </div>
-          {workMode !== 'office' && state === 'not_in' && (
+          {workMode !== 'office' && state === 'not_in' && !p.wfhToday && (
             <p className="yx-tim-row">
               <span className="yx-tim-muted">
                 {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {ME.manager}'s approval · {usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of 4 used this month
@@ -678,15 +684,18 @@ export function ClockCard(p: ClockCardProps) {
 
       {!dayOff && <div className="yx-tim-clock__actions">
         {state === 'not_in' && (
-          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching} onClick={() => primary && act(primary)}>Clock in</Button>
+          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in</Button>
+        )}
+        {state === 'out' && p.reclockIn && (
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in again</Button>
         )}
         {(state === 'working' || state === 'break') && (
-          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching} onClick={() => act('clock_out')}>Clock out</Button>
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching === 'out'} onClick={() => act('clock_out')}>Clock out</Button>
         )}
         {breaks && (state === 'working' || state === 'break') && (
-          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
+          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
-        {state === 'out' && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
+        {state === 'out' && !p.reclockIn && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}
         {canNote && !noteOpen && <Button size="lg" icon={StickyNote} onClick={() => setNoteOpen(true)}>{note ? 'Edit note' : 'Add note'}</Button>}
         {state === 'break' && primary !== 'clock_out' && <span className="yx-tim-muted">End your break to clock out</span>}
@@ -801,8 +810,8 @@ export function AttendanceMonth({
 const LEGEND_ORDER: DayCode[] = ['P', 'L', 'HD', 'A', 'LOP', 'CL', 'EL', 'SL', 'H', 'WO', 'WFH', 'OD', 'R', 'MP'];
 
 /** Legend with counts per code and the month totals. */
-export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean }) {
-  const s = monthSummary(days);
+export function AttendanceLegend({ days, onFixDay, locked, live }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean; /** Live month: counted to today, without the story company's late-mark allowance. */ live?: boolean }) {
+  const s = monthSummary(days, live ? new Date() : undefined);
   const short = (d: AttendanceDay) => formatDate(d.date).replace(/^0/, '').replace(/ \d{4}$/, '');
   // Today's late check-in is a late mark too (the "Late days" KPI counts it), though its cell reads "Today".
   const legendCount = (c: DayCode) => (s.counts[c] ?? 0) + (c === 'L' ? days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length : 0);
@@ -815,7 +824,7 @@ export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceD
           { label: 'Unpaid leave days', value: s.lop },
           // An absence in an open month can still be fixed: not unpaid until the month locks.
           ...(s.absent ? [{ label: 'Absent', value: s.absent, note: 'not fixed yet' }] : []),
-          { label: 'Late days', value: s.lateMarks, note: '3 allowed a month' },
+          { label: 'Late days', value: s.lateMarks, note: live ? undefined : '3 allowed a month' },
           { label: 'Overtime', value: s.otMin ? fmtDuration(s.otMin) : 'None', note: 'approved only' },
           ...(s.compOffMin ? [{ label: 'Taken as comp-off', value: fmtDuration(s.compOffMin), note: 'overtime not paid' }] : []),
           ...(locked ? [] : [{
@@ -884,6 +893,8 @@ export interface DayCardBodyProps {
    * comp-off; the request withdrawn; the exception resolved. Set it after the confirm step succeeds.
    */
   outcome?: { ot?: 'approved' | 'rejected' | 'comp-off'; request?: 'withdrawn'; exception?: 'resolved' };
+  /** Live app: real punches and shift only, no story facts (map, OT review row, late-mark allowance); buttons only with an action. */
+  live?: boolean;
 }
 
 /**
@@ -915,13 +926,14 @@ export function DayCardBody({
   onRejectOvertime,
   onCompOff,
   outcome = {},
+  live,
 }: DayCardBodyProps) {
   const monthLong = day.date.toLocaleDateString('en-IN', { month: 'long' });
   const monthYear = day.date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const openPayroll = latePayrollMonth();
+  const openPayroll = live ? new Date(day.date.getFullYear(), day.date.getMonth() + 1, 1).toLocaleDateString('en-IN', { month: 'long' }) : latePayrollMonth();
   const first = person.split(' ')[0];
-  const own = person === ME.name;
-  const waitingOn = approver ?? (own ? ME.manager : ME.name);
+  const own = !live && person === ME.name;
+  const waitingOn = approver ?? (live ? 'approval' : own ? ME.manager : ME.name);
 
   // Only a missing punch or an absence needs fixing; a late day with both punches has nothing to fix.
   const resolved = outcome.exception === 'resolved';
@@ -948,12 +960,12 @@ export function DayCardBody({
   const otValue = open || noData ? '—' : day.otMin ? `${fmtDuration(day.otMin)} · ${otState}` : 'None';
   const lateValue = noData || offDay ? '—' : day.lateMin ? `${day.lateMin} min` : 'No';
   // The OT review row for this day (category, pre-approval, quarter hours): the facts the approve decision needs.
-  const otRow = OT_ROWS.find((r) => r.person === person && r.date.toDateString() === day.date.toDateString());
+  const otRow = live ? undefined : OT_ROWS.find((r) => r.person === person && r.date.toDateString() === day.date.toDateString());
 
   const needsFix = (day.code === 'MP' || day.code === 'A') && !resolved;
   // In a locked month, an unpaid or missing day can still change, through a late request.
   const canLate = locked && !resolved && (day.code === 'MP' || day.code === 'A' || day.code === 'LOP');
-  const lateN = day.lateMin ? lateMarkNumber(day, monthDays ?? [...AUGUST, ...SEPTEMBER]) : 0;
+  const lateN = day.lateMin && !live ? lateMarkNumber(day, monthDays ?? [...AUGUST, ...SEPTEMBER]) : 0;
 
   const fence = dayFence(punches);
   const allField = punches.length > 0 && punches.every((p) => p.verdict === 'field');
@@ -981,13 +993,13 @@ export function DayCardBody({
   const fixButtons =
     viewer === 'hr' ? (
       <>
-        <Button variant="primary" onClick={onFix}>Resolve with reason</Button>
-        <Button onClick={onRemind}>Remind employee</Button>
+        {onFix && <Button variant="primary" onClick={onFix}>Resolve with reason</Button>}
+        {onRemind && <Button onClick={onRemind}>Remind employee</Button>}
       </>
     ) : viewer === 'mgr' ? (
-      <Button variant="primary" onClick={onFix}>Nudge to fix</Button>
+      onFix && <Button variant="primary" onClick={onFix}>Nudge to fix</Button>
     ) : (
-      <Button variant="primary" onClick={onFix}>{locked ? `Raise late request for ${shortDate(day.date)}` : 'Fix this day'}</Button>
+      onFix && <Button variant="primary" onClick={onFix}>{locked ? `Raise late request for ${shortDate(day.date)}` : 'Fix this day'}</Button>
     );
   // A pending request's note ("Request sent 23 Sep: out was …"): the sent date goes on the request line below, the reason stays up top.
   const sentOn = day.code === 'R' ? /sent (\d{1,2} \w{3})/.exec(day.note ?? '')?.[1] : undefined;
@@ -1001,7 +1013,7 @@ export function DayCardBody({
   const sentDate = sentOn ? new Date(day.date.getFullYear(), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(sentOn.split(' ')[1]), Number(sentOn.split(' ')[0])) : undefined;
   const sentAge = sentDate ? relativeDue(sentDate, TODAY) : undefined;
   const fixAsk =
-    viewer === 'hr' ? 'Resolve it with a reason, or remind the employee.' : viewer === 'mgr' ? `Ask ${first} to regularise it.` : day.code === 'A' ? 'Apply leave for it or regularise it.' : 'Regularise it with your actual out time.';
+    viewer === 'hr' ? (onFix ? 'Resolve it with a reason, or remind the employee.' : `${first} fixes it with a request.`) : viewer === 'mgr' ? `Ask ${first} to regularise it.` : day.code === 'A' ? 'Apply leave for it or regularise it.' : 'Regularise it with your actual out time.';
 
   return (
     <div className="yx-tim-stack">
@@ -1037,8 +1049,8 @@ export function DayCardBody({
       />
       {punches.length > 0 && (
         <>
-          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches}now={day.code === 'TODAY' ? NOW_MIN : undefined} off={offDay} />
-          <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />
+          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches} now={day.code === 'TODAY' && !live ? NOW_MIN : undefined} off={offDay} />
+          {!live && <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />}
         </>
       )}
       {/* On an on-duty day the header says "On duty", so field punches don't repeat it as a chip. */}
@@ -1060,16 +1072,16 @@ export function DayCardBody({
           <span className="yx-tim-row">
             {viewer === 'emp' ? (
               <>
-                <Button size="sm" onClick={onViewRequest}>View request</Button>
-                <Button size="sm" onClick={onWithdraw}>Withdraw</Button>
+                {onViewRequest && <Button size="sm" onClick={onViewRequest}>View request</Button>}
+                {onWithdraw && <Button size="sm" onClick={onWithdraw}>Withdraw</Button>}
               </>
             ) : (
-              <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
+              onViewRequest && <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
             )}
           </span>
         </div>
       )}
-      {otPending && !open && viewer !== 'emp' && (
+      {otPending && !open && viewer !== 'emp' && onReviewOvertime && (
         <div className="yx-tim-stack">
           {/* The facts the decision needs, beside the buttons. */}
           {otRow && (

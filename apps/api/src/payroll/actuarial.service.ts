@@ -5,7 +5,7 @@ import { randomBytes } from 'crypto';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import type { ScopeUser } from '../access/scope';
-import { asDate, dateOf } from '../time/time-core';
+import { asDate, dateOf, leaveVersionBook } from '../time/time-core';
 import type { CensusDto, ValuationResultDto } from './dto-5i';
 import { ExchangeFilesService } from './exchange-files.service';
 import { PayFileStore, sha256 } from './pay-file-store';
@@ -62,7 +62,9 @@ export class ActuarialService {
       const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: dto.legalEntityId, joinedOn: { lte: asOf }, OR: [{ exitedOn: null }, { exitedOn: { gte: fyStart } }] }, orderBy: { employeeCode: 'asc' } });
       const people = await tx.employeePersonalDetails.findMany({ where: { organizationId: org, employeeId: { in: ems.map((e) => e.employeeId) } }, select: { employeeId: true, dateOfBirth: true, gender: true } });
       const wage = await this.basicDa(tx, org, ems.map((e) => e.id), asOf);
-      const types = await tx.leaveType.findMany({ where: { organizationId: org, paid: true, active: true }, orderBy: { code: 'asc' } });
+      // Paid as of the valuation date (TIM-27: pay is dated with the leave type's versions).
+      const payOf = await leaveVersionBook(tx, org);
+      const types = (await tx.leaveType.findMany({ where: { organizationId: org, active: true }, orderBy: { code: 'asc' } })).filter((t) => payOf(t.id, dto.asOf).paid);
       const ledger = await tx.leaveLedgerEntry.groupBy({ by: ['employeeId', 'leaveTypeId'], where: { organizationId: org, employeeId: { in: ems.map((e) => e.employeeId) }, entryOn: { lte: asOf } }, _sum: { days: true } });
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Census');

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { composeStories } from '@storybook/react-vite';
+import { ToastProvider } from '../../components/notify';
 import {
   canReopen,
   countLeaveDays,
@@ -41,6 +42,11 @@ describe('clock-in policy (M02 §B1)', () => {
     expect(r.block?.title).toContain('850 m away');
     expect(r.block?.options).toEqual(['wfh', 'on_duty', 'retry']);
   });
+  it('after clocking out: the "already clocked out" box, unless the shift allows clocking in again (still checked for the place)', () => {
+    expect(evaluateClock(ctx({ state: 'out', outAt: '13:10' })).block?.code).toBe('already_out');
+    expect(evaluateClock(ctx({ state: 'out', outAt: '13:10', reclockIn: true }))).toEqual({ actions: ['clock_in'], block: null });
+    expect(evaluateClock(ctx({ state: 'out', reclockIn: true, inside: false, distanceM: 900 })).block?.message).toBe('Clock in as work from home or on duty instead?');
+  });
   it('does not restrict field-mode staff', () => {
     expect(evaluateClock(ctx({ inside: false, mode: 'field' })).block).toBeNull();
   });
@@ -70,7 +76,9 @@ describe('clock-in policy (M02 §B1)', () => {
     expect(nextClockState('working', 'start_break')).toBe('break');
     expect(nextClockState('break', 'end_break')).toBe('working');
     expect(nextClockState('working', 'clock_out')).toBe('out');
-    expect(nextClockState('out', 'clock_in')).toBe('out');
+    // After clocking out, clock in again starts a new session; the card offers it only where the shift allows (21 Oct 2026).
+    expect(nextClockState('out', 'clock_in')).toBe('working');
+    expect(nextClockState('out', 'clock_out')).toBe('out');
   });
 });
 
@@ -254,7 +262,7 @@ describe('Time stories render', () => {
     for (const [name, S] of Object.entries(composeStories(mod))) {
       const Story = S as unknown as () => JSX.Element;
       it(`${file} · ${name}`, () => {
-        const { container, unmount } = render(<Story />);
+        const { container, unmount } = render(<ToastProvider><Story /></ToastProvider>);
         expect(container.ownerDocument.body.textContent?.length).toBeGreaterThan(0);
         unmount();
       });

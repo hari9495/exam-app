@@ -41,6 +41,8 @@ export interface ClockContext {
   deviceApproved: boolean;
   /** When already clocked out, the time, "18:41". */
   outAt?: string;
+  /** The shift lets people clock in again after clocking out (split shifts, field visits; HR sets it, off by default). */
+  reclockIn?: boolean;
 }
 
 export interface ClockBlock {
@@ -59,7 +61,7 @@ export function fmt12(hhmm: string) {
 
 /** Which buttons are live and, if clocking in or out is refused, the plain reason (M02 §B1, YX-AT-23, YX-MOB-05/08/18). */
 export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block: ClockBlock | null } {
-  if (c.state === 'out')
+  if (c.state === 'out' && !c.reclockIn)
     return {
       actions: [],
       block: {
@@ -104,7 +106,7 @@ export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block:
     };
   if (!c.inside && c.mode === 'restricted') {
     const where = c.distanceM !== undefined ? `, ${formatDistance(c.distanceM)} away` : '';
-    const clockVerb = c.state === 'not_in' ? 'Clock in' : 'Clock out';
+    const clockVerb = c.state === 'not_in' || c.state === 'out' ? 'Clock in' : 'Clock out';
     return {
       actions: c.state === 'working' ? ['start_break'] : c.state === 'break' ? ['end_break'] : [],
       block: {
@@ -116,13 +118,13 @@ export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block:
     };
   }
   const actions: ClockAction[] =
-    c.state === 'not_in' ? ['clock_in'] : c.state === 'working' ? ['clock_out', 'start_break'] : ['end_break'];
+    c.state === 'not_in' || c.state === 'out' ? ['clock_in'] : c.state === 'working' ? ['clock_out', 'start_break'] : ['end_break'];
   return { actions, block: null };
 }
 
 /** Next state after an action (the card's state machine). */
 export function nextClockState(s: ClockState, a: ClockAction): ClockState {
-  if (a === 'clock_in' && s === 'not_in') return 'working';
+  if (a === 'clock_in' && (s === 'not_in' || s === 'out')) return 'working';
   if (a === 'start_break' && s === 'working') return 'break';
   if (a === 'end_break' && s === 'break') return 'working';
   if (a === 'clock_out' && (s === 'working' || s === 'break')) return 'out';
@@ -163,7 +165,8 @@ export function workedMinutes(punches: Punch[], now?: number): number {
 
 /**
  * A finished day's worked time from its punches (TIM-03): null when there is no check-out (hours not known).
- * Punched breaks are taken as recorded; with no punched break, the policy break (30 min above 5 h) is deducted.
+ * The time off is the larger of the breaks punched and the policy break (30 min above 5 h), as the server's day engine
+ * works it out (19 Oct 2026): a short punched break never lowers the policy break.
  */
 export function dayWorked(punches: Punch[], rule = { aboveMin: 300, breakMin: 30 }): { worked: number; breakMin: number; punchedBreak: boolean } | null {
   if (!punches.some((p) => p.kind === 'out')) return null;
@@ -172,7 +175,10 @@ export function dayWorked(punches: Punch[], rule = { aboveMin: 300, breakMin: 30
   if (starts.length) {
     const ins = punches.filter((p) => p.kind === 'in').map((p) => toMin(p.time));
     const outs = punches.filter((p) => p.kind === 'out').map((p) => toMin(p.time));
-    return { worked: gross, breakMin: Math.max(...outs) - Math.min(...ins) - gross, punchedBreak: true };
+    const span = Math.max(...outs) - Math.min(...ins);
+    const taken = span - gross;
+    const policy = span > rule.aboveMin ? rule.breakMin : 0;
+    return { worked: span - Math.max(taken, policy), breakMin: Math.max(taken, policy), punchedBreak: taken >= policy };
   }
   const breakMin = gross > rule.aboveMin ? rule.breakMin : 0;
   return { worked: gross - breakMin, breakMin, punchedBreak: false };
@@ -240,7 +246,7 @@ export function geofenceVerdict(pin: { lat: number; lng: number; accuracyM: numb
 
 /* ---------- attendance month ---------- */
 
-export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
+export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
 
 export const DAY_CODE_LABEL: Record<DayCode, string> = {
   P: 'Present',
@@ -250,6 +256,7 @@ export const DAY_CODE_LABEL: Record<DayCode, string> = {
   CL: 'Casual leave',
   EL: 'Earned leave',
   SL: 'Sick leave',
+  LV: 'Leave',
   H: 'Holiday',
   WO: 'Weekly off',
   WFH: 'Work from home',
@@ -274,6 +281,8 @@ export interface AttendanceDay {
   /** Overtime approval; month totals count paid (approved) overtime only, not pending or taken as comp-off. */
   otStatus?: 'pending' | 'approved' | 'comp-off';
   note?: string;
+  /** Live app: the leave type taken that day (any company code; the cell shows it instead of the day code). */
+  leave?: { code: string; name: string };
 }
 
 /** Legend counts and totals for the month (M02 §B5 row totals). Payable days are the days before `today`. */
@@ -284,7 +293,7 @@ export function monthSummary(days: AttendanceDay[], today: Date = new Date(2026,
   // Today counts once checked in late, as the legend counts it under Late (so Present + Late + WFH adds up).
   const lateToday = days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length;
   const present = c('P') + c('L') + c('WFH') + c('OD') + c('HD') * 0.5 + lateToday;
-  const leave = c('CL') + c('EL') + c('SL') + c('HD') * 0.5;
+  const leave = c('CL') + c('EL') + c('SL') + c('LV') + c('HD') * 0.5;
   // An absence in an open month can still be fixed, so it is not unpaid yet; a locked month shows it as LOP.
   const lop = c('LOP');
   const absent = c('A');

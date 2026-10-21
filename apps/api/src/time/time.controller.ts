@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeQueryDto, ReasonDto, RegulariseDto, YearEndDto, EntityFilterDto, MonthEntityQueryDto, RangeEntityQueryDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, LocationCheckInDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto } from './dto';
 import { LeaveService } from './leave.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
@@ -100,6 +100,14 @@ export class TimeController {
     return this.attendance.regularise(ctx, this.user(req), dto);
   }
 
+  /** Work from home on one day (TIM-07): to the manager, and HR too beyond the monthly limit. */
+  @Post('me/wfh')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  workFromHome(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WfhDto) {
+    return this.attendance.requestWfh(ctx, this.user(req), dto);
+  }
+
+  /** Withdraws the person's own fix or work-from-home request while it waits for approval. */
   @Post('me/regularise/:id/withdraw')
   @HttpCode(200)
   withdrawFix(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -123,6 +131,14 @@ export class TimeController {
   @RequirePermissions('leave.medical.view')
   verify(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.leave.verifyCertificate(ctx, this.user(req), id);
+  }
+
+  /** Nudge (PLT-02 Team today): remind someone in the viewer's attendance scope to check in; once a day per person. */
+  @Post('people/:employeeId/nudge')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  nudge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.attendance.nudge(ctx, this.user(req), employeeId);
   }
 
   @Get('muster')
@@ -220,6 +236,25 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.setup.removeHoliday(ctx, this.user(req), id);
+  }
+
+  @Get('setup/types/:id/example')
+  @RequirePermissions('leave.settings.manage')
+  typeExample(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.typeExample(ctx, this.user(req), id);
+  }
+
+  @Put('setup/locations/:id/checkin')
+  @RequirePermissions('leave.settings.manage')
+  setCheckIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LocationCheckInDto) {
+    return this.setup.setCheckIn(ctx, this.user(req), id, dto);
+  }
+
+  @Post('setup/phones/:employeeId/reset')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  resetPhone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.setup.resetPhone(ctx, this.user(req), employeeId);
   }
 
   @Post('setup/locations/:id/rule')

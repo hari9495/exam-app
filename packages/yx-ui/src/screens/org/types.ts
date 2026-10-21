@@ -51,7 +51,9 @@ export interface StatutoryIds {
   cin: string | null;
 }
 
+/** An allowed check-in point of a location (set in Time › Locations). */
 export interface Geofence {
+  name: string;
   lat: number;
   lng: number;
   radiusM: number;
@@ -66,8 +68,11 @@ export interface OrgLocation {
   state: string;
   timezone: string;
   minWageZone: string | null;
-  geofence: Geofence | null;
+  /** Check-in points, office networks, Wi-Fi and phone binding: read here, changed in Time › Locations. */
+  fences: Geofence[];
   ipRanges: string[];
+  wifiNames: string[];
+  bindDevice: boolean;
   archivedAt: string | null;
 }
 
@@ -78,8 +83,6 @@ export interface LocationInput {
   address: Address;
   timezone: string;
   minWageZone: string | null;
-  geofence: Geofence | null;
-  ipRanges: string[];
 }
 
 export type MasterKind = 'departments' | 'designations' | 'grades' | 'employment-types' | 'cost-centres';

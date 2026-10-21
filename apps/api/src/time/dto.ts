@@ -3,6 +3,8 @@ import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateS
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
+/** An attendance request's reason is a real note the approver can check (at least 10 characters after trimming). */
+export const REASON_MESSAGE = 'Please say why, in a few words, so your manager can check it';
 
 export class LeavePlanDto {
   @IsUUID()
@@ -30,6 +32,13 @@ export class LeavePlanDto {
   @IsOptional()
   @IsIn(['birth', 'third_child', 'adoption', 'miscarriage', 'tubectomy'])
   maternityCase?: 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
+
+  /** Leave by the hour on one day (when the type allows it): half hours, 0.5 to 12. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  @Max(12)
+  hours?: number;
 }
 
 export class ApplyLeaveDto extends LeavePlanDto {
@@ -102,8 +111,8 @@ export class RangeEntityQueryDto extends RangeQueryDto {
 }
 
 export class PunchDto {
-  @IsIn(['in', 'out'])
-  kind!: 'in' | 'out';
+  @IsIn(['in', 'out', 'break_start', 'break_end'])
+  kind!: 'in' | 'out' | 'break_start' | 'break_end';
 
   @IsOptional()
   @IsNumber()
@@ -122,6 +131,22 @@ export class PunchDto {
   @Min(0)
   @Max(100000)
   accuracyM?: number;
+
+  /** The random key the app keeps on this phone (TIM-31 phone binding); only its hash is stored. */
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9-]{16,64}$/, { message: 'The device key is 16 to 64 letters, digits or dashes.' })
+  deviceId?: string;
+}
+
+export class WfhDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(10, { message: REASON_MESSAGE })
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class RegulariseDto {
@@ -143,9 +168,10 @@ export class RegulariseDto {
   @Max(1439)
   outMinute?: number;
 
+  /** A real note for the approver, kept with the day (founder decision 21 Oct 2026). */
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_MESSAGE })
   @MaxLength(500)
   reason!: string;
 }
@@ -180,6 +206,11 @@ export class LeaveTypeDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** TIM-27: a change to the rules applies from this day (today or later) as a new version. Default: today. */
+  @IsOptional()
+  @IsDateString(DATE)
+  validFrom?: string;
 }
 
 export class PolicyDto {
@@ -290,6 +321,11 @@ export class AttendanceRuleDto {
 
   @IsIn(['restricted', 'field'])
   checkIn!: 'restricted' | 'field';
+
+  /** People may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class YearEndDto {
@@ -357,6 +393,11 @@ export class ShiftDto extends ShiftTimesDto {
 
   @IsBoolean()
   night!: boolean;
+
+  /** People may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class ShiftDetailsDto {
@@ -374,6 +415,10 @@ export class ShiftDetailsDto {
 
   @IsBoolean()
   active!: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class PatternDto {
@@ -721,4 +766,53 @@ export class EligibilityOverrideDto {
   @MinLength(10)
   @MaxLength(500)
   reason!: string;
+}
+
+/** TIM-31: one allowed check-in point of a location. */
+export class FenceDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name!: string;
+
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @IsInt()
+  @Min(50)
+  @Max(1000)
+  radiusM!: number;
+}
+
+/** TIM-31: a location's points, office networks, Wi-Fi names and phone binding, saved together. */
+export class LocationCheckInDto {
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => FenceDto)
+  fences!: FenceDto[];
+
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(43, { each: true })
+  ipRanges!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(32, { each: true })
+  wifiNames!: string[];
+
+  @IsBoolean()
+  bindDevice!: boolean;
 }

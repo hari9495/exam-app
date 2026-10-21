@@ -19,7 +19,7 @@ export class ScheduleBook {
   private constructor(
     private readonly tx: Tx,
     private readonly org: string,
-    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; colour: string; active: boolean; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
+    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; reclockIn: boolean; colour: string; active: boolean; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
     private readonly patterns: Map<string, PatternDef & { name: string }>,
     private readonly assignments: Prisma.ShiftPatternAssignmentGetPayload<object>[],
   ) {}
@@ -34,7 +34,7 @@ export class ScheduleBook {
     return new ScheduleBook(
       tx,
       org,
-      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, colour: s.colour, active: s.active, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
+      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, reclockIn: s.reclockIn, colour: s.colour, active: s.active, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
       new Map(patterns.map((p) => [p.id, { kind: p.kind as PatternDef['kind'], cycle: p.cycle as (string | null)[], name: p.name }])),
       assignments,
     );
@@ -45,7 +45,7 @@ export class ScheduleBook {
     const s = this.shifts.get(shiftId);
     const v = s?.versions.find((x) => x.from <= on)?.v;
     if (!s || !v) return null;
-    return { shiftId: s.id, name: s.name, night: s.night, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes };
+    return { shiftId: s.id, name: s.name, night: s.night, reclockIn: s.reclockIn, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes };
   }
 
   /** Loads published roster entries for people and dates (else each day is read on its own). */

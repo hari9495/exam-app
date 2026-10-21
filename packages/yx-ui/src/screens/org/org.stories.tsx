@@ -60,6 +60,17 @@ export const Locations: S = {
   ),
 };
 
+/** Polls for an element the story's own clicks open (play functions run before drawers mount). */
+const find = async <T extends Element>(get: () => T | null | undefined): Promise<T> => {
+  for (let i = 0; i < 50; i++) {
+    const el = get();
+    if (el) return el;
+    await wait(20);
+  }
+  throw new Error('Not found');
+};
+const byText = (root: ParentNode, sel: string, text: string) => [...root.querySelectorAll<HTMLElement>(sel)].find((e) => e.textContent?.trim() === text);
+
 const pay = { today: TODAY_ISO, onLoad: async () => (await wait(), PAY_RANGES), onCreate: () => wait(), onUpdate: () => wait(), onDelete: () => wait() };
 
 export const Structure: S = {

@@ -7,6 +7,7 @@ type S = StoryObj<typeof LeaveTypeEditorScreen>;
 
 export const Counting: S = { name: 'Counting · live example' };
 export const Basics: S = { name: 'Basics', args: { section: 'basics' } };
+export const Eligibility: S = { name: 'Eligibility', args: { section: 'eligibility' } };
 export const Crediting: S = { name: 'Crediting', args: { section: 'crediting' } };
 export const Rules: S = { name: 'Rules', args: { section: 'rules' } };
 export const YearEnd: S = { name: 'Year end', args: { section: 'yearend' } };

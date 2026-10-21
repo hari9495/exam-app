@@ -143,6 +143,11 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
+/** The same day `n` months later (the month's last day when it has no such day): 31 Jan + 1 month = 28/29 Feb. */
+export function addMonths(on: string, n: number): string {
+  return DateTime.fromISO(on, { zone: 'utc' }).plus({ months: n }).toISODate()!;
+}
+
 export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);
@@ -248,7 +253,7 @@ export interface Fence {
 
 export interface CheckInVerdict {
   accepted: boolean;
-  verdict: 'inside' | 'outside' | 'network' | 'no_fence' | 'field' | 'coarse' | 'no_location';
+  verdict: 'inside' | 'outside' | 'network' | 'no_fence' | 'field' | 'coarse' | 'no_location' | 'other_phone';
   distanceM: number | null;
   locationId: string | null;
   /** Plain words, shown to the employee (YX-AT-23). */
@@ -281,6 +286,8 @@ export const formatDistance = (m: number) => (m < 1000 ? `${m} m` : `${(m / 1000
 // ------------------------------------------------------------------------------------------ the day engine
 
 export interface DayRule {
+  /** The shift allows clocking in again after clocking out: worked time is the sum of the sessions (21 Oct 2026). */
+  reclockIn?: boolean;
   shiftStart: number;
   shiftEnd: number;
   graceMinutes: number;
@@ -325,13 +332,69 @@ export interface DayInput {
   holiday: HolidayOn | null;
   /** Approved leave on the day: the whole day or one half. */
   leave: Half | null;
-  punches: readonly { at: Date; kind: 'in' | 'out' }[];
+  punches: readonly { at: Date; kind: PunchKind }[];
   /** The latest approved regularisation of the day. */
   fix: { kind: 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day'; inMinute: number | null; outMinute: number | null } | null;
   rule: DayRule;
   now: Date;
   /** Timesheet mode (D1): the day's approved timesheet minutes, or null when no approved timesheet covers it. */
   timesheetMinutes?: number | null;
+  /** An approved work-from-home day (TIM-07): present, with or without punches. */
+  wfh?: boolean;
+  /** Approved hours off that day (leave by the hour): they count toward the full and half day. */
+  leaveMinutes?: number;
+}
+
+export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
+
+/**
+ * Minutes on punched breaks between `from` and `to` (first-in and last-out). A break ends at "End break", or at the next
+ * check-in or check-out: a break still open at check-out ends there. Instants, so a break across midnight counts whole.
+ */
+export function breakMinutes(punches: readonly { at: Date; kind: PunchKind }[], from: Date, to: Date): number {
+  let total = 0;
+  let open: number | null = null;
+  const close = (t: number) => {
+    if (open === null) return;
+    const a = Math.max(open, from.getTime());
+    const b = Math.min(t, to.getTime());
+    if (b > a) total += b - a;
+    open = null;
+  };
+  for (const p of [...punches].sort((x, y) => x.at.getTime() - y.at.getTime())) {
+    if (p.kind === 'break_start') open ??= p.at.getTime();
+    else close(p.at.getTime());
+  }
+  close(to.getTime());
+  return Math.floor(total / 60_000);
+}
+
+/**
+ * Worked minutes between first-in and last-out (founder rule 19 Oct 2026): breaks are never worked time. The time taken
+ * off is the larger of the breaks punched and the shift's break rule (Q3: `breakMinutes` above `breakAboveMinutes`), so
+ * a short punched break never lowers the rule's break, and a long one is never counted twice.
+ */
+/**
+ * Minutes inside the in→out sessions of a day (founder decision 21 Oct 2026): clocking in again after clocking out
+ * starts a new session, and the time between sessions is not worked.
+ */
+export function sessionMinutes(punches: readonly { at: Date; kind: PunchKind }[]): number {
+  let total = 0;
+  let open: number | null = null;
+  for (const p of [...punches].filter((x) => x.kind === 'in' || x.kind === 'out').sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in' && open === null) open = p.at.getTime();
+    else if (p.kind === 'out' && open !== null) {
+      total += p.at.getTime() - open;
+      open = null;
+    }
+  }
+  return Math.floor(total / 60_000);
+}
+
+export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes' | 'reclockIn'>): number {
+  // First in to last out (a regularised time counts). Where the shift allows clocking in again, the sum of the sessions.
+  const gross = r.reclockIn && punches.filter((p) => p.kind === 'in').length > 1 ? sessionMinutes(punches) : Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
+  return Math.max(0, gross - Math.max(breakMinutes(punches, firstIn, lastOut), gross > r.breakAboveMinutes ? r.breakMinutes : 0));
 }
 
 export interface DayResult {
@@ -378,23 +441,27 @@ export function evaluateDay(i: DayInput): DayResult {
   // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;
-    const shown = { firstIn, lastOut, workedMinutes: both ? Math.floor((lastOut!.getTime() - firstIn!.getTime()) / 60_000) : null };
+    const shown = { firstIn, lastOut, workedMinutes: both ? netWorked(i.punches, firstIn!, lastOut!, r) : null };
     if (i.mode === 'assumed_present') return { ...none, ...shown, status: 'present', leavePart };
     // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
     const t = i.timesheetMinutes;
     if (t === null || t === undefined) return { ...none, ...shown, status: 'no_timesheet', leavePart };
-    const status: DayStatus = t >= r.fullDayMinutes * halfFactor ? 'present' : t >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+    const tt = t + (i.leaveMinutes ?? 0);
+    const status: DayStatus = tt >= r.fullDayMinutes * halfFactor ? 'present' : tt >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
     return { ...none, ...shown, workedMinutes: t, status, leavePart };
   }
   const nowMin = minutesInto(i.on, i.zone, i.now);
   const dayOver = nowMin >= workEnd + 240;
 
   const late = firstIn ? Math.max(0, minutesInto(i.on, i.zone, firstIn) - workStart - r.graceMinutes) : null;
+  // Work from home (19 Oct 2026): approved, the day counts as present; punches still give the hours and lateness.
+  if (i.wfh) return { status: 'present', leavePart, firstIn, lastOut, workedMinutes: firstIn && lastOut ? netWorked(i.punches, firstIn, lastOut, r) : null, lateMinutes: late, regularised };
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
-  let worked = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
-  if (worked > r.breakAboveMinutes) worked -= r.breakMinutes;
-  const status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  const worked = netWorked(i.punches, firstIn, lastOut, r);
+  // Hours off count toward the day's thresholds; the worked minutes shown stay the time actually worked.
+  const counts = worked + (i.leaveMinutes ?? 0);
+  const status: DayStatus = counts >= r.fullDayMinutes * halfFactor ? 'present' : counts >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
   return { status, leavePart, firstIn, lastOut, workedMinutes: worked, lateMinutes: late, regularised };
 }

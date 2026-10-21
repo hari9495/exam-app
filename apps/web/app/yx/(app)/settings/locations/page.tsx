@@ -5,7 +5,7 @@ import { loadState, useOrg, useOrgWrite, useYxPermissions, type Reference } from
 
 const id = encodeURIComponent;
 
-// Settings › Organisation › Locations (P01 §4.2): sites with state, time zone, geofence and networks.
+// Settings › Organisation › Locations (P01 §4.2): sites with state and time zone; check-in (geofence, networks) is shown here and set in Time › Locations.
 export default function YxLocationsPage() {
   const locations = useOrg<OrgLocation[]>('/locations?includeArchived=true');
   const entities = useOrg<LegalEntity[]>('/legal-entities?includeArchived=true');
@@ -14,6 +14,7 @@ export default function YxLocationsPage() {
   const write = useOrgWrite();
   return (
     <LocationsScreen
+      checkInHref="/yx/time/locations"
       state={loadState(locations, entities, reference)}
       onRetry={() => void Promise.all([locations.refetch(), entities.refetch(), reference.refetch()])}
       locations={locations.data ?? []}

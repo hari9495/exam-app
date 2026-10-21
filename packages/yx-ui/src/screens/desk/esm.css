@@ -29,6 +29,8 @@
 .yx-esm-tracker > li[data-state="stopped"] { border-top-color: var(--yx-color-danger-text); }
 .yx-esm-summary { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: var(--yx-space-1) var(--yx-space-4); margin: 0; font-size: var(--yx-text-sm); }
 .yx-esm-summary > div { display: contents; }
+.yx-esm-note { margin: 0; padding: var(--yx-space-2) var(--yx-space-3); border-inline-start: var(--yx-space-1) solid var(--yx-color-border-strong, var(--yx-color-border)); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-card); display: flex; flex-direction: column; gap: var(--yx-space-half); overflow-wrap: anywhere; }
+.yx-esm-note__label { font-size: var(--yx-text-sm); color: var(--yx-color-text-muted); }
 .yx-esm-summary dt { color: var(--yx-color-text-muted); }
 .yx-esm-summary dd { margin: 0; overflow-wrap: anywhere; }
 .yx-esm-route, .yx-esm-trace { margin: 0; padding-inline-start: var(--yx-space-5); font-size: var(--yx-text-sm); }
