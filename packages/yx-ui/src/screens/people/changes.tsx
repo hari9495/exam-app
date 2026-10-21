@@ -6,7 +6,7 @@ import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -22,9 +22,11 @@ import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
+import { LiveEmployeeImport, type LiveImport } from './import';
+import { LiveRestructureWizard, type LiveRestructure } from './restructure';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -118,7 +120,7 @@ export interface ChangeActionSheetProps {
 
 /** The live app's Change action page (design audit step 3): pick a person, start the change; what waits for approval. */
 export interface LiveChangeAction {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   people: { id: string; name: string; role: string; department: string }[];
   waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
@@ -134,7 +136,9 @@ function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveC
   return (
     <PeopleFrame active="Change action" persona={persona}>
       <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the changes" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the changes" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <div className="yx-ppl__grid2">
@@ -417,7 +421,7 @@ function EffectiveCell({ date, today }: { date: Date; today: Date }) {
 // PPL-05
 /** The live app's scheduled changes (design audit step 3). */
 export interface LiveScheduled {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   onEdit?: (id: string) => void;
   onReview?: (id: string) => void;
@@ -500,20 +504,24 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           ) : undefined
         }
       />
-      <div className="yx-ppl__filterbar">
-        <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
+      {live?.state !== 'no-access' && (
+        <div className="yx-ppl__filterbar">
+          <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
         <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>
           {pendingOnly && <Icon icon={Check} size="sm" />}
-          Only pending approval ({pending.length})
-        </button>
-      </div>
+            Only pending approval ({pending.length})
+          </button>
+        </div>
+      )}
       {showPay && <Text size="sm" tone="secondary" as="p">Pay is showing. Each time you show it is recorded.</Text>}
       {revision && earlier && (
         <InlineAlert tone="warning" title={`${revision.name} has two changes`} actions={<Button size="sm">Open revision</Button>}>
           His {revision.summary.replace('Market correction ', '')} revision on {formatDate(revision.effective)} is worked out on his pay after the {formatDate(earlier.effective)} {earlier.type.toLowerCase()}. Check the amounts before it applies.
         </InlineAlert>
       )}
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the scheduled changes" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the scheduled changes" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading scheduled changes" />
@@ -539,6 +547,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
+          {...(live ? { onExport: exportCsv('scheduled-changes', shown, cols) } : {})}
           empty={empty}
           rowButtons={edit}
           rowActions={(r) => (
@@ -904,7 +913,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; live?: LiveImport }) {
+  return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
+}
+
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});
@@ -1066,7 +1079,7 @@ export function EmployeeImportWizard({ current = 'upload', rows: initialRows = S
 
 /* ================================================================== PPL-09 restructure */
 
-type RestructureAction = 'merge' | 'close' | 'demerge';
+type RestructureAction = 'merge' | 'close' | 'demerge' | 'within';
 const FROM_ENTITY = 'Kaveri Foods Pvt Ltd (Tamil Nadu)';
 const INTO_ENTITY = 'Kaveri Foods Pvt Ltd';
 /** Who is in the old entity, by location and department. */
@@ -1086,7 +1099,11 @@ const INITIAL_OVERRIDES = [
 ];
 
 // PPL-09
-export function RestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
+export function RestructureWizard(props: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; live?: LiveRestructure }) {
+  return props.live ? <LiveRestructureWizard live={props.live} /> : <SampleRestructureWizard {...props} />;
+}
+
+function SampleRestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
   const [confirm, setConfirm] = useState(confirmOpen);
   const [step, setStep] = useState(current);
   const [action, setAction] = useState<RestructureAction>('merge');
@@ -1098,8 +1115,8 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
   const moving = action === 'demerge' ? locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0) : 96;
   const date = effective ? formatDate(effective) : 'the effective date';
   const heading =
-    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
-  const closes = action !== 'demerge';
+    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : action === 'within' ? `Move people inside ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
+  const closes = action === 'merge' || action === 'close';
   const beforeRows: ChecklistRow[] = [
     { id: 'b1', title: `${moving} employments ready to move`, status: 'Ready' },
     { id: 'b2', title: '3 open onboarding and exit journeys will move with them', status: 'Ready' },
@@ -1162,8 +1179,9 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
                     onChange={(v) => setAction(v as RestructureAction)}
                     options={[
                       { value: 'merge', label: 'Merge into another entity' },
-                      { value: 'close', label: 'Close the entity (exits or transfers)' },
+                      { value: 'close', label: 'Close the entity (transfers)' },
                       { value: 'demerge', label: 'Move part of the entity to another one' },
+                      { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
                     ]}
                   />
                 </FormField>

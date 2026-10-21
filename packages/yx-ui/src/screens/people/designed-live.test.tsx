@@ -203,7 +203,7 @@ describe('Probation (PPL-16 / PPL-17)', () => {
   const r: ProbRow = { id: 'e', name: 'Arun', role: 'Machine Operator', manager: 'Divya Raghunathan', start: day('2026-08-10'), end: day('2026-10-25'), extended: 0, reviewDone: false, live: { stage: 'review due', reviewDueOn: day('2026-10-10'), canReview: true, maxMonthsLeft: 6 } };
   it('the direct manager reviews: extending sends the months and the comments', async () => {
     const onReview = vi.fn(async () => undefined);
-    render(<ProbationQueue rows={[r]} today={day('2026-10-20')} persona="mgr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: false, onReview, onConfirm: vi.fn(), onExtend: vi.fn(), onOpenApproval: vi.fn() }} />);
+    render(<ProbationQueue rows={[r]} today={day('2026-10-20')} persona="mgr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: false, onReview, onOpenApproval: vi.fn() }} />);
     await ue.click(within(screen.getByRole('row', { name: /Arun/ })).getByRole('button', { name: 'Review' }));
     const sheet = screen.getByRole('dialog');
     await ue.click(within(sheet).getByRole('radio', { name: /Extend/ }));
@@ -213,21 +213,20 @@ describe('Probation (PPL-16 / PPL-17)', () => {
     expect(onReview).toHaveBeenCalledWith('e', 'extend', 3, expect.objectContaining({ comments: 'More time on the line' }));
   });
 
-  it('HR confirms from a date with a reason; a confirmation waiting for approval opens the change list', async () => {
-    const onConfirm = vi.fn(async () => undefined);
+  it('HR decides an escalated review with the designed form (recommend ending included); a waiting confirmation opens the change list', async () => {
+    const onReview = vi.fn(async () => undefined);
     const onOpenApproval = vi.fn();
-    render(<ProbationQueue rows={[{ ...r, live: { ...r.live!, canReview: false } }, { ...r, id: 'w', name: 'Wasim', live: { ...r.live!, stage: 'waiting', canReview: false } }]} today={day('2026-10-20')} persona="hr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: true, onReview: vi.fn(), onConfirm, onExtend: vi.fn(), onOpenApproval }} />);
+    render(<ProbationQueue rows={[{ ...r, live: { ...r.live!, canReview: false } }, { ...r, id: 'w', name: 'Wasim', live: { ...r.live!, stage: 'waiting', canReview: false } }]} today={day('2026-10-20')} persona="hr" live={{ state: 'ready', onRetry: vi.fn(), canDecide: true, onReview, onOpenApproval }} />);
     await ue.click(within(screen.getByRole('row', { name: /Wasim/ })).getByRole('button', { name: 'Review' }));
     expect(onOpenApproval).toHaveBeenCalled();
     await ue.click(within(screen.getByRole('row', { name: /Arun/ })).getByRole('button', { name: 'Decide' }));
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).queryByRole('radio', { name: /Recommend ending/ })).toBeNull();
-    await ue.click(within(sheet).getByRole('button', { name: 'Send for approval' }));
-    expect(onConfirm).not.toHaveBeenCalled();
-    expect(within(sheet).getByText('Enter the reason.')).toBeInTheDocument();
-    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Did well');
-    await ue.click(within(sheet).getByRole('button', { name: 'Send for approval' }));
-    expect(onConfirm).toHaveBeenCalledWith('e', day('2026-10-26'), 'Did well');
+    expect(within(sheet).getByRole('radio', { name: /Recommend ending/ })).toBeInTheDocument();
+    await ue.click(within(sheet).getByRole('button', { name: /^Confirm/ }));
+    expect(onReview).not.toHaveBeenCalled();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Comments/ }), 'Did well');
+    await ue.click(within(sheet).getByRole('button', { name: /^Confirm/ }));
+    expect(onReview).toHaveBeenCalledWith('e', 'confirm', null, expect.objectContaining({ comments: 'Did well' }));
   });
 });
 
@@ -300,6 +299,15 @@ describe('Absconding (PPL-24)', () => {
     expect(onStop).toHaveBeenCalledWith(r);
     await ue.click(screen.getByRole('button', { name: 'Add dispatch proof' }));
     expect(onDispatch).toHaveBeenCalledWith(r, 'notice_1');
+  });
+});
+
+describe('No access (people audit, cross-cutting a)', () => {
+  it('a page opened without the permission shows the designed no-access state, never "check your connection"', () => {
+    wrap(<AssetRegister rows={[]} live={{ state: 'no-access', onRetry: vi.fn(), rows: [], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn: vi.fn() }} />);
+    expect(screen.getByText("You don't have access to the assets")).toBeInTheDocument();
+    expect(screen.getByText('Ask your HR admin to give you access.')).toBeInTheDocument();
+    expect(screen.queryByText(/Check your connection/)).toBeNull();
   });
 });
 
@@ -379,6 +387,17 @@ describe('Org chart (PPL-02) and My team (PPL-08)', () => {
     expect(screen.queryByRole('button', { name: 'Request a hire' })).toBeNull();
     await ue.click(screen.getByRole('button', { name: 'Start a change' }));
     expect(onStartChange).toHaveBeenCalled();
+  });
+
+  it('My team: Nudge only for someone not checked in; Request a hire for who may raise a requisition', async () => {
+    const onNudge = vi.fn();
+    const onRequestHire = vi.fn();
+    wrap(<TeamPage members={[{ id: 'p1', name: 'Kavya Reddy', role: 'Supervisor', today: 'Not checked in', upcoming: '' }, { id: 'p2', name: 'Arjun Kulkarni', role: 'Quality Analyst', today: 'Present · in 9:05 am', upcoming: '' }]} approvals={[]} tasks={[]} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), asOf: null, approvalsHref: '#', onReview: vi.fn(), onOpenTask: vi.fn(), onNudge, onRequestHire }} />);
+    expect(screen.getAllByRole('button', { name: 'Nudge' })).toHaveLength(1);
+    await ue.click(within(screen.getByRole('row', { name: /Kavya/ })).getByRole('button', { name: 'Nudge' }));
+    expect(onNudge).toHaveBeenCalledWith('p1');
+    await ue.click(screen.getByRole('button', { name: 'Request a hire' }));
+    expect(onRequestHire).toHaveBeenCalled();
   });
 });
 

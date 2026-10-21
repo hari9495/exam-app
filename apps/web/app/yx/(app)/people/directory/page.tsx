@@ -8,7 +8,7 @@ import { HireDrawer, type HireInput } from '@yukthix/ui/history';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
 import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
-import { useOrg, useYxPermissions } from '../../../../../lib/yx-org';
+import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { usePdfPost } from '../../../../../lib/yx-lifecycle';
 import { useScope } from '../../../../../lib/yx-shell';
@@ -117,8 +117,7 @@ export default function YxDirectoryPage() {
     cards,
     sinceMonth,
     ...(d ? { persons: { roles: d.cards.persons.roles, people: d.cards.persons.people } } : {}),
-    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)) } : {}),
-    // No employee import yet (Import stays hidden until there is one).
+    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)), onImport: () => router.push('/yx/people/import') } : {}),
     ...(isHr
       ? {
           onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/directory/${id(r.id)}`),
@@ -143,7 +142,7 @@ export default function YxDirectoryPage() {
     onRetry: () => void data.refetch(),
   };
   // Wait for the grants too: the columns depend on them.
-  const state = data.isError ? 'error' : d && (perms.isSuccess || perms.isError) ? 'ready' : 'loading';
+  const state = data.isError ? loadState(data) : d && (perms.isSuccess || perms.isError) ? 'ready' : 'loading';
 
   return (
     <>

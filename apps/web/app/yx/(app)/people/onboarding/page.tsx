@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { OnboardingBoard } from '@yukthix/ui/frame';
 import { AddJoinerDrawer, ImportDrawer, type ImportResult, type JoinerBoard, type ReadyOffer } from '@yukthix/ui/lifecycle';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 import { boardColumns } from '../../../../../lib/yx-onboarding';
@@ -35,6 +35,7 @@ export default function YxOnboardingPage() {
       state={board.data ? 'ready' : 'loading'}
       live={{
         error: board.isError,
+        noAccess: loadState(board) === 'no-access',
         onRetry: () => void board.refetch(),
         ...(canAdd ? { onAdd: () => setAdding(true), onImport: () => setImporting(true) } : {}),
         onOpenCard: (cardId) => router.push(cardId.startsWith('offer:') ? '/yx/people/ready-to-onboard' : `/yx/people/onboarding/${encodeURIComponent(cardId)}`),

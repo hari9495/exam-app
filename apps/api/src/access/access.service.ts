@@ -42,6 +42,7 @@ export const CONFIDENTIAL_LABEL: Record<string, string> = {
   'pay.range.view': 'see pay ranges',
   'pay.range.manage': 'change pay ranges',
   'org.entity.statutory.manage': 'change company tax identifiers',
+  'succession.manage': 'see and edit succession plans',
 };
 
 const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentId' | null> = {

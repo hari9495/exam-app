@@ -32,9 +32,19 @@ describe('buildNav: areas', () => {
 });
 
 describe('buildNav: People', () => {
+  it('payroll does no HR work: no Probation, Change action, Bulk changes or Import (founder 21 Oct 2026)', () => {
+    const n = nav(['employee.profile.view', 'employee.change.approve', 'employee.salary.manage', 'payroll.fnf.manage']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Scheduled', 'Job history', 'F&F']);
+  });
+
+  it('a menu item never shows where the page says no access: Possible same person only when the server counts it', () => {
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage']), 'people')).not.toContain('Possible same person');
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true }), 'people')).toContain('Possible same person');
+  });
+
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
-    const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Job history', 'Possible same person']);
+    const n = nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true });
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -51,8 +61,8 @@ describe('buildNav: People', () => {
   });
 
   it('lifecycle pages follow their keys and the person own tasks', () => {
-    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Life events']);
-    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Life events', 'My checklist tasks']);
+    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Buddies', 'Life events']);
+    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Buddies', 'Life events', 'My checklist tasks']);
     expect(labels(nav(['lifecycle.exit.manage', 'employee.profile.view']), 'people')).toEqual(expect.arrayContaining(['Exit cases', 'Clearance', 'Retirements and contracts', 'Absconding', 'VRS schemes']));
     expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters', 'Re-verification']); // PPL-42 under More
     expect(nav(['document.manage'])[1].sections[0].items[0].count).toBe('documentsToVerify');
@@ -117,6 +127,19 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('Restructure is HR work: a payroll role with the approval key does not see it', () => {
+    expect(labels(nav(['employee.change.approve', 'payroll.run.prepare']), 'people')).not.toContain('Restructure');
+    expect(labels(nav(['employee.change.manage']), 'people')).toContain('Restructure');
+  });
+  it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
+    expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
+    expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));
+    const hr = nav(['employee.profile.view', 'payroll.fnf.manage']);
+    expect(labels(hr, 'people')).toContain('F&F');
+    expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('F&F');
+    // F&F is Payroll's page: on it, Payroll stays the open area.
+    expect(activeLink(hr, '/yx/payroll/fnf')?.area.id).toBe('pay');
+  });
   it('a System Admin finds security, Support access, Emails and Contact YukthiX', () => {
     const n = nav(['org.support_access.approve', 'notification.template.manage', 'org.yukthix_support.raise'], { role: 'org_admin' });
     expect(labels(n, 'settings')).toEqual(['Security settings', 'Single sign-on providers', 'Login activity', 'Support access', 'Emails', 'Text messages (SMS)', 'Contact YukthiX']);

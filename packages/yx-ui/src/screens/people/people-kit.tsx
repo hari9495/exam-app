@@ -8,6 +8,8 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { daysBetween, fieldVisibility, workingDaysUntil, type FieldClass, type FnfLine, type Persona, type Relation } from './people-logic';
 import type { FieldRow } from './people-data';
+import { tableToCsv, type TableColumn } from '../../components/table';
+import { downloadText } from '../workforce/workforce-kit';
 import './people.css';
 
 /* ------------------------------------------------------------------ frames (APX-D §1.2 People, §1.1 Me) */
@@ -68,6 +70,8 @@ export const STATUS_TONE: Record<string, BadgeTone> = {
   Missing: 'danger', Rejected: 'danger', Failed: 'danger', Blocked: 'danger', Overdue: 'danger', Expired: 'danger', Escalated: 'danger', 'With HR': 'danger', 'No successor': 'danger', 'No ready successor': 'warning', Mismatch: 'danger',
   Refused: 'danger', Correction: 'warning', Current: 'success', Past: 'neutral',
   Scheduled: 'info', 'In progress': 'info', Ready: 'success', 'On approval': 'neutral', 'Fix needed': 'warning', Skipped: 'neutral', Leaving: 'warning', Superseded: 'neutral', Scanning: 'info', 'Auto-verified': 'success',
+  // PPL-09 restructure.
+  Moved: 'success', 'Waiting for approval': 'warning', "Couldn't move": 'danger', "Can't move": 'danger', 'Left out': 'neutral', 'You do this': 'neutral', Cancelled: 'neutral',
 };
 export const toneOf = (status: string): BadgeTone => STATUS_TONE[status] ?? STATUS_TONE[status.split(':')[0]] ?? 'neutral';
 export const StatusBadge = ({ status }: { status: string }) => <Badge tone={toneOf(status)}>{status}</Badge>;
@@ -348,3 +352,9 @@ export function ListSkeleton({ rows = 6, label }: { rows?: number; label: string
 
 /** Pick exactly one (a time window, a view): the shared joined Segment (R11), so every pick-one looks the same (founder review 7 Oct 2026). */
 export { Segment } from '../../components/segment';
+
+/** A live table's Export: the visible columns as shown on screen, saved as CSV in the browser (formulas neutralised). */
+export const exportCsv =
+  <R,>(file: string, rows: R[], cols: TableColumn<R>[]) =>
+  (_format: 'csv' | 'xlsx', keys: string[]) =>
+    downloadText(`${file}.csv`, tableToCsv(rows, cols.filter((c) => keys.includes(c.key))));

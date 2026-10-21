@@ -5,7 +5,7 @@ import { useToast } from '@yukthix/ui';
 import { ChangeActionSheet } from '@yukthix/ui/frame';
 import { ChangeDrawer, ChangeReview, ReasonDialog, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
 import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
 import { CHANGE_LABEL } from '../../../../../lib/yx-changes';
 
@@ -46,7 +46,7 @@ export default function YxChangeActionPage() {
       effective={day(today)}
       today={day(today)}
       live={{
-        state: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
+        state: loadState(rows),
         onRetry: () => void rows.refetch(),
         people: subjects.map((p) => ({ id: p.id, name: p.name, role: p.designation ?? '', department: [p.department, p.location].filter(Boolean).join(' · ') })),
         waiting: pending.map((r) => ({ id: r.id, name: r.employeeName ?? 'Employee', kind: CHANGE_LABEL[r.changeType], effective: day(r.effectiveDate), note: `raised ${dateText(r.requestedAt)}`, canOpen: canApprove })),

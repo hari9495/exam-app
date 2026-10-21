@@ -6,6 +6,7 @@ import type { SplitSuggestion } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { todayIndia } from '../../../../../lib/yx-time';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 
 // Payroll › Compensation (PAY-12, PAY-2.09 / 2.10): the salary in force, a new or revised salary sent for approval
 // (someone else approves it), the revision letter, and the statutory profile.
@@ -17,6 +18,10 @@ export default function YxPayCompensationPage() {
   const templates = usePay<SalaryTemplate[]>('/templates');
   const write = usePayWrite();
   const search = usePeopleSearch();
+  // Founder 21 Oct 2026: only HR changes pay (the salary grant and the job-change right); payroll reads it and keeps
+  // the statutory profile.
+  const perms = useYxPermissions();
+  const changesPay = perms.has('employee.salary.manage') && perms.has('employee.change.manage');
   return (
     <CompensationLiveScreen
       onSearch={search}
@@ -34,7 +39,7 @@ export default function YxPayCompensationPage() {
           employeeId: employee!.id,
         })
       }
-      onSubmit={(c) => write<{ changeId: string; status: string }>(`/employees/${id}/compensation-changes`, { ...c, employeeId: employee!.id })}
+      {...(changesPay ? { onSubmit: (c: Parameters<NonNullable<React.ComponentProps<typeof CompensationLiveScreen>['onSubmit']>>[0]) => write<{ changeId: string; status: string }>(`/employees/${id}/compensation-changes`, { ...c, employeeId: employee!.id }) } : {})}
       onLetter={(changeId, signatory) =>
         write<{ referenceNo: string }>(`/compensation-changes/${encodeURIComponent(changeId)}/letter`, {
           signatory,

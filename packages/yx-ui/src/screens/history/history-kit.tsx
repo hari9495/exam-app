@@ -438,8 +438,8 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
             </>
           )}
           {draft.changeType && !options.canPay && PAY_TYPES.has(draft.changeType) && draft.changeType !== 'correction' && (
-            <InlineAlert tone="info" title="Pay is proposed by HR">
-              You don&apos;t have pay access, so HR adds the new CTC before approval.
+            <InlineAlert tone="info" title="Pay is added before approval">
+              You don&apos;t have pay access, so someone who has it adds the new CTC before approval.
             </InlineAlert>
           )}
           <FormField id="ch-reason" label="Reason" required helper="Shown on the person's timeline and to the approver." error={errorOf('ch-reason')}>

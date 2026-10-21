@@ -425,6 +425,11 @@ export class EmployeeHistoryService {
 
   // ================= service dates (G1, gap pass C3) =================
 
+  /** The three service dates of one employment (G1). */
+  async serviceDatesOf(tx: Tx, c: CompanyContext, e: Employment) {
+    return datesFor(await this.spells(tx, c, e.employeeId), e.id);
+  }
+
   private async spells(tx: Tx, c: CompanyContext, employeeId: string): Promise<Spell[]> {
     const list = await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'asc' } });
     // Lifecycle 6e saved the rehire policy's choices on the joiner it came from (read only here).
@@ -1310,7 +1315,7 @@ export class EmployeeHistoryService {
 
   /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
   /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
-  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null, opts: { transfer?: boolean } = {}) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
@@ -1378,9 +1383,10 @@ export class EmployeeHistoryService {
       await this.rebuild(tx, c, e, dto.joinedOn, join.id);
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
-      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
-      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08).
-      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
+      await audit(tx, c, opts.transfer ? 'employee.transferred_in' : 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false, ...(rehireOf ? { from: rehireOf } : {}) });
+      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08). A move
+      // between legal entities (PPL-09) is not a new joiner, so it starts no joiner journey.
+      if (!opts.transfer) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({

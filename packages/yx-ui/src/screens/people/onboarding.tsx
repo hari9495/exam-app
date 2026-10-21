@@ -8,9 +8,9 @@ import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { KanbanBoard, type KanbanCard, type KanbanColumn } from '../../components/kanban';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
-import { Dialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Meter } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -73,6 +73,8 @@ const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || 
 /** The live app's board (design audit step 3). Stages follow the dates, so cards are not moved by hand. */
 export interface LiveBoard {
   error: boolean;
+  /** The board answered 403: the person has no onboarding grant. */
+  noAccess?: boolean;
   onRetry: () => void;
   onAdd?: () => void;
   onImport?: () => void;
@@ -112,7 +114,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
       <PageHeader
         title="Onboarding"
         description={
-          total === 0
+          live?.noAccess
+            ? undefined
+            : total === 0
             ? 'No one is onboarding right now.'
             : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}`
         }
@@ -137,7 +141,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
           </div>
         }
       />
-      {live?.error ? (
+      {live?.noAccess ? (
+        <NoAccessState what="the onboarding board" grantedBy="your HR admin" />
+      ) : live?.error ? (
         <ErrorState title="We couldn't load the onboarding board" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : state === 'loading' ? (
         <ListSkeleton label="Loading onboarding board" rows={5} />
@@ -250,7 +256,7 @@ export type ReadyRow = Ready & { live?: { offerId: string; email: string; intern
 
 /** The live app's queue (design audit step 3). */
 export interface LiveReady {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   places: JoinerPlaces;
@@ -270,7 +276,7 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 190 },
     { key: 'personType', header: 'Person type', value: (r) => r.personType, render: (r) => <TypeCell row={r} />, groupable: true, width: 240 },
     { key: 'source', header: 'From', value: (r) => r.source, width: 190, optional: true },
-    ...(live ? [] : [{ key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>]),
+    { key: 'location', header: 'Location', value: (r: ReadyRow) => r.location, width: 150, optional: true } as TableColumn<ReadyRow>,
     { key: 'offerAccepted', header: 'Offer accepted', type: 'date', value: (r) => r.offerAccepted, width: 140, optional: true },
   ];
   const action = (r: ReadyRow) =>
@@ -293,7 +299,9 @@ export function ReadyToOnboardQueue({ rows, defaultOpenId, overridden, live }: {
   return (
     <PeopleFrame active="Ready to onboard">
       <PageHeader title="Ready to onboard" description="Accepted offers whose employee isn't created yet, soonest joining first. Create the employee to start pre-boarding; the person type decides the path." />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the accepted offers" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the accepted offers" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading accepted offers" />
@@ -487,7 +495,7 @@ function CreateFromOffer({ row, live, onClose }: { row: ReadyRow; live: LiveRead
 }
 
 /** Joins column: date plus "in 5 days"; within a week it is flagged. */
-function JoinsCell({ date, today = TODAY }: { date: Date; today?: Date }) {
+export function JoinsCell({ date, today = TODAY }: { date: Date; today?: Date }) {
   const n = daysBetween(today, date);
   const soon = n <= 7;
   return (
@@ -529,7 +537,7 @@ const KAVYA = { name: 'Kavya Reddy', role: 'Quality Inspector', location: 'Hosur
 
 /** The live app's checklist (design audit step 3): any journey (onboarding, leaving, life events), its tasks in phases. */
 export interface LiveJourney {
-  state: 'ready' | 'loading' | 'error' | 'not-found';
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'not-found';
   onRetry: () => void;
   journey: LiveJourneyData | null;
   /** The joiner's role, place and people, when the journey is an onboarding HR runs. */
@@ -564,7 +572,9 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
   if (live.state !== 'ready' || !j)
     return (
       <PeopleFrame active="Onboarding board">
-        {live.state === 'error' ? (
+        {live.state === 'no-access' ? (
+          <NoAccessState what="this checklist" grantedBy="your HR admin" />
+        ) : live.state === 'error' ? (
           <ErrorState title="We couldn't load this checklist" description="Check your connection and try again." onRetry={live.onRetry} />
         ) : live.state === 'not-found' ? (
           <EmptyState title="Not found" description="This checklist doesn't exist or you can't open it." />
@@ -748,7 +758,7 @@ export type BatchRow = Batch;
 
 /** The live app's batches (design audit step 3). */
 export interface LiveBatches {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   today: Date;
   /** Members of each batch, for "Open batch". */
@@ -798,7 +808,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
       width: 220,
     },
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 195 },
-    ...(live ? [{ key: 'members', header: 'Members', type: 'number', value: (r: Batch) => r.members, width: 120 } as TableColumn<Batch>] : [{ key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>]),
+    { key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>,
     { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} />, width: 140 },
     { key: 'entity', header: 'Legal entity', value: (r) => r.entity, width: 260 },
   ];
@@ -843,7 +853,9 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
   return (
     <PeopleFrame active="Batches">
       <PageHeader title="Pre-boarding batches" description="Campus hires who join on the same date. Change a batch's date and every member's open tasks move with it." actions={newBatch && rows.length > 0 ? <Button variant="primary" icon={Plus} onClick={newBatch}>New batch</Button> : undefined} />
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the batches" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load the batches" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading batches" />
@@ -1078,13 +1090,11 @@ export interface ProbationDraft {
 
 /** The live app's queue (design audit step 3). Managers review their direct reports; HR confirms or extends. */
 export interface LiveProbation {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   /** employee.change.manage: confirm (a change someone else approves) or extend. */
   canDecide: boolean;
   onReview: (id: string, outcome: ProbationOutcome, months: number | null, draft: ProbationDraft) => Promise<void>;
-  onConfirm: (id: string, from: Date, reason: string) => Promise<void>;
-  onExtend: (id: string, months: number, reason: string) => Promise<void>;
   /** A confirmation waiting for approval opens the change list. */
   onOpenApproval: () => void;
 }
@@ -1144,16 +1154,15 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
   const escalated = withState.filter((r) => r.state === 'escalated');
   const empty = <EmptyState title="No one is on probation" description="New joiners appear here with their probation end date." />;
   const sorted = [...withState].sort((a, b) => a.end.getTime() - b.end.getTime());
-  const outcomes: ProbationOutcome[] = live && open && !open.live?.canReview ? ['confirm', 'extend'] : ['confirm', 'extend', 'terminate'];
-  const hrDecides = Boolean(live && open && !open.live?.canReview);
+  // PPL-16: HR decides with the same review as the manager (confirm, extend or recommend ending, rating, comments);
+  // the API takes HR's review on everyone its job-change grant reaches.
+  const outcomes: ProbationOutcome[] = ['confirm', 'extend', 'terminate'];
   const problem =
     !live || !open
       ? null
       : outcome === 'extend' && (!months || months < 1 || months > (open.live?.maxMonthsLeft ?? 0))
         ? 'months'
-        : hrDecides && outcome === 'confirm' && !draft.from
-          ? 'from'
-          : draft.comments.trim().length < 3
+        : draft.comments.trim().length < 3
             ? 'comments'
             : null;
   const submit = async () => {
@@ -1163,9 +1172,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
     setBusy(true);
     setFailed(null);
     try {
-      if (!hrDecides) await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
-      else if (outcome === 'confirm') await live.onConfirm(open.id, draft.from!, draft.comments.trim());
-      else await live.onExtend(open.id, months!, [draft.comments.trim(), draft.improve.trim() && `To improve: ${draft.improve.trim()}`].filter(Boolean).join('\n'));
+      await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
       setOpenId(null);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -1187,7 +1194,9 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             : `${escalated.map((r) => r.name).join(', ')} passed their end date without a review. Confirm, extend or end each one now.`}
         </InlineAlert>
       )}
-      {live?.state === 'error' ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="probations" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
         <ErrorState title="We couldn't load probations" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading probations" />
@@ -1233,7 +1242,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
             <>
               <Button onClick={() => setOpenId(null)}>Cancel</Button>
               <Button variant={outcome === 'terminate' ? 'danger' : 'primary'} loading={busy} onClick={() => void submit()}>
-                {outcome === 'confirm' ? (hrDecides ? 'Send for approval' : `Confirm ${first}`) : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
+                {outcome === 'confirm' ? `Confirm ${first}` : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
               </Button>
             </>
           ) : (
@@ -1271,7 +1280,6 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
                       draft,
                       setDraft,
                       maxMonths: open.live?.maxMonthsLeft ?? 0,
-                      confirmFrom: hrDecides,
                       errors: tried ? problem : null,
                     }
                   : {})}
@@ -1505,8 +1513,341 @@ const joinText = (date: Date) => {
   return n === 0 ? 'joins today' : n > 0 ? `joins ${formatDate(date)}` : `joined ${formatDate(date)}`;
 };
 
+/** The live app's buddy pool (PPL-41): the API names joiners only where the onboarding keys reach. */
+export interface LiveBuddies {
+  state: 'loading' | 'ready' | 'error' | 'no-access';
+  onRetry: () => void;
+  today: Date;
+  data: {
+    pool: LiveBuddy[];
+    needs: LiveBuddyJoiner[];
+    checkins: { id: string; title: string; pair: string; due: string; status: 'Done' | 'Overdue' | 'Pending' }[];
+  } | null;
+  /** Current employees who can join the pool. */
+  people: { id: string; name: string; role?: string }[];
+  /** lifecycle.onboarding.manage: add, remove and assign (left out: the page is read-only). */
+  onAdd?: (employeeId: string, cap: number) => Promise<void>;
+  onRemove?: (employeeId: string) => Promise<void>;
+  onAssign?: (joiner: LiveBuddyJoiner, employeeId: string) => Promise<void>;
+}
+export interface LiveBuddy {
+  employeeId: string;
+  name: string;
+  team: string;
+  location: string;
+  cap: number;
+  /** Every joiner they look after now, named or not. */
+  load: number;
+  joiners: { name: string; joins: string }[];
+  leavingOn: string | null;
+}
+export interface LiveBuddyJoiner {
+  id: string;
+  version: number;
+  name: string;
+  role: string;
+  team: string;
+  location: string;
+  manager: string;
+  managerEmployeeId: string | null;
+  joins: string;
+}
+
+const CAPS = [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 1 ? '1 joiner' : `${n} joiners` }));
+
+/** Add a colleague to the buddy pool, with how many joiners they look after at a time. */
+export function AddToPoolDialog({ open, onOpenChange, people, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; people: { id: string; name: string; role?: string }[]; onAdd?: (employeeId: string, cap: number) => Promise<void> }) {
+  const [who, setWho] = useState<string | null>(null);
+  const [cap, setCap] = useState('2');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const close = () => {
+    onOpenChange(false);
+    setWho(null);
+    setCap('2');
+    setError(null);
+  };
+  const add = async () => {
+    if (!who) return;
+    setSaving(true);
+    try {
+      await onAdd?.(who, Number(cap));
+      close();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => (o ? onOpenChange(true) : close())}
+      title="Add to the buddy pool"
+      size="md"
+      preventClose={saving}
+      notice={error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" disabled={!who} loading={saving} onClick={() => void add()}>
+            Add to pool
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__form">
+        <FormField label="Colleague" required helper="Choose someone from the joiner's team or location. A buddy is never the joiner's manager.">
+          <PersonPicker people={people} value={who} onChange={setWho} />
+        </FormField>
+        <FormField label="Looks after at a time" required>
+          <Select options={CAPS} value={cap} onChange={(v) => v && setCap(v)} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+const isoDay = (iso: string) => new Date(`${iso}T00:00:00`);
+
+function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
+  const d = live.data;
+  const [forId, setForId] = useState<string | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const narrow = useNarrow();
+  const pool = d?.pool ?? [];
+  const needs = d?.needs ?? [];
+  const joiner = needs.find((j) => j.id === forId);
+  const joinText = (iso: string) => {
+    const n = daysBetween(live.today, isoDay(iso));
+    return n === 0 ? 'joins today' : n > 0 ? `joins ${formatDate(isoDay(iso))}` : `joined ${formatDate(isoDay(iso))}`;
+  };
+  const full = (b: LiveBuddy) => b.load >= b.cap;
+  const free = (b: LiveBuddy, j: LiveBuddyJoiner) => !full(b) && !b.leavingOn && b.employeeId !== j.managerEmployeeId;
+  // Suggest the least-loaded buddy from the joiner's team and location.
+  const suggest = (j: LiveBuddyJoiner) =>
+    [...pool].filter((b) => free(b, j)).sort((a, b) => Number(b.team === j.team && b.location === j.location) - Number(a.team === j.team && a.location === j.location) || a.load - b.load)[0]?.employeeId ?? null;
+  const openFor = (j: LiveBuddyJoiner) => {
+    setForId(j.id);
+    setPick(suggest(j));
+    setError(null);
+  };
+  const assign = async () => {
+    if (!joiner || !pick) return;
+    setSaving(true);
+    try {
+      await live.onAssign?.(joiner, pick);
+      setForId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const assignBtn = (j: LiveBuddyJoiner) =>
+    live.onAssign ? (
+      <Button size="sm" icon={UserPlus} onClick={() => openFor(j)}>
+        Assign buddy
+      </Button>
+    ) : null;
+  const load = (b: LiveBuddy) => <Meter value={b.load} max={b.cap} label={`${b.name} joiners`} valueText={`${b.load} of ${b.cap}`} warnAt={101} dangerAt={101} />;
+  const who = (b: LiveBuddy) => (b.joiners.length ? b.joiners.map((j) => `${j.name} · ${joinText(j.joins)}`).join('; ') : b.load ? `${b.load} ${b.load === 1 ? 'joiner' : 'joiners'}` : 'No one yet');
+  const status = (b: LiveBuddy) => (b.leavingOn ? 'Leaving' : full(b) ? 'Full' : 'Available');
+  const place = (b: { team: string; location: string }) => [b.team, b.location].filter(Boolean).join(' · ');
+  const leavingNote = (b: LiveBuddy) =>
+    b.leavingOn ? (
+      <Text size="sm" tone="danger">
+        Leaving {formatDate(isoDay(b.leavingOn))}
+        {b.joiners.length ? ` · reassign ${b.joiners.map((j) => j.name).join(' and ')}` : ''}
+      </Text>
+    ) : null;
+  const cols: TableColumn<LiveBuddy>[] = [
+    { key: 'name', header: 'Buddy', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: place(r) }), width: 220 },
+    {
+      key: 'joiners',
+      header: 'Looking after',
+      value: who,
+      render: (r) => (
+        <span className="yx-ppl__type">
+          {r.joiners.length ? (
+            r.joiners.map((j) => (
+              <span key={`${j.name}${j.joins}`}>
+                {j.name} · {joinText(j.joins)}
+              </span>
+            ))
+          ) : (
+            <span className="yx-ppl__sub">{who(r)}</span>
+          )}
+          {leavingNote(r)}
+        </span>
+      ),
+      width: 260,
+    },
+    { key: 'load', header: 'Load', value: (r) => r.load, render: load, width: 150 },
+    { key: 'status', header: 'Status', type: 'status', value: status, statusTone: (v) => (v === 'Leaving' ? 'warning' : v === 'Full' ? 'neutral' : 'success'), width: 110 },
+  ];
+  const checks = d?.checkins ?? [];
+  const checkRow = (c: (typeof checks)[number]): ChecklistRow => ({ id: c.id, title: c.title, note: c.pair, due: isoDay(c.due), status: c.status });
+  const openChecks = checks.filter((c) => c.status !== 'Done');
+  const done = checks.filter((c) => c.status === 'Done');
+  const addBtn = live.onAdd ? (
+    <Button icon={Plus} onClick={() => setAdding(true)}>
+      Add to pool
+    </Button>
+  ) : undefined;
+  const emptyPool = <EmptyState title="No buddies in the pool" description="Add volunteers from each team and location." action={addBtn} />;
+  const leaving = pool.find((b) => b.employeeId === removing);
+  return (
+    <PeopleFrame active="Buddies">
+      <PageHeader title="Buddies" description="A buddy is a colleague from the same team or location, never the joiner's manager. Each buddy looks after a set number of joiners at a time." actions={addBtn} />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the buddy pool" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the buddy pool" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : !d ? (
+        <ListSkeleton label="Loading the buddy pool" />
+      ) : (
+        <>
+          {needs.length > 0 && (
+            <Card title={`Needs a buddy (${needs.length})`}>
+              {narrow ? (
+                <ul className="yx-ppl__cards" aria-label="Joiners without a buddy">
+                  {needs.map((j) => (
+                    <li key={j.id} className="yx-ppl__rcard">
+                      <span className="yx-ppl__rcard-name">{j.name}</span>
+                      <span className="yx-ppl__sub">{[j.role, j.location].filter(Boolean).join(' · ')}</span>
+                      <JoinsCell date={isoDay(j.joins)} today={live.today} />
+                      {assignBtn(j)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <ul className="yx-ppl__checklist" aria-label="Joiners without a buddy">
+                  {needs.map((j) => (
+                    <li key={j.id} className="yx-ppl__check-row">
+                      <div className="yx-ppl__check-main">
+                        <span className="yx-ppl__check-title">{j.name}</span>
+                        <span className="yx-ppl__check-meta">
+                          <Text size="sm" tone="secondary">
+                            {[j.role, j.location].filter(Boolean).join(' · ')}
+                          </Text>
+                        </span>
+                      </div>
+                      <div className="yx-ppl__check-side">
+                        <JoinsCell date={isoDay(j.joins)} today={live.today} />
+                        {assignBtn(j)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+          <div className="yx-ppl__stack">
+            {narrow ? (
+              pool.length === 0 ? (
+                emptyPool
+              ) : (
+                <ul className="yx-ppl__cards" aria-label="Buddy pool">
+                  {pool.map((b) => (
+                    <li key={b.employeeId} className="yx-ppl__rcard">
+                      <span className="yx-ppl__rcard-name">{b.name}</span>
+                      <span className="yx-ppl__sub">{place(b)}</span>
+                      <span>{who(b)}</span>
+                      {leavingNote(b)}
+                      {load(b)}
+                      <StatusBadge status={status(b)} />
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <DataTable
+                label="Buddy pool"
+                columns={cols}
+                rows={pool}
+                getRowId={(r) => r.employeeId}
+                empty={emptyPool}
+                rowActions={live.onRemove ? (r) => <MenuItem onSelect={() => setRemoving(r.employeeId)}>Remove {r.name} from the pool</MenuItem> : undefined}
+              />
+            )}
+            {checks.length > 0 && (
+              <Card title="Check-ins">
+                <StatusChecklist label="Upcoming buddy check-ins" rows={openChecks.map(checkRow)} today={live.today} />
+                {done.length > 0 && (
+                  <details className="yx-ppl__done-fold">
+                    <summary>Done ({done.length})</summary>
+                    <StatusChecklist label="Done buddy check-ins" rows={done.map(checkRow)} />
+                  </details>
+                )}
+              </Card>
+            )}
+          </div>
+        </>
+      )}
+      <Drawer
+        open={!!joiner}
+        onOpenChange={(o) => !o && !saving && setForId(null)}
+        title={`Assign a buddy to ${joiner?.name ?? ''}`}
+        notice={error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        footer={
+          <>
+            <Button onClick={() => setForId(null)}>Cancel</Button>
+            <Button variant="primary" disabled={!pick} loading={saving} onClick={() => void assign()}>
+              Assign buddy
+            </Button>
+          </>
+        }
+      >
+        {joiner && (
+          <div className="yx-ppl__stack yx-ppl__drawer-body">
+            <dl className="yx-ppl__dl">
+              <div className="yx-ppl__dl-row"><dt>Role</dt><dd>{joiner.role || '—'}</dd></div>
+              <div className="yx-ppl__dl-row"><dt>Team</dt><dd>{joiner.team || '—'}</dd></div>
+              <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{joiner.location || '—'}</dd></div>
+              <div className="yx-ppl__dl-row"><dt>Joins</dt><dd>{formatDate(isoDay(joiner.joins))}</dd></div>
+              <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{joiner.manager || '—'}</dd></div>
+            </dl>
+            <FormField label="Buddy" required helper={`Suggested from ${joiner.team || 'the same team'} at ${joiner.location || 'the same location'}.${joiner.manager ? ` ${joiner.manager} is the manager, so isn't listed.` : ''}`}>
+              <PersonPicker
+                people={pool
+                  .filter((b) => b.employeeId !== joiner.managerEmployeeId)
+                  .map((b) => ({ id: b.employeeId, name: b.name, role: b.team, department: b.location, note: b.leavingOn ? 'leaving' : `${b.load} of ${b.cap}${full(b) ? ', full' : ''}`, disabled: full(b) || !!b.leavingOn }))}
+                value={pick}
+                onChange={setPick}
+              />
+            </FormField>
+            <InlineAlert tone="info">The buddy gets the buddy tasks on the joiner&apos;s checklist, with reminders.</InlineAlert>
+          </div>
+        )}
+      </Drawer>
+      <AddToPoolDialog open={adding} onOpenChange={setAdding} people={live.people.filter((p) => !pool.some((b) => b.employeeId === p.id))} onAdd={live.onAdd} />
+      <ConfirmDialog
+        open={!!leaving}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${leaving?.name ?? ''} from the buddy pool?`}
+        consequence={`${leaving?.name ?? ''} keeps the joiners they look after now, and is not suggested for new joiners.`}
+        confirmLabel="Remove from pool"
+        onConfirm={async () => {
+          if (leaving) await live.onRemove?.(leaving.employeeId);
+          setRemoving(null);
+        }}
+      />
+    </PeopleFrame>
+  );
+}
+
 // PPL-41
-export function BuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Buddy[]; needs?: Joiner[]; assignFor?: string }) {
+export function BuddyPanel(props: { pool: Buddy[]; needs?: Joiner[]; assignFor?: string; live?: LiveBuddies }) {
+  return props.live ? <LiveBuddyPanel live={props.live} /> : <SampleBuddyPanel {...props} />;
+}
+
+function SampleBuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Buddy[]; needs?: Joiner[]; assignFor?: string }) {
+  const [adding, setAdding] = useState(false);
   const [forId, setForId] = useState<string | null>(assignFor ?? null);
   const joiner = needs.find((j) => j.id === forId);
   // Suggest the least-loaded buddy from the joiner's team and location.
@@ -1554,14 +1895,15 @@ export function BuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Bud
   const checkRow = (c: (typeof BUDDY_CHECKINS)[number]): ChecklistRow => ({ ...c, note: c.pair });
   const open = BUDDY_CHECKINS.filter((c) => c.status !== 'Done').sort((a, b) => a.due!.getTime() - b.due!.getTime());
   const done = BUDDY_CHECKINS.filter((c) => c.status === 'Done');
-  const emptyPool = <EmptyState title="No buddies in the pool" description="Add volunteers from each team and location." action={<Button icon={Plus}>Add to pool</Button>} />;
+  const emptyPool = <EmptyState title="No buddies in the pool" description="Add volunteers from each team and location." action={<Button icon={Plus} onClick={() => setAdding(true)}>Add to pool</Button>} />;
   return (
     <PeopleFrame active="Buddies">
       <PageHeader
         title="Buddies"
         description="A buddy is a colleague from the same team or location, never the joiner's manager. Each buddy looks after at most 2 joiners at a time."
-        actions={<Button icon={Plus}>Add to pool</Button>}
+        actions={<Button icon={Plus} onClick={() => setAdding(true)}>Add to pool</Button>}
       />
+      <AddToPoolDialog open={adding} onOpenChange={setAdding} people={[{ id: 'p1', name: 'Selvi Perumal', role: 'Quality' }, { id: 'p2', name: 'Ramesh Gowda', role: 'Operations' }]} onAdd={async () => {}} />
       {needs.length > 0 && (
         <Card title={`Needs a buddy (${needs.length})`}>
           {narrow ? (

@@ -1,0 +1,272 @@
+import { Test } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
+import { randomUUID } from 'crypto';
+import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { AppModule } from '../src/app.module';
+import { EmailService } from '../src/email/email.service';
+import { addDays, todayIst } from '../src/org-structure/org-validation';
+import { markSteppedUp } from './fixtures/step-up';
+import { withPayScope } from '../src/payroll/pay-access';
+
+// People › Restructure (PPL-09) and the continuity checklist (PPL-10) against the real database (forced RLS): the
+// keys, another company, a locked payroll month, a move between legal entities (leave, service, code, probation,
+// pay), one approval by someone else, a person who fails on their own, and a move inside one entity.
+describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let tenantPrisma: TenantPrismaService;
+  const SUPER = { organizationId: null, isSuperAdmin: true };
+  const PASSWORD = 'Corr3ct-Horse-Battery';
+  const runId = randomUUID().slice(0, 8);
+  const server = () => app.getHttpServer();
+  const today = todayIst();
+  const joined = addDays(today, -400);
+
+  let planId: string;
+  const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
+  const users: Record<string, string> = {};
+  const token: Record<string, string> = {};
+  type Who = 'hrA' | 'hr2A' | 'payrollA' | 'empA' | 'adminB';
+  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const ids: Record<string, string> = {};
+  const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
+  const email = (who: string) => `${who}-${runId}@restructure.test`;
+  const asSuper = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant(SUPER, fn);
+  const employment = (employeeId: string, entity: string) => asSuper((tx) => tx.employment.findFirst({ where: { organizationId: org.A.id, employeeId, legalEntityId: entity }, orderBy: { joinedOn: 'desc' } }));
+  const leave = async (employeeId: string) => Number((await asSuper((tx) => tx.leaveLedgerEntry.aggregate({ where: { organizationId: org.A.id, employeeId }, _sum: { days: true } })))._sum.days ?? 0);
+
+  const merge = (o: Record<string, unknown> = {}) => ({
+    kind: 'merge',
+    fromEntityId: ids.leTN,
+    intoEntityId: ids.leKF,
+    effectiveDate: today,
+    locationMap: { [ids.locTN]: ids.locKF },
+    masterMap: { [ids.plant]: ids.dept },
+    defaults: { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' },
+    overrides: [{ employeeId: ids.arjun, leave: 'lapse', service: 'restart', code: 'new', reason: 'New contract terms' }],
+    reason: 'Tamil Nadu entity merges into the main entity',
+    ...o,
+  });
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue({ send: jest.fn().mockResolvedValue({ success: true }) }).compile();
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    await app.init();
+    prisma = moduleRef.get(PrismaService);
+    tenantPrisma = moduleRef.get(TenantPrismaService);
+
+    planId = (await prisma.plan.create({ data: { name: `restr-plan-${runId}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
+    for (const k of ['A', 'B'] as const) {
+      const created = await prisma.organization.create({ data: { name: `Org ${k}`, slug: `restr-${k.toLowerCase()}-${runId}`, planId } });
+      org[k] = { id: created.id, slug: created.slug };
+    }
+    const masters = async (k: 'A' | 'B', tag: string, isDefault: boolean) =>
+      tenantPrisma.forTenant(ctx(k), async (tx) => {
+        const o = { organizationId: org[k].id };
+        ids[`le${tag}`] = (await tx.legalEntity.create({ data: { ...o, name: `Entity ${tag}`, shortName: tag, isDefault, employeeCodePrefix: tag } })).id;
+        ids[`loc${tag}`] = (await tx.location.create({ data: { ...o, legalEntityId: ids[`le${tag}`], name: `Site ${tag}`, code: tag, address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } })).id;
+      });
+    await masters('A', 'KF', true);
+    await masters('A', 'TN', false);
+    await masters('B', 'BB', true);
+    await tenantPrisma.forTenant(ctx('A'), async (tx) => {
+      const o = { organizationId: org.A.id };
+      for (const [key, name] of [['dept', 'Quality'], ['labs', 'Labs']] as const) {
+        const id = randomUUID();
+        await tx.department.create({ data: { ...o, id, name, code: name.toUpperCase(), path: `/${id}/` } });
+        ids[key] = id;
+      }
+      // A department only for the Tamil Nadu entity: its people need a department in the new entity.
+      const plant = randomUUID();
+      await tx.department.create({ data: { ...o, id: plant, name: 'Plant ops', code: 'PLANT', path: `/${plant}/`, ownerLegalEntityId: ids.leTN } });
+      ids.plant = plant;
+      ids.des = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
+      ids.type = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'P', category: 'permanent' } })).id;
+      ids.pl = (await tx.leaveType.create({ data: { ...o, code: 'PL', name: 'Privilege leave', kind: 'earned' } })).id;
+    });
+
+    const profile = (keys: string[], name: string) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } })).then((p) => p.id);
+    const hr = await profile(['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage'], 'HR');
+    // Founder decision 21 Oct 2026: payroll does no HR work. Payroll may hold the approval key, yet never decides a restructure.
+    const payroll = await profile(['employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'payroll.run.prepare'], 'Payroll');
+    const passwordHash = await argon2.hash(PASSWORD);
+    const roster: [Who, 'A' | 'B', string, string | null][] = [
+      ['hrA', 'A', 'panel', hr],
+      ['hr2A', 'A', 'panel', hr],
+      ['payrollA', 'A', 'panel', payroll],
+      ['empA', 'A', 'panel', null],
+      ['adminB', 'B', 'org_admin', null],
+    ];
+    for (const [name, k, role, permissionProfileId] of roster) {
+      users[name] = (await tenantPrisma.forTenant(ctx(k), (tx) => tx.user.create({ data: { organizationId: org[k].id, email: email(name), passwordHash, role, permissionProfileId } }))).id;
+    }
+    for (const [name, k] of roster.map((r) => [r[0], r[1]] as const)) {
+      token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
+    }
+    await markSteppedUp(tenantPrisma, token.hr2A);
+    await markSteppedUp(tenantPrisma, token.payrollA);
+    await markSteppedUp(tenantPrisma, token.hrA);
+    const hire = async (tag: string, givenName: string, code: string, o: Record<string, unknown> = {}) =>
+      (
+        await api('hrA', 'post', '/people/employees')
+          .send({ legalEntityId: ids[`le${tag}`], employeeCode: code, givenName, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids[`loc${tag}`], departmentId: ids.dept, designationId: ids.des, employmentTypeId: ids.type, managerEmployeeId: null }, ...o })
+          .expect(201)
+      ).body as { id: string; payChangeId: string | null };
+    const divya = await hire('TN', 'Divya', 'TN0001', { compensation: { currency: 'INR', annualCtc: '900000.00' } });
+    ids.divya = divya.id;
+    await api('hr2A', 'post', `/people/changes/${divya.payChangeId}/approve`).send({}).expect(201);
+    ids.arjun = (await hire('TN', 'Arjun', 'TN0002', { status: 'probation', joinedOn: addDays(today, -30), overrideReason: undefined })).id;
+    ids.imran = (await hire('TN', 'Imran', 'TN0003')).id;
+    ids.kiran = (await hire('KF', 'Kiran', 'KF0001')).id;
+    ids.selvi = (
+      await api('hrA', 'post', '/people/employees')
+        .send({ legalEntityId: ids.leTN, employeeCode: 'TN0004', givenName: 'Selvi', status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids.locTN, departmentId: ids.plant, designationId: ids.des, employmentTypeId: ids.type, managerEmployeeId: null } })
+        .expect(201)
+    ).body.id;
+    // Leave on the books: Divya 12 days, Arjun 5.
+    await tenantPrisma.forTenant(ctx('A'), (tx) =>
+      tx.leaveLedgerEntry.createMany({
+        data: [
+          { organizationId: org.A.id, employeeId: ids.divya, leaveTypeId: ids.pl, entryOn: new Date(`${addDays(today, -60)}T00:00:00Z`), kind: 'opening', days: 12, reason: 'Opening' },
+          { organizationId: org.A.id, employeeId: ids.arjun, leaveTypeId: ids.pl, entryOn: new Date(`${addDays(today, -20)}T00:00:00Z`), kind: 'opening', days: 5, reason: 'Opening' },
+        ],
+      }),
+    );
+  }, 240_000);
+
+  afterAll(async () => {
+    await tenantPrisma
+      .forTenant(SUPER, async (tx) => {
+        await tx.refreshToken.deleteMany({ where: { userId: { in: Object.values(users) } } });
+        await tx.session.deleteMany({ where: { userId: { in: Object.values(users) } } });
+        await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
+        await tx.user.deleteMany({ where: { id: { in: Object.values(users) } } });
+      })
+      .catch(() => undefined);
+    await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
+    await app.close();
+  });
+
+  it('keys: sending needs employee.change.manage; another company sees nothing and cannot plan with our entities', async () => {
+    await api('empA', 'get', '/people/restructures/setup').expect(403);
+    await api('empA', 'post', '/people/restructures/preview').send(merge()).expect(403);
+    await api('payrollA', 'post', '/people/restructures').send(merge()).expect(403);
+    await api('payrollA', 'get', '/people/restructures/setup').expect(403);
+    const setup = (await api('hrA', 'get', '/people/restructures/setup').expect(200)).body;
+    expect(setup.entities.find((e: { id: string }) => e.id === ids.leTN).people).toBe(4);
+    expect(setup.departments.find((d: { id: string }) => d.id === ids.plant)).toMatchObject({ openTo: [ids.leTN], byEntity: { [ids.leTN]: 1 } });
+    expect((await api('adminB', 'post', '/people/restructures/preview').send(merge()).expect(400)).body.message).toBe('Choose a legal entity of this company to move people from.');
+  });
+
+  it('a locked payroll month stops every move into or out of it, and the send', async () => {
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId: ids.leKF, periodStart: new Date(`${today.slice(0, 8)}01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)), stage: 'locked' } }));
+    const out = (await api('hrA', 'post', '/people/restructures/preview').send(merge()).expect(200)).body;
+    expect(out.checks.find((c: { id: string }) => c.id === `pay-${ids.leKF}`)).toMatchObject({ status: 'Blocked' });
+    expect(out.people.every((p: { status: string; reason: string }) => p.status === 'failed' && / payroll of Entity KF is locked\.$/.test(p.reason))).toBe(true);
+    expect((await api('hrA', 'post', '/people/restructures').send(merge()).expect(400)).body.code).toBe('RESTRUCTURE_PEOPLE_INVALID');
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.payPeriod.updateMany({ where: { organizationId: org.A.id }, data: { stage: 'open' } }));
+  });
+
+  it('preview: each person with the result or the reason; nothing is kept', async () => {
+    const out = (await api('hrA', 'post', '/people/restructures/preview').send(merge()).expect(200)).body;
+    const by = (n: string) => out.people.find((p: { name: string }) => p.name === n);
+    expect(by('Divya')).toMatchObject({ status: 'ready', to: { entity: 'Entity KF', code: 'TN0001', location: 'Site KF' }, service: { from: joined, kept: true }, leave: [{ name: 'Privilege leave', days: 12, action: 'carried' }], pay: 'kept' });
+    expect(by('Arjun')).toMatchObject({ status: 'ready', to: { code: expect.stringMatching(/^KF\d{4}$/) }, service: { from: today, kept: false }, leave: [{ days: 5, action: 'lapsed' }], pay: 'none' });
+    expect(by('Selvi')).toMatchObject({ status: 'ready', to: { department: 'Quality' } });
+    expect(out.counts).toEqual({ ready: 4, failed: 0, leftOut: 0 });
+    // Without a department in the new entity, she cannot move: said in plain words.
+    const unmapped = (await api('hrA', 'post', '/people/restructures/preview').send(merge({ masterMap: {} })).expect(200)).body;
+    expect(unmapped.people.find((p: { name: string }) => p.name === 'Selvi')).toMatchObject({ status: 'failed', reason: "That department is not available to the employee's legal entity." });
+    expect((await employment(ids.divya, ids.leTN))!.exitedOn).toBeNull();
+    expect(await asSuper((tx) => tx.restructure.count({ where: { organizationId: org.A.id } }))).toBe(0);
+  });
+
+  it('merge: approved once by someone else; each person moves on their own and a failure keeps its reason', async () => {
+    const { id } = (await api('hrA', 'post', '/people/restructures').send(merge()).expect(201)).body;
+    ids.merge = id;
+    await api('adminB', 'get', `/people/restructures/${id}`).expect(404);
+    // The sender never approves their own plan, and payroll never approves one (no HR work); a second HR person does.
+    expect((await api('hrA', 'post', `/people/restructures/${id}/approve`).send({}).expect(403)).body.message).toBe('You sent this restructure, so someone else in HR approves it.');
+    await api('payrollA', 'post', `/people/restructures/${id}/approve`).send({}).expect(403);
+    await api('payrollA', 'post', `/people/restructures/${id}/reject`).send({ reason: 'Not ours' }).expect(403);
+    await api('payrollA', 'get', `/people/restructures/${id}`).expect(403);
+    // After sending, Imran gets a change on the move date: he alone cannot move.
+    await api('hrA', 'post', '/people/changes').send({ employeeId: ids.imran, changeType: 'transfer', effectiveDate: addDays(today, 5), payload: { assignment: { departmentId: ids.labs } }, reason: 'Labs need him' }).expect(201);
+    const done = (await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({ note: 'Board approved' }).expect(200)).body;
+    expect(done).toMatchObject({ status: 'done', moved: 3, failed: 1 });
+    expect(done.people.find((p: { name: string }) => p.name === 'Imran')).toMatchObject({ status: 'failed', reason: expect.stringMatching(/^Has a transfer on .* on or after the move date\. Decide or cancel it first\.$/) });
+    // Divya: the old employment ends the day before, the new one keeps the code, the service and the pay.
+    const old = await employment(ids.divya, ids.leTN);
+    expect(old!.exitedOn!.toISOString().slice(0, 10)).toBe(addDays(today, -1));
+    const now = await employment(ids.divya, ids.leKF);
+    expect(now).toMatchObject({ employeeCode: 'TN0001', exitedOn: null, rehireOf: old!.id });
+    expect(now!.continuousServiceFrom!.toISOString().slice(0, 10)).toBe(joined);
+    // Pay sits behind the pay guard: opened for the new entity only.
+    const pay = await asSuper((tx) => withPayScope(tx, [ids.leKF], () => tx.compensation.findFirst({ where: { employmentId: now!.id, supersededAt: null } })));
+    expect(pay!.annualCtc.toString()).toBe('900000');
+    expect(await leave(ids.divya)).toBe(12);
+    // Arjun: new code, service restarts, leave lapsed, the same probation end.
+    const arjunOld = await employment(ids.arjun, ids.leTN);
+    const arjun = await employment(ids.arjun, ids.leKF);
+    expect(arjun!.employeeCode).toMatch(/^KF\d{4}$/);
+    expect(arjun!.continuousServiceFrom!.toISOString().slice(0, 10)).toBe(today);
+    expect(await leave(ids.arjun)).toBe(0);
+    const [p1, p2] = await asSuper((tx) => Promise.all([tx.probation.findFirst({ where: { employmentId: arjunOld!.id } }), tx.probation.findFirst({ where: { employmentId: arjun!.id } })]));
+    expect(p2!.plannedEndOn).toEqual(p1!.plannedEndOn);
+    // Imran stays where he was.
+    expect((await employment(ids.imran, ids.leTN))!.exitedOn).toBeNull();
+    // History and audit: the moves went through the engine, raised by the sender, approved by the approver.
+    const join = await asSuper((tx) => tx.employeeChange.findFirst({ where: { employmentId: now!.id, changeType: 'join' } }));
+    expect(join!.requestedBy).toBe(users.hrA);
+    const actions = (await asSuper((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { startsWith: 'restructure.' } }, orderBy: { createdAt: 'asc' } }))).map((a) => a.action);
+    expect(actions).toEqual(['restructure.requested', 'restructure.approved', 'restructure.done']);
+    expect(await asSuper((tx) => tx.eventOutbox.count({ where: { organizationId: org.A.id, eventType: 'employee.joined', payload: { path: ['employeeId'], equals: ids.divya } } }))).toBe(1);
+    await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({}).expect(409);
+  });
+
+  it('continuity checklist: open items for payroll, kept by HR', async () => {
+    const items = (await api('hrA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(200)).body;
+    expect(items.map((i: { key: string; status: string }) => `${i.key}:${i.status}`).sort()).toEqual(['declarations:open', 'esi:open', 'form12b:open', 'gratuity:done', 'leave:done', 'pay:done', 'uan:open']);
+    expect(items.find((i: { key: string }) => i.key === 'leave').title).toBe('Leave balances carried (Privilege leave 12)');
+    await api('empA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(403);
+    await api('adminB', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(404);
+    const esi = items.find((i: { key: string }) => i.key === 'esi');
+    await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(200);
+    await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(409);
+    // Payroll keeps its own items of the new entity.
+    const uan = items.find((i: { key: string }) => i.key === 'uan');
+    await api('payrollA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(200);
+    await api('payrollA', 'put', `/people/restructures/continuity/${uan.id}`).send({ done: true, version: uan.version }).expect(200);
+  });
+
+  it('inside one entity: a department and manager move through the change engine; reject and cancel keep everyone in place', async () => {
+    const within = { kind: 'within', fromEntityId: ids.leKF, departmentIds: [ids.dept], target: { departmentId: ids.labs, managerEmployeeId: ids.divya }, effectiveDate: today, defaults: { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' }, reason: 'Quality joins Labs' };
+    const pre = (await api('hrA', 'post', '/people/restructures/preview').send(within).expect(200)).body;
+    // Divya now works in this entity too: she cannot be her own manager.
+    expect(pre.people.find((p: { name: string }) => p.name === 'Divya')).toMatchObject({ status: 'failed', reason: 'Cannot be their own manager.' });
+    const sent = await api('hrA', 'post', '/people/restructures').send({ ...within, overrides: [{ employeeId: ids.divya, leaveOut: true, reason: 'She leads Labs' }] }).expect(201);
+    const rejected = await api('hrA', 'post', '/people/restructures').send({ ...within, overrides: [{ employeeId: ids.divya, leaveOut: true, reason: 'She leads Labs' }] }).expect(201);
+    await api('hr2A', 'post', `/people/restructures/${rejected.body.id}/reject`).send({ reason: 'Not this quarter' }).expect(200);
+    await api('hr2A', 'post', `/people/restructures/${rejected.body.id}/approve`).send({}).expect(409);
+    const done = (await api('hr2A', 'post', `/people/restructures/${sent.body.id}/approve`).send({}).expect(200)).body;
+    expect(done).toMatchObject({ status: 'done', moved: 3, failed: 0 });
+    expect(done.people.find((p: { name: string }) => p.name === 'Divya')).toMatchObject({ status: 'left_out', reason: 'Left out: She leads Labs' });
+    const kiran = await asSuper((tx) => tx.employeeAssignment.findFirst({ where: { employeeId: ids.kiran, supersededAt: null, validTo: null } }));
+    expect(kiran).toMatchObject({ departmentId: ids.labs, managerEmployeeId: ids.divya });
+    const change = await asSuper((tx) => tx.employeeChange.findFirst({ where: { employeeId: ids.kiran, changeType: 'transfer' } }));
+    expect(change).toMatchObject({ requestedBy: users.hrA, decidedBy: users.hr2A });
+  });
+
+  it('a future date: approved now, moved on the day (scheduled)', async () => {
+    const { id } = (await api('hrA', 'post', '/people/restructures').send(merge({ kind: 'demerge', locationIds: [ids.locTN], effectiveDate: addDays(today, 40), overrides: [] })).expect(201)).body;
+    const out = (await api('hr2A', 'post', `/people/restructures/${id}/approve`).send({}).expect(200)).body;
+    expect(out.status).toBe('scheduled');
+    expect((await employment(ids.imran, ids.leTN))!.exitedOn).toBeNull();
+  });
+});

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { ReadyToOnboardQueue } from '@yukthix/ui/frame';
 import type { ReadyOffer } from '@yukthix/ui/lifecycle';
-import { todayIst } from '../../../../../lib/yx-org';
+import { todayIst, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { readyRow } from '../../../../../lib/yx-onboarding';
 
@@ -23,7 +23,7 @@ export default function YxReadyToOnboardPage() {
     <ReadyToOnboardQueue
       rows={offers.map(readyRow)}
       live={{
-        state: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
+        state: loadState(rows),
         onRetry: () => void rows.refetch(),
         today: day(todayIst()),
         places,

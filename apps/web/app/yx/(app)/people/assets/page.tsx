@@ -5,7 +5,7 @@ import { useToast } from '@yukthix/ui';
 import { AssetRegister } from '@yukthix/ui/frame';
 import { AddAssetDrawer, type AssetRow } from '@yukthix/ui/lifecycle';
 import type { PersonOption } from '@yukthix/ui/history';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { usePeople } from '../../../../../lib/yx-people';
 
@@ -42,7 +42,7 @@ export default function YxAssetsPage() {
     <AssetRegister
       rows={[]}
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         rows,
         today: new Date(`${today}T00:00:00`),

@@ -185,11 +185,13 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     expect(body.me).toBeNull();
   });
 
-  it('scoped HR sees Internal fields only where the grant reaches, and no phone without the Personal key', async () => {
+  it('scoped HR with no record of their own lists only the people the grant reaches (no blank rows), no phone without the Personal key', async () => {
     const body = await list('hrTn');
     expect(byId(body, ids.imran)).toMatchObject({ employeeCode: expect.any(String), status: 'Active' });
-    expect(byId(body, ids.arjun)).not.toHaveProperty('employeeCode');
-    expect(byId(body, ids.arjun)).not.toHaveProperty('status');
+    // PPL-01 audit: out-of-scope people are not listed with blanked ID and status; the card counts what is listed.
+    expect(body.rows.find((r: { id: string }) => r.id === ids.arjun)).toBeUndefined();
+    for (const r of body.rows) expect(r).toMatchObject({ employeeCode: expect.any(String), status: expect.any(String) });
+    expect(body.cards.employees.count).toBe(body.rows.length);
     for (const r of body.rows) expect(r).not.toHaveProperty('phone');
     expect(body.cards.consultants).toBeNull();
   });
@@ -211,7 +213,7 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     const csv = (await api('hrTn', 'post', '/people/workforce/export').send({ columns: ['name', 'code', 'phone'] }).expect(200)).text;
     const lines = csv.split('\r\n');
     expect(lines[0]).toBe('"Name","ID","Phone"');
-    expect(lines.find((l) => l.startsWith('"Arjun'))).toBe('"Arjun Kulkarni","",""');
+    expect(lines.find((l) => l.startsWith('"Arjun'))).toBeUndefined(); // outside the plant HR's grant: not listed
     expect(lines.find((l) => l.startsWith('"Imran'))).toMatch(/^"Imran","[^"]+",""$/);
     const all = (await api('hrA', 'post', '/people/workforce/export').send({ columns: ['name', 'phone'], ids: [ids.arjun, ids.konFirm] }).expect(200)).text;
     expect(all.split('\r\n')).toEqual(['"Name","Phone"', '"Arjun Kulkarni","+919845012345"', `"'=SUM(1,2) Advisory",""`]);
