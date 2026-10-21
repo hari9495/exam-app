@@ -7,7 +7,7 @@ import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type ColumnState, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoticeBar, Skeleton } from '../../components/feedback';
 import { Avatar, Badge } from '../../components/display';
 import { TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
@@ -483,6 +483,8 @@ export interface LiveOrgChart {
   onExportCsv?: () => void;
   /** Offer the Position view (open job openings shown as vacant positions). */
   positions?: boolean;
+  /** Said in the Position view when nothing is open today, e.g. "No open positions for Kaveri Foods Pvt Ltd". */
+  noPositionsText?: string;
   /** The latest date "View as on" may show (today for everyone but HR, founder 20 Oct 2026). */
   maxAsOn?: Date;
 }
@@ -510,15 +512,16 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
           ) : undefined
         }
       />
+      {/* One line, so the chart keeps its room at 1278 x 635 (founder 21 Oct 2026). */}
       {past && asOn && (
-        <InlineAlert tone="info" title={`Showing the org as on ${formatDate(asOn)}`} actions={<Button size="sm" onClick={() => setAsOn(today)}>Back to today</Button>}>
-          People who joined later and roles opened later are not shown. Titles are as they were on that date.
-        </InlineAlert>
+        <NoticeBar tone="info" action={<Button size="sm" onClick={() => setAsOn(today)}>Back to today</Button>}>
+          {`Showing the org as on ${formatDate(asOn)}. People who joined later and roles opened later are not shown.`}
+        </NoticeBar>
       )}
       {future && asOn && (
-        <InlineAlert tone="info" title={`Showing the org as it will be on ${formatDate(asOn)}`} actions={live ? <Button size="sm" onClick={() => setAsOn(today)}>Back to today</Button> : undefined}>
-          {live ? 'Approved changes up to that date are applied.' : `Scheduled changes up to that date are applied, for example ${ORG_PROMOTED.name}'s promotion on 1 Oct 2026.`}
-        </InlineAlert>
+        <NoticeBar tone="info" action={live ? <Button size="sm" onClick={() => setAsOn(today)}>Back to today</Button> : undefined}>
+          {`Showing the org as it will be on ${formatDate(asOn)}. ${live ? 'Approved changes up to that date are applied.' : `Scheduled changes are applied, for example ${ORG_PROMOTED.name}'s promotion on 1 Oct 2026.`}`}
+        </NoticeBar>
       )}
       {live?.truncated && <InlineAlert tone="warning" title="Only the first 5,000 people are shown.">Use the directory to find anyone else.</InlineAlert>}
       {live?.state === 'loading' ? (
@@ -530,6 +533,7 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
           people={people}
           defaultView={defaultView}
           views={live.positions ? ['reporting', 'department', 'position'] : ['reporting', 'department']}
+          noPositionsText={past || future ? 'No open positions on this date. Openings show on today’s chart.' : (live.noPositionsText ?? 'No open positions')}
           {...(live.onExportCsv ? { onExport: (f: 'png' | 'pdf' | 'csv') => (f === 'csv' ? live.onExportCsv!() : void exportOrgChart(people.filter((x) => !x.vacant), f, live.companyName, `org-chart-${dayKey(asOn ?? today)}`)), exportFormats: ['png' as const, 'pdf' as const, 'csv' as const] } : {})}
           rootLabel={live.companyName}
           meId={live.meId}
@@ -542,6 +546,7 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
           defaultView={defaultView}
           onExport={() => {}}
           rootLabel="Kaveri Foods Pvt Ltd"
+          noPositionsText={past || future ? 'No open positions on this date. Openings show on today’s chart.' : 'No open positions'}
           defaultSelected={defaultSelected}
           meId={ME.id}
           openOnMe={persona !== 'hr'}
