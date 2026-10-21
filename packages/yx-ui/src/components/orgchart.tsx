@@ -132,6 +132,15 @@ const FIT_MIN = 0.6;
 export const fitScale = (boxW: number, boxH: number, w: number, h: number) => Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(boxW / w, boxH / h) * 10) / 10));
 /** The canvas height that makes the page content end at the bottom of the visible area (120 to 760 px). */
 export const canvasHeight = (current: number, contentBottom: number, visibleBottom: number) => Math.max(120, Math.min(760, Math.round(current - (contentBottom - visibleBottom))));
+/**
+ * Loop guard for the canvas height: the times of recent changes (last second) and whether this change may go ahead.
+ * More than 4 changes a second without a window resize is a loop (the page's scroll bar coming and going): then only
+ * shrinking is allowed, so it settles on the smaller height instead of blinking (founder, 21 Oct 2026).
+ */
+export const settleHeight = (times: number[], now: number, cur: number, next: number) => {
+  const recent = [...times.filter((t) => now - t < 1000), now];
+  return { times: recent, ok: recent.length <= 4 || next < cur };
+};
 const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
 const team = (n: number) => (n === 1 ? '1 person in team' : `${n} people in team`);
 
@@ -192,6 +201,7 @@ export function OrgChart({
     const vp = viewportRef.current;
     const main = vp?.closest('main');
     if (!vp || !main) return;
+    let times: number[] = [];
     const size = () => {
       // Measured from the content's bottom, not scrollHeight: scrollHeight never shows room to spare, so a canvas
       // shrunk once (a notice, a small window) never grew back.
@@ -200,19 +210,24 @@ export function OrgChart({
       const bottom = Math.max(...kids.map((c) => c.getBoundingClientRect().bottom)) + main.scrollTop + (parseFloat(getComputedStyle(main).paddingBottom) || 0);
       const cur = vp.getBoundingClientRect().height;
       const next = canvasHeight(cur, bottom, main.getBoundingClientRect().top + main.clientHeight);
-      if (Math.abs(next - cur) > 1) setVpHeight(next);
+      if (Math.abs(next - cur) <= 1) return;
+      const s = settleHeight(times, performance.now(), cur, next);
+      times = s.times;
+      if (s.ok) setVpHeight(next);
     };
+    // A real window resize starts afresh, so dragging the window bigger always grows the canvas.
+    const onWindow = () => ((times = []), size());
     size();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(size) : null;
     for (const child of Array.from(main.children)) ro?.observe(child);
     // A notice added or removed above the chart (View as on) changes the room left.
     const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestAnimationFrame(size)) : null;
     mo?.observe(main, { childList: true, subtree: true });
-    window.addEventListener('resize', size);
+    window.addEventListener('resize', onWindow);
     return () => {
       ro?.disconnect();
       mo?.disconnect();
-      window.removeEventListener('resize', size);
+      window.removeEventListener('resize', onWindow);
     };
   }, []);
   const scaleRef = useRef(1); // the zoom the cards are laid out at now (fit reads it after a re-layout)

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { OrgChart, buildOrgTree, canvasHeight, fitScale, type OrgPerson } from './orgchart';
+import { OrgChart, buildOrgTree, canvasHeight, fitScale, settleHeight, type OrgPerson } from './orgchart';
 import { KanbanBoard, moveCard, type KanbanColumn } from './kanban';
 import { SetupChecklist, Stepper, checklistProgress, type ChecklistSection } from './stepper';
 import { DocumentViewer, documentKind, esignSummary } from './document';
@@ -254,6 +254,15 @@ describe('org chart opening zoom (PPL-02)', () => {
     expect(canvasHeight(120, 400, 910)).toBe(630);
     expect(canvasHeight(300, 2000, 635)).toBe(120); // never below 120 px
     expect(canvasHeight(300, 100, 2000)).toBe(760); // nor above 760 px
+    // A loop (scroll bar on, off, on) settles on the smaller height after 4 changes in a second instead of blinking.
+    let times: number[] = [];
+    const steps = [300, 280, 300, 280, 300, 280].map((next, i) => {
+      const s = settleHeight(times, i * 100, i % 2 ? 300 : 280, next);
+      times = s.times;
+      return s.ok;
+    });
+    expect(steps).toEqual([true, true, true, true, false, true]);
+    expect(settleHeight(times, 5000, 280, 300).ok).toBe(true); // a second later it may grow again
     expect(fitScale(900, 250, 1200, 330)).toBe(0.7); // first two levels into the visible canvas
     expect(fitScale(400, 100, 3000, 900)).toBe(0.6); // a very wide top level scrolls instead of shrinking past 60 %
   });
