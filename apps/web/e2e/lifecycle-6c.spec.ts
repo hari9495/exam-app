@@ -68,7 +68,7 @@ test('assets → resignation accepted by HR → clearance from the asset return 
   // HR accepts; the exit is on notice and the laptop is on the clearance list.
   await approve(hr, /Resignation of Divya/);
   await hr.goto('/yx/people/exits');
-  const row = hr.getByRole('row', { name: /Divya/ }).first();
+  const row = hr.getByRole('row', { name: /^Divya Raghunathan/ }).first(); // Divya the leaver, not as someone's manager
   // The designed list (PPL-19): the stage after acceptance is Clearance; the row's button opens the case.
   await expect(row.getByText('Clearance')).toBeVisible();
   await row.getByRole('button', { name: /^Open case/ }).click();
