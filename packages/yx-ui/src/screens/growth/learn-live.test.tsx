@@ -64,6 +64,26 @@ describe('Asking for a course (LRN-06)', () => {
   });
 });
 
+describe('External training (LRN-06)', () => {
+  it('asks with provider, fees and reason; the bond above the threshold; listed with its status', async () => {
+    const onExternal = vi.fn(async () => undefined);
+    wrap(<LiveMyLearningScreen live={{ state: 'ready', onRetry: vi.fn(), onTab: vi.fn(), onOpen: vi.fn(), onDownload: vi.fn(), onEnrol: vi.fn(), onExternal, tab: 'mine', data: { today: '2026-10-21', employee: true, enrolments: [], certificates: [], catalogue: [], external: [{ id: 'x1', title: 'Six Sigma Green Belt', provider: 'QAI', cost: 18000, status: 'Requested', requested: '2026-10-20' }] } }} />);
+    expect(screen.getByText(/External · QAI · ₹18,000 · asked 20 Oct 2026/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Request external training' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Request external training' });
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    expect(within(sheet).getByText('Name the course or certification.')).toBeInTheDocument();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Course or certification/ }), 'Certified Quality Auditor preparation');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Provider/ }), 'Deccan Quality Institute');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Cost/ }), '32000');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Why this helps/ }), 'Supplier audits are 40% of my goals.');
+    expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    await ue.click(within(sheet).getByRole('checkbox', { name: 'I accept the training bond terms' }));
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onExternal).toHaveBeenCalledWith({ title: 'Certified Quality Auditor preparation', provider: 'Deccan Quality Institute', cost: 32000, reason: 'Supplier audits are 40% of my goals.', acceptBond: true }));
+  });
+});
+
 describe('Course player (LRN-02)', () => {
   const data = (o: { completed?: boolean } = {}) => ({
     enrolment: { id: 'e1', status: (o.completed ? 'Completed' : 'In progress') as 'Completed' | 'In progress', due: '2026-11-20' },

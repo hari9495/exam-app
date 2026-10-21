@@ -239,6 +239,26 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(await audits('learning.enrolment.declined')).toHaveLength(1);
   });
 
+  it('external training: asked with its provider, fees and reason; the bond above the threshold; the manager, then L&D', async () => {
+    const ask = { title: 'Certified Quality Auditor preparation', provider: 'Deccan Quality Institute', cost: 32000, reason: 'Supplier audits are 40% of my goals this year.' };
+    await api('arjunU', 'post', '/learning/me/external').send({ ...ask, reason: 'short' }).expect(400);
+    await api('arjunU', 'post', '/learning/me/external').send(ask).expect(400);
+    await api('nobodyA', 'post', '/learning/me/external').send({ ...ask, acceptBond: true }).expect(403);
+    const { id } = (await api('arjunU', 'post', '/learning/me/external').send({ ...ask, acceptBond: true }).expect(201)).body;
+    const mine = () => api('arjunU', 'get', '/learning/me').expect(200).then((r) => r.body.external as { id: string; status: string }[]);
+    expect(await mine()).toEqual([expect.objectContaining({ id, title: ask.title, provider: ask.provider, cost: 32000, status: 'Requested' })]);
+    const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; summary: { label: string; value: string }[] }[];
+    const t1 = (await inbox('mgrU')).find((t) => t.title === `Arjun: ${ask.title} (external)`)!;
+    expect(t1.summary.map((x) => x.label)).toEqual(['Training', 'Fees', 'Why', 'Training bond']);
+    await api('mgrU', 'post', `/workflow/approvals/tasks/${t1.taskId}/decide`).send({ decision: 'approve' }).expect(200);
+    const t2 = (await inbox('ldA')).find((t) => t.title === `Arjun: ${ask.title} (external)`)!;
+    await api('ldA', 'post', `/workflow/approvals/tasks/${t2.taskId}/decide`).send({ decision: 'approve' }).expect(200);
+    expect((await mine())[0].status).toBe('Approved');
+    // Another company's people see none of it.
+    expect((await api('adminB', 'get', '/learning/me').expect(200)).body.external).toEqual([]);
+    expect(await audits('learning.external.approved')).toHaveLength(1);
+  });
+
   it('reminders 7 and 2 days ahead, the manager the day after, training reports after 7 days; each once', async () => {
     const remind = app.get(LearningAssignService);
     const setDue = (id: string, day: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.update({ where: { id }, data: { dueOn: new Date(`${day}T00:00:00Z`) } }));

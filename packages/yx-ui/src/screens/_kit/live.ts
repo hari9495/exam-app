@@ -49,6 +49,8 @@ export {
   type LiveComplianceData,
   type LiveCourses,
   type LiveEnrolment,
+  type LiveExternal,
+  type ExternalInput,
   type LiveMyLearning,
   type LivePlayer,
   type LivePlayerItem,

@@ -57,10 +57,27 @@ export interface LiveCertificate {
   expires: string | null;
   renewal: string | null;
 }
+export interface LiveExternal {
+  id: string;
+  title: string;
+  provider: string;
+  cost: number;
+  status: 'Requested' | 'Approved';
+  requested: string;
+}
+export interface ExternalInput {
+  title: string;
+  provider: string;
+  cost: number;
+  reason: string;
+  acceptBond: boolean;
+}
 export interface LiveMyLearning {
   state: LoadState;
   onRetry: () => void;
-  data: { today: string; employee: boolean; enrolments: LiveEnrolment[]; certificates: LiveCertificate[]; catalogue: Course[] } | null;
+  data: { today: string; employee: boolean; enrolments: LiveEnrolment[]; certificates: LiveCertificate[]; catalogue: Course[]; external?: LiveExternal[] } | null;
+  /** LRN-06 external: training outside the catalogue (employees only). */
+  onExternal?: (input: ExternalInput) => Promise<void>;
   tab: 'mine' | 'catalogue' | 'certificates';
   onTab: (tab: 'mine' | 'catalogue' | 'certificates') => void;
   onOpen: (enrolmentId: string) => void;
@@ -100,6 +117,7 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [sheet, setSheet] = useState<Course | null>(null);
+  const [asking, setAsking] = useState(false);
   const d = live.data;
   const open = new Map((d?.enrolments ?? []).filter((e) => e.status !== 'Completed').map((e) => [e.course.id, e.status]));
   const completed = new Set((d?.enrolments ?? []).filter((e) => e.status === 'Completed').map((e) => e.course.id));
@@ -114,9 +132,10 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
   const shownCat = (d?.catalogue ?? []).filter((c) => (!q || c.title.toLowerCase().includes(q.toLowerCase())) && filters.every((f) => matchesFilter((c as unknown as Record<string, unknown>)[f.key], f)));
   const cont = d?.enrolments.find((e) => e.status === 'In progress');
   const assigned = (d?.enrolments ?? []).filter((e) => e.status !== 'Completed');
+  const external = d?.external ?? [];
 
   const mine = () =>
-    !d || assigned.length === 0 ? (
+    !d || assigned.length + external.length === 0 ? (
       <EmptyState title="Nothing assigned to you right now" description="Mandatory courses appear here with their due dates. Browse the catalogue to learn something new." action={<Button variant="primary" onClick={() => live.onTab('catalogue')}>Browse catalogue</Button>} />
     ) : (
       <div className="yx-growth-stack">
@@ -141,8 +160,20 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
           </section>
         )}
         <section aria-label="Assigned to me" className="yx-growth-stack" data-gap="sm">
-          <h2 className="yx-growth-h">Assigned to me · {assigned.length}</h2>
+          <h2 className="yx-growth-h">Assigned to me · {assigned.length + external.length}</h2>
           <ul className="yx-growth-list">
+            {external.map((x) => (
+              <li key={x.id} className="yx-growth-list__item">
+                <ProgressRing value={null} label={x.title} size="sm" />
+                <div className="yx-growth-list__main">
+                  <span className="yx-growth-list__title">{x.title}</span>
+                  <span className="yx-growth-meta">
+                    External · {x.provider} · ₹{x.cost.toLocaleString('en-IN')} · asked {formatDate(day(x.requested))}
+                  </span>
+                </div>
+                <Badge tone={x.status === 'Approved' ? 'success' : 'info'}>{x.status}</Badge>
+              </li>
+            ))}
             {assigned.map((e) => (
               <li key={e.id} className="yx-growth-list__item">
                 <ProgressRing value={e.progress} label={e.course.title} size="sm" tone={e.status === 'Overdue' ? 'danger' : 'default'} />
@@ -230,12 +261,12 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
 
   return (
     <GrowthFrame area="learning" active={live.tab === 'catalogue' ? 'Catalogue' : 'My learning'} persona="emp">
-      <PageHeader title="My learning" description="Your assigned courses, what to continue, and certificates." />
+      <PageHeader title="My learning" description="Your assigned courses, what to continue, and certificates." actions={d?.employee && live.onExternal ? <Button onClick={() => setAsking(true)}>Request external training</Button> : undefined} />
       <Loading state={live.state} onRetry={live.onRetry} what="Your learning">
         {() => (
           <Tabs value={live.tab} onValueChange={(v) => live.onTab(v as LiveMyLearning['tab'])}>
             <TabsList aria-label="Learning">
-              <TabsTrigger value="mine" count={assigned.length}>
+              <TabsTrigger value="mine" count={assigned.length + external.length}>
                 My learning
               </TabsTrigger>
               <TabsTrigger value="catalogue">Catalogue</TabsTrigger>
@@ -250,6 +281,7 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
         )}
       </Loading>
       {sheet && <EnrolSheet course={sheet} onClose={() => setSheet(null)} onEnrol={live.onEnrol} />}
+      {asking && live.onExternal && <ExternalSheet onClose={() => setAsking(false)} onSend={live.onExternal} />}
     </GrowthFrame>
   );
 }
@@ -309,6 +341,84 @@ function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () 
           <ul>
             <li>{course.approval ? 'Goes to your manager, then L&D for approval.' : 'You’re enrolled straight away.'}</li>
             {course.certificate && <li>A certificate is issued on completion.</li>}
+          </ul>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+/** LRN-06 external: a course or certification outside the catalogue; the bond above the threshold. */
+function ExternalSheet({ onClose, onSend }: { onClose: () => void; onSend: (input: ExternalInput) => Promise<void> }) {
+  const [title, setTitle] = useState('');
+  const [provider, setProvider] = useState('');
+  const [cost, setCost] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
+  const [bond, setBond] = useState(false);
+  const [errors, setErrors] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const needsBond = (cost ?? 0) > BOND_ABOVE;
+  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+  const ok = title.trim().length >= 3 && provider.trim().length >= 2 && cost !== null && reason.trim().length >= 10;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Request external training"
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={needsBond && !bond}
+            loading={busy}
+            onClick={async () => {
+              if (!ok) return setErrors(true);
+              setBusy(true);
+              try {
+                await onSend({ title: title.trim(), provider: provider.trim(), cost: cost ?? 0, reason: reason.trim(), acceptBond: needsBond && bond });
+                onClose();
+              } catch {
+                // The page has said what went wrong; the sheet stays open.
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Send request
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="Course or certification" required error={errors && title.trim().length < 3 ? 'Name the course or certification.' : null}>
+          <TextField value={title} onChange={setTitle} />
+        </FormField>
+        <FieldRow>
+          <FormField label="Provider" required error={errors && provider.trim().length < 2 ? 'Name the provider.' : null}>
+            <TextField value={provider} onChange={setProvider} />
+          </FormField>
+          <FormField label="Cost" required helper="Fees only. Travel goes on an expense claim." error={errors && cost === null ? 'Enter the fees (0 if free).' : null}>
+            <CurrencyField value={cost} onChange={setCost} />
+          </FormField>
+        </FieldRow>
+        <FormField label="Why this helps your work" required helper="At least 10 characters." error={errors && reason.trim().length < 10 ? 'Say how it helps your work.' : null}>
+          <TextArea value={reason} onChange={setReason} rows={3} />
+        </FormField>
+        {needsBond && (
+          <Card title="Training bond">
+            <Text>
+              Courses above {inr(BOND_ABOVE)} have a 12-month service agreement. If you leave within 12 months, a pro-rata share of {inr(cost ?? 0)} is recovered in your final settlement, after HR confirms.
+            </Text>
+            <div className="yx-growth-stack">
+              <Checkbox checked={bond} onChange={setBond} label="I accept the training bond terms" />
+            </div>
+          </Card>
+        )}
+        <div className="yx-growth-effect" aria-live="polite">
+          <span className="yx-growth-effect__title">What happens</span>
+          <ul>
+            <li>Goes to your manager, then L&amp;D for approval.</li>
           </ul>
         </div>
       </div>

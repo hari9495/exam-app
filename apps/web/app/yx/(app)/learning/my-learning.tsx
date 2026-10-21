@@ -2,11 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { MyLearningScreen, type LearningCourse, type LiveCertificate, type LiveEnrolment } from '@yukthix/ui/frame';
+import { MyLearningScreen, type LearningCourse, type LiveCertificate, type LiveEnrolment, type LiveExternal } from '@yukthix/ui/frame';
 import { loadState } from '../../../../lib/yx-org';
 import { useLearning, useLearningFiles, useLearningWrite } from '../../../../lib/yx-learning';
 
-type Me = { today: string; employee: boolean; enrolments: LiveEnrolment[]; certificates: LiveCertificate[]; catalogue: LearningCourse[] };
+type Me = { today: string; employee: boolean; enrolments: LiveEnrolment[]; certificates: LiveCertificate[]; catalogue: LearningCourse[]; external: LiveExternal[] };
 const ROUTE = { mine: '/yx/learning', catalogue: '/yx/learning/catalogue', certificates: '/yx/learning/certificates' } as const;
 /** The growth screens have no separate no-access state: the API's refusal shows as the error with retry. */
 export const learnState = (s: ReturnType<typeof loadState>) => (s === 'no-access' ? 'error' : s);
@@ -38,6 +38,15 @@ export function MyLearningPage({ tab }: { tab: 'mine' | 'catalogue' | 'certifica
             toast({ tone: 'success', title: out.status === 'Requested' ? `You asked to join ${course.title}` : `You are enrolled in ${course.title}`, ...(out.status === 'Requested' ? { description: 'It starts once it is approved.' } : {}) });
           } catch (e) {
             toast({ tone: 'error', title: e instanceof Error ? e.message : 'That did not work. Try again.' });
+            throw e;
+          }
+        },
+        onExternal: async (input) => {
+          try {
+            await write('POST', '/me/external', input);
+            toast({ tone: 'success', title: `You asked for ${input.title}`, description: 'It goes to your manager, then L&D.' });
+          } catch (e) {
+            toast({ tone: 'error', title: e instanceof Error ? e.message : 'The request was not sent. Try again.' });
             throw e;
           }
         },

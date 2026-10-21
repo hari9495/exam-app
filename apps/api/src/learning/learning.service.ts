@@ -23,6 +23,7 @@ const KIND_LABEL: Record<string, 'PDF' | 'Video' | 'Link'> = { pdf: 'PDF', video
 /** Courses that cost more than this carry a 12-month training bond the person accepts when asking (LRN-06). */
 export const BOND_ABOVE = 25000;
 const REQUEST_TYPE = 'learning.enrolment';
+const EXTERNAL_TYPE = 'learning.external';
 const MIME: Record<'pdf' | 'video', { mime: string; maxMb: number }> = { pdf: { mime: 'application/pdf', maxMb: 20 }, video: { mime: 'video/mp4', maxMb: 100 } };
 type Course = Prisma.LearningCourseGetPayload<object>;
 
@@ -59,6 +60,16 @@ export class LearningService implements OnModuleInit {
       distinctSteps: true,
       cardPreview: async () => 'full',
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
+      requesterLink: () => '/yx/learning',
+    });
+    this.engine.register({
+      key: EXTERNAL_TYPE,
+      label: 'External training',
+      risk: 'normal',
+      autoActions: false,
+      distinctSteps: true,
+      cardPreview: async () => 'full',
+      onDecided: (tx, req, outcome) => this.externalDecided(tx, req, outcome),
       requesterLink: () => '/yx/learning',
     });
     registerVerifier(async (code) => {
@@ -120,8 +131,9 @@ export class LearningService implements OnModuleInit {
       const company = await this.company(tx, c);
       const today = todayIst();
       const catalogue = (await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, status: 'published' }, orderBy: { title: 'asc' } })).map((x) => this.courseView(x, company));
-      if (!me) return { today, employee: false, enrolments: [], certificates: [], catalogue };
-      return { today, employee: true, enrolments: await this.enrolmentsOf(tx, c, me, today, company), certificates: await this.certificatesOf(tx, c, me), catalogue };
+      if (!me) return { today, employee: false, enrolments: [], certificates: [], catalogue, external: [] };
+      const external = (await tx.learningExternalRequest.findMany({ where: { organizationId: c.organizationId, employeeId: me, status: { in: ['requested', 'approved'] } }, orderBy: { createdAt: 'desc' } })).map((x) => ({ id: x.id, title: x.title, provider: x.provider, cost: Number(x.cost), status: x.status === 'approved' ? 'Approved' : 'Requested', requested: iso(x.createdAt)! }));
+      return { today, employee: true, enrolments: await this.enrolmentsOf(tx, c, me, today, company), certificates: await this.certificatesOf(tx, c, me), catalogue, external };
     });
   }
 
@@ -182,33 +194,11 @@ export class LearningService implements OnModuleInit {
         throw err;
       }
       if (status === 'requested') {
-        const today = todayIst();
-        const person = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: me }, select: { personId: true, givenName: true, familyName: true, preferredName: true } });
-        let ld = (await holdersOf(tx, c.organizationId, 'learning.manage', me, today)).filter((u) => u !== c.userId);
-        if (!ld.length) ld = (await tx.user.findMany({ where: { organizationId: c.organizationId, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id).filter((u) => u !== c.userId);
-        if (!ld.length) throw new ConflictException('No one in L&D can approve courses yet. Ask an admin to grant learning.manage.');
-        const name = person.preferredName || [person.givenName, person.familyName].filter(Boolean).join(' ');
-        const sub = await this.engine.submit(tx, c, {
-          type: REQUEST_TYPE,
-          subjectType: 'learning_enrolment',
-          subjectId: e.id,
-          title: `${name}: ${course.title}`,
-          summary: [
-            { label: 'Course', value: `${course.title} (${TYPE_LABEL[course.type] ?? course.type}, ${durationText(course.durationMinutes)})` },
-            { label: 'Cost', value: Number(course.cost) ? `₹${Number(course.cost).toLocaleString('en-IN')}` : 'No cost' },
-            ...(bond ? [{ label: 'Training bond', value: '12 months, accepted' }] : []),
-          ],
-          subjectPersonId: person.personId,
-          requesterUserId: c.userId ?? null,
-          raisedByUserId: c.userId ?? null,
-          steps: [
-            { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', selfApproval: 'never' },
-            { name: 'L&D', approvers: [{ kind: 'users', userIds: ld.slice(0, 25) }], mode: 'any', selfApproval: 'never' },
-          ],
-          payload: {},
-          payloadFields: [],
-          fallbackUserIds: ld,
-        });
+        const sub = await this.request(tx, c, me, REQUEST_TYPE, 'learning_enrolment', e.id, course.title, [
+          { label: 'Course', value: `${course.title} (${TYPE_LABEL[course.type] ?? course.type}, ${durationText(course.durationMinutes)})` },
+          { label: 'Cost', value: Number(course.cost) ? `₹${Number(course.cost).toLocaleString('en-IN')}` : 'No cost' },
+          ...(bond ? [{ label: 'Training bond', value: '12 months, accepted' }] : []),
+        ]);
         await tx.learningEnrolment.update({ where: { id: e.id }, data: { wfRequestId: sub.id } });
         notices = sub.notices;
       }
@@ -217,6 +207,68 @@ export class LearningService implements OnModuleInit {
     });
     if (notices.length) await this.engine.send(ctx, notices);
     return out;
+  }
+
+  /**
+   * The approval route for something I ask for: my manager, then L&D (learning.manage over me; the company's admins when
+   * nobody holds it). Never the person themselves.
+   */
+  private async request(tx: Tx, c: CompanyContext, me: string, type: string, subjectType: string, subjectId: string, what: string, summary: { label: string; value: string }[]) {
+    const today = todayIst();
+    const person = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: me }, select: { personId: true, givenName: true, familyName: true, preferredName: true } });
+    let ld = (await holdersOf(tx, c.organizationId, 'learning.manage', me, today)).filter((u) => u !== c.userId);
+    if (!ld.length) ld = (await tx.user.findMany({ where: { organizationId: c.organizationId, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id).filter((u) => u !== c.userId);
+    if (!ld.length) throw new ConflictException('No one in L&D can approve training yet. Ask an admin to grant learning.manage.');
+    const name = person.preferredName || [person.givenName, person.familyName].filter(Boolean).join(' ');
+    return this.engine.submit(tx, c, {
+      type,
+      subjectType,
+      subjectId,
+      title: `${name}: ${what}`,
+      summary,
+      subjectPersonId: person.personId,
+      requesterUserId: c.userId ?? null,
+      raisedByUserId: c.userId ?? null,
+      steps: [
+        { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', selfApproval: 'never' },
+        { name: 'L&D', approvers: [{ kind: 'users', userIds: ld.slice(0, 25) }], mode: 'any', selfApproval: 'never' },
+      ],
+      payload: {},
+      payloadFields: [],
+      fallbackUserIds: ld,
+    });
+  }
+
+  /** LRN-06 external: a course or certification outside the catalogue, with its provider, fees and why it helps. */
+  async external(ctx: TenantContext, dto: { title: string; provider: string; cost: number; reason: string; acceptBond?: boolean }) {
+    let notices: Notice[] = [];
+    const out = await this.run(ctx, async (tx, c) => {
+      const me = await ownEmployee(tx, c);
+      if (!me) throw new ForbiddenException('Only employees ask for training.');
+      const bond = dto.cost > BOND_ABOVE;
+      if (bond && !dto.acceptBond) throw new BadRequestException('Accept the training bond terms to continue.');
+      const x = await tx.learningExternalRequest.create({ data: { organizationId: c.organizationId, employeeId: me, title: dto.title.trim(), provider: dto.provider.trim(), cost: dto.cost, reason: dto.reason.trim(), bondAcceptedAt: bond ? new Date() : null, createdBy: c.userId ?? null } });
+      const sub = await this.request(tx, c, me, EXTERNAL_TYPE, 'learning_external_request', x.id, `${x.title} (external)`, [
+        { label: 'Training', value: `${x.title}, ${x.provider}` },
+        { label: 'Fees', value: `₹${dto.cost.toLocaleString('en-IN')}` },
+        { label: 'Why', value: x.reason.slice(0, 300) },
+        ...(bond ? [{ label: 'Training bond', value: '12 months, accepted' }] : []),
+      ]);
+      await tx.learningExternalRequest.update({ where: { id: x.id }, data: { wfRequestId: sub.id } });
+      notices = sub.notices;
+      await audit(tx, c, 'learning.external.requested', 'learning_external_request', x.id, { title: x.title, provider: x.provider, cost: dto.cost });
+      return { id: x.id, status: 'Requested' };
+    });
+    if (notices.length) await this.engine.send(ctx, notices);
+    return out;
+  }
+
+  private async externalDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+    const org = req.organizationId;
+    const x = await tx.learningExternalRequest.findFirst({ where: { organizationId: org, wfRequestId: req.id } });
+    if (!x || x.status !== 'requested') return;
+    await tx.learningExternalRequest.update({ where: { id: x.id }, data: { status: outcome === 'approved' ? 'approved' : 'declined', decidedAt: new Date() } });
+    await audit(tx, { organizationId: org, isSuperAdmin: false, userId: null }, `learning.external.${outcome === 'approved' ? 'approved' : 'declined'}`, 'learning_external_request', x.id, {});
   }
 
   /** The approvals engine decided a request: approved enrols the person from today; refused leaves it declined. */

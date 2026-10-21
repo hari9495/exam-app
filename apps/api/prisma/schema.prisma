@@ -10101,3 +10101,24 @@ model LearningReminder {
   @@id([enrolmentId, kind])
   @@map("learning_reminders")
 }
+
+/// LRN-06: external training a person asks for (outside the catalogue), decided by the manager, then L&D.
+model LearningExternalRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  provider       String    @db.VarChar(200)
+  cost           Decimal   @db.Decimal(12, 2)
+  reason         String    @db.VarChar(2000)
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
+  /// requested · approved · declined
+  status         String    @default("requested") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId], map: "learning_external_requests_employee_idx")
+  @@map("learning_external_requests")
+}

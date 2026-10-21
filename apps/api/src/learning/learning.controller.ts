@@ -76,6 +76,14 @@ export class EnrolDto {
   @IsOptional() @IsBoolean() acceptBond?: boolean;
 }
 
+export class ExternalDto {
+  @IsString() @MinLength(3) @MaxLength(200) title!: string;
+  @IsString() @MinLength(2) @MaxLength(200) provider!: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000) cost!: number;
+  @IsString() @MinLength(10) @MaxLength(2000) reason!: string;
+  @IsOptional() @IsBoolean() acceptBond?: boolean;
+}
+
 export class EntityQueryDto {
   @IsOptional() @IsUUID() entityId?: string;
 }
@@ -117,6 +125,12 @@ export class LearningController {
   enrol(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EnrolDto) {
     ownSession(req);
     return this.learning.enrol(ctx, id, dto);
+  }
+
+  @Post('me/external')
+  external(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ExternalDto) {
+    ownSession(req);
+    return this.learning.external(ctx, dto);
   }
 
   @Get('enrolments/:id')
