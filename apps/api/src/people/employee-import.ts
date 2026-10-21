@@ -70,6 +70,9 @@ function cellText(v: ExcelJS.CellValue): string {
 }
 
 /** Rows of a CSV or .xlsx file (first sheet, header in row 1), or an ImportFileProblem saying what is wrong with the file. */
+/** The fields a column can be matched to, in order, and which ones every row needs. */
+export const importFieldList = () => FIELD_KEYS.map((key) => ({ key, label: IMPORT_FIELDS[key].label, required: REQUIRED_FIELDS.includes(key) }));
+
 export async function readImportFile(buffer: Buffer, fileName: string): Promise<ReadFile> {
   if (buffer.length > MAX_IMPORT_BYTES) throw new ImportFileProblem('The file is larger than 2 MB. Split it into smaller files.');
   const lower = fileName.toLowerCase();
@@ -120,7 +123,7 @@ export async function readImportFile(buffer: Buffer, fileName: string): Promise<
   return {
     columns: headers.map((column, i) => ({ column, sample: rows.find((r) => r.cells[i])?.cells[i] ?? '', field: fields[i] })),
     rows,
-    fields: FIELD_KEYS.map((key) => ({ key, label: IMPORT_FIELDS[key].label, required: REQUIRED_FIELDS.includes(key) })),
+    fields: importFieldList(),
   };
 }
 
