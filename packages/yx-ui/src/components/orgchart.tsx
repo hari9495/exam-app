@@ -202,6 +202,8 @@ export function OrgChart({
     const main = vp?.closest('main');
     if (!vp || !main) return;
     let times: number[] = [];
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let retried = false;
     const size = () => {
       // Measured from the content's bottom, not scrollHeight: scrollHeight never shows room to spare, so a canvas
       // shrunk once (a notice, a small window) never grew back.
@@ -216,9 +218,15 @@ export function OrgChart({
       const s = settleHeight(times, performance.now(), cur, next);
       times = s.times;
       if (s.ok) setVpHeight(next);
+      // Held back: measure once more when it is quiet, so the canvas still reaches its full height without a refresh.
+      else if (!retried) {
+        retried = true;
+        clearTimeout(retry);
+        retry = setTimeout(() => ((times = []), size()), 1100);
+      }
     };
     // A real window resize starts afresh, so dragging the window bigger always grows the canvas.
-    const onWindow = () => ((times = []), size());
+    const onWindow = () => ((times = []), (retried = false), size());
     size();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(size) : null;
     for (const child of Array.from(main.children)) ro?.observe(child);
@@ -229,6 +237,7 @@ export function OrgChart({
     return () => {
       ro?.disconnect();
       mo?.disconnect();
+      clearTimeout(retry);
       window.removeEventListener('resize', onWindow);
     };
   }, []);
