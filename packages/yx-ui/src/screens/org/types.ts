@@ -31,6 +31,8 @@ export interface LegalEntity {
   archivedAt: string | null;
   /** Whether each Confidential identifier is on file; the values are read separately (recorded). */
   statutory: { pan: boolean; tan: boolean; gstin: boolean; cin: boolean };
+  /** The GSTIN itself, only for people who may read this entity's identifiers. */
+  gstin?: string;
 }
 
 export interface LegalEntityInput {
