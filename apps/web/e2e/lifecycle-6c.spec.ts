@@ -49,7 +49,7 @@ test('assets → resignation accepted by HR → clearance from the asset return 
   await issue.getByRole('combobox', { name: 'To' }).click();
   await hr.getByRole('option', { name: /Divya Raghunathan/ }).first().click();
   await issue.getByRole('button', { name: 'Issue' }).click();
-  await expect(hr.getByRole('row', { name: new RegExp(tag) }).getByText('With someone')).toBeVisible();
+  await expect(hr.getByRole('row', { name: new RegExp(tag) }).getByText('Assigned')).toBeVisible(); // the designed register's status (PPL-25)
 
   // Divya confirms she has it, then resigns.
   const divya = await signedIn(browser, 'panel@demo-org.test');
@@ -68,21 +68,26 @@ test('assets → resignation accepted by HR → clearance from the asset return 
   // HR accepts; the exit is on notice and the laptop is on the clearance list.
   await approve(hr, /Resignation of Divya/);
   await hr.goto('/yx/people/exits');
-  const row = hr.getByRole('row', { name: /Divya/ }).first();
-  await expect(row.getByText('Serving notice')).toBeVisible();
-  await row.getByRole('button', { name: 'Open' }).click();
-  await expect(hr.getByRole('row', { name: new RegExp(`Return ${name}`) }).getByText('To do')).toBeVisible();
+  const row = hr.getByRole('row', { name: /^Divya Raghunathan/ }).first(); // Divya the leaver, not as someone's manager
+  // The designed list (PPL-19): the stage after acceptance is Clearance; the row's button opens the case.
+  await expect(row.getByText('Clearance')).toBeVisible();
+  await row.getByRole('button', { name: /^Open case/ }).click();
+  // The designed case (PPL-19): clearance items are a list; the laptop's item waits.
+  await expect(hr.getByRole('listitem').filter({ hasText: `Return ${name}` }).getByText('Pending')).toBeVisible();
   const exitUrl = hr.url();
 
   // Taking the laptop back clears its item.
   await hr.goto('/yx/people/assets');
-  await hr.getByRole('row', { name: new RegExp(tag) }).getByRole('button', { name: 'Take back' }).click();
+  // The designed register (PPL-25): Return, with the condition and a note.
+  await hr.getByRole('row', { name: new RegExp(tag) }).getByRole('button', { name: 'Return' }).click();
   const back = hr.getByRole('dialog');
-  await back.getByRole('textbox', { name: /Condition/ }).fill('Good, with charger');
-  await back.getByRole('button', { name: 'Take back' }).click();
+  await back.getByRole('combobox', { name: /Return condition/ }).click();
+  await hr.getByRole('option', { name: 'Good' }).click();
+  await back.getByRole('textbox', { name: /Note/ }).fill('With charger');
+  await back.getByRole('button', { name: 'Record return' }).click();
   await expect(back).toHaveCount(0);
   await hr.goto(exitUrl);
-  await expect(hr.getByRole('row', { name: new RegExp(`Return ${name}`) }).getByText('Cleared')).toBeVisible();
+  await expect(hr.getByRole('listitem').filter({ hasText: `Return ${name}` }).getByText('Pending')).toHaveCount(0);
 
   // Divya changes her mind: HR agrees, the demo is as it was.
   await divya.goto('/yx/me/resignation');
