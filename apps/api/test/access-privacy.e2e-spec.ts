@@ -45,7 +45,8 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     | 'divyaU'
     | 'arjunU'
     | 'imranU'
-    | 'outsider';
+    | 'outsider'
+    | 'payApprove';
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const up = (who: Who) => markSteppedUp(tenantPrisma, token[who]);
   /** The step-up window has passed (P12 YX-IAM-02). */
@@ -137,7 +138,10 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     ]);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     roles.records = await profile('HR Records', ['org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.personal.view']);
-    roles.payroll = await profile('Payroll TN', ['employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'employee.aadhaar.view', 'pay.range.view']);
+    // Founder 21 Oct 2026: bank and identity changes are approved by HR only, so this second HR person (TN) holds HR's
+    // identity grant with the approval; approval alone (payroll's old template) decides nothing.
+    roles.payroll = await profile('HR identity TN', ['employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'pay.range.view']);
+    const approveOnly = await profile('Payroll approver (approve key only)', ['employee.profile.view', 'employee.identity.view', 'employee.identity.approve']);
     roles.orgAdmin = await profile('Org settings', ['org.structure.view', 'org.settings.manage']);
     roles.teamSalary = await profile('Team salary', ['employee.salary.view']);
     roles.withAts = await profile('Records + candidates', ['employee.profile.view', 'candidate:manage']);
@@ -154,6 +158,7 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       ['hrOps', 'A', 'panel', null],
       ['orgTn', 'A', 'panel', null],
       ['payrollTn', 'A', 'panel', null],
+      ['payApprove', 'A', 'panel', approveOnly],
       ['lakshmiU', 'A', 'panel', null],
       ['divyaU', 'A', 'panel', null],
       ['arjunU', 'A', 'panel', null],
@@ -529,6 +534,9 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('imranU', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(403); // no approve key at all
       await up('hrAll');
       await api('hrAll', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(403);
+      // The approval key without HR's identity grant (payroll) decides nothing; it still reads approved details elsewhere.
+      await up('payApprove');
+      await api('payApprove', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(404);
       await up('payrollTn');
       const queue = (await api('payrollTn', 'get', '/people/profile-requests?status=pending').expect(200)).body.rows;
       expect(queue.map((r: { id: string }) => r.id)).toEqual(expect.arrayContaining([ids.bankReq, ids.panReq]));

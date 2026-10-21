@@ -461,9 +461,12 @@ export class ProfileService {
     return r;
   }
 
-  /** Decided by someone who is neither the requester nor the person (YX-SEC-11) and whose approval grant reaches them. */
+  /**
+   * Decided by HR (founder 21 Oct 2026: bank and identity changes are approved by HR only): the approval grant and HR's
+   * identity grant both reach the person; never the requester or the person (YX-SEC-11). Payroll keeps read access.
+   */
   private async mayDecide(tx: Tx, c: CompanyContext, v: Viewer, r: RequestRow) {
-    if (!(await this.can(tx, c, v, 'employee.identity.approve', r.employeeId))) throw new NotFoundException('Request not found');
+    if (!(await this.can(tx, c, v, 'employee.identity.approve', r.employeeId)) || !(await this.can(tx, c, v, 'employee.identity.manage', r.employeeId))) throw new NotFoundException('Request not found');
     if (r.requestedBy === c.userId) throw new ForbiddenException('You raised this change, so someone else decides it (YX-SEC-11).');
     if ((await this.history.ownEmployeeId(tx, c, v)) === r.employeeId) throw new ForbiddenException('A change to your own details is decided by someone else (YX-SEC-11).');
     if (r.status !== 'pending') throw new ConflictException(`This request is ${r.status}.`);
