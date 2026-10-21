@@ -428,7 +428,7 @@ export interface LiveRequisitionSheet {
 
 export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 'pl3', defaultMax = 8_40_000, live }: { open: boolean; onOpenChange: (o: boolean) => void; planLines: PlanLine[]; defaultLine?: string | null; defaultMax?: number | null; live?: LiveRequisitionSheet }) {
   const [lineId, setLineId] = useState<string | null>(defaultLine);
-  const [outside, setOutside] = useState(defaultLine == null);
+  const [outside, setOutside] = useState(!live && defaultLine == null);
   const [max, setMax] = useState<number | null>(defaultMax);
   const [positions, setPositions] = useState<number | null>(1);
   const [reason, setReason] = useState('');
@@ -500,7 +500,7 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
               </FormField>
               <Checkbox label="This hire is outside the approved plan" checked={outside} onChange={setOutside} />
               {outside && (
-                <FormField label="Why is this needed outside the plan?" required error={needReason ? 'Enter a reason so the CFO can decide.' : null}>
+                <FormField label="Why is this needed outside the plan?" required error={needReason && (!live || reason.length > 0) ? 'Enter a reason so the CFO can decide.' : null}>
                   <TextArea value={reason} onChange={setReason} rows={3} />
                 </FormField>
               )}
@@ -525,7 +525,7 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
         </div>
         <aside className="yx-hire-sheet__effect" aria-live="polite" aria-label="What happens">
           <Text weight="semibold">What happens</Text>
-          {route.extra ? <Badge tone="warning">{live ? 'Extra approval' : 'Extra approval: CFO'}</Badge> : <Badge tone="success">Short chain</Badge>}
+          {live && !line && !outside && !replacement ? null : route.extra ? <Badge tone="warning">{live ? 'Extra approval' : 'Extra approval: CFO'}</Badge> : <Badge tone="success">Short chain</Badge>}
           {live ? (
             <Text as="p" size="sm" tone="secondary">
               It goes to your company&apos;s requisition approvers. You follow it in Approvals.
@@ -537,7 +537,7 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
               ))}
             </ol>
           )}
-          {route.reasons.map((r) => (
+          {(live && !line && !outside && !replacement ? [] : route.reasons).map((r) => (
             <Text key={r} as="p" size="sm" tone="secondary">
               {r}
             </Text>
