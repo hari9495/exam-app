@@ -123,6 +123,12 @@ export class Payroll5dController {
     return this.payslips.mySlips(ctx, this.user(req));
   }
 
+  /** Home's "Net pay" card: the person's own latest net pay, only when the company turned it on. */
+  @Get('me/home-pay')
+  homePay(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.payslips.homePay(ctx, this.user(req));
+  }
+
   /** A single-use 60-second link to the PDF (the person's own published payslip). */
   @Get('me/payslips/:id/pdf')
   @Throttle(MODERATE_UPLOAD_THROTTLE)

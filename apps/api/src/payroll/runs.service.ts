@@ -13,6 +13,7 @@ import { StatutoryRulesService } from '../statutory/statutory.service';
 import { StatutoryError, empDefaults, esiCovered, inForce, type RuleSet } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { subPeriods } from './frequency';
+import { esiPwdFlags } from '../people-extra/esi-flag';
 import { addDays } from '../time/time-maths';
 import { PeriodsService as TimePeriodsService } from '../time/periods.service';
 import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approvals-engine.service';
@@ -581,13 +582,14 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     // ESI coverage is decided at the start of each contribution period (Apr–Sep, Oct–Mar) and kept until it ends.
     const cpStart = `${month.slice(5) >= '10' || month.slice(5) <= '03' ? (month.slice(5) <= '03' ? Number(month.slice(0, 4)) - 1 : month.slice(0, 4)) : month.slice(0, 4)}-${month.slice(5) >= '04' && month.slice(5) <= '09' ? '04' : '10'}-01`;
     const earlier = await tx.payslip.findFirst({ where: { organizationId: org, employmentId, runType: 'regular', status: 'approved', periodStart: { gte: asDate(cpStart), lt: run.periodStart } }, orderBy: { periodStart: 'asc' } });
+    const pwd = (await reads.once(`pwd:${end}`, () => esiPwdFlags(tx, org, ems.map((x) => x.employeeId), end))).has(em.employeeId);
     let covered = esiMode === 'yes';
     if (esiMode === 'by_wage') {
       if (earlier) covered = (await tx.payslipLine.count({ where: { organizationId: org, payslipId: earlier.id, componentCode: { in: components.filter((x) => x.statutory === 'esi_employee').map((x) => x.code) } } })) > 0;
       else {
         const esiRs = inForce(rules, 'IN.ESI', ['IN'], end);
         const wage = segments[0].lines.filter((l) => components.find((x) => x.code === l.code)?.esiWage).reduce((t, l) => t.add(l.monthly), D(0));
-        covered = !!esiRs && esiCovered(esiRs, wage, !!prof?.pwdCeilingConsent);
+        covered = !!esiRs && esiCovered(esiRs, wage, pwd);
       }
     }
     const fyStart = `${Number(month.slice(5)) >= 4 ? month.slice(0, 4) : Number(month.slice(0, 4)) - 1}-04-01`;
@@ -631,7 +633,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         pfOnActualWage: prof?.pfOnActualWage ?? (await option('pf.on_actual_wage')) === 'yes',
         esi: esiMode,
         esiCoveredThisPeriod: covered,
-        pwd: prof?.pwdCeilingConsent ?? false,
+        pwd,
         ptState: prof?.ptState ?? lastState,
         lwfState: prof?.lwfState ?? lastState,
         gender: personal?.gender ?? null,

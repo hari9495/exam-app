@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { d } from './platform-data';
 import {
@@ -6,7 +7,7 @@ import {
 import { ShieldCheck, UserRound } from 'lucide-react';
 import { CommandPalette, ProfileMenu } from '../../components/shell';
 import { NotificationCentre } from '../../components/notify';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, NoticeBar } from '../../components/feedback';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
@@ -23,7 +24,7 @@ const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
 /* PLT-01 */
 // Slots the live app needs (design audit step 1): banners above every page, breadcrumbs below the top level, Me and
 // My security in the account menu, and server search that says it is searching.
-const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
+const liveFrame = (over: { paletteOpen?: boolean; banner?: ReactNode } = {}) => (
   <DesktopFrame
     area="people"
     panelTitle="People"
@@ -35,7 +36,7 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
       onHelp: () => {},
       notifications: <NotificationCentre items={[]} onMarkAllRead={() => {}} settingsHref="#notification-preferences" now={TODAY} />,
       profile: <ProfileMenu name="Lakshmi Venkatesan" email="lakshmi.v@kaverifoods.in" links={[{ label: 'Me', icon: UserRound, onSelect: () => {} }, { label: 'My security', icon: ShieldCheck, onSelect: () => {} }]} />,
-      banner: (
+      banner: over.banner ?? (
         <InlineAlert tone="warning" title="Support session in Kaveri Foods until 15 Oct, 6:00 pm" actions={<Button size="sm">Leave the company</Button>}>
           Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
         </InlineAlert>
@@ -48,6 +49,15 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
   </DesktopFrame>
 );
 export const PLT01LiveSlots: S = { name: 'PLT-01 · App shell · live slots (banner, breadcrumbs, Me menu)', render: () => liveFrame() };
+// The MFA notice (founder 20 Oct 2026): one line, hidden until tomorrow with the close button; after the deadline it stays.
+export const PLT01Mfa: S = {
+  name: 'PLT-01 · App shell · secure your account (one line, can hide for today)',
+  render: () => liveFrame({ banner: <NoticeBar action={<a className="yx-link" href="#me-security">Set it up</a>} onDismiss={() => {}}>Add a passkey or an authenticator app by 2 Nov 2026. After that, admin pages pause.</NoticeBar> }),
+};
+export const PLT01MfaOverdue: S = {
+  name: 'PLT-01 · App shell · secure your account, overdue (cannot hide)',
+  render: () => liveFrame({ banner: <NoticeBar tone="danger" action={<a className="yx-link" href="#me-security">Set it up</a>}>Admin pages are paused until you add a passkey or an authenticator app.</NoticeBar> }),
+};
 export const PLT01Searching: S = { name: 'PLT-01 · App shell · search waiting for the server', render: () => liveFrame({ paletteOpen: true }) };
 export const PLT01Shell: S = { name: 'PLT-01 · App shell · HR (all entities, period)', render: () => <AppShellScreen persona="hr" /> };
 export const PLT01Employee: S = { name: 'PLT-01 · App shell · employee rail', render: () => <AppShellScreen persona="employee" /> };
@@ -116,6 +126,7 @@ const DAY: MyAttendance = {
   days: [],
   requests: [],
   regularise: { limit: 4, used: 0 },
+  wfh: { limit: 4, used: 0 },
 };
 const liveClock = <HomeClockCard data={DAY} now={new Date('2026-09-29T04:12:15Z')} getLocation={async () => ({ pin: null })} onPunch={async (kind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })} attendanceHref="#attendance" onRegularise={() => {}} />;
 const LIVE_HR = {
@@ -176,6 +187,14 @@ const LIVE_EMP = {
   moves: undefined,
 };
 export const PLT02EmployeeLive: S = { name: 'PLT-02 · Role home · employee, live', render: () => <RoleHomeScreen persona="employee" data={EMP} live={LIVE_EMP} /> };
+export const PLT02EmployeeLivePay: S = {
+  name: 'PLT-02 · Role home · employee, live, HR shows pay (hidden until asked)',
+  render: () => <RoleHomeScreen persona="employee" data={EMP} live={{ ...LIVE_EMP, pay: { label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '#payslip' } }} />,
+};
+export const PLT02EmployeeLivePayNone: S = {
+  name: 'PLT-02 · Role home · employee, live, HR shows pay, no payslip yet',
+  render: () => <RoleHomeScreen persona="employee" data={EMP} live={{ ...LIVE_EMP, pay: { label: 'Net pay', value: null, href: '#payslip' } }} />,
+};
 const LIVE_MGR = {
   ...LIVE_EMP,
   team: {
@@ -183,7 +202,7 @@ const LIVE_MGR = {
     total: 14,
     href: '#today',
     rows: [
-      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am' },
+      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am', nudge: true },
       { id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' },
       { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' },
     ],
@@ -195,6 +214,7 @@ const LIVE_MGR = {
     { day: 'Thu 1 Oct', who: 'Kavya Reddy, Vikram Rao · Arjun Mehta asked (pending)' },
   ],
   offHref: '#leave-calendar',
+  onNudge: () => new Promise<void>((r) => setTimeout(r, 600)),
   stats: [
     { id: 'late', title: 'Late', label: 'Late check-ins this week', value: 3, previous: 5, previousLabel: 'last week', drill: { label: 'View late marks', href: '#muster' } },
     { id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: 6, drill: { label: 'Open reviews', href: '#reviews' } },
@@ -207,6 +227,13 @@ const LIVE_MGR = {
   ],
 };
 export const PLT02ManagerLive: S = { name: 'PLT-02 · Role home · manager, live', render: () => <RoleHomeScreen persona="manager" data={MGR} live={LIVE_MGR} /> };
+export const PLT02ManagerLiveNudged: S = {
+  name: 'PLT-02 · Role home · manager, live, Nudge sent',
+  render: () => <RoleHomeScreen persona="manager" data={MGR} live={LIVE_MGR} />,
+  play: async ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>('button[aria-label="Nudge Sanjay Gupta"]')?.click();
+  },
+};
 export const PLT02ManagerLiveQuiet: S = {
   name: 'PLT-02 · Role home · manager, live, quiet week',
   render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, summary: '14 in · 0 on leave · 0 not checked in · 0 late', rows: [] }, off: [], goals: [] }} />,

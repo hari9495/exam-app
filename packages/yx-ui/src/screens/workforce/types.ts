@@ -33,6 +33,8 @@ export interface OrgChartNode {
   dottedLineManagerIds: string[];
   directReports: number;
   employeeCode?: string;
+  /** With one legal entity chosen: the manager in another entity. */
+  managerOutside?: { name: string; legalEntity: string | null };
 }
 
 export interface OrgChartData {
@@ -40,7 +42,11 @@ export interface OrgChartData {
   truncated: boolean;
   /** Company-wide HR may look at another date (P02 §4.3); for everyone else the chart is today's. */
   otherDates?: boolean;
+  /** HR and org.structure.view: future dates (scheduled, unannounced changes). */
+  futureDates?: boolean;
   nodes: OrgChartNode[];
+  /** PPL-02 Position view: open job openings under their hiring manager (HR and hiring only). */
+  vacancies?: { id: string; role: string; department: string | null; location: string | null; managerId: string | null; openings: number }[];
 }
 
 /** M01 §3.10: someone in the signed-in manager's team. */
@@ -76,6 +82,9 @@ export interface ProbationRow {
   maxTotalMonths: number;
   /** The viewer is the direct manager and the probation is still open (LIFE-3.01 review form). */
   canReview?: boolean;
+  /** Today's designation and manager (the queue's second line and Manager column). */
+  designation?: string | null;
+  manager?: string | null;
 }
 
 /** One row of a bulk change file after the dry run (M01 §3.3). */
@@ -102,7 +111,7 @@ export type BatchStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export interface ChangeBatch {
   id: string;
   status: BatchStatus;
-  source: 'csv' | 'reassign';
+  source: 'csv' | 'reassign' | 'increment' | 'comp_review';
   fileName: string | null;
   reason: string;
   rowCount: number;

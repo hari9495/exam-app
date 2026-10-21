@@ -16,9 +16,11 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'employee.salary.view',
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
+  'employee.identity.view',
   'employee.identity.manage',
   'employee.identity.approve',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
@@ -92,6 +94,9 @@ export const YX_KEYS = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  'succession.manage',
+  'employee.disability.manage',
+  'compliance.officer',
   'asset.view',
   'asset.manage',
   // M05 expenses E1.
@@ -158,6 +163,7 @@ export const YX_KEYS = [
   'results:view',
   // AT2: headcount plans and the hiring approval routes.
   'ats.headcount.manage',
+  'ats.requisition.raise',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

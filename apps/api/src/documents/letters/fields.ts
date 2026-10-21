@@ -10,7 +10,7 @@ import { buildDocx } from './docx';
 export interface FieldDef {
   label: string;
   /** P02 class: internal fields need letter.issue in scope; personal ones also employee.personal.view. */
-  cls: 'internal' | 'personal';
+  cls: 'internal' | 'personal' | 'pay';
   /** A yes / no field, used for {{#field}} … {{/field}} sections. */
   flag?: boolean;
   sample: string | boolean;
@@ -38,6 +38,12 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   signatory_title: { label: 'Who signs (title)', cls: 'internal', sample: 'Head of HR' },
   address: { label: 'Home address', cls: 'personal', sample: '14, 3rd Cross, Jayanagar, Bengaluru 560011' },
   personal_email: { label: 'Personal email', cls: 'personal', sample: 'sneha.p@mail.test' },
+  // PPL-06 increment letters (founder 20 Oct 2026): pay fields, filled only from an approved salary revision; issuing
+  // or previewing them by hand needs the salary grant for the person (R1).
+  old_ctc: { label: 'Annual CTC before the raise', cls: 'pay', sample: '₹5,40,000' },
+  new_ctc: { label: 'Annual CTC after the raise', cls: 'pay', sample: '₹5,83,200' },
+  raise_percent: { label: 'Raise (per cent)', cls: 'pay', sample: '8%' },
+  effective_date: { label: 'Raise effective from', cls: 'pay', sample: '1 November 2026' },
 };
 
 const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -71,7 +77,16 @@ export const sampleData = (): Record<string, string | boolean> => Object.fromEnt
 const name = (p: { preferredName: string | null; givenName: string; familyName: string | null }) => [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ');
 
 /** The values for one person (an employee's current job, or a joiner's planned one), all fields filled where known. */
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+/** A salary revision's figures for an increment letter. */
+export interface LetterPay {
+  oldCtc: string;
+  newCtc: string;
+  percent: string;
+  effectiveDate: string;
+}
+const inr = (v: string) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(v));
+
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -127,6 +142,10 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     signatory_title: extra.signatory?.title ?? '',
     address: personal ? [personal.addressLine1, personal.addressLine2, personal.city, personal.postalCode].filter(Boolean).join(', ') : '',
     personal_email: personal?.personalEmail ?? person.primaryEmail ?? '',
+    old_ctc: extra.pay ? inr(extra.pay.oldCtc) : '',
+    new_ctc: extra.pay ? inr(extra.pay.newCtc) : '',
+    raise_percent: extra.pay ? `${Number(extra.pay.percent)}%` : '',
+    effective_date: extra.pay ? longDate(extra.pay.effectiveDate) : '',
   };
   return { data, legalEntityId: place.legalEntityId };
 }
@@ -170,6 +189,22 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; requi
       { text: 'On your first day, please bring your original ID proof (PAN card and one photo ID), your education certificates and your last relieving letter, if you have one.' },
       { text: 'You will meet {{manager_name}}, who will help you settle in.' },
       { text: 'Before you join, please finish your forms in the YukthiX joining portal.' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  // PPL-06: made once an annual increment batch is approved (never before); HR may switch it on, edit or replace it.
+  {
+    letterType: 'increment',
+    name: 'Increment letter',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Revision of your pay', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
+      { text: 'Following your annual review, your annual CTC is revised from {{old_ctc}} to {{new_ctc}} ({{raise_percent}}), effective {{effective_date}}. All other terms of your employment stay the same.' },
+      { text: 'For {{legal_entity}}' },
       { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
     ],
   },

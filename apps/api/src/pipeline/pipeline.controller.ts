@@ -7,7 +7,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { PipelineService, PatchEntryResult } from './pipeline.service';
-import { CreateJobDto } from './dto/create-job.dto';
+import { CreateJobDto, RaiseRequisitionDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
@@ -26,6 +26,13 @@ export class PipelineController {
   @RequirePermissions('pipeline:manage')
   createJob(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateJobDto) {
     return this.pipelineService.createJob(tenant, userId, dto);
+  }
+
+  /** PPL-08 "Request a hire": a requisition raised by a manager; always goes for approval. */
+  @Post('jobs/requisitions')
+  @RequirePermissions('ats.requisition.raise')
+  raiseRequisition(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: RaiseRequisitionDto) {
+    return this.pipelineService.raiseRequisition(tenant, userId, dto);
   }
 
   @Get('jobs')

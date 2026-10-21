@@ -113,10 +113,12 @@ describe('/yx/people/directory (PPL-01 live)', () => {
     expect(within(tabs).getAllByRole('tab').map((t) => t.querySelector('.yx-ppl__wf-label')?.textContent)).toEqual(['Employees', 'Consultants', 'All persons']);
     expect(tabs).toHaveTextContent('1 more than September');
     expect(screen.getByRole('columnheader', { name: /^Status/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+    // Import opens People › Import (PPL-07).
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(push).toHaveBeenCalledWith('/yx/people/import');
     await userEvent.click((await screen.findAllByText('Arjun Kulkarni'))[0]);
     await userEvent.click(await screen.findByRole('button', { name: 'Open record' }));
-    expect(push).toHaveBeenCalledWith('/yx/people/profile?person=p-arjun');
+    expect(push).toHaveBeenCalledWith('/yx/people/directory/p-arjun');
     await userEvent.keyboard('{Escape}');
     await userEvent.click(await screen.findByRole('button', { name: 'Add employee' }));
     const drawer = await screen.findByRole('dialog', { name: /Add person/ });
@@ -138,14 +140,16 @@ describe('/yx/people/team', () => {
       'GET /org/masters/employment-types': [],
       'GET /org/masters/cost-centres': [],
       'GET /org/locations': [],
+      'GET /lifecycle/joining-soon': [],
+      'GET /lifecycle/my-tasks': { today: '2026-10-07', tasks: [] },
     });
+    // The designed team page (PPL-08): a row opens the person's record; Start a change opens the change drawer.
     wrap(<YxTeamPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Job history' }));
-    expect(push).toHaveBeenCalledWith('/yx/people/history?person=p-arjun');
-    await userEvent.click(await screen.findByRole('button', { name: 'Raise change' }));
+    await userEvent.click(await screen.findByText('Arjun Kulkarni'));
+    expect(push).toHaveBeenCalledWith('/yx/people/directory/p-arjun');
+    await userEvent.click(await screen.findByRole('button', { name: 'Start a change' }));
     const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('Change for Arjun Kulkarni')).toBeInTheDocument();
-    expect(within(drawer).getByRole('combobox', { name: 'Kind of change' })).toBeInTheDocument();
+    expect(within(drawer).getByRole('combobox', { name: 'Change type' })).toBeInTheDocument();
   });
 });
 
@@ -155,17 +159,20 @@ describe('/yx/people/probation', () => {
     route({
       [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'],
       'GET /people/probations': { today: '2026-10-07', rows: [{ employeeId: 'p-kiran', name: 'Kiran Joshi', employeeCode: 'KF-0151', startOn: '2026-04-15', originalEndOn: '2026-10-14', plannedEndOn: '2026-10-14', extendedMonths: 0, reviewDueOn: '2026-09-29', escalatedOn: null, confirmedFrom: null, pendingConfirmationId: null, stage: 'review_due', maxTotalMonths: 12 }] },
-      'POST /people/employees/p-kiran/probation/extend': (_: string, init: RequestInit) => {
+      'POST /lifecycle/probations/p-kiran/review': (_: string, init: RequestInit) => {
         posted.push(JSON.parse(String(init.body)));
-        return { plannedEndOn: '2027-01-14', extendedMonths: 3 };
+        return { ok: true };
       },
     });
+    // The designed queue (PPL-16): HR decides with the review; extending sends the months and the comments.
     wrap(<YxProbationPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Extend' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Decide' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(within(dialog).getByRole('textbox'), 'More time on audits');
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Extend/ }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Extend by/ }), '3');
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Reason|Comments/ }), 'More time on audits');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Extend probation' }));
-    await waitFor(() => expect(posted).toEqual([{ months: 3, reason: 'More time on audits' }]));
+    await waitFor(() => expect(posted).toEqual([{ outcome: 'extend', months: 3, comments: 'More time on audits' }]));
   });
 });
 

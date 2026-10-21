@@ -327,16 +327,21 @@ describe('Lifecycle batch 6b', () => {
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
     const offers = await inA(async (tx) => {
       const o = { organizationId: org.A.id };
-      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', createdById: users.hr } });
+      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', location: 'Hosur plant', createdById: users.hr } });
       const make = async (name: string, mail: string) => {
         const cand = await tx.candidate.create({ data: { ...o, name, email: mail } });
         const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual' } });
-        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', letterSubject: 'Offer', letterBody: 'Offer' } })).id;
+        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', respondedAt: new Date('2026-10-01T09:00:00Z'), letterSubject: 'Offer', letterBody: 'Offer' } })).id;
       };
       return { fresh: await make(`Asha ${run}`, `asha-${run}@mail.test`), internal: await make(`Divya ${run}`, `mgr@life6b-${run}.test`) };
     });
     const ready = (await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body;
-    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector' });
+    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', location: 'Hosur plant', acceptedOn: '2026-10-01' });
+    await api('mgr', 'get', '/lifecycle/ready-to-onboard').expect(403);
+    // The side menu's count (PPL-12 design): accepted offers not yet onboarded, only for those who onboard.
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr}`).expect(200)).body.readyToOnboard).toBe(ready.length);
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.mgr}`).expect(200)).body.readyToOnboard).toBeUndefined();
+    expect((await api('adminB', 'get', '/lifecycle/ready-to-onboard').expect(200)).body).toEqual([]);
     expect(ready.find((r: { offerId: string }) => r.offerId === offers.internal)).toMatchObject({ personType: 'internal' });
     const body = { givenName: 'Asha', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr };
     await api('hr', 'post', `/lifecycle/ready-to-onboard/${offers.fresh}`).send(body).expect(201);

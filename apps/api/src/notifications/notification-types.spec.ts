@@ -61,6 +61,7 @@ describe('notification catalog', () => {
       'expense.trip.update',
       'expense.advance.update',
       'expense.payment.update',
+      'nudge.reminder',
       'perf.goal.checkin_due',
       'perf.feedback.received',
       'perf.feedback.requested',
