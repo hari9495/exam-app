@@ -34,11 +34,12 @@
   text-align: center;
 }
 
-/* ---------- Toasts (§25): bottom-left, dark inverse surface ---------- */
+/* ---------- Toasts (§25): top centre under the top bar, so nobody misses them (founder, 21 Oct 2026); dark inverse surface ---------- */
 .yx-toasts {
   position: fixed;
-  left: var(--yx-space-6);
-  bottom: var(--yx-space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(var(--yx-space-12) + var(--yx-space-2) + var(--yx-space-3)); /* the 56 px top bar, then a gap */
   z-index: var(--yx-z-toast);
   width: min(calc(var(--yx-space-16) * 6), calc(100vw - var(--yx-space-8)));
   font-family: var(--yx-font-sans);
@@ -67,7 +68,7 @@
 /* On the dark toast, hover draws the outline thicker (text) or adds one (icon) instead of the light-surface tint. */
 .yx-toast .yx-button:hover, .yx-toast .yx-button[data-icon-only]:hover { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-text-inverse); }
 .yx-toast .yx-button:focus-visible { outline-color: var(--yx-color-text-inverse); }
-@keyframes yx-toast-in { from { opacity: 0; transform: translateY(var(--yx-space-2)); } to { opacity: 1; transform: none; } }
+@keyframes yx-toast-in { from { opacity: 0; transform: translateY(calc(-1 * var(--yx-space-2))); } to { opacity: 1; transform: none; } }
 
 /* ---------- Page banner (§25) ---------- */
 .yx-banner {

@@ -100,8 +100,12 @@ export class OrgStructureController {
 
   @Get('legal-entities')
   @RequireAnyPermission(...VIEW)
-  listEntities(@CurrentTenant() ctx: TenantContext, @Query() q: MasterListQueryDto) {
-    return this.org.listEntities(ctx, q.includeArchived === 'true');
+  async listEntities(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MasterListQueryDto) {
+    // The GSTIN (it holds the company PAN) only for the entities this person may already read identifiers of,
+    // never while acting for someone else (founder decision 20 Oct 2026, option A).
+    const user = req.user as RequestUser | undefined;
+    const gstinFor = user?.impersonatorUserId || user?.actingSuperAdmin ? new Set<string>() : await this.scope.reach(req, 'org.entity.statutory.manage');
+    return this.org.listEntities(ctx, q.includeArchived === 'true', gstinFor);
   }
 
   @Post('legal-entities')

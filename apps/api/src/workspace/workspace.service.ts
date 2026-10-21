@@ -18,6 +18,8 @@ import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
+import { StatutoryFilingsService } from '../payroll/statutory-filings.service';
+import { ExpensePaymentsService } from '../expenses/payments.service';
 
 export interface SearchHit {
   id: string;
@@ -80,6 +82,22 @@ export interface HomeWidgets {
   celebrations?: { id: string; name: string; kind: 'birthday' | 'anniversary'; on: string; years?: number }[];
   /** People who hold a hiring key: what waits for them, today's interviews, this week and their open jobs. */
   hiring?: HiringHome;
+  /** The finance Home: each part only with the key of the page it comes from (absent without it). */
+  finance?: FinanceHome;
+}
+
+/**
+ * Finance Home parts (PLT-02 finance). Runs and dues cover the chosen month, the month before it (for "vs last month"),
+ * and this month and last (for "Money going out" in the next 30 days). Amounts are rupees as decimal strings.
+ */
+export interface FinanceHome {
+  /** payroll.run.view, prepare or approve: regular runs, never void. */
+  runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean; preparedRole: string | null; submittedOn: string | null; variance: { flagged: number; threshold: string } }[];
+  /** expense.payout.manage: claims approved and not paid (not the person's own), bank files not released. */
+  /** previous: claims to pay at the end of last month (rupees), only when on record and covering all the person sees now. */
+  claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  /** statutory.filing.view: the statutory hub per legal entity and wage month (approved payslips only). */
+  dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
 // The YukthiX app frame (design audit step 1, PLT-01 / PLT-20): the global search behind Ctrl K and the counts on
@@ -185,7 +203,28 @@ export class WorkspaceService {
     if (celebrations) out.celebrations = celebrations;
     const hiring = await this.service(HiringHomeService).home(ctx, user);
     if (hiring) out.hiring = hiring;
+    const finance = support ? null : await this.finance(ctx, user, month, entityId);
+    if (finance) out.finance = finance;
     return out;
+  }
+
+  /** The finance Home, each part from the module that owns it, with that module's keys and pay scope. */
+  private async finance(ctx: TenantContext, user: RequestUser, month: string, entityId: string | null): Promise<FinanceHome | null> {
+    const now = todayIst().slice(0, 7);
+    const before = (m: string) => addDays(`${m}-01`, -1).slice(0, 7);
+    const months = [...new Set([before(month), month, before(now), now])];
+    const out: FinanceHome = {};
+    const runs = await this.service(PayRunsService).homeRuns(ctx, user, months, entityId);
+    if (runs) out.runs = runs;
+    const claims = await this.service(ExpensePaymentsService).homeSummary(ctx, user, entityId);
+    if (claims) {
+      const { whole, ...rest } = claims;
+      const p = whole ? (await this.snapshotsFor(ctx, before(month))).get(`claims_to_pay:${entityId ?? ''}`) : undefined;
+      out.claims = { ...rest, ...(p !== undefined ? { previous: p } : {}) };
+    }
+    const dues = await this.service(StatutoryFilingsService).homeDues(ctx, user, months, entityId);
+    if (dues) out.dues = dues.map((d) => ({ entity: d.entity, entityId: d.entityId, month: d.month, today: d.today, cards: d.cards.map(({ filingId: _f, penaltyEstimate: _p, verifyDueDate: _v, ...c }) => c), tds: d.tds }));
+    return Object.keys(out).length ? out : null;
   }
 
   private entityIds(ctx: TenantContext) {
@@ -212,6 +251,9 @@ export class WorkspaceService {
         const ids = entity ? [entity] : entities;
         const r = await withPayScope(tx, ids, () => this.service(PayRunsService).notReadyIn(tx, org, ids, month));
         if (r) rows.push(['not_ready_payroll', entity, r.notReady]);
+        // Claims approved and not paid yet (the finance Home's "Claims approved, to pay"), in whole rupees.
+        const toPay = await tx.expenseClaim.aggregate({ where: { organizationId: org, ...(entity ? { legalEntityId: entity } : {}), paymentStatus: { in: ['approved_unpaid', 'payment_failed'] } }, _sum: { netPayable: true } });
+        rows.push(['claims_to_pay', entity, Math.round(Number(toPay._sum.netPayable ?? 0))]);
       }
       const desks = await tx.$queryRaw<{ desk: string; n: number }[]>`SELECT d.id::text AS desk,
           (SELECT count(*)::int FROM sd_tickets t WHERE t.organization_id = d.organization_id AND t.desk_id = d.id AND t.system_state NOT IN ('solved', 'closed')) AS n

@@ -125,7 +125,7 @@ describe('Live home parity (19 Oct 2026)', () => {
 
   it('Nudge on Team today: only for someone not checked in; sends once, says so in a toast; a refusal says why', async () => {
     const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'));
-    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }] };
+    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] };
     render(
       <ToastProvider>
         <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team, onNudge }} />
@@ -136,6 +136,8 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(await screen.findByText('Reminder sent to Sanjay Gupta')).toBeInTheDocument();
     expect(onNudge).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', name: 'Sanjay Gupta' }));
     expect(screen.getByRole('button', { name: 'Reminded Sanjay Gupta' })).toBeDisabled();
+    // Reminded earlier today (after a reload): the button already says so.
+    expect(screen.getByRole('button', { name: 'Reminded Ravi Kumar' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Nudge Kavya Reddy' }));
     expect(await screen.findByText('Kavya Reddy was already reminded today. You can remind them again tomorrow.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nudge Kavya Reddy' })).toBeEnabled();
@@ -146,6 +148,61 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(screen.getByText('11 in · 2 on leave · 1 not checked in · 0 late')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/muster');
     expect(screen.getByText('No one in your team is off this week.')).toBeInTheDocument();
+  });
+});
+
+describe('Finance home, live (20 Oct 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const base = {
+    firstName: 'Suresh',
+    company: 'Kaveri Foods',
+    today,
+    approvalsHref: '/yx/approvals',
+    stats: [
+      { id: 'net', title: 'Payroll net', label: 'September net payroll', value: 18240500, money: true, previous: 17985200, previousLabel: 'August', drill: { label: 'Open run', href: '/yx/payroll/runs/r1' } },
+      { id: 'tds', title: 'TDS', label: 'TDS to deposit', value: 0, money: true, empty: 'Nothing due for September yet', drill: { label: 'View TDS', href: '/yx/payroll/statutory' } },
+    ],
+    moneyOut: [{ id: 'o1', date: '30 Sep', what: 'September salaries', amount: 18240500, status: 'Waiting for your approval', tone: 'warning' as const, action: 'Open run', href: '/yx/payroll/runs/r1' }],
+  };
+  const run = { id: 'f1', type: 'Payroll run', title: 'Approve September payroll · 248 employees · ₹1,82,40,500 net', who: 'Anita Desai', kind: 'review' as const, href: '/yx/payroll/runs/r1', actionLabel: 'Open' };
+
+  it('shows the money cards in Indian format, the money going out and the greeting', () => {
+    render(<RoleHomeScreen persona="finance" data={{ actions: [run] }} live={{ ...base, amounts: { hidden: false, onToggle: () => {} } }} />);
+    expect(screen.getByText('Money to pay, payroll to approve and statutory dues.', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'September net payroll' })).toHaveTextContent('₹1,82,40,500');
+    expect(screen.getByRole('region', { name: 'TDS to deposit' })).toHaveTextContent('Nothing due for September yet');
+    const out = screen.getByRole('region', { name: 'Money going out' });
+    expect(out).toHaveTextContent('₹1,82,40,500 due in the next 30 days');
+    expect(within(out).getByRole('link', { name: 'Open run' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    expect(screen.getByText(/Approve September payroll · 248 employees · ₹1,82,40,500 net/)).toBeInTheDocument();
+  });
+
+  it('hides every amount when asked, keeping labels and links', () => {
+    let toggled = 0;
+    render(<RoleHomeScreen persona="finance" data={{ actions: [run] }} live={{ ...base, amounts: { hidden: true, onToggle: () => toggled++ } }} />);
+    expect(document.body).not.toHaveTextContent('1,82,40,500');
+    expect(screen.getByRole('region', { name: 'September net payroll' })).toHaveTextContent('Open run');
+    expect(screen.getByText(/Approve September payroll · 248 employees · ₹ •••••• net/)).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Show amounts' }).click();
+    expect(toggled).toBe(1);
+  });
+
+  it('shows the run waiting for approval with its change, and hides the change with the amounts', () => {
+    const approval = { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '/yx/payroll/runs/r1' };
+    const { unmount } = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, approval, amounts: { hidden: false, onToggle: () => {} } }} />);
+    const card = screen.getByRole('region', { name: 'Payroll approval' });
+    expect(card).toHaveTextContent('September run prepared by Anita Desai, payroll executive, on 28 Sep. You approve it; the person who prepares a run can never approve it.');
+    expect(within(card).getByRole('link', { name: 'Variance vs August +1.4% · 3 employees above 20% change' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    expect(within(card).getByRole('link', { name: 'Open run for approval' })).toHaveAttribute('href', '/yx/payroll/runs/r1');
+    unmount();
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, approval, amounts: { hidden: true, onToggle: () => {} } }} />);
+    expect(screen.getByRole('link', { name: 'Variance vs August · 3 employees above 20% change' })).toBeInTheDocument();
+  });
+
+  it('says so when nothing goes out, and has no Hide amounts button without pay rights', () => {
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, stats: [], moneyOut: [] }} />);
+    expect(screen.getByText('Nothing to pay in the next 30 days.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /amounts/ })).not.toBeInTheDocument();
   });
 });
 
