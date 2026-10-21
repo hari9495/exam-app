@@ -13,12 +13,13 @@ import { WorkforceJobs } from './workforce-jobs';
 import { EmployeeImportController } from './employee-import.controller';
 import { EmployeeImportService } from './employee-import.service';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
+import { WorkforceRolesModule } from '../workforce-roles/workforce-roles.module';
 
 // People core on top of the P06 history engine (step 2c): directory, org chart, team, persons, probation and
 // bulk changes; the record by sensitivity class with self-service and identity / bank change requests (step 2d,
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
-  imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule],
+  imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule, WorkforceRolesModule],
   providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
   controllers: [PeopleController, WorkforceController, EmployeeImportController],
   exports: [PeopleService, ProfileService],

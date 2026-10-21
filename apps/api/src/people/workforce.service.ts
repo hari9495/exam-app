@@ -7,6 +7,7 @@ import { entityTimeZone, isoDate, localDate, todayIst } from '../org-structure/o
 import { displayName, EmployeeHistoryService, Viewer, type RequestUser } from '../employee-history/employee-history.service';
 import { has } from '../access/scope';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
+import { WorkforceRolesService } from '../workforce-roles/workforce-roles.service';
 
 // People › Directory on the designed screen (PPL-01, design audit step 2): the whole workforce in one list for the
 // screen to filter, group and sort, the count cards with "vs last month" from monthly snapshots, saved views and export.
@@ -23,7 +24,7 @@ type Status = 'Active' | 'Probation' | 'Notice period' | 'On leave';
 
 export interface WorkforceRow {
   id: string;
-  kind: 'employee' | 'consultant';
+  kind: 'employee' | 'consultant' | 'contract_worker' | 'placement';
   name: string;
   designation: string | null;
   department: { id: string; name: string | null } | null;
@@ -39,8 +40,10 @@ export interface WorkforceRow {
   status?: Status;
   /** Personal: employee.personal.view within its scope. */
   phone?: string | null;
-  /** Consultants: individual or firm. */
+  /** Consultants: individual or firm; contract workers: the contractor; placements: the client. */
   via?: string | null;
+  /** Contract workers and placements: what they are doing now ("Deployed", "On assignment", "Ending soon"). */
+  roleStatus?: string;
 }
 
 interface Counts {
@@ -77,6 +80,7 @@ export class WorkforceService {
     private readonly history: EmployeeHistoryService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prisma: PrismaService,
+    private readonly roles: WorkforceRolesService,
   ) {}
 
   /**
@@ -128,18 +132,35 @@ export class WorkforceService {
         const { k, now } = await withPayScope(tx, reach, async () => ({ k: consultants ? await this.consultantRows(tx, c, legalEntityId, null) : [], now: await this.counts(tx, c.organizationId, days, legalEntityId) }));
         const snap = await tx.workforceSnapshot.findFirst({ where: { organizationId: c.organizationId, legalEntityId, month: new Date(`${previousMonth(today)}T00:00:00Z`) } });
         const prev = snap ? { ...snap, consultants: fullReach ? snap.consultants : null, persons: fullReach ? snap.persons : null } : null;
+        // Contract workers on site and active placements: roles on person records, for the module's key holders only.
+        const reachOf = await this.roles.directoryReach(user);
+        const cw = reachOf.workers ? await this.roles.workerRows(tx, c.organizationId, reachOf.workers, legalEntityId, true) : null;
+        const pl = reachOf.placements ? await this.roles.placementRows(tx, c.organizationId, reachOf.placements, legalEntityId, true) : null;
+        const extra = [...(cw ?? []), ...(pl ?? [])];
+        // A worker or placed person who is also an employee is one person with two roles.
+        const alsoEmployees = extra.length
+          ? new Set((await tx.personRole.findMany({ where: { organizationId: c.organizationId, personId: { in: extra.map((x) => x.personId) }, roleType: 'employee', endOn: null }, select: { personId: true } })).map((x) => x.personId))
+          : new Set<string>();
+        const extraPeople = new Set(extra.map((x) => x.personId).filter((id) => !alsoEmployees.has(id))).size;
         const me = own ? rows.find((r) => r.id === own) : undefined;
+        const base = consultants ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null } : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null };
         return {
           asOf: today,
           truncated: rows.length >= MAX,
           me: me ? { id: me.id, managerId: me.manager?.id ?? null, departmentId: me.department?.id ?? null, locationId: me.location?.id ?? null } : null,
-          rows: [...rows, ...k],
+          rows: [
+            ...rows,
+            ...k,
+            ...(cw ?? []).map((w) => ({ id: w.id, kind: 'contract_worker' as const, name: w.name, designation: w.work, department: null, location: w.site, legalEntity: w.legalEntity, manager: null, workEmail: null, joinedOn: w.fromOn, via: w.contractor, roleStatus: 'Deployed' })),
+            ...(pl ?? []).map((x) => ({ id: x.id, kind: 'placement' as const, name: x.name, designation: x.role, department: null, location: null, legalEntity: x.legalEntity, manager: null, workEmail: null, joinedOn: x.startOn, via: x.client, roleStatus: x.status === 'ending_soon' ? 'Ending soon' : 'On assignment' })),
+          ],
           cards: {
             employees: { count: now.employees, previous: prev?.employees ?? null },
             consultants: consultants ? { count: now.consultants, previous: prev?.consultants ?? null } : null,
-            persons: consultants
-              ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null }
-              : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null },
+            // No monthly snapshot of these two yet, so no "vs last month" for them (and none for All persons once they count).
+            contractWorkers: cw ? { count: cw.length, previous: null } : null,
+            placements: pl ? { count: pl.length, previous: null } : null,
+            persons: { roles: base.roles + extra.length, people: base.people + extraPeople, previous: extra.length ? null : base.previous },
           },
           previousMonth: prev ? previousMonth(today).slice(0, 7) : null,
         };

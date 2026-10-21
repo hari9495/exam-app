@@ -145,4 +145,11 @@ describe('activeLink and meLinks', () => {
   it('Me pages for the account menu', () => {
     expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
   });
+
+  it('contract labour and placements follow their own keys, never in a support session (21 Oct 2026)', () => {
+    const n = nav(['clra.worker.view', 'staffing.placement.view']);
+    expect(labels(n, 'contract')).toEqual(['Contractors', 'Contract workers']);
+    expect(labels(n, 'hire')).toContain('Placements');
+    expect(nav([]).some((a) => a.id === 'contract')).toBe(false);
+  });
 });

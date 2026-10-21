@@ -10010,3 +10010,82 @@ model Successor {
   @@index([organizationId], map: "successors_org_idx")
   @@map("successors")
 }
+
+/// Contract labour (CLB-01): a contractor supplying workers to a legal entity (the principal employer).
+model Contractor {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  name           String   @db.VarChar(150)
+  work           String   @db.VarChar(100)
+  pan            String?  @db.VarChar(10)
+  contact        String?  @db.VarChar(100)
+  status         String   @default("active") @db.VarChar(10)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractors")
+}
+
+/// A contractor's licence for an establishment: the states it covers and the most workers it allows.
+model ContractorLicence {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  contractorId   String   @map("contractor_id") @db.Uuid
+  licenceNo      String   @map("licence_no") @db.VarChar(50)
+  locationId     String   @map("location_id") @db.Uuid
+  states         String[]
+  maxWorkers     Int      @map("max_workers")
+  validFrom      DateTime @map("valid_from") @db.Date
+  validTo        DateTime @map("valid_to") @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_licences")
+}
+
+/// A contract worker deployed at a site (CLB-02): a contract_worker role on the person record.
+model ContractDeployment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  contractorId   String    @map("contractor_id") @db.Uuid
+  licenceId      String    @map("licence_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  work           String    @db.VarChar(80)
+  skill          String    @db.VarChar(12)
+  wage           Decimal?  @db.Decimal(12, 2)
+  dateOfBirth    DateTime  @map("date_of_birth") @db.Date
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime? @map("to_on") @db.Date
+  status         String    @default("pending") @db.VarChar(10)
+  createdBy      String?   @map("created_by") @db.Uuid
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contract_deployments")
+}
+
+/// A person placed with a client (HIR-17): a placement role on the person record.
+model Placement {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  client           String    @db.VarChar(150)
+  role             String    @db.VarChar(100)
+  startOn          DateTime  @map("start_on") @db.Date
+  endOn            DateTime  @map("end_on") @db.Date
+  billRate         Decimal   @map("bill_rate") @db.Decimal(12, 2)
+  payRate          Decimal   @map("pay_rate") @db.Decimal(12, 2)
+  statutoryPerHour Decimal   @default(0) @map("statutory_per_hour") @db.Decimal(12, 2)
+  supply           String    @db.VarChar(8)
+  vendor           String?   @db.VarChar(150)
+  status           String    @default("active") @db.VarChar(8)
+  endedOn          DateTime? @map("ended_on") @db.Date
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("placements")
+}

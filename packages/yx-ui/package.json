@@ -23,6 +23,7 @@
     "./pay": "./src/screens/pay/live/index.ts",
     "./lifecycle": "./src/screens/people/live/index.ts",
     "./expenses": "./src/screens/expenses/live/index.ts",
+    "./contract": "./src/screens/ops/live/index.ts",
     "./performance": "./src/screens/performance/live/index.ts",
     "./hiring": "./src/screens/hiring/live/index.ts",
     "./frame": "./src/screens/_kit/live.ts",

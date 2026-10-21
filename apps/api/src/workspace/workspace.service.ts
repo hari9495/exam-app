@@ -18,6 +18,7 @@ import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
+import { WorkforceRolesService } from '../workforce-roles/workforce-roles.service';
 
 export interface SearchHit {
   id: string;
@@ -372,6 +373,7 @@ export class WorkspaceService {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    const roles = support ? null : await this.service(WorkforceRolesService).directoryReach(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -423,6 +425,8 @@ export class WorkspaceService {
         WHERE p.organization_id = ${org}::uuid AND p.user_id = ${me}::uuid AND i.status <> 'cancelled' AND s.ends_at <= now()
           AND COALESCE(i.scorecard_template_id, j.scorecard_template_id) IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM scorecards sc WHERE sc.interview_id = i.id AND sc.panelist_user_id = p.user_id AND sc.status = 'submitted')`);
+      // Contract workers on site, in the person's reach (the Contract workers page).
+      if (roles?.workers) out.contractWorkers = (await this.service(WorkforceRolesService).workerRows(tx, org, roles.workers, null, true)).length;
       return out;
     });
   }

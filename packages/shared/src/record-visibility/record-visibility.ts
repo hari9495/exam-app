@@ -67,6 +67,10 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // PM8: improvement plans are about people, scoped like their records.
   if (key === 'perf.pip.manage') return GRANT_SCOPE_TYPES;
   if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
+  // Contract workers are deployed at a site of a legal entity; placements belong to a legal entity (founder decision
+  // 21 Oct 2026). Department and report scopes do not apply to people who are not employees.
+  if (key.startsWith('clra.worker.')) return ['tenant', 'legal_entity', 'location'];
+  if (key.startsWith('staffing.placement.')) return ['tenant', 'legal_entity'];
   // E4: the travel desk books for people in scope; advances are paid per legal entity.
   if (key === 'travel.booking.manage') return GRANT_SCOPE_TYPES;
   if (key === 'expense.payout.manage' || key === 'expense.report.view') return ['tenant', 'legal_entity'];

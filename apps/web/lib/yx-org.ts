@@ -123,6 +123,11 @@ export const YX_KEYS = [
   'payroll.fnf.manage',
   'payroll.writeoff.approve',
   'statutory.filing.view',
+  // Contract workers and placements (founder decision 21 Oct 2026).
+  'clra.worker.view',
+  'clra.worker.manage',
+  'staffing.placement.view',
+  'staffing.placement.manage',
   'statutory.filing.generate',
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
