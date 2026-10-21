@@ -209,7 +209,9 @@ export function OrgChart({
       if (!kids.length) return;
       const bottom = Math.max(...kids.map((c) => c.getBoundingClientRect().bottom)) + main.scrollTop + (parseFloat(getComputedStyle(main).paddingBottom) || 0);
       const cur = vp.getBoundingClientRect().height;
-      const next = canvasHeight(cur, bottom, main.getBoundingClientRect().top + main.clientHeight);
+      // 2 px spare: at 150 % zoom a fraction of a pixel too tall showed the page scroll bar, the header text re-wrapped and the
+      // height blinked between two values (founder's laptop, 21 Oct 2026).
+      const next = canvasHeight(cur, bottom, main.getBoundingClientRect().top + main.clientHeight - 2);
       if (Math.abs(next - cur) <= 1) return;
       const s = settleHeight(times, performance.now(), cur, next);
       times = s.times;
