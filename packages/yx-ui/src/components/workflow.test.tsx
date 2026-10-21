@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { OrgChart, buildOrgTree, type OrgPerson } from './orgchart';
+import { OrgChart, buildOrgTree, fitScale, type OrgPerson } from './orgchart';
 import { KanbanBoard, moveCard, type KanbanColumn } from './kanban';
 import { SetupChecklist, Stepper, checklistProgress, type ChecklistSection } from './stepper';
 import { DocumentViewer, documentKind, esignSummary } from './document';
@@ -243,5 +243,13 @@ describe('DocumentViewer', () => {
     render(<DocumentViewer fileName="form.docx" versions={[{ id: 'v', label: 'Version 1', url: '#', uploadedBy: 'Sana Nizami', uploadedAt: new Date(2026, 8, 28), size: 1 }]} />);
     expect(screen.getByText("We can't preview .docx files here.")).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+});
+
+describe('org chart opening zoom (PPL-02)', () => {
+  it('fits in whole tens of a per cent, never above 100 % nor below 60 %', () => {
+    expect(fitScale(1000, 400, 800, 300)).toBe(1); // small tree: no zoom-in past 100 %
+    expect(fitScale(900, 250, 1200, 330)).toBe(0.7); // first two levels into the visible canvas
+    expect(fitScale(400, 100, 3000, 900)).toBe(0.6); // a very wide top level scrolls instead of shrinking past 60 %
   });
 });

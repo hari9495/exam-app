@@ -33,6 +33,7 @@ export * from './components/print';
 export * from './components/stepper';
 export * from './components/kanban';
 export * from './components/orgchart';
+export * from './components/orgchart-export';
 export * from './components/document';
 export * from './components/condition';
 export * from './components/editor';

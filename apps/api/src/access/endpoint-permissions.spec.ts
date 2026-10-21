@@ -43,13 +43,15 @@ const IMPLICIT: Record<string, string[]> = {
     'profileRequests', // own requests and those in scope
     'cancelProfileChange', // the requester or the person
     'probations', // HR in scope, or the manager's team
+    'activity', // anyone who may open the record; each kind of entry by its own key (checked by the service)
+    'workPhone', // employee.profile.edit in scope (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
-  DocumentsController: ['types', 'mine', 'upload', 'file'],
+  DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam'], // PPL-03: a manager's read-only view of the team's Public and Internal documents
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
   LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
   // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
@@ -80,7 +82,7 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand'],
   // PM8: a plan is about one person; the person, their manager chain and HR in scope, decided per plan.
   PerformancePipsController: ['list', 'propose', 'get', 'acknowledge', 'checkin'],
-  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
+  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {

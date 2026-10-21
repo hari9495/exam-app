@@ -118,6 +118,7 @@ export const PAY_RANGES: PayRange[] = [
 /** GET /org/settings registry (P01 §4.6), as the API sends it. */
 export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
+  'pay.band.above_max': { label: 'A raise above the pay range maximum', scopes: ['tenant', 'legal_entity'], dated: false, values: ['warn', 'cap', 'block'], default: 'warn' },
   'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
   'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },

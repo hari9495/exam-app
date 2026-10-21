@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Lock, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Lock, RotateCcw, X } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { groupIndian } from '../lib/format';
 import { Icon } from './foundations';
@@ -31,6 +31,29 @@ export function InlineAlert({ tone = 'info', title, children, actions, className
         {children && <div className="yx-alert__text">{children}</div>}
         {actions && <div className="yx-alert__actions">{actions}</div>}
       </div>
+    </div>
+  );
+}
+
+export interface NoticeBarProps {
+  tone?: 'info' | 'warning' | 'danger';
+  /** One short line, e.g. "Add a passkey or an authenticator app by 2 Nov 2026." */
+  children: ReactNode;
+  /** The way to fix it: a link, e.g. <a className="yx-link" href="/me/security">Set it up</a>. */
+  action?: ReactNode;
+  /** Adds the close button. Leave it out when the notice may not be hidden (a deadline passed). */
+  onDismiss?: () => void;
+  dismissLabel?: string;
+}
+
+/** A one-line notice above every page (frame banner): icon, short text, one link, and a close button when it may be hidden. */
+export function NoticeBar({ tone = 'warning', children, action, onDismiss, dismissLabel = 'Hide until tomorrow' }: NoticeBarProps) {
+  return (
+    <div className="yx-notice" data-tone={tone} role={tone === 'danger' ? 'alert' : 'status'}>
+      <Icon icon={ALERT_ICON[tone]} />
+      <span className="yx-notice__text">{children}</span>
+      {action && <span className="yx-notice__action">{action}</span>}
+      {onDismiss && <IconButton icon={X} variant="ghost" size="sm" label={dismissLabel} onClick={onDismiss} />}
     </div>
   );
 }

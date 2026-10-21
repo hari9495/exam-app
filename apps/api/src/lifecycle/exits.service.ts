@@ -801,6 +801,13 @@ export class ExitsService implements OnModuleInit {
         tx.clearanceItem.groupBy({ by: ['exitCaseId', 'status'], where: { organizationId: org, exitCaseId: { in: ids } }, _count: { _all: true } }),
         tx.exitInterview.findMany({ where: { organizationId: org, exitCaseId: { in: ids } }, select: { exitCaseId: true, status: true } }),
       ]);
+      // The leaver's manager (the latest assignment of the employment that ends): the list's Manager column.
+      const assigns = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: shown.map((x) => x.k.employmentId) }, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, managerEmployeeId: true } });
+      const bosses = await tx.employee.findMany({ where: { organizationId: org, id: { in: assigns.map((a) => a.managerEmployeeId).filter((x): x is string => Boolean(x)) } } });
+      const managerOf = (employmentId: string) => {
+        const m = bosses.find((b) => b.id === assigns.find((a) => a.employmentId === employmentId)?.managerEmployeeId);
+        return m ? displayName(m) : null;
+      };
       const out = shown.map(({ k, manage }) => {
         const mine = items.filter((i) => i.exitCaseId === k.id);
         return {
@@ -809,6 +816,7 @@ export class ExitsService implements OnModuleInit {
           employeeCode: jobs.find((j) => j.id === k.employmentId)?.employeeCode ?? null,
           clearance: { open: mine.filter((i) => i.status === 'open').reduce((n, i) => n + i._count._all, 0), total: mine.reduce((n, i) => n + i._count._all, 0) },
           interview: ivs.find((i) => i.exitCaseId === k.id)?.status ?? null,
+          manager: managerOf(k.employmentId),
           canManage: manage,
         };
       });

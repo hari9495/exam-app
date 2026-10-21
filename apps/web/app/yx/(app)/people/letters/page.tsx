@@ -1,26 +1,80 @@
 'use client';
 
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { LettersRegisterScreen, type Letter, type LetterTemplates } from '@yukthix/ui/lifecycle';
-import { loadState } from '../../../../../lib/yx-org';
-import { useLetterDownload, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { Spinner, useToast } from '@yukthix/ui';
+import { IssuedLettersRegister } from '@yukthix/ui/frame';
+import { BulkLetterDialog, type Letter, type LetterTemplates } from '@yukthix/ui/lifecycle';
+import { useYxPermissions } from '../../../../../lib/yx-org';
+import { useLetterDownload, useLife, useLifeWrite, usePdfPost } from '../../../../../lib/yx-lifecycle';
 import { usePeople } from '../../../../../lib/yx-people';
 import { verifyUrl } from '../../../../../lib/yx-pay';
 
-// People › Letters (PPL-28 register; P05 §4.3): every letter issued to people in scope, with its reference, status,
-// acceptance and public check page.
-export default function YxLettersPage() {
+// People › Documents & letters › Letters (PPL-28, design audit step 3; P05 §4.3): every letter issued to people in
+// scope, with its reference, signature and status; issue one letter or many from the active templates.
+function Letters() {
+  const { toast } = useToast();
+  const perms = useYxPermissions();
   const rows = useLife<Letter[]>('/letters/issued');
   const download = useLetterDownload();
+  const pdf = usePdfPost();
   const write = useLifeWrite();
-  // 6e bulk wizard: the active templates, and the people in scope (by their person record).
   const templates = useLife<LetterTemplates>('/letters/templates');
-  const people = usePeople<{ id: string; personId?: string; name: string }[]>('/employees');
+  const people = usePeople<{ id: string; personId?: string; name: string; employeeCode?: string | null }[]>('/employees');
   const types = [...new Map((templates.data?.templates ?? []).filter((t) => t.status === 'active').map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
-  const choices = (people.data ?? []).filter((x) => x.personId).map((x) => ({ value: x.personId!, label: x.name }));
-  // Issue letter from the directory: ?people= the employee records chosen there, opened in the bulk wizard.
+  const choices = (people.data ?? []).filter((x) => x.personId).map((x) => ({ value: x.personId!, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }));
+  // Issue letter from the directory: ?people= the employee records chosen there, opened in the bulk issue.
   const asked = new Set((useSearchParams()?.get('people') ?? '').split(',').filter(Boolean));
   const picked = (people.data ?? []).filter((x) => asked.has(x.id) && x.personId).map((x) => x.personId!);
-  const bulk = types.length && choices.length ? { types, people: choices, onIssue: (letterType: string, personIds: string[]) => write('POST', '/letters/bulk', { letterType, personIds }) as Promise<{ issued: number; failed: { personId: string; message: string }[] }>, ...(picked.length ? { defaultPicked: picked } : {}) } : undefined;
-  return <LettersRegisterScreen key={bulk ? picked.join() || 'ready' : 'loading'} state={loadState(rows)} onRetry={() => void rows.refetch()} rows={rows.data ?? null} onDownload={(l, which) => download(l.id, which, `${l.referenceNo ?? 'letter'}.pdf`)} verifyUrl={verifyUrl} bulk={bulk} />;
+  const [bulk, setBulk] = useState<boolean | null>(null);
+  const bulkOpen = bulk ?? picked.length > 0;
+  const nameOf = (personId: string) => choices.find((c) => c.value === personId)?.label.split(' · ')[0] ?? 'the person';
+  const typeOf = (letterType: string) => types.find((t) => t.value === letterType)?.label ?? 'Letter';
+  const canIssue = perms.has('letter.issue') && types.length > 0 && choices.length > 0;
+  return (
+    <IssuedLettersRegister
+      rows={[]}
+      live={{
+        state: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
+        onRetry: () => void rows.refetch(),
+        rows: rows.data ?? [],
+        verifyUrl,
+        onDownload: (l) => void download(l.id, 'letter', `${l.referenceNo ?? 'letter'}.pdf`),
+        ...(canIssue
+          ? {
+              issue: {
+                types,
+                people: choices,
+                onPreview: (letterType: string, personId: string) => pdf('/letters/preview', { letterType, personId }, 'preview.pdf'),
+                onIssue: async (letterType: string, personId: string) => {
+                  await write('POST', '/letters/issue', { letterType, personId });
+                  toast({ tone: 'success', title: `${typeOf(letterType)} for ${nameOf(personId)} issued` });
+                },
+                onBulk: () => setBulk(true),
+              },
+            }
+          : {}),
+        children: canIssue && bulkOpen && (
+          <BulkLetterDialog
+            types={types}
+            people={choices}
+            defaultPicked={picked}
+            onClose={() => setBulk(false)}
+            onIssue={async (letterType, personIds) => {
+              const r = await write<{ issued: number; failed: { personId: string; message: string }[] }>('POST', '/letters/bulk', { letterType, personIds });
+              toast({ tone: r.failed.length ? 'error' : 'success', title: `${r.issued} ${typeOf(letterType).toLowerCase()} ${r.issued === 1 ? 'letter' : 'letters'} issued`, ...(r.failed.length ? { description: `${r.failed.length} not issued: ${r.failed[0].message}` } : {}) });
+            }}
+          />
+        ),
+      }}
+    />
+  );
+}
+
+export default function YxLettersPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading" size="md" />}>
+      <Letters />
+    </Suspense>
+  );
 }
