@@ -125,7 +125,7 @@ describe('Live home parity (19 Oct 2026)', () => {
 
   it('Nudge on Team today: only for someone not checked in; sends once, says so in a toast; a refusal says why', async () => {
     const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'));
-    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }] };
+    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] };
     render(
       <ToastProvider>
         <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team, onNudge }} />
@@ -136,6 +136,8 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(await screen.findByText('Reminder sent to Sanjay Gupta')).toBeInTheDocument();
     expect(onNudge).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', name: 'Sanjay Gupta' }));
     expect(screen.getByRole('button', { name: 'Reminded Sanjay Gupta' })).toBeDisabled();
+    // Reminded earlier today (after a reload): the button already says so.
+    expect(screen.getByRole('button', { name: 'Reminded Ravi Kumar' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Nudge Kavya Reddy' }));
     expect(await screen.findByText('Kavya Reddy was already reminded today. You can remind them again tomorrow.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nudge Kavya Reddy' })).toBeEnabled();

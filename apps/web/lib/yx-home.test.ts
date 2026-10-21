@@ -97,9 +97,9 @@ describe('Manager home (parity with PLT-02 manager)', () => {
     });
     expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
     // During the day: the first punch says who is in; someone with none yet is not checked in (and can be nudged).
-    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }])] } as never });
+    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), { ...person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }]), remindedOn: ['2026-10-21'] }] } as never });
     expect(during.team?.summary).toBe('1 in · 0 on leave · 1 not checked in · 0 late');
-    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true })]);
+    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true, reminded: true })]);
     // Only someone not checked in can be nudged.
     expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);

@@ -712,7 +712,7 @@ export interface LiveHome {
   /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. */
   stats?: { id: string; title: string; label: string; value: number; unit?: string; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
   /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. nudge: not checked in yet. */
-  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string; nudge?: boolean }[] };
+  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string; nudge?: boolean; reminded?: boolean }[] };
   /** Nudge (Team today): reminds the person to check in. Rejects with a plain reason (already reminded today). */
   onNudge?: (row: { id: string; name: string }) => Promise<void>;
   /** Manager: "Who's off this week", day by day. */
@@ -737,9 +737,9 @@ export interface LiveHome {
 }
 
 /** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
-function NudgeButton({ name, onNudge }: { name: string; onNudge: () => Promise<void> }) {
+function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
   const { toast } = useToast();
-  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>(reminded ? 'done' : 'idle');
   const send = async () => {
     setState('busy');
     try {
@@ -800,7 +800,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
                       {r.nudge && live.onNudge ? (
                         <>
                           <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
-                          <NudgeButton name={r.name} onNudge={() => live.onNudge!(r)} />
+                          <NudgeButton name={r.name} reminded={r.reminded} onNudge={() => live.onNudge!(r)} />
                         </>
                       ) : (
                         <PersonLabel name={r.name} secondary={r.secondary} />

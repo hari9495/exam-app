@@ -365,6 +365,8 @@ export class AttendanceService implements OnModuleInit {
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      // Nudge (PLT-02): the days each person was already reminded, so Home shows "Reminded" after a reload too.
+      const nudges = ids.length ? await tx.nudge.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, select: { employeeId: true, onDay: true } }) : [];
       const modes = new Map<string, { mode: string; effect: string }>();
       for (const id of ids) {
         const f = await factsOn(tx, c.organizationId, id, to);
@@ -383,6 +385,7 @@ export class AttendanceService implements OnModuleInit {
           me: p.id === own,
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
+          remindedOn: nudges.filter((n) => n.employeeId === p.id).map((n) => dateOf(n.onDay)),
           days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
         })),
       };
