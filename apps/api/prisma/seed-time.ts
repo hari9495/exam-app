@@ -156,7 +156,7 @@ export async function seedTime(tx: Tx, organizationId: string) {
   await approve(past.wfRequestId, divyaUser);
   await apply('meera.iyer@kaverifoods.test', { leaveTypeId: CL, from: workday(5), to: workday(5), reason: 'Bank and passport office work' });
   await apply('kiran.joshi@kaverifoods.test', { leaveTypeId: EL, from: workday(8), to: workday(9), reason: 'Sister’s wedding' });
-  await apply('kavya.reddy@kaverifoods.test', { leaveTypeId: SL, from: workday(1), to: workday(2), reason: 'Fever; doctor advised two days of rest' });
+  await apply('kavya.reddy@kaverifoods.test', { leaveTypeId: SL, from: workday(1), to: workday(2), reason: 'Fever; doctor advised two days of rest', certificate: true }); // certificate: a weekend between the two days makes it 4 days (sandwich), which needs one
   await apply('rahul.sharma@kaverifoods.test', { leaveTypeId: EL, from: workday(12), to: workday(14), reason: 'Trip home to Jaipur' });
   const away = await apply('divya.raghunathan@kaverifoods.test', { leaveTypeId: EL, from: workday(15), to: workday(16), reason: 'Long weekend with family', delegateUserId: hr });
   // Divya's manager has no login, so HR (Lakshmi) approves; Lakshmi then approves for Divya while she is away.
