@@ -94,6 +94,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { PerformanceModule } from './performance/performance.module';
+import { LearningModule } from './learning/learning.module';
 import { StatutoryModule } from './statutory/statutory.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
@@ -193,6 +194,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     LifecycleModule,
     ExpensesModule,
     PerformanceModule,
+    LearningModule,
     StatutoryModule,
     WorkspaceModule,
   ],

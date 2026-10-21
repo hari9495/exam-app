@@ -150,6 +150,8 @@ export const YX_KEYS = [
   'perf.feedback.investigate',
   'perf.calibration.facilitate',
   'perf.report.view',
+  'learning.manage',
+  'learning.report.view',
   'perf.comp.manage',
   'perf.comp.approve',
   'perf.pip.manage',

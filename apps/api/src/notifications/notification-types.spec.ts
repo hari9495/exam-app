@@ -77,6 +77,11 @@ describe('notification catalog', () => {
       'perf.pip.warning',
       'perf.pip.checkin_missed',
       'perf.pip.handed_over',
+      'learning.before_7',
+      'learning.before_2',
+      'learning.overdue',
+      'learning.overdue_manager',
+      'learning.overdue_hr',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

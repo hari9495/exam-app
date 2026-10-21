@@ -22,6 +22,7 @@ import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
 import { ExpenseTripsController } from '../expenses/trips.controller';
 import { ExpenseReportsController } from '../expenses/reports.controller';
+import { LearningController } from '../learning/learning.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -64,6 +65,8 @@ const IMPLICIT: Record<string, string[]> = {
   // M06 PM1: performance set-up is all behind perf.setup.manage.
   PerformanceSetupController: [],
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
+  // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
+  LearningController: ['me', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'checkIn', 'drop', 'cascade'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
@@ -81,7 +84,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, LearningController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

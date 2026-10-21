@@ -48,4 +48,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'candidate-retention', cron: '45 21 * * *' },
   // M10 AT5: due rejection messages and scorecard reminders, every 5 minutes.
   { id: 'hiring-due', cron: '*/5 * * * *' },
+  // Learning: assignment rules, renewals, reminders and escalation, daily at 06:30 IST.
+  { id: 'learning-daily', cron: '0 1 * * *' },
 ];

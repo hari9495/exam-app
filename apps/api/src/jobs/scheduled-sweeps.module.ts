@@ -13,6 +13,7 @@ import { ProctoringRetentionModule } from '../proctoring-retention/proctoring-re
 import { DripModule } from '../drip/drip.module';
 import { EmployeeHistoryModule } from '../employee-history/employee-history.module';
 import { PeopleModule } from '../people/people.module';
+import { LearningModule } from '../learning/learning.module';
 import { AuthModule } from '../auth/auth.module';
 import { TalentModule } from '../talent/talent.module';
 import { InterviewingModule } from '../interviewing/interviewing.module';
@@ -32,6 +33,7 @@ import { InterviewingModule } from '../interviewing/interviewing.module';
     FaceEnrolmentModule,
     ProctoringRetentionModule,
     DripModule,
+    LearningModule,
     EmployeeHistoryModule,
     PeopleModule,
     AuthModule,

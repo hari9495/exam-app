@@ -85,6 +85,12 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'perf.pip.warning', group: 'approvals', label: 'Check with the case owner before deciding on an improvement plan (HR)' },
   { type: 'perf.pip.checkin_missed', group: 'reminders', label: 'An improvement plan check-in was missed (HR and the manager)' },
   { type: 'perf.pip.handed_over', group: 'assignments', label: 'An improvement plan was handed over to you' },
+  // Learning: due dates of assigned courses, and who is told when one is missed.
+  { type: 'learning.before_7', group: 'reminders', label: 'A course assigned to you is due in a week' },
+  { type: 'learning.before_2', group: 'reminders', label: 'A course assigned to you is due in 2 days' },
+  { type: 'learning.overdue', group: 'reminders', label: 'A reminder to finish a course that is overdue' },
+  { type: 'learning.overdue_manager', group: 'reminders', label: 'Someone on your team missed a course due date' },
+  { type: 'learning.overdue_hr', group: 'reminders', label: 'Someone is a week past a course due date (training reports)' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

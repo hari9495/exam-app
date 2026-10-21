@@ -1,3 +1,4 @@
+import { LearningAssignService } from '../learning/learning-assign.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -50,6 +51,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     candidateRetention: CandidateRetentionService,
     hiringBoard: HiringBoardService,
     scorecards: ScorecardsService,
+    learning: LearningAssignService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -70,6 +72,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'candidate-retention': () => candidateRetention.sweep(),
       // M10 AT5: rejection messages after their undo window, and scorecard reminders at 24 h / 48 h.
       'hiring-due': () => Promise.all([hiringBoard.sendDue(), scorecards.remind()]),
+      'learning-daily': () => learning.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));
