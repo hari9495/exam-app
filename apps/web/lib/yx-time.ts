@@ -44,29 +44,50 @@ const readLocation = (high: boolean, timeout: number) =>
 
 /** Rough enough to trust for a geofence without asking for GPS (metres). */
 const GOOD_ENOUGH_M = 100;
+/** A browser that did not answer is not asked again for this long, so the next punch (a break) is instant. */
+const QUIET_AFTER_FAIL_MS = 10 * 60_000;
+let failedAt = 0;
+const NOT_FOUND = 'Your location could not be found. Move near a window or outdoors and try again.';
+const TURNED_OFF = 'Location is turned off for YukthiX in this browser. Allow it in the address bar, or check in from the office network.';
 
 /**
- * The browser's location for a punch (YX-AT-23): the pin, or the plain reason it is missing.
- * A quick network-based fix first (instant on a laptop, reused for 5 minutes); GPS only when that fix is too rough
- * (founder, 21 Oct: Clock in and breaks took up to 10 s on a laptop waiting for GPS).
+ * The browser's location for a punch (YX-AT-23): the pin, or the plain reason it is missing. Without a pin the punch
+ * still goes through and the server checks the office network. Founder, 21 Oct: Clock in and breaks took ~10 s because
+ * the browser never answered; now a quick network fix (3 s at most, reused 5 min), GPS only on a phone when that fix is
+ * too rough, and a browser that did not answer is left alone for 10 minutes.
  */
 export async function browserLocation(): Promise<{ pin: Pin | null; problem?: string }> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return { pin: null, problem: 'This browser cannot share your location. You can still check in from the office network.' };
+  if (Date.now() - failedAt < QUIET_AFTER_FAIL_MS) return { pin: null, problem: NOT_FOUND };
+  const state = await navigator.permissions?.query({ name: 'geolocation' }).then((r) => r.state, () => undefined);
+  if (state === 'denied') return { pin: null, problem: TURNED_OFF };
   const pin = (p: GeolocationPosition): Pin => ({ lat: p.coords.latitude, lng: p.coords.longitude, accuracyM: Math.round(p.coords.accuracy) });
+  const phone = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
   let quick: GeolocationPosition | null = null;
   try {
-    quick = await readLocation(false, 4_000);
+    quick = await readLocation(false, 3_000);
     // A laptop has no GPS to improve on the network fix, so only a phone or tablet waits for it.
-    if (quick.coords.accuracy <= GOOD_ENOUGH_M || !/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) return { pin: pin(quick) };
+    if (quick.coords.accuracy <= GOOD_ENOUGH_M || !phone) return { pin: pin(quick) };
   } catch (e) {
-    if ((e as GeolocationPositionError).code === 1) return { pin: null, problem: 'Location is turned off for YukthiX in this browser. Allow it in the address bar, or check in from the office network.' };
+    if ((e as GeolocationPositionError).code === 1) return { pin: null, problem: TURNED_OFF };
+    if (!phone) {
+      failedAt = Date.now();
+      return { pin: null, problem: NOT_FOUND };
+    }
   }
   try {
     return { pin: pin(await readLocation(true, 8_000)) };
   } catch {
-    return quick ? { pin: pin(quick) } : { pin: null, problem: 'Your location could not be found. Move near a window or outdoors and try again.' };
+    if (quick) return { pin: pin(quick) };
+    failedAt = Date.now();
+    return { pin: null, problem: NOT_FOUND };
   }
 }
+
+/** For tests: forget a past failure. */
+export const resetLocationMemory = () => {
+  failedAt = 0;
+};
 
 /** Today in India time (yyyy-mm-dd). */
 export const todayIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
