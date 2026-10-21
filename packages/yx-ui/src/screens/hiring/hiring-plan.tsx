@@ -417,29 +417,61 @@ function RequisitionDetail({ req, line, now }: { req: Requisition; line: PlanLin
   );
 }
 
-export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 'pl3', defaultMax = 8_40_000 }: { open: boolean; onOpenChange: (o: boolean) => void; planLines: PlanLine[]; defaultLine?: string | null; defaultMax?: number }) {
+/** The live "Request a hire" (PPL-08, HIR-02 sheet): what the manager sends; the API names the route and decides. */
+export interface LiveRequisitionSheet {
+  /** "Hiring manager request · Quality". */
+  subtitle: string;
+  /** The people who may leave and be replaced (the manager's team). */
+  team: { value: string; label: string }[];
+  onSend: (input: { title: string; requisitionReason: 'new' | 'replacement'; headcountPlanLineId: string | null; outsidePlan: boolean; outsidePlanReason: string | null; replacementOfEmployeeId: string | null; headcount: number; budgetAmount: number | null; targetStart: Date | null }) => Promise<void>;
+}
+
+export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 'pl3', defaultMax = 8_40_000, live }: { open: boolean; onOpenChange: (o: boolean) => void; planLines: PlanLine[]; defaultLine?: string | null; defaultMax?: number | null; live?: LiveRequisitionSheet }) {
   const [lineId, setLineId] = useState<string | null>(defaultLine);
   const [outside, setOutside] = useState(defaultLine == null);
   const [max, setMax] = useState<number | null>(defaultMax);
   const [positions, setPositions] = useState<number | null>(1);
   const [reason, setReason] = useState('');
   const [replacement, setReplacement] = useState(false);
-  const line = outside ? null : planLines.find((l) => l.id === lineId) ?? null;
-  const route = requisitionRoute({ planLine: line, proposedMax: max ?? 0, replacementFor: replacement ? 'Rohit Bhat' : null });
-  const needReason = outside && !reason.trim();
+  const [leaver, setLeaver] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [start, setStart] = useState<Date | null>(live ? null : new Date(2026, 11, 1));
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const line = outside || (live && replacement) ? null : planLines.find((l) => l.id === lineId) ?? null;
+  const leaverName = live ? live.team.find((t) => t.value === leaver)?.label ?? 'a leaver' : 'Rohit Bhat';
+  const route = requisitionRoute({ planLine: line, proposedMax: max ?? 0, replacementFor: replacement ? leaverName : null });
+  const needReason = outside && !(live && replacement) && !reason.trim();
+  // Live: a position without a plan line (outside the plan, or a replacement) needs its name.
+  const needTitle = Boolean(live) && !line && !title.trim();
+  const liveIncomplete = Boolean(live) && (!positions || needTitle || (replacement ? !leaver : !outside && !line));
+  const send = async () => {
+    if (!live || needReason || !max || liveIncomplete) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onSend({ title: line ? line.designation : title.trim(), requisitionReason: replacement ? 'replacement' : 'new', headcountPlanLineId: line?.id ?? null, outsidePlan: !replacement && outside, outsidePlanReason: !replacement && outside ? reason.trim() : null, replacementOfEmployeeId: replacement ? leaver : null, headcount: positions!, budgetAmount: max, targetStart: start });
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
       title="New requisition"
-      subtitle="Hiring manager request · Engineering"
-      dirty={reason.length > 0}
+      subtitle={live ? live.subtitle : 'Hiring manager request · Engineering'}
+      dirty={reason.length > 0 || title.length > 0}
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button>Save draft</Button>
-          <Button variant="primary" icon={Send} disabled={needReason || !max}>
+          {/* Live: a manager's request is not kept as a draft yet (left out). */}
+          {!live && <Button>Save draft</Button>}
+          <Button variant="primary" icon={Send} disabled={needReason || !max || liveIncomplete} loading={busy} onClick={live ? () => void send() : undefined}>
             Send for approval
           </Button>
         </>
@@ -447,22 +479,36 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
     >
       <div className="yx-hire-sheet">
         <div className="yx-hire-sheet__form">
+          {failed && <InlineAlert tone="danger" title={failed} />}
           <Switch className="yx-hire-switch" label="Replacement for a leaver" description="Linked to the exit; doesn't use a new plan line." checked={replacement} onChange={setReplacement} />
-          <FormField label="Plan line" required helper="Only lines with a free position are listed.">
-            <Select
-              value={outside ? null : lineId}
-              onChange={(v) => {
-                setLineId(v);
-                setOutside(false);
-              }}
-              disabled={outside}
-              options={planLines.map((l) => ({ value: l.id, label: `${l.designation} · ${l.grade} · ${l.location}`, description: `${planLineFree(l)} free · ${formatINR(planBudgetLeft(l))} budget left`, disabled: planLineFree(l) === 0 }))}
-            />
-          </FormField>
-          <Checkbox label="This hire is outside the approved plan" checked={outside} onChange={setOutside} />
-          {outside && (
-            <FormField label="Why is this needed outside the plan?" required error={needReason ? 'Enter a reason so the CFO can decide.' : null}>
-              <TextArea value={reason} onChange={setReason} rows={3} />
+          {live && replacement ? (
+            <FormField label="Who is leaving" required>
+              <Select value={leaver} onChange={setLeaver} options={live.team} />
+            </FormField>
+          ) : (
+            <>
+              <FormField label="Plan line" required helper="Only lines with a free position are listed.">
+                <Select
+                  value={outside ? null : lineId}
+                  onChange={(v) => {
+                    setLineId(v);
+                    setOutside(false);
+                  }}
+                  disabled={outside}
+                  options={planLines.map((l) => ({ value: l.id, label: `${l.designation} · ${l.grade} · ${l.location}`, description: `${planLineFree(l)} free · ${formatINR(planBudgetLeft(l))} budget left`, disabled: planLineFree(l) === 0 }))}
+                />
+              </FormField>
+              <Checkbox label="This hire is outside the approved plan" checked={outside} onChange={setOutside} />
+              {outside && (
+                <FormField label="Why is this needed outside the plan?" required error={needReason ? 'Enter a reason so the CFO can decide.' : null}>
+                  <TextArea value={reason} onChange={setReason} rows={3} />
+                </FormField>
+              )}
+            </>
+          )}
+          {live && !line && (
+            <FormField label="Position" required helper="The job title, for example Quality Analyst.">
+              <TextField value={title} onChange={setTitle} maxLength={200} />
             </FormField>
           )}
           <FieldRow>
@@ -474,17 +520,23 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
             </FormField>
           </FieldRow>
           <FormField label="Target joining date" optional>
-            <DatePicker value={new Date(2026, 11, 1)} onChange={() => {}} />
+            <DatePicker value={start} onChange={setStart} />
           </FormField>
         </div>
         <aside className="yx-hire-sheet__effect" aria-live="polite" aria-label="What happens">
           <Text weight="semibold">What happens</Text>
-          {route.extra ? <Badge tone="warning">Extra approval: CFO</Badge> : <Badge tone="success">Short chain</Badge>}
-          <ol className="yx-hire-steps">
-            {route.steps.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ol>
+          {route.extra ? <Badge tone="warning">{live ? 'Extra approval' : 'Extra approval: CFO'}</Badge> : <Badge tone="success">Short chain</Badge>}
+          {live ? (
+            <Text as="p" size="sm" tone="secondary">
+              It goes to your company&apos;s requisition approvers. You follow it in Approvals.
+            </Text>
+          ) : (
+            <ol className="yx-hire-steps">
+              {route.steps.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          )}
           {route.reasons.map((r) => (
             <Text key={r} as="p" size="sm" tone="secondary">
               {r}

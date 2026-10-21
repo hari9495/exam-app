@@ -576,6 +576,10 @@ export interface LiveTeam {
   onReview: () => void;
   /** Quick approve of a request that may be decided here (the API checks it again). */
   onApprove?: (item: ActionItem) => void;
+  /** Remind someone who has not checked in today (once a day; the API checks the reach). */
+  onNudge?: (id: string) => void;
+  /** ats.requisition.raise: "Request a hire" opens the requisition sheet. */
+  onRequestHire?: () => void;
   onOpenTask: (id: string) => void;
 }
 
@@ -609,11 +613,18 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
         description={description}
         actions={
           live ? (
-            live.onStartChange && members.length > 0 ? (
-              <Button variant="primary" onClick={live.onStartChange}>
-                Start a change
-              </Button>
-            ) : undefined
+            <>
+              {live.onRequestHire && (
+                <Button icon={UserPlus} onClick={live.onRequestHire}>
+                  Request a hire
+                </Button>
+              )}
+              {live.onStartChange && members.length > 0 && (
+                <Button variant="primary" onClick={live.onStartChange}>
+                  Start a change
+                </Button>
+              )}
+            </>
           ) : (
             <>
               <Button icon={UserPlus}>Request a hire</Button>
@@ -636,7 +647,7 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
               getRowId={(r) => r.id}
               state={state === 'loading' ? 'loading' : 'ready'}
               {...(live?.onOpenMember ? { onRowClick: (r: TeamMember) => live.onOpenMember!(r.id) } : {})}
-              rowButtons={live ? undefined : () => <Button size="sm">Nudge</Button>}
+              rowButtons={live ? (r: TeamMember) => (live.onNudge && r.today.startsWith('Not checked in') ? <Button size="sm" onClick={() => live.onNudge!(r.id)}>Nudge</Button> : null) : () => <Button size="sm">Nudge</Button>}
             />
             {(!live || tasks.length > 0) && (
               <Card title="Onboarding and exit tasks">

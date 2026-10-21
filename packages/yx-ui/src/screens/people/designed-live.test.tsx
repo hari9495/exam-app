@@ -378,6 +378,17 @@ describe('Org chart (PPL-02) and My team (PPL-08)', () => {
     await ue.click(screen.getByRole('button', { name: 'Start a change' }));
     expect(onStartChange).toHaveBeenCalled();
   });
+
+  it('My team: Nudge only for someone not checked in; Request a hire for who may raise a requisition', async () => {
+    const onNudge = vi.fn();
+    const onRequestHire = vi.fn();
+    wrap(<TeamPage members={[{ id: 'p1', name: 'Kavya Reddy', role: 'Supervisor', today: 'Not checked in', upcoming: '' }, { id: 'p2', name: 'Arjun Kulkarni', role: 'Quality Analyst', today: 'Present · in 9:05 am', upcoming: '' }]} approvals={[]} tasks={[]} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), asOf: null, approvalsHref: '#', onReview: vi.fn(), onOpenTask: vi.fn(), onNudge, onRequestHire }} />);
+    expect(screen.getAllByRole('button', { name: 'Nudge' })).toHaveLength(1);
+    await ue.click(within(screen.getByRole('row', { name: /Kavya/ })).getByRole('button', { name: 'Nudge' }));
+    expect(onNudge).toHaveBeenCalledWith('p1');
+    await ue.click(screen.getByRole('button', { name: 'Request a hire' }));
+    expect(onRequestHire).toHaveBeenCalled();
+  });
 });
 
 describe('Person record (PPL-03)', () => {
