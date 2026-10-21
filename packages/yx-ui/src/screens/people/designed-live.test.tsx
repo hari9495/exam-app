@@ -173,6 +173,16 @@ describe('My checklist tasks (PPL-47) and Life events (PPL-48)', () => {
     expect(onOpen).toHaveBeenCalledWith('jr1');
   });
 
+  it('HR gets the row action here too: Upload for a document task (PPL-47)', async () => {
+    const onUpload = vi.fn(async () => undefined);
+    const doc = task({ id: 'd1', title: 'Collect the PAN card', kind: 'document', documentType: 'pan', canComplete: false, person: 'Sneha Pillai', personId: 'p1', journeyId: 'jr1', journeyKind: 'onboarding' });
+    const { unmount } = wrap(<MyChecklistTasks tasks={[doc]} today={day('2026-10-09')} actions={{ onComplete: vi.fn(), onSkip: vi.fn(), onUpload }} />);
+    expect(screen.queryByRole('button', { name: 'Upload' })).toBeNull(); // not without HR's grant
+    unmount();
+    wrap(<MyChecklistTasks tasks={[doc]} today={day('2026-10-09')} actions={{ onComplete: vi.fn(), onSkip: vi.fn(), onUpload }} canManage />);
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+  });
+
   it('Life events lists running checklists with progress and opens one', async () => {
     const onOpen = vi.fn();
     render(<LifeEventsList rows={[{ id: 'jr9', kind: 'transfer', kindLabel: 'Transfer', person: 'Ravi Kumar', anchorOn: '2026-10-15', progress: 40 }]} today={day('2026-10-09')} onOpen={onOpen} />);

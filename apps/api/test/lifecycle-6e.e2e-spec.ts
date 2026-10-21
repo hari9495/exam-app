@@ -192,7 +192,9 @@ describe('Lifecycle batch 6e', () => {
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.buddy, version: pa.version }).expect(200);
     const checkin = await inA((tx) => tx.journeyTask.findFirstOrThrow({ where: { journeyId: a.journeyId, key: 'buddy_checkin' } }));
     expect(checkin).toMatchObject({ assigneeUserId: users.buddy, dueOn: new Date(`${addDays(today, 75)}T00:00:00Z`) });
-    expect((await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.some((t: { id: string }) => t.id === checkin.id)).toBe(true);
+    const mine = (await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { id: string }) => t.id === checkin.id);
+    // PPL-47: each task names whose checklist it is, so HR can upload or issue the letter from My checklist tasks.
+    expect(mine).toMatchObject({ personId: expect.any(String), subject: { type: expect.any(String), id: expect.any(String) } });
   });
 
   it('death in service: nominations 60 / 40 become the payees in the hand-off; the family signs in and reads the letter', async () => {

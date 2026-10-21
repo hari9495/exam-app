@@ -66,6 +66,9 @@ export interface JourneyTask {
   journeyId?: string;
   journeyKind?: JourneyKind;
   person?: string;
+  /** My tasks only: whose checklist, so HR can upload or issue the letter from here (PPL-47). */
+  personId?: string;
+  subject?: { type: string; id: string };
   anchorOn?: string;
 }
 
