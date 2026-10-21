@@ -22,7 +22,7 @@ async function signedIn(browser: import('@playwright/test').Browser, email: stri
 test('Murugan claims overtime → Kavya approves → it is paid at 2× (Factories Act); HR locks last month → a fix in it is refused', async ({ browser }) => {
   test.setTimeout(300_000);
 
-  // 1. Murugan claims a recent day with overtime.
+  // 1. Murugan claims a recent day with overtime (the designed My overtime screen).
   const murugan = await signedIn(browser, 'murugan@demo-org.test');
   await murugan.goto('/yx/time/overtime');
   const days = murugan.getByRole('list', { name: 'Days with overtime' });
@@ -55,27 +55,30 @@ test('Murugan claims overtime → Kavya approves → it is paid at 2× (Factorie
   const last = new Date(Date.now() + 330 * 60_000);
   last.setUTCDate(0);
   const monthName = last.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  await hr.goto(`/yx/time/periods`);
-  if (last.getUTCFullYear() !== new Date(Date.now() + 330 * 60_000).getUTCFullYear()) await hr.getByRole('button', { name: 'Previous year' }).click();
-  const table = hr.getByRole('table', { name: 'Kaveri Foods Pvt Ltd (Tamil Nadu) periods' });
-  const row = table.getByRole('row').filter({ hasText: monthName });
-  await expect(row).toBeVisible();
+  await hr.goto('/yx/time/periods');
+  // The designed Periods screen (TIM-11): a section per legal entity, a card per month (last year's months show too).
+  const month = hr.getByRole('region', { name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', exact: true }).getByRole('region', { name: monthName, exact: true });
+  await expect(month).toBeVisible();
   // Payroll 5a: a locked month is reopened only by a two-approval request (payroll-5a.spec.ts), so lock it if it is open.
-  if (await row.getByRole('button', { name: 'Lock' }).isVisible()) {
-    await row.getByRole('button', { name: 'Lock' }).click();
+  if (await month.getByRole('button', { name: 'Pre-lock checklist' }).isVisible()) {
+    await month.getByRole('button', { name: 'Pre-lock checklist' }).click();
     const lock = hr.getByRole('dialog');
-    await expect(lock.getByText('Ready to lock')).toBeVisible({ timeout: 60_000 });
-    await lock.getByRole('button', { name: 'Lock the month' }).click();
+    await lock.getByRole('button', { name: 'Lock period' }).click();
     await expect(lock).toHaveCount(0, { timeout: 60_000 });
   }
-  await expect(row.getByText('Locked', { exact: true })).toBeVisible();
+  await expect(month.getByText('Locked', { exact: true })).toBeVisible({ timeout: 60_000 });
 
-  // 5. Murugan's fix for his half day in that month is refused in plain words.
+  // 5. Murugan's fix for a day in that month is refused in plain words.
+  const first = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   await murugan.goto('/yx/time/attendance');
-  await murugan.getByRole('button', { name: 'Previous month' }).click();
-  await murugan.getByRole('button', { name: 'Fix this day' }).first().click();
-  const fix = murugan.getByRole('dialog');
-  await fix.getByRole('textbox', { name: /What happened/ }).fill('The gate reader missed my check-out');
-  await fix.getByRole('button', { name: 'Send for approval' }).click();
+  await murugan.getByRole('button', { name: 'Regularise a day' }).click();
+  const fix = murugan.getByRole('dialog', { name: 'New attendance request' });
+  await fix.getByRole('textbox', { name: /^Date/ }).fill(first);
+  await fix.getByRole('textbox', { name: /^Date/ }).press('Tab');
+  await fix.getByRole('radio', { name: 'Full day (no punches)' }).check();
+  await fix.getByRole('textbox', { name: 'Check-in' }).fill('09:00');
+  await fix.getByRole('textbox', { name: 'Check-out' }).fill('17:00');
+  await fix.getByRole('textbox', { name: /^Reason/ }).fill('The gate reader missed my check-out');
+  await fix.getByRole('button', { name: 'Send request' }).click();
   await expect(fix.getByText(/is locked for attendance and leave/)).toBeVisible();
 });
