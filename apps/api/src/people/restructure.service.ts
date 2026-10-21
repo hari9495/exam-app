@@ -64,6 +64,9 @@ interface Who {
   code: string;
   locationId: string;
   departmentId: string;
+  designationId: string;
+  employmentTypeId: string;
+  gradeId: string | null;
 }
 interface Head {
   id: string;
@@ -182,8 +185,8 @@ export class RestructureService {
 
   private async who(tx: Tx, c: CompanyContext, h: Head): Promise<Who[]> {
     const org = c.organizationId;
-    const rows = await tx.$queryRaw<{ employee_id: string; employment_id: string; employee_code: string; location_id: string; department_id: string; given_name: string; family_name: string | null; preferred_name: string | null }[]>`
-      SELECT m.employee_id::text, m.id::text AS employment_id, m.employee_code::text, a.location_id::text, a.department_id::text, e.given_name, e.family_name, e.preferred_name
+    const rows = await tx.$queryRaw<{ employee_id: string; employment_id: string; employee_code: string; location_id: string; department_id: string; designation_id: string; employment_type_id: string; grade_id: string | null; given_name: string; family_name: string | null; preferred_name: string | null }[]>`
+      SELECT m.employee_id::text, m.id::text AS employment_id, m.employee_code::text, a.location_id::text, a.department_id::text, a.designation_id::text, a.employment_type_id::text, a.grade_id::text, e.given_name, e.family_name, e.preferred_name
       FROM employments m
       JOIN employees e ON e.organization_id = m.organization_id AND e.id = m.employee_id
       JOIN employee_assignments a ON a.organization_id = m.organization_id AND a.employment_id = m.id AND a.superseded_at IS NULL
@@ -193,7 +196,7 @@ export class RestructureService {
     const p = h.plan;
     return rows
       .filter((r) => (h.kind === 'merge' || h.kind === 'close' ? true : (!p.locationIds.length || p.locationIds.includes(r.location_id)) && (h.kind === 'demerge' || !p.departmentIds.length || p.departmentIds.includes(r.department_id))))
-      .map((r) => ({ employeeId: r.employee_id, employmentId: r.employment_id, name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }), code: r.employee_code, locationId: r.location_id, departmentId: r.department_id }));
+      .map((r) => ({ employeeId: r.employee_id, employmentId: r.employment_id, name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }), code: r.employee_code, locationId: r.location_id, departmentId: r.department_id, designationId: r.designation_id, employmentTypeId: r.employment_type_id, gradeId: r.grade_id }));
   }
 
   /** The plan's shape: entities of this company, locations of the right entity, a target that changes something. */
@@ -222,6 +225,42 @@ export class RestructureService {
       }
     }
     return { from, into };
+  }
+
+  /**
+   * Between entities, every location and every department, designation, employment type or grade of the people who move
+   * that is not open to the new entity needs a chosen one there. Never guessed: a missing one rejects the plan.
+   */
+  private async checkMappings(tx: Tx, c: CompanyContext, h: Head, into: { id: string; name: string }, people: Who[]) {
+    const org = c.organizationId;
+    const p = h.plan;
+    const moving = people.filter((w) => !this.optionsFor(h, w.employeeId).leaveOut);
+    const noPlace = [...new Set(moving.map((w) => w.locationId))].filter((id) => !p.locationMap[id]);
+    if (noPlace.length) {
+      const names = await tx.location.findMany({ where: { organizationId: org, id: { in: noPlace } }, select: { name: true } });
+      throw new BadRequestException(`Choose the location in ${into.name} for ${names.map((l) => l.name).join(', ')}.`);
+    }
+    const used = new Set(moving.flatMap((w) => [w.departmentId, w.designationId, w.employmentTypeId, ...(w.gradeId ? [w.gradeId] : [])]));
+    const ids = [...new Set([...used, ...Object.values(p.masterMap)])];
+    const where = { organizationId: org, id: { in: ids } };
+    const select = { id: true, name: true, ownerLegalEntityId: true, appliesToEntities: true, archivedAt: true } as const;
+    const tag = (kind: string) => (rows: { id: string; name: string; ownerLegalEntityId: string | null; appliesToEntities: string[]; archivedAt: Date | null }[]) => rows.map((r) => ({ ...r, kind }));
+    const rows = (
+      await Promise.all([
+        tx.department.findMany({ where, select }).then(tag('department')),
+        tx.designation.findMany({ where, select }).then(tag('designation')),
+        tx.employmentType.findMany({ where, select }).then(tag('employmentType')),
+        tx.grade.findMany({ where, select }).then(tag('grade')),
+      ])
+    ).flat();
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const open = (m: (typeof rows)[number]) => (m.ownerLegalEntityId ? m.ownerLegalEntityId === into.id : !m.appliesToEntities.length || m.appliesToEntities.includes(into.id));
+    const missing = [...used].map((id) => byId.get(id)).filter((m): m is (typeof rows)[number] => !!m && !open(m) && !p.masterMap[m.id]);
+    if (missing.length) throw new BadRequestException(`Choose what ${missing.map((m) => m.name).join(', ')} ${missing.length === 1 ? 'becomes' : 'become'} in ${into.name}.`);
+    for (const id of used) {
+      const to = p.masterMap[id] ? byId.get(p.masterMap[id]) : undefined;
+      if (p.masterMap[id] && (!to || to.archivedAt || to.kind !== byId.get(id)?.kind || !open(to))) throw new BadRequestException(`Each new department, designation, employment type or grade is one in use in ${into.name}.`);
+    }
   }
 
   // ------------------------------------------------------------------------------------------ payroll months
@@ -360,7 +399,7 @@ export class RestructureService {
     if (!locationId) throw new Stop(`No location in ${into.name} is chosen for ${names.loc.get(a.locationId)}.`);
     const service = await this.history.serviceDatesOf(tx, c, e);
     const pay = await withPayScope(tx, [from.id], () => tx.compensation.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(eff) }, OR: [{ validTo: null }, { validTo: { gte: asDate(eff) } }] } }));
-    if (pay && opts.salary === 'keep' && (sender.actingForOther || !has(sender, 'employee.salary.manage'))) throw new Stop('Keeping their pay needs pay access (employee.salary.manage). Choose "Assign new" for salary, or ask someone with pay access to send this.');
+    if (pay && opts.salary === 'keep' && (sender.actingForOther || !has(sender, 'employee.salary.manage'))) throw new Stop('Keeping their pay needs someone allowed to change pay. In Transfer options, set Salary structure to "Assign new", or ask someone allowed to change pay to send this.');
     const probation = status === 'probation' ? await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id } }) : null;
     const types = await tx.leaveType.findMany({ where: { organizationId: org }, select: { id: true, name: true } });
     const sums = await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: e.employeeId }, _sum: { days: true } });
@@ -491,6 +530,7 @@ export class RestructureService {
     // Continuity items need a restructure row to hang on while checking; it is rolled back with everything else.
     await tx.restructure.create({ data: { id: h.id, organizationId: c.organizationId, kind: h.kind, fromEntityId: h.fromEntityId, intoEntityId: h.intoEntityId, effectiveOn: asDate(h.effectiveDate), plan: h.plan as unknown as Prisma.InputJsonObject, reason: h.reason, requestedBy: c.userId! } });
     const people = await this.who(tx, c, h);
+    if (ents.into) await this.checkMappings(tx, c, h, ents.into, people);
     const checks = await this.checks(tx, c, h, ents);
     const rows = await this.movePeople(tx, c, h, people, v, null);
     return { people: rows.map(({ newEmploymentId: _n, changeId: _c, ...r }) => r), checks, counts: { ready: rows.filter((r) => r.status === 'ready').length, failed: rows.filter((r) => r.status === 'failed').length, leftOut: rows.filter((r) => r.status === 'left_out').length } };
@@ -631,7 +671,7 @@ export class RestructureService {
       for (const x of rows) {
         const e = await tx.employment.findFirst({ where: { organizationId: c.organizationId, id: x.employmentId } });
         const n = names.find((p) => p.id === x.employeeId);
-        people.push({ employeeId: x.employeeId, employmentId: x.employmentId, name: n ? displayName(n) : '', code: e?.employeeCode ?? '', locationId: '', departmentId: '' });
+        people.push({ employeeId: x.employeeId, employmentId: x.employmentId, name: n ? displayName(n) : '', code: e?.employeeCode ?? '', locationId: '', departmentId: '', designationId: '', employmentTypeId: '', gradeId: null });
       }
       // Each person's own options were fixed when sent.
       const withOpts: Head = { ...h, plan: { ...h.plan, overrides: rows.map((x) => ({ employeeId: x.employeeId, reason: '', ...(x.options as unknown as MoveOptions) })) } };

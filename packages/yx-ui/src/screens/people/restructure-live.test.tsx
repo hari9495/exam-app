@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { RestructureWizard } from './changes';
-import { RestructureRecord, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
+import { RestructureRecord, shortReason, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
 
 // People › Restructure (PPL-09) and the continuity checklist (PPL-10) with the live app's data.
 
@@ -62,16 +62,31 @@ describe('Restructure wizard (PPL-09)', () => {
     await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
     await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
     await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
-    await ue.click(screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' }));
-    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
     await ue.click(screen.getByRole('textbox', { name: /Effective date/ }));
     await ue.keyboard('01/11/2026{Enter}');
     await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Merger');
+    // Step 1 as in the design: the real count and a counts-per-place summary; later steps not started.
+    expect(screen.getByText(/^Moves 2 employments with one preview/)).toBeInTheDocument();
+    expect(screen.getByText('Who moves (2)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Close the old entity/ })).toHaveTextContent('Not started');
+    // The place in the new entity is chosen on step 2; nothing is guessed and Continue waits for it.
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    const place = screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' });
+    expect(place).toHaveTextContent('Choose…');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.getByText('Choose a place in Kaveri Foods for every row first')).toBeInTheDocument();
+    expect(l.onPreview).not.toHaveBeenCalled();
+    await ue.click(place);
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
     await waitFor(() => expect(l.onPreview).toHaveBeenCalled(), { timeout: 3000 });
     expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).toMatchObject({ kind: 'merge', fromEntityId: 'tn', intoEntityId: 'kf', effectiveDate: '2026-11-01', locationMap: { hsr: 'blr' }, masterMap: {}, defaults: { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' }, reason: 'Merger' });
+    expect(screen.getByRole('button', { name: /Close the old entity/ })).toHaveTextContent('Not started');
+    await ue.click(screen.getByRole('button', { name: /What moves/ }));
     expect(await screen.findByText('1 person needs their own decision')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'People who need their own decision' })).getByRole('listitem')).toHaveTextContent('Imran: has an open exit case');
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: /Close the old entity/ })).toHaveTextContent("Needs changes · 1 can't move");
     expect(screen.getByText('Imran can’t move'.replace('’', "'"))).toBeInTheDocument();
     expect(screen.getByText('Has an open exit case. Leave them out, or close the exit case first.', { selector: 'div' })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Leave out' }));
@@ -87,6 +102,27 @@ describe('Restructure wizard (PPL-09)', () => {
     await ue.type(within(confirm).getByRole('textbox'), 'MERGE TN NOV 2026');
     await ue.click(within(confirm).getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(l.onSend).toHaveBeenCalledWith(expect.objectContaining({ overrides: [{ employeeId: 'imran', leaveOut: true, reason: 'Retiring 31 Oct' }] }), 'Merge Kaveri TN into Kaveri Foods'));
+  });
+
+  it('never guesses a place in the new entity: only an exact same-name match starts chosen', async () => {
+    const m = (id: string, name: string, openTo: string[] | null, tn = 0) => ({ kind: 'department' as const, id, name, byEntity: (tn ? { tn } : {}) as Record<string, number>, openTo });
+    const base = live();
+    const l = live({ setup: { ...base.setup!, departments: [m('prod', 'Production', ['tn'], 1), m('eng', 'Engineering', null), m('qtn', 'Quality', ['tn'], 1), m('qkf', 'quality', ['kf'])] } });
+    wrap(<RestructureWizard live={l} />);
+    await ue.click(screen.getByRole('combobox', { name: /From entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
+    await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('combobox', { name: 'Department in Kaveri Foods for Production' })).toHaveTextContent('Choose…');
+    expect(screen.getByRole('combobox', { name: 'Department in Kaveri Foods for Quality' })).toHaveTextContent('quality');
+    expect(screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' })).toHaveTextContent('Choose…');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('says each reason in plain words, never a permission key', () => {
+    expect(shortReason('Keeping their pay needs pay access (employee.salary.manage). Choose "Assign new" for salary.')).toBe('keeping their pay needs pay access');
+    expect(shortReason('Retiring 31 Oct 2026')).toBe('retiring 31 Oct 2026');
   });
 });
 

@@ -126,6 +126,10 @@ const KEYS = Object.keys(OPTION_LABEL) as (keyof MoveOptions)[];
 const MASTER_TEXT: Record<SetupMaster['kind'], string> = { department: 'Department', designation: 'Designation', employmentType: 'Employment type', grade: 'Grade' };
 const DEFAULTS: MoveOptions = { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' };
 
+/** The reason in a few plain words for the step-1 list: its first sentence, never a permission key. */
+export const shortReason = (reason: string | null) => lower((reason ?? '').replace(/\s*\([a-z_]+(?:[.:][a-z_]+)+\)/g, '').split(/\.(?:\s|$)/)[0].trim());
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 /** One line for an override: "Leave balance: lapse" or "Left out of this move". */
 const overrideText = (o: RestructureOverride) => (o.leaveOut ? 'Left out of this move' : KEYS.filter((k) => o[k]).map((k) => `${OPTION_LABEL[k]}: ${lower(OPTION_TEXT[k][o[k]!])}`).join(' · '));
 
@@ -192,7 +196,10 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [overrides, setOverrides] = useState<RestructureOverride[]>([]);
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
   const [reason, setReason] = useState('');
-  const [step, setStep] = useState('scope');
+  const [step, setStepId] = useState('scope');
+  // How far the user has gone: a later step's check result shows only once it is reached (before that: "Not started").
+  const [reached, setReached] = useState(0);
+  const setStep = (id: string) => (setStepId(id), setReached((n) => Math.max(n, id === 'scope' ? 0 : id === 'options' ? 1 : 2)));
   const [preview, setPreview] = useState<RestructurePreview | null>(null);
   const [checking, setChecking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -207,6 +214,12 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   // Departments, designations, types and grades only for the old entity: people take another one in the new entity.
   const allMasters = [...(s?.departments ?? []), ...(s?.masters ?? [])];
   const closedMasters = across && from && into ? allMasters.filter((m) => m.byEntity[from] && m.openTo && !m.openTo.includes(into)) : [];
+  // A place in the new entity is never guessed: only an exact same-name match starts chosen; the rest start empty.
+  const intoLocations = (s?.locations ?? []).filter((x) => x.legalEntityId === into);
+  const openInto = (x: SetupMaster) => !x.openTo || (!!into && x.openTo.includes(into));
+  const locOf = (l: { id: string; name: string }) => map[l.id] ?? intoLocations.find((x) => same(x.name, l.name))?.id;
+  const masterOf = (m: SetupMaster) => masterMap[m.id] ?? allMasters.find((x) => x.kind === m.kind && x.id !== m.id && openInto(x) && same(x.name, m.name))?.id;
+  const unmapped = across && from && into ? moving.filter((l) => !locOf(l)).length + closedMasters.filter((m) => !masterOf(m)).length : 0;
   const date = effective ? formatDate(effective) : 'the effective date';
   const heading = !fromE
     ? 'Restructure'
@@ -221,7 +234,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
     if (!from || !effective || (across && !into) || reason.trim().length < 3) return null;
     if (kind === 'demerge' && !locations.length) return null;
     if (kind === 'within' && ((!locations.length && !departments.length) || (!target.departmentId && !target.locationId && target.managerEmployeeId === undefined && !target.costCentreId))) return null;
-    if (across && moving.some((l) => !map[l.id])) return null;
+    if (unmapped) return null;
     return {
       kind,
       fromEntityId: from,
@@ -229,14 +242,14 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
       effectiveDate: iso(effective),
       locationIds: kind === 'demerge' || kind === 'within' ? locations : [],
       departmentIds: kind === 'within' ? departments : [],
-      locationMap: across ? Object.fromEntries(moving.map((l) => [l.id, map[l.id]])) : {},
-      masterMap: across ? Object.fromEntries(closedMasters.filter((m) => masterMap[m.id]).map((m) => [m.id, masterMap[m.id]])) : {},
+      locationMap: across ? Object.fromEntries(moving.map((l) => [l.id, locOf(l)!])) : {},
+      masterMap: across ? Object.fromEntries(closedMasters.map((m) => [m.id, masterOf(m)!])) : {},
       target: kind === 'within' ? target : {},
       defaults,
       overrides,
       reason: reason.trim(),
     };
-  }, [kind, from, into, effective, locations, departments, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters]);
+  }, [kind, from, into, effective, locations, departments, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters, unmapped]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every edit is checked again (a dry run through the API) half a second after the last one.
   const key = JSON.stringify(input);
@@ -267,8 +280,13 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const cannot = people.filter((p) => p.status === 'failed');
   const ready = people.filter((p) => p.status === 'ready');
   const blockedCheck = preview?.checks.find((c) => c.status === 'Blocked');
+  // The employments in the plan (left-out people not counted): from the check, or before it from today's head counts.
+  const moveCount = preview ? people.filter((p) => p.status !== 'left_out').length : across && from ? moving.reduce((n, l) => n + l.people, 0) : null;
+  const mapBlocked = unmapped ? `Choose a place in ${intoE?.name ?? 'the new entity'} for every row first` : undefined;
   const entityOptions = s.entities.map((e) => ({ value: e.id, label: `${e.name} · ${e.people} people` }));
-  const finishBlocked = !input
+  const finishBlocked = mapBlocked
+    ? mapBlocked
+    : !input
     ? 'Fill in what moves first'
     : checking || !preview
       ? 'Checking the plan'
@@ -311,7 +329,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
 
   return (
     <PeopleFrame active="Restructure">
-      <PageHeader title={heading} description={`Moves ${preview ? ready.length : 'the'} ${preview && ready.length === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then the old entity can be closed' : ''}.`} />
+      <PageHeader title={heading} description={`Moves ${moveCount ?? 'the'} ${moveCount === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then the old entity can be closed' : ''}.`} />
       {s.open.length > 0 && (
         <InlineAlert tone="info" title={`${s.open.length} ${s.open.length === 1 ? 'restructure is' : 'restructures are'} open`}>
           <ul className="yx-ppl__stack" aria-label="Open restructures">
@@ -332,6 +350,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
         title="Restructure"
         current={step}
         onCurrentChange={setStep}
+        continueBlocked={step === 'options' ? mapBlocked : undefined}
         finishLabel="Send for approval"
         finishBlocked={finishBlocked}
         onFinish={() => setConfirm(true)}
@@ -397,8 +416,45 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                 <FormField label="Reason" required helper="Shown on every person's job history.">
                   <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
                 </FormField>
+                {across && kind !== 'demerge' && from && (
+                  <Card title={`Who moves (${moveCount ?? 0})`}>
+                    {moving.length ? (
+                      <dl className="yx-ppl__dl">
+                        {moving.map((l) => (
+                          <div key={l.id} className="yx-ppl__dl-row"><dt>{l.name}</dt><dd>{l.people} people</dd></div>
+                        ))}
+                        {s.departments.filter((dp) => dp.byEntity[from]).map((dp) => (
+                          <div key={dp.id} className="yx-ppl__dl-row"><dt>{dp.name}</dt><dd>{dp.byEntity[from]} people</dd></div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <Text size="sm" tone="secondary" as="p">No one works here today.</Text>
+                    )}
+                  </Card>
+                )}
+                {failed && <InlineAlert tone="danger" title="The plan was not checked">{failed}</InlineAlert>}
+                {cannot.length > 0 && (
+                  <InlineAlert tone="info" title={`${cannot.length} ${cannot.length === 1 ? 'person needs' : 'people need'} their own decision`} actions={<Button size="sm" onClick={() => setStep('options')}>Review overrides</Button>}>
+                    <ul className="yx-ppl__stack" aria-label="People who need their own decision">
+                      {cannot.map((p) => (
+                        <li key={p.employeeId}>
+                          {p.name}: {shortReason(p.reason)}
+                        </li>
+                      ))}
+                    </ul>
+                  </InlineAlert>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: 'options',
+            title: 'Transfer options',
+            summary: across ? `${KEYS.map((k) => `${OPTION_LABEL[k]}: ${lower(OPTION_TEXT[k][defaults[k]])}`).join(' · ')} · ${overrides.length} overrides` : `${overrides.length} overrides`,
+            content: (
+              <div className="yx-ppl__stack">
                 {across && from && into && (
-                  <Card title={`Who moves (${moving.reduce((n, l) => n + l.people, 0)})`}>
+                  <Card title={`Places in ${intoE?.name ?? 'the new entity'}`}>
                     {moving.length ? (
                       <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Locations and their place in the new entity">
                         <table className="yx-ppl__impact">
@@ -418,7 +474,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                                   </span>
                                 </td>
                                 <td>
-                                  <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={s.locations.filter((x) => x.legalEntityId === into).map((x) => ({ value: x.id, label: x.name }))} value={map[l.id] ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose a location" />
+                                  <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={intoLocations.map((x) => ({ value: x.id, label: x.name }))} value={locOf(l) ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose…" />
                                 </td>
                               </tr>
                             ))}
@@ -431,7 +487,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                                   </span>
                                 </td>
                                 <td>
-                                  <Select aria-label={`${MASTER_TEXT[m.kind]} in ${intoE?.name} for ${m.name}`} size="sm" options={allMasters.filter((x) => x.kind === m.kind && (!x.openTo || x.openTo.includes(into!))).map((x) => ({ value: x.id, label: x.name }))} value={masterMap[m.id] ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m.id]: v })} placeholder={`Choose a ${MASTER_TEXT[m.kind].toLowerCase()}`} />
+                                  <Select aria-label={`${MASTER_TEXT[m.kind]} in ${intoE?.name} for ${m.name}`} size="sm" options={allMasters.filter((x) => x.kind === m.kind && openInto(x)).map((x) => ({ value: x.id, label: x.name }))} value={masterOf(m) ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m.id]: v })} placeholder="Choose…" />
                                 </td>
                               </tr>
                             ))}
@@ -443,21 +499,6 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                     )}
                   </Card>
                 )}
-                {failed && <InlineAlert tone="danger" title="The plan was not checked">{failed}</InlineAlert>}
-                {cannot.length > 0 && (
-                  <InlineAlert tone="info" title={`${cannot.length} ${cannot.length === 1 ? 'person needs' : 'people need'} their own decision`} actions={<Button size="sm" onClick={() => setStep('options')}>Review overrides</Button>}>
-                    {cannot.map((p) => `${p.name} (${lower(p.reason ?? '')})`).join(', ')}
-                  </InlineAlert>
-                )}
-              </div>
-            ),
-          },
-          {
-            id: 'options',
-            title: 'Transfer options',
-            summary: across ? `${KEYS.map((k) => `${OPTION_LABEL[k]}: ${lower(OPTION_TEXT[k][defaults[k]])}`).join(' · ')} · ${overrides.length} overrides` : `${overrides.length} overrides`,
-            content: (
-              <div className="yx-ppl__stack">
                 {across ? (
                   <>
                     <Text as="p">Company defaults are selected for everyone. Change a default, or give one person their own option with a reason.</Text>
@@ -518,8 +559,8 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           {
             id: 'close',
             title: closes ? 'Close the old entity' : 'Checks',
-            status: blockedCheck || cannot.length ? 'error' : undefined,
-            statusNote: blockedCheck ? 'Payroll month not ready' : cannot.length ? `${cannot.length} can't move` : undefined,
+            status: reached >= 2 && (blockedCheck || cannot.length) ? 'error' : undefined,
+            statusNote: reached < 2 ? undefined : blockedCheck ? 'Payroll month not ready' : cannot.length ? `${cannot.length} can't move` : undefined,
             summary: !preview ? 'Not checked yet' : blockedCheck ? `Blocked: ${lower(blockedCheck.note ?? blockedCheck.title)}` : cannot.length ? `${cannot.length} people can't move` : 'All checks pass',
             content: !preview ? (
               <ListSkeleton rows={4} label="Checking the plan" />

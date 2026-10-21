@@ -180,9 +180,13 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     expect(by('Arjun')).toMatchObject({ status: 'ready', to: { code: expect.stringMatching(/^KF\d{4}$/) }, service: { from: today, kept: false }, leave: [{ days: 5, action: 'lapsed' }], pay: 'none' });
     expect(by('Selvi')).toMatchObject({ status: 'ready', to: { department: 'Quality' } });
     expect(out.counts).toEqual({ ready: 4, failed: 0, leftOut: 0 });
-    // Without a department in the new entity, she cannot move: said in plain words.
-    const unmapped = (await api('hrA', 'post', '/people/restructures/preview').send(merge({ masterMap: {} })).expect(200)).body;
-    expect(unmapped.people.find((p: { name: string }) => p.name === 'Selvi')).toMatchObject({ status: 'failed', reason: "That department is not available to the employee's legal entity." });
+    // A missing place in the new entity is never guessed: the plan (preview and send) is rejected in plain words.
+    expect((await api('hrA', 'post', '/people/restructures/preview').send(merge({ masterMap: {} })).expect(400)).body.message).toBe('Choose what Plant ops becomes in Entity KF.');
+    expect((await api('hrA', 'post', '/people/restructures').send(merge({ masterMap: {} })).expect(400)).body.message).toBe('Choose what Plant ops becomes in Entity KF.');
+    expect((await api('hrA', 'post', '/people/restructures').send(merge({ locationMap: {} })).expect(400)).body.message).toBe('Choose the location in Entity KF for Site TN.');
+    expect((await api('hrA', 'post', '/people/restructures/preview').send(merge({ masterMap: { [ids.plant]: ids.des } })).expect(400)).body.message).toBe('Each new department, designation, employment type or grade is one in use in Entity KF.');
+    // Left out, Selvi needs no department there.
+    await api('hrA', 'post', '/people/restructures/preview').send(merge({ masterMap: {}, overrides: [{ employeeId: ids.selvi, leaveOut: true, reason: 'Stays' }] })).expect(200);
     expect((await employment(ids.divya, ids.leTN))!.exitedOn).toBeNull();
     expect(await asSuper((tx) => tx.restructure.count({ where: { organizationId: org.A.id } }))).toBe(0);
   });
