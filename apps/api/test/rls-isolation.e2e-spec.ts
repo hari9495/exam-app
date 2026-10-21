@@ -52,7 +52,9 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Contract workers and placements (founder decision 21 Oct 2026).
-const WORKFORCE_ROLES_SUPPORT_EXCLUDED = ['contractors', 'contractor_licences', 'contract_deployments', 'placements'];
+const WORKFORCE_ROLES_SUPPORT_EXCLUDED = ['contractors', 'contractor_licences', 'contract_deployments', 'placements',
+  // Contract labour part 2.
+  'contractor_documents', 'contractor_proofs', 'contractor_bill_releases', 'contractor_alert_notes'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

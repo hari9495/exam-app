@@ -6,6 +6,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { buildViewer, type ScopeUser } from '../access/scope';
 import { e164 } from '../people/persons';
 import { reachOf, reaches, reachWhere, type Reach } from './reach';
+import { ContractComplianceService, type IdentifierInput } from './contract-compliance.service';
 
 // Contract workers (CLB-01 contractors and licences, CLB-02 deployments) and placements (HIR-17), founder decision
 // 21 Oct 2026. Each worker and each placed person is one person record with a role (person_roles), so the Directory
@@ -46,6 +47,7 @@ export class WorkforceRolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly compliance: ContractComplianceService,
   ) {}
 
   private async reach(user: ScopeUser, key: (typeof KEYS)[number]) {
@@ -187,12 +189,18 @@ export class WorkforceRolesService {
         fromOn: iso(w.fromOn)!,
         toOn: iso(w.toOn),
         status: w.status,
+        // Confidential identifiers: the last four only (the full value through the audited reveal).
+        aadhaarLast4: w.aadhaarLast4,
+        uanLast4: w.uanLast4,
+        esicLast4: w.esicLast4,
+        gatePass: w.gatePass,
+        gatePassValidTo: iso(w.gatePassValidTo),
       };
     });
   }
 
   /** CLB-02 deployment checks: age 18 or over, a licence valid on the date, covering the site's state, within its maximum. */
-  async deploy(ctx: TenantContext, user: ScopeUser, dto: PersonInput & { contractorId: string; licenceId: string; locationId: string; dateOfBirth: string; work: string; skill: (typeof SKILL)[number]; wage?: string; fromOn: string }) {
+  async deploy(ctx: TenantContext, user: ScopeUser, dto: PersonInput & IdentifierInput & { contractorId: string; licenceId: string; locationId: string; dateOfBirth: string; work: string; skill: (typeof SKILL)[number]; wage?: string; fromOn: string }) {
     const r = await this.need(user, 'clra.worker.manage');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -215,6 +223,9 @@ export class WorkforceRolesService {
       const w = await tx.contractDeployment.create({
         data: { organizationId: org, legalEntityId: k.legalEntityId, contractorId: k.id, licenceId: lic.id, personId, locationId: site.id, work: dto.work.trim(), skill: dto.skill, wage: dto.wage ? new Prisma.Decimal(dto.wage) : null, dateOfBirth: D(dto.dateOfBirth), fromOn: D(dto.fromOn), createdBy: c.userId ?? null },
       });
+      // Aadhaar, UAN and ESI sealed (Confidential), gate pass; the same Aadhaar is never deployed twice at once.
+      const ids = await this.compliance.identifierData(tx, c, w.id, dto);
+      if (Object.keys(ids).length) await tx.contractDeployment.update({ where: { id: w.id }, data: ids });
       await tx.personRole.create({ data: { organizationId: org, personId, roleType: 'contract_worker', sourceTable: 'contract_deployments', sourceId: w.id, startOn: D(dto.fromOn) } });
       await audit(tx, c, 'clra.worker.deployed', 'contract_deployment', w.id, { contractorId: k.id, licenceId: lic.id, locationId: site.id, fromOn: dto.fromOn });
       return { id: w.id, personId, status: w.status };

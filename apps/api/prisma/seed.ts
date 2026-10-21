@@ -18,7 +18,7 @@ import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
 import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b, seedPay5j } from './seed-pay';
 import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleAssets, seedLifecycleLetters } from './seed-lifecycle';
-import { WORKFORCE_ROLE_ADMIN_KEYS, WORKFORCE_ROLE_PERMISSIONS, seedWorkforceRoles } from './seed-workforce-roles';
+import { WORKFORCE_ROLE_ORG_ADMIN_KEYS, WORKFORCE_ROLE_PERMISSIONS, seedWorkforceRoles } from './seed-workforce-roles';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
 const prisma = new PrismaClient();
@@ -220,7 +220,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // PM8: improvement plans.
     'perf.pip.manage',
     // Contract workers and placements (founder decision 21 Oct 2026).
-    ...WORKFORCE_ROLE_ADMIN_KEYS,
+    ...WORKFORCE_ROLE_ORG_ADMIN_KEYS,
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

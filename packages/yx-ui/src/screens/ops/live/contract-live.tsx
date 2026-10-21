@@ -18,7 +18,7 @@ import { FilterBar, type FilterFieldDef } from '../../../components/filters';
 import { DatePicker } from '../../../components/date';
 import { formatDate, formatINR } from '../../../lib/format';
 import type { FilterValue } from '../../../lib/table';
-import { CheckList } from '../ops-kit';
+import { CheckList, PhotoPlaceholder } from '../ops-kit';
 import { deployBlocks, expiryTone } from '../ops-rules';
 
 export type LoadState = 'loading' | 'ready' | 'error' | 'no-access';
@@ -75,7 +75,24 @@ export interface LiveWorker {
   fromOn: string;
   toOn: string | null;
   status: 'pending' | 'deployed' | 'released';
+  /** Confidential: the last four only (the full value through the audited reveal). */
+  aadhaarLast4?: string | null;
+  uanLast4?: string | null;
+  esicLast4?: string | null;
+  gatePass?: string | null;
+  gatePassValidTo?: string | null;
 }
+export type IdentifierField = 'aadhaar' | 'uan' | 'esic';
+export interface IdentifierInput {
+  aadhaar?: string;
+  uan?: string;
+  esic?: string;
+  gatePass?: string;
+  gatePassValidTo?: string;
+}
+const MASK: Record<IdentifierField, (l: string) => string> = { aadhaar: (l) => `XXXX XXXX ${l}`, uan: (l) => `XXXXXXXX${l}`, esic: (l) => `XXXXXX${l}` };
+const ID_LABEL: Record<IdentifierField, string> = { aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESI IP number' };
+const last4 = (w: LiveWorker, f: IdentifierField) => (f === 'aadhaar' ? w.aadhaarLast4 : f === 'uan' ? w.uanLast4 : w.esicLast4) ?? null;
 export interface LiveSite {
   id: string;
   name: string;
@@ -94,6 +111,10 @@ export interface DeployInput {
   skill: LiveWorker['skill'];
   wage?: string;
   fromOn: string;
+  aadhaar?: string;
+  uan?: string;
+  esic?: string;
+  gatePass?: string;
 }
 
 const SKILL: Record<LiveWorker['skill'], string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled' };
@@ -113,6 +134,13 @@ export interface ContractWorkersLiveProps {
   onDeploy: (input: DeployInput) => Promise<unknown>;
   onApprove: (w: LiveWorker) => Promise<unknown>;
   onRelease: (w: LiveWorker) => Promise<unknown>;
+  /** Show the full Aadhaar, UAN or ESI number (clra.identity.view; every view is recorded). */
+  canReveal?: boolean;
+  onReveal?: (w: LiveWorker, field: IdentifierField) => Promise<string>;
+  onSetIdentifiers?: (w: LiveWorker, input: IdentifierInput) => Promise<unknown>;
+  /** The minimum wage for a site and skill on a date, or why there is none on record. */
+  onMinimumWage?: (siteId: string, skill: LiveWorker['skill'], on: string) => Promise<{ monthly: string | null; text: string }>;
+  onExport?: (format: 'csv' | 'xlsx') => void;
   /** Open the deploy drawer at once (?deploy=1 from the Directory's Add). */
   defaultDeployOpen?: boolean;
 }
@@ -130,6 +158,7 @@ export function ContractWorkersLiveScreen(p: ContractWorkersLiveProps) {
     }
   }, [p.defaultDeployOpen, p.canManage, asked]);
   const [releasing, setReleasing] = useState<LiveWorker | null>(null);
+  const [record, setRecord] = useState<LiveWorker | null>(null);
   const rows = useMemo(
     () =>
       p.workers
@@ -139,13 +168,16 @@ export function ContractWorkersLiveScreen(p: ContractWorkersLiveProps) {
   );
   type Row = (typeof rows)[number];
   const cols: TableColumn<Row>[] = [
-    { key: 'name', header: 'Worker', type: 'person', value: (w) => w.name, person: (w) => ({ name: w.name, secondary: w.work }), width: 220 },
+    { key: 'name', header: 'Worker', value: (w) => w.name, render: (w) => <span className="yx-ops-row"><PhotoPlaceholder name={w.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{w.name}</strong><span className="yx-ops-muted">{w.aadhaarLast4 ? `ID ${MASK.aadhaar(w.aadhaarLast4)}` : w.work}</span></span></span>, width: 220 },
     { key: 'contractor', header: 'Contractor', value: (w) => w.contractor, groupable: true, width: 200 },
     { key: 'site', header: 'Site', value: (w) => w.siteName },
     { key: 'from', header: 'Deployed from', type: 'date', value: (w) => D(w.fromOn) },
+    { key: 'gate', header: 'Gate pass', type: 'id', value: (w) => w.gatePass ?? '' },
     { key: 'licence', header: 'Licence', type: 'id', value: (w) => w.licenceNo },
     { key: 'skill', header: 'Skill', value: (w) => SKILL[w.skill] },
     { key: 'wage', header: 'Wage (by contractor)', type: 'money', value: (w) => (w.wage === null ? null : Number(w.wage)) },
+    { key: 'uan', header: 'UAN', type: 'id', value: (w) => (w.uanLast4 ? MASK.uan(w.uanLast4) : '') },
+    { key: 'ip', header: 'ESI IP', type: 'id', value: (w) => (w.esicLast4 ? MASK.esic(w.esicLast4) : '') },
     { key: 'status', header: 'Status', type: 'status', value: (w) => w.statusText, statusTone: (v) => (v === 'Deployed' ? 'success' : v === 'Pending approval' ? 'warning' : 'neutral') },
   ];
   return (
@@ -162,6 +194,8 @@ export function ContractWorkersLiveScreen(p: ContractWorkersLiveProps) {
         getRowId={(w) => w.id}
         state={p.state === 'loading' ? 'loading' : p.state === 'error' ? 'error' : 'ready'}
         onRetry={p.onRetry}
+        onRowClick={(w) => setRecord(w)}
+        onExport={p.onExport}
         empty={<EmptyState title="No contract workers deployed." description={p.canManage ? 'Deploy a worker for a contractor with a valid licence.' : 'Workers appear here once HR deploys them.'} />}
         filtered={filters.length > 0}
         onClearFilters={() => setFilters([])}
@@ -182,6 +216,7 @@ export function ContractWorkersLiveScreen(p: ContractWorkersLiveProps) {
         }
       />
       {p.canManage && <DeployDrawer {...p} open={open} onOpenChange={setOpen} />}
+      {record && <WorkerRecord worker={p.workers.find((w) => w.id === record.id) ?? record} canManage={p.canManage} canReveal={Boolean(p.canReveal && p.onReveal)} onReveal={p.onReveal} onSet={p.onSetIdentifiers} onClose={() => setRecord(null)} />}
       <ConfirmDialog
         open={Boolean(releasing)}
         onOpenChange={(o) => !o && setReleasing(null)}
@@ -218,6 +253,30 @@ function DeployDrawer(p: ContractWorkersLiveProps & { open: boolean; onOpenChang
   const [skill, setSkill] = useState<LiveWorker['skill']>('unskilled');
   const [wage, setWage] = useState('');
   const [from, setFrom] = useState<Date | null>(D(p.today));
+  const [aadhaar, setAadhaar] = useState('');
+  const [uan, setUan] = useState('');
+  const [esic, setEsic] = useState('');
+  const [gatePass, setGatePass] = useState('');
+  const [minWage, setMinWage] = useState<{ monthly: string | null; text: string } | null>(null);
+  const siteForWage = site?.id ?? null;
+  const fromIso = isoOf(from);
+  useEffect(() => {
+    if (!p.onMinimumWage || !siteForWage || !fromIso) {
+      setMinWage(null);
+      return;
+    }
+    let live = true;
+    p.onMinimumWage(siteForWage, skill, fromIso).then(
+      (x) => live && setMinWage(x),
+      () => live && setMinWage(null),
+    );
+    return () => {
+      live = false;
+    };
+    // The hint follows the site, skill and date.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteForWage, skill, fromIso]);
+  const idsOk = (!aadhaar || /^[2-9][0-9]{11}$/.test(aadhaar)) && (!uan || /^[0-9]{12}$/.test(uan)) && (!esic || /^([0-9]{10}|[0-9]{17})$/.test(esic));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const blocks =
@@ -226,7 +285,7 @@ function DeployDrawer(p: ContractWorkersLiveProps & { open: boolean; onOpenChang
         deployBlocks({ dob: dob ?? new Date(1970, 0, 1), on: from, licenceValidTo: from >= D(lic.validFrom) ? D(lic.validTo) : null, licenceMax: lic.maxWorkers, activeDeployments: lic.active, licenceStates: lic.states.map(stateName), siteState: stateName(site.state) })
       : [];
   const has = (t: string) => blocks.some((b) => b.includes(t));
-  const ready = Boolean(contractor && lic && site && given.trim() && work.trim() && dob && from && !blocks.length && (!wage || /^\d+(\.\d{1,2})?$/.test(wage.replace(/,/g, ''))));
+  const ready = Boolean(contractor && lic && site && given.trim() && work.trim() && dob && from && !blocks.length && idsOk && (!wage || /^\d+(\.\d{1,2})?$/.test(wage.replace(/,/g, ''))));
   return (
     <Drawer
       open={p.open}
@@ -245,13 +304,17 @@ function DeployDrawer(p: ContractWorkersLiveProps & { open: boolean; onOpenChang
               setBusy(true);
               setError(null);
               try {
-                await p.onDeploy({ contractorId: contractor!.id, licenceId: lic!.id, locationId: site!.id, givenName: given.trim(), ...(family.trim() ? { familyName: family.trim() } : {}), ...(phone.trim() ? { phone: phone.trim() } : {}), dateOfBirth: isoOf(dob), work: work.trim(), skill, ...(wage ? { wage: wage.replace(/,/g, '') } : {}), fromOn: isoOf(from) });
+                await p.onDeploy({ contractorId: contractor!.id, licenceId: lic!.id, locationId: site!.id, givenName: given.trim(), ...(family.trim() ? { familyName: family.trim() } : {}), ...(phone.trim() ? { phone: phone.trim() } : {}), dateOfBirth: isoOf(dob), work: work.trim(), skill, ...(wage ? { wage: wage.replace(/,/g, '') } : {}), fromOn: isoOf(from), ...(aadhaar ? { aadhaar } : {}), ...(uan ? { uan } : {}), ...(esic ? { esic } : {}), ...(gatePass.trim() ? { gatePass: gatePass.trim() } : {}) });
                 toast({ tone: 'success', title: `${given.trim()} sent for site approval`, description: `${contractor!.name} · ${site!.name}` });
                 p.onOpenChange(false);
                 setGiven('');
                 setFamily('');
                 setPhone('');
                 setDob(null);
+                setAadhaar('');
+                setUan('');
+                setEsic('');
+                setGatePass('');
               } catch (e) {
                 setError(e instanceof Error ? e.message : 'The worker was not deployed. Try again.');
               } finally {
@@ -306,13 +369,30 @@ function DeployDrawer(p: ContractWorkersLiveProps & { open: boolean; onOpenChang
             <Select value={skill} onChange={(v) => v && setSkill(v as LiveWorker['skill'])} options={Object.entries(SKILL).map(([value, label]) => ({ value, label }))} />
           </FormField>
         </FieldRow>
-        <FormField label="Wage rate paid by contractor" optional helper="A month, in rupees">
-          <TextField value={wage} onChange={setWage} prefix="₹" inputMode="decimal" />
+        <FieldRow>
+          <FormField label="Wage rate paid by contractor" optional helper={minWage?.text ?? 'A month, in rupees'}>
+            <TextField value={wage} onChange={setWage} prefix="₹" inputMode="decimal" />
+          </FormField>
+          <FormField label="Gate pass" optional>
+            <TextField value={gatePass} onChange={setGatePass} />
+          </FormField>
+        </FieldRow>
+        <FieldRow>
+          <FormField label="UAN" optional>
+            <TextField value={uan} onChange={(v) => setUan(v.replace(/\D/g, ''))} inputMode="numeric" aria-invalid={Boolean(uan && !/^[0-9]{12}$/.test(uan)) || undefined} />
+          </FormField>
+          <FormField label="ESI IP number" optional>
+            <TextField value={esic} onChange={(v) => setEsic(v.replace(/\D/g, ''))} inputMode="numeric" aria-invalid={Boolean(esic && !/^([0-9]{10}|[0-9]{17})$/.test(esic)) || undefined} />
+          </FormField>
+        </FieldRow>
+        <FormField label="Aadhaar" optional helper="Kept sealed; shown as the last four digits. The same Aadhaar is never deployed twice.">
+          <TextField value={aadhaar} onChange={(v) => setAadhaar(v.replace(/\D/g, ''))} inputMode="numeric" aria-invalid={Boolean(aadhaar && !/^[2-9][0-9]{11}$/.test(aadhaar)) || undefined} />
         </FormField>
         {lic && site && (
           <CheckList
             label="Deployment checks"
             items={[
+              ...(minWage?.monthly && wage && Number(wage.replace(/,/g, '')) < Number(minWage.monthly) ? [{ id: 'mw', status: 'warn' as const, label: 'Wage below the minimum wage', detail: minWage.text }] : []),
               { id: 'age', status: !dob ? 'pending' : has('under 18') ? 'fail' : 'pass', label: 'Age 18 or over' },
               { id: 'lic', status: has('not valid') ? 'fail' : 'pass', label: `Licence ${lic.licenceNo} valid on ${from ? formatDate(from) : 'the deployment date'}`, detail: `Valid ${formatDate(D(lic.validFrom))} to ${formatDate(D(lic.validTo))}` },
               { id: 'scope', status: has('scope') ? 'fail' : 'pass', label: 'Licence scope covers the site', detail: blocks.find((b) => b.includes('scope')) ?? lic.states.map(stateName).join(', ') },
@@ -538,3 +618,119 @@ export function ContractorsLiveScreen(p: ContractorsLiveProps) {
 
 /** Rupees in Indian format for summaries. */
 export const wageText = (w: string | null) => (w === null ? '' : formatINR(Number(w)));
+
+/** A worker's record: identifiers shown masked, in full on request (recorded), and set by HR. */
+function WorkerRecord({ worker: w, canManage, canReveal, onReveal, onSet, onClose }: { worker: LiveWorker; canManage: boolean; canReveal: boolean; onReveal?: (w: LiveWorker, f: IdentifierField) => Promise<string>; onSet?: (w: LiveWorker, i: IdentifierInput) => Promise<unknown>; onClose: () => void }) {
+  const { toast } = useToast();
+  const [shown, setShown] = useState<Partial<Record<IdentifierField, string>>>({});
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<IdentifierInput>({});
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ok = (!draft.aadhaar || /^[2-9][0-9]{11}$/.test(draft.aadhaar)) && (!draft.uan || /^[0-9]{12}$/.test(draft.uan)) && (!draft.esic || /^([0-9]{10}|[0-9]{17})$/.test(draft.esic));
+  const show = async (f: IdentifierField) => {
+    setError(null);
+    try {
+      const v = await onReveal!(w, f);
+      setShown((x) => ({ ...x, [f]: v }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That didn’t work.');
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="lg"
+      title={w.name}
+      subtitle={`${w.work} · ${w.contractor} · ${w.site.name ?? ''}`}
+      footer={
+        canManage && onSet ? (
+          editing ? (
+            <>
+              <Button onClick={() => setEditing(false)}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={!ok || !Object.values(draft).some(Boolean)}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await onSet(w, Object.fromEntries(Object.entries(draft).filter(([, v]) => v)) as IdentifierInput);
+                    toast({ tone: 'success', title: `${w.name}'s details saved` });
+                    setEditing(false);
+                    setDraft({});
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : 'That didn’t work.');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Save
+              </Button>
+            </>
+          ) : (
+            <Button onClick={() => setEditing(true)}>Change identifiers and gate pass</Button>
+          )
+        ) : undefined
+      }
+    >
+      <div className="yx-ops-stack">
+        <DescriptionList
+          columns={2}
+          items={[
+            ...(['aadhaar', 'uan', 'esic'] as IdentifierField[]).map((f) => {
+              const l = last4(w, f);
+              return {
+                label: ID_LABEL[f],
+                mono: Boolean(l),
+                value: l ? (
+                  <span className="yx-ops-row">
+                    {shown[f] ?? MASK[f](l)}
+                    {canReveal && !shown[f] && (
+                      <Button size="sm" onClick={() => void show(f)}>
+                        Show
+                      </Button>
+                    )}
+                  </span>
+                ) : (
+                  'Not on file'
+                ),
+              };
+            }),
+            { label: 'Gate pass', value: w.gatePass ? `${w.gatePass}${w.gatePassValidTo ? ` · valid to ${formatDate(D(w.gatePassValidTo))}` : ''}` : 'Not given', mono: Boolean(w.gatePass) },
+            { label: 'Deployed from', value: formatDate(D(w.fromOn)) },
+            { label: 'Licence', value: w.licenceNo, mono: true },
+          ]}
+        />
+        {canReveal && <p className="yx-ops-muted">Each time a number is shown in full, it is recorded in the audit log.</p>}
+        {editing && (
+          <>
+            <FieldRow>
+              <FormField label="Aadhaar" optional>
+                <TextField value={draft.aadhaar ?? ''} onChange={(v) => setDraft({ ...draft, aadhaar: v.replace(/\D/g, '') })} inputMode="numeric" />
+              </FormField>
+              <FormField label="UAN" optional>
+                <TextField value={draft.uan ?? ''} onChange={(v) => setDraft({ ...draft, uan: v.replace(/\D/g, '') })} inputMode="numeric" />
+              </FormField>
+            </FieldRow>
+            <FieldRow>
+              <FormField label="ESI IP number" optional>
+                <TextField value={draft.esic ?? ''} onChange={(v) => setDraft({ ...draft, esic: v.replace(/\D/g, '') })} inputMode="numeric" />
+              </FormField>
+              <FormField label="Gate pass" optional>
+                <TextField value={draft.gatePass ?? ''} onChange={(v) => setDraft({ ...draft, gatePass: v })} />
+              </FormField>
+            </FieldRow>
+            <FormField label="Gate pass valid to" optional>
+              <DatePicker value={draft.gatePassValidTo ? D(draft.gatePassValidTo) : null} onChange={(d) => setDraft({ ...draft, gatePassValidTo: isoOf(d) || undefined })} />
+            </FormField>
+          </>
+        )}
+        {error && <InlineAlert tone="danger" title="That didn’t work">{error}</InlineAlert>}
+      </div>
+    </Drawer>
+  );
+}

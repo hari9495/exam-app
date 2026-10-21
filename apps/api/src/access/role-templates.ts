@@ -21,7 +21,7 @@ const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
 // M01 lifecycle batch 6a: joiners and their checklists in scope, person documents (each type still needs its class key).
 const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'payroll.notice.waive'];
 // Contract workers and placements (founder decision 21 Oct 2026): HR Admin runs them, HR Executive reads them.
-const WORKFORCE_ROLES_ADMIN = ['clra.worker.view', 'clra.worker.manage', 'staffing.placement.view', 'staffing.placement.manage'];
+const WORKFORCE_ROLES_ADMIN = ['clra.worker.view', 'clra.worker.manage', 'clra.compliance.manage', 'clra.identity.view', 'staffing.placement.view', 'staffing.placement.manage'];
 // Placements belong to a legal entity, so a site-scoped HR Executive reads contract workers only.
 const WORKFORCE_ROLES_VIEW = ['clra.worker.view'];
 const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage', 'letter.issue', 'lifecycle.exit.view'];

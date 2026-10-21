@@ -10021,6 +10021,10 @@ model Contractor {
   pan            String?  @db.VarChar(10)
   contact        String?  @db.VarChar(100)
   status         String   @default("active") @db.VarChar(10)
+  gstin          String?  @db.VarChar(15)
+  pfCode         String?  @map("pf_code") @db.VarChar(30)
+  esicCode       String?  @map("esic_code") @db.VarChar(30)
+  lin            String?  @db.VarChar(20)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -10063,6 +10067,16 @@ model ContractDeployment {
   createdBy      String?   @map("created_by") @db.Uuid
   decidedBy      String?   @map("decided_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Confidential: sealed, shown as the last four, full value only through an audited reveal.
+  aadhaarEnc       String?   @map("aadhaar_enc")
+  aadhaarHash      String?   @map("aadhaar_hash") @db.VarChar(128)
+  aadhaarLast4     String?   @map("aadhaar_last4") @db.Char(4)
+  uanEnc           String?   @map("uan_enc")
+  uanLast4         String?   @map("uan_last4") @db.Char(4)
+  esicEnc          String?   @map("esic_enc")
+  esicLast4        String?   @map("esic_last4") @db.Char(4)
+  gatePass         String?   @map("gate_pass") @db.VarChar(30)
+  gatePassValidTo  DateTime? @map("gate_pass_valid_to") @db.Date
 
   @@map("contract_deployments")
 }
@@ -10088,4 +10102,74 @@ model Placement {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("placements")
+}
+
+/// Standing documents of a contractor (CLB-03): licence, registration, PF and ESI codes, insurance, with expiry.
+model ContractorDocument {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  contractorId   String    @map("contractor_id") @db.Uuid
+  kind           String    @db.VarChar(16)
+  number         String?   @db.VarChar(60)
+  validFrom      DateTime? @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  fileId         String?   @map("file_id") @db.Uuid
+  status         String    @default("submitted") @db.VarChar(10)
+  note           String?   @db.VarChar(500)
+  submittedBy    String?   @map("submitted_by") @db.Uuid
+  verifiedBy     String?   @map("verified_by") @db.Uuid
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_documents")
+}
+
+/// A contractor's monthly proof for a wage month (CLB-03 matrix).
+model ContractorProof {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  contractorId   String    @map("contractor_id") @db.Uuid
+  month          DateTime  @db.Date
+  proofType      String    @map("proof_type") @db.VarChar(16)
+  status         String    @default("submitted") @db.VarChar(12)
+  reference      String?   @db.VarChar(60)
+  amount         Decimal?  @db.Decimal(14, 2)
+  workersCovered Int?      @map("workers_covered")
+  paidOn         DateTime? @map("paid_on") @db.Date
+  fileId         String?   @map("file_id") @db.Uuid
+  note           String?   @db.VarChar(500)
+  submittedBy    String?   @map("submitted_by") @db.Uuid
+  verifiedBy     String?   @map("verified_by") @db.Uuid
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, contractorId, month, proofType])
+  @@map("contractor_proofs")
+}
+
+/// A held contractor bill released for a month, with the reason.
+model ContractorBillRelease {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  contractorId   String   @map("contractor_id") @db.Uuid
+  month          DateTime @db.Date
+  reason         String   @db.VarChar(500)
+  releasedBy     String   @map("released_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, contractorId, month])
+  @@map("contractor_bill_releases")
+}
+
+/// A liability alert closed with a note.
+model ContractorAlertNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  alertKey       String   @map("alert_key") @db.VarChar(160)
+  note           String   @db.VarChar(500)
+  resolvedBy     String   @map("resolved_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, alertKey])
+  @@map("contractor_alert_notes")
 }

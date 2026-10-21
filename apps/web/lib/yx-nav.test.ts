@@ -148,7 +148,7 @@ describe('activeLink and meLinks', () => {
 
   it('contract labour and placements follow their own keys, never in a support session (21 Oct 2026)', () => {
     const n = nav(['clra.worker.view', 'staffing.placement.view']);
-    expect(labels(n, 'contract')).toEqual(['Contractors', 'Contract workers']);
+    expect(labels(n, 'contract')).toEqual(['Contractors', 'Contract workers', 'Vendor compliance', 'CLRA registers & returns', 'Reports']);
     expect(labels(n, 'hire')).toContain('Placements');
     expect(nav([]).some((a) => a.id === 'contract')).toBe(false);
   });

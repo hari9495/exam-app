@@ -106,6 +106,28 @@ export class ContractorDto {
 }
 
 export class DeployDto extends PersonDto {
+  @IsOptional()
+  @Matches(/^[2-9][0-9]{11}$/, { message: 'Aadhaar is 12 digits' })
+  aadhaar?: string;
+
+  @IsOptional()
+  @Matches(/^[0-9]{12}$/, { message: 'UAN is 12 digits' })
+  uan?: string;
+
+  @IsOptional()
+  @Matches(/^([0-9]{10}|[0-9]{17})$/, { message: 'The ESI IP number is 10 digits' })
+  esic?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(30)
+  gatePass?: string;
+
+  @IsOptional()
+  @Matches(DAY)
+  gatePassValidTo?: string;
+
   @IsUUID()
   contractorId!: string;
 

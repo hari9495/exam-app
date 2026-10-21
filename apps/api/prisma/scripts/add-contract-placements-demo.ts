@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { seedWorkforceRoles } from '../seed-workforce-roles';
 
-// One-off for an already seeded database (founder decision 21 Oct 2026): gives demo-org's HR Admin the contract worker
+// One-off for an already seeded database (founder decisions 21 Oct 2026): gives demo-org's HR Admin the contract worker
 // and placement keys (the Plant HR Executive the contract worker view key), and adds the demo contractors, licences, contract workers
 // and placements, each only when missing. Safe to run again. Run the migrations first, then from apps/api:
 //   npx ts-node prisma/scripts/add-contract-placements-demo.ts

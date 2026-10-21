@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ContractWorkersLiveScreen, ContractorsLiveScreen, type LiveContractor, type LiveSite, type LiveWorker } from './contract-live';
 
 // CLB-01 and CLB-02, live (founder decision 21 Oct 2026): the designed contract labour screens with live data only.
-// Left out until they have data: gate passes, UAN and ESI IP numbers, the worker import, the contractor's own login.
+// Left out until they have data: the worker import and the contractor's own login.
 const meta: Meta = { title: 'Screens/Contract labour/Live', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
@@ -34,6 +34,11 @@ const W = (id: string, name: string, k: LiveContractor, work: string, skill: Liv
   fromOn,
   toOn: null,
   status,
+  aadhaarLast4: String(1000 + id.length * 73 + name.length * 7).slice(-4),
+  uanLast4: String(3000 + name.length * 31).slice(-4),
+  esicLast4: String(10 + name.length).padStart(4, '0'),
+  gatePass: `GP-${4100 + name.length}`,
+  gatePassValidTo: '2026-12-31',
 });
 const WORKERS: LiveWorker[] = [
   W('w1', 'Murugan P.', CONTRACTORS[0], 'Housekeeping', 'unskilled', '14820.00', '2026-04-02'),
@@ -43,7 +48,7 @@ const WORKERS: LiveWorker[] = [
   W('w5', 'Ramesh Babu', CONTRACTORS[1], 'Security guard', 'semi_skilled', '16240.00', '2026-09-28', 'pending'),
   W('w6', 'Shanthi V.', CONTRACTORS[2], 'Cook', 'skilled', '19200.00', '2026-07-01'),
 ];
-const workers = { state: 'ready' as const, today: TODAY, workers: WORKERS, contractors: CONTRACTORS, sites: SITES, canManage: true, onDeploy: ok, onApprove: ok, onRelease: ok };
+const workers = { state: 'ready' as const, today: TODAY, workers: WORKERS, contractors: CONTRACTORS, sites: SITES, canManage: true, onDeploy: ok, onApprove: ok, onRelease: ok, canReveal: true, onReveal: async () => '548550001073', onSetIdentifiers: ok, onMinimumWage: async () => ({ monthly: '14820.00', text: 'Minimum for zone 1, unskilled: ₹14,820 a month' }), onExport: () => {} };
 export const Workers: S = { name: 'CLB-02 · Contract workers, live', render: () => <ContractWorkersLiveScreen {...workers} /> };
 export const WorkersDeploy: S = { name: 'CLB-02 · Contract workers, live · deploy (checks)', render: () => <ContractWorkersLiveScreen {...workers} defaultDeployOpen /> };
 export const WorkersAtMaximum: S = { name: 'CLB-02 · Contract workers, live · deploy, licence maximum reached', render: () => <ContractWorkersLiveScreen {...workers} contractors={[CONTRACTORS[1]]} defaultDeployOpen /> };

@@ -128,6 +128,8 @@ export const YX_KEYS = [
   'clra.worker.manage',
   'staffing.placement.view',
   'staffing.placement.manage',
+  'clra.compliance.manage',
+  'clra.identity.view',
   'statutory.filing.generate',
   'statutory.filing.mark_filed',
   'statutory.challan.manage',

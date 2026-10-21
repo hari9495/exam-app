@@ -311,12 +311,23 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  // Contract labour (CLB-01, CLB-02, founder decision 21 Oct 2026): contractors and the workers they deploy; never in a
+  // Contract labour (CLB-01 … CLB-04 and Reports, founder decisions 21 Oct 2026): contractors, their workers, vendor
+  // compliance, registers and returns, reports; never in a
   // support session.
   const contract: NavArea = {
     id: 'contract',
     title: 'Contract labour',
-    sections: sec(undefined, when(!support && has('clra.worker.view'), L('contractors', 'Contractors', '/yx/contract/contractors'), L('contract-workers', 'Contract workers', '/yx/contract/workers', 'contractWorkers'))),
+    sections: sec(
+      undefined,
+      when(
+        !support && has('clra.worker.view'),
+        L('contractors', 'Contractors', '/yx/contract/contractors'),
+        L('contract-workers', 'Contract workers', '/yx/contract/workers', 'contractWorkers'),
+        L('vendor-compliance', 'Vendor compliance', '/yx/contract/compliance'),
+        L('clra-registers', 'CLRA registers & returns', '/yx/contract/registers'),
+        L('contract-reports', 'Reports', '/yx/contract/reports'),
+      ),
+    ),
   };
 
   return [home, people, time, pays, compliance, hire, performance, helpdesk, contract, settings].filter((a) => a.sections.some((s) => s.items.length));

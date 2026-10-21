@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client';
+import { OrgSecretsCryptoService } from '@exam-platform/shared';
+import { hashValue, sealValue } from '../src/people/profile.service';
 
 // Contract workers and placements for the Kaveri Foods demo (founder decision 21 Oct 2026), in the story world of the
 // CLB and HIR screens: fictional contractors, licences and people. HR Admin runs both modules; the Plant HR Executive
@@ -12,8 +14,13 @@ export const WORKFORCE_ROLE_PERMISSIONS = [
   { key: 'clra.worker.manage', description: 'Add contractors and licences, deploy contract workers (licence and age checked), approve and release them' },
   { key: 'staffing.placement.view', description: 'See placements with clients, their rates and margins, for the legal entities in scope' },
   { key: 'staffing.placement.manage', description: 'Create placements with clients and end them' },
+  { key: 'clra.compliance.manage', description: 'Verify contractor documents and monthly proofs, release a held contractor bill with a reason, and close liability alerts' },
+  { key: 'clra.identity.view', description: "See a contract worker's Aadhaar, UAN and ESI number in full (each view is recorded)" },
 ];
+/** HR Admin: all of them. */
 export const WORKFORCE_ROLE_ADMIN_KEYS = WORKFORCE_ROLE_PERMISSIONS.map((p) => p.key);
+/** System Admin: everything but the Confidential identity numbers. */
+export const WORKFORCE_ROLE_ORG_ADMIN_KEYS = WORKFORCE_ROLE_ADMIN_KEYS.filter((k) => k !== 'clra.identity.view');
 
 const D = (s: string) => new Date(`${s}T00:00:00Z`);
 
@@ -82,6 +89,53 @@ export async function seedWorkforceRoles(tx: Tx, organizationId: string): Promis
     await place('Sowmya', 'Ramesh', 'Nilgiri Retail Pvt Ltd', 'Senior Java Developer', '2025-11-01', '2026-11-15', 1650, 1100, 132);
     await place('Priya', 'Nair', 'Coromandel Logistics', 'Warehouse Supervisor', '2026-08-01', '2027-01-31', 1200, 900, 0, 'Sahyadri Staffing');
     done.push('3 placements');
+  }
+  // Part 2 (21 Oct 2026): statutory codes, standing documents, last month's proofs, workers' identifiers and gate passes.
+  if (!(await tx.contractorProof.findFirst({ where: org }))) {
+    const admin = await tx.user.findFirst({ where: { ...org, email: 'admin@demo-org.test' }, select: { id: true } });
+    const k = async (name: string) => tx.contractor.findFirst({ where: { ...org, name } });
+    const sri = await k('Sri Lakshmi Facility Services');
+    const vetri = await k('Vetri Security Agency');
+    const anna = await k('Annapoorna Canteen Services');
+    if (sri && vetri && anna) {
+      await tx.contractor.update({ where: { id: sri.id }, data: { gstin: '33AAKFS4471L1Z2', pfCode: 'TNMAS0077120000', esicCode: '51000771200001001', lin: '1-2345-6789-0' } });
+      await tx.contractor.update({ where: { id: vetri.id }, data: { gstin: '33AAHFV2210K1ZA', pfCode: 'TNMAS0081230000', esicCode: '51000812300001001' } });
+      await tx.contractor.update({ where: { id: anna.id }, data: { pfCode: 'KNBNG0066120000', esicCode: '53000661200001001' } });
+      const doc = (contractorId: string, kind: string, number: string, validTo: string | null, status = 'verified') =>
+        tx.contractorDocument.create({ data: { ...org, contractorId, kind, number, validFrom: D('2026-01-01'), validTo: validTo ? D(validTo) : null, status, submittedBy: hr?.id ?? null, verifiedBy: status === 'verified' ? (admin?.id ?? null) : null, verifiedAt: status === 'verified' ? new Date() : null } });
+      await doc(sri.id, 'registration', 'TN/SE/2019/44120', null);
+      await doc(sri.id, 'insurance', 'EC/2026/88231 (employees compensation)', '2026-12-31');
+      await doc(vetri.id, 'insurance', 'EC/2025/55010 (employees compensation)', '2026-10-31', 'submitted');
+      await doc(anna.id, 'registration', 'KA/SE/2021/90112', null, 'submitted');
+      // September 2026 wages: Sri Lakshmi all verified; Vetri's ESI challan short; Annapoorna partly in.
+      const proof = (contractorId: string, proofType: string, status: string, extra: Record<string, unknown> = {}) =>
+        tx.contractorProof.create({ data: { ...org, contractorId, month: D('2026-09-01'), proofType, status, submittedBy: hr?.id ?? null, verifiedBy: status === 'verified' || status === 'discrepancy' ? (admin?.id ?? null) : null, verifiedAt: status === 'verified' || status === 'discrepancy' ? new Date() : null, ...extra } });
+      await proof(sri.id, 'pf', 'verified', { reference: 'TRRN 3112609004512', amount: 8540, workersCovered: 2 });
+      await proof(sri.id, 'esi', 'verified', { reference: '26091544101', amount: 1186, workersCovered: 2 });
+      await proof(sri.id, 'wage_register', 'verified');
+      await proof(sri.id, 'wage_payment', 'verified', { paidOn: D('2026-10-06'), amount: 29640 });
+      await proof(sri.id, 'pt_lwf', 'not_required', { note: 'Wages below the professional tax slab.' });
+      await proof(vetri.id, 'pf', 'verified', { reference: 'TRRN 3112609004588', amount: 7790, workersCovered: 2 });
+      await proof(vetri.id, 'esi', 'discrepancy', { reference: '26091544901', amount: 650, workersCovered: 1, note: 'Covers 1 worker; 2 were deployed.' });
+      await proof(vetri.id, 'wage_register', 'submitted');
+      await proof(anna.id, 'pf', 'submitted', { reference: 'TRRN 3112609004601', amount: 4608, workersCovered: 1 });
+      await proof(anna.id, 'esi', 'submitted', { reference: '26091545210', amount: 768, workersCovered: 1 });
+      // Identifiers (fictional numbers) and gate passes for the deployed workers.
+      const crypto = new OrgSecretsCryptoService();
+      const workers = await tx.contractDeployment.findMany({ where: { ...org, status: { not: 'released' } }, orderBy: { createdAt: 'asc' } });
+      let n = 0;
+      for (const w of workers) {
+        n++;
+        const aadhaar = `${5000 + n}${String(41230000 + n * 7713).padStart(8, '0')}`.slice(0, 12);
+        const uan = `1013${String(55000000 + n * 1371).padStart(8, '0')}`;
+        const esic = `31007712${String(10 + n).padStart(2, '0')}`;
+        await tx.contractDeployment.update({
+          where: { id: w.id },
+          data: { aadhaarEnc: sealValue(crypto, organizationId, w.id, aadhaar), aadhaarHash: hashValue(crypto, organizationId, 'aadhaar', aadhaar), aadhaarLast4: aadhaar.slice(-4), uanEnc: sealValue(crypto, organizationId, w.id, uan), uanLast4: uan.slice(-4), esicEnc: sealValue(crypto, organizationId, w.id, esic), esicLast4: esic.slice(-4), gatePass: `GP-${String(4100 + n)}`, gatePassValidTo: D('2026-12-31') },
+        });
+      }
+      done.push(`contractor codes, 4 documents, 10 proofs for Sep 2026, identifiers for ${n} workers`);
+    }
   }
   return done;
 }
