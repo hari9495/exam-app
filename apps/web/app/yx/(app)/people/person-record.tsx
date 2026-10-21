@@ -12,7 +12,7 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, currentPeriod, docRows, familyData, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, bankRows, currentPeriod, docRows, familyData, payShown, type Compensation, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
@@ -32,14 +32,6 @@ interface Balance {
   available: number;
   entitlement: number | null;
   takenThisYear: number;
-}
-interface Compensation {
-  validFrom: string;
-  currency: string;
-  annualCtc: string;
-  lines: { name: string; kind: 'earning' | 'deduction' | 'employer'; monthly: string }[];
-  lastNetPay?: { month: string; net: string; paid: boolean } | null;
-  taxRegime?: { regime: string; taxYear: string } | null;
 }
 interface PersonDocs {
   personId: string;
@@ -141,16 +133,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const payState: LiveRecordPay = !v?.payAccess
     ? { kind: 'none', grantedBy: hr ? 'your company admin' : 'HR, who can give a salary grant for your team' }
     : pay.data
-      ? {
-          kind: 'shown',
-          ctc: Number(pay.data.annualCtc),
-          currency: pay.data.currency,
-          from: day(pay.data.validFrom),
-          lines: pay.data.lines.filter((l) => l.kind !== 'deduction').map((l) => ({ label: l.name, monthly: Number(l.monthly) })),
-          banks: prof ? bankRows(prof, reveal) : [],
-          lastNet: pay.data.lastNetPay ? { amount: Number(pay.data.lastNetPay.net), note: `${day(`${pay.data.lastNetPay.month}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${pay.data.lastNetPay.paid ? ' · paid' : ''}` } : null,
-          taxRegime: pay.data.taxRegime ? { label: pay.data.taxRegime.regime === 'old' ? 'Old' : 'New', note: `FY ${pay.data.taxRegime.taxYear.replace('-', '–')}` } : null,
-        }
+      ? payShown(pay.data, prof ? bankRows(prof, reveal) : [])
       : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };
 
   const leave = self ? myLeave.data?.balances : (balances.data?.people.find((x) => x.employeeId === personId)?.balances ?? teamLeave.data?.balances);

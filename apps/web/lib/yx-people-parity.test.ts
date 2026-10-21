@@ -5,7 +5,7 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { bankRows, docRows, familyData, identityRows, upcoming } from './yx-record';
+import { bankRows, docRows, familyData, identityRows, payShown, upcoming } from './yx-record';
 import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
@@ -99,5 +99,38 @@ describe('person record identity and family (PPL-03, founder 22 Oct 2026)', () =
     expect(out.note).toBeNull();
     expect(familyData({ ...f, maritalChangedAt: '2026-09-01T10:00:00.000Z' }).note).toBe('Marital status changed on 1 Sept 2026. Nominations were reviewed after that change.');
     expect(familyData({ ...f, maritalChangedAt: '2026-10-05T10:00:00.000Z' }).note).toMatch(/not been reviewed since/);
+  });
+});
+
+describe('person record Pay tab (PPL-03, founder 22 Oct 2026)', () => {
+  const comp = {
+    validFrom: '2026-04-01',
+    currency: 'INR',
+    annualCtc: '583200.00',
+    lines: [
+      { name: 'Basic', kind: 'earning' as const, monthly: '19440.00', inCtc: true },
+      { name: 'Special allowance', kind: 'earning' as const, monthly: '27360.00', inCtc: true },
+      { name: 'Employer PF', kind: 'employer' as const, monthly: '1800.00', inCtc: true, basis: '12% of ₹15,000' },
+      { name: 'Employer ESI', kind: 'employer' as const, monthly: '0.00', inCtc: true },
+      { name: 'Gratuity provision', kind: 'employer' as const, monthly: '934.62', inCtc: false, basis: '4.81% of basic' },
+      { name: 'PF', kind: 'deduction' as const, monthly: '1800.00', inCtc: false },
+    ],
+    lastNetPay: { month: '2026-08', net: '49812.40', paid: true, paidOn: '2026-08-31' },
+    taxRegime: { regime: 'new', taxYear: '2026-27', proofsPending: 2 },
+    next: { annualCtc: '780000.00', from: '2026-10-01' },
+  };
+  it('the table counts what the CTC counts (its total is the CTC); ₹0 lines hidden; basis in the label', () => {
+    const p = payShown(comp, [{ label: 'Salary account', value: 'x', cls: 'Confidential' }]);
+    expect(p.lines.map((l) => l.label)).toEqual(['Basic', 'Special allowance', 'Employer PF (12% of ₹15,000)']);
+    expect(p.lines.reduce((s, l) => s + l.monthly, 0) * 12).toBe(p.ctc);
+    expect(p.outside).toEqual([{ label: 'Gratuity provision (4.81% of basic)', monthly: 934.62 }]);
+    expect(p.next).toBe('₹7,80,000 from 1 Oct 2026 (scheduled)');
+    expect(p.lastNet?.note).toBe('August 2026 · paid 31 Aug 2026');
+    expect(p.taxRegime).toEqual({ label: 'New', note: 'FY 2026–27 · 2 proofs pending' });
+    expect(p.banks.map((b) => [b.label, b.value])).toEqual([['Salary account', 'x'], ['Reimbursement account', 'Same as salary account']]);
+  });
+  it('no payslip and no regime yet are empty, not hidden', () => {
+    const p = payShown({ ...comp, lastNetPay: null, taxRegime: null, next: null }, []);
+    expect([p.lastNet, p.taxRegime, p.next]).toEqual([null, null, undefined]);
   });
 });

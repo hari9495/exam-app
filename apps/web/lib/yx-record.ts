@@ -1,5 +1,5 @@
-import { formatPhone } from '@yukthix/ui';
-import type { FieldRow, JobChange, RecordDoc, RecordEvent, RecordFamily, RecordPerformance } from '@yukthix/ui/frame';
+import { formatINR, formatPhone } from '@yukthix/ui';
+import type { FieldRow, JobChange, LiveRecordPay, RecordDoc, RecordEvent, RecordFamily, RecordPerformance } from '@yukthix/ui/frame';
 import type { AsOfView, ChangeRecord, HistoryView } from '@yukthix/ui/history';
 import type { ProfileView, RevealField } from '@yukthix/ui/access';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -96,6 +96,41 @@ export function familyData(f: NonNullable<ProfileView['family']>): RecordFamily 
     expected: f.expectedSchemes,
     contacts: f.contacts,
     note: changed ? `Marital status changed on ${dateText(changed)}. ${reviewed && reviewed > changed ? 'Nominations were reviewed after that change.' : 'Nominations have not been reviewed since.'}` : null,
+  };
+}
+
+/** The person's pay in force as the compensation API sends it (PPL-03 Pay tab). */
+export interface Compensation {
+  validFrom: string;
+  currency: string;
+  annualCtc: string;
+  lines: { name: string; kind: 'earning' | 'deduction' | 'employer' | 'reimbursement' | 'info'; monthly: string; inCtc?: boolean; basis?: string | null }[];
+  lastNetPay?: { month: string; net: string; paid: boolean; paidOn?: string | null } | null;
+  taxRegime?: { regime: string; taxYear: string; proofsPending?: number } | null;
+  next?: { annualCtc: string; from: string } | null;
+}
+
+/**
+ * The Pay tab's cards and table from one compensation: the table shows the lines the CTC counts (its total is the CTC,
+ * so it always matches the header), with their basis; ₹0 lines are left out; employer costs outside the CTC go under it.
+ */
+export function payShown(c: Compensation, banks: FieldRow[]): Extract<LiveRecordPay, { kind: 'shown' }> {
+  const row = (l: Compensation['lines'][number]) => ({ label: l.basis ? `${l.name} (${l.basis})` : l.name, monthly: Number(l.monthly) });
+  const shown = c.lines.filter((l) => Number(l.monthly) !== 0 && l.kind !== 'deduction');
+  const counted = (l: Compensation['lines'][number]) => l.inCtc ?? l.kind !== 'deduction';
+  const salary = banks.find((b) => b.label === 'Salary account');
+  const net = c.lastNetPay;
+  return {
+    kind: 'shown',
+    ctc: Number(c.annualCtc),
+    currency: c.currency,
+    from: day(c.validFrom),
+    ...(c.next ? { next: `${formatINR(Math.round(Number(c.next.annualCtc)))} from ${dateText(c.next.from)} (scheduled)` } : {}),
+    lines: shown.filter(counted).map(row),
+    outside: shown.filter((l) => !counted(l) && l.kind === 'employer').map(row),
+    banks: salary && !banks.some((b) => b.label === 'Reimbursement account') ? [...banks, { label: 'Reimbursement account', value: 'Same as salary account', cls: 'Confidential' }] : banks,
+    lastNet: net ? { amount: Number(net.net), note: `${day(`${net.month}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${net.paidOn ? ` · paid ${dateText(net.paidOn)}` : net.paid ? ' · paid' : ''}` } : null,
+    taxRegime: c.taxRegime ? { label: c.taxRegime.regime === 'old' ? 'Old' : 'New', note: `FY ${c.taxRegime.taxYear.replace('-', '–')}${c.taxRegime.proofsPending ? ` · ${c.taxRegime.proofsPending} proof${c.taxRegime.proofsPending === 1 ? '' : 's'} pending` : ''}` } : null,
   };
 }
 
