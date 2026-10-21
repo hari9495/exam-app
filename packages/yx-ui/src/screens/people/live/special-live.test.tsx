@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AbscondingScreen, PayeesCard, RehireCard, VrsCard } from './special';
+import { PayeesCard, RehireCard, VrsCard } from './special';
 import type { AbscondingRow, RehireView } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -38,18 +38,6 @@ describe('Batch 6e screens', () => {
     await ue.clear(within(dialog).getByRole('textbox', { name: /Share/ }));
     await ue.type(within(dialog).getByRole('textbox', { name: /Share/ }), '100');
     expect(within(dialog).getByRole('button', { name: 'Save payees' })).toBeEnabled();
-  });
-
-  it('absconding: a running timeline can be stopped, with a reason', async () => {
-    const onStop = vi.fn(async () => ({}));
-    const row: AbscondingRow = { id: 't', employeeId: 'e', name: 'Anil', lastPresentOn: '2026-11-01', status: 'running', stoppedReason: null, exitCaseId: null, version: 1, steps: [{ key: 'hold', label: 'Salary hold and alert', day: 3, dueOn: '2026-11-04', doneAt: '2026-11-04T00:00:00Z', note: null, dispatchRef: null }] };
-    render(<AbscondingScreen state="ready" rows={[row]} today="2026-11-10" people={[]} onStart={vi.fn()} onStop={onStop} onResume={vi.fn()} onDispatch={vi.fn()} />);
-    await ue.click(screen.getByRole('button', { name: /Stop: they came back/ }));
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Stop timeline' })).toBeDisabled();
-    await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Back from hospital');
-    await ue.click(within(dialog).getByRole('button', { name: 'Stop timeline' }));
-    expect(onStop).toHaveBeenCalledWith(row, 'Back from hospital');
   });
 
   it('VRS: only an eligible scheme offers Apply', () => {

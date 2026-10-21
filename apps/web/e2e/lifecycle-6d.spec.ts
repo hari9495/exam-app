@@ -45,8 +45,9 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await pick(hr, sheet, 'Employment type', /Permanent/);
   await pick(hr, sheet, 'Manager', /Divya Raghunathan/);
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
-  await expect(hr.getByText(`${first} was added`)).toBeVisible({ timeout: 30_000 });
-  await hr.getByRole('row', { name: new RegExp(first) }).getByRole('button', { name: 'Checklist' }).click();
+  // The designed toast and board (PPL-11): a card opens the journey record.
+  await expect(hr.getByText(`${first} added`).first()).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('button', { name: `${first} Paul`, exact: true }).click();
   await hr.waitForURL(/\/yx\/people\/onboarding\/[^/]+$/);
   await hr.getByRole('button', { name: 'Mark joined' }).click();
   const join = hr.getByRole('dialog');
@@ -66,11 +67,10 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await start.getByRole('button', { name: 'Start exit' }).click();
   await hr.waitForURL(/\/yx\/people\/exits\/[^/]+$/);
   await expect(hr.getByText('Serving notice')).toBeVisible();
-  await expect(hr.getByRole('heading', { name: 'Payroll hand-off' })).toBeVisible();
-  await expect(hr.getByText('Final dues by')).toBeVisible();
-  // Clearance is open: the handover item waits for the manager.
-  const handover = hr.getByRole('row', { name: /Work and files handed over/ });
-  await expect(handover.getByText('To do')).toBeVisible();
+  // The designed case (PPL-19) walks the steps: Clearance is open and the handover item waits for the manager; the
+  // payroll hand-off shows at the F&F step once clearance is done (the API e2e covers the hand-off itself).
+  await expect(hr.getByRole('button', { name: 'Clearance In progress' })).toBeVisible();
+  await expect(hr.getByRole('listitem').filter({ hasText: 'Work and files handed over' }).getByText('Pending')).toBeVisible();
 
   // Divya: an instant employment certificate.
   const divya = await signedIn(browser, 'panel@demo-org.test');

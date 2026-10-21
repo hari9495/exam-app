@@ -1,12 +1,12 @@
 // PPL-04 Change action · PPL-05 Scheduled changes · PPL-06 Bulk changes wizard · PPL-07 Employee import
 // PPL-09 Bulk transfer / restructure wizard · PPL-10 Inter-entity continuity checklist (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -18,11 +18,14 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
+import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
+import { LiveIncrementWizard, type LiveIncrement } from './increment';
+import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
-import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -111,10 +114,82 @@ export interface ChangeActionSheetProps {
   payrollProcessedTo?: Date;
   /** The side panel starts open (stories); false shows the page itself. */
   startOpen?: boolean;
+  live?: LiveChangeAction;
+}
+
+/** The live app's Change action page (design audit step 3): pick a person, start the change; what waits for approval. */
+export interface LiveChangeAction {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  people: { id: string; name: string; role: string; department: string }[];
+  waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
+  onStart: (personId: string) => void;
+  onOpenWaiting: (id: string) => void;
+  /** The change form and the review drawer the page opens. */
+  children?: ReactNode;
+}
+
+function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveChangeAction }) {
+  const mgr = persona === 'mgr';
+  const [whoId, setWhoId] = useState<string | null>(null);
+  return (
+    <PeopleFrame active="Change action" persona={persona}>
+      <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the changes" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <div className="yx-ppl__grid2">
+          <Card title="Start a change">
+            <div className="yx-ppl__stack">
+              <FormField label="Person" required>
+                <PersonPicker people={live.people.map((p) => ({ id: p.id, name: p.name, role: p.role, department: p.department }))} value={whoId} onChange={setWhoId} placeholder="Find a person" />
+              </FormField>
+              <div>
+                <Button variant="primary" disabled={!whoId} onClick={() => whoId && live.onStart(whoId)}>
+                  Start change
+                </Button>
+              </div>
+            </div>
+          </Card>
+          <Card title={`Waiting for approval (${live.waiting.length})`}>
+            {live.state === 'loading' ? (
+              <ListSkeleton label="Loading changes waiting for approval" rows={2} />
+            ) : live.waiting.length ? (
+              <StatusChecklist
+                label="Changes waiting for approval"
+                rows={live.waiting.map(
+                  (w): ChecklistRow => ({
+                    id: w.id,
+                    title: `${w.name} · ${w.kind}`,
+                    status: 'Pending approval',
+                    note: `Effective ${formatDate(w.effective)} · ${w.note}`,
+                    action: w.canOpen ? (
+                      <Button size="sm" onClick={() => live.onOpenWaiting(w.id)}>
+                        Open
+                      </Button>
+                    ) : undefined,
+                  }),
+                )}
+              />
+            ) : (
+              <Text tone="secondary">Nothing is waiting.</Text>
+            )}
+          </Card>
+        </div>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
 }
 
 // PPL-04
-export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
+export function ChangeActionSheet(props: ChangeActionSheetProps) {
+  return props.live ? <LiveChangeActionPage persona={props.persona} live={props.live} /> : <SampleChangeActionSheet {...props} />;
+}
+
+function SampleChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
   const mgr = persona === 'mgr';
   const people = CHANGE_PEOPLE.filter((p) => !mgr || p.mine);
   const [open, setOpen] = useState(startOpen);
@@ -328,7 +403,7 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
 
 /* ================================================================== PPL-05 scheduled changes */
 
-type Sched = (typeof SCHEDULED)[number];
+export type Sched = (typeof SCHEDULED)[number];
 type Win = 30 | 60 | 90;
 
 /** Effective date plus "in 2 days"; amber within a week. */
@@ -343,7 +418,19 @@ function EffectiveCell({ date, today }: { date: Date; today: Date }) {
 }
 
 // PPL-05
-export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean }) {
+/** The live app's scheduled changes (design audit step 3). */
+export interface LiveScheduled {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  onEdit?: (id: string) => void;
+  onReview?: (id: string) => void;
+  onOpen: (id: string) => void;
+  onCancel?: (id: string, reason: string) => Promise<void>;
+  onStart?: () => void;
+  children?: ReactNode;
+}
+
+export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true, live }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean; live?: LiveScheduled }) {
   const [win, setWin] = useState<Win>(defaultWindow);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [showPay, setShowPay] = useState(false);
@@ -365,7 +452,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
       {r.status === 'Pending approval' && (
         <>
           <Badge tone="warning">Pending approval</Badge>
-          <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>
+          {r.waitingFor && <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>}
         </>
       )}
     </span>
@@ -383,12 +470,26 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
     { key: 'summary', header: 'What changes', value: (r) => r.summary, render: summaryCell, width: 225 },
     { key: 'raisedBy', header: 'Raised by', value: (r) => r.raisedBy, width: 170 },
   ];
-  const edit = () => (
-    <Button size="sm" icon={Pencil}>
-      Edit
-    </Button>
-  );
-  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={<Button variant="primary">Start change</Button>} />;
+  const edit = (r: Sched) =>
+    live ? (
+      r.status === 'Pending approval' && live.onReview ? (
+        <Button size="sm" variant="review" onClick={() => live.onReview!(r.id)}>
+          Review
+        </Button>
+      ) : live.onEdit ? (
+        <Button size="sm" icon={Pencil} onClick={() => live.onEdit!(r.id)}>
+          Edit
+        </Button>
+      ) : null
+    ) : (
+      <Button size="sm" icon={Pencil}>
+        Edit
+      </Button>
+    );
+  const start = live ? live.onStart : () => {};
+  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={start ? <Button variant="primary" onClick={start}>Start change</Button> : undefined} />;
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   return (
     <PeopleFrame active="Scheduled">
       <PageHeader
@@ -402,20 +503,28 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           ) : undefined
         }
       />
-      <div className="yx-ppl__filterbar">
-        <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
+      {live?.state !== 'no-access' && (
+        <div className="yx-ppl__filterbar">
+          <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
         <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>
           {pendingOnly && <Icon icon={Check} size="sm" />}
-          Only pending approval ({pending.length})
-        </button>
-      </div>
+            Only pending approval ({pending.length})
+          </button>
+        </div>
+      )}
       {showPay && <Text size="sm" tone="secondary" as="p">Pay is showing. Each time you show it is recorded.</Text>}
       {revision && earlier && (
         <InlineAlert tone="warning" title={`${revision.name} has two changes`} actions={<Button size="sm">Open revision</Button>}>
           His {revision.summary.replace('Market correction ', '')} revision on {formatDate(revision.effective)} is worked out on his pay after the {formatDate(earlier.effective)} {earlier.type.toLowerCase()}. Check the amounts before it applies.
         </InlineAlert>
       )}
-      {narrow ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the scheduled changes" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the scheduled changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading scheduled changes" />
+      ) : narrow ? (
         shown.length === 0 ? (
           empty
         ) : (
@@ -426,7 +535,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
                 {changeCell(r)}
                 {summaryCell(r)}
                 <EffectiveCell date={r.effective} today={today} />
-                {edit()}
+                {edit(r)}
               </li>
             ))}
           </ul>
@@ -437,36 +546,57 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
+          {...(live ? { onExport: exportCsv('scheduled-changes', shown, cols) } : {})}
           empty={empty}
           rowButtons={edit}
           rowActions={(r) => (
             <>
-              <MenuItem>Open change</MenuItem>
-              <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
-                Cancel change
-              </MenuItem>
+              <MenuItem onSelect={live ? () => live.onOpen(r.id) : undefined}>{live ? 'Open record' : 'Open change'}</MenuItem>
+              {(!live || live.onCancel) && (
+                <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
+                  Cancel change
+                </MenuItem>
+              )}
             </>
           )}
           defaultSort={{ key: 'effective', dir: 'asc' }}
           defaultColumnState={{ hidden: ['raisedBy'] }}
-          onExport={() => {}}
+          // Export: no export of scheduled changes in the live app yet (left out).
+          {...(live ? {} : { onExport: () => {} })}
         />
       )}
       <ConfirmDialog
         open={!!cancelRow}
         onOpenChange={(o) => !o && setCancelId(null)}
-        title={`Cancel ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
-        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. The approvers are told, and the cancelled change stays on the timeline.` : ''}
+        title={`Cancel the ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
+        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. ${live ? 'The cancelled change stays on the timeline.' : 'The approvers are told, and the cancelled change stays on the timeline.'}` : ''}
         confirmLabel="Cancel change"
         cancelLabel="Keep change"
         destructive
-        confirmDisabled={reason.trim().length < 5}
-        onConfirm={() => setCancelId(null)}
+        confirmDisabled={reason.trim().length < 5 || cancelling}
+        onConfirm={async () => {
+          if (live?.onCancel && cancelRow) {
+            setCancelling(true);
+            setCancelError(null);
+            try {
+              await live.onCancel(cancelRow.id, reason.trim());
+            } catch (e) {
+              setCancelError(e instanceof Error ? e.message : 'The change was not cancelled. Try again.');
+              setCancelling(false);
+              throw e;
+            }
+            setCancelling(false);
+          }
+          setReason('');
+          setCancelId(null);
+        }}
       >
         <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers.">
           <TextArea value={reason} onChange={setReason} rows={2} />
         </FormField>
+        {cancelError && <InlineAlert tone="danger" title={cancelError} />}
       </ConfirmDialog>
+      {live?.children}
     </PeopleFrame>
   );
 }
@@ -493,29 +623,55 @@ export function incrementPreview(pct: Record<string, number>, custom: Record<str
 }
 
 // PPL-06
-export function BulkChangesWizard({ current = 'people', confirmOpen = false }: { current?: string; confirmOpen?: boolean }) {
+export function BulkChangesWizard(props: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean; live?: LiveIncrement }) {
+  return props.live ? <LiveIncrementWizard live={props.live} /> : <SampleBulkChangesWizard {...props} />;
+}
+
+/** The company's rule for a raise above the grade's pay range maximum (Settings › Company rules › Pay ranges). */
+export type BandPolicy = 'warn' | 'cap' | 'block';
+
+/** What the Preview step says about people above the band maximum, per company rule. */
+export function bandNotice(policy: BandPolicy, above: number, held: number): { tone: 'warning' | 'danger' | 'info'; title: string; text: string } | null {
+  const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
+  if (policy === 'cap') return held ? { tone: 'info', title: `${people(held)} held at the band maximum`, text: 'Company rule: a raise never goes above the band maximum. Change it in Settings › Company rules.' } : null;
+  if (!above) return null;
+  if (policy === 'block') return { tone: 'danger', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Company rule: raises above the band maximum are not sent. Cap them or lower their raise.' };
+  return { tone: 'warning', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Cap them, change their raise in the table, or leave them for the approver as exceptions.' };
+}
+
+function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating', bandPolicy = 'warn', letterOpen: startLetter = false }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean }) {
   const allDepts = useMemo(() => [...new Set(INCREMENT_ROWS.map((r) => r.department))].sort(), []);
-  const [type, setType] = useState<string | null>('inc');
+  const [type] = useState<string | null>('inc');
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [joinedBefore, setJoinedBefore] = useState<Date | null>(new Date(2026, 3, 1));
   const [depts, setDepts] = useState<string[]>(allDepts);
   const [pct, setPct] = useState(INCREMENT_PCT);
+  const [mode, setMode] = useState<'rating' | 'percent'>(startMode);
+  const [everyone, setEveryone] = useState<number | null>(6);
+  const [cycle, setCycle] = useState<string | null>('fy26');
   const [custom, setCustom] = useState<Record<string, number>>({});
   const [capped, setCapped] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(confirmOpen);
   const [leftOutOpen, setLeftOutOpen] = useState(false);
-  const [letterOpen, setLetterOpen] = useState(false);
+  const [letterOpen, setLetterOpen] = useState(startLetter);
+  const [letterFor, setLetterFor] = useState<string | null>(null);
   // The wizard's content column is narrow, so cards take over below 1024 px.
   const narrow = useNarrow(1023);
   const chosen = useMemo(() => INCREMENT_ROWS.filter((r) => depts.includes(r.department)), [depts]);
-  const rows = useMemo(() => incrementPreview(pct, custom, capped, chosen), [pct, custom, capped, chosen]);
+  const rule = useMemo(() => (mode === 'rating' ? pct : { Exceeds: everyone ?? 0, Meets: everyone ?? 0, Below: everyone ?? 0 }), [mode, pct, everyone]);
+  const rows = useMemo(() => {
+    const out = incrementPreview(rule, custom, capped, chosen);
+    // Under the "cap" rule everyone above the band is held at its maximum.
+    return bandPolicy === 'cap' ? incrementPreview(rule, custom, [...capped, ...out.filter((r) => r.flag).map((r) => r.id)], chosen) : out;
+  }, [rule, custom, capped, chosen, bandPolicy]);
   const before = rows.reduce((s, r) => s + r.ctc, 0);
   const after = rows.reduce((s, r) => s + r.next, 0);
   const flaggedRows = rows.filter((r) => r.flag);
   const typeLabel = BULK_TYPES.find((t) => t.value === type)?.label ?? 'Bulk change';
   const cap = (ids: string[]) => setCapped([...new Set([...capped, ...ids])]);
+  const notice = bandNotice(bandPolicy, flaggedRows.length, rows.filter((r) => r.capped).length);
   const capBtn = (r: IncRow) =>
-    r.flag ? (
+    r.flag && bandPolicy !== 'cap' ? (
       <Button size="sm" onClick={() => cap([r.id])}>
         Cap at band max
       </Button>
@@ -540,16 +696,16 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
       width: 150,
     },
   ];
-  const first = rows[0];
+  const first = rows.find((r) => r.id === letterFor) ?? rows[0];
   return (
     <PeopleFrame active="Bulk changes">
-      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person and letters in bulk." />
+      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person, new pay rounded to whole rupees." />
       <Stepper
         title="Bulk change"
         defaultCurrent={current}
         finishLabel={`Send for approval (${rows.length} people)`}
+        finishBlocked={bandPolicy === 'block' && flaggedRows.length ? `${flaggedRows.length} above the band maximum: cap them first.` : undefined}
         onFinish={() => setConfirm(true)}
-        onSaveAndExit={() => {}}
         review={{ description: 'Check the totals before you send this for one approval.' }}
         steps={[
           {
@@ -558,23 +714,23 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
             summary: `${rows.length} employees · ${depts.length === allDepts.length ? 'all departments' : depts.join(', ')} · Kaveri Foods Pvt Ltd · effective ${effective ? formatDate(effective) : '—'}`,
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Change type" required>
-                  <Select options={BULK_TYPES} value={type} onChange={setType} />
-                </FormField>
                 <FormField label="Legal entity" required>
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }]} value="kf" onChange={() => {}} />
                 </FormField>
-                <FormField label="Effective date" required>
+                <FormField label="Effective date" required helper="Payroll pays arrears for a date in a month already paid.">
                   <DatePicker value={effective} onChange={setEffective} />
                 </FormField>
-                <FormField label="Departments" required>
+                <FormField label="Departments" optional helper="Leave empty for everyone.">
                   <MultiSelect options={allDepts.map((d) => ({ value: d, label: d }))} value={depts} onChange={setDepts} />
                 </FormField>
-                <FormField label="Confirmed employees who joined before" required>
+                <FormField label="Confirmed employees who joined before" optional>
                   <DatePicker value={joinedBefore} onChange={setJoinedBefore} />
                 </FormField>
+                <FormField label="Reason" required helper="Kept on each person's job history.">
+                  <TextArea rows={2} defaultValue="Annual increment" maxLength={1000} />
+                </FormField>
                 <InlineAlert tone="info" actions={<Button size="sm" onClick={() => setLeftOutOpen(true)}>See who</Button>}>
-                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} people on notice are left out.
+                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} are left out.
                 </InlineAlert>
               </div>
             ),
@@ -582,8 +738,30 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
           {
             id: 'rule',
             title: 'Set the rule',
-            summary: `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%`,
+            summary: mode === 'rating' ? `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%` : `${everyone ?? 0}% for everyone`,
             content: (
+              <div className="yx-ppl__form">
+                <Segment
+                  label="Raise by"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: 'rating', label: 'By rating' },
+                    { value: 'percent', label: 'Same for everyone' },
+                  ]}
+                />
+                {mode === 'percent' ? (
+                  <FormField label="Raise for everyone" required>
+                    <NumberField value={everyone} onChange={setEveryone} decimals suffix="%" />
+                  </FormField>
+                ) : (
+                  <>
+                    <FormField label="Ratings from" required>
+                      <Select options={[{ value: 'fy26', label: 'FY 2025-26 annual review' }]} value={cycle} onChange={setCycle} />
+                    </FormField>
+                    <InlineAlert tone="warning" title="1 person has no rating">
+                      They get no raise by rating. Use &quot;Same for everyone&quot;, or see who under Choose people.
+                    </InlineAlert>
               <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Increase by rating">
                 <table className="yx-ppl__impact">
                   <thead>
@@ -611,6 +789,9 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
                   </tbody>
                 </table>
               </div>
+                  </>
+                )}
+              </div>
             ),
           },
           {
@@ -619,13 +800,9 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
             summary: `${formatINR(before)} → ${formatINR(after)} (${formatINR(after - before)} more a year) · ${flaggedRows.length ? `${flaggedRows.length} above band` : 'all within band'}`,
             content: (
               <div className="yx-ppl__stack">
-                {flaggedRows.length > 0 && (
-                  <InlineAlert
-                    tone="warning"
-                    title={`${flaggedRows.length} ${flaggedRows.length === 1 ? 'person goes' : 'people go'} above the band maximum`}
-                    actions={<Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button>}
-                  >
-                    Cap them, change their raise in the table, or leave them for the approver as exceptions.
+                {notice && (
+                  <InlineAlert tone={notice.tone} title={notice.title} actions={bandPolicy !== 'cap' && flaggedRows.length ? <Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button> : undefined}>
+                    {notice.text}
                   </InlineAlert>
                 )}
                 {narrow ? (
@@ -661,18 +838,21 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
           {
             id: 'letters',
             title: 'Letters',
-            summary: 'Increment letter (template v3) · to each person’s documents and a notification',
+            summary: 'Increment letter (version 3) · to each person’s documents and an email, once approved',
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Letter template" required>
-                  <Select options={[{ value: 'inc3', label: 'Increment letter v3 (approval required)' }]} value="inc3" onChange={() => {}} />
+                <FormField label="Letter template" required helper={<>Change the wording or the merge fields in <a className="yx-link" href="#settings-letters">Settings › Letter templates</a>.</>}>
+                  <Select options={[{ value: 'inc3', label: 'Increment letter (version 3)' }]} value="inc3" onChange={() => {}} />
+                </FormField>
+                <FormField label="Preview the letter for" optional>
+                  <Select options={rows.map((r) => ({ value: r.id, label: r.name }))} value={letterFor ?? rows[0]?.id ?? null} onChange={setLetterFor} searchable />
                 </FormField>
                 <div>
                   <Button icon={FileText} onClick={() => setLetterOpen(true)}>
-                    Preview a letter
+                    Preview letter
                   </Button>
                 </div>
-                <InlineAlert tone="info">Letters are issued after approval and apply on {effective ? formatDate(effective) : 'the effective date'}. Failures are listed for retry.</InlineAlert>
+                <InlineAlert tone="info">Letters are made only after the change is approved, from the approved pay. Each person finds theirs in My documents and letters and gets an email.</InlineAlert>
               </div>
             ),
           },
@@ -687,19 +867,18 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
         onConfirm={() => setConfirm(false)}
       />
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
-        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'On notice', note: p.why }))} />
+        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'Left out', note: p.why }))} />
       </Dialog>
-      <Dialog open={letterOpen} onOpenChange={setLetterOpen} size="md" title={`Increment letter · ${first?.name ?? ''}`} footer={<Button onClick={() => setLetterOpen(false)}>Close</Button>}>
-        {first && (
-          <div className="yx-ppl__stack">
-            <Text as="p">Dear {first.name.split(' ')[0]},</Text>
-            <Text as="p">
-              Following your annual review, your annual CTC is revised from {formatINR(first.ctc)} to {formatINR(first.next)} ({first.pct}%), effective {effective ? formatDate(effective) : 'the effective date'}. Your grade stays {first.grade}.
-            </Text>
-            <Text as="p">Lakshmi Venkatesan · HR Business Partner · Kaveri Foods Pvt Ltd</Text>
-          </div>
-        )}
-      </Dialog>
+      {letterOpen && first && (
+        <DocumentViewer
+          inDrawer
+          open
+          onOpenChange={setLetterOpen}
+          fileName={`Increment letter, ${first.name}.pdf`}
+          mimeType="application/pdf"
+          versions={[{ id: 'p', label: 'Preview', url: INCREMENT_LETTER_PDF, uploadedBy: 'Preview, not issued', uploadedAt: new Date(2026, 9, 20), size: 1300 }]}
+        />
+      )}
     </PeopleFrame>
   );
 }
@@ -733,7 +912,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean; live?: LiveImport }) {
+  return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
+}
+
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload', saved = false }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});
@@ -767,6 +950,13 @@ export function EmployeeImportWizard({ current = 'upload', rows: initialRows = S
             summary: hasFile ? `kaveri-joiners-oct.xlsx · ${initialRows.length} rows · Kaveri Foods Pvt Ltd` : 'No file yet',
             content: (
               <div className="yx-ppl__form">
+                {saved && !hasFile && (
+                  <SavedImportNotice
+                    draft={{ fileName: 'kaveri-joiners-oct.xlsx', rows: initialRows.length, entity: 'Kaveri Foods Pvt Ltd', step: 'validate', savedAt: '2026-10-21T09:40:00Z', keptUntil: '2026-11-20T09:40:00Z' }}
+                    onResume={() => setHasFile(true)}
+                    onDiscard={async () => {}}
+                  />
+                )}
                 <FormField label="Legal entity" required helper="New people join this entity and get codes in its series (KF).">
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="kf" onChange={() => {}} />
                 </FormField>

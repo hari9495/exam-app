@@ -8,15 +8,17 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { daysBetween, fieldVisibility, workingDaysUntil, type FieldClass, type FnfLine, type Persona, type Relation } from './people-logic';
 import type { FieldRow } from './people-data';
+import { tableToCsv, type TableColumn } from '../../components/table';
+import { downloadText } from '../workforce/workforce-kit';
 import './people.css';
 
 /* ------------------------------------------------------------------ frames (APX-D §1.2 People, §1.1 Me) */
 
 export type PeoplePage =
   | 'Directory' | 'Org chart' | 'My team'
-  | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies'
+  | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies' | 'Life events' | 'My checklist tasks'
   | 'Change action' | 'Scheduled' | 'Bulk changes' | 'Restructure' | 'Import'
-  | 'Exit cases' | 'F&F' | 'Clearance'
+  | 'Exit cases' | 'F&F' | 'Clearance' | 'Retirements and contracts'
   | 'Documents & letters' | 'Assets' | 'Succession'
   | 'Possible same person' | 'Union register' | 'VRS schemes' | 'Re-verification' | 'Declarations';
 
@@ -33,9 +35,9 @@ export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelS
     ];
   return [
     { items: (['Directory', 'Org chart'] as PeoplePage[]).map(it) },
-    { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies'] as PeoplePage[]).map(it) },
+    { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies', 'Life events', 'My checklist tasks'] as PeoplePage[]).map(it) },
     { label: 'Changes', items: (['Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import'] as PeoplePage[]).map(it) },
-    { label: 'Exits', items: (['Exit cases', 'F&F', 'Clearance'] as PeoplePage[]).map(it) },
+    { label: 'Exits', items: (['Exit cases', 'F&F', 'Clearance', 'Retirements and contracts'] as PeoplePage[]).map(it) },
     { items: (['Documents & letters', 'Assets', 'Succession'] as PeoplePage[]).map(it) },
     { label: 'More', items: (['Possible same person', 'Union register', 'VRS schemes', 'Re-verification', 'Declarations'] as PeoplePage[]).map(it) },
   ];
@@ -82,32 +84,41 @@ export function ClassBadge({ cls }: { cls: FieldClass }) {
   );
 }
 
-/** A masked value with an audited reveal (P02 §7). */
-export function MaskedValue({ value, masked, canReveal, onReveal, label }: { value: string; masked: string; canReveal: boolean; onReveal?: () => void; label: string }) {
-  const [shown, setShown] = useState(false);
+/** A masked value with an audited reveal (P02 §7). Live: `onReveal` asks the server and resolves to the full value. */
+export function MaskedValue({ value, masked, canReveal, onReveal, label }: { value: string; masked: string; canReveal: boolean; onReveal?: () => void | Promise<string | void>; label: string }) {
+  const [shown, setShown] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const reveal = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      const full = await onReveal?.();
+      setShown(typeof full === 'string' ? full : value);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <span className="yx-ppl__masked">
-      <span className="yx-mono">{shown ? value : masked}</span>
-      {canReveal && !shown && (
-        <IconButton
-          icon={Eye}
-          size="sm"
-          label={`Show ${label}. Your view is recorded.`}
-          onClick={() => {
-            setShown(true);
-            onReveal?.();
-          }}
-        />
+      <span className="yx-mono">{shown ?? masked}</span>
+      {canReveal && shown === null && <IconButton icon={Eye} size="sm" label={`Show ${label}. Your view is recorded.`} disabled={busy} onClick={() => void reveal()} />}
+      {failed && (
+        <Text size="sm" tone="danger">
+          Could not show the {label}. Try again.
+        </Text>
       )}
       <span className="yx-visually-hidden" aria-live="polite">
-        {shown ? `${label} shown; this view is recorded in the audit log` : ''}
+        {shown !== null ? `${label} shown; this view is recorded in the audit log` : ''}
       </span>
     </span>
   );
 }
 
 /** Fields filtered by P02 class for the viewer: hidden fields are not rendered at all (never a blank). */
-export function FieldList({ rows, persona, relation, payGrant, onReveal }: { rows: FieldRow[]; persona: Persona; relation: Relation; payGrant?: boolean; onReveal?: (label: string) => void }) {
+export function FieldList({ rows, persona, relation, payGrant, onReveal }: { rows: FieldRow[]; persona: Persona; relation: Relation; payGrant?: boolean; onReveal?: (label: string) => void | Promise<string | void> }) {
   const visible = rows.map((r) => ({ r, v: fieldVisibility(r.cls, persona, relation, payGrant) })).filter((x) => x.v !== 'hidden');
   const hidden = rows.length - visible.length;
   return (
@@ -120,7 +131,7 @@ export function FieldList({ rows, persona, relation, payGrant, onReveal }: { row
             </dt>
             <dd>
               {v === 'masked' && r.masked ? (
-                <MaskedValue value={r.value} masked={r.masked} label={r.label} canReveal={persona === 'hr' || relation === 'self'} onReveal={() => onReveal?.(r.label)} />
+                <MaskedValue value={r.value} masked={r.masked} label={r.label} canReveal={r.reveal ? true : r.canReveal ?? (persona === 'hr' || relation === 'self')} onReveal={r.reveal ?? (() => onReveal?.(r.label))} />
               ) : (
                 <span className={r.mono ? 'yx-mono' : undefined}>{r.value}</span>
               )}
@@ -339,3 +350,9 @@ export function ListSkeleton({ rows = 6, label }: { rows?: number; label: string
 
 /** Pick exactly one (a time window, a view): the shared joined Segment (R11), so every pick-one looks the same (founder review 7 Oct 2026). */
 export { Segment } from '../../components/segment';
+
+/** A live table's Export: the visible columns as shown on screen, saved as CSV in the browser (formulas neutralised). */
+export const exportCsv =
+  <R,>(file: string, rows: R[], cols: TableColumn<R>[]) =>
+  (_format: 'csv' | 'xlsx', keys: string[]) =>
+    downloadText(`${file}.csv`, tableToCsv(rows, cols.filter((c) => keys.includes(c.key))));
