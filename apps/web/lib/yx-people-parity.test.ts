@@ -77,6 +77,15 @@ describe('person record (PPL-03)', () => {
     const h = as<HistoryView>({ changes: [] });
     expect(upcoming(v, h, '2026-10-20', ['Salary bank account']).map((e) => [e.label, e.note])).toEqual([['Probation ends', undefined], ['Work anniversary (2 years)', undefined], ['1 pending request', 'Profile change: salary bank account']]);
   });
+  it('coming up: re-verification due within 30 days or overdue; the manager gets no document name', () => {
+    const v = as<AsOfView>({ status: null, employee: { joinedOn: '2026-10-01', exitedOn: null } });
+    const ev = upcoming(v, as<HistoryView>({ changes: [] }), '2026-10-20', [], [], [
+      { due: '2026-10-10', status: 'overdue', typeName: 'PAN card' },
+      { due: '2026-11-01', status: 'due soon' },
+      { due: '2027-06-01', status: 'not due', typeName: 'Photograph' },
+    ]);
+    expect(ev.filter((e) => e.label.startsWith('Re-')).map((e) => [e.label, e.tone, e.note])).toEqual([['Re-verification due', 'danger', 'PAN card'], ['Re-verification due', 'warning', undefined]]);
+  });
 });
 
 describe('person record identity and family (PPL-03, founder 22 Oct 2026)', () => {

@@ -325,8 +325,11 @@ export function assetRows(rows: AssetRow[], employeeId: string) {
     .map((a) => ({ tag: a.tag, name: a.name, issued: day(a.holder!.issuedOn), condition: a.holder!.condition, ack: a.holder!.acknowledged ? 'Acknowledged' : 'Waiting' }));
 }
 
+/** PPL-42: a re-check from the re-verification rules (the manager gets no document name). */
+export type ReverifDue = { due: string; status: 'overdue' | 'due soon' | 'not due'; typeName?: string | null };
+
 /** Rail "Coming up": scheduled changes, probation end, the next work anniversary, waiting identity changes. */
-export function upcoming(v: AsOfView | null, h: HistoryView | null, today: string, pending: string[], docs: QueueDocument[] = []): RecordEvent[] {
+export function upcoming(v: AsOfView | null, h: HistoryView | null, today: string, pending: string[], docs: QueueDocument[] = [], reverif: ReverifDue[] = []): RecordEvent[] {
   const out: RecordEvent[] = [];
   for (const c of h?.changes.filter((x) => x.status === 'scheduled') ?? []) out.push({ label: `${TYPE[c.changeType] ?? c.changeType} effective`, date: day(c.effectiveDate), tone: 'info' });
   if (v?.status?.status === 'probation' && v.status.validTo) out.push({ label: 'Probation ends', date: day(v.status.validTo), tone: 'warning' });
@@ -342,6 +345,8 @@ export function upcoming(v: AsOfView | null, h: HistoryView | null, today: strin
   const soon = day(today);
   soon.setDate(soon.getDate() + 60);
   for (const d of docs.filter((x) => x.expiresOn && (x.status === 'verified' || x.status === 'expired') && day(x.expiresOn) <= soon)) out.push({ label: `${d.typeName} ${d.status === 'expired' || d.expiresOn! < today ? 'expired' : 'expires'}`, date: day(d.expiresOn!), tone: 'warning' });
+  // Re-verification due within 30 days, or overdue (PPL-42).
+  for (const r of reverif.filter((x) => x.status !== 'not due')) out.push({ label: 'Re-verification due', date: day(r.due), tone: r.status === 'overdue' ? 'danger' : 'warning', ...(r.typeName ? { note: r.typeName } : {}) });
   if (pending.length) out.push({ label: `${pending.length} pending request${pending.length === 1 ? '' : 's'}`, note: pending.map((l) => `Profile change: ${l.toLowerCase()}`).join(', ') });
   return out;
 }

@@ -3,6 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { DocumentsService } from '../documents/documents.service';
+import { ReverificationService } from '../documents/reverification.service';
 import { FilesService } from '../documents/files.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LettersService } from '../documents/letters/letters.service';
@@ -24,6 +25,7 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly journeys: LifecycleJourneysService,
     private readonly documents: DocumentsService,
+    private readonly reverification: ReverificationService,
     private readonly files: FilesService,
     private readonly letters: LettersService,
     private readonly portal: PreboardingPortalService,
@@ -59,6 +61,8 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
       }
       if (name === 'daily') {
         await this.documents.expirySweep();
+        // PPL-42: asked fresh copies that are due and not uploaded remind the person (then weekly).
+        await this.reverification.remindSweep();
         await this.portal.remind();
         // Lifecycle 6e: absconding timelines (and their start from unauthorised absence), retirements and contract ends.
         await this.extras.abscondingSweep();

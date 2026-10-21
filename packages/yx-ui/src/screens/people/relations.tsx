@@ -15,13 +15,13 @@ import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea } from '../../components/inputs';
-import { RadioGroup, Switch } from '../../components/choice';
+import { RadioGroup } from '../../components/choice';
 import { ConfirmDialog } from '../../components/overlay';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
-import { matchPersons, reverificationDue, type Persona } from './people-logic';
-import { MATCHES, REVERIFY, UNIONS, VRS } from './people-data';
+import { matchPersons, type Persona } from './people-logic';
+import { MATCHES, UNIONS, VRS } from './people-data';
 import { CompareTable, MeFrame, PeopleFrame } from './people-kit';
 
 /* ================================================================== PPL-36 same-person queue */
@@ -417,39 +417,4 @@ function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true
   );
 }
 
-/* ================================================================== PPL-42 re-verification */
-
-type Rv = (typeof REVERIFY)[number];
-
-// PPL-42
-export function ReverificationCycles({ rows, today }: { rows: Rv[]; today: Date }) {
-  const cols: TableColumn<Rv>[] = [
-    { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }), width: 200 },
-    { key: 'trigger', header: 'Why', value: (r) => r.trigger, width: 260 },
-    { key: 'due', header: 'Due', type: 'date', value: (r) => r.due, width: 130 },
-    { key: 'when', header: 'Due status', type: 'status', value: (r) => reverificationDue(r.last, 3, today), statusTone: (v) => (v === 'overdue' ? 'danger' : v === 'due soon' ? 'warning' : 'neutral'), width: 130 },
-    { key: 'consent', header: 'Consent', value: (r) => r.consent, width: 180 },
-    { key: 'result', header: 'Outcome', type: 'status', value: (r) => r.result, statusTone: (v) => (String(v).startsWith('Adverse') || v === 'HR review' ? 'danger' : String(v).startsWith('Clear') ? 'success' : 'info'), width: 180 },
-  ];
-  return (
-    <PeopleFrame active="Re-verification">
-      <PageHeader title="Re-verification" description="Background re-checks run only by company rule, each with fresh consent. A refusal or adverse finding opens an HR review; nothing changes automatically." />
-      <Card title="Rules">
-        <div className="yx-ppl__stack">
-          <Switch label="Every 3 years for Quality, Finance and Payroll roles" defaultChecked />
-          <Switch label="On a role change into a sensitive role" defaultChecked />
-          <Switch label="When a client contract requires it (client tag)" defaultChecked />
-        </div>
-      </Card>
-      <DataTable
-        label="Re-verification due list"
-        columns={cols}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowButtons={(r) => (r.consent === 'Not yet asked' ? <Button size="sm">Ask for consent</Button> : r.result.includes('review') ? <Button size="sm">Open review</Button> : null)}
-        empty={<EmptyState title="No re-verification due" description="People appear here when a rule makes a re-check due." />}
-      />
-      <Text size="sm" tone="secondary" as="p">Reports are Confidential; adverse findings are Special.</Text>
-    </PeopleFrame>
-  );
-}
+/* PPL-42 re-verification lives in ./reverification.tsx. */
