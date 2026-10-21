@@ -29,6 +29,7 @@ export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
 export { VrsScheme, type LiveVrs } from '../people/relations';
+export { ReverificationCycles, type ReverifData, type ReverifRow, type ReverifRule, type ReverifRuleInput } from '../people/reverification';
 export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { IssuedLettersRegister, type LiveLetters } from '../people/documents';

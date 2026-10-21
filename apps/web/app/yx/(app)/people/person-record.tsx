@@ -12,7 +12,7 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, currentPeriod, docRows, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, bankRows, currentPeriod, docRows, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
@@ -84,6 +84,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const docs = useLife<PersonDocs>(
     self ? '/documents/me' : person.data && (perms.has('document.view') || perms.has('document.manage')) ? `/documents/people/${id(person.data.id)}` : teamView && profile.data?.personId ? `/documents/team/${id(profile.data.personId)}` : null,
   );
+  // PPL-42: "Re-verification due" for the person, HR with document.manage, or the manager (the API decides).
+  const reverif = useLife<{ items: ReverifDue[] }>(personId && profile.data && (self || teamView || perms.has('document.manage')) ? `/documents/reverification/person/${p}` : null);
   const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
   const teamAssets = useLife<{ rows: { tag: string; name: string; issuedOn: string; condition: string; acknowledged: boolean }[] }>(teamView && !perms.has('asset.view') && personId ? `/lifecycle/people/${p}/assets` : null);
   const teamLeave = useTime<{ balances: Balance[] }>(teamView && !perms.has('leave.view') && personId ? `/people/${p}/balances` : null);
@@ -203,7 +205,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ...(a?.employmentType ? [{ label: 'Employment type', value: a.employmentType.name ?? '' }] : []),
       ...(v?.employee.legalEntity ? [{ label: 'Legal entity', value: v.employee.legalEntity.name }] : []),
     ],
-    events: upcoming(v, h, today, pending.map((r) => r.label), docList),
+    events: upcoming(v, h, today, pending.map((r) => r.label), docList, reverif.data?.items ?? []),
     // Without the class the design still shows the card, with how many fields are not shown (never their values).
     personal: prof?.personal ? personalRows(prof.personal) : prof?.classes.internal ? [...(prof.birthday ? [{ label: 'Birthday (shown in directory)', value: day(`2000-${prof.birthday}`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), cls: 'Internal' as const }] : []), ...LOCKED_PERSONAL] : null,
     identity: prof?.identity ? identityRows(prof, reveal) : prof?.classes.internal ? LOCKED_IDENTITY : null,

@@ -555,13 +555,19 @@ export const VRS = {
   ],
 };
 
-export const REVERIFY = [
-  { id: 'rv1', name: 'Arjun Kulkarni', trigger: 'Periodic, every 3 years', last: d(2023, 10, 20), due: d(2026, 10, 20), consent: 'Given 22 Sep 2026', result: 'In progress', partner: 'BGV-8812' },
-  { id: 'rv2', name: 'Priya Nair', trigger: 'Client mandate: Brindavan Retail Ltd', last: d(2024, 1, 5), due: d(2026, 10, 1), consent: 'Not yet asked', result: 'Not started', partner: '' },
-  { id: 'rv3', name: 'Rohit Bhat', trigger: 'Role change into Payroll (sensitive)', last: d(2022, 6, 2), due: d(2026, 9, 1), consent: 'Refused 3 Sep 2026', result: 'HR review', partner: '' },
-  { id: 'rv4', name: 'Deepa Rao', trigger: 'Periodic, every 3 years', last: d(2023, 8, 14), due: d(2026, 8, 14), consent: 'Given 1 Aug 2026', result: 'Adverse: HR review', partner: 'BGV-8790' },
-  { id: 'rv5', name: 'Imran Qureshi', trigger: 'Periodic, every 3 years', last: d(2024, 2, 1), due: d(2027, 2, 1), consent: '—', result: 'Clear (last cycle)', partner: 'BGV-7104' },
+// PPL-42: re-verification rules and who is due on TODAY (29 Sep 2026).
+export const REVERIF_RULES = [
+  { id: 'rr1', typeName: 'PAN card', everyMonths: 36, legalEntity: null, departments: ['Finance', 'Payroll'], designations: [], onRoleChange: true, validFrom: '2026-04-01', validTo: null, active: true, canManage: true },
+  { id: 'rr2', typeName: 'Background check report', everyMonths: 24, legalEntity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', departments: ['Quality'], designations: [], onRoleChange: false, validFrom: '2026-07-01', validTo: null, active: true, canManage: true },
+  { id: 'rr3', typeName: 'Bank proof (cancelled cheque or passbook)', everyMonths: 12, legalEntity: null, departments: [], designations: [], onRoleChange: false, validFrom: '2025-04-01', validTo: '2026-03-31', active: false, canManage: true },
 ];
+export const REVERIF_ROWS = [
+  { id: 'rv1', ruleId: 'rr1', employeeId: 'e1', name: 'Arjun Kulkarni', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2023-10-20', due: '2026-10-20', status: 'due soon', request: 'asked', askedAt: '2026-09-22T10:00:00Z', documentId: 'd1' },
+  { id: 'rv2', ruleId: 'rr1', employeeId: 'e2', name: 'Priya Nair', typeName: 'PAN card', why: 'Moved into the role on 1 Sep 2026', lastVerified: '2024-01-05', due: '2026-09-01', status: 'overdue', request: 'not asked', askedAt: null, documentId: 'd2' },
+  { id: 'rv3', ruleId: 'rr2', employeeId: 'e3', name: 'Rohit Bhat', typeName: 'Background check report', why: 'Every 24 months', lastVerified: '2024-08-14', due: '2026-08-14', status: 'overdue', request: 'uploaded', askedAt: '2026-08-01T10:00:00Z', documentId: 'd3' },
+  { id: 'rv4', ruleId: 'rr1', employeeId: 'e4', name: 'Deepa Rao', typeName: 'PAN card', why: 'Every 36 months', lastVerified: null, due: '2026-10-12', status: 'due soon', request: 'not asked', askedAt: null, documentId: null },
+  { id: 'rv5', ruleId: 'rr1', employeeId: 'e5', name: 'Imran Qureshi', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2024-02-01', due: '2027-02-01', status: 'not due', request: 'not asked', askedAt: null, documentId: 'd5' },
+] as const;
 
 /* ------------------------------------------------------------------ identity (PPL-34, 36, 37) */
 
