@@ -2467,6 +2467,7 @@ model Employee {
   familyName     String?  @map("family_name") @db.VarChar(100)
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
+  workPhone      String?  @map("work_phone") @db.VarChar(16)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2688,6 +2689,7 @@ model EmployeeChangeBatch {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote   String?   @map("decision_note") @db.VarChar(1000)
   compCycleId    String?   @map("comp_cycle_id") @db.Uuid
+  letterTemplateId String? @map("letter_template_id") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
@@ -2736,6 +2738,7 @@ model EmployeePersonalDetails {
   postalCode     String?   @map("postal_code") @db.VarChar(12)
   country        String?   @db.Char(2)
   hideBirthday   Boolean   @default(false) @map("hide_birthday")
+  maritalStatus  String?   @map("marital_status") @db.VarChar(20)
   updatedBy      String?   @map("updated_by") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2760,6 +2763,10 @@ model EmployeeIdentifiers {
   esicEnc        String?  @map("esic_enc")
   esicHash       String?  @map("esic_hash") @db.Char(64)
   esicLast4      String?  @map("esic_last4") @db.Char(4)
+  passportEnc       String?   @map("passport_enc")
+  passportHash      String?   @map("passport_hash") @db.Char(64)
+  passportLast4     String?   @map("passport_last4") @db.Char(4)
+  passportExpiresOn DateTime? @map("passport_expires_on") @db.Date
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([organizationId, employeeId])
@@ -9156,6 +9163,13 @@ model Union {
   legalEntityId  String   @map("legal_entity_id") @db.Uuid
   name           String   @db.VarChar(200)
   registrationNo String?  @map("registration_no") @db.VarChar(60)
+  /// PPL-39 union register: the establishment, recognition and basis, its period and office bearers.
+  locationId     String?   @map("location_id") @db.Uuid
+  recognition    String    @default("not_recognised") @db.VarChar(16)
+  basis          String?   @db.VarChar(200)
+  validFrom      DateTime? @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  bearers        String?   @db.VarChar(500)
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -9957,4 +9971,121 @@ model HomeSnapshot {
   takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("home_snapshots")
+}
+
+/// PPL-41: colleagues who volunteer as buddies, and how many joiners each looks after at a time.
+model BuddyPool {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  cap            Int      @default(2) @db.SmallInt
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("buddy_pool")
+}
+
+/// PPL-26: a critical position and its nominated successors (Confidential, succession.manage).
+model SuccessionPosition {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  title               String   @db.VarChar(120)
+  incumbentEmployeeId String?  @map("incumbent_employee_id") @db.Uuid
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("succession_positions")
+}
+
+model Successor {
+  organizationId String   @map("organization_id") @db.Uuid
+  positionId     String   @map("position_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  /// now · 1_2y · 3y
+  readiness      String   @db.VarChar(8)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([positionId, employeeId])
+  @@index([organizationId], map: "successors_org_idx")
+  @@map("successors")
+}
+
+/// Contract labour (CLB-01): a contractor supplying workers to a legal entity (the principal employer).
+model Contractor {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  name           String   @db.VarChar(150)
+  work           String   @db.VarChar(100)
+  pan            String?  @db.VarChar(10)
+  contact        String?  @db.VarChar(100)
+  status         String   @default("active") @db.VarChar(10)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractors")
+}
+
+/// A contractor's licence for an establishment: the states it covers and the most workers it allows.
+model ContractorLicence {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  contractorId   String   @map("contractor_id") @db.Uuid
+  licenceNo      String   @map("licence_no") @db.VarChar(50)
+  locationId     String   @map("location_id") @db.Uuid
+  states         String[]
+  maxWorkers     Int      @map("max_workers")
+  validFrom      DateTime @map("valid_from") @db.Date
+  validTo        DateTime @map("valid_to") @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contractor_licences")
+}
+
+/// A contract worker deployed at a site (CLB-02): a contract_worker role on the person record.
+model ContractDeployment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  contractorId   String    @map("contractor_id") @db.Uuid
+  licenceId      String    @map("licence_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  work           String    @db.VarChar(80)
+  skill          String    @db.VarChar(12)
+  wage           Decimal?  @db.Decimal(12, 2)
+  dateOfBirth    DateTime  @map("date_of_birth") @db.Date
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime? @map("to_on") @db.Date
+  status         String    @default("pending") @db.VarChar(10)
+  createdBy      String?   @map("created_by") @db.Uuid
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("contract_deployments")
+}
+
+/// A person placed with a client (HIR-17): a placement role on the person record.
+model Placement {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  client           String    @db.VarChar(150)
+  role             String    @db.VarChar(100)
+  startOn          DateTime  @map("start_on") @db.Date
+  endOn            DateTime  @map("end_on") @db.Date
+  billRate         Decimal   @map("bill_rate") @db.Decimal(12, 2)
+  payRate          Decimal   @map("pay_rate") @db.Decimal(12, 2)
+  statutoryPerHour Decimal   @default(0) @map("statutory_per_hour") @db.Decimal(12, 2)
+  supply           String    @db.VarChar(8)
+  vendor           String?   @db.VarChar(150)
+  status           String    @default("active") @db.VarChar(8)
+  endedOn          DateTime? @map("ended_on") @db.Date
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("placements")
 }

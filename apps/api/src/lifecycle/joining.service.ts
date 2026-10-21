@@ -257,7 +257,7 @@ export class JoiningService {
         const persons = await tx.person.findMany({ where: { organizationId: org, primaryEmail: cand.email, status: 'active' }, select: { id: true } });
         const emp = await tx.employee.findFirst({ where: { organizationId: org, OR: [{ personId: { in: persons.map((p) => p.id) } }, { workEmail: cand.email }] }, select: { id: true } });
         const current = emp ? await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }) : null;
-        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
+        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', acceptedOn: o.respondedAt ? o.respondedAt.toISOString().slice(0, 10) : null, personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
       }
       return out;
     });

@@ -296,7 +296,11 @@ describe('Payroll batch 5b', () => {
     const mine = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(mine).toMatchObject({ annualCtc: '726000.00', package: { entryMode: 'ctc' } });
     expect(mine.lines.length).toBeGreaterThan(5);
-    expect((await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body.changeId).toBe(ch.changeId);
+    const seen = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
+    expect(seen.changeId).toBe(ch.changeId);
+    // PPL-03 Pay tab: the last approved payslip and the tax regime come with the same grant (none yet here).
+    expect(seen).toMatchObject({ lastNetPay: null });
+    expect(seen).toHaveProperty('taxRegime');
     await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation`).expect(404);

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -14,7 +15,7 @@ jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
 
 // People › Job history and Job changes wired to the /people API (P06).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const PERMS_PATH = '/rbac/me/permissions';
 const PERSON = { id: 'p-arjun', name: 'Arjun Kulkarni', employeeCode: 'KF-0142', legalEntityId: 'le-1', designation: 'Quality Analyst', department: 'Quality', location: 'Bengaluru head office' };
 const HEADER = { id: 'p-arjun', name: 'Arjun Kulkarni', employeeCode: 'KF-0142', legalEntity: { id: 'le-1', name: 'Kaveri Foods Pvt Ltd' }, joinedOn: '2024-07-01', exitedOn: null };
@@ -92,10 +93,9 @@ describe('/yx/people/changes', () => {
       },
     });
     wrap(<YxJobChangesPage />);
-    const table = await screen.findByRole('table', { name: 'Job changes' });
-    expect(within(table).getByRole('link', { name: 'Arjun Kulkarni' }).getAttribute('href')).toBe('/yx/people/history?person=p-arjun');
-    expect(screen.queryByRole('button', { name: 'New change' })).toBeNull();
-    await userEvent.click(await within(table).findByRole('button', { name: 'Review' }));
+    // PPL-04: the designed Change action page lists what waits for approval; Open reviews one.
+    expect(await screen.findByText(/Arjun Kulkarni · /)).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Open' }));
     expect(await screen.findByText('Senior QA Engineer')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(posted).toEqual([{ confirmRebase: false }]));

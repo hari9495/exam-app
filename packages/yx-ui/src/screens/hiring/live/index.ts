@@ -12,3 +12,4 @@ export { DuplicatesScreen, TalentPoolsScreen, CandidateRetentionScreen, type Dup
 export { JobWorkspaceScreen, RejectDialog, scorecardText, type JobWorkspaceScreenProps } from './job-workspace';
 export { ApplicationPanel, type ApplicationPanelProps } from './application';
 export { MyInterviewsScreen, InterviewScreen, ScorecardTemplatesScreen, type MyInterviewsScreenProps, type InterviewScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
+export { PlacementsLiveScreen, type PlacementsLiveProps, type LivePlacement, type PlacementInput } from './placements-live';

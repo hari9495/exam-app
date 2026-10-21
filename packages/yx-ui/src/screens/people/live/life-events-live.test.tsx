@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { FirstThirtyDaysScreen, LifeJourneysScreen, MyTasksScreen } from './lifecycle';
+import { FirstThirtyDaysScreen } from './lifecycle';
+import { MyChecklistTasks } from '../checklists';
 import { JourneyTemplatesScreen } from './templates';
 import type { JourneyTask, JourneyTemplates } from './types';
 
@@ -44,8 +45,8 @@ const task = (o: Partial<JourneyTask>): JourneyTask => ({
 describe('Read, watch and survey steps', () => {
   it('a read step shows its text and link, and "I have read this" completes it', async () => {
     const onComplete = vi.fn(async () => ({}));
-    render(<MyTasksScreen state="ready" data={{ today: '2026-10-10', tasks: [task({})] }} onComplete={onComplete} onSkip={vi.fn()} onOpen={vi.fn()} />);
-    expect(screen.getByText('Moves 15 Oct 2026')).toBeInTheDocument();
+    render(<MyChecklistTasks tasks={[task({})]} today={new Date(2026, 9, 10)} actions={{ onComplete: onComplete, onSkip: vi.fn() }} onOpen={vi.fn()} />);
+    expect(screen.getByText(/moves 15 Oct 2026/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Read' }));
     const dlg = screen.getByRole('dialog');
     expect(within(dlg).getByText('Check your new holiday list.')).toBeInTheDocument();
@@ -55,14 +56,14 @@ describe('Read, watch and survey steps', () => {
   });
 
   it('a watch step shows the length of the video', async () => {
-    render(<MyTasksScreen state="ready" data={{ today: '2026-10-10', tasks: [task({ kind: 'watch', title: 'Safety video', content: { url: 'https://video.test/safety', minutes: 12 } })] }} onComplete={vi.fn()} onSkip={vi.fn()} onOpen={vi.fn()} />);
+    render(<MyChecklistTasks tasks={[task({ kind: 'watch', title: 'Safety video', content: { url: 'https://video.test/safety', minutes: 12 } })]} today={new Date(2026, 9, 10)} actions={{ onComplete: vi.fn(), onSkip: vi.fn() }} onOpen={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Watch' }));
     expect(within(screen.getByRole('dialog')).getByRole('link', { name: 'Open the video (about 12 minutes)' })).toHaveAttribute('href', 'https://video.test/safety');
   });
 
   it('a quick survey sends only when every statement is rated (one choice each, on a Segment)', async () => {
     const onComplete = vi.fn(async () => ({}));
-    render(<MyTasksScreen state="ready" data={{ today: '2026-10-10', tasks: [task({ kind: 'survey', title: 'How is the move going?', content: { questions: ['I have what I need.', 'My team made me welcome.'] } })] }} onComplete={onComplete} onSkip={vi.fn()} onOpen={vi.fn()} />);
+    render(<MyChecklistTasks tasks={[task({ kind: 'survey', title: 'How is the move going?', content: { questions: ['I have what I need.', 'My team made me welcome.'] } })]} today={new Date(2026, 9, 10)} actions={{ onComplete: onComplete, onSkip: vi.fn() }} onOpen={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Answer' }));
     const dlg = screen.getByRole('dialog');
     expect(within(dlg).getByText('HR sees your answers. Your manager sees only that you answered.')).toBeInTheDocument();
@@ -115,14 +116,6 @@ describe('Life-event checklists in settings', () => {
 });
 
 describe('HR list and the first 30 days', () => {
-  it('Life events lists running checklists and opens one', async () => {
-    const onOpen = vi.fn();
-    render(<LifeJourneysScreen state="ready" rows={[{ id: 'jr9', kind: 'transfer', kindLabel: 'Transfer', person: 'Ravi Kumar', anchorOn: '2026-10-15', progress: 40 }]} onOpen={onOpen} />);
-    expect(screen.getByText('40%')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Checklist' }));
-    expect(onOpen).toHaveBeenCalledWith('jr9');
-  });
-
   it('My first 30 days shows the day, the people and the steps by when they fall', () => {
     render(
       <FirstThirtyDaysScreen

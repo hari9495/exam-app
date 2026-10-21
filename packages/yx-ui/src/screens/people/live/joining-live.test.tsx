@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { JoinerPanel, LetterTemplatesScreen, PortalScreen, ReadyToOnboardScreen } from './joining';
+import { JoinerPanel, LetterTemplatesScreen, PortalScreen } from './joining';
 import type { JoinerForms, JoinerPlaces, Letter, LetterTemplates, PortalMe } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -79,24 +79,5 @@ describe('Letter templates (PPL-29)', () => {
     await ue.click(within(row).getByRole('button', { name: 'Sample preview' }));
     expect(onPreview).toHaveBeenCalled();
     expect(screen.getByText('{{employee_name}}')).toBeInTheDocument();
-  });
-});
-
-describe('Ready to onboard (PPL-12)', () => {
-  it('a current employee is sent to job changes, never onboarded', () => {
-    render(
-      <ReadyToOnboardScreen
-        state="ready"
-        places={PLACES}
-        onCreate={vi.fn()}
-        changesHref="/yx/people/changes"
-        rows={[
-          { offerId: 'o1', name: 'Asha Rao', email: 'a@x.test', phone: null, startDate: '2026-11-01', jobTitle: 'Inspector', personType: 'new' },
-          { offerId: 'o2', name: 'Divya R', email: 'd@x.test', phone: null, startDate: '2026-11-01', jobTitle: 'Lead', personType: 'internal' },
-        ]}
-      />,
-    );
-    expect(within(screen.getByRole('row', { name: /Asha Rao/ })).getByRole('button', { name: 'Create joiner' })).toBeInTheDocument();
-    expect(within(screen.getByRole('row', { name: /Divya R/ })).getByRole('link', { name: 'Job change' })).toHaveAttribute('href', '/yx/people/changes');
   });
 });

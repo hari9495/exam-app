@@ -18,6 +18,7 @@ import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
+import { WorkforceRolesService } from '../workforce-roles/workforce-roles.service';
 
 export interface SearchHit {
   id: string;
@@ -372,6 +373,7 @@ export class WorkspaceService {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    const roles = support ? null : await this.service(WorkforceRolesService).directoryReach(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -381,6 +383,39 @@ export class WorkspaceService {
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
+      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (company-wide
+      // for HR whose profile grant is, else the person's own direct reports); my open clearance sign-offs; logins that may
+      // be someone already on record. Each is gated by the same key as its page.
+      if (keys.has('lifecycle.onboarding.manage')) {
+        out.readyToOnboard = await one(Prisma.sql`SELECT count(*) AS n FROM offers o WHERE o.organization_id = ${org}::uuid AND o.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM preboardings p WHERE p.organization_id = o.organization_id AND p.offer_id = o.id AND p.status <> 'cancelled')`);
+      }
+      const today = todayIst();
+      // shortcut: the company-wide review lead (probation.review_lead_days); an entity's own lead is not applied here.
+      const lead = Number((await tx.setting.findFirst({ where: { organizationId: org, key: 'probation.review_lead_days', scopeType: 'tenant' }, select: { value: true } }))?.value ?? 15);
+      const hrWide = keys.has('employee.profile.view') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.profile.view']), 'employee.profile.view');
+      const mine = hrWide ? null : await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (hrWide || mine) {
+        out.probationsDue = await one(Prisma.sql`SELECT count(*) AS n FROM probations pr
+          JOIN employments m ON m.organization_id = pr.organization_id AND m.id = pr.employment_id AND m.exited_on IS NULL
+          JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
+            AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
+          WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
+            ${mine ? Prisma.sql`AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
+              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
+      }
+      out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
+        WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
+          AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
+      if (!support && keys.has('employee.change.manage')) {
+        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM persons p
+          JOIN person_roles r ON r.organization_id = p.organization_id AND r.person_id = p.id AND r.role_type = 'login' AND r.source_table = 'users' AND r.end_on IS NULL
+          JOIN users u ON u.organization_id = r.organization_id AND u.id = r.source_id
+          LEFT JOIN employees e ON e.organization_id = p.organization_id AND lower(e.work_email::text) = lower(u.email::text) AND e.person_id <> p.id
+          JOIN persons m ON m.organization_id = p.organization_id AND m.status = 'active' AND m.id <> p.id AND (m.id = e.person_id OR lower(m.primary_email::text) = lower(u.email::text))
+          WHERE p.organization_id = ${org}::uuid AND p.status = 'active' AND p.primary_email IS NULL
+            AND NOT EXISTS (SELECT 1 FROM employees x WHERE x.organization_id = p.organization_id AND x.person_id = p.id)`);
+      }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });
       if (!support && keys.has('desk.ticket.work')) out.myTickets = await one(Prisma.sql`SELECT count(*) AS n FROM sd_tickets t WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.system_state NOT IN ('solved', 'closed')`);
@@ -390,6 +425,8 @@ export class WorkspaceService {
         WHERE p.organization_id = ${org}::uuid AND p.user_id = ${me}::uuid AND i.status <> 'cancelled' AND s.ends_at <= now()
           AND COALESCE(i.scorecard_template_id, j.scorecard_template_id) IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM scorecards sc WHERE sc.interview_id = i.id AND sc.panelist_user_id = p.user_id AND sc.status = 'submitted')`);
+      // Contract workers on site, in the person's reach (the Contract workers page).
+      if (roles?.workers) out.contractWorkers = (await this.service(WorkforceRolesService).workerRows(tx, org, roles.workers, null, true)).length;
       return out;
     });
   }
