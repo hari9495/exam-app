@@ -76,3 +76,40 @@ export const Record: S = { name: 'Restructure record · approver', render: () =>
 export const Done: S = { name: 'Restructure record · done, one person could not move', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} onLetters={() => {}} /> };
 export const Checklist: S = { name: 'PPL-10 · continuity checklist (live items)', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} defaultChecklistFor="p1" /> };
 export const PayrollNoAccess: S = { name: 'Payroll · no access (HR decides restructures)', render: () => <RestructureRecord state="forbidden" onRetry={() => {}} data={null} today={d(2026, 10, 12)} /> };
+
+// "Save and exit": the start page lists the person's own saved drafts (Continue or Delete).
+const SETUP = {
+  today: '2026-10-21',
+  entities: [
+    { id: 'tn', name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', shortName: 'KFTN', people: 96 },
+    { id: 'ka', name: 'Kaveri Foods Pvt Ltd', shortName: 'KF', people: 152 },
+  ],
+  locations: [
+    { id: 'chn', name: 'Chennai office', legalEntityId: 'tn', people: 96, state: 'Tamil Nadu' },
+    { id: 'blr', name: 'Bengaluru head office', legalEntityId: 'ka', people: 152, state: 'Karnataka' },
+  ],
+  departments: [],
+  masters: [],
+  costCentres: [],
+  open: [],
+};
+export const Drafts: S = {
+  name: 'Start · saved drafts (Save and exit)',
+  render: () => (
+    <RestructureWizard
+      live={{
+        state: 'ready',
+        onRetry: () => {},
+        setup: SETUP,
+        people: [],
+        onPreview: async () => ({ people: [], checks: [], counts: { ready: 0, failed: 0, leftOut: 0 } }),
+        onSend: noop,
+        onOpen: () => {},
+        drafts: [{ id: 'd1', title: 'Merge Kaveri Foods Pvt Ltd (Tamil Nadu) into Kaveri Foods Pvt Ltd', updatedAt: '2026-10-20T10:00:00Z' }],
+        onSaveDraft: noop,
+        onContinueDraft: () => {},
+        onDeleteDraft: noop,
+      }}
+    />
+  ),
+};

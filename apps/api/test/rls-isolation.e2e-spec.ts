@@ -53,7 +53,7 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
 // People (PPL-17 buddies, PPL-30 succession): personal rows.
 const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors',
   // PPL-09 and PPL-10: restructures, the people they move and the continuity checklist.
-  'restructures', 'restructure_people', 'continuity_items'];
+  'restructures', 'restructure_people', 'continuity_items', 'restructure_drafts'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));

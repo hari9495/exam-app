@@ -30,7 +30,7 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
   type Who = 'hrA' | 'hr2A' | 'payrollA' | 'empA' | 'adminB';
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
   const email = (who: string) => `${who}-${runId}@restructure.test`;
@@ -191,8 +191,45 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     expect(await asSuper((tx) => tx.restructure.count({ where: { organizationId: org.A.id } }))).toBe(0);
   });
 
+  it('drafts ("Save and exit"): only the person who saved one sees or changes it; checks list what moves with the people', async () => {
+    const state = { kind: 'merge', fromEntityId: ids.leTN, intoEntityId: ids.leKF, effectiveDate: null, locationMap: { [ids.locTN]: ids.locKF }, overrides: [], reason: '', letterType: 'transfer', step: 'options' };
+    await api('empA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state }).expect(403);
+    await api('payrollA', 'get', '/people/restructures/drafts').expect(403);
+    // The shape is checked as for sending: a bad id, map or step is refused.
+    await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state: { ...state, fromEntityId: 'x' } }).expect(400);
+    await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state: { ...state, locationMap: { a: 'b' } } }).expect(400);
+    await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state: { ...state, step: 'x' } }).expect(400);
+    await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state: { ...state, extra: 1 } }).expect(400);
+    const d = (await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Merge Entity TN into Entity KF', state }).expect(201)).body;
+    ids.draft = d.id;
+    expect((await api('hrA', 'get', '/people/restructures/drafts').expect(200)).body).toEqual([expect.objectContaining({ id: d.id, title: 'Merge Entity TN into Entity KF' })]);
+    expect((await api('hrA', 'get', `/people/restructures/drafts/${d.id}`).expect(200)).body.state).toMatchObject({ kind: 'merge', step: 'options', locationMap: { [ids.locTN]: ids.locKF } });
+    await api('hrA', 'put', `/people/restructures/drafts/${d.id}`).send({ title: 'Merge (v2)', state: { ...state, reason: 'Merger' } }).expect(200);
+    // Another HR person of the same company, and another company, never see or change it.
+    expect((await api('hr2A', 'get', '/people/restructures/drafts').expect(200)).body).toEqual([]);
+    await api('hr2A', 'get', `/people/restructures/drafts/${d.id}`).expect(404);
+    await api('hr2A', 'put', `/people/restructures/drafts/${d.id}`).send({ title: 'Mine now', state }).expect(404);
+    await api('hr2A', 'delete', `/people/restructures/drafts/${d.id}`).expect(404);
+    expect((await api('adminB', 'get', '/people/restructures/drafts').expect(200)).body).toEqual([]);
+    await api('adminB', 'get', `/people/restructures/drafts/${d.id}`).expect(404);
+    await api('adminB', 'delete', `/people/restructures/drafts/${d.id}`).expect(404);
+    // RLS: company B's session sees no row of company A at all.
+    expect(await tenantPrisma.forTenant(ctx('B'), (tx) => tx.restructureDraft.count())).toBe(0);
+    expect(await tenantPrisma.forTenant(ctx('A'), (tx) => tx.restructureDraft.count())).toBe(1);
+    // A throw-away draft is deleted by its owner.
+    const gone = (await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Scratch', state: {} }).expect(201)).body;
+    await api('hrA', 'delete', `/people/restructures/drafts/${gone.id}`).expect(204);
+    await api('hrA', 'get', `/people/restructures/drafts/${gone.id}`).expect(404);
+    // Step 3 lists what moves with the people (real counts).
+    const out = (await api('hrA', 'post', '/people/restructures/preview').send(merge()).expect(200)).body;
+    expect(out.checks.map((c: { id: string }) => c.id)).toEqual(expect.arrayContaining(['journeys', 'approvals']));
+    expect(out.checks.find((c: { id: string }) => c.id === 'approvals').title).toMatch(/^\d+ approvals? and \d+ cases? will move with them$/);
+  });
+
   it('merge: approved once by someone else; each person moves on their own and a failure keeps its reason', async () => {
-    const { id } = (await api('hrA', 'post', '/people/restructures').send(merge()).expect(201)).body;
+    const { id } = (await api('hrA', 'post', '/people/restructures').send(merge({ draftId: ids.draft, letterType: 'transfer' })).expect(201)).body;
+    // A sent plan deletes its draft.
+    await api('hrA', 'get', `/people/restructures/drafts/${ids.draft}`).expect(404);
     ids.merge = id;
     await api('adminB', 'get', `/people/restructures/${id}`).expect(404);
     // The sender never approves their own plan, and payroll never approves one (no HR work); a second HR person does.

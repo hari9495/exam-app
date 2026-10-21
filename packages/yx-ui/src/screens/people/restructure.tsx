@@ -44,6 +44,27 @@ export interface RestructureInput {
   defaults: MoveOptions;
   overrides: RestructureOverride[];
   reason: string;
+  /** The letter template for the transfer letters (offered in the bulk issue after approval). */
+  letterType?: string;
+  /** The saved draft this plan came from (deleted once sent). */
+  draftId?: string;
+}
+/** The wizard as it was left ("Save and exit"); every field may still be empty. */
+export interface RestructureDraftState {
+  kind?: RestructureKind;
+  fromEntityId?: string | null;
+  intoEntityId?: string | null;
+  effectiveDate?: string | null;
+  locationIds?: string[];
+  departmentIds?: string[];
+  locationMap?: Record<string, string>;
+  masterMap?: Record<string, string>;
+  target?: RestructureInput['target'];
+  defaults?: MoveOptions;
+  overrides?: RestructureOverride[];
+  reason?: string;
+  letterType?: string;
+  step?: string;
 }
 export interface RestructurePersonResult {
   employeeId: string;
@@ -62,6 +83,9 @@ export interface RestructureCheck {
   title: string;
   status: 'Ready' | 'Blocked' | 'Done';
   note?: string;
+  /** A blocked last payroll month: the run to open, and its month ("September"). */
+  payrollRunId?: string;
+  month?: string;
 }
 export interface RestructurePreview {
   people: RestructurePersonResult[];
@@ -91,7 +115,8 @@ export interface SetupMaster {
 export interface RestructureSetup {
   today: string;
   entities: { id: string; name: string; shortName: string; people: number }[];
-  locations: { id: string; name: string; legalEntityId: string; people: number }[];
+  /** state: the state's name (professional tax is filed per state). */
+  locations: { id: string; name: string; legalEntityId: string; people: number; state?: string }[];
   /** openTo: the entities a master is open to (null: every entity); byEntity: people in it per entity today. */
   departments: SetupMaster[];
   masters: SetupMaster[];
@@ -108,11 +133,28 @@ export interface LiveRestructure {
   onPreview: (input: RestructureInput) => Promise<RestructurePreview>;
   onSend: (input: RestructureInput, title: string) => Promise<void>;
   onOpen: (id: string) => void;
+  /** Active letter templates, for the transfer letters. */
+  letterTypes?: { value: string; label: string }[];
+  /** The person's own saved drafts, listed on the start page. */
+  drafts?: { id: string; title: string; updatedAt: string }[];
+  /** The draft being continued (the wizard starts from it). */
+  draft?: { id: string; state: RestructureDraftState } | null;
+  onSaveDraft?: (state: RestructureDraftState, title: string, id: string | null) => Promise<void>;
+  onContinueDraft?: (id: string) => void;
+  onDeleteDraft?: (id: string) => Promise<void>;
+  onOpenPayroll?: (runId: string) => void;
 }
 
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const lower = (s: string) => `${s.charAt(0).toLowerCase()}${s.slice(1)}`;
+const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** The Indian financial-year quarter holding `d`: Q1 Apr–Jun … Q4 Jan–Mar (TDS returns are quarterly). */
+export const quarterOf = (d: Date) => {
+  const q = Math.floor(((d.getMonth() + 9) % 12) / 3);
+  const first = (q * 3 + 3) % 12;
+  return `Q${q + 1} (${MONTH_NAME[first].slice(0, 3)}–${MONTH_NAME[(first + 2) % 12].slice(0, 3)})`;
+};
 const MONTH = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 const OPTION_TEXT: Record<keyof MoveOptions, Record<string, string>> = {
@@ -181,25 +223,37 @@ function OverrideDialog({ people, start, onClose, onSave }: { people: { id: stri
   );
 }
 
+const STEP_AT: Record<string, number> = { scope: 0, options: 1 };
+
 export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const s = live.setup;
-  const [kind, setKind] = useState<RestructureKind>('merge');
-  const [from, setFrom] = useState<string | null>(null);
-  const [into, setInto] = useState<string | null>(null);
-  const [effective, setEffective] = useState<Date | null>(null);
-  const [locations, setLocations] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [map, setMap] = useState<Record<string, string>>({});
-  const [masterMap, setMasterMap] = useState<Record<string, string>>({});
-  const [target, setTarget] = useState<RestructureInput['target']>({});
-  const [defaults, setDefaults] = useState<MoveOptions>(DEFAULTS);
-  const [overrides, setOverrides] = useState<RestructureOverride[]>([]);
+  // A continued draft fills the wizard in as it was left (the API checks the whole plan again before anything is sent).
+  const d0 = live.draft?.state ?? {};
+  const [kind, setKind] = useState<RestructureKind>(d0.kind ?? 'merge');
+  const [from, setFrom] = useState<string | null>(d0.fromEntityId ?? null);
+  const [into, setInto] = useState<string | null>(d0.intoEntityId ?? null);
+  const [effective, setEffective] = useState<Date | null>(d0.effectiveDate ? day(d0.effectiveDate) : null);
+  const [locations, setLocations] = useState<string[]>(d0.locationIds ?? []);
+  const [departments, setDepartments] = useState<string[]>(d0.departmentIds ?? []);
+  const [map, setMap] = useState<Record<string, string>>(d0.locationMap ?? {});
+  const [masterMap, setMasterMap] = useState<Record<string, string>>(d0.masterMap ?? {});
+  const [target, setTarget] = useState<RestructureInput['target']>(d0.target ?? {});
+  const [defaults, setDefaults] = useState<MoveOptions>(d0.defaults ?? DEFAULTS);
+  const [overrides, setOverrides] = useState<RestructureOverride[]>(d0.overrides ?? []);
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
-  const [reason, setReason] = useState('');
-  const [step, setStepId] = useState('scope');
+  const [reason, setReason] = useState(d0.reason ?? '');
+  const [letterType, setLetterType] = useState<string | null>(d0.letterType ?? null);
+  // The transfer letter template starts chosen once the templates are in (the person can pick another).
+  const transfer = live.letterTypes?.find((t) => /transfer/i.test(`${t.value} ${t.label}`))?.value;
+  useEffect(() => {
+    if (!letterType && transfer) setLetterType(transfer);
+  }, [transfer]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [step, setStepId] = useState(d0.step ?? 'scope');
   // How far the user has gone: a later step's check result shows only once it is reached (before that: "Not started").
-  const [reached, setReached] = useState(0);
-  const setStep = (id: string) => (setStepId(id), setReached((n) => Math.max(n, id === 'scope' ? 0 : id === 'options' ? 1 : 2)));
+  const [reached, setReached] = useState(STEP_AT[d0.step ?? 'scope'] ?? 2);
+  const setStep = (id: string) => (setStepId(id), setReached((n) => Math.max(n, STEP_AT[id] ?? 2)));
+  const [saving, setSaving] = useState<string | null>(null);
+  const [dropDraft, setDropDraft] = useState<{ id: string; title: string } | null>(null);
   const [preview, setPreview] = useState<RestructurePreview | null>(null);
   const [checking, setChecking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -303,8 +357,21 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const beforeRows: ChecklistRow[] = [
     { id: 'b1', title: `${ready.length} ${ready.length === 1 ? 'employment' : 'employments'} ready to move`, status: ready.length ? 'Ready' : 'Pending' },
     ...cannot.map((p): ChecklistRow => ({ id: `f${p.employeeId}`, title: `${p.name} can't move`, note: p.reason ?? undefined, status: 'Fix needed', action: <Button size="sm" onClick={() => leaveOut(p)}>Leave out</Button> })),
-    ...(preview?.checks ?? []).map((c): ChecklistRow => ({ id: c.id, title: c.title, status: c.status, note: c.note })),
+    ...(preview?.checks ?? []).map(
+      (c): ChecklistRow => ({
+        id: c.id,
+        title: c.title,
+        status: c.status,
+        note: c.note,
+        action: c.status === 'Blocked' && c.payrollRunId && live.onOpenPayroll ? <Button size="sm" onClick={() => live.onOpenPayroll!(c.payrollRunId!)}>Open {c.month} payroll</Button> : undefined,
+      }),
+    ),
   ];
+  // Closing: the old entity's last month and quarter, and the states it files professional tax in, come from the plan.
+  const lastDay = effective ? new Date(effective.getFullYear(), effective.getMonth(), effective.getDate() - 1) : null;
+  const lastMonth = lastDay ? MONTH_NAME[lastDay.getMonth()] : 'the last month';
+  const ptStates = [...new Set(fromLocations.map((l) => l.state).filter((x): x is string => !!x))];
+  const fromName = fromE?.name ?? 'the old entity';
   const afterRows: ChecklistRow[] = [
     { id: 'a1', title: across ? `Employments move to ${intoE?.name ?? 'the new entity'} on ${date}` : `Changes take effect on ${date}`, owner: 'Automatic', status: 'On approval' },
     ...(across
@@ -313,7 +380,16 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           { id: 'a3', title: 'A continuity checklist for each person (PF, ESI, tax, pay), shown in payroll checks', owner: 'Payroll', status: 'On approval' },
         ]
       : []),
-    ...(closes ? [{ id: 'a4', title: `Final PF, ESI, professional tax and TDS returns of ${fromE?.name ?? 'the old entity'}, then archive it in Settings › Legal entities`, owner: 'Payroll and HR', status: 'You do this' }] : []),
+    ...(closes
+      ? [
+          { id: 'c1', title: `Final PF and ESI challans for ${lastMonth} filed`, owner: 'Payroll', status: 'On approval' },
+          { id: 'c2', title: `TDS return for ${lastDay ? quarterOf(lastDay) : 'the quarter'} filed`, owner: 'Payroll', status: 'On approval' },
+          { id: 'c3', title: `Part-year Form 16 from ${fromName} for moved staff`, owner: 'Payroll', status: 'On approval' },
+          { id: 'c4', title: `${ptStates.length ? ptStates.join(', ') : 'State'} professional tax final return filed`, owner: 'Payroll', status: 'On approval' },
+          { id: 'c5', title: 'PF, ESI and PT registrations surrendered', owner: 'HR', status: 'On approval' },
+          { id: 'c6', title: `${fromName} marked closed in Settings › Legal entities; history kept`, owner: 'HR', status: 'On approval' },
+        ]
+      : []),
   ];
   const cols: TableColumn<RestructurePersonResult>[] = [
     { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 200 },
@@ -346,10 +422,37 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           </ul>
         </InlineAlert>
       )}
+      {!live.draft && (live.drafts?.length ?? 0) > 0 && (
+        <Card title={`Your saved drafts (${live.drafts!.length})`}>
+          <ul className="yx-ppl__stack" aria-label="Saved drafts">
+            {live.drafts!.map((dr) => (
+              <li key={dr.id} className="yx-ppl__row yx-ppl__row--between">
+                <span className="yx-ppl__type">
+                  <span>{dr.title}</span>
+                  <span className="yx-ppl__sub">Saved {formatDate(new Date(dr.updatedAt))}</span>
+                </span>
+                <span className="yx-ppl__row">
+                  <Button size="sm" onClick={() => live.onContinueDraft?.(dr.id)}>Continue</Button>
+                  <Button size="sm" onClick={() => setDropDraft(dr)}>Delete</Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {saving && <InlineAlert tone="danger" title="The draft was not saved">{saving}</InlineAlert>}
       <Stepper
         title="Restructure"
         current={step}
         onCurrentChange={setStep}
+        {...(live.onSaveDraft
+          ? {
+              onSaveAndExit: () => {
+                const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
+                live.onSaveDraft!(state, heading, live.draft?.id ?? null).catch((e) => setSaving(e instanceof Error ? e.message : 'Try again.'));
+              },
+            }
+          : {})}
         continueBlocked={step === 'options' ? mapBlocked : undefined}
         finishLabel="Send for approval"
         finishBlocked={finishBlocked}
@@ -581,10 +684,13 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           {
             id: 'letters',
             title: 'Letters',
-            summary: `${ready.length} transfer letters · issue from Letters after approval`,
+            summary: `${ready.length} transfer letters · bulk issue after approval`,
             content: (
               <div className="yx-ppl__form">
-                <Text as="p">After approval, issue the transfer letters to the {ready.length} people from People › Letters. The restructure page links there with the people chosen.</Text>
+                <FormField label="Letter template" helper="Change the wording or the merge fields in Settings › Letter templates.">
+                  <Select options={live.letterTypes ?? []} value={letterType} onChange={setLetterType} placeholder={live.letterTypes?.length ? 'Choose a template' : 'No active letter templates'} disabled={!live.letterTypes?.length} />
+                </FormField>
+                <InlineAlert tone="info">Letters are made only after approval. The restructure page then opens the bulk issue for the {ready.length} people who moved, with this template chosen.</InlineAlert>
               </div>
             ),
           },
@@ -598,7 +704,19 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
         confirmLabel="Send for approval"
         objectName={objectName}
         onConfirm={async () => {
-          if (input) await live.onSend(input, heading);
+          if (input) await live.onSend({ ...input, ...(letterType ? { letterType } : {}), ...(live.draft ? { draftId: live.draft.id } : {}) }, heading);
+        }}
+      />
+      <ConfirmDialog
+        open={!!dropDraft}
+        onOpenChange={(o) => !o && setDropDraft(null)}
+        title={`Delete the draft “${dropDraft?.title ?? ''}”?`}
+        consequence="The saved plan is gone; nothing was sent."
+        confirmLabel="Delete draft"
+        destructive
+        onConfirm={async () => {
+          if (dropDraft) await live.onDeleteDraft?.(dropDraft.id);
+          setDropDraft(null);
         }}
       />
       {editing && (
@@ -626,6 +744,8 @@ export interface RestructureRecordData extends RestructureSummary {
   decisionNote: string | null;
   canDecide: boolean;
   canCancel: boolean;
+  /** The plan as sent (the letter template chosen for the transfer letters). */
+  plan?: { letterType?: string };
   people: { employeeId: string; name: string; status: 'pending' | 'moved' | 'failed' | 'left_out'; reason: string | null; result: RestructurePersonResult | null; openItems: number }[];
 }
 export interface ContinuityItemData {
@@ -650,7 +770,7 @@ export interface RestructureRecordProps {
   /** The continuity checklist of one person (moves between entities). */
   onItems?: (employeeId: string) => Promise<ContinuityItemData[]>;
   onItem?: (item: ContinuityItemData, done: boolean) => Promise<void>;
-  onLetters?: (employeeIds: string[]) => void;
+  onLetters?: (employeeIds: string[], letterType?: string) => void;
   /** Stories: the checklist drawer starts open for this person. */
   defaultChecklistFor?: string;
 }
@@ -754,7 +874,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
             {d.canCancel && onCancel && <Button onClick={() => setAsk('cancel')}>Cancel restructure</Button>}
             {d.canDecide && onReject && <Button onClick={() => setAsk('reject')}>Reject</Button>}
             {d.canDecide && onApprove && <Button variant="approve" onClick={() => setAsk('approve')}>Approve and move {count} people</Button>}
-            {d.status === 'done' && moved.length > 0 && onLetters && <Button onClick={() => onLetters(moved.map((p) => p.employeeId))}>Issue transfer letters</Button>}
+            {d.status === 'done' && moved.length > 0 && onLetters && <Button onClick={() => onLetters(moved.map((p) => p.employeeId), d.plan?.letterType)}>Issue transfer letters</Button>}
           </span>
         }
       />
