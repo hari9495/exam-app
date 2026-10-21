@@ -281,6 +281,9 @@ describe('People annual increment (PPL-06)', () => {
       await inc(who, { ...base(), mode: 'percent', percent: '5' }).expect(403);
       await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token[who]}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Nope', familyName: run, joinedOn: today, assignment: { locationId: ids.loc, departmentId: ids.ops, designationId: ids.desig, gradeId: ids.grade, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(403);
       await request(server()).post(`/api/v1/lifecycle/probations/${emp.kiran}/review`).set('Authorization', `Bearer ${token[who]}`).send({ outcome: 'confirm', comments: 'Good work' }).expect((r) => expect([403, 404]).toContain(r.status));
+      // Founder 21 Oct 2026 (option A): only HR changes pay; payroll is refused a salary revision on either route.
+      await request(server()).post('/api/v1/people/changes').set('Authorization', `Bearer ${token[who]}`).send({ employeeId: emp.kiran, changeType: 'salary_revision', effectiveDate: effective, payload: { compensation: { currency: 'INR', annualCtc: '400000' } }, reason: 'Raise' }).expect(403);
+      await request(server()).post(`/api/v1/payroll/employees/${emp.kiran}/compensation-changes`).set('Authorization', `Bearer ${token[who]}`).send({ employeeId: emp.kiran, effectiveDate: effective, templateVersionId: randomUUID(), entryMode: 'ctc', annualCtc: '400000', reason: 'Raise' }).expect(403);
       // Payroll keeps its pay work: it still reads pay.
       const pay = (await request(server()).get(`/api/v1/people/employees/${emp.kiran}/as-of?date=${today}&pay=true`).set('Authorization', `Bearer ${token[who]}`).expect(200)).body;
       expect(pay.compensation.annualCtc).toBe('333333.00');
@@ -291,6 +294,8 @@ describe('People annual increment (PPL-06)', () => {
     const pay = (await request(server()).get(`/api/v1/people/employees/${emp.kiran}/as-of?date=${today}&pay=true`).set('Authorization', `Bearer ${token.hrDemo}`).expect(200)).body;
     expect(pay.compensation.annualCtc).toBe('333333.00');
     const r = (await inc('hrDemo', { ...base(), mode: 'percent', percent: '5' }).expect(201)).body;
+    // HR changes one person's pay too (option A): a salary revision for approval.
+    await request(server()).post('/api/v1/people/changes').set('Authorization', `Bearer ${token.hrDemo}`).send({ employeeId: emp.kiran, changeType: 'salary_revision', effectiveDate: effective, payload: { compensation: { currency: 'INR', annualCtc: '400000' } }, reason: 'Market correction' }).expect(201);
     expect(r.people.find((p: { employeeId: string }) => p.employeeId === emp.kiran)).toMatchObject({ newCtc: '350000.00' });
   });
 });

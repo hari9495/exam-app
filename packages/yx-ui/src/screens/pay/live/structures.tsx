@@ -595,7 +595,8 @@ export interface CompensationLiveProps {
   templates: SalaryTemplate[] | null;
   today: string;
   onPreview: (c: CompensationInput) => Promise<Breakup>;
-  onSubmit: (c: CompensationInput & { reason: string }) => Promise<{ changeId: string; status: string }>;
+  /** Changing pay: HR with the salary grant and the job-change right (founder 21 Oct 2026). Without it, no new salary. */
+  onSubmit?: (c: CompensationInput & { reason: string }) => Promise<{ changeId: string; status: string }>;
   onLetter: (changeId: string, signatory: string) => Promise<{ referenceNo: string }>;
   profile: StatutoryProfile | null;
   onSaveProfile: (p: { validFrom: string; pf: 'yes' | 'no'; esi: 'yes' | 'no' | 'by_wage'; vpfPercent?: string; reason: string }) => Promise<unknown>;
@@ -734,6 +735,7 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                   <EmptyState compact title="No salary yet" />
                 )}
               </Card>
+              {p.onSubmit && (
               <Card className="yx-pay-card" title="New or revised salary">
                 <div className="yx-tim-row">
                   <FormField id="cp-date" label="From">
@@ -844,7 +846,7 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                       loading={busy === 'submit'}
                       onClick={() =>
                         void run('submit', async () => {
-                          await p.onSubmit({ ...form, reason: reason.trim() });
+                          await p.onSubmit!({ ...form, reason: reason.trim() });
                           setDone('Sent for approval. It takes effect once someone else approves it.');
                           setPreview(null);
                           setReason('');
@@ -856,6 +858,7 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                   </>
                 )}
               </Card>
+              )}
               {p.profile && (
                 <Card className="yx-pay-card" title="Statutory profile">
                   <p className="yx-tim-note">
