@@ -12,6 +12,7 @@ import { useAuth } from '../../../../../lib/auth-context';
 
 type View = 'disability' | 'register' | 'preclearance';
 const enc = encodeURIComponent;
+const dateText = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const cell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : /^[=+\-@]/.test(s) ? `'${s}` : s);
 
 // People › Declarations: the HR diversity role's disability declarations (PPL-38, Special) and, for companies that use
@@ -54,7 +55,7 @@ export default function YxDeclarationsPage() {
           },
           onCloseWindow: async (input) => {
             await call('POST', '/compliance/trading-windows', input);
-            toast({ tone: 'success', title: 'Trading window closed', description: `${input.from} to ${input.to}` });
+            toast({ tone: 'success', title: 'Trading window closed', description: `${dateText(input.from)} to ${dateText(input.to)}` });
           },
           onExport: (rows) => {
             const csv = [['Person', 'Declaration', 'Due', 'Status'], ...rows.map((r) => [r.name, r.type, r.due, r.status])].map((r) => r.map(cell).join(',')).join('\r\n');
