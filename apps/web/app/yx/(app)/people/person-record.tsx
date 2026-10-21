@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
+import { Button, ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
 import { ContactsDrawer, FamilyDrawer, PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
@@ -14,6 +14,7 @@ import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
 import { assetRows, attendanceCard, bankRows, currentPeriod, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
+import { reportErrors, UploadDocDialog, type AskableType } from './upload-doc-dialog';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -36,7 +37,7 @@ interface Balance {
 interface PersonDocs {
   personId: string;
   documents: QueueDocument[];
-  askable: { key: string; name: string }[];
+  askable: AskableType[];
   canManage: boolean;
 }
 
@@ -110,11 +111,13 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const [uploading, setUploading] = useState<string | null | false>(false);
+  const [uploading, setUploading] = useState(false);
   const [phone, setPhone] = useState('');
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
+  // A refusal from the server (e.g. "The file has not passed the virus check yet.") is a plain message, never a crash.
+  const refused = (message: string) => toast({ tone: 'error', title: message });
 
   const v = view.data ?? null;
   const h = history.data ?? null;
@@ -219,9 +222,9 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           hidden: 0,
           ...(docs.data.canManage && docs.data.askable.length ? { onRequest: () => setDocDialog({ kind: 'request' }) } : {}),
           // HR uploads on the person's behalf (the API checks document.manage in scope and scans the file).
-          ...(docs.data.canManage && !self && docs.data.askable.length ? { onUpload: () => setUploading(null) } : {}),
-          ...(docs.data.canManage ? { onVerify: (d: RecordDoc) => void docAction(d, 'verify'), onReject: (d: RecordDoc) => setDocDialog({ kind: 'reject', doc: d }) } : {}),
-          onDownload: (d: RecordDoc) => void download(d.id!, `${d.type}.pdf`),
+          ...(docs.data.canManage && !self && docs.data.askable.length ? { onUpload: () => setUploading(true) } : {}),
+          ...(docs.data.canManage ? { onVerify: (d: RecordDoc) => void reportErrors(() => docAction(d, 'verify'), refused), onReject: (d: RecordDoc) => setDocDialog({ kind: 'reject', doc: d }) } : {}),
+          onDownload: (d: RecordDoc) => void reportErrors(() => download(d.id!, `${d.type}.pdf`), refused),
         }
       : null,
     assets: assetList ? { rows: assetList, ...(perms.has('asset.manage') ? { onIssue: () => router.push('/yx/people/assets') } : {}) } : null,
@@ -259,26 +262,19 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
 
   live.children = (
     <>
-      {uploading !== false && docs.data && (
-        <Dialog open onOpenChange={(o) => !o && setUploading(false)} title={`Upload a document for ${first}`} footer={<Button onClick={() => setUploading(false)}>Close</Button>}>
-          <FormField label="Document" required>
-            <Select options={docs.data.askable.map((t) => ({ value: t.key, label: t.name }))} value={uploading} onChange={setUploading} searchable />
-          </FormField>
-          {uploading && (
-            <FormField label="File" required helper="PDF or an image, up to 10 MB. It is checked for viruses before anyone can open it.">
-              <FileUpload
-                multiple={false}
-                accept={['application/pdf', 'image/png', 'image/jpeg']}
-                upload={async (file) => {
-                  const form = new FormData();
-                  form.append('file', file);
-                  await lifeWrite('POST', `/documents/people/${id(docs.data!.personId)}/${id(uploading)}`, form);
-                  done(`${docs.data!.askable.find((t) => t.key === uploading)?.name ?? 'Document'} uploaded for ${first}`);
-                }}
-              />
-            </FormField>
-          )}
-        </Dialog>
+      {uploading && docs.data && (
+        <UploadDocDialog
+          name={first}
+          types={docs.data.askable}
+          onUpload={async (typeKey, file, expiresOn) => {
+            const form = new FormData();
+            form.append('file', file);
+            if (expiresOn) form.append('expiresOn', expiresOn);
+            await lifeWrite('POST', `/documents/people/${id(docs.data!.personId)}/${id(typeKey)}`, form);
+            done(`${docs.data!.askable.find((t) => t.key === typeKey)?.name ?? 'Document'} uploaded for ${first}`);
+          }}
+          onClose={() => setUploading(false)}
+        />
       )}
       {phoneOpen && (
         <ConfirmDialog
