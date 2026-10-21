@@ -12,7 +12,7 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, currentPeriod, docRows, familyData, payShown, type Compensation, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, attendanceCard, bankRows, currentPeriod, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
@@ -82,6 +82,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const myAssets = useLife<{ rows: { assignmentId: string; name: string; tag: string; issuedOn: string; condition: string; acknowledgedAt: string | null }[] }>(self && !perms.has('asset.view') ? '/lifecycle/me/assets' : null);
   const balances = useTime<{ people: { employeeId: string; balances: Balance[] }[] }>(personId && !self && perms.has('leave.view') ? '/hr/balances' : null);
   const myLeave = useTime<{ balances: Balance[] }>(self ? '/me/leave' : null);
+  // Attendance this month: the muster's scope (the person, their managers, attendance.view in scope).
+  const month = useTime<PersonMonth>(personId && (self || teamView || perms.has('attendance.view')) ? `/people/${p}/attendance?month=${today.slice(0, 7)}` : null);
   const people = usePeople<PersonOption[]>(canChange ? '/employees' : null);
   const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canChange);
   const raise = useRaiseChange();
@@ -139,8 +141,9 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const leave = self ? myLeave.data?.balances : (balances.data?.people.find((x) => x.employeeId === personId)?.balances ?? teamLeave.data?.balances);
   const time: LiveRecord['time'] = leave
     ? {
-        balances: leave.filter((b) => b.hasBalance && b.entitlement).map((b) => ({ type: b.name, used: Math.max(0, b.entitlement! - b.available), total: b.entitlement! })),
+        balances: leaveOrder(leave.filter((b) => b.hasBalance && b.entitlement)).map((b) => ({ type: b.name, used: Math.max(0, b.entitlement! - b.available), total: b.entitlement! })),
         unpaid: leave.find((b) => b.kind === 'lop')?.takenThisYear ?? null,
+        attendance: month.data ? attendanceCard(month.data) : null,
       }
     : null;
 

@@ -5,7 +5,7 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { bankRows, docRows, familyData, identityRows, jobRows, payShown, scheduledBody, upcoming } from './yx-record';
+import { attendanceCard, bankRows, clock, docRows, familyData, identityRows, jobRows, leaveOrder, payShown, scheduledBody, upcoming } from './yx-record';
 import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
@@ -158,5 +158,19 @@ describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
     const ch = { id: 'c1', status: 'scheduled', touchesPay: true, decidedAt: '2026-09-24T10:00:00Z', decidedByName: 'Karthik Subramanian', letter: { referenceNo: 'KF/HR/2026/0418', accepted: true }, impact: null } as unknown as ChangeRecord;
     expect(scheduledBody(ch, h)).toBe('Designation Quality Lead, Grade G6, CTC ₹7,80,000 a year. Approved by Karthik Subramanian on 24 Sept 2026. Letter KF/HR/2026/0418 accepted.');
     expect(scheduledBody({ ...ch, letter: null }, { ...h, payAccess: false, compensation: [] })).toBe('Designation Quality Lead, Grade G6, Pay changes. Approved by Karthik Subramanian on 24 Sept 2026.');
+  });
+});
+
+describe('person record Time tab (PPL-03, founder 22 Oct 2026)', () => {
+  it("the design's attendance card", () => {
+    expect(attendanceCard({ month: '2026-09', present: 20, late: ['2026-09-07', '2026-09-18'], missing: [{ on: '2026-09-23', regularisation: 'pending' }], shift: { pattern: 'Rotational', weekOf: '2026-09-28', name: 'B shift', start: 840, end: 1320 } })).toEqual({
+      title: 'Attendance, September 2026',
+      rows: [['Present', '20 days'], ['Late marks', '2 (7 Sept, 18 Sept)'], ['Missing punch', '1 (23 Sept, regularisation pending)'], ['Shift', 'Rotational · week of 28 Sept: B shift, 2 pm to 10 pm']],
+    });
+    expect(attendanceCard({ month: '2026-10', present: 0.5, late: [], missing: [], shift: { pattern: null, weekOf: '2026-10-19', name: null, start: null, end: null } }).rows.map((r) => r[1])).toEqual(['0.5 days', 'None', 'None', 'Location default · week of 19 Oct: weekly off']);
+    expect(clock(570)).toBe('9:30 am');
+  });
+  it('leave cards: Casual, Sick, Earned, then the rest in the order given', () => {
+    expect(leaveOrder([{ kind: 'earned' }, { kind: 'comp_off' }, { kind: 'sick' }, { kind: 'other' }, { kind: 'casual' }]).map((x) => x.kind)).toEqual(['casual', 'sick', 'earned', 'comp_off', 'other']);
   });
 });

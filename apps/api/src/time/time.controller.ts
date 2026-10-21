@@ -135,6 +135,12 @@ export class TimeController {
     return this.attendance.dayCard(ctx, this.user(req), employeeId, /^\d{4}-\d{2}-\d{2}$/.test(on) ? on : '0000-00-00');
   }
 
+  /** PPL-03: a person's month of attendance on their record (the muster's scope); decided by the service. */
+  @Get('people/:employeeId/attendance')
+  personAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() q: MonthQueryDto) {
+    return this.attendance.personMonth(ctx, this.user(req), employeeId, q.month);
+  }
+
   /** PPL-03: a person's balances on their record (self, HR in scope, or their managers); decided by the service. */
   @Get('people/:employeeId/balances')
   personBalances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {

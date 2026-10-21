@@ -119,7 +119,7 @@ export interface LiveRecord {
   pastChanges: number;
   pay: LiveRecordPay;
   /** null: no Time tab (no leave access). */
-  time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null } | null;
+  time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
   assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
   history: { rows: JobChange[]; roles: RecordRole[] } | null;
@@ -457,7 +457,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                   </div>
                 )}
               </TabsContent>
-              <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} /> : <TimeTab />}</TabsContent>
+              <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} attendance={live.time.attendance ?? null} /> : <TimeTab />}</TabsContent>
               <TabsContent value="documents">
                 {live ? (
                   live.documents && <DocumentsTab persona={persona} rows={live.documents.rows} hidden={live.documents.hidden} actions={live.documents} />
@@ -739,7 +739,32 @@ const SAMPLE_BALANCES = [
   { type: 'Earned leave', used: 6.5, total: 15 },
 ];
 
-function TimeTab({ balances = SAMPLE_BALANCES, unpaid }: { balances?: { type: string; used: number; total: number }[]; unpaid?: number | null }) {
+const SAMPLE_ATTENDANCE = {
+  title: 'Attendance, September 2026',
+  rows: [
+    ['Present', '20 days'],
+    ['Late marks', '2 (7 Sep, 18 Sep)'],
+    ['Missing punch', '1 (23 Sep, regularisation pending)'],
+    ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
+  ] as [string, string][],
+};
+
+function AttendanceCard({ attendance }: { attendance: { title: string; rows: [string, string][] } }) {
+  return (
+    <Card title={attendance.title}>
+      <dl className="yx-ppl__dl">
+        {attendance.rows.map(([l, v]) => (
+          <div key={l} className="yx-ppl__dl-row">
+            <dt>{l}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
+function TimeTab({ balances = SAMPLE_BALANCES, unpaid, attendance }: { balances?: { type: string; used: number; total: number }[]; unpaid?: number | null; attendance?: { title: string; rows: [string, string][] } | null }) {
   const live = unpaid !== undefined;
   return (
     <div className="yx-ppl__stack">
@@ -751,31 +776,20 @@ function TimeTab({ balances = SAMPLE_BALANCES, unpaid }: { balances?: { type: st
         ))}
       </div>
       {live ? (
-        unpaid !== null && (
-          <Card title="Unpaid leave">
-            <Text as="p">{unpaid === 0 ? 'None taken this year.' : `${unpaid} day${unpaid === 1 ? '' : 's'} taken this year.`}</Text>
-          </Card>
-        )
+        <>
+          {unpaid !== null && (
+            <Card title="Unpaid leave">
+              <Text as="p">{unpaid === 0 ? 'None taken this year.' : `${unpaid} day${unpaid === 1 ? '' : 's'} taken this year.`}</Text>
+            </Card>
+          )}
+          {attendance && <AttendanceCard attendance={attendance} />}
+        </>
       ) : (
         <>
           <Card title="Unpaid leave">
             <Text as="p">2 days taken this year (11 and 12 Jun 2026).</Text>
           </Card>
-          <Card title="Attendance, September 2026">
-            <dl className="yx-ppl__dl">
-              {[
-                ['Present', '20 days'],
-                ['Late marks', '2 (7 Sep, 18 Sep)'],
-                ['Missing punch', '1 (23 Sep, regularisation pending)'],
-                ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
-              ].map(([l, v]) => (
-                <div key={l} className="yx-ppl__dl-row">
-                  <dt>{l}</dt>
-                  <dd>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
+          <AttendanceCard attendance={SAMPLE_ATTENDANCE} />
         </>
       )}
     </div>

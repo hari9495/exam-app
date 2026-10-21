@@ -143,6 +143,48 @@ function probationText(v: AsOfView): string {
   return `${STATUS[st.status] ?? st.status} since ${dateText(st.validFrom)}`;
 }
 
+/** One person's month from the time API (PPL-03 Time tab). */
+export interface PersonMonth {
+  month: string;
+  present: number;
+  late: string[];
+  missing: { on: string; regularisation: 'pending' | 'approved' | 'rejected' | 'withdrawn' | null }[];
+  shift: { pattern: string | null; weekOf: string; name: string | null; start: number | null; end: number | null };
+}
+
+const short = (iso: string) => day(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+/** 840 → "2 pm", 870 → "2:30 pm". */
+export const clock = (minute: number) => {
+  const h = Math.floor(minute / 60) % 24;
+  const m = minute % 60;
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'am' : 'pm'}`;
+};
+
+/** The design's "Attendance, <month>" card. */
+export function attendanceCard(m: PersonMonth): { title: string; rows: [string, string][] } {
+  const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
+  const s = m.shift;
+  const shift = s.name && s.start !== null && s.end !== null ? `${s.name}, ${clock(s.start)} to ${clock(s.end)}` : 'weekly off';
+  return {
+    title: `Attendance, ${day(`${m.month}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`,
+    rows: [
+      ['Present', days(m.present)],
+      ['Late marks', m.late.length ? `${m.late.length} (${m.late.map(short).join(', ')})` : 'None'],
+      ['Missing punch', m.missing.length ? `${m.missing.length} (${m.missing.map((x) => `${short(x.on)}, ${x.regularisation ? `regularisation ${x.regularisation}` : 'not regularised'}`).join('; ')})` : 'None'],
+      ['Shift', `${s.pattern ?? 'Location default'} · week of ${short(s.weekOf)}: ${shift}`],
+    ],
+  };
+}
+
+/** Leave cards in the design's order: Casual, Sick, Earned, then the rest as the API lists them. */
+export function leaveOrder<T extends { kind: string }>(rows: T[]): T[] {
+  const rank = (k: string) => {
+    const i = ['casual', 'sick', 'earned'].indexOf(k);
+    return i === -1 ? 3 : i;
+  };
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => rank(a.r.kind) - rank(b.r.kind) || a.i - b.i).map((x) => x.r);
+}
+
 /** Current assignment (Job tab), as on the viewed date. */
 export function jobRows(v: AsOfView): [string, string][] {
   const a = v.assignment;

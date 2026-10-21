@@ -683,6 +683,12 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       const job = (await api('lakshmiU', 'get', `${path}/as-of`).expect(200)).body.job;
       expect(Object.keys(job).sort()).toEqual(['holidayCalendar', 'noticePeriod', 'probationEndsOn', 'shiftPattern']);
       expect(job.holidayCalendar).toBeNull();
+      // Time tab: the month's attendance in the muster's scope (the person, their manager); HR without attendance.view and another company never.
+      const month = today.slice(0, 7);
+      expect((await api('imranU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(200)).body).toMatchObject({ month, present: 0, late: [], missing: [] });
+      await api('lakshmiU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(200);
+      await api('arjunU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(404);
+      await api('adminB', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(404);
     });
 
     it('pay: only with a salary grant reaching the person, audited; a department head with team salary sees their subtree (Q3)', async () => {
