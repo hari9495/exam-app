@@ -1,3 +1,4 @@
+import { DocumentsModule } from '../documents/documents.module';
 import { Module } from '@nestjs/common';
 import { CryptoModule } from '@exam-platform/shared';
 import { EmployeeHistoryModule } from '../employee-history/employee-history.module';
@@ -15,7 +16,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 // bulk changes; the record by sensitivity class with self-service and identity / bank change requests (step 2d,
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
-  imports: [EmployeeHistoryModule, CryptoModule, EmailModule],
+  imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule],
   providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
   controllers: [PeopleController, WorkforceController],
   exports: [PeopleService, ProfileService],

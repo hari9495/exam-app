@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -21,10 +21,12 @@ import {
   ReasonDto,
   ReassignDto,
   ReportsQueryDto,
+  IncrementDto,
+  IncrementLetterPreviewDto,
 } from './dto';
 import { PeopleService } from './people.service';
 import { ProfileService } from './profile.service';
-import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto } from './profile.dto';
+import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
 //   implicit grants (YX-SEC-04)   directory and org chart for employees of the company (Public fields, P02 Q4);
@@ -60,7 +62,7 @@ export class PeopleController {
 
   @Get('org-chart')
   async orgChart(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OrgChartQueryDto) {
-    return this.people.orgChart(ctx, await this.viewer(req), q.asOf);
+    return this.people.orgChart(ctx, await this.viewer(req), q.asOf, q.legalEntityId);
   }
 
   @Get('team')
@@ -127,6 +129,18 @@ export class PeopleController {
   async reveal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RevealDto) {
     ownSession(req);
     return this.profiles.reveal(ctx, await this.viewer(req), id, dto.field);
+  }
+
+  /** PPL-03 Activity: who did what on the record; each kind only where the viewer may see it. */
+  @Get('employees/:id/activity')
+  async activity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.activity(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/work-phone')
+  async workPhone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkPhoneDto) {
+    ownSession(req);
+    return this.profiles.setWorkPhone(ctx, await this.viewer(req), id, dto.workPhone ?? null);
   }
 
   @Put('employees/:id/personal')
@@ -203,6 +217,25 @@ export class PeopleController {
   async reassign(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ReassignDto) {
     ownSession(req);
     return this.bulk.reassign(ctx, await this.viewer(req), dto);
+  }
+
+  /** PPL-06 annual increment: pay changes, so both the change and the pay grant (R1). */
+  @Post('change-batches/increment')
+  @RequirePermissions('employee.change.manage', 'employee.salary.manage')
+  async increment(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: IncrementDto) {
+    ownSession(req);
+    return this.bulk.increment(ctx, await this.viewer(req), dto);
+  }
+
+  /** PPL-06 Letters step: one person's increment letter as a marked preview PDF (pay: both grants again, R1). */
+  @Post('change-batches/increment/letter-preview')
+  @HttpCode(200)
+  @RequirePermissions('employee.change.manage', 'employee.salary.manage')
+  async incrementLetter(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Body() dto: IncrementLetterPreviewDto) {
+    ownSession(req);
+    const f = await this.bulk.incrementLetterPreview(ctx, await this.viewer(req), dto);
+    res.set({ 'Content-Type': f.contentType, 'Content-Disposition': 'attachment; filename="preview.pdf"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
   }
 
   @Get('change-batches/:id')
