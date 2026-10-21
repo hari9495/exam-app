@@ -4279,6 +4279,12 @@
     "result": "Pass (employee)",
     "findings": "Arjun: chart opens on his card, search, views, zoom, Show me, Export (design gives Export to every role). Retest after #194: PNG/PDF export, no scroll with the as-on notice, Position view with vacancies, as-on for everyone (past), company switcher filter (B).",
     "fixedIn": ""
+   },
+   {
+    "date": "2026-10-21",
+    "result": "Fail (in progress)",
+    "findings": "Retest as hr@: no Position button although 2 open jobs exist (single company chosen / past date); after resizing the window with the 'as on' notice the chart canvas stayed tiny (~120 px).",
+    "fixedIn": "People builder, PR #194"
    }
   ],
   "ideas": []
