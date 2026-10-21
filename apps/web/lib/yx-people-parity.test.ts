@@ -5,7 +5,8 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { docRows, upcoming } from './yx-record';
+import { bankRows, docRows, familyData, identityRows, upcoming } from './yx-record';
+import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
 const as = <T>(x: unknown) => x as T;
@@ -75,5 +76,28 @@ describe('person record (PPL-03)', () => {
     const v = as<AsOfView>({ status: { status: 'probation', validTo: '2026-12-01' }, employee: { joinedOn: '2024-11-05', exitedOn: null } });
     const h = as<HistoryView>({ changes: [] });
     expect(upcoming(v, h, '2026-10-20', ['Salary bank account']).map((e) => [e.label, e.note])).toEqual([['Probation ends', undefined], ['Work anniversary (2 years)', undefined], ['1 pending request', 'Profile change: salary bank account']]);
+  });
+});
+
+describe('person record identity and family (PPL-03, founder 22 Oct 2026)', () => {
+  const prof = {
+    can: { reveal: true, editPersonal: false, requestChange: false },
+    classes: { aadhaar: false },
+    identity: { legalName: 'Arjun Kulkarni', pan: '•••• 821M', aadhaar: '•••• 1942', uan: '•••• 1775', esic: null, passport: '•••• 7728', passportExpiresOn: null, bankAccounts: [{ purpose: 'salary', holderName: 'Arjun', ifsc: 'CNRB0001234', account: '•••• 6789', usableFrom: '2020-01-01' }], pending: [] },
+  } as unknown as ProfileView;
+  it('masks in the design shape, from the last four the API sent', () => {
+    const rows = identityRows(prof, async () => '');
+    const v = (label: string) => rows.find((r) => r.label === label)?.masked;
+    expect([v('PAN'), v('Aadhaar'), v('UAN'), v('Passport'), v('Salary account')]).toEqual(['XXXXXX821M', 'XXXX XXXX 1942', 'XXXXXXXX1775', 'XXXX7728', 'CNRB0001234 · XXXX XXXX 6789']);
+    expect(rows.find((r) => r.label === 'Aadhaar')?.canReveal).toBe(false);
+    expect(bankRows(prof, async () => '')).toHaveLength(1);
+  });
+  it('family: nominees by member, the marital-status note only when the record shows the change', () => {
+    const f = { members: [{ id: 'm1', name: 'Shalini', relation: 'Spouse', dateOfBirth: '1994-11-02', dependant: true }], nominations: [{ scheme: 'pf', familyMemberId: 'm1', name: 'Shalini', relation: 'Spouse', sharePercent: 100 }, { scheme: 'all', familyMemberId: null, name: 'Old', relation: 'Father', sharePercent: 100 }], expectedSchemes: ['gratuity'], contacts: [], maritalChangedAt: null, nominationsReviewedAt: '2026-10-01T10:00:00.000Z' };
+    const out = familyData(f);
+    expect(out.nominations.map((n) => n.member)).toEqual([0, null]);
+    expect(out.note).toBeNull();
+    expect(familyData({ ...f, maritalChangedAt: '2026-09-01T10:00:00.000Z' }).note).toBe('Marital status changed on 1 Sept 2026. Nominations were reviewed after that change.');
+    expect(familyData({ ...f, maritalChangedAt: '2026-10-05T10:00:00.000Z' }).note).toMatch(/not been reviewed since/);
   });
 });

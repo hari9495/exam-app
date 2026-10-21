@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { ContactsDrawer, FamilyDrawer, PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -12,7 +12,7 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, bankRows, currentPeriod, docRows, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
+import { assetRows, bankRows, currentPeriod, docRows, familyData, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 
 const id = encodeURIComponent;
@@ -107,6 +107,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
 
   const [editing, setEditing] = useState(false);
+  const [familyEdit, setFamilyEdit] = useState<'family' | 'contacts' | null>(null);
   const [changing, setChanging] = useState(false);
   const [withdrawing, setWithdrawing] = useState<ProfileRequest | null>(null);
   const [starting, setStarting] = useState(false);
@@ -215,6 +216,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     })),
     ...(prof?.can.editPersonal && prof.personal ? { onEditPersonal: () => setEditing(true) } : {}),
     ...(prof?.can.requestChange ? { onRequestChange: () => setChanging(true) } : {}),
+    // Family and nominations: HR edits them; emergency contacts: the person too (whoever may edit Personal details).
+    family: prof?.family
+      ? { ...familyData(prof.family), ...(prof.can.editFamily ? { onEdit: () => setFamilyEdit('family') } : {}), ...(prof.can.editPersonal ? { onEditContacts: () => setFamilyEdit('contacts') } : {}) }
+      : null,
     job: v ? jobRows(v) : null,
     scheduled: h ? scheduledNotes(h) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
@@ -315,6 +320,32 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
             done(`${self ? 'Your' : `${first}'s`} personal details saved`);
           }}
           onClose={() => setEditing(false)}
+        />
+      )}
+      {familyEdit === 'family' && prof?.family && (
+        <FamilyDrawer
+          name={name}
+          initial={familyData(prof.family)}
+          onSave={async (f) => {
+            await write('PUT', `/employees/${p}/family`, {
+              members: f.members.map((m) => ({ ...(m.id ? { id: m.id } : {}), name: m.name, relation: m.relation, dateOfBirth: m.dateOfBirth ? iso(m.dateOfBirth) : null, dependant: m.dependant })),
+              nominations: f.nominations.map((n) => ({ scheme: n.scheme, member: n.member, sharePercent: n.share })),
+            });
+            void profile.refetch();
+            done(`${first}'s family and nominees saved`);
+          }}
+          onClose={() => setFamilyEdit(null)}
+        />
+      )}
+      {familyEdit === 'contacts' && prof?.family && (
+        <ContactsDrawer
+          initial={prof.family.contacts}
+          onSave={async (contacts) => {
+            await write('PUT', `/employees/${p}/emergency-contacts`, { contacts });
+            void profile.refetch();
+            done(`${self ? 'Your' : `${first}'s`} emergency contacts saved`);
+          }}
+          onClose={() => setFamilyEdit(null)}
         />
       )}
       {changing && (

@@ -8,7 +8,7 @@ import { displayName, EmployeeHistoryService, Viewer } from '../employee-history
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
 import { settingFor } from './probation';
-import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
 
 // The employee's own data beyond job facts (P02 §4.4–4.5; P01 §4.4; M01 §3.1, Q4):
 //   Personal      the person and HR holding employee.personal.view in scope; the person edits it directly,
@@ -100,6 +100,8 @@ export class ProfileService {
           pay: covers(a.payPeriods, today),
         },
         personal: personal ? this.personalView(details) : null,
+        // PPL-03 family, nominations and emergency contacts: Personal class, like the details above.
+        family: personal ? await this.familyView(tx, c, employeeId) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
         // Internal class: the work phone and email (PPL-03 key facts, Message).
         work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
@@ -110,6 +112,8 @@ export class ProfileService {
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
           reveal: !v.actingForOther && identity,
           editWork: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
+          // Family and nominations decide who is paid (YX-LC-16): HR changes them, the person asks HR.
+          editFamily: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
         },
       };
     });
@@ -229,6 +233,85 @@ export class ProfileService {
     const html = `<p>The personal email on your work record was changed on ${todayIst()}.</p><p>If you did not do this, contact HR at once.</p>`;
     await Promise.allSettled(out.tell.map((to) => this.email.send({ to, subject: 'Your personal email at work was changed', html, organizationId: out.organizationId }))).catch((e) => this.logger.error(e));
     return out.view;
+  }
+
+  // ================= family, nominations, emergency contacts (PPL-03; Personal) =================
+
+  /** The family, the current nominations and the emergency contacts; nominee names follow the family member. */
+  private async familyView(tx: Tx, c: CompanyContext, employeeId: string) {
+    const o = { organizationId: c.organizationId, employeeId };
+    const members = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+    const nominations = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null }, orderBy: { createdAt: 'asc' } });
+    const contacts = await tx.employeeEmergencyContact.findMany({ where: o, orderBy: { position: 'asc' } });
+    const statutory = await tx.employeeStatutory.findFirst({ where: { ...o, validTo: null }, orderBy: { validFrom: 'desc' }, select: { pf: true, eps: true } });
+    const marital = await tx.auditLog.findFirst({
+      where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, action: 'employee.personal.updated', metadataJson: { contains: '"maritalStatus"' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const reviewedAt = nominations.reduce<Date | null>((m, n) => (!m || n.createdAt > m ? n.createdAt : m), null);
+    return {
+      members: members.map((m) => ({ id: m.id, name: m.name, relation: m.relation, dateOfBirth: m.dateOfBirth ? isoDate(m.dateOfBirth) : null, dependant: m.dependant })),
+      nominations: nominations.map((n) => {
+        const m = members.find((x) => x.id === n.familyMemberId);
+        return { scheme: n.scheme, familyMemberId: n.familyMemberId, name: m?.name ?? n.name, relation: m?.relation ?? n.relation, sharePercent: Number(n.sharePercent) };
+      }),
+      // Schemes the person should name a nominee for: gratuity always; PF and EPS only while covered.
+      expectedSchemes: ['gratuity', ...(statutory?.pf === 'yes' ? ['pf', ...(statutory.eps ? ['eps'] : [])] : [])],
+      contacts: contacts.map((x) => ({ name: x.name, relation: x.relation, phone: x.phone })),
+      maritalChangedAt: marital?.createdAt.toISOString() ?? null,
+      nominationsReviewedAt: reviewedAt?.toISOString() ?? null,
+    };
+  }
+
+  /** Family and nominations together (nominees are family members; each scheme's shares total 100). HR only. */
+  updateFamily(ctx: TenantContext, v: Viewer, employeeId: string, dto: FamilyDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (a.self) throw new ForbiddenException('HR keeps your family and nominations. Ask HR to change them.');
+      if (!(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing family and nominations needs employee.profile.edit for this person.');
+      const problem = nominationProblem(dto.members.length, dto.nominations);
+      if (problem) throw new BadRequestException(problem);
+      const today = todayIst();
+      if (dto.members.some((m) => m.dateOfBirth && (m.dateOfBirth > today || m.dateOfBirth < '1900-01-01'))) throw new BadRequestException('A date of birth must be a real past date.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const current = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, select: { id: true } });
+      if (dto.members.some((m) => m.id && !current.some((x) => x.id === m.id))) throw new BadRequestException('A family member is not on this record.');
+      const by = c.userId ?? null;
+      const ids: string[] = [];
+      for (const [position, m] of dto.members.entries()) {
+        const data = { name: m.name.trim(), relation: m.relation.trim(), dateOfBirth: m.dateOfBirth ? new Date(`${m.dateOfBirth}T00:00:00Z`) : null, dependant: m.dependant, position, updatedBy: by };
+        ids.push(m.id ? (await tx.employeeFamilyMember.update({ where: { id: m.id }, data })).id : (await tx.employeeFamilyMember.create({ data: { ...o, ...data } })).id);
+      }
+      const removed = current.filter((x) => !ids.includes(x.id)).map((x) => x.id);
+      if (removed.length) await tx.employeeFamilyMember.updateMany({ where: { ...o, id: { in: removed } }, data: { removedAt: new Date(), updatedBy: by } });
+      // Nominations are replaced only when they changed, so "reviewed" stays the date they were last decided.
+      const key = (r: { scheme: string; familyMemberId: string | null; sharePercent: unknown }) => `${r.scheme}:${r.familyMemberId}:${Number(r.sharePercent).toFixed(2)}`;
+      const before = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null } });
+      const next = dto.nominations.map((n) => ({ scheme: n.scheme, familyMemberId: ids[n.member], sharePercent: n.sharePercent, member: dto.members[n.member] }));
+      const nominationsChanged = before.map(key).sort().join('|') !== next.map(key).sort().join('|');
+      if (nominationsChanged) {
+        await tx.employeeNomination.updateMany({ where: { ...o, supersededAt: null }, data: { supersededAt: new Date() } });
+        if (next.length) await tx.employeeNomination.createMany({ data: next.map((n) => ({ ...o, scheme: n.scheme, familyMemberId: n.familyMemberId, name: n.member.name.trim(), relation: n.member.relation.trim(), sharePercent: n.sharePercent, source: 'hr' })) });
+      }
+      // P08: what changed and by whom, never the values (Personal data stays out of the log).
+      await audit(tx, c, 'employee.family.updated', 'employee', employeeId, { members: ids.length, removed: removed.length, nominationsChanged, by: 'hr' });
+      return this.familyView(tx, c, employeeId);
+    });
+  }
+
+  /** Emergency contacts, in calling order: the person edits their own directly; HR with employee.profile.edit. */
+  setEmergencyContacts(ctx: TenantContext, v: Viewer, employeeId: string, dto: EmergencyContactsDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (!a.self && !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing emergency contacts needs employee.profile.edit for this person.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const rows = dto.contacts.map((x, position) => ({ ...o, name: x.name.trim(), relation: x.relation.trim(), phone: e164(x.phone), position, updatedBy: c.userId ?? null }));
+      await tx.employeeEmergencyContact.deleteMany({ where: o });
+      if (rows.length) await tx.employeeEmergencyContact.createMany({ data: rows });
+      await audit(tx, c, 'employee.emergency_contacts.updated', 'employee', employeeId, { count: rows.length, by: a.self ? 'self' : 'hr' });
+      return (await this.familyView(tx, c, employeeId)).contacts;
+    });
   }
 
   /** Work phone (Internal): HR with employee.profile.edit for the person; the person asks HR (it is the company's line). */

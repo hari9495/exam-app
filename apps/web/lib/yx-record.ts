@@ -1,5 +1,5 @@
 import { formatPhone } from '@yukthix/ui';
-import type { FieldRow, JobChange, RecordDoc, RecordEvent, RecordPerformance } from '@yukthix/ui/frame';
+import type { FieldRow, JobChange, RecordDoc, RecordEvent, RecordFamily, RecordPerformance } from '@yukthix/ui/frame';
 import type { AsOfView, ChangeRecord, HistoryView } from '@yukthix/ui/history';
 import type { ProfileView, RevealField } from '@yukthix/ui/access';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -27,12 +27,24 @@ export function personalRows(p: NonNullable<ProfileView['personal']>): FieldRow[
   ];
 }
 
+// The design's masks (PPL-03): the API sends only the last four ("•••• 821M"); the rest shows as X in the identifier's shape.
+const MASK: Record<RevealField, (last4: string) => string> = {
+  pan: (t) => `XXXXXX${t}`,
+  aadhaar: (t) => `XXXX XXXX ${t}`,
+  uan: (t) => `XXXXXXXX${t}`,
+  esic: (t) => `XXXXXX${t}`,
+  passport: (t) => `XXXX${t}`,
+  bank_salary: (t) => `XXXX XXXX ${t}`,
+  bank_reimbursement: (t) => `XXXX XXXX ${t}`,
+};
+export const maskAs = (field: RevealField, masked: string) => MASK[field](masked.slice(-4));
+
 /** Identity and bank fields, masked as the API sent them; "Show" asks the API (a recorded look) where it allows. */
 export function identityRows(p: ProfileView, reveal: (field: RevealField) => Promise<string>): FieldRow[] {
   const id = p.identity;
   if (!id) return [];
   const row = (label: string, field: RevealField, value: string | null, allowed: boolean, cls: FieldRow['cls'] = 'Confidential'): FieldRow =>
-    value ? { label, value, masked: value, cls, mono: true, canReveal: allowed, ...(allowed ? { reveal: () => reveal(field) } : {}) } : { label, value: 'Not on file', cls };
+    value ? { label, value: maskAs(field, value), masked: maskAs(field, value), cls, mono: true, canReveal: allowed, ...(allowed ? { reveal: () => reveal(field) } : {}) } : { label, value: 'Not on file', cls };
   return [
     { label: 'Legal name', value: id.legalName ?? 'Not on file', cls: 'Confidential' },
     row('PAN', 'pan', id.pan, p.can.reveal),
@@ -49,7 +61,7 @@ export function passportRow(p: ProfileView, reveal: (field: RevealField) => Prom
   const id = p.identity;
   if (!id?.passport) return { label: 'Passport', value: 'Not on file', cls: 'Confidential' };
   const expires = id.passportExpiresOn ? ` · expires ${dateText(id.passportExpiresOn)}` : '';
-  const masked = `${id.passport}${expires}`;
+  const masked = `${maskAs('passport', id.passport)}${expires}`;
   return { label: 'Passport', value: masked, masked, cls: 'Confidential', mono: true, canReveal: p.can.reveal, ...(p.can.reveal ? { reveal: async () => `${await reveal('passport')}${expires}` } : {}) };
 }
 
@@ -57,7 +69,8 @@ export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise
   return (p.identity?.bankAccounts ?? []).map((b) => {
     const field: RevealField = b.purpose === 'salary' ? 'bank_salary' : 'bank_reimbursement';
     const later = day(b.usableFrom) > new Date() ? ` · used for pay from ${dateText(b.usableFrom)}` : '';
-    const masked = `${b.account} · ${b.ifsc}${later}`;
+    // shortcut: no IFSC-to-bank-name list in the codebase, so the IFSC stands where the design shows the bank name.
+    const masked = `${b.ifsc} · ${maskAs(field, b.account ?? '')}${later}`;
     return {
       label: b.purpose === 'salary' ? 'Salary account' : 'Reimbursement account',
       value: masked,
@@ -65,9 +78,25 @@ export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise
       cls: 'Confidential' as const,
       mono: true,
       canReveal: p.can.reveal,
-      ...(p.can.reveal ? { reveal: async () => `${await reveal(field)} · ${b.ifsc}${later}` } : {}),
+      ...(p.can.reveal ? { reveal: async () => `${b.ifsc} · ${await reveal(field)}${later}` } : {}),
     };
   });
+}
+
+/** Family and nominees, emergency contacts (PPL-03); the note only when the record shows a marital status change. */
+export function familyData(f: NonNullable<ProfileView['family']>): RecordFamily {
+  const changed = f.maritalChangedAt;
+  const reviewed = f.nominationsReviewedAt;
+  return {
+    members: f.members.map((m) => ({ id: m.id, name: m.name, relation: m.relation, dateOfBirth: m.dateOfBirth ? day(m.dateOfBirth) : null, dependant: m.dependant })),
+    nominations: f.nominations.map((n) => {
+      const i = f.members.findIndex((m) => m.id === n.familyMemberId);
+      return { scheme: n.scheme, member: i === -1 ? null : i, name: n.name, share: n.sharePercent };
+    }),
+    expected: f.expectedSchemes,
+    contacts: f.contacts,
+    note: changed ? `Marital status changed on ${dateText(changed)}. ${reviewed && reviewed > changed ? 'Nominations were reviewed after that change.' : 'Nominations have not been reviewed since.'}` : null,
+  };
 }
 
 /** Current assignment (Job tab), as on the viewed date. */

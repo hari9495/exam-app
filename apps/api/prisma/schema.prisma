@@ -6384,17 +6384,56 @@ model JoinerBatch {
 }
 
 model EmployeeNomination {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  scheme         String    @db.VarChar(12)
+  name           String    @db.VarChar(100)
+  relation       String    @db.VarChar(40)
+  sharePercent   Decimal   @map("share_percent") @db.Decimal(5, 2)
+  source         String    @db.VarChar(12)
+  /// PPL-03: the family member nominated (null on joiner rows from before).
+  familyMemberId String?   @map("family_member_id") @db.Uuid
+  /// Set when a later review replaced this nomination.
+  supersededAt   DateTime? @map("superseded_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("employee_nominations")
+}
+
+/// PPL-03 family (Personal class, P02 §4.4); never deleted, a removal stamps removedAt.
+model EmployeeFamilyMember {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  relation       String    @db.VarChar(40)
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  dependant      Boolean   @default(false)
+  position       Int       @default(0) @db.SmallInt
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, id], map: "employee_family_members_org_employee_id_key")
+  @@map("employee_family_members")
+}
+
+/// PPL-03 emergency contacts (Personal class), in calling order.
+model EmployeeEmergencyContact {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   employeeId     String   @map("employee_id") @db.Uuid
-  scheme         String   @db.VarChar(12)
   name           String   @db.VarChar(100)
   relation       String   @db.VarChar(40)
-  sharePercent   Decimal  @map("share_percent") @db.Decimal(5, 2)
-  source         String   @db.VarChar(12)
+  phone          String   @db.VarChar(16)
+  position       Int      @db.SmallInt
+  updatedBy      String?  @map("updated_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  @@map("employee_nominations")
+  @@unique([organizationId, employeeId, position], map: "employee_emergency_contacts_position_key")
+  @@map("employee_emergency_contacts")
 }
 
 model ExitPayee {

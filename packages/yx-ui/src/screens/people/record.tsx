@@ -19,6 +19,7 @@ import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/forma
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { FamilyCards, type RecordFamily } from './family';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
 export type RecordPanel = 'activity' | 'identity' | 'roles';
@@ -95,6 +96,8 @@ export interface LiveRecord {
   pending: { id: string; label: string; detail: string; onWithdraw?: () => void }[];
   onEditPersonal?: () => void;
   onRequestChange?: () => void;
+  /** Family, nominees and emergency contacts (Personal; null: the viewer may not see them). */
+  family?: RecordFamily | null;
   job: [string, string][] | null;
   scheduled: { title: string; body: string }[];
   pastChanges: number;
@@ -412,9 +415,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             <>
               <TabsContent value="overview">
                 {live ? (
-                  <OverviewTab persona={persona} relation={relation} name={name} personal={live.personal} identity={live.identity} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={name} today={today} personal={live.personal} identity={live.identity} family={live.family ?? undefined} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 ) : (
-                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} personal={ARJUN.personal} identity={ARJUN.identity} family={ARJUN} custom={ARJUN.custom} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} today={today} personal={ARJUN.personal} identity={ARJUN.identity} family={{ members: ARJUN.family, nominations: ARJUN.nominations, expected: ARJUN.expectedSchemes, contacts: ARJUN.emergency, note: ARJUN.familyNote, ...(persona === 'hr' ? { onEdit: () => {} } : {}), ...(self || persona === 'hr' ? { onEditContacts: () => {} } : {}) }} custom={ARJUN.custom} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 )}
               </TabsContent>
               <TabsContent value="job">
@@ -472,11 +475,6 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
 
 /* ------------------------------------------------------------------ tabs */
 
-interface FamilyData {
-  family: { name: string; relation: string; dependent: boolean }[];
-  nominations: { scheme: string; name: string; share: number }[];
-  emergency: { name: string; relation: string; phone: string }[];
-}
 interface CustomField {
   label: string;
   value: string;
@@ -484,7 +482,7 @@ interface CustomField {
   selfEdit: boolean;
 }
 
-function OverviewTab({ persona, relation, name, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: FamilyData; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
+function OverviewTab({ persona, relation, name, today, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; today: Date; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: RecordFamily; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
   const familyVis = fieldVisibility('Personal', persona, relation);
   const custom = allCustom.filter((c) => fieldVisibility(c.cls, persona, relation) !== 'hidden');
   const first = name.split(' ')[0];
@@ -511,69 +509,7 @@ function OverviewTab({ persona, relation, name, personal, identity, family, cust
         </Card>
       )}
       {family && familyVis !== 'hidden' ? (
-        <>
-          <Card title="Family and nominees">
-            <div className="yx-ppl__grid2">
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Family, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Family</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Relation</th>
-                    <th scope="col">Dependant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {family.family.map((f) => (
-                    <tr key={f.name}>
-                      <td>{f.name}</td>
-                      <td>{f.relation}</td>
-                      <td>{f.dependent ? 'Yes' : 'No'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Nominations, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Nominations</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Scheme</th>
-                    <th scope="col">Nominee</th>
-                    <th scope="col">Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {family.nominations.map((n) => (
-                    <tr key={n.scheme + n.name}>
-                      <td>{n.scheme}</td>
-                      <td>{n.name}</td>
-                      <td className="yx-ppl__num">{n.share}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-            <Text size="sm" tone="secondary" as="p">
-              Marital status changed on 2 Feb 2020. Nominations were reviewed after that change.
-            </Text>
-          </Card>
-          <Card title="Emergency contacts">
-            <ul className="yx-ppl__successors">
-              {family.emergency.map((e) => (
-                <li key={e.name}>
-                  <span>
-                    {e.name} · {e.relation}
-                  </span>
-                  <span>{formatPhone(e.phone)}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </>
+        <FamilyCards family={family} today={today} />
       ) : family ? (
         <Text size="sm" tone="secondary" as="p">
           Family, nominees and emergency contacts are Personal fields. Only {first} and HR see them.
