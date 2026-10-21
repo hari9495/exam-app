@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'timeExceptions' | 'timeRequests';
 
 export interface NavLink {
   id: string;
@@ -127,15 +127,17 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: [
       ...sec(undefined, [
         ...when(manager || has('attendance.view'), L('muster', 'Muster', '/yx/time/muster')),
+        // TIM nav: this month's open exceptions are resolved on the muster (as Home's "Resolve before lock").
+        ...when(has('attendance.view'), L('exceptions', 'Exceptions', '/yx/time/muster?view=exceptions', 'timeExceptions')),
         ...when(manager || has('roster.manage'), L('roster', 'Roster', '/yx/time/roster')),
-        ...when(manager || has('leave.view'), L('team-leave', 'Team leave', '/yx/time/team')),
-        ...when(manager || has('attendance.view'), L('overtime-review', 'Overtime', '/yx/time/overtime-review')),
-        ...when(has('leave.view'), L('leave-balances', 'Leave balances', '/yx/time/balances')),
+        ...when(manager || has('leave.view'), L('team-leave', 'Leave calendar', '/yx/time/team')),
+        ...when(manager || has('attendance.view'), L('overtime-review', 'Requests', '/yx/time/overtime-review', 'timeRequests')),
+        ...when(has('leave.view'), L('leave-balances', 'Leave reports', '/yx/time/balances')),
         ...when(has('attendance.lock'), L('periods', 'Periods', '/yx/time/periods')),
         ...when(has('attendance.view'), L('registers', 'Reports', '/yx/time/registers'), L('payroll-feed', 'Payroll feed', '/yx/time/payroll-feed')),
       ]),
       ...sec('My time', when(self, L('my-attendance', 'My attendance', '/yx/time/attendance'), L('my-leave', 'My leave', '/yx/time/leave'), L('my-shifts', 'My shifts', '/yx/time/shifts'), L('my-timesheet', 'My timesheet', '/yx/time/timesheet'), L('my-overtime', 'My overtime', '/yx/time/overtime'))),
-      ...sec('Time settings', when(has('leave.settings.manage'), L('shifts-setup', 'Shifts & patterns', '/yx/time/shifts-setup'), L('time-setup', 'Leave types & policies', '/yx/time/setup'))),
+      ...sec('Time settings', when(has('leave.settings.manage'), L('shifts-setup', 'Shifts & patterns', '/yx/time/shifts-setup'), L('time-setup', 'Leave types & policies', '/yx/time/setup'), L('holidays', 'Holiday calendars', '/yx/time/holidays'), L('time-locations', 'Locations', '/yx/time/locations'), L('year-end', 'Leave year-end', '/yx/time/year-end'))),
     ],
   };
 

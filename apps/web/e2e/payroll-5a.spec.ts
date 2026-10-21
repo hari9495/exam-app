@@ -32,17 +32,16 @@ test('Suresh asks to reopen last month → Meena checks → Neha approves → th
   // 0. The seed locks last month for the Tamil Nadu entity; if an earlier run reopened it, HR locks it again.
   const hr = await signedIn(browser, 'hr@demo-org.test');
   await hr.goto('/yx/time/periods');
-  if (!sameYear) await hr.getByRole('button', { name: 'Previous year' }).click();
-  const hrRow = hr.getByRole('table', { name: `${ENTITY} periods` }).getByRole('row').filter({ hasText: monthName });
-  await expect(hrRow).toBeVisible();
-  if (await hrRow.getByRole('button', { name: 'Lock' }).isVisible()) {
-    await hrRow.getByRole('button', { name: 'Lock' }).click();
+  // The designed Periods screen (TIM-11): a section per legal entity, a card per month (last year's months show too).
+  const hrMonth = hr.getByRole('region', { name: ENTITY, exact: true }).getByRole('region', { name: monthName, exact: true });
+  await expect(hrMonth).toBeVisible();
+  if (await hrMonth.getByRole('button', { name: 'Pre-lock checklist' }).isVisible()) {
+    await hrMonth.getByRole('button', { name: 'Pre-lock checklist' }).click();
     const lock = hr.getByRole('dialog');
-    await expect(lock.getByText('Ready to lock')).toBeVisible({ timeout: 60_000 });
-    await lock.getByRole('button', { name: 'Lock the month' }).click();
+    await lock.getByRole('button', { name: 'Lock period' }).click();
     await expect(lock).toHaveCount(0, { timeout: 60_000 });
   }
-  await expect(hrRow.getByText('Locked', { exact: true })).toBeVisible();
+  await expect(hrMonth.getByText('Locked', { exact: true })).toBeVisible({ timeout: 60_000 });
 
   // 1. Suresh asks to reopen it on Pay periods.
   const suresh = await signedIn(browser, 'payroll@demo-org.test');

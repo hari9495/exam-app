@@ -132,11 +132,7 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   await tx.nightWorkConsent.create({ data: { ...org, employeeId: workers.revathi, locationId: hosur.id, givenOn: day(addDays(start, -1)), reference: 'Signed consent form HSR/NW/2026/014, kept by Plant HR', recordedBy: hr, confirmedAt: day(addDays(start, -1)) } });
   for (const item of ['transport', 'security', 'rest_room', 'group', 'posh']) await tx.nightWorkSafeguard.create({ data: { ...org, locationId: hosur.id, item, attestedOn: day(addDays(start, -1)), reviewDue: day(addDays(today, 180)), note: 'Checked on the plant walk-round with the safety officer', attestedBy: hr } });
 
-  // ---- maternity and paternity eligibility by the policy (founder decision 9 Oct 2026) ----
-  for (const [code, genders] of [['ML', ['female']], ['PTL', ['male']]] as const) {
-    const t = await tx.leaveType.findFirst({ where: { ...org, code } });
-    if (t) await tx.leaveType.update({ where: { id: t.id }, data: { rules: { ...DEFAULT_RULES, ...(t.rules as object), eligibleGenders: genders } as Prisma.InputJsonValue } });
-  }
+  // Maternity and paternity eligibility by the policy (founder decision 9 Oct 2026) is in the leave types' version 1 (seed-time.ts).
 
   // ---- OT rule for plant workers (Q7): the plant is a factory, so overtime is paid at the legal rate ----
   // Founder decision 9 Oct 2026: factory overtime is paid, not comp-off (P07 IN.FACTORIES, 2× ordinary wages, verify).

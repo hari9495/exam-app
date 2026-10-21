@@ -1,5 +1,5 @@
 // Devices, timesheets, reports, timesheet pre-fill. TIM-14, TIM-15, TIM-16, TIM-30, TIM-43.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, Download, Link2, LogOut, Plus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { EMPLOYEES, ENTITIES } from '../_kit/data';
@@ -26,6 +26,11 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
+import { LiveLeaveCard } from './leave';
+import type { HrBalances, LedgerRow as LiveLedgerRow, LoadState, Muster as MusterData, MyTimesheet, Registers, TimesheetLineInput } from './live/types';
+import { ErrorState, NoAccessState } from '../../components/feedback';
+import { LoadingBlock } from './attendance';
+import { useToast } from '../../components/notify';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -436,7 +441,119 @@ function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   return [out, [...changed].sort()];
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[] }) {
+/** What the live app gives My timesheet (design audit): the person's week and the calls that save and send it. */
+export interface LiveTimesheet {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyTimesheet | null;
+  /** Monday of the week shown, and today (yyyy-mm-dd). */
+  week: string;
+  today: string;
+  onWeek: (week: string) => void;
+  onSave: (week: string, lines: TimesheetLineInput[]) => Promise<unknown>;
+  onSubmit: (week: string) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+
+type TimesheetProps = { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** The live app's data. Stories leave it out. */ live?: LiveTimesheet };
+
+export function TimesheetScreen(props: TimesheetProps) {
+  return props.live ? <LiveTimesheetView live={props.live} /> : <StoryTimesheet {...props} />;
+}
+
+const TS_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
+const isoLocalDate = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoPlus = (iso: string, n: number) => { const d = isoLocalDate(iso); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/** TIM-15 on live data: the designed grid for the person's week, the week's facts, and Submit week under the hours. */
+function LiveTimesheetView({ live }: { live: LiveTimesheet }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [lines, setLines] = useState<TimesheetLine[]>([]);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) })));
+    setProblems([]);
+  }, [d]);
+  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)) }));
+  const days: TimesheetDay[] = (d?.days ?? []).map((x) => {
+    const expected = Math.round(((x.expectedMinutes ?? 0) / 60) * 100) / 100;
+    return x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : x.weeklyOff ? { expected: 0, kind: 'weekend' } : { expected, kind: 'workday' };
+  });
+  const st: TimesheetStatus = d?.sheet ? TS_STATUS[d.sheet.status] : 'draft';
+  const editable = st === 'draft' || st === 'sent_back';
+  const lockedDays = (d?.days ?? []).filter((x) => x.locked);
+  const range = d ? `${dayMonth(isoLocalDate(d.week))} – ${dayMonth(isoLocalDate(isoPlus(d.week, 6)))}` : '';
+  const act = async (key: string, fn: () => Promise<unknown>, done: string) => {
+    setBusy(key);
+    setFailed('');
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const submit = () => {
+    const p = checkTimesheet(lines).map((x) => x.message);
+    setProblems(p);
+    if (p.length || !d) return;
+    void act('submit', async () => { await live.onSave(d.week, input()); await live.onSubmit(d.week); }, `Timesheet for ${range} sent for approval`);
+  };
+  if (live.state === 'no-access') return <NoAccessState grantedBy="HR" what="your timesheet" />;
+  return (
+    <TimePage active="My timesheet">
+      <PageHeader title="My timesheet" description={d ? `Approver: the project manager of each project${d.mode !== 'timesheet' ? ' · your days come from your check-ins' : ''}` : undefined} />
+      {failed && <InlineAlert tone="danger" title="That did not work">{failed}</InlineAlert>}
+      {lockedDays.length > 0 && (
+        <InlineAlert tone="info" title="Part of this week is locked">
+          {lockedDays.map((x) => dayMonth(isoLocalDate(x.on))).join(', ')}: the month is closed, so those hours can't change.
+        </InlineAlert>
+      )}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? <LoadingBlock rows={6} /> : live.state === 'error' ? (
+        <ErrorState title="Your timesheet didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : d && (
+        <>
+          <TimesheetGrid
+            weekStart={isoLocalDate(d.week)}
+            days={days}
+            status={st}
+            lines={lines}
+            onLinesChange={setLines}
+            projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
+            onPrevWeek={() => live.onWeek(isoPlus(d.week, -7))}
+            onNextWeek={d.week < live.week || isoPlus(d.week, 7) <= live.today ? () => live.onWeek(isoPlus(d.week, 7)) : undefined}
+            onSaveDraft={editable ? () => void act('save', () => live.onSave(d.week, input()), `Draft saved for ${range}`) : undefined}
+            saving={busy === 'save'}
+            today={isoLocalDate(live.today)}
+          />
+          {st === 'submitted' && (
+            <div className="yx-tim-row">
+              <span className="yx-tim-muted">Waiting for approval.</span>
+              <Button size="sm" loading={busy === 'withdraw'} onClick={() => void act('withdraw', () => live.onWithdraw(d.sheet!.id), `Timesheet for ${range} recalled to edit`)}>Recall to edit</Button>
+            </div>
+          )}
+          {st === 'approved' && <p className="yx-tim-muted">Approved.</p>}
+          {editable && (
+            <div className="yx-tim-stack">
+              {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
+              <div className="yx-tim-row">
+                <Button variant="primary" loading={busy === 'submit'} disabled={!lines.some((l) => l.projectId)} onClick={submit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button>
+                <span className="yx-tim-muted">{lines.some((l) => l.projectId) ? 'Goes to the project managers.' : 'Add a row with your hours first.'}</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryTimesheet({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines }: TimesheetProps) {
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
@@ -886,7 +1003,169 @@ const NIGHT: NightRow[] = [
   { id: 'n2', name: 'Selvi Arumugam', code: 'KF-0186', consent: 'NWC-2026-021', validTo: '28 Feb 2027', sep: 6, aug: 8, transport: { sep: 6, aug: 8 } },
 ];
 
-export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready' }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState }) {
+/** What the live app gives the attendance reports (design audit): the month's muster and the establishments' registers. */
+export interface LiveAttendanceReports {
+  state: LoadState;
+  onRetry?: () => void;
+  muster: MusterData | null;
+  registers: Registers | null;
+  /** yyyy-mm-dd and yyyy-mm. */
+  today: string;
+  month: string;
+  /** The months to pick from (yyyy-mm, newest first); picking one moves the top-bar period. */
+  months: string[];
+  onMonth: (month: string) => void;
+  onDownload: (type: 'muster' | 'leave', locationId: string, format: 'pdf' | 'xlsx') => Promise<unknown>;
+}
+
+type AttendanceReportsProps = { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's data. Stories leave it out. */ live?: LiveAttendanceReports };
+
+export function AttendanceReportsScreen(props: AttendanceReportsProps) {
+  return props.live ? <LiveAttendanceReportsView live={props.live} /> : <StoryAttendanceReports {...props} />;
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthTitle = (m: string) => `${MONTHS_LONG[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+const STATE_NAME: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
+interface LiveReportRow { id: string; label: string; loc: string; late: number; otHours: number; lop: number }
+
+/** TIM-16 on live data: late marks and overtime by department (or by person for a manager), and the statutory registers to download. */
+function LiveAttendanceReportsView({ live }: { live: LiveAttendanceReports }) {
+  const { toast } = useToast();
+  const [r, setR] = useState<string>('late');
+  const [filters, setFilters] = useState<FilterValue[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+  const m = live.muster;
+  const mgr = m?.scope === 'team';
+  // Each person's counted days: late check-ins, approved overtime and unpaid leave (today is still open).
+  const perPerson: LiveReportRow[] = (m?.people ?? []).map((p) => {
+    const days = p.days.filter((d) => d.on < live.today);
+    return {
+      id: p.id,
+      label: mgr ? p.name : p.department ?? '',
+      loc: p.location,
+      late: days.filter((d) => (d.lateMinutes ?? 0) > 0).length,
+      otHours: Math.round((days.reduce((a, d) => a + (d.ot?.status === 'approved' ? d.ot.minutes : 0), 0) / 60) * 100) / 100,
+      lop: days.filter((d) => d.leave?.code === 'LOP').length,
+    };
+  });
+  const grouped = mgr
+    ? perPerson
+    : [...perPerson.reduce((acc, x) => {
+        const k = `${x.label}|${x.loc}`;
+        const g = acc.get(k) ?? { id: k, label: x.label, loc: x.loc, late: 0, otHours: 0, lop: 0 };
+        acc.set(k, { ...g, late: g.late + x.late, otHours: Math.round((g.otHours + x.otHours) * 100) / 100, lop: g.lop + x.lop });
+        return acc;
+      }, new Map<string, LiveReportRow>()).values()].sort((a, b) => a.label.localeCompare(b.label));
+  const locs = multi(filters, 'loc');
+  const depts = multi(filters, 'dept');
+  const rows = grouped.filter((x) => (!locs || locs.includes(x.loc)) && (mgr || !depts || depts.includes(x.label)));
+  const cats = [...new Set(rows.map((x) => x.label))];
+  const sum = (pick: (x: LiveReportRow) => number) => cats.map((c) => rows.filter((x) => x.label === c).reduce((a, x) => a + pick(x), 0));
+  const isOt = r === 'ot';
+  const cols: TableColumn<LiveReportRow>[] = [
+    { key: 'label', header: mgr ? 'Employee' : 'Department', value: (x) => x.label },
+    { key: 'loc', header: 'Location', value: (x) => x.loc, optional: true },
+    { key: 'late', header: 'Late marks', type: 'number', value: (x) => x.late, total: 'sum', optional: isOt },
+    { key: 'ot', header: 'Overtime hours', type: 'number', value: (x) => x.otHours, total: 'sum', optional: !isOt },
+    { key: 'lop', header: 'Unpaid days (LOP)', type: 'number', value: (x) => x.lop, total: 'sum', optional: true },
+  ];
+  // The statutory registers this month: one option per register kind the establishments in scope keep.
+  const regs = live.registers?.locations ?? [];
+  const kinds = [...new Map(regs.flatMap((l) => l.formats).map((f) => [f.type, f.type === 'muster' ? 'Register of attendance (muster roll)' : 'Register of leave'])).entries()];
+  const reg = r.startsWith('reg:') ? (r.slice(4) as 'muster' | 'leave') : null;
+  const current = live.month === live.today.slice(0, 7);
+  const lastDay = Number(live.today.slice(8, 10)) - 1;
+  const period = current ? (
+    <span className="yx-tim-muted">{lastDay > 0 ? `1–${lastDay} ${MONTHS_LONG[Number(live.month.slice(5, 7)) - 1].slice(0, 3)}` : 'Nothing counted yet'} · today's check-ins not counted yet</span>
+  ) : (
+    <span className="yx-tim-row"><span>{monthTitle(live.month)}</span>{regs.length > 0 && regs.every((l) => l.locked) && <Badge tone="neutral">Locked</Badge>}</span>
+  );
+  const download = async (type: 'muster' | 'leave', l: Registers['locations'][number], fmt: 'pdf' | 'xlsx', title: string) => {
+    setBusy(`${l.id}-${fmt}`);
+    setFailed('');
+    try {
+      await live.onDownload(type, l.id, fmt);
+      toast({ tone: 'success', title: `${title} · ${l.name} downloaded`, description: l.locked ? undefined : `Draft: ${monthTitle(live.month)} is not locked yet.` });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Not downloaded. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const tableState = live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready';
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title={mgr ? 'My team · attendance' : 'Attendance reports'}
+        description={mgr ? `Your ${perPerson.length} direct reports` : undefined}
+        facts={period}
+        actions={
+          <div className="yx-tim-row">
+            <div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v)} options={[{ value: 'late', label: 'Late marks' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : kinds.map(([type, label]) => ({ value: `reg:${type}`, label })))]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={live.months.map((x) => ({ value: x, label: monthTitle(x) }))} /></div>
+          </div>
+        }
+      />
+      {failed && <InlineAlert tone="danger" title="Not downloaded">{failed}</InlineAlert>}
+      {live.state === 'no-access' ? (
+        <EmptyState title="No attendance to report" description="People you manage, or look after in HR, appear here." />
+      ) : reg ? (
+        <div className="yx-tim-stack">
+          {regs.filter((l) => l.formats.some((f) => f.type === reg)).map((l) => {
+            const f = l.formats.find((x) => x.type === reg)!;
+            return (
+              <Card key={l.id} title={`${f.title} · ${l.name}`} actions={l.locked ? <Badge tone="neutral">Month locked</Badge> : <Badge tone="warning">Draft: month not locked</Badge>}>
+                <div className="yx-tim-stack">
+                  <p className="yx-tim-muted">{l.entity} · {STATE_NAME[l.state] ?? l.state} · {l.people} people · {f.form}{l.verify ? ' · format to be confirmed by your compliance adviser' : ''}</p>
+                  <div className="yx-tim-row">
+                    <Button icon={Download} loading={busy === `${l.id}-pdf`} onClick={() => void download(reg, l, 'pdf', f.title)}>Download PDF</Button>
+                    <Button icon={Download} loading={busy === `${l.id}-xlsx`} onClick={() => void download(reg, l, 'xlsx', f.title)}>Download Excel</Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          {(rows.length > 0 || live.state === 'loading') && (
+            <BarChart
+              title={isOt ? (mgr ? 'Overtime hours by person' : 'Overtime hours by department') : mgr ? 'Late marks by person' : 'Late marks by department'}
+              categories={mgr ? cats.map((c) => c.split(' ')[0]) : cats}
+              series={isOt ? [{ name: 'Overtime hours', values: sum((x) => x.otHours) }] : [{ name: 'Late marks', values: sum((x) => x.late) }]}
+              xLabel={mgr ? 'Employee' : 'Department'}
+              horizontalBelow={480}
+              loading={live.state === 'loading'}
+            />
+          )}
+          <DataTable
+            key={r}
+            label="Report rows"
+            columns={cols}
+            rows={rows}
+            getRowId={(x) => x.id}
+            state={tableState}
+            onRetry={live.onRetry}
+            // ponytail: CSV for both choices (no Excel writer in the library yet).
+            onExport={live.state === 'ready' ? () => csvDownload(`${isOt ? 'Overtime' : 'Late marks'} · ${monthTitle(live.month)}.csv`, [cols.map((c) => String(c.header)), ...rows.map((x) => cols.map((c) => String(c.value?.(x) ?? '')))]) : undefined}
+            toolbar={<FilterBar fields={[{ key: 'loc', label: 'Location', type: 'multi', options: [...new Set(grouped.map((x) => x.loc))].map((l) => ({ value: l, label: l })) }, ...(mgr ? [] : [{ key: 'dept', label: 'Department', type: 'multi' as const, options: [...new Set(grouped.map((x) => x.label))].map((d) => ({ value: d, label: d })) }])]} value={filters} onChange={setFilters} />}
+            empty={
+              filters.length > 0 ? (
+                <EmptyState title="No attendance for these filters" description="No one matches every filter you picked." action={<Button onClick={() => setFilters([])}>Clear filters</Button>} />
+              ) : (
+                <EmptyState title="No attendance recorded" description={`Nothing was recorded for ${monthTitle(live.month)} yet.`} />
+              )
+            }
+          />
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+function StoryAttendanceReports({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready' }: AttendanceReportsProps) {
   const [r, setR] = useState(report);
   const [month, setMonth] = useState<Month>(startMonth);
   const [filters, setFilters] = useState<FilterValue[]>(startFilters);
@@ -1101,7 +1380,114 @@ const LOP: LopRow[] = [
 ];
 
 type LeaveReport = 'balances' | 'ledger' | 'taken' | 'lop' | 'liability' | 'negative';
-export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state = 'ready' }: { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState }) {
+
+/** What the live app gives the leave reports (design audit): everyone's balances in scope, and each leave card. */
+export interface LiveLeaveReports {
+  state: LoadState;
+  onRetry?: () => void;
+  data: HrBalances | null;
+  /** yyyy-mm-dd in the company's time. */
+  today: string;
+  onLedger: (employeeId: string) => Promise<LiveLedgerRow[]>;
+  onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+}
+
+type LeaveReportsProps = { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState; /** The live app's data. Stories leave it out. */ live?: LiveLeaveReports };
+
+export function LeaveReportsScreen(props: LeaveReportsProps) {
+  return props.live ? <LiveLeaveReportsView live={props.live} /> : <StoryLeaveReports {...props} />;
+}
+
+type LivePerson = HrBalances['people'][number];
+const csvDownload = (name: string, rows: (string | number)[][]) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/** TIM-30 on live data: the report picker, the table with a column per leave type, and each person's leave card. */
+function LiveLeaveReportsView({ live }: { live: LiveLeaveReports }) {
+  const d = live.data;
+  const [r, setR] = useState<'balances' | 'taken' | 'negative'>('balances');
+  const [open, setOpen] = useState<LivePerson | null>(null);
+  const [ledger, setLedger] = useState<LiveLedgerRow[] | null>(null);
+  // The designed order: Casual, Sick, Earned, Comp-off, then the rest.
+  const ORDER = ['casual', 'sick', 'earned', 'comp_off'];
+  const rank = (k: string) => (ORDER.includes(k) ? ORDER.indexOf(k) : ORDER.length);
+  const types = [...(d?.types ?? [])].sort((a, b) => rank(a.kind) - rank(b.kind));
+  const bal = (x: LivePerson, id: string) => x.balances.find((b) => b.leaveTypeId === id);
+  // Types with a balance get a balance column; the others (unpaid) show the days taken.
+  const withBalance = types.filter((t) => (d?.people ?? []).some((x) => bal(x, t.id)?.hasBalance));
+  const unpaid = types.filter((t) => !withBalance.includes(t));
+  const people = (d?.people ?? []).filter((x) => r !== 'negative' || x.balances.some((b) => b.hasBalance && b.balance < 0));
+  const person: TableColumn<LivePerson> = { key: 'name', header: 'Employee', type: 'person', width: PERSON_W, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: x.code ?? undefined }) };
+  const balCell = (x: LivePerson, id: string) => {
+    const b = bal(x, id);
+    return !b ? '' : b.balance < 0 ? <Badge tone="danger">{b.balance}</Badge> : b.balance;
+  };
+  const cols: TableColumn<LivePerson>[] =
+    r === 'taken'
+      ? [person, ...types.map((t): TableColumn<LivePerson> => ({ key: t.id, header: t.name.replace(/ leave$/, ''), type: 'number', value: (x) => bal(x, t.id)?.takenThisYear ?? 0, total: 'sum' }))]
+      : [
+          person,
+          ...withBalance.map((t): TableColumn<LivePerson> => ({ key: t.id, header: t.name.replace(/ leave$/, ''), type: 'number', value: (x) => bal(x, t.id)?.balance ?? 0, total: r === 'negative' ? undefined : 'sum', render: (x) => balCell(x, t.id) })),
+          ...unpaid.map((t): TableColumn<LivePerson> => ({ key: t.id, header: `${t.name.replace(/ leave$/, '')} taken`, type: 'number', value: (x) => bal(x, t.id)?.takenThisYear ?? 0, total: r === 'negative' ? undefined : 'sum', optional: t.kind !== 'unpaid' })),
+        ];
+  const options = [
+    { value: 'balances', label: 'Balances' },
+    { value: 'taken', label: 'Leave taken' },
+    { value: 'negative', label: 'Negative balances' },
+  ];
+  const asOf = formatDate(new Date(Number(live.today.slice(0, 4)), Number(live.today.slice(5, 7)) - 1, Number(live.today.slice(8, 10))));
+  const reportLabel = options.find((o) => o.value === r)!.label;
+  const openCard = (x: LivePerson) => {
+    setOpen(x);
+    setLedger(null);
+    live.onLedger(x.employeeId).then(setLedger, () => setLedger([]));
+  };
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title="Leave reports"
+        description={r === 'taken' ? `Days taken or approved this leave year, as of ${asOf}` : `Balances as of ${asOf}`}
+        actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as typeof r)} options={options} /></div>}
+      />
+      {live.state === 'no-access' ? (
+        <EmptyState title="Nothing to show" description="People in your HR scope appear here." />
+      ) : (
+        <DataTable
+          key={r}
+          label="Leave report"
+          columns={cols}
+          rows={people}
+          getRowId={(x) => x.employeeId}
+          state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
+          onRetry={live.onRetry}
+          // ponytail: CSV for both choices (no Excel writer in the library yet); add one when finance asks for .xlsx.
+          onExport={live.state === 'ready' ? () => csvDownload(`${reportLabel} · ${asOf}.csv`, [cols.map((c) => String(c.header)), ...people.map((x) => cols.map((c) => String(c.value?.(x) ?? '')))]) : undefined}
+          // Each row opens that person's leave card; the negative list also says so on a button, as designed.
+          onRowClick={openCard}
+          rowButtons={r === 'negative' ? (x) => <Button size="sm" onClick={() => openCard(x)}>Open {x.name.split(' ')[0]}'s leave card</Button> : undefined}
+          empty={r === 'negative' ? <EmptyState title="No one is below zero" description="No one has used more leave than they have." /> : <EmptyState title="Nothing to show" description="People in your HR scope appear here once they have leave." />}
+        />
+      )}
+      {open && (
+        <LiveLeaveCard
+          open
+          onClose={() => setOpen(null)}
+          person={{ name: open.name, code: open.code }}
+          balances={(d?.people.find((x) => x.employeeId === open.employeeId) ?? open).balances}
+          ledger={ledger}
+          onAdjust={open.canAdjust ? async (input) => { await live.onAdjust(open.employeeId, input); setLedger(await live.onLedger(open.employeeId)); } : undefined}
+        />
+      )}
+    </TimePage>
+  );
+}
+
+function StoryLeaveReports({ report = 'balances', persona = 'hr', state = 'ready' }: LeaveReportsProps) {
   const fin = persona === 'fin';
   const [r, setR] = useState<LeaveReport>(fin ? 'liability' : report);
   const narrow = useNarrow(599);

@@ -32,6 +32,8 @@ export interface LeaveRequestRow {
   fromHalf: 'full' | 'second';
   toHalf: 'full' | 'first';
   days: number;
+  /** Leave by the hour: the hours of the one day. */
+  hours?: number | null;
   status: LeaveStatus;
   certificate: 'none' | 'pending' | 'verified';
   reason: string | null;
@@ -72,7 +74,7 @@ export interface LeaveInput {
 export type MaternityCase = 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
 
 export interface LeavePlan {
-  type: { id: string; code: string; name: string; kind: string; rules: { certificateAfterDays: number | null; medical: boolean; halfDays: boolean } };
+  type: { id: string; code: string; name: string; kind: string; rules: { certificateAfterDays: number | null; medical: boolean; halfDays: boolean; hourly?: boolean } };
   days: { on: string; part: Half; portion: number; countedAs: 'leave' | 'sandwich' | 'holiday' | 'weekly_off' }[];
   total: number;
   holidaysExcluded: number;
@@ -85,9 +87,11 @@ export interface LeavePlan {
   warnings: string[];
 }
 
+export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
+
 export interface PunchRow {
   id: string;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   at: string;
   source: string;
   accepted: boolean;
@@ -116,7 +120,8 @@ export type FixKind = 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day';
 export interface FixRow {
   id: string;
   on: string;
-  kind: FixKind;
+  /** A fix of the day, or work from home on it (TIM-07). */
+  kind: FixKind | 'wfh';
   inMinute: number | null;
   outMinute: number | null;
   reason: string;
@@ -133,15 +138,26 @@ export interface MyAttendance {
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
+  /** On a break now (Start break pressed, End break not yet). */
+  onBreak?: boolean;
   days: DayRow[];
   requests: FixRow[];
   regularise: { limit: number; used: number };
+  /** Work-from-home days this month (asked for or approved) and the days a month the manager alone approves. */
+  wfh: { limit: number; used: number };
+  /** Today is an approved work-from-home day. */
+  wfhToday?: boolean;
+}
+
+export interface WfhInput {
+  on: string;
+  reason: string;
 }
 
 export interface PunchResult {
   accepted: boolean;
   duplicate: boolean;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   message: string;
   verdict: string;
   distanceM: number | null;
@@ -159,7 +175,15 @@ export interface TeamCalendar {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
+  people: { id: string; name: string; code: string | null; me: boolean; department?: string; location?: string; /** Weekly offs in the range (yyyy-mm-dd). */ offs?: string[]; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
+}
+
+/** What the muster adds to a day: the leave taken, overtime and its state, a request waiting, approved work from home. */
+export interface MusterDay {
+  leave: { code: string; name: string } | null;
+  ot: { minutes: number; status: 'pending' | 'approved' | 'comp-off' } | null;
+  waiting: boolean;
+  wfh: boolean;
 }
 
 export interface Muster {
@@ -167,7 +191,7 @@ export interface Muster {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; days: DayRow[] }[];
+  people: { id: string; name: string; code: string | null; location: string; department?: string; me: boolean; mode: string; missingPunchEffect: string; days: (DayRow & MusterDay)[] }[];
 }
 
 export interface DayCard {
@@ -175,6 +199,8 @@ export interface DayCard {
   on: string;
   zone: string;
   day: Omit<DayRow, 'on'> | null;
+  /** The shift that day (minutes after midnight); null on a weekly off. */
+  shift?: { name: string; start: number; end: number; grace: number } | null;
   punches: (PunchRow & { minute: number })[];
 }
 
@@ -205,6 +231,17 @@ export interface LeaveRules {
   negativeLimit: number;
   encashable: boolean;
   hrApprovalAboveDays: number | null;
+  /** Who may take it at all (founder decision 9 Oct 2026); null or missing: everyone. */
+  eligibleGenders?: string[] | null;
+  // TIM-27 rules (founder decisions 20 Oct 2026); missing on older data means the default shown.
+  employment?: 'all' | 'permanent_contract' | 'permanent';
+  minServiceMonths?: number;
+  duringProbation?: boolean;
+  maxDaysPerMonth?: number | null;
+  blockedDates?: { from: string; to: string; reason: string }[];
+  hourly?: boolean;
+  longAbsence?: 'pause' | 'continue';
+  duringNotice?: 'allowed' | 'unpaid' | 'extends' | 'blocked';
 }
 
 export interface LeaveTypeRow {
@@ -215,7 +252,11 @@ export interface LeaveTypeRow {
   paid: boolean;
   colour: string;
   active: boolean;
+  /** The rules in force today, and their version number. */
   rules: LeaveRules;
+  version: number;
+  /** Every dated version, newest first: leave follows the version in force on its first day. */
+  versions: { version: number; validFrom: string; paid?: boolean; rules: LeaveRules; note: string | null }[];
 }
 
 export interface PolicyLine {
@@ -243,7 +284,9 @@ export interface TimeSetup {
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: { id: string; name: string; locationId: string | null; halfDayOpenHalf: 'first' | 'second'; optionalLimit: number; holidays: HolidayRow[] }[];
-  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; address: { lines?: string[]; city?: string; postalCode?: string } | null; people: number; fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean; rule: LocationRule; upcoming: LocationRule[] }[];
+  /** People whose check-in is bound to one phone, at their current location. */
+  phones: { employeeId: string; name: string; locationId: string | null; boundAt: string }[];
   entities: { id: string; name: string }[];
   statutory: { jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
 }
@@ -408,6 +451,8 @@ export interface OtClaim {
   name?: string;
   code?: string | null;
   canOverride?: boolean;
+  /** The viewer's own open approval step on a waiting claim (null when someone else decides). */
+  taskId?: string | null;
 }
 /** Me › Attendance › Night work (founder decisions 9 Oct 2026). */
 export interface MyNightWork {
@@ -439,7 +484,7 @@ export interface MyTimesheet {
   sheet: { id: string; status: 'draft' | 'pending' | 'approved' | 'rejected'; totalMinutes: number } | null;
   lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; note: string | null }[];
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
-  days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
+  days: { on: string; holiday: string | null; leave: string | null; locked: boolean; weeklyOff?: boolean; /** The day's shift less its unpaid break. */ expectedMinutes?: number }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
 }
 export interface TimesheetLineInput {

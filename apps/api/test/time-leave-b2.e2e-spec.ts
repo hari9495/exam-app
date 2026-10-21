@@ -293,6 +293,11 @@ describe('Time and leave batch 2', () => {
       await api('emp', 'post', `/time/me/overtime/${claim.id}/withdraw`).expect(404);
       const t = (await inbox('mgr')).find((x) => x.title.includes('overtime'))!;
       expect(t.summary.find((s) => s.label === 'Settled as')!.value).toBe('Comp-off: 0.5 days');
+      // The review carries the approval task only to the person it is assigned to.
+      const reviewed = async (who: 'mgr' | 'hrAdmin') => ((await api(who, 'get', `/time/overtime?month=${today.slice(0, 7)}`).expect(200)).body.claims as { id: string; taskId: string | null }[]).find((x) => x.id === claim.id)!;
+      expect((await reviewed('mgr')).taskId).toBe(t.taskId);
+      expect((await reviewed('hrAdmin')).taskId).toBeNull();
+      for (const who of ['emp', 'empB'] as const) expect((await api(who, 'get', `/time/overtime?month=${today.slice(0, 7)}`).expect(200)).body.claims.map((x: { id: string }) => x.id)).not.toContain(claim.id);
       await decide('mgr', t.taskId, 'approve').expect(200);
       const credits = await inA((tx) => tx.leaveLedgerEntry.findMany({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, kind: 'comp_off' } }));
       expect(credits.map((x) => Number(x.days))).toEqual([0.5]);
@@ -330,6 +335,10 @@ describe('Time and leave batch 2', () => {
       await api('emp', 'put', '/time/me/timesheet').send({ week: addDays(week, 1), lines: [line] }).expect(400);
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ ...line, activity: 'Golf' }] }).expect(400);
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(200);
+      // Each day says whether it is a weekly off and how many minutes the shift expects.
+      const days = (await api('emp', 'get', `/time/me/timesheet?week=${week}`).expect(200)).body.days as { weeklyOff: boolean; expectedMinutes: number }[];
+      expect(days).toHaveLength(7);
+      for (const x of days) expect(x.weeklyOff ? x.expectedMinutes : x.expectedMinutes > 0).toBeTruthy();
       const sheet = (await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(200)).body;
       expect(sheet.status).toBe('pending');
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(409);

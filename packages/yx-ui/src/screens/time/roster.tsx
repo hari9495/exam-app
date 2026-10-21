@@ -1,6 +1,6 @@
 // Rostering: roster, shift editor + patterns, auto-roster, open shifts & bids, standby, block leave,
 // licences, hybrid office days. TIM-05, TIM-06, TIM-34, TIM-35, TIM-38, TIM-39, TIM-40, TIM-41.
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Lock, Play, Plus, Send, Trash2 } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { locationHeadcount } from '../_kit/data';
@@ -37,6 +37,9 @@ import { DueBadge, Kpis, ShiftBar, TimePage } from './time-kit';
 import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './time-logic';
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
+import type { LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
+import { AssignPatternDrawer, NightPanel, OtRulesPanel, ProjectsPanel, type ShiftsSetupScreenProps } from './live/shifts-setup';
+import { useToast } from '../../components/notify';
 import './time.css';
 
 /** Opens another screen's story, so buttons that lead to a screen go somewhere. */
@@ -190,15 +193,29 @@ function copyLastWeek(v: RosterValue) {
    TIM-05 · Roster (drag, copy week, swap, conflicts, publish)
    ===================================================================== */
 
+/** The roster a swap is checked against: the story's plant by default, the live week in the app. */
+interface SwapWorld {
+  people: RosterPerson[];
+  /** "Fri 9 Oct" for a day index. */
+  dayLabel: (i: number) => string;
+  days: number;
+  shiftText: (code: string | null | undefined) => string;
+  check: (v: RosterValue) => RosterConflict[];
+  first: string;
+  second: string;
+}
+const PLANT_WORLD: SwapWorld = { people: PLANT_PEOPLE, dayLabel: (i) => `${DAYS[i]} Oct`, days: DAYS.length, shiftText, check: checkPlant, first: 'p5:4', second: 'p8:4' };
+
 /** Runs the grid's rest, leave and night-consent checks on the chosen pair before the swap is allowed. */
-function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void }) {
+function SwapDialog({ open, onOpenChange, value, onSwap, world = PLANT_WORLD }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void; world?: SwapWorld }) {
+  const { people: PEOPLE, dayLabel, shiftText, check } = world;
   // Default pair: two line operators on the same day (Fri 9), so the morning keeps its cover: Jaya takes Selvi's morning, Selvi gets the day off.
-  const [a, setA] = useState('p5:4');
-  const [b, setB] = useState('p8:4');
-  const options = PLANT_PEOPLE.flatMap((p) => DAYS.map((d, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${d} Oct · ${shiftText(value[p.id]?.[i])}` })));
+  const [a, setA] = useState(world.first);
+  const [b, setB] = useState(world.second);
+  const options = PEOPLE.flatMap((p) => Array.from({ length: world.days }, (_, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${dayLabel(i)} · ${shiftText(value[p.id]?.[i])}` })));
   const swapped = useMemo(() => swapCells(value, a, b), [value, a, b]);
-  const before = useMemo(() => checkPlant(value), [value]);
-  const after = useMemo(() => checkPlant(swapped), [swapped]);
+  const before = useMemo(() => check(value), [value, check]);
+  const after = useMemo(() => check(swapped), [swapped, check]);
   const beforeKeys = new Set(before.map(conflictKey));
   const afterKeys = new Set(after.map(conflictKey));
   const added = after.filter((x) => !beforeKeys.has(conflictKey(x)));
@@ -206,15 +223,15 @@ function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOp
   const same = a === b || (value[cellOf(a)[0]]?.[cellOf(a)[1]] ?? null) === (value[cellOf(b)[0]]?.[cellOf(b)[1]] ?? null);
   const blocking = added.filter((x) => BLOCKING_CONFLICTS.includes(x.kind));
   // Skill check: a shift goes only to someone in the same role (a Maintenance Technician can't cover a Shift Supervisor's shift).
-  const pa = PLANT_PEOPLE.find((p) => p.id === cellOf(a)[0])!;
-  const pb = PLANT_PEOPLE.find((p) => p.id === cellOf(b)[0])!;
-  const roleClash = pa.id !== pb.id && pa.role !== pb.role ? `${pa.name} (${pa.role}) and ${pb.name} (${pb.role}) aren't trained for each other's shifts` : '';
+  const pa = PEOPLE.find((p) => p.id === cellOf(a)[0])!;
+  const pb = PEOPLE.find((p) => p.id === cellOf(b)[0])!;
+  const roleClash = pa.id !== pb.id && pa.role && pb.role && pa.role !== pb.role ? `${pa.name} (${pa.role}) and ${pb.name} (${pb.role}) aren't trained for each other's shifts` : '';
   // Cover check: on different days, each working shift that changes day leaves its own day one person short.
   const [ia, ib] = [cellOf(a)[1], cellOf(b)[1]];
   const va = value[pa.id]?.[ia] ?? null;
   const vb = value[pb.id]?.[ib] ?? null;
   const working = (c: string | null) => !!c && c !== 'OFF';
-  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${DAYS[i]} Oct ${shiftText(c).toLowerCase()} would be 1 person short`);
+  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${dayLabel(i)} ${shiftText(c).toLowerCase()} would be 1 person short`);
   // A shift traded for a day off on another date is a move, not a swap.
   const move = ia !== ib && (!working(va) || !working(vb));
   const reason = same ? 'Pick two different shifts' : roleClash ? 'Roles differ' : gaps.length ? `Leaves ${gaps.length === 1 ? 'a shift' : `${gaps.length} shifts`} short` : blocking.length ? `Breaks ${blocking.length === 1 ? 'a rule' : `${blocking.length} rules`}` : '';
@@ -291,7 +308,167 @@ function MyWeekList({ row, pid }: { row: (string | null)[]; pid: string }) {
   );
 }
 
-export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean }) {
+/** What the live app gives the roster (design audit): the week the viewer plans, and the server calls. */
+export interface LiveRoster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: RosterWeek | null;
+  /** Monday of the week shown (yyyy-mm-dd). */
+  week: string;
+  onWeek: (week: string) => void;
+  /** value: a shift id, 'off', or 'pattern' (back to the pattern / location default). */
+  onCells: (cells: { employeeId: string; on: string; value: string }[]) => Promise<unknown>;
+  onCopy: (fromWeek: string, toWeek: string) => Promise<unknown>;
+  onPublish: (week: string) => Promise<unknown>;
+}
+
+type RosterProps = { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; /** The live app's data. Stories leave it out. */ live?: LiveRoster };
+
+export function RosterScreen(props: RosterProps) {
+  return props.live ? <LiveRosterView live={props.live} /> : <StoryRoster {...props} />;
+}
+
+const COLOUR_NUMBER: Record<string, number> = { blue: 1, green: 2, teal: 3, purple: 4, orange: 5, pink: 6, grey: 7, red: 8 };
+const isoLocal = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoDays = (iso: string, n: number) => {
+  const d = addDays(isoLocal(iso), n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const SCOPE_LINE = { team: 'Your team', granted: 'The people you plan', company: 'Everyone' } as const;
+const CHECK_LABEL: Record<string, string> = { night: 'Law', holiday: 'Holiday', overlap: 'Overlap', rest: 'Rest' };
+
+/** TIM-05 on live data: the same header, grid, checks card and dialogs; changes are saved as drafts on the server. */
+function LiveRosterView({ live }: { live: LiveRoster }) {
+  const d = live.data;
+  const [dlg, setDlg] = useState<'copy' | 'swap' | undefined>();
+  const [failed, setFailed] = useState('');
+  const { toast } = useToast();
+  const run = (p: Promise<unknown>, done?: string) => {
+    setFailed('');
+    p.then(() => done && toast({ tone: 'success', title: done }), (e: unknown) => setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'));
+  };
+  const shifts: Shift[] = useMemo(
+    () => [
+      ...(d?.shifts ?? []).filter((s) => s.start !== null).map((s) => ({ code: s.code, name: s.name, start: hhmm(s.start!), end: hhmm(s.end!), hours: Math.round((((s.end! - s.start! + 1440) % 1440) / 60) * 10) / 10, color: COLOUR_NUMBER[s.colour] ?? 1 })),
+      { code: 'OFF', name: 'Weekly off', hours: 0 },
+    ],
+    [d],
+  );
+  const codeOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.id, s.code])), [d]);
+  const idOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.code, s.id])), [d]);
+  const people: RosterPerson[] = useMemo(() => (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.code ?? undefined })), [d]);
+  // What each cell will be once published: a shift code, OFF, or empty (the pattern or the location's usual shift).
+  const value: RosterValue = useMemo(() => Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.planned ? (c.planned.shiftId ? (codeOf.get(c.planned.shiftId) ?? null) : null) : 'OFF'))])), [d, codeOf]);
+  const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map((k) => ({ personId: x.id, date: isoLocal(c.on), code: k.message.startsWith('Half') ? 'half day' : 'leave' })))), [d]);
+  // The server's night-work guard: someone it flags on a night may not work nights; everyone else may.
+  const rules: RosterRules = useMemo(() => {
+    const barred = new Set((d?.people ?? []).filter((x) => x.cells.some((c) => c.conflicts?.some((k) => k.kind === 'night'))).map((x) => x.id));
+    return { minRestHours: 11, maxWeeklyHours: 48, nightConsent: people.filter((p) => !barred.has(p.id)).map((p) => p.id) };
+  }, [d, people]);
+  const checks = (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind !== 'leave' && k.kind !== 'rest').map((k) => ({ who: x.name, ...k }))));
+  const start = isoLocal(live.week);
+  const world: SwapWorld = useMemo(
+    () => ({
+      people: people.map((p) => ({ id: p.id, name: p.name })),
+      dayLabel: (i) => dayName(addDays(start, i)),
+      days: 7,
+      shiftText: (c) => (!c ? 'Usual shift' : c === 'OFF' ? 'Off' : shifts.find((s) => s.code === c)?.name ?? c),
+      check: (v) => checkRoster({ people, value: v, start, days: 7, shifts, leave, rules }),
+      first: people[0] ? `${people[0].id}:0` : '',
+      second: people[1] ? `${people[1].id}:0` : people[0] ? `${people[0].id}:1` : '',
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [people, shifts, leave, rules, live.week],
+  );
+  const save = (next: RosterValue) => {
+    if (!d) return;
+    const cells: { employeeId: string; on: string; value: string }[] = [];
+    for (const person of d.people)
+      person.cells.forEach((c, i) => {
+        const was = value[person.id]?.[i] ?? null;
+        const now = next[person.id]?.[i] ?? null;
+        if (was === now || !c.employed) return;
+        cells.push({ employeeId: person.id, on: c.on, value: now === null ? 'pattern' : now === 'OFF' ? 'off' : (idOf.get(now) ?? 'pattern') });
+      });
+    if (cells.length) run(live.onCells(cells));
+  };
+  const rostered = (d?.people ?? []).some((x) => x.cells.some((c) => c.source === 'roster'));
+  const ready = live.state === 'ready';
+  const badge = !d ? undefined : d.drafts > 0 ? <Badge tone="warning">{rostered ? 'Unpublished changes' : 'Draft · not visible to staff'}</Badge> : rostered ? <Badge tone="success">Published</Badge> : <Badge tone="neutral">Following shift patterns</Badge>;
+  const lastWeek = isoDays(live.week, -7);
+  return (
+    <TimePage active="Roster">
+      <PageHeader
+        title="Roster"
+        description={d ? `Week of ${longDate(start)} · ${SCOPE_LINE[d.scope]} · minimum rest 11 h · max 48 h a week` : undefined}
+        status={badge}
+        actions={
+          <div className="yx-tim-row">
+            {!ready && live.state !== 'no-access' && <span className="yx-tim-muted">{live.state === 'loading' ? 'Roster is loading' : "Roster didn't load"}</span>}
+            <Button icon={Copy} disabled={!ready || !people.length} onClick={() => setDlg('copy')}>Copy last week</Button>
+            <Button disabled={!ready || people.length === 0} onClick={() => setDlg('swap')}>Swap shifts</Button>
+          </div>
+        }
+      />
+      <div className="yx-tim-row">
+        <Button icon={ChevronLeft} onClick={() => live.onWeek(lastWeek)}>Previous week</Button>
+        <Button icon={ChevronRight} onClick={() => live.onWeek(isoDays(live.week, 7))}>Next week</Button>
+      </div>
+      {failed && <InlineAlert tone="danger" title="That change was not saved">{failed}</InlineAlert>}
+      {live.state === 'loading' ? <LoadingBlock rows={8} /> : live.state === 'error' ? (
+        <ErrorState title="The roster didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' ? (
+        <EmptyState title="You don't plan a roster" description="You plan the roster of your own team. HR can give you more people to plan." />
+      ) : !people.length ? (
+        <EmptyState title="No one to plan" description="You plan the roster of your own team. HR can give you more people to plan." />
+      ) : (
+        <div className="yx-tim-stack">
+          <RosterGrid
+            // A fresh grid after each server refresh, so its own change count starts from what is saved.
+            key={`${d!.week}:${d!.drafts}:${JSON.stringify(value)}`}
+            people={people}
+            start={start}
+            days={7}
+            shifts={shifts}
+            value={value}
+            onChange={save}
+            leave={leave}
+            rules={rules}
+            status={d!.drafts > 0 ? 'draft' : 'published'}
+            // Nothing planned yet: the week follows the patterns, so the grid doesn't call it published.
+            hideStatus={!rostered && d!.drafts === 0}
+            onPublish={() => run(live.onPublish(d!.week), `Roster for the week of ${shortDate(isoLocal(d!.week))} published to your team`)}
+            today={isoLocal(d!.today)}
+          />
+          {checks.length > 0 && (
+            <Card title="Law and licence guards">
+              <ul className="yx-tim-list" aria-label="Roster checks">
+                {checks.map((x, i) => (
+                  <li key={i}>
+                    <span className="yx-tim-list__main"><strong>{x.who} · {dayName(isoLocal(x.on))}</strong><span className="yx-tim-muted">{x.message}</span></span>
+                    <Badge tone={x.kind === 'night' ? 'danger' : 'warning'}>{CHECK_LABEL[x.kind] ?? x.kind}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          <p className="yx-tim-note">Empty cells follow the person's shift pattern or the location's usual shift. Past days and locked months can't change here.</p>
+        </div>
+      )}
+      <ConfirmDialog
+        open={dlg === 'copy'}
+        onOpenChange={(o) => !o && setDlg(undefined)}
+        title={`Copy week of ${shortDate(isoLocal(lastWeek))} into this week?`}
+        consequence="Each day from today takes last week's shift, as a draft. Nothing changes for your team until you publish."
+        confirmLabel="Copy week"
+        onConfirm={() => { setDlg(undefined); run(live.onCopy(lastWeek, live.week), `Week of ${shortDate(isoLocal(lastWeek))} copied into this week as a draft`); }}
+      />
+      {dlg === 'swap' && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={save} world={world} />}
+    </TimePage>
+  );
+}
+
+function StoryRoster({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial }: RosterProps) {
   const [dlg, setDlg] = useState(dialog);
   const [st, setSt] = useState<ViewState>(state);
   const [value, setValue] = useState<RosterValue>(state === 'empty' ? {} : status === 'published' ? PUBLISHED_ROSTER : partial ? PART_ROSTER : PLANT_ROSTER);
@@ -512,7 +689,366 @@ const hhmm = (mins: number) => `${String(Math.floor(mins / 60) % 24).padStart(2,
 /** "6:52 pm" from minutes after midnight. */
 const clock = (mins: number) => fmt12(hhmm(mins));
 
-export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', saveState }: { tab?: 'shift' | 'patterns'; kind?: ShiftKind; saveState?: 'error' | 'saved' }) {
+/** What the live app gives the shift editor (design audit): the company's shifts and patterns, and the set-up calls. */
+export type LiveShiftEditor = ShiftsSetupScreenProps & { state: LoadState; onRetry?: () => void; data: ShiftSetup | null };
+
+type ShiftEditorProps = { tab?: 'shift' | 'patterns'; kind?: ShiftKind; saveState?: 'error' | 'saved'; /** The live app's data. Stories leave it out. */ live?: LiveShiftEditor };
+
+export function ShiftEditorScreen(props: ShiftEditorProps) {
+  return props.live ? <LiveShiftEditorView live={props.live} tab={props.tab} /> : <StoryShiftEditor {...props} />;
+}
+
+const LIVE_COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
+const isoOfDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateOfIso = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const minOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
+/** The editor's form for one live shift: its version in force today (or the first), in the designed fields. */
+interface LiveShiftForm { id: string | null; name: string; code: string; colour: string; night: boolean; active: boolean; start: string | null; end: string | null; grace: number | null; fullDay: number | null; halfDay: number | null; breakRule: 'fixed' | 'none'; breakMin: number | null; breakAbove: number | null }
+function formOf(row: ShiftRow | null, today: string): LiveShiftForm {
+  const v = row ? row.versions.find((x) => x.validFrom <= today) ?? row.versions[0] : undefined;
+  return {
+    id: row?.id ?? null, name: row?.name ?? '', code: row?.code ?? '', colour: row?.colour ?? 'blue', night: row?.night ?? false, active: row?.active ?? true,
+    start: v ? hhmm(v.start) : '09:30', end: v ? hhmm(v.end) : '18:30', grace: v?.graceMinutes ?? 10,
+    fullDay: v ? v.fullDayMinutes / 60 : 7.5, halfDay: v ? v.halfDayMinutes / 60 : 4,
+    breakRule: v && v.breakMinutes === 0 ? 'none' : 'fixed', breakMin: v?.breakMinutes || 30, breakAbove: v ? v.breakAboveMinutes / 60 : 5,
+  };
+}
+
+/** TIM-06 on live data: the shift list, the designed editor with its preview, patterns, and the set-up sections with no design yet. */
+function LiveShiftEditorView({ live, tab = 'shift' }: { live: LiveShiftEditor; tab?: string }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const today = d?.today ?? isoOfDate(new Date());
+  const [t, setT] = useState<string>(tab);
+  const [pickedId, setPickedId] = useState<string | null | undefined>(undefined);
+  const rows = d?.shifts ?? [];
+  const current = pickedId === undefined ? rows[0] ?? null : pickedId === null ? null : rows.find((r) => r.id === pickedId) ?? null;
+  const [form, setFormRaw] = useState<LiveShiftForm | null>(null);
+  const [base, setBase] = useState<LiveShiftForm | null>(null);
+  const [copyOf, setCopyOf] = useState<string | null>(null);
+  const [effective, setEffective] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  // Open the first shift once the list has loaded; a fresh server copy after each save.
+  useEffect(() => {
+    if (!d) return;
+    const f = formOf(current, today);
+    setFormRaw(f);
+    setBase(f);
+    setEffective(dateOfIso(today));
+    setCopyOf(null);
+    setTried(false);
+    // The form follows the picked shift and each reload of the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d, pickedId]);
+  const f = form ?? formOf(null, today);
+  const set = (patch: Partial<LiveShiftForm>) => setFormRaw({ ...f, ...patch });
+  const isNew = !f.id;
+  const dirty = JSON.stringify(form) !== JSON.stringify(base);
+  const halfDayError = tried && f.halfDay != null && f.fullDay != null && f.halfDay >= f.fullDay ? `Make it less than full day (${f.fullDay} h)` : null;
+  const codeOk = /^[A-Z][A-Z0-9]{0,5}$/.test(f.code);
+  const blocked = halfDayError ? 'Fix the half day threshold first' : !f.name.trim() ? 'Enter a name' : isNew && !codeOk ? 'Enter a code of 1 to 6 capital letters or digits' : !f.start || !f.end || f.start === f.end ? 'Enter the start and end' : !effective ? 'Pick the effective date' : !dirty && !isNew ? 'No changes to save' : '';
+  const across = !!f.start && !!f.end && f.end < f.start;
+  const timesOf = () => ({ validFrom: isoOfDate(effective!), start: minOf(f.start)!, end: minOf(f.end)!, graceMinutes: f.grace ?? 0, halfDayMinutes: Math.round((f.halfDay ?? 4) * 60), fullDayMinutes: Math.round((f.fullDay ?? 8) * 60), breakMinutes: f.breakRule === 'none' ? 0 : f.breakMin ?? 0, breakAboveMinutes: f.breakRule === 'none' ? 0 : Math.round((f.breakAbove ?? 5) * 60) });
+  const save = async () => {
+    setTried(true);
+    if (f.halfDay != null && f.fullDay != null && f.halfDay >= f.fullDay) return;
+    setBusy(true);
+    setFailed('');
+    try {
+      if (isNew) await live.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, ...timesOf() });
+      else {
+        const b = base!;
+        if (b.name !== f.name || b.colour !== f.colour || b.night !== f.night) await live.onShiftDetails(f.id!, { name: f.name.trim(), colour: f.colour, night: f.night, active: f.active });
+        const timesChanged = (['start', 'end', 'grace', 'fullDay', 'halfDay', 'breakRule', 'breakMin', 'breakAbove'] as const).some((k) => b[k] !== f[k]);
+        if (timesChanged) await live.onShiftTimes(f.id!, timesOf());
+      }
+      toast({ tone: 'success', title: `Saved ${f.name.trim()} shift · applies from ${longDate(effective!)}` });
+      if (isNew) setPickedId(undefined);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Not saved. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggleUse = async () => {
+    setBusy(true);
+    try {
+      await live.onShiftDetails(f.id!, { name: base!.name, colour: base!.colour, night: base!.night, active: !f.active });
+      toast({ tone: 'success', title: f.active ? `${f.name} shift is no longer used` : `${f.name} shift is in use again` });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const duplicate = () => {
+    setCopyOf(f.name);
+    setFormRaw({ ...f, id: null, name: `${f.name} (copy)`, code: '' });
+    setTried(false);
+  };
+  const discard = () => { setFormRaw(base); setCopyOf(null); setTried(false); };
+  const firstFrom = current?.versions[0]?.validFrom;
+  // The preview day: a check-in 22 minutes after the start and a check-out 50 minutes after the end.
+  const sStart = minOf(f.start) ?? 570;
+  const sEnd = minOf(f.end) ?? 1110;
+  const endAbs = sEnd <= sStart ? sEnd + 1440 : sEnd;
+  const pin = sStart + 22;
+  const pout = endAbs + 50;
+  const gross = pout - pin;
+  const brk = f.breakRule === 'none' || gross <= (f.breakAbove ?? 5) * 60 ? 0 : f.breakMin ?? 0;
+  const worked = gross - brk;
+  const late = 22 - (f.grace ?? 0);
+  const status = f.halfDay != null && worked < f.halfDay * 60 ? 'Absent (under half day)' : f.fullDay != null && worked < f.fullDay * 60 ? 'Half day' : late > 0 ? `Present · late by ${mins(late)}` : 'Present · within late grace';
+  const previewCard = (
+    <Card title="Preview">
+      <p className="yx-tim-muted">A day with punches at {clock(pin)} and {clock(pout)}.{` The shift ends at ${clock(endAbs)}; the time after it can be overtime under the overtime rules.`}</p>
+      <ShiftBar start={hhmm(sStart)} end={hhmm(endAbs)} punches={[{ id: 'a', kind: 'in', time: hhmm(pin), source: 'web', where: '', verdict: 'inside' }, { id: 'b', kind: 'out', time: endAbs >= 1440 ? `${Math.floor(pout / 60)}:${String(pout % 60).padStart(2, '0')}` : hhmm(pout), source: 'web', where: '', verdict: 'inside' }]} from={across ? 18 * 60 : 6 * 60} to={across ? 32 * 60 : 23 * 60} />
+      <ul className="yx-tim-days">
+        {([['Status', status], ['Worked', hm(worked)], ['Break deducted', brk ? mins(brk) : 'None']] as [string, string][]).map(([k, v]) => <li key={k}><span>{k}</span><strong>{v}</strong></li>)}
+      </ul>
+    </Card>
+  );
+  const narrow = useNarrow(1023);
+  if (live.state === 'no-access') return <EmptyState title="You can't change shifts" description="Shifts and patterns need the leave and attendance set-up key." />;
+  return (
+    <TimePage active="Shifts & patterns">
+      <PageHeader
+        title={t === 'shift' ? (f.name.trim() ? `${f.name.trim()} shift` : 'New shift') : 'Shifts & patterns'}
+        description="Time › Time settings › Shifts & patterns · changes start on their date"
+        status={t !== 'shift' || !d ? undefined : copyOf || isNew ? <Badge tone="neutral">Not saved yet</Badge> : !f.active ? <Badge tone="neutral">Not in use</Badge> : firstFrom && firstFrom > today ? <span className="yx-tim-row"><Badge tone="neutral">Starts {shortDate(dateOfIso(firstFrom))}</Badge><DueBadge date={dateOfIso(firstFrom)} today={dateOfIso(today)} /></span> : <Badge tone="success">Active</Badge>}
+        actions={
+          t === 'shift' && d ? (
+            <span className="yx-tim-row">
+              {copyOf ? <Button onClick={discard}>Discard copy</Button> : !isNew && <Button icon={Copy} disabled={dirty} onClick={duplicate}>Duplicate</Button>}
+              {!isNew && !copyOf && <Button disabled={busy || dirty} onClick={() => void toggleUse()}>{f.active ? 'Stop using' : 'Use again'}</Button>}
+              {blocked && <span className="yx-tim-muted">{blocked}</span>}
+              <Button variant="primary" disabled={!!blocked} loading={busy} onClick={() => void save()}>Save shift</Button>
+            </span>
+          ) : undefined
+        }
+      />
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {halfDayError && t === 'shift' && (
+        <InlineAlert tone="danger" title="Fix 1 thing to save" actions={<Button size="sm" onClick={() => document.getElementById('half-day')?.focus()}>Go to field</Button>}>
+          Half day from ({f.halfDay} h) is not less than full day from ({f.fullDay} h).
+        </InlineAlert>
+      )}
+      {copyOf && t === 'shift' && <InlineAlert tone="info" title={`Copy of ${copyOf}`}>No one uses this copy yet. Save it to add it to the shift list, or discard it.</InlineAlert>}
+      {live.state === 'loading' || !d ? (live.state === 'error' ? <ErrorState title="The shifts didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} /> : <LoadingBlock rows={8} />) : (
+        <Tabs value={t} onValueChange={setT}>
+          <TabsList aria-label="Shift editor">
+            <TabsTrigger value="shift">Shift</TabsTrigger>
+            <TabsTrigger value="patterns">Patterns</TabsTrigger>
+            <TabsTrigger value="overtime">Overtime</TabsTrigger>
+            <TabsTrigger value="projects">Timesheet projects</TabsTrigger>
+            <TabsTrigger value="night">Night work</TabsTrigger>
+          </TabsList>
+          <TabsContent value="shift">
+            <div className="yx-tim-editor">
+              <div className="yx-tim-form">
+                <Card title="Shifts" actions={<Button size="sm" icon={Plus} disabled={dirty || !!copyOf} onClick={() => setPickedId(null)}>New shift</Button>}>
+                  <ul className="yx-tim-list">
+                    {rows.map((r) => {
+                      const v = r.versions.find((x) => x.validFrom <= today) ?? r.versions[0];
+                      const editing = !copyOf && f.id === r.id;
+                      return (
+                        <li key={r.id}>
+                          <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{r.name}</strong><span className="yx-tim-muted">{r.code} · {v ? `${clock(v.start)} – ${clock(v.end)}` : '—'}{r.night ? ' · night allowance' : ''}{r.active ? '' : ' · not in use'}</span></span>
+                          <Button size="sm" disabled={editing || !!copyOf || dirty} onClick={() => setPickedId(r.id)}>{editing ? 'Editing' : 'Edit'}</Button>
+                        </li>
+                      );
+                    })}
+                    {!rows.length && <li><span className="yx-tim-muted">No shifts yet. Without shifts, each location's usual hours apply.</span></li>}
+                    {dirty && !copyOf && !isNew && <li><span className="yx-tim-muted" style={{ flex: '1 1 0', minWidth: 0 }}>Save or discard your changes first</span><Button size="sm" onClick={discard}>Discard changes</Button></li>}
+                  </ul>
+                </Card>
+                <FormSection title="Basics">
+                  <FieldRow>
+                    <FormField label="Name" required><TextField value={f.name} maxLength={60} onChange={(v) => set({ name: v })} /></FormField>
+                    <FormField label="Code" required helper={isNew ? 'Shown in every roster cell.' : "A saved shift's code doesn't change."}><TextField value={f.code} placeholder="For example GC" maxLength={6} disabled={!isNew} onChange={(v) => set({ code: v.toUpperCase() })} /></FormField>
+                  </FieldRow>
+                  <FieldRow>
+                    <FormField label="Start" required><TimeField value={f.start} onChange={(v) => set({ start: v })} /></FormField>
+                    <FormField label="End" required helper={across ? 'Ends next day; the day belongs to the start date' : undefined}><TimeField value={f.end} onChange={(v) => set({ end: v })} /></FormField>
+                  </FieldRow>
+                  <FormField label="Colour in the roster"><Select value={f.colour} onChange={(v) => v && set({ colour: v })} options={LIVE_COLOURS} /></FormField>
+                </FormSection>
+                {narrow && previewCard}
+                <FormSection title="Check-in and grace">
+                  <FieldRow>
+                    <FormField label="Late grace (min)"><NumberField value={f.grace} min={0} max={120} onChange={(v) => set({ grace: v })} /></FormField>
+                  </FieldRow>
+                </FormSection>
+                <FormSection title="Break rule">
+                  <RadioGroup aria-label="Break rule" value={f.breakRule} onChange={(v) => set({ breakRule: v as 'fixed' | 'none' })} options={[{ value: 'fixed', label: 'Fixed unpaid break', description: `${f.breakMin ?? 0} min deducted when worked time is above ${f.breakAbove ?? 0} h` }, { value: 'none', label: 'No break' }]} />
+                  {f.breakRule === 'fixed' && (
+                    <FieldRow>
+                      <FormField label="Break (min)"><NumberField value={f.breakMin} min={0} max={120} onChange={(v) => set({ breakMin: v })} /></FormField>
+                      <FormField label="When worked above (h)"><NumberField value={f.breakAbove} min={0} max={16} decimals onChange={(v) => set({ breakAbove: v })} /></FormField>
+                    </FieldRow>
+                  )}
+                </FormSection>
+                <FormSection title="Day thresholds">
+                  <FieldRow>
+                    <FormField label="Full day from (h)"><NumberField value={f.fullDay} min={0} max={24} decimals onChange={(v) => set({ fullDay: v })} /></FormField>
+                    <FormField label="Half day from (h)" id="half-day" error={halfDayError}><NumberField value={f.halfDay} min={0} max={24} decimals onChange={(v) => set({ halfDay: v })} /></FormField>
+                  </FieldRow>
+                  <p className="yx-tim-note">{f.halfDay != null ? `Under ${f.halfDay} h worked counts as absent. ` : ''}A missing punch shows as "Missing check-out".</p>
+                </FormSection>
+                <FormSection title="Allowances">
+                  <Switch label="Night allowance" description="Counts for the night allowance in payroll. The women's night-work rules always follow the legal night window, whatever this says." checked={f.night} onChange={(v) => set({ night: v })} />
+                </FormSection>
+                <FormSection title="When it applies">
+                  <FormField label="Effective from" required helper={isNew ? 'The shift can be used from this date.' : 'Changes apply from this date. Earlier days keep the old rules.'}>
+                    <DatePicker value={effective} min={dateOfIso(today)} onChange={setEffective} />
+                  </FormField>
+                </FormSection>
+              </div>
+              {!narrow && <div className="yx-tim-sticky">{previewCard}</div>}
+            </div>
+          </TabsContent>
+          <TabsContent value="patterns"><LivePatternsPanel live={live} data={d} /></TabsContent>
+          <TabsContent value="overtime"><OtRulesPanel {...live} data={d} /></TabsContent>
+          <TabsContent value="projects"><ProjectsPanel {...live} data={d} /></TabsContent>
+          <TabsContent value="night"><NightPanel {...live} data={d} /></TabsContent>
+        </Tabs>
+      )}
+    </TimePage>
+  );
+}
+
+/** The designed Patterns tab on live data: the list, a new pattern's week or cycle, who follows each, and 14 days ahead. */
+function LivePatternsPanel({ live, data }: { live: LiveShiftEditor; data: ShiftSetup }) {
+  const { toast } = useToast();
+  const today = dateOfIso(data.today);
+  const [pickedId, setPickedId] = useState<string | null>(data.patterns[0]?.id ?? null);
+  const [draft, setDraft] = useState<{ name: string; weekly: boolean; cycle: (string | null)[] } | null>(data.patterns.length ? null : { name: '', weekly: true, cycle: Array(7).fill(null) });
+  const [assigning, setAssigning] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const picked = data.patterns.find((p) => p.id === pickedId) ?? null;
+  const shiftOfId = (id: string | null) => (id ? data.shifts.find((x) => x.id === id) : undefined);
+  const codeOfId = (id: string | null) => shiftOfId(id)?.code ?? 'OFF';
+  const shiftText = (id: string | null) => { const x = shiftOfId(id); const v = x?.versions.find((y) => y.validFrom <= data.today) ?? x?.versions[0]; return x && v ? `${x.name} ${clock(v.start)} – ${clock(v.end)}` : 'Off'; };
+  const cycle = draft ? draft.cycle : picked?.cycle ?? [];
+  const weekly = draft ? draft.weekly : picked?.kind === 'weekly';
+  const assignment = picked?.assignments.find((a) => a.validFrom <= data.today) ?? picked?.assignments[0];
+  const start = assignment ? dateOfIso(assignment.validFrom) : today;
+  const from = addDays(today, 1);
+  const days = Array.from({ length: 14 }, (_, i) => addDays(from, i));
+  const posMod = (n: number, m: number) => ((n % m) + m) % m;
+  const codeOn = (dd: Date) => (weekly ? cycle[(dd.getDay() + 6) % 7] : cycle[posMod(Math.round((dd.getTime() - start.getTime()) / 86400000) + (assignment?.offsetDays ?? 0), cycle.length || 1)]);
+  const blocked = draft ? (!draft.name.trim() ? 'Enter a pattern name' : draft.cycle.every((c) => c === null) ? 'Give at least one day a shift' : '') : '';
+  const save = async () => {
+    if (!draft) return;
+    setBusy(true);
+    try {
+      await live.onCreatePattern({ name: draft.name.trim(), kind: draft.weekly ? 'weekly' : 'cycle', cycle: draft.cycle });
+      toast({ tone: 'success', title: `Saved ${draft.name.trim()} · now assign it to the people who follow it` });
+      setDraft(null);
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not saved', description: e instanceof Error ? e.message : 'Try again.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (id: string, who: string) => {
+    try {
+      await live.onRemoveAssignment(id);
+      toast({ tone: 'success', title: `${who} no longer follows ${picked?.name ?? 'the pattern'}` });
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not removed', description: e instanceof Error ? e.message : 'Try again.' });
+    }
+  };
+  const setCycle = (c: (string | null)[]) => draft && setDraft({ ...draft, cycle: c });
+  return (
+    <div className="yx-tim-editor">
+      <div className="yx-tim-form">
+        <Card title="Patterns" actions={<Button size="sm" icon={Plus} disabled={!!draft || !data.shifts.length} onClick={() => { setDraft({ name: '', weekly: true, cycle: Array(7).fill(null) }); setPickedId(null); }}>Add pattern</Button>}>
+          <ul className="yx-tim-list">
+            {data.patterns.map((p) => (
+              <li key={p.id}>
+                <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{p.name}</strong><span className="yx-tim-muted">{p.kind === 'weekly' ? 'Weekly' : `${p.cycle.length}-day cycle`} · {p.assignments.length ? p.assignments.map((a) => a.scopeName).join(', ') : 'Not assigned yet'}{p.active ? '' : ' · not in use'}</span></span>
+                <Button size="sm" disabled={!draft && p.id === pickedId} onClick={() => { setDraft(null); setPickedId(p.id); }}>{!draft && p.id === pickedId ? 'Editing' : 'Edit'}</Button>
+              </li>
+            ))}
+            {draft && <li><span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{draft.name || 'New pattern'}</strong><span className="yx-tim-muted">Not saved</span></span><Button size="sm" icon={Trash2} onClick={() => { setDraft(null); setPickedId(data.patterns[0]?.id ?? null); }}>Discard</Button></li>}
+            {!data.patterns.length && !draft && <li><span className="yx-tim-muted">No patterns yet.</span></li>}
+          </ul>
+        </Card>
+        {draft ? (
+          <>
+            <FormField label="Pattern name" required><TextField value={draft.name} placeholder="For example 4 on / 2 off · Evening" maxLength={60} onChange={(v) => setDraft({ ...draft, name: v })} /></FormField>
+            <FormField label="Repeat">
+              <RadioGroup aria-label="Repeat" value={draft.weekly ? 'week' : 'cycle'} orientation="horizontal" onChange={(v) => setDraft({ ...draft, weekly: v === 'week', cycle: v === 'week' ? [...draft.cycle, ...Array(7).fill(null)].slice(0, 7) : draft.cycle })} options={[{ value: 'week', label: 'Weekly' }, { value: 'cycle', label: 'N-day cycle' }]} />
+            </FormField>
+          </>
+        ) : picked ? (
+          <InlineAlert tone="info" title={picked.active ? `${picked.name} is in use` : `${picked.name} is not in use`}>A saved pattern's days don't change, so the roster of the people on it never moves under them. To change the days, add a new pattern and assign it from a date.</InlineAlert>
+        ) : null}
+        {(draft || picked) && (
+          <FormField label={weekly ? 'Week (Mon to Sun)' : `Cycle (${cycle.length} days)`} helper={draft ? 'Click a day and pick its shift, or OFF for a weekly off.' : undefined}>
+            <div className="yx-tim-stack">
+              {Array.from({ length: Math.ceil(cycle.length / 7) }, (_, w) => (
+                <div key={w} className="yx-tim-row" role="group" aria-label={weekly ? 'Week' : `Week ${w + 1} of the cycle`}>
+                  {cycle.slice(w * 7, w * 7 + 7).map((c, j) => {
+                    const i = w * 7 + j;
+                    const label = weekly ? DAYS[i]?.slice(0, 3) ?? `Day ${i + 1}` : String(i + 1);
+                    return draft ? (
+                      <Menu key={i}>
+                        <MenuTrigger asChild><Button size="sm" aria-label={`${weekly ? label : `Day ${i + 1}`}: ${shiftText(c)}. Change`}>{label} · {codeOfId(c)}</Button></MenuTrigger>
+                        <MenuContent align="start">
+                          <MenuItem shortcut="OFF" onSelect={() => setCycle(cycle.map((x, k) => (k === i ? null : x)))}>Weekly off</MenuItem>
+                          {data.shifts.filter((x) => x.active).map((x) => <MenuItem key={x.id} shortcut={x.code} onSelect={() => setCycle(cycle.map((y, k) => (k === i ? x.id : y)))}>{shiftText(x.id)}</MenuItem>)}
+                        </MenuContent>
+                      </Menu>
+                    ) : <Badge key={i} tone="neutral">{label} · {codeOfId(c)}</Badge>;
+                  })}
+                </div>
+              ))}
+              {draft && !draft.weekly && (
+                <div className="yx-tim-row">
+                  <Button size="sm" icon={Plus} disabled={draft.cycle.length >= 56} onClick={() => setCycle([...draft.cycle, null])}>Day</Button>
+                  <Button size="sm" icon={Trash2} disabled={draft.cycle.length <= 2} onClick={() => setCycle(draft.cycle.slice(0, -1))}>Remove day {draft.cycle.length}</Button>
+                </div>
+              )}
+            </div>
+          </FormField>
+        )}
+        {draft && (
+          <span className="yx-tim-row">{blocked && <span className="yx-tim-muted">{blocked}</span>}<Button variant="primary" disabled={!!blocked} loading={busy} onClick={() => void save()}>Save pattern</Button></span>
+        )}
+        {picked && !draft && (
+          <FormField label="Who follows it" helper="The most specific one wins: a person over a department over a location over the company.">
+            <div className="yx-tim-stack">
+              <ul className="yx-tim-list">
+                {picked.assignments.map((a) => (
+                  <li key={a.id}>
+                    <span className="yx-tim-list__main"><strong>{a.scopeName}</strong><span className="yx-tim-muted">From {longDate(dateOfIso(a.validFrom))}{a.offsetDays ? ` · starts on day ${a.offsetDays + 1}` : ''}</span></span>
+                    {a.removable && <Button size="sm" onClick={() => void remove(a.id, a.scopeName)}>Remove</Button>}
+                  </li>
+                ))}
+                {!picked.assignments.length && <li><span className="yx-tim-muted">Not assigned yet.</span></li>}
+              </ul>
+              <div><Button disabled={!picked.active} onClick={() => setAssigning(true)}>Assign to</Button></div>
+            </div>
+          </FormField>
+        )}
+      </div>
+      {(draft || picked) && cycle.length > 0 && (
+        <Card title={`14 days from ${dayName(from)}`}>
+          <ul className="yx-tim-days">
+            {days.map((dd, i) => <li key={i}><span className="yx-tim-row">{dayName(dd)}</span><strong>{shiftText(codeOn(dd) ?? null)}</strong></li>)}
+          </ul>
+        </Card>
+      )}
+      {assigning && picked && <AssignPatternDrawer data={data} pattern={picked} onClose={() => setAssigning(false)} onAssign={live.onAssignPattern} />}
+    </div>
+  );
+}
+
+function StoryShiftEditor({ tab = 'shift', kind: kindProp = 'fixed', saveState }: ShiftEditorProps) {
   const [t, setT] = useState<string>(tab);
   const [patterns, setPatterns] = useState(PATTERNS);
   const [patternId, setPatternId] = useState('m42');

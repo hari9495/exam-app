@@ -263,10 +263,15 @@ export class OvertimeService implements OnModuleInit {
         ORDER BY r.work_on DESC LIMIT 500`;
       const full = rows.length ? await tx.overtimeRequest.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.id) } } }) : [];
       const canOverride = has(v, 'leave.approve') && !v.actingForOther;
+      // The viewer's own open approval step on a waiting claim (TIM-09 decides in place); the engine checks it again.
+      const tasks =
+        v.userId && !v.actingForOther
+          ? await tx.wfTask.findMany({ where: { organizationId: org, status: 'open', assigneeUserId: v.userId, requestId: { in: full.filter((x) => x.status === 'pending' && x.wfRequestId).map((x) => x.wfRequestId!) } }, select: { id: true, requestId: true } })
+          : [];
       const out = [];
       for (const r of rows) {
         const x = full.find((y) => y.id === r.id)!;
-        out.push({ ...this.view(x), name: r.name, code: r.code, canOverride: canOverride && x.overCapMinutes > 0 && !x.overrideReason && x.status === 'approved' && (await grantCovers(tx, c, v, own, 'leave.approve', x.employeeId, to)) });
+        out.push({ ...this.view(x), name: r.name, code: r.code, taskId: tasks.find((t) => t.requestId === x.wfRequestId)?.id ?? null, canOverride: canOverride && x.overCapMinutes > 0 && !x.overrideReason && x.status === 'approved' && (await grantCovers(tx, c, v, own, 'leave.approve', x.employeeId, to)) });
       }
       return { month, scope: tenantWide(v, 'attendance.view') ? 'company' : has(v, 'attendance.view') ? 'granted' : 'team', claims: out };
     });

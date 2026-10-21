@@ -267,6 +267,8 @@ export interface LeaveBalance {
   carried?: number;
   pending: number;
   expiring?: string;
+  /** Live: a paid type with no balance to keep (e.g. maternity): the card shows the days taken, without the Unpaid badge. */
+  takenOnly?: boolean;
 }
 /** The whole year is credited on 1 Jan (TIM-30 ledger), so there is no monthly "next credit". */
 export const BALANCES: LeaveBalance[] = [

@@ -7,7 +7,7 @@ import type { ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { ProjectDto, TimesheetLineDto } from './dto';
-import { lockedDates } from './schedule';
+import { ScheduleBook, lockedDates } from './schedule';
 import { TimeSetupService } from './setup.service';
 import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmployeeId, settingOn } from './time-core';
 import { addDays } from './time-maths';
@@ -82,6 +82,10 @@ export class TimesheetService implements OnModuleInit {
       const leave = await leaveDays(tx, org, me, week, to);
       const locked = await lockedDates(tx, org, me, week, to);
       const recent = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: me }, orderBy: { weekStart: 'desc' }, take: 8 });
+      // The hours each day expects (its shift, less the unpaid break) and the weekly offs, for the designed grid (TIM-15).
+      const book = await ScheduleBook.load(tx, org);
+      const planned: Awaited<ReturnType<ScheduleBook['day']>>[] = [];
+      for (let k = 0; k < 7; k++) planned.push(await book.day(f, addDays(week, k)));
       return {
         week,
         mode: await settingOn(tx, c, 'attendance.mode', f, week),
@@ -90,7 +94,9 @@ export class TimesheetService implements OnModuleInit {
         projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
-          return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, locked: locked.has(on) };
+          const s = planned[k].shift;
+          const span = s ? (s.shiftEnd - s.shiftStart + 1440) % 1440 || 1440 : 0;
+          return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, locked: locked.has(on), weeklyOff: planned[k].weeklyOff, expectedMinutes: s ? span - (span > s.breakAboveMinutes ? s.breakMinutes : 0) : 0 };
         }),
         recent: recent.map((s) => ({ id: s.id, week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
       };

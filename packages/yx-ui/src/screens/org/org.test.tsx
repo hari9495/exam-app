@@ -138,7 +138,7 @@ describe('LocationsScreen (P01 §4.2)', () => {
     const table = screen.getByRole('table', { name: 'Locations' });
     expect(within(table).getByText('Hosur plant')).toBeTruthy();
     expect(within(table).getByText('HSR-PLT · Kaveri Foods Pvt Ltd (Tamil Nadu)')).toBeTruthy();
-    expect(within(table).getByText('Geofence 300 m · 1 network')).toBeTruthy();
+    expect(within(table).getAllByText('1 geofence point · 1 network').length).toBe(3);
     expect(within(table).queryByText('Mysuru depot')).toBeNull();
   });
 
@@ -157,10 +157,17 @@ describe('LocationsScreen (P01 §4.2)', () => {
         address: LOCATIONS[2].address,
         timezone: 'Asia/Kolkata',
         minWageZone: null,
-        geofence: { lat: 12.7409, lng: 77.8253, radiusM: 300 },
-        ipRanges: ['10.20.0.0/16'],
       }),
     );
+  });
+
+  it('shows check-in read-only and links to Time › Locations, where it is changed', async () => {
+    render(<LocationsScreen {...props({ checkInHref: '/yx/time/locations' })} />);
+    const row = [...screen.getByRole('table', { name: 'Locations' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Hosur plant')) as HTMLElement;
+    expect(row.textContent).toContain('1 geofence point · 1 network');
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('link', { name: 'Change check-in in Time › Locations' }).getAttribute('href')).toBe('/yx/time/locations');
+    expect(screen.queryByRole('checkbox', { name: 'Use a geofence' })).toBeNull();
   });
 
   it('time zone is chosen from the IANA list, India first, not typed', async () => {
@@ -177,14 +184,12 @@ describe('LocationsScreen (P01 §4.2)', () => {
     expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('Asia/Dubai');
   });
 
-  it('YX-ORG-02: state and time zone are required; geofence and networks are checked', () => {
-    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '' };
+  it('YX-ORG-02: state and time zone are required', () => {
+    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '' };
     expect(locationInput(base).errors.map((e) => e.fieldId)).toEqual(['loc-addr-lines', 'loc-addr-city', 'loc-addr-state']);
     const filled = { ...base, address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' } };
-    expect(locationInput(filled).input).toMatchObject({ address: { state: 'IN-TN', country: 'IN' }, geofence: null, ipRanges: [] });
+    expect(locationInput(filled).input).toMatchObject({ address: { state: 'IN-TN', country: 'IN' } });
     expect(locationInput({ ...filled, timezone: '' }).errors[0].fieldId).toBe('loc-tz');
-    expect(locationInput({ ...filled, fence: true, lat: 12.7 }).errors.map((e) => e.fieldId)).toEqual(['loc-lng']);
-    expect(locationInput({ ...filled, ipRanges: '10.20.0.0/16\nnot-a-range' }).errors[0].message).toMatch(/not-a-range/);
   });
 });
 
@@ -356,6 +361,19 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
   });
 
+  it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
+    const onSave = ok();
+    render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('Show net pay on the employee home').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Not shown')).toBeInTheDocument();
+    expect(within(block).getByText('Starter value')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Shown, hidden until the employee asks' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }));
+  });
+
   it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
     const onRemove = ok();
     render(<ToastProvider><CompanySettingsScreen {...base} onRemove={onRemove} /></ToastProvider>);
@@ -372,7 +390,7 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
 
   it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
-    const buttons = screen.getAllByRole('button', { name: 'Change' });
+    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !b.closest('.yx-org__rule')?.textContent?.includes('net pay'));
     expect(buttons).toHaveLength(4);
     buttons.forEach((b) => expect(b).toBeDisabled());
     expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);

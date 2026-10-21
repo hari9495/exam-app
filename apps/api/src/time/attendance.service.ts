@@ -1,12 +1,15 @@
+import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { Viewer, buildViewer, inEntitySql, inScopeSql, tenantWide, has, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
-import { PunchDto, RegulariseDto } from './dto';
-import { TIME_KEYS, asDate, dateOf, factsOn, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
+import { PunchDto, RegulariseDto, WfhDto } from './dto';
+import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { addDays, checkInVerdict, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen } from './schedule';
 import { workOnForPunch } from './time-rules';
@@ -16,7 +19,10 @@ import { workOnForPunch } from './time-rules';
 // P03 with the monthly limit (Q5: beyond it HR approves too).
 
 export const REGULARISE = 'attendance.regularise';
+export const WFH = 'attendance.wfh';
 const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day' };
+const ALREADY: Record<PunchDto['kind'], string> = { in: 'Already checked in', out: 'Already checked out', break_start: 'Break already started', break_end: 'Break already ended' };
+const DONE: Record<PunchDto['kind'], string> = { in: 'Checked in', out: 'Checked out', break_start: 'Break started', break_end: 'Break ended' };
 const hhmm = (m: number | null) => (m === null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 
@@ -27,10 +33,12 @@ export class AttendanceService implements OnModuleInit {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly engine: ApprovalsEngine,
     private readonly days: DayEngine,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
     this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -45,9 +53,34 @@ export class AttendanceService implements OnModuleInit {
     return { f: (await factsOn(tx, c.organizationId, id, today)) ?? f, today };
   }
 
+  /** TIM-31: one fence per allowed point of each location (a location with no point still brings its networks). */
   private async fences(tx: Tx, org: string, ids: string[]): Promise<Fence[]> {
-    const rows = await tx.location.findMany({ where: { organizationId: org, id: { in: ids }, archivedAt: null } });
-    return rows.map((l) => ({ locationId: l.id, name: l.name, lat: l.geoLat === null ? null : Number(l.geoLat), lng: l.geoLng === null ? null : Number(l.geoLng), radiusM: l.geoRadiusM, ipRanges: l.ipRanges }));
+    const [rows, points] = await Promise.all([
+      tx.location.findMany({ where: { organizationId: org, id: { in: ids }, archivedAt: null } }),
+      tx.locationFence.findMany({ where: { organizationId: org, locationId: { in: ids } }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+    ]);
+    return rows.flatMap((l): Fence[] => {
+      const mine = points.filter((p) => p.locationId === l.id);
+      if (!mine.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges }];
+      return mine.map((p) => ({ locationId: l.id, name: l.name, lat: Number(p.lat), lng: Number(p.lng), radiusM: p.radiusM, ipRanges: l.ipRanges }));
+    });
+  }
+
+  /**
+   * TIM-31 phone binding: where the person's location binds check-in to one phone, the first phone they check in from
+   * is kept (a hash of the key the app keeps on it); another phone is refused until HR resets it. Null: allowed.
+   */
+  private async otherPhone(tx: Tx, org: string, employeeId: string, locationId: string, deviceId: string | undefined, label: string | null): Promise<string | null> {
+    const site = await tx.location.findFirst({ where: { organizationId: org, id: locationId }, select: { bindDevice: true } });
+    if (!site?.bindDevice) return null;
+    if (!deviceId) return 'This site checks you in from one phone. Update the app and try again.';
+    const hash = createHash('sha256').update(deviceId).digest('hex');
+    const bound = await tx.checkinDevice.findUnique({ where: { organizationId_employeeId: { organizationId: org, employeeId } } });
+    if (!bound) {
+      await tx.checkinDevice.create({ data: { organizationId: org, employeeId, deviceHash: hash, label: label?.slice(0, 200) ?? null } });
+      return null;
+    }
+    return bound.deviceHash === hash ? null : 'Check-in here is bound to another phone. Ask HR to reset it if you changed phones.';
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
@@ -69,7 +102,9 @@ export class AttendanceService implements OnModuleInit {
       const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { workOn: 'asc' } });
       const requests = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(addDays(from, -31)) } }, orderBy: { workOn: 'desc' }, take: 60 });
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, today));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
+      const thisMonth = monthRange(today.slice(0, 7));
+      const wfhUsed = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'wfh', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(thisMonth.from), lte: asDate(thisMonth.to) } } });
       return {
         employee: { id: f.employeeId, name: f.name },
         today,
@@ -79,10 +114,15 @@ export class AttendanceService implements OnModuleInit {
         shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
         fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
-        next: accepted.length && accepted[accepted.length - 1].kind === 'in' ? 'out' : 'in',
+        // Working or on a break: the next punch closes the day (a break still open ends at check-out).
+        next: accepted.length && accepted[accepted.length - 1].kind !== 'out' ? 'out' : 'in',
+        onBreak: accepted.at(-1)?.kind === 'break_start',
         days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
         requests: requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status })),
         regularise: { limit, used },
+        // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
+        wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
+        wfhToday: requests.some((r) => r.kind === 'wfh' && r.status === 'approved' && dateOf(r.workOn) === today),
       };
     });
   }
@@ -104,10 +144,21 @@ export class AttendanceService implements OnModuleInit {
       await book.prime([f.employeeId], addDays(today, -1), today);
       const shifts = new Map<string, Awaited<ReturnType<ScheduleBook['day']>>['shift']>();
       for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
-      const workOn = workOnForPunch(now, f.zone, dto.kind, (d) => shifts.get(d) ?? null);
       const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true }, orderBy: { punchedAt: 'desc' } });
-      if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: dto.kind === 'in' ? 'Already checked in' : 'Already checked out', distanceM: last.distanceM };
-      const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: rule.checkIn });
+      if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[dto.kind], distanceM: last.distanceM };
+      // A break belongs to the day a check-out now would close (a break across midnight stays on the night shift's
+      // day). It starts while working that day and ends while on it.
+      const workOn = workOnForPunch(now, f.zone, dto.kind === 'in' ? 'in' : 'out', (d) => shifts.get(d) ?? null);
+      const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
+      if (dto.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
+      if (dto.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
+      // An approved work-from-home day: the punch records where the person is and is never refused for the place.
+      const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
+      const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: wfh ? 'field' : rule.checkIn });
+      if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
+      // A place that passes is still refused from another phone than the bound one (TIM-31).
+      const phone = v.accepted ? await this.otherPhone(tx, org, f.employeeId, f.locationId, dto.deviceId, device) : null;
+      if (phone) Object.assign(v, { accepted: false, verdict: 'other_phone', message: phone });
       await tx.punch.create({
         data: {
           organizationId: org,
@@ -129,7 +180,7 @@ export class AttendanceService implements OnModuleInit {
         },
       });
       if (v.accepted) await this.days.evaluate(tx, c, f.employeeId, workOn, workOn, now);
-      return { accepted: v.accepted, duplicate: false, kind: dto.kind, at: now, verdict: v.verdict, message: v.accepted ? (dto.kind === 'in' ? `Checked in. ${v.message}` : `Checked out. ${v.message}`) : v.message, distanceM: v.distanceM };
+      return { accepted: v.accepted, duplicate: false, kind: dto.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[dto.kind]}. ${v.message}` : v.message, distanceM: v.distanceM };
     });
   }
 
@@ -151,9 +202,9 @@ export class AttendanceService implements OnModuleInit {
       if (needIn && dto.inMinute === undefined) throw new BadRequestException('Give the time you started.');
       if (needOut && dto.outMinute === undefined) throw new BadRequestException('Give the time you finished.');
       if (dto.kind === 'wrong_time' && dto.outMinute! <= dto.inMinute!) throw new BadRequestException('The finish time is before the start time.');
-      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
+      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: { not: 'wfh' }, status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, dto.on));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
       const r = await tx.attendanceRequest.create({
         data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: dto.kind, inMinute: needIn ? dto.inMinute! : null, outMinute: needOut ? dto.outMinute! : null, reason: dto.reason, raisedBy: c.userId ?? null },
       });
@@ -189,13 +240,66 @@ export class AttendanceService implements OnModuleInit {
     return res;
   }
 
+  /**
+   * Work from home on one day (TIM-07, 19 Oct 2026), through P03: the manager, and HR too beyond the monthly limit
+   * (attendance.wfh_monthly_limit). Today or a later working day: never a weekly off or a holiday, one request a day.
+   * Approved, the day counts as present and web check-in records where the person is (never refused for the place).
+   */
+  async requestWfh(ctx: TenantContext, user: ScopeUser, dto: WfhDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { f: now, today } = await this.meFacts(tx, c);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${now.employeeId}`}))`;
+      if (dto.on < today) throw new BadRequestException('Pick today or a later date.');
+      const f = await factsOn(tx, org, now.employeeId, dto.on);
+      if (!f || dto.on < f.joinedOn || (f.exitedOn && dto.on > f.exitedOn)) throw new BadRequestException('You are not working here on that day.');
+      if ((await (await ScheduleBook.load(tx, org)).day(f, dto.on)).weeklyOff) throw new BadRequestException(`${fmt(dto.on)} is your weekly off.`);
+      const holiday = (await holidaysFor(tx, org, f.locationId, dto.on, dto.on, f.employeeId)).map.get(dto.on);
+      if (holiday && !holiday.halfDay) throw new BadRequestException(`${fmt(dto.on)} is a holiday (${holiday.name}).`);
+      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'wfh', status: { in: ['pending', 'approved'] } } })) throw new ConflictException('You have already asked to work from home on that day.');
+      const limit = Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, dto.on));
+      const month = monthRange(dto.on.slice(0, 7));
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'wfh', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(month.from), lte: asDate(month.to) } } });
+      const r = await tx.attendanceRequest.create({ data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'wfh', reason: dto.reason, raisedBy: c.userId ?? null } });
+      const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
+      const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }];
+      if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 });
+      const sub = await this.engine.submit(tx, c, {
+        type: WFH,
+        subjectType: 'attendance_request',
+        subjectId: r.id,
+        title: `${f.name}: work from home on ${fmt(dto.on)}`,
+        summary: [
+          { label: 'Day', value: fmt(dto.on) },
+          { label: 'Work from home this month', value: `Day ${used + 1} of ${limit} without HR` },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps,
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: hr,
+      });
+      notices.push(...sub.notices);
+      await tx.attendanceRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'attendance.wfh.submitted', 'attendance_request', r.id, { employeeId: f.employeeId, on: dto.on, hrStep: used >= limit });
+      return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status, hrStep: used >= limit };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
   async withdraw(ctx: TenantContext, user: ScopeUser, id: string) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const mine = await myEmployeeId(tx, c.organizationId, c.userId);
       const r = await tx.attendanceRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: mine } });
       if (!r) throw new NotFoundException('No such request.');
-      if (r.status !== 'pending') throw new ConflictException('Only a fix still waiting for approval can be withdrawn.');
+      if (r.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
       if (r.wfRequestId) await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       await tx.attendanceRequest.update({ where: { id: r.id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       return { id: r.id, status: 'withdrawn' };
@@ -210,6 +314,45 @@ export class AttendanceService implements OnModuleInit {
       const on = dateOf(r.workOn);
       await this.days.evaluate(tx, { organizationId: wf.organizationId, isSuperAdmin: false }, r.employeeId, on, on);
     }
+  }
+
+  /**
+   * Nudge (PLT-02 Team today): a manager or HR reminds someone who has not checked in today. Only for a person the
+   * nudger sees on the muster (their team, or the attendance.view grant), never themselves, and only while it is still
+   * waiting (a working day with no check-in yet). One nudge per item per person per day, whoever sends it. An in-app
+   * notification naming the item, and an email when the person's notification preferences allow it.
+   */
+  async nudge(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const v = await this.viewer(user);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      const zoneOf = await factsOn(tx, org, employeeId, new Date().toISOString().slice(0, 10));
+      if (!zoneOf) throw new NotFoundException('Not found');
+      const today = todayIn(zoneOf.zone);
+      if ((await mustSee(tx, c, v, own, 'attendance.view', employeeId, today)) === 'self') throw new BadRequestException('You cannot remind yourself.');
+      const f = (await factsOn(tx, org, employeeId, today)) ?? zoneOf;
+      if (!f.userId) throw new ConflictException(`${f.name} has no sign-in to remind.`);
+      const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: org, employeeId, workOn: asDate(today) } } });
+      if (day && ['leave', 'holiday', 'weekly_off'].includes(day.status)) throw new ConflictException(`${f.name} is not working today.`);
+      if (await tx.punch.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(today), kind: 'in', accepted: true }, select: { id: true } })) throw new ConflictException(`${f.name} has already checked in today.`);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`nudge:${org}:${employeeId}:${today}`}))`;
+      if (await tx.nudge.findFirst({ where: { organizationId: org, employeeId, item: 'check_in', onDay: asDate(today) }, select: { id: true } })) throw new ConflictException(`${f.name} was already reminded today. You can remind them again tomorrow.`);
+      const row = await tx.nudge.create({ data: { organizationId: org, employeeId, item: 'check_in', onDay: asDate(today), sentBy: c.userId! } });
+      await audit(tx, c, 'attendance.nudge.sent', 'employee', employeeId, { item: 'check_in', on: today });
+      const sender = (await tx.user.findFirst({ where: { organizationId: org, id: c.userId! }, select: { name: true } }))?.name || 'Your manager';
+      return { id: row.id, userId: f.userId, name: f.name, sender, today };
+    });
+    const text = `${out.sender} reminded you to check in today (${fmt(out.today)}).`;
+    await this.notifications.notifySystem(
+      ctx,
+      [out.userId],
+      'nudge.reminder',
+      { entityType: 'nudge', entityId: out.id, contextText: text, linkPath: '/yx/time/attendance' },
+      { subject: 'Reminder: check in today', html: `<p>${escapeHtml(text)}</p><p>Open YukthiX to check in.</p>` },
+    );
+    return { sent: true, to: out.name, item: 'check_in', on: out.today };
   }
 
   // ------------------------------------------------------------------------------------------ the muster (TIM-02)
@@ -240,17 +383,40 @@ export class AttendanceService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
-      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; location: string }[]>`
-        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, l.name::text AS location
+      const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; location: string; department: string }[]>`
+        SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code, l.name::text AS location, dp.name::text AS department
         FROM employees e
         JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${to}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${from}::date)
         JOIN locations l ON l.organization_id = e.organization_id AND l.id = a.location_id
+        JOIN departments dp ON dp.organization_id = e.organization_id AND dp.id = a.department_id
         WHERE e.organization_id = ${c.organizationId}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to)}
           AND ${inEntitySql(c, entityId, Prisma.sql`e.id`, Prisma.sql`${from}::date`, Prisma.sql`${to}::date`)}
         ORDER BY 2 LIMIT 300`;
       const ids = people.map((p) => p.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      // What the designed muster (TIM-02) shows on a day besides its status: the leave taken, overtime and its state,
+      // a request still waiting, and approved work from home. Same people as above (already filtered by scope).
+      const key = (employeeId: string, on: string) => `${employeeId}|${on}`;
+      const leave = new Map<string, { code: string; name: string }>();
+      const ot = new Map<string, { minutes: number; status: 'pending' | 'approved' | 'comp-off' }>();
+      const waiting = new Set<string>();
+      const wfh = new Set<string>();
+      if (ids.length) {
+        for (const l of await tx.$queryRaw<{ employeeId: string; on: string; code: string; name: string }[]>`
+          SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, t.code::text, t.name
+          FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+          JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+          WHERE d.organization_id = ${c.organizationId}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.active AND d.portion > 0
+            AND r.status IN ('approved', 'cancel_pending') AND d.leave_on BETWEEN ${from}::date AND ${to}::date`)
+          leave.set(key(l.employeeId, l.on), { code: l.code, name: l.name });
+        for (const o of await tx.overtimeRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, payableMinutes: true, status: true, settle: true } }))
+          ot.set(key(o.employeeId, dateOf(o.workOn)), { minutes: o.payableMinutes, status: o.status === 'pending' ? 'pending' : o.settle === 'comp_off' ? 'comp-off' : 'approved' });
+        for (const r of await tx.attendanceRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, kind: true, status: true } })) {
+          if (r.status === 'pending') waiting.add(key(r.employeeId, dateOf(r.workOn)));
+          else if (r.kind === 'wfh') wfh.add(key(r.employeeId, dateOf(r.workOn)));
+        }
+      }
       const modes = new Map<string, { mode: string; effect: string }>();
       for (const id of ids) {
         const f = await factsOn(tx, c.organizationId, id, to);
@@ -266,10 +432,16 @@ export class AttendanceService implements OnModuleInit {
           name: p.name,
           code: p.code,
           location: p.location,
+          department: p.department,
           me: p.id === own,
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
-          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
+          days: days
+            .filter((d) => d.employeeId === p.id)
+            .map((d) => {
+              const k = key(p.id, dateOf(d.workOn));
+              return { on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, leave: leave.get(k) ?? null, ot: ot.get(k) ?? null, waiting: waiting.has(k), wfh: wfh.has(k) };
+            }),
         })),
       };
     });
@@ -286,10 +458,13 @@ export class AttendanceService implements OnModuleInit {
       const punches = await tx.punch.findMany({ where: { organizationId: c.organizationId, employeeId, workOn: asDate(on) }, orderBy: { punchedAt: 'asc' } });
       const names = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: punches.map((p) => p.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
       const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: c.organizationId, employeeId, workOn: asDate(on) } } });
+      const planned = await (await ScheduleBook.load(tx, c.organizationId)).day(f, on);
       return {
         person: { name: f.name, code: f.code },
         on,
         zone: f.zone,
+        // The shift that day (the designed day card draws it under the punches); null on a weekly off.
+        shift: planned.shift ? { name: planned.shift.name, start: planned.shift.shiftStart, end: planned.shift.shiftEnd, grace: planned.shift.graceMinutes } : null,
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.
         punches: punches.map((p) => ({ ...this.punchView(p, names), minute: minutesInto(on, f.zone, p.punchedAt) })),
@@ -316,7 +491,7 @@ export class AttendanceService implements OnModuleInit {
   }
 }
 
-async function countExceptions(tx: Tx, c: CompanyContext, from: string, to: string, entityId: string | null | undefined, inScope: Prisma.Sql): Promise<number> {
+export async function countExceptions(tx: Tx, c: CompanyContext, from: string, to: string, entityId: string | null | undefined, inScope: Prisma.Sql): Promise<number> {
   const [r] = await tx.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n FROM attendance_days d
     WHERE d.organization_id = ${c.organizationId}::uuid AND d.work_on BETWEEN ${from}::date AND ${to}::date AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')

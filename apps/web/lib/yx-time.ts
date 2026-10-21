@@ -26,6 +26,17 @@ export function useTimeWrite() {
   };
 }
 
+/** Decides the viewer's own P03 step on a time request (overtime, fixes) in place; the engine checks the task again. */
+export function useTimeDecide() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return async (taskId: string, decision: 'approve' | 'reject', reason?: string) => {
+    await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }) }, accessToken ?? undefined);
+    await queryClient.invalidateQueries({ queryKey: ['time'] });
+    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
+  };
+}
+
 /** A GET that is not cached (previews, day cards, ledgers). */
 export function useTimeRead() {
   const { accessToken } = useAuth();
@@ -55,6 +66,23 @@ export function browserLocation(): Promise<{ pin: Pin | null; problem?: string }
 }
 
 /** Today in India time (yyyy-mm-dd). */
+/**
+ * TIM-31 phone binding: a random key kept on this phone, sent with each check-in (the API stores only its hash).
+ * Storage can be blocked (private mode): the key then lasts for this page only, and a bound site refuses a new key.
+ */
+let pageKey = '';
+export function checkInDeviceId(): string {
+  try {
+    const kept = window.localStorage.getItem('yx-device-id');
+    if (kept) return kept;
+    const made = crypto.randomUUID();
+    window.localStorage.setItem('yx-device-id', made);
+    return made;
+  } catch {
+    return (pageKey ||= crypto.randomUUID());
+  }
+}
+
 export const todayIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 
 /** Downloads a file from the time API (registers) with the person's token, as the browser's own download. */

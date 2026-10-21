@@ -49,7 +49,31 @@ export interface LeaveRules {
   paySteps: PayStep[] | null;
   /** Which earlier days count toward the steps. */
   payWindow: 'leave_year' | 'rolling_12_months';
+  // ---- TIM-27 rules (founder decision 20 Oct 2026), dated with the version like the rest ----
+  /** Which employment types may take it: everyone, permanent and contract staff, or permanent staff only. */
+  employment: 'all' | 'permanent_contract' | 'permanent';
+  /** Months worked before it can be taken (0: from the first day). */
+  minServiceMonths: number;
+  /** Whether people on probation may take it. */
+  duringProbation: boolean;
+  /** Most days of it in one calendar month (null: no limit). */
+  maxDaysPerMonth: number | null;
+  /** Dates when no one can take it, e.g. a year-end audit. */
+  blockedDates: { from: string; to: string; reason: string }[];
+  /** It can be taken by the hour on a single day. */
+  hourly: boolean;
+  /** Crediting during a month spent wholly on unpaid leave (a sabbatical or long unpaid leave). */
+  longAbsence: 'pause' | 'continue';
+  /** Taking it while serving notice: allowed, counted as unpaid leave, moves the last working day later, or not allowed. */
+  duringNotice: 'allowed' | 'unpaid' | 'extends' | 'blocked';
 }
+
+/** Employment categories each `employment` choice lets in (P01 categories). */
+export const EMPLOYMENT_FOR: Record<LeaveRules['employment'], string[] | null> = {
+  all: null,
+  permanent_contract: ['permanent', 'probation', 'fixed_term', 'deployed_contractor', 'consultant', 'retired_reemployed'],
+  permanent: ['permanent', 'probation', 'retired_reemployed'],
+};
 
 export interface PayStep {
   /** Days in this step (half days allowed). */
@@ -58,7 +82,7 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', employment: 'all', minServiceMonths: 0, duringProbation: true, maxDaysPerMonth: null, blockedDates: [], hourly: false, longAbsence: 'continue', duringNotice: 'allowed' };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -82,6 +106,19 @@ export function parseRules(input: unknown): LeaveRules {
   if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
   if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
   if (!['leave_year', 'rolling_12_months'].includes(r.payWindow)) throw new BadRequestException('Count earlier days in the leave year or the last 12 months.');
+  if (!(r.employment in EMPLOYMENT_FOR)) throw new BadRequestException('Choose which employment types may take it.');
+  if (!Number.isInteger(r.minServiceMonths) || r.minServiceMonths < 0 || r.minServiceMonths > 120) throw new BadRequestException('Months worked is 0 to 120.');
+  for (const k of ['duringProbation', 'hourly'] as const) if (typeof r[k] !== 'boolean') throw new BadRequestException('Use yes or no for the switches.');
+  if (r.maxDaysPerMonth !== null && !halfStep(r.maxDaysPerMonth, 0.5, 31)) throw new BadRequestException('Most days in a month is 0.5 to 31, in half days.');
+  if (r.maxDays !== null && r.maxDaysPerMonth !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`More than the monthly limit of ${r.maxDaysPerMonth} days: a request that big could never be approved.`);
+  if (!['pause', 'continue'].includes(r.longAbsence)) throw new BadRequestException('Choose whether crediting stops during a long absence.');
+  if (!['allowed', 'unpaid', 'extends', 'blocked'].includes(r.duringNotice)) throw new BadRequestException('Choose what happens to it during the notice period.');
+  if (!Array.isArray(r.blockedDates) || r.blockedDates.length > 20) throw new BadRequestException('Give up to 20 blocked date ranges.');
+  r.blockedDates = r.blockedDates.map((b, i) => {
+    const ok = isObj(b) && Object.keys(b).every((k) => ['from', 'to', 'reason'].includes(k)) && typeof b.from === 'string' && typeof b.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.from) && /^\d{4}-\d{2}-\d{2}$/.test(b.to) && b.from <= b.to && typeof b.reason === 'string' && b.reason.trim().length >= 1 && b.reason.length <= 100;
+    if (!ok) throw new BadRequestException(`Blocked dates ${i + 1}: give a first and last day (in order) and a reason of up to 100 characters.`);
+    return { from: b.from as string, to: b.to as string, reason: (b.reason as string).trim() };
+  });
   if (r.paySteps !== null) {
     if (!Array.isArray(r.paySteps) || r.paySteps.length < 1 || r.paySteps.length > 5) throw new BadRequestException('Give 1 to 5 pay steps, or none.');
     r.paySteps = r.paySteps.map((x, i) => {
@@ -169,6 +206,26 @@ export interface Facts {
 }
 
 /** The employee's assignment and location on `on` (P06: as of that date). Null when not employed on it. */
+/**
+ * TIM-27: a leave type's rules and pay in force on a day (founder decisions 20 Oct 2026). Leave follows the version in
+ * force on its first day (a payslip, the version of each leave day); a day before the first version takes the first
+ * one. A type with no version has the default rules and is paid.
+ */
+export async function leaveVersionBook(tx: Tx, org: string, typeIds?: string[]): Promise<(typeId: string, on: string) => { rules: LeaveRules; paid: boolean }> {
+  const rows = await tx.leaveTypeVersion.findMany({ where: { organizationId: org, ...(typeIds ? { leaveTypeId: { in: typeIds } } : {}) }, orderBy: { validFrom: 'asc' } });
+  return (id, on) => {
+    const mine = rows.filter((v) => v.leaveTypeId === id);
+    const v = mine.filter((x) => dateOf(x.validFrom) <= on).pop() ?? mine[0];
+    return v ? { rules: { ...DEFAULT_RULES, ...(v.rules as object) }, paid: v.paid } : { rules: DEFAULT_RULES, paid: true };
+  };
+}
+
+/** The rules part of leaveVersionBook. */
+export async function leaveRuleBook(tx: Tx, org: string, typeIds?: string[]): Promise<(typeId: string, on: string) => LeaveRules> {
+  const book = await leaveVersionBook(tx, org, typeIds);
+  return (id, on) => book(id, on).rules;
+}
+
 export async function factsOn(tx: Tx, org: string, employeeId: string, on: string): Promise<Facts | null> {
   const rows = await tx.$queryRaw<(Omit<Facts, 'joinedOn' | 'exitedOn'> & { joinedOn: Date; exitedOn: Date | null })[]>`
     SELECT e.id::text AS "employeeId", e.person_id::text AS "personId", e.user_id::text AS "userId",
@@ -287,7 +344,7 @@ export async function leaveDays(tx: Tx, org: string, employeeId: string, from: s
   const rows = await tx.$queryRaw<{ on: string; part: string }[]>`
     SELECT d.leave_on::text AS on, d.part FROM leave_request_days d
     JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
-    WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${employeeId}::uuid AND d.active AND d.portion > 0
+    WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${employeeId}::uuid AND d.active AND d.portion > 0 AND d.part <> 'hours'
       AND d.leave_on BETWEEN ${from}::date AND ${to}::date AND r.status = ANY(${statuses}::text[])`;
   const out = new Map<string, 'full' | 'first' | 'second'>();
   for (const r of rows) {
@@ -377,6 +434,17 @@ export function monthRange(month: string): { from: string; to: string } {
   return { from, to: iso(d) };
 }
 
+/** Approved hours off (leave by the hour, TIM-27) of one employee per date, in minutes. */
+export async function leaveMinutes(tx: Tx, org: string, employeeId: string, from: string, to: string): Promise<Map<string, number>> {
+  const rows = await tx.$queryRaw<{ on: string; minutes: number }[]>`
+    SELECT d.leave_on::text AS on, sum(r.hours * 60)::float AS minutes FROM leave_request_days d
+    JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+    WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${employeeId}::uuid AND d.active AND d.part = 'hours' AND d.portion > 0
+      AND d.leave_on BETWEEN ${from}::date AND ${to}::date
+    GROUP BY 1`;
+  return new Map(rows.map((r) => [r.on, r.minutes]));
+}
+
 /**
  * Approved leave of people by login, per date and part (full / first / second half). The Service Desk reads it for
  * assignment and personal OLA clocks (US-G-011, the "leave seam"); a first-half and a second-half request on one date
@@ -389,7 +457,7 @@ export async function approvedLeaveOfUsers(tx: Tx, org: string, userIds: readonl
     FROM leave_request_days d
     JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
     JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
-    WHERE d.organization_id = ${org}::uuid AND e.user_id = ANY(${[...userIds]}::uuid[]) AND d.active AND d.portion > 0
+    WHERE d.organization_id = ${org}::uuid AND e.user_id = ANY(${[...userIds]}::uuid[]) AND d.active AND d.portion > 0 AND d.part <> 'hours'
       AND d.leave_on BETWEEN ${from}::date AND ${to}::date
     GROUP BY 1, 2`;
   return rows.map((r) => ({ userId: r.userId, on: r.on, part: r.parts.length > 1 || r.parts[0] === 'full' ? 'full' : (r.parts[0] as 'first' | 'second') }));

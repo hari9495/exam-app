@@ -3,12 +3,13 @@ import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { inCompany } from '../org-structure/org-structure.service';
-import { buildViewer, employeesInEntity, tenantWide } from '../access/scope';
+import { buildViewer, employeesInEntity, has, inScopeSql, tenantWide } from '../access/scope';
 import { EmployeeHistoryService, type RequestUser } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { todayIst } from '../org-structure/org-validation';
 import { addDays } from '../time/time-maths';
-import { AttendanceService } from '../time/attendance.service';
+import { AttendanceService, countExceptions } from '../time/attendance.service';
+import { monthRange, visibleSql } from '../time/time-core';
 import { PeriodsService } from '../time/periods.service';
 import { PayRunsService } from '../payroll/runs.service';
 import { withPayScope } from '../payroll/pay-access';
@@ -372,6 +373,8 @@ export class WorkspaceService {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    // Time menu (TIM nav): the same viewer and scope as the Muster and Requests pages.
+    const tv = keys.has('attendance.view') || keys.has('leave.view') || !support ? await buildViewer(this.prisma, this.tenantPrisma, user, ['attendance.view', 'leave.view']) : null;
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -390,7 +393,36 @@ export class WorkspaceService {
         WHERE p.organization_id = ${org}::uuid AND p.user_id = ${me}::uuid AND i.status <> 'cancelled' AND s.ends_at <= now()
           AND COALESCE(i.scorecard_template_id, j.scorecard_template_id) IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM scorecards sc WHERE sc.interview_id = i.id AND sc.panelist_user_id = p.user_id AND sc.status = 'submitted')`);
+      if (tv) await this.timeCounts(tx, c, tv, out);
       return out;
     });
+  }
+
+  /**
+   * Time menu counts (TIM nav, as the design counts them). Exceptions: this month's days still missing a punch or a
+   * timesheet, for people the viewer sees with attendance.view. Requests: leave, attendance fixes / work from home and
+   * overtime still waiting, for people the viewer sees (their team, or their grant), never their own. No grant and no
+   * team: no count.
+   */
+  private async timeCounts(tx: Parameters<Parameters<typeof inCompany>[2]>[0], c: Parameters<Parameters<typeof inCompany>[2]>[1], v: Awaited<ReturnType<typeof buildViewer>>, out: Record<string, number>) {
+    const org = c.organizationId;
+    const today = todayIst();
+    const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+    const viewsAttendance = has(v, 'attendance.view') && !(v.actingForOther && !tenantWide(v, 'attendance.view'));
+    if (viewsAttendance) {
+      const { from } = monthRange(today.slice(0, 7));
+      out.timeExceptions = await countExceptions(tx, c, from, today, null, inScopeSql(c, v, 'attendance.view', Prisma.sql`d.employee_id`, Prisma.sql`d.work_on`, own));
+    }
+    const manages = own ? (await tx.employeeAssignment.count({ where: { organizationId: org, managerEmployeeId: own, supersededAt: null, validFrom: { lte: new Date(`${today}T00:00:00Z`) } } })) > 0 : false;
+    if (!viewsAttendance && !has(v, 'leave.view') && !manages) return;
+    const notMe = own ?? '00000000-0000-0000-0000-000000000000';
+    const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
+      SELECT ((SELECT count(*) FROM leave_requests r WHERE r.organization_id = ${org}::uuid AND r.status IN ('pending', 'cancel_pending') AND r.employee_id <> ${notMe}::uuid
+                 AND ${await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`r.employee_id`, today)})
+            + (SELECT count(*) FROM attendance_requests r WHERE r.organization_id = ${org}::uuid AND r.status = 'pending' AND r.employee_id <> ${notMe}::uuid
+                 AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`r.employee_id`, today)})
+            + (SELECT count(*) FROM overtime_requests r WHERE r.organization_id = ${org}::uuid AND r.status = 'pending' AND r.employee_id <> ${notMe}::uuid
+                 AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`r.employee_id`, today)}))::int AS n`;
+    out.timeRequests = n;
   }
 }

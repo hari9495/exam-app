@@ -202,27 +202,28 @@ describe('Organisation structure (P01 §4.1–4.3, §4.6; YX-ORG-01..05, 08, 12,
   });
 
   describe('locations (P01 §4.2; YX-ORG-02, YX-ORG-08)', () => {
-    const body = (over: object = {}) => ({ legalEntityId: ids.kfpl, name: 'Bengaluru head office', address: address(), timezone: 'Asia/Kolkata', geofence: { lat: 12.9716, lng: 77.5946, radiusM: 150 }, ipRanges: ['203.0.113.0/24'], ...over });
+    const body = (over: object = {}) => ({ legalEntityId: ids.kfpl, name: 'Bengaluru head office', address: address(), timezone: 'Asia/Kolkata', ...over });
 
     it('creates a site with a generated code; state and time zone are required and real', async () => {
       const res = await api('adminA', 'post', '/locations').send(body()).expect(201);
-      expect(res.body).toMatchObject({ code: 'BENGALURU-HEAD-OFFICE', state: 'IN-KA', country: 'IN', timezone: 'Asia/Kolkata', geofence: { lat: 12.9716, lng: 77.5946, radiusM: 150 }, ipRanges: ['203.0.113.0/24'] });
+      expect(res.body).toMatchObject({ code: 'BENGALURU-HEAD-OFFICE', state: 'IN-KA', country: 'IN', timezone: 'Asia/Kolkata', fences: [], ipRanges: [], wifiNames: [], bindDevice: false });
       ids.blr = res.body.id;
       ids.hosur = (await api('adminA', 'post', '/locations').send(body({ legalEntityId: ids.tn, name: 'Hosur plant', code: 'HSR', address: address('IN-TN', 'Hosur', '635126') })).expect(201)).body.id;
       await api('adminA', 'post', '/locations').send(body({ name: 'No zone', timezone: undefined })).expect(400);
       await api('adminA', 'post', '/locations').send(body({ name: 'Bad zone', timezone: 'Mars/Olympus' })).expect(400);
       await api('adminA', 'post', '/locations').send(body({ name: 'No state', address: { ...address(), state: undefined } })).expect(400);
       await api('adminA', 'post', '/locations').send(body({ name: 'Bad state', address: address('IN-QQ') })).expect(400);
+      // Check-in is set in Time › Locations (TIM-31): Settings never takes a geofence or networks.
       await api('adminA', 'post', '/locations').send(body({ name: 'Half fence', geofence: { lat: 12.9 } })).expect(400);
-      await api('adminA', 'post', '/locations').send(body({ name: 'Bad range', ipRanges: ['10.0.0.300/8'] })).expect(400);
+      await api('adminA', 'post', '/locations').send(body({ name: 'Networks', ipRanges: ['10.0.0.0/8'] })).expect(400);
       await api('adminA', 'post', '/locations').send(body({ name: 'Copy', code: 'hsr' })).expect(409);
     });
 
     it('YX-ORG-08: a site belongs to one active entity of the same company and never changes entity', async () => {
       await api('adminA', 'post', '/locations').send(body({ name: 'Elsewhere', legalEntityId: ids.bEntity })).expect(400);
       await api('adminA', 'put', `/locations/${ids.blr}`).send(body({ legalEntityId: ids.tn })).expect(400);
-      const edited = await api('adminA', 'put', `/locations/${ids.blr}`).send(body({ name: 'Bengaluru HQ', geofence: null })).expect(200);
-      expect(edited.body).toMatchObject({ name: 'Bengaluru HQ', code: 'BENGALURU-HEAD-OFFICE', geofence: null });
+      const edited = await api('adminA', 'put', `/locations/${ids.blr}`).send(body({ name: 'Bengaluru HQ' })).expect(200);
+      expect(edited.body).toMatchObject({ name: 'Bengaluru HQ', code: 'BENGALURU-HEAD-OFFICE', fences: [] });
     });
 
     it('an entity with live sites cannot be archived; archived entities take no new sites', async () => {

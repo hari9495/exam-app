@@ -144,6 +144,7 @@ export interface Ask {
   title: string;
   consequence: string;
   confirmLabel: string;
+  cancelLabel?: string;
   destructive?: boolean;
   action: () => Promise<void>;
 }
@@ -152,7 +153,7 @@ export interface Ask {
 export function useConfirm(): [ReactNode, (ask: Ask) => void] {
   const [ask, setAsk] = useState<Ask | null>(null);
   const dialog = ask && (
-    <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={ask.title} consequence={ask.consequence} confirmLabel={ask.confirmLabel} destructive={ask.destructive} onConfirm={ask.action} />
+    <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={ask.title} consequence={ask.consequence} confirmLabel={ask.confirmLabel} cancelLabel={ask.cancelLabel} destructive={ask.destructive} onConfirm={ask.action} />
   );
   return [dialog, setAsk];
 }

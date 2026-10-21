@@ -14,6 +14,7 @@ export const SickCert: S = { name: 'Sick leave · certificate required', args: {
 export const BlockDate: S = { name: 'Company block date', args: { blocked: true } };
 // Meera Iyer is serving notice (last day 19 Oct, ON_NOTICE in time-data); she applies for 12–13 Oct.
 export const Notice: S = { name: 'During notice period · last day moves', args: { self: 'Meera Iyer', from: new Date(2026, 9, 12), to: new Date(2026, 9, 13) } };
+export const ByTheHour: S = { name: 'By the hour · one day', args: { type: 'CL', from: new Date(2026, 9, 27), to: new Date(2026, 9, 27), hourly: true } };
 export const Unpaid: S = { name: 'Leave without pay · taken, no balance', args: { type: 'LWP' } };
 export const Sent: S = { name: 'Sent', args: { sent: true } };
 export const Phone: S = { name: 'Phone', args: { surface: 'phone' }, ...phone };

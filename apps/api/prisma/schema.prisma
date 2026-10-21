@@ -2311,10 +2311,9 @@ model Location {
   state          String    @db.VarChar(6)
   timezone       String    @db.VarChar(64)
   minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
-  geoLat         Decimal?  @map("geo_lat") @db.Decimal(9, 6)
-  geoLng         Decimal?  @map("geo_lng") @db.Decimal(9, 6)
-  geoRadiusM     Int?      @map("geo_radius_m")
   ipRanges       String[]  @default([]) @map("ip_ranges")
+  wifiNames      String[]  @default([]) @map("wifi_names")
+  bindDevice     Boolean   @default(false) @map("bind_device")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4717,16 +4716,60 @@ model LeaveType {
   code           String   @db.Citext
   name           String   @db.VarChar(60)
   kind           String   @db.VarChar(10)
-  paid           Boolean  @default(true)
   colour         String   @default("blue") @db.VarChar(10)
-  rules          Json     @default("{}")
   active         Boolean  @default(true)
-  version        Int      @default(1)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@map("leave_types")
+}
+
+/// Dated rules of a leave type (TIM-27): leave follows the version in force on its first day.
+model LeaveTypeVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  leaveTypeId    String   @map("leave_type_id") @db.Uuid
+  version        Int
+  validFrom      DateTime @map("valid_from") @db.Date
+  rules          Json     @default("{}")
+  /// Pay is dated with the rules (founder decision 20 Oct 2026).
+  paid           Boolean  @default(true)
+  note           String?  @db.VarChar(300)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, leaveTypeId, version], map: "leave_type_versions_number_key")
+  @@unique([organizationId, leaveTypeId, validFrom], map: "leave_type_versions_from_key")
+  @@map("leave_type_versions")
+}
+
+/// An allowed check-in point of a location (TIM-31): a centre and a radius.
+model LocationFence {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  name           String   @db.VarChar(60)
+  lat            Decimal  @db.Decimal(9, 6)
+  lng            Decimal  @db.Decimal(9, 6)
+  radiusM        Int      @map("radius_m")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, locationId], map: "location_fences_location_idx")
+  @@map("location_fences")
+}
+
+/// The phone a person checks in from where the site binds check-in to one phone (a hash of the app's key).
+model CheckinDevice {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  deviceHash     String   @map("device_hash") @db.Char(64)
+  label          String?  @db.VarChar(200)
+  boundAt        DateTime @default(now()) @map("bound_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("checkin_devices")
 }
 
 model LeavePolicy {
@@ -4795,6 +4838,8 @@ model LeaveRequest {
   fromHalf          String    @default("full") @map("from_half") @db.VarChar(6)
   toHalf            String    @default("full") @map("to_half") @db.VarChar(6)
   days              Decimal   @db.Decimal(6, 2)
+  /// Leave by the hour on one day (a rule of the type).
+  hours             Decimal?  @db.Decimal(4, 2)
   status            String    @default("pending") @db.VarChar(14)
   reason            String?   @db.VarChar(1000)
   certificate       String    @default("none") @db.VarChar(8)
@@ -4854,7 +4899,7 @@ model Punch {
   employeeId     String   @map("employee_id") @db.Uuid
   punchedAt      DateTime @map("punched_at") @db.Timestamptz(3)
   workOn         DateTime @map("work_on") @db.Date
-  kind           String   @db.VarChar(3)
+  kind           String   @db.VarChar(11)
   source         String   @default("web") @db.VarChar(10)
   accepted       Boolean
   refusal        String?  @db.VarChar(200)
@@ -9957,4 +10002,19 @@ model HomeSnapshot {
   takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("home_snapshots")
+}
+
+// ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
+
+model Nudge {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  item           String   @db.VarChar(20)
+  onDay          DateTime @map("on_day") @db.Date
+  sentBy         String   @map("sent_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, item, onDay], map: "nudges_once_a_day_key")
+  @@map("nudges")
 }

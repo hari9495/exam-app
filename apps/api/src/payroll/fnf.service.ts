@@ -10,7 +10,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { gratuityDue, inForce, retrenchment } from '../statutory/evaluator';
 import { hashValue, sealValue } from '../people/profile.service';
-import { asDate, dateOf, monthRange } from '../time/time-core';
+import { asDate, dateOf, leaveRuleBook, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { FNF_COMPONENTS } from './starter';
@@ -143,7 +143,9 @@ export class FnfService implements OnModuleInit {
     const encashDaily = encashOn.div(days);
     const items: { code: string; amount: Prisma.Decimal; label: string; hold?: string }[] = [];
     // Leave encashment: the balance of encashable leave on the last day at the daily rate the company chose (5g-D4).
-    const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => (t.rules as { encashable?: boolean } | null)?.encashable);
+    // The rules in force on the last working day (TIM-27 versions).
+    const rulesOf = await leaveRuleBook(tx, org);
+    const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => rulesOf(t.id, lwd).encashable);
     for (const t of types) {
       const bal = (await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: em.employeeId, leaveTypeId: t.id, entryOn: { lte: f.lwd } }, _sum: { days: true } }))._sum.days;
       if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(encashDaily.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(encashDaily).toFixed(2)} a day.` });

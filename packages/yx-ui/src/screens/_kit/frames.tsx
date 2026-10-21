@@ -5,6 +5,7 @@ import { Bell, DoorOpen, FolderKanban, HardHat, MessageCircleQuestionMark, Messa
 import {
   AppShell,
   Breadcrumbs,
+  OwnCrumbsContext,
   type Crumb,
   ScopePicker,
   type ScopePeriod,
@@ -174,6 +175,8 @@ export function DesktopFrame({ area, panelTitle, panel, children, railItems = SC
 
 function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }: Required<Pick<DesktopFrameProps, 'area' | 'panelTitle' | 'panel' | 'railItems' | 'live'>> & { children: ReactNode }) {
   const go = (href: string | undefined) => href && live.onNavigate(href);
+  // A deep page (an object inside a list) shows its own trail, e.g. Locations › Chennai office, instead of Area › Page.
+  const [ownCrumbs, setOwnCrumbs] = useState(false);
   const tabs = live.tabs ?? {};
   const mobileTabs = MOBILE_TABS.filter((t) => tabs[t.id as keyof typeof tabs]);
   const mobileActive = area === 'time' || area === 'pay' || area === 'home' ? area : undefined;
@@ -210,8 +213,10 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
       >
         <div className="yx-screen">
           {live.banner}
-          {live.breadcrumbs && live.breadcrumbs.length > 1 && <Breadcrumbs items={live.breadcrumbs} />}
-          <InLiveFrame.Provider value={true}>{children}</InLiveFrame.Provider>
+          {!ownCrumbs && live.breadcrumbs && live.breadcrumbs.length > 1 && <Breadcrumbs items={live.breadcrumbs} />}
+          <OwnCrumbsContext.Provider value={setOwnCrumbs}>
+            <InLiveFrame.Provider value={true}>{children}</InLiveFrame.Provider>
+          </OwnCrumbsContext.Provider>
         </div>
       </AppShell>
       {live.overlays}

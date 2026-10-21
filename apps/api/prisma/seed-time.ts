@@ -66,7 +66,12 @@ export async function seedTime(tx: Tx, organizationId: string) {
     for (const e of await tx.employee.findMany({ where: org, select: { id: true } })) await new DayEngine().evaluate(tx, c, e.id, addDays(todayIn('Asia/Kolkata'), -7), todayIn('Asia/Kolkata'));
     return;
   }
-  const loc = async (code: string) => tx.location.findFirstOrThrow({ where: { ...org, code } });
+  const loc = async (code: string) => {
+    const l = await tx.location.findFirstOrThrow({ where: { ...org, code } });
+    // TIM-31: the site's first check-in point.
+    const p = await tx.locationFence.findFirst({ where: { ...org, locationId: l.id }, orderBy: { sortOrder: 'asc' } });
+    return { ...l, lat: Number(p?.lat ?? 0), lng: Number(p?.lng ?? 0) };
+  };
   const blr = await loc('BLR-HO');
   const maa = await loc('MAA-OFF');
   const hosur = await loc('HSR-PLT');
@@ -93,14 +98,18 @@ export async function seedTime(tx: Tx, organizationId: string) {
 
   // ---- leave types (M02 A2) ----
   const type = async (code: string, name: string, kind: string, paid: boolean, colour: string, r: Partial<LeaveRules>) =>
-    (await tx.leaveType.create({ data: { ...org, code, name, kind, paid, colour, rules: rules(r), createdBy: hr } })).id;
+    (
+      await tx.leaveType.create({
+        data: { ...org, code, name, kind, colour, createdBy: hr },
+      }).then(async (t) => (await tx.leaveTypeVersion.create({ data: { ...org, leaveTypeId: t.id, version: 1, validFrom: day('2026-01-01'), paid, rules: rules(r), createdBy: hr } }), t))
+    ).id;
   const EL = await type('EL', 'Earned leave', 'earned', true, 'blue', { sandwich: 'sandwich', noticeDays: 3, maxDays: 15, hrApprovalAboveDays: 5, encashable: true });
   const CL = await type('CL', 'Casual leave', 'casual', true, 'green', { maxDays: 3 });
   const SL = await type('SL', 'Sick leave', 'sick', true, 'orange', { medical: true, certificateAfterDays: 2 });
   await type('LOP', 'Leave without pay', 'lop', false, 'grey', { hrApprovalAboveDays: 0 });
   await type('CO', 'Comp-off', 'comp_off', true, 'teal', { halfDays: true });
-  await type('ML', 'Maternity leave', 'maternity', true, 'pink', { halfDays: false, sandwich: 'always', hrApprovalAboveDays: 0 });
-  await type('PTL', 'Paternity leave', 'paternity', true, 'purple', { halfDays: false, maxDays: 5 });
+  await type('ML', 'Maternity leave', 'maternity', true, 'pink', { halfDays: false, sandwich: 'always', hrApprovalAboveDays: 0, eligibleGenders: ['female'] });
+  await type('PTL', 'Paternity leave', 'paternity', true, 'purple', { halfDays: false, maxDays: 5, eligibleGenders: ['male'] });
   const CO = (await tx.leaveType.findFirstOrThrow({ where: { ...org, code: 'CO' } })).id;
 
   // ---- policies (P19 company rules, dated) assigned per legal entity (YX-ORG-18) ----
@@ -172,8 +181,8 @@ export async function seedTime(tx: Tx, organizationId: string) {
     kind,
     source: 'web',
     accepted: true,
-    lat: Number(l.geoLat) + offsetM / 111_000,
-    lng: Number(l.geoLng),
+    lat: l.lat + offsetM / 111_000,
+    lng: l.lng,
     accuracyM: 18,
     distanceM: offsetM,
     verdict: 'inside',

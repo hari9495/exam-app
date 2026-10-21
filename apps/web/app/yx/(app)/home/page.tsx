@@ -15,9 +15,10 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, hiringHome, homeWidgets, managerHome, myTasks, weekOf, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
-import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
+import { browserLocation, checkInDeviceId, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
 
 type Probations = { rows: NonNullable<Parameters<typeof managerHome>[0]['probations']> };
 type Reviews = NonNullable<Parameters<typeof managerHome>[0]['reviews']>;
@@ -28,7 +29,7 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // - HR: attendance exceptions, not ready for payroll, open cases, joining this month ("vs last month" once on record),
 //   due dates, joiners and leavers this week.
 // - Manager: team today, who's off this week, late check-ins, reviews to write, probation reviews due, 1:1s.
-// - Employee: earned leave left, days present, late marks, requests pending.
+// - Employee: earned leave left, days present, late marks (or their own net pay when HR shows pay), requests pending.
 // Everyone with an attendance record gets the designed "Attendance today" card. Hiring (founder decision 19 Oct 2026):
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
 export default function YxHomePage() {
@@ -66,6 +67,8 @@ export default function YxHomePage() {
   const checklist = useLife<{ tasks: { id: string; title: string; dueOn: string }[] }>(asEmployee ? '/lifecycle/my-tasks' : null);
   const feedbackTasks = usePerf<NonNullable<Parameters<typeof myTasks>[0]['feedback']>>('/my-feedback-tasks', asEmployee);
   const myReviews = usePerf<NonNullable<Parameters<typeof myTasks>[0]['reviews']>>('/reviews?view=mine', asEmployee);
+  // Net pay on Home only when the company shows it (the API says; it is always the person's own).
+  const pay = usePay<HomePayResponse>(asEmployee ? '/me/home-pay' : null);
   const mine = useQuery<{ status: string }[]>({ queryKey: ['workflow', '/approvals/mine'], queryFn: () => apiFetch('/workflow/approvals/mine', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && asEmployee, retry: false });
 
   // Manager widgets, each from the page it links to (the API scopes every list to the team).
@@ -96,21 +99,22 @@ export default function YxHomePage() {
         data={attendance.data}
         now={new Date()}
         getLocation={browserLocation}
-        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
+        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), deviceId: checkInDeviceId() })}
         attendanceHref="/yx/time/attendance"
-        onRegularise={() => router.push('/yx/time/attendance')}
+        onRegularise={() => router.push('/yx/time/attendance?request=regularise')}
       />
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
-    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals } : {}),
+    ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals, onNudge: async (r: { id: string }) => void (await write(`/people/${encodeURIComponent(r.id)}/nudge`, 'POST', undefined, false)) } : {}),
     hiring: hiringView,
+    ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
-    // No work-from-home request in the live app yet, so the designed "Request work from home" button waits for it.
     quickActions: employee
       ? [
-          { label: 'Apply leave', href: '/yx/time/leave', kind: 'leave' },
+          { label: 'Apply leave', href: '/yx/time/leave?request=apply', kind: 'leave' },
+          { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
           { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
         ]
       : [],

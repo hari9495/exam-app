@@ -31,7 +31,7 @@ const REFERENCE = { states: [{ code: 'IN-KA', name: 'Karnataka', country: 'IN' }
 const SETTINGS = { registry: { 'employee_code.scope': { default: 'legal_entity' }, 'org.master.default_ownership': { default: 'shared' } }, overrides: [] };
 const LOCATION = {
   id: 'loc-1', legalEntityId: 'le-1', name: 'Bengaluru head office', code: 'BLR-HO', address: ENTITY.registeredAddress, state: 'IN-KA', timezone: 'Asia/Kolkata', minWageZone: null,
-  geofence: { lat: 12.9716, lng: 77.5946, radiusM: 150 }, ipRanges: ['203.0.113.0/24'], archivedAt: null,
+  fences: [{ name: 'Main point', lat: 12.9716, lng: 77.5946, radiusM: 150 }], ipRanges: ['203.0.113.0/24'], wifiNames: [], bindDevice: false, archivedAt: null,
 };
 const GRADE = { id: 'gr-1', name: 'M1 · Manager', code: 'M1', rank: 6, ownerLegalEntityId: null, appliesToEntities: [], archivedAt: null };
 

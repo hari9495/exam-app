@@ -103,10 +103,13 @@ export function legalEntityView(r: EntityRow) {
 }
 
 type LocationRow = Prisma.LocationGetPayload<object>;
-export function locationView(r: LocationRow) {
-  const { organizationId: _o, geoLat, geoLng, geoRadiusM, createdBy: _c, ...rest } = r;
-  return { ...rest, geofence: geoLat !== null && geoLng !== null && geoRadiusM !== null ? { lat: Number(geoLat), lng: Number(geoLng), radiusM: geoRadiusM } : null };
+type FenceRow = Prisma.LocationFenceGetPayload<object>;
+/** A location with its check-in points (set in Time › Locations, TIM-31; shown here read-only). */
+export function locationView(r: LocationRow, fences: FenceRow[] = []) {
+  const { organizationId: _o, createdBy: _c, ...rest } = r;
+  return { ...rest, fences: fences.filter((f) => f.locationId === r.id).map((f) => ({ name: f.name, lat: Number(f.lat), lng: Number(f.lng), radiusM: f.radiusM })) };
 }
+const fencesOf = (tx: Tx, org: string, ids?: string[]) => tx.locationFence.findMany({ where: { organizationId: org, ...(ids ? { locationId: { in: ids } } : {}) }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
 
 function masterView<T extends { organizationId: string; createdBy: string | null }>(r: T) {
   const { organizationId: _o, createdBy: _c, ...rest } = r;
@@ -347,9 +350,6 @@ export class OrgStructureService {
     const address = checkAddress(dto.address);
     // YX-ORG-02: state and time zone are mandatory.
     if (!isTimeZone(dto.timezone)) throw new BadRequestException('Unknown time zone');
-    const ipRanges = [...new Set((dto.ipRanges ?? []).map((r) => r.trim()))];
-    const bad = ipRanges.find((r) => !isCidr(r));
-    if (bad) throw new BadRequestException(`${bad} is not an IP range such as 203.0.113.0/24`);
     return {
       name: clean(dto.name),
       address,
@@ -357,10 +357,6 @@ export class OrgStructureService {
       state: dto.address.state,
       timezone: dto.timezone,
       minWageZone: dto.minWageZone === undefined ? undefined : dto.minWageZone === null ? null : clean(dto.minWageZone) || null,
-      geoLat: dto.geofence === undefined ? undefined : (dto.geofence?.lat ?? null),
-      geoLng: dto.geofence === undefined ? undefined : (dto.geofence?.lng ?? null),
-      geoRadiusM: dto.geofence === undefined ? undefined : (dto.geofence?.radiusM ?? null),
-      ipRanges: dto.ipRanges === undefined ? undefined : ipRanges,
     };
   }
 
@@ -371,14 +367,14 @@ export class OrgStructureService {
   }
 
   listLocations(ctx: TenantContext, legalEntityId: string | undefined, includeArchived: boolean) {
-    return this.run(ctx, async (tx, c) =>
-      (
-        await tx.location.findMany({
-          where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
-          orderBy: { name: 'asc' },
-        })
-      ).map(locationView),
-    );
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.location.findMany({
+        where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
+        orderBy: { name: 'asc' },
+      });
+      const fences = await fencesOf(tx, c.organizationId, rows.map((r) => r.id));
+      return rows.map((r) => locationView(r, fences));
+    });
   }
 
   createLocation(ctx: TenantContext, dto: LocationDto) {
@@ -403,18 +399,18 @@ export class OrgStructureService {
       const updated = await tx.location.update({ where: { id }, data: next });
       const fields = changed(locationView(row) as unknown as Record<string, unknown>, locationView(updated) as unknown as Record<string, unknown>).filter((f) => f !== 'updatedAt');
       if (fields.length) await audit(tx, c, 'org.location.updated', 'location', id, { fields });
-      return locationView(updated);
+      return locationView(updated, await fencesOf(tx, c.organizationId, [id]));
     });
   }
 
   archiveLocation(ctx: TenantContext, id: string, archive: boolean) {
     return this.run(ctx, async (tx, c) => {
       const row = await this.locationOr404(tx, c, id);
-      if (Boolean(row.archivedAt) === archive) return locationView(row);
+      if (Boolean(row.archivedAt) === archive) return locationView(row, await fencesOf(tx, c.organizationId, [id]));
       if (!archive) await this.activeEntity(tx, c, row.legalEntityId);
       const updated = await tx.location.update({ where: { id }, data: { archivedAt: archive ? new Date() : null } });
       await audit(tx, c, archive ? 'org.location.archived' : 'org.location.restored', 'location', id, { name: row.name });
-      return locationView(updated);
+      return locationView(updated, await fencesOf(tx, c.organizationId, [id]));
     });
   }
 
