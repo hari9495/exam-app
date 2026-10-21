@@ -1,3 +1,6 @@
+// Letters are previewed: the files pass the (fake) virus check and are made into PDF by the fake converter.
+process.env.SD_SCANNER = 'dev-fake';
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';

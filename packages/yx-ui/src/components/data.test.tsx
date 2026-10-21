@@ -106,6 +106,18 @@ describe('DataTable', () => {
     expect(screen.queryByText(/selected/)).toBeNull();
   });
 
+  it('choosing an item in a row menu (a portal) never also opens the row', async () => {
+    const u = userEvent.setup();
+    const open = vi.fn();
+    const pick = vi.fn();
+    const { MenuItem } = await import('./menu');
+    render(<DataTable label="People" columns={COLS} rows={ROWS} getRowId={(r) => r.id} onRowClick={open} rowActions={() => <MenuItem onSelect={pick}>Add joiners</MenuItem>} />);
+    await u.click(within(screen.getAllByRole('row')[1]).getByRole('button', { name: /actions|more/i }));
+    await u.click(screen.getByRole('menuitem', { name: 'Add joiners' }));
+    expect(pick).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('row click and keyboard open the row; J/K move; Space selects', async () => {
     const u = userEvent.setup();
     const open = vi.fn();

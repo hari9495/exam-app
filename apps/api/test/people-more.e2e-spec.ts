@@ -192,10 +192,12 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
 
   // ------------------------------------------------------------------------------------------ directory cards (PPL-01)
 
-  it('cards: no consultant key, no consultant card; contract workers and placements have no module, so no card', async () => {
+  it('cards: no consultant key, no consultant card; no contract labour or placement key, no card for them', async () => {
     const hr = (await api('hrA', 'get', '/people/workforce').expect(200)).body;
-    expect(Object.keys(hr.cards).sort()).toEqual(['consultants', 'employees', 'persons']);
+    expect(Object.keys(hr.cards).sort()).toEqual(['consultants', 'contractWorkers', 'employees', 'persons', 'placements']);
     expect(hr.cards.consultants).toBeNull();
+    expect(hr.cards.contractWorkers).toBeNull();
+    expect(hr.cards.placements).toBeNull();
     expect(hr.cards.employees.count).toBe(6);
     expect((await api('hrA', 'get', `/people/workforce?legalEntityId=${ids.leTN}`).expect(200)).body.cards.employees.count).toBe(1);
   });
