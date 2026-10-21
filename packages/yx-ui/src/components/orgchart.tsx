@@ -240,7 +240,9 @@ export function OrgChart({
       clearTimeout(retry);
       window.removeEventListener('resize', onWindow);
     };
-  }, []);
+    // Re-run after the phone list: a narrow window removes the canvas and a wide one adds a new one, so the old one
+    // measured 0 and the new one stayed short until a refresh (founder's measurements, 21 Oct 2026).
+  }, [asList]);
   const scaleRef = useRef(1); // the zoom the cards are laid out at now (fit reads it after a re-layout)
   const userZoomed = useRef(false);
   const uid = useId();
@@ -265,6 +267,7 @@ export function OrgChart({
   });
 
   useEffect(() => {
+    if (asList) return;
     if (startAt) {
       refs.current.get(startAt)?.scrollIntoView?.({ block: 'center', inline: 'center' });
       // Keep my manager on screen too: centre between me and my manager.
@@ -294,7 +297,7 @@ export function OrgChart({
         };
       }
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [asList]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const moveTo = (id: string | null | undefined) => {
     if (!id) return;
