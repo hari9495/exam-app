@@ -240,8 +240,9 @@ export class Payroll5bController {
     return this.structures.preview(ctx, this.user(req), dto);
   }
 
+  /** Founder 21 Oct 2026: only HR changes pay (the salary grant and the job-change right); payroll is refused. */
   @Post('employees/:id/compensation-changes')
-  @RequirePermissions('employee.salary.manage')
+  @RequirePermissions('employee.salary.manage', 'employee.change.manage')
   change(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompensationChangeDto) {
     return this.structures.change(ctx, this.user(req), { ...dto, employeeId: id });
   }

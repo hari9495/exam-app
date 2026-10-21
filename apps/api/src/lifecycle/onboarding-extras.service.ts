@@ -197,6 +197,11 @@ export class OnboardingExtrasService {
           if (sees) visible.push(m);
         }
         const people = await tx.person.findMany({ where: { organizationId: c.organizationId, id: { in: visible.map((m) => m.personId) } } });
+        // PPL-14 "Offers issued": members with an issued appointment letter, and those with a letter of intent so far.
+        const letters = await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, personId: { in: visible.map((m) => m.personId) }, letterType: { in: ['appointment', 'letter_of_intent'] }, status: 'issued' }, select: { personId: true, letterType: true } });
+        const holding = (t: string) => new Set(letters.filter((l) => l.letterType === t).map((l) => l.personId));
+        const offered = holding('appointment');
+        const intent = holding('letter_of_intent');
         out.push({
           id: b.id,
           name: b.name,
@@ -206,6 +211,8 @@ export class OnboardingExtrasService {
           status: b.status,
           version: b.version,
           members: visible.map((m) => ({ id: m.id, personId: m.personId, name: displayName(people.find((p) => p.id === m.personId)!), status: m.status, joiningOn: iso(m.joiningOn) })),
+          offersIssued: visible.filter((m) => offered.has(m.personId)).length,
+          lettersOfIntent: visible.filter((m) => intent.has(m.personId) && !offered.has(m.personId)).length,
         });
       }
       return { today: todayIst(), rows: out };

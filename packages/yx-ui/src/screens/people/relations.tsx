@@ -193,7 +193,7 @@ export interface LiveUnion {
 export type UnionInput = Omit<LiveUnion, 'id' | 'establishment' | 'checkOff'>;
 /** The live app's union register: the legal entities whose register the person keeps (industrial relations). */
 export interface LiveUnionRegister {
-  state: 'loading' | 'ready' | 'error' | 'forbidden';
+  state: 'loading' | 'ready' | 'error' | 'no-access' | 'forbidden';
   onRetry: () => void;
   data: { entities: { id: string; name: string }[]; unions: LiveUnion[] } | null;
   locations: { value: string; label: string; entityId: string }[];
@@ -310,13 +310,15 @@ function LiveUnionRegisterScreen({ live }: { live: LiveUnionRegister }) {
     return (
       <PeopleFrame active="Union register">
         <PageHeader title="Union register" />
-        <NoAccessState what="the union register" grantedBy="Your HR admin. Union membership is Confidential: HR industrial relations only." />
+        <NoAccessState what="the union register" grantedBy="your HR admin" note="Union membership is Confidential: HR industrial relations only." />
       </PeopleFrame>
     );
   return (
     <PeopleFrame active="Union register">
       <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={entities.length ? add : undefined} />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the union register" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the union register" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : !live.data ? (
         <ListSkeleton label="Loading the union register" />
@@ -432,7 +434,9 @@ function LiveVrsScheme({ live: p }: { live: LiveVrs }) {
   ];
   return (
     <PeopleFrame active="VRS schemes">
-      {p.state === 'error' ? (
+      {p.state === 'no-access' ? (
+        <NoAccessState what="the schemes" grantedBy="your HR admin" />
+      ) : p.state === 'error' ? (
         <ErrorState title="We couldn't load the schemes" description="Check your connection and try again." onRetry={p.onRetry} />
       ) : !d ? (
         <ListSkeleton label="Loading VRS schemes" />

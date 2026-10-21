@@ -6,6 +6,7 @@ import type { QueueDocument } from '@yukthix/ui/lifecycle';
 import { apiFetchBlob } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { loadState } from '../../../../../lib/yx-org';
 
 // People › Documents & letters › Document verification (PPL-27, design audit step 3; P05 Q7, YX-DOC-17): uploaded proofs
 // waiting for HR. Files open only after the virus check and nobody verifies their own (the API checks both).
@@ -19,7 +20,7 @@ export default function YxDocumentQueuePage() {
     <DocumentVerificationQueue
       rows={[]}
       live={{
-        state: queue.isError ? 'error' : queue.data ? 'ready' : 'loading',
+        state: loadState(queue),
         onRetry: () => void queue.refetch(),
         rows: queue.data ?? [],
         loadFile: async (d) => {

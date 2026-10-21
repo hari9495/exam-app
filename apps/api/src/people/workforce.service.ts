@@ -124,7 +124,10 @@ export class WorkforceService {
         // Last month's snapshot counts every consultant: compare only when the person sees all the ones in this scope.
         const allEntities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } })).map((e) => e.id);
         const fullReach = legalEntityId ? reach.includes(legalEntityId) : allEntities.every((id) => reach.includes(id));
-        const rows = await this.employeeRows(tx, c, v, days, legalEntityId, null);
+        // HR with no employee record of their own is not a colleague: they list only the people their grant reaches
+        // (a plant HR sees the plant), never out-of-scope rows with blanked fields.
+        const scoped = !own;
+        const rows = await this.employeeRows(tx, c, v, days, legalEntityId, null, scoped);
         const { k, now } = await withPayScope(tx, reach, async () => ({ k: consultants ? await this.consultantRows(tx, c, legalEntityId, null) : [], now: await this.counts(tx, c.organizationId, days, legalEntityId) }));
         const snap = await tx.workforceSnapshot.findFirst({ where: { organizationId: c.organizationId, legalEntityId, month: new Date(`${previousMonth(today)}T00:00:00Z`) } });
         const prev = snap ? { ...snap, consultants: fullReach ? snap.consultants : null, persons: fullReach ? snap.persons : null } : null;
@@ -135,11 +138,13 @@ export class WorkforceService {
           me: me ? { id: me.id, managerId: me.manager?.id ?? null, departmentId: me.department?.id ?? null, locationId: me.location?.id ?? null } : null,
           rows: [...rows, ...k],
           cards: {
-            employees: { count: now.employees, previous: prev?.employees ?? null },
+            employees: scoped && rows.length < now.employees ? { count: rows.length, previous: null } : { count: now.employees, previous: prev?.employees ?? null },
             consultants: consultants ? { count: now.consultants, previous: prev?.consultants ?? null } : null,
             persons: consultants
               ? { roles: now.employees + now.consultants, people: now.persons, previous: prev?.persons ?? null }
-              : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null },
+              : scoped && rows.length < now.employees
+                ? { roles: rows.length, people: rows.length, previous: null }
+                : { roles: now.employees, people: now.employeePersons, previous: prev?.employeePersons ?? null },
           },
           previousMonth: prev ? previousMonth(today).slice(0, 7) : null,
         };
@@ -147,7 +152,7 @@ export class WorkforceService {
     );
   }
 
-  private async employeeRows(tx: Tx, c: CompanyContext, v: Viewer, days: Map<string, string>, legalEntityId: string | null, ids: string[] | null): Promise<WorkforceRow[]> {
+  private async employeeRows(tx: Tx, c: CompanyContext, v: Viewer, days: Map<string, string>, legalEntityId: string | null, ids: string[] | null, scopedOnly = false): Promise<WorkforceRow[]> {
     const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`d.day`);
     const personal = await this.history.scopeFilter(tx, c, v, 'employee.personal.view', Prisma.sql`e.id`, Prisma.sql`d.day`);
     const rows = await tx.$queryRaw<
@@ -171,6 +176,7 @@ export class WorkforceService {
       WHERE e.organization_id = ${c.organizationId}::uuid
         ${legalEntityId ? Prisma.sql`AND m.legal_entity_id = ${legalEntityId}::uuid` : Prisma.empty}
         ${ids ? Prisma.sql`AND e.id = ANY(${ids}::uuid[])` : Prisma.empty}
+        ${scopedOnly ? Prisma.sql`AND (${inScope})` : Prisma.empty}
       ORDER BY e.given_name, e.family_name NULLS FIRST, e.id
       LIMIT ${MAX}`;
     const org = { organizationId: c.organizationId };
@@ -238,7 +244,8 @@ export class WorkforceService {
         const entity = dto.legalEntityId ?? null;
         const reach = v.actingForOther ? [] : await this.consultantEntities(tx, c, user);
         const k = reach.length ? await withPayScope(tx, reach, () => this.consultantRows(tx, c, entity, dto.ids ?? null)) : [];
-        const rows = [...(await this.employeeRows(tx, c, v, await entityDays(tx, c.organizationId), entity, dto.ids ?? null)), ...k];
+        const own = await this.history.ownEmployeeId(tx, c, v);
+        const rows = [...(await this.employeeRows(tx, c, v, await entityDays(tx, c.organizationId), entity, dto.ids ?? null, !own)), ...k];
         const cell: Record<ExportColumn, (r: WorkforceRow) => string> = {
           name: (r) => r.name,
           designation: (r) => r.designation ?? '',

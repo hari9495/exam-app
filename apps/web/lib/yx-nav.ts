@@ -39,6 +39,8 @@ export interface NavInput {
   clearance: boolean;
   tasks: boolean;
   firstDays: boolean;
+  /** The side-menu counts include Possible same person: company-wide HR (the server decides). */
+  samePerson?: boolean;
 }
 
 const L = (id: string, label: string, href: string, count?: CountKey): NavLink => ({ id, label, href, ...(count ? { count } : {}) });
@@ -92,17 +94,19 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec(team ? 'For my team' : 'Onboarding', [
         ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
         ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
-        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
+        // Probation decisions are HR's (employee.change.manage) or the manager's; payroll does no HR work (founder 21 Oct 2026).
+        ...when(manager || has('employee.change.manage'), L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
         ...when(onboardView, L('buddies', 'Buddies', '/yx/people/buddies')),
         ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
         ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
-        ...when(team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+        ...when(team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
         ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
         ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
       ]),
       ...sec('Changes', [
-        ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        ...when(!team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled')),
+        ...when(has('employee.change.manage'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
         // Founder decision 21 Oct 2026: HR plans and approves restructures; payroll does no HR work.
         ...when(has('employee.change.manage'), L('restructure', 'Restructure', '/yx/people/restructure')),
         ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
@@ -125,7 +129,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
       ...sec('More', [
-        ...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
+        ...when(!support && Boolean(n.samePerson), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
         ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
       ]),
     ],

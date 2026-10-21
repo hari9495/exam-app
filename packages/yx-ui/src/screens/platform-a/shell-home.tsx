@@ -7,7 +7,7 @@ import {
   AppShell, CommandPalette, ScopePicker, type ScopePeriod, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, PageHeader, Card, type PaletteGroup, type RailItem,
 } from '../../components/shell';
 import { Monogram } from '../../components/brand';
-import { NotificationCentre, type NotificationItem } from '../../components/notify';
+import { NotificationCentre, useToast, type NotificationItem } from '../../components/notify';
 import { Select } from '../../components/select';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
@@ -282,25 +282,39 @@ const WIDGET_INFO: Record<string, { description: string; suggested?: boolean }> 
 };
 
 /** Pay is private: hidden on every load, shown only on request (founder review 30 Sep 2026). */
-function PayStat({ loading }: { loading: boolean }) {
+/** The employee's own net pay (HR turned it on): hidden until they ask, and hidden again on every visit. */
+export interface HomePay {
+  /** "Net pay, September". */
+  label: string;
+  /** Null: no payslip yet. */
+  value: number | null;
+  previous?: number;
+  previousLabel?: string;
+  href: string;
+}
+
+const SAMPLE_PAY: HomePay = { label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '#payslip' };
+
+function PayStat({ loading, pay = SAMPLE_PAY }: { loading: boolean; pay?: HomePay }) {
   const [shown, setShown] = useState(false);
   const toggle = (
     <Button size="sm" icon={shown ? EyeOff : Eye} aria-pressed={shown} onClick={() => setShown(!shown)}>
       {shown ? 'Hide amount' : 'Show amount'}
     </Button>
   );
+  if (pay.value === null) return <StatCard loading={loading} label={pay.label} value={0} empty="No payslip yet." drill={{ label: 'View payslips', href: pay.href }} />;
   if (shown || loading)
     return (
       <div className="yx-plt-pay">
-        <StatCard loading={loading} label="Net pay, September" value={86420} money previous={84900} previousLabel="August" drill={{ label: 'View payslip', href: '#payslip' }} />
+        <StatCard loading={loading} label={pay.label} value={pay.value} money previous={pay.previous} previousLabel={pay.previousLabel} drill={{ label: 'View payslip', href: pay.href }} />
         {!loading && toggle}
       </div>
     );
   return (
-    <section className="yx-stat yx-plt-pay" aria-label="Net pay, September">
-      <span className="yx-stat__label">Net pay, September</span>
+    <section className="yx-stat yx-plt-pay" aria-label={pay.label}>
+      <span className="yx-stat__label">{pay.label}</span>
       <Figure size="md" className="yx-stat__figure"><span aria-hidden="true">₹ ••,•••</span><span className="yx-visually-hidden">Amount hidden</span></Figure>
-      <Link className="yx-stat__drill" href="#payslip">View payslip</Link>
+      <Link className="yx-stat__drill" href={pay.href}>View payslip</Link>
       {toggle}
     </section>
   );
@@ -697,8 +711,10 @@ export interface LiveHome {
   clock?: ReactNode;
   /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. */
   stats?: { id: string; title: string; label: string; value: number; unit?: string; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
-  /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. */
-  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string }[] };
+  /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. nudge: not checked in yet. */
+  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string; nudge?: boolean }[] };
+  /** Nudge (Team today): reminds the person to check in. Rejects with a plain reason (already reminded today). */
+  onNudge?: (row: { id: string; name: string }) => Promise<void>;
   /** Manager: "Who's off this week", day by day. */
   off?: { day: string; who: string }[];
   offHref?: string;
@@ -709,6 +725,8 @@ export interface LiveHome {
   /** "Coming up": birthdays and work anniversaries in the person's circle, and the next holidays. */
   coming?: { id: string; kind: 'person' | 'holiday'; name: string; text: string }[];
   quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
+  /** Employee: their own net pay, when HR shows pay on the employee home (in place of late marks, as designed). */
+  pay?: HomePay;
   /** "Due dates" (HR): what must be done by when, e.g. locking last month's attendance or probation confirmations. */
   due?: { id: string; text: string; href: string; badge?: { label: string; tone: BadgeTone }; note?: string; action?: string }[];
   /** "Joiners and leavers this week"; an empty list says so, an absent one hides the widget. */
@@ -716,6 +734,28 @@ export interface LiveHome {
   movesHref?: string;
   /** People with a hiring key: today's interviews, this week and their open jobs. */
   hiring?: HiringHomeView;
+}
+
+/** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
+function NudgeButton({ name, onNudge }: { name: string; onNudge: () => Promise<void> }) {
+  const { toast } = useToast();
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const send = async () => {
+    setState('busy');
+    try {
+      await onNudge();
+      setState('done');
+      toast({ tone: 'success', title: `Reminder sent to ${name}`, description: 'They get a notification, and an email if they allow it.' });
+    } catch (e) {
+      setState('idle');
+      toast({ tone: 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+    }
+  };
+  return (
+    <Button size="sm" icon={Bell} loading={state === 'busy'} disabled={state === 'done'} aria-label={state === 'done' ? `Reminded ${name}` : `Nudge ${name}`} onClick={() => void send()}>
+      {state === 'done' ? 'Reminded' : 'Nudge'}
+    </Button>
+  );
 }
 
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
@@ -756,7 +796,16 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
               {live.team.rows.length > 0 && (
                 <ul className="yx-plt-list">
                   {live.team.rows.map((r) => (
-                    <li key={r.id}><PersonLabel name={r.name} secondary={r.secondary} /></li>
+                    <li key={r.id}>
+                      {r.nudge && live.onNudge ? (
+                        <>
+                          <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
+                          <NudgeButton name={r.name} onNudge={() => live.onNudge!(r)} />
+                        </>
+                      ) : (
+                        <PersonLabel name={r.name} secondary={r.secondary} />
+                      )}
+                    </li>
                   ))}
                 </ul>
               )}
@@ -784,7 +833,12 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
         }]
       : []),
     ]),
-    ...fill((live.stats ?? []).map((x) => stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />))),
+    ...fill([
+      ...(live.stats ?? []).map((x) =>
+        x.id === 'late' && live.pay ? stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />) : stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />),
+      ),
+      ...(live.pay && !live.stats?.some((x) => x.id === 'late') ? [stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />)] : []),
+    ]),
     ...pair([
     ...(live.due?.length
       ? [{

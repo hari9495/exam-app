@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { MyChecklistTasks } from '@yukthix/ui/frame';
 import type { JourneyTask, MyTasks, TaskActions } from '@yukthix/ui/lifecycle';
-import { todayIst } from '../../../../../lib/yx-org';
+import { todayIst, loadState } from '../../../../../lib/yx-org';
 import { useLife, useTaskActions } from '../../../../../lib/yx-lifecycle';
 
 // People › My checklist tasks (PPL-47, designed 20 Oct 2026; LIFE-1.07, founder D1): tasks given to me or my team (IT,
@@ -24,7 +24,7 @@ export default function YxMyTasksPage() {
     <MyChecklistTasks
       tasks={tasks.data?.tasks ?? []}
       today={new Date(`${tasks.data?.today ?? todayIst()}T00:00:00`)}
-      state={tasks.isError ? 'error' : tasks.data ? 'ready' : 'loading'}
+      state={loadState(tasks)}
       onRetry={() => void tasks.refetch()}
       actions={withToasts}
       onOpen={(journeyId) => router.push(`/yx/people/onboarding/${encodeURIComponent(journeyId)}`)}

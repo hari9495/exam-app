@@ -201,6 +201,17 @@ export class PayslipsService {
     });
   }
 
+  /**
+   * Home's "Net pay" card (PLT-02): only when the company shows pay on the employee home (home.pay_on_employee_home,
+   * off by default). The person's own latest regular published payslip and the one before it; never anyone else's.
+   */
+  async homePay(ctx: TenantContext, user: ScopeUser): Promise<{ shown: false } | { shown: true; latest: { id: string; month: string; net: string } | null; previous: { month: string; net: string } | null }> {
+    const on = await inCompany(this.tenantPrisma, ctx, async (tx, c) => (await settingFor(tx, c, 'home.pay_on_employee_home', { legalEntityId: '' })) === 'on');
+    if (!on) return { shown: false };
+    const [latest, previous] = (await this.mySlips(ctx, user)).filter((s) => s.runType === 'regular');
+    return { shown: true, latest: latest ? { id: latest.id, month: latest.month, net: latest.net } : null, previous: previous ? { month: previous.month, net: previous.net } : null };
+  }
+
   /** A single-use link (60 seconds) to the PDF of one's own published payslip; asking for it is audited. */
   async pdfLink(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);

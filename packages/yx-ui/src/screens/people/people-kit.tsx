@@ -8,6 +8,8 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { daysBetween, fieldVisibility, workingDaysUntil, type FieldClass, type FnfLine, type Persona, type Relation } from './people-logic';
 import type { FieldRow } from './people-data';
+import { tableToCsv, type TableColumn } from '../../components/table';
+import { downloadText } from '../workforce/workforce-kit';
 import './people.css';
 
 /* ------------------------------------------------------------------ frames (APX-D §1.2 People, §1.1 Me) */
@@ -350,3 +352,9 @@ export function ListSkeleton({ rows = 6, label }: { rows?: number; label: string
 
 /** Pick exactly one (a time window, a view): the shared joined Segment (R11), so every pick-one looks the same (founder review 7 Oct 2026). */
 export { Segment } from '../../components/segment';
+
+/** A live table's Export: the visible columns as shown on screen, saved as CSV in the browser (formulas neutralised). */
+export const exportCsv =
+  <R,>(file: string, rows: R[], cols: TableColumn<R>[]) =>
+  (_format: 'csv' | 'xlsx', keys: string[]) =>
+    downloadText(`${file}.csv`, tableToCsv(rows, cols.filter((c) => keys.includes(c.key))));

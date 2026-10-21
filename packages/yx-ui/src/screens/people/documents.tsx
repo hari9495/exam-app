@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
@@ -27,7 +27,7 @@ import type { FieldClass,  } from './people-logic';
 import type { Letter as LiveLetter, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
-import { ClassBadge, MeFrame, PeopleFrame,  } from './people-kit';
+import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
 
 const SCAN = (title: string) =>
   'data:image/svg+xml;utf8,' +
@@ -43,7 +43,7 @@ type Verify = (typeof VERIFY_QUEUE)[number];
 
 /** The live app's verification queue (design audit step 3). */
 export interface LiveDocQueue {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: QueueDocument[];
   /** The file as a local URL for the viewer (the API checks access; it opens only after the virus check). */
@@ -107,7 +107,9 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
   return (
     <PeopleFrame active="Documents & letters">
       <PageHeader title="Document verification" description="PAN, Aadhaar, bank proof, education and experience proofs must be verified before payroll, payouts or filings use them. Open each one, then verify it or send it back with the reason." />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the documents to verify" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the documents to verify" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable
@@ -378,7 +380,7 @@ function IssuedLettersBody({ rows }: { rows: Letter[] }) {
 
 /** The live app's letters register (design audit step 3). */
 export interface LiveLetters {
-  state: 'ready' | 'loading' | 'error';
+  state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: LiveLetter[];
   verifyUrl: (code: string) => string;
@@ -449,7 +451,9 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           ) : undefined
         }
       />
-      {live.state === 'error' ? (
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the letters" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the letters" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable
@@ -457,6 +461,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           columns={cols}
           rows={live.rows}
           getRowId={(r) => r.id}
+          onExport={exportCsv('letters', live.rows, cols)}
           state={live.state === 'loading' ? 'loading' : 'ready'}
           rowActions={(r) =>
             r.status === 'issued' || r.status === 'superseded' ? (
@@ -476,9 +481,28 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               </>
             ) : null
           }
-          // Issue a correction and export: not in the live app yet (left out).
           defaultSort={{ key: 'issued', dir: 'desc' }}
-          empty={<EmptyState title="No letters issued yet" description="Issue a letter from a template, or in bulk after a change." />}
+          empty={
+            <EmptyState
+              title="No letters issued yet"
+              description="Issue a letter from a template, or in bulk after a change."
+              action={
+                live.issue ? (
+                  <Button
+                    icon={Plus}
+                    onClick={() => {
+                      setType(null);
+                      setWho(null);
+                      setFailed(null);
+                      setIssuing(true);
+                    }}
+                  >
+                    Issue letter
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
         />
       )}
       {live.issue && (

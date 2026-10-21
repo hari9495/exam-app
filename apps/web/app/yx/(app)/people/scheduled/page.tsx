@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { ScheduledChangesScreen } from '@yukthix/ui/frame';
 import { ChangeReview, ReasonDialog, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { CHANGE_LABEL, scheduledRows } from '../../../../../lib/yx-changes';
 
@@ -39,7 +39,7 @@ export default function YxScheduledChangesPage() {
       // Pay amounts come only to people with pay access (the API decides); they stay hidden until "Show pay".
       canSeePay={shown.some((r) => r.pay)}
       live={{
-        state: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
+        state: loadState(rows),
         onRetry: () => void rows.refetch(),
         ...(canManage ? { onEdit: (changeId: string) => setMoving(find(changeId)), onStart: () => router.push('/yx/people/changes') } : {}),
         ...(canApprove ? { onReview: (changeId: string) => setReviewing(find(changeId)) } : {}),

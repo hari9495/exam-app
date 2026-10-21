@@ -99,6 +99,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
   // P02 §7 / P08: employees see who viewed their Confidential and Special data (every view is recorded either way).
   'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
+  // PLT-02 / settings 2.2 Home page (19 Oct 2026): employees see their own latest net pay on Home, hidden until they ask.
+  'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.
@@ -113,6 +115,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.year_start_month': { label: 'Leave year starts in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '1' },
   // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
+  // TIM-07 / settings 3.5 (19 Oct 2026): work-from-home days a month with manager approval only; beyond that HR approves too.
+  'attendance.wfh_monthly_limit': { label: 'Work from home days a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '8', '10', '15', '22'], default: '4' },
   // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter. Founder
   // decision 9 Oct 2026: 11 hours by default, company-configurable.
   'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },

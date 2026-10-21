@@ -101,10 +101,11 @@ function Frame({ children }: { children: React.ReactNode }) {
         clearance: Boolean(myClearance.data?.rows.length),
         tasks: Boolean(myTasks.data?.tasks.length),
         firstDays: Boolean(firstDays.data?.card),
+        samePerson: counts.data?.possibleSamePerson !== undefined,
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav, pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support, go: (href) => {

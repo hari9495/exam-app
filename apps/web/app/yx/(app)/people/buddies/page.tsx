@@ -2,7 +2,7 @@
 
 import { useToast } from '@yukthix/ui';
 import { BuddyPanel, type LiveBuddies } from '@yukthix/ui/frame';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { useJoinerPlaces, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 
@@ -23,7 +23,7 @@ export default function YxBuddiesPage() {
     <BuddyPanel
       pool={[]}
       live={{
-        state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
+        state: loadState(data),
         onRetry: () => void data.refetch(),
         today: new Date(`${todayIst()}T00:00:00`),
         data: data.data ?? null,
