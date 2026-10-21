@@ -123,7 +123,7 @@ export class TimeSetupService {
   }
 
   private ruleView(r: Prisma.LocationAttendanceRuleGetPayload<object>) {
-    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, starter: false };
+    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn, starter: false };
   }
 
   async scopeNames(tx: Tx, org: string, scopes: { type: string; id: string }[]): Promise<Map<string, string>> {
@@ -377,7 +377,7 @@ export class TimeSetupService {
       if (dto.shiftStart === dto.shiftEnd) throw new BadRequestException('The shift ends at a different time from when it starts.');
       const at = { organizationId: org, locationId, validFrom: asDate(dto.validFrom) };
       if (await tx.locationAttendanceRule.findFirst({ where: at })) throw new ConflictException('There is already a change from that date. Choose another date.');
-      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, createdBy: c.userId ?? null } });
+      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, reclockIn: dto.reclockIn ?? false, createdBy: c.userId ?? null } });
       await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn });
       return { id: r.id };
     });

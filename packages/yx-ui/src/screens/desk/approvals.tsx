@@ -42,6 +42,9 @@ const DECISION: Record<string, { label: string; tone: 'success' | 'danger' | 'ne
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
 
+/** Summary lines that are the requester's own words, shown as a note above the facts. */
+const NOTE_LABELS = ['Why', 'Reason'];
+
 export function ApprovalsScreen(props: ApprovalsScreenProps) {
   const [tab, setTab] = useState('waiting');
   const focus = props.focusRequestId ?? null;
@@ -91,8 +94,15 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                         {t.step.approvers > 1 ? ` (${t.step.need === t.step.approvers ? 'all' : t.step.need} of ${t.step.approvers} approve)` : ''}
                         {t.onBehalfOf ? ` · you answer for ${t.onBehalfOf}` : ''}
                       </p>
+                      {/* The requester's own note (why they ask) leads, so the approver reads it before deciding (21 Oct 2026). */}
+                      {t.summary.filter((s) => NOTE_LABELS.includes(s.label)).map((s) => (
+                        <blockquote key={`note-${s.label}`} className="yx-esm-note">
+                          <span className="yx-esm-note__label">{s.label}</span>
+                          <span>{s.value}</span>
+                        </blockquote>
+                      ))}
                       <dl className="yx-esm-summary">
-                        {t.summary.map((s) => (
+                        {t.summary.filter((s) => !NOTE_LABELS.includes(s.label)).map((s) => (
                           <div key={s.label}>
                             <dt>{s.label}</dt>
                             <dd>{s.value}</dd>

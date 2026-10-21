@@ -203,7 +203,7 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const odErr = type !== 'on_duty' ? null : !where.trim() ? 'Enter where you will be' : !odFrom || !odTo ? 'Enter the From and To times' : odTo <= odFrom ? 'Enter a To time after From' : null;
   const blocked = !date
     ? 'Pick a date'
-    : dateErr ?? outErr ?? odErr ?? otErr ?? (!reason.trim() ? 'Enter a reason' : null);
+    : dateErr ?? outErr ?? odErr ?? otErr ?? (reason.trim().length < REASON_MIN ? REASON_HINT : null);
   return { type, setType, date, setDate: pickDate, day, recIn, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut, where, setWhere, odFrom, setOdFrom, odTo, setOdTo, otHours, setOtHours, otMin, otErr, takeAs, setTakeAs, reason, setReason, route, steps, hr, locked, used, wfhUsed, wfhThisMonth, wfhOver, dateErr, outErr, odErr, blocked };
 }
 type ReqState = ReturnType<typeof useAttendanceRequest>;
@@ -310,8 +310,8 @@ function AttendanceRequestForm({ s, surface, w = STORY_WORLD }: { s: ReqState; s
           </FormField>
         </FieldRow>
       )}
-      <FormField label="Reason" required>
-        <TextArea rows={2} value={s.reason} onChange={s.setReason} />
+      <FormField label="Why" required helper="Say what happened in a few words (at least 10 characters). Your manager checks it, and it stays with the day for HR.">
+        <TextArea rows={2} value={s.reason} onChange={s.setReason} maxLength={500} />
       </FormField>
       <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
         <strong>Effect on {date ? dmy(date) : 'the day'}</strong>
@@ -352,6 +352,9 @@ export interface LiveAttendanceRequest {
 }
 const LIVE_TYPES: { value: AttReqType; label: string }[] = [{ value: 'regularise', label: 'Regularise' }, { value: 'wfh', label: 'Work from home' }];
 const LIVE_SHORT: { value: AttReqType; label: string }[] = [{ value: 'regularise', label: 'Regularise' }, { value: 'wfh', label: 'WFH' }];
+/** An attendance request's reason is a real note (founder decision 21 Oct 2026); the server checks the same. */
+const REASON_MIN = 10;
+const REASON_HINT = 'Please say why, in a few words, so your manager can check it';
 const FIX_KIND = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' } as const;
 const localOf = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -408,7 +411,7 @@ function useLiveAttendanceRequest(live: LiveAttendanceRequest, t0: AttReqType, d
   const needIn = fixNow === 'in' || fixNow === 'full' || fixNow === 'wrong';
   const needOut = fixNow === 'out' || fixNow === 'full' || fixNow === 'wrong';
   const outErr = type !== 'regularise' || nothing ? null : needOut && !outT && fixNow !== 'wrong' ? 'Enter the check-out time' : needIn && !inT && fixNow !== 'wrong' ? 'Enter the check-in time' : inT && outT && outT <= inT ? 'Enter a check-out time after check-in' : fixNow === 'wrong' && !inT && !outT ? 'Enter the actual time' : null;
-  const blocked = !date ? 'Pick a date' : dateErr ?? outErr ?? (!reason.trim() ? 'Enter a reason' : null);
+  const blocked = !date ? 'Pick a date' : dateErr ?? outErr ?? (reason.trim().length < REASON_MIN ? REASON_HINT : null);
   const none = () => {};
   return {
     type, setType, date, setDate, day, recIn: recorded(date).in, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut,

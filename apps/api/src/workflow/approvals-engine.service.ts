@@ -66,6 +66,8 @@ export interface RequestType {
   decideOnlyVia?: string;
   /** Maker ≠ checker across steps: whoever approved one step never approves a later one of the same request. */
   distinctSteps?: boolean;
+  /** The requester's own note (the summary line "Why") goes in the approver's email too (attendance fixes, 21 Oct 2026). */
+  noteInEmail?: boolean;
 }
 
 /** decide() options: the module screen that may decide a decideOnlyVia request. */
@@ -120,6 +122,8 @@ export interface Notice {
   actor?: string | null;
   /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
   toRequester?: string;
+  /** The requester's note for the approver's email (types with noteInEmail). */
+  note?: string;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
@@ -391,7 +395,8 @@ export class ApprovalsEngine {
     }
     const updated = await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, currentStep: next, version: { increment: 1 }, updatedAt: now } });
     const holders = (await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id, step: next, status: 'open' }, select: { assigneeUserId: true } })).map((t) => t.assigneeUserId);
-    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `${this.type(req.requestType).label}: ${s.name}`, actor: req.requesterUserId });
+    const note = this.type(req.requestType).noteInEmail ? ((req.summary as { label: string; value: string }[] | null) ?? []).find((x) => x.label === 'Why')?.value : undefined;
+    notices.push({ to: holders, requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `${this.type(req.requestType).label}: ${s.name}`, actor: req.requesterUserId, ...(note ? { note } : {}) });
     return updated;
   }
 
@@ -770,7 +775,7 @@ export class ApprovalsEngine {
             subject,
             heading: subject,
             // The step's own name ("Manager"), never the internal "Leave: Manager" label.
-            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text.split(': ').pop() ?? n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text.split(': ').pop() ?? n.text] as [string, string]]), ...(n.note && !n.toRequester ? [['Why', n.note] as [string, string]] : [])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
           });
         await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: subject.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {

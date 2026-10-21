@@ -9,6 +9,8 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { LeaveService } from '../src/time/leave.service';
+import { DayEngine } from '../src/time/day-engine.service';
+import { instantAt } from '../src/time/time-maths';
 import { TicketsService } from '../src/service-desk/tickets.service';
 import { addDays } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
@@ -24,6 +26,8 @@ describe('Time and leave batch 1', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let leave: LeaveService;
+  let emailSend: jest.Mock;
+  let dayEngine: DayEngine;
   let tickets: TicketsService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
@@ -62,6 +66,8 @@ describe('Time and leave batch 1', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     leave = moduleRef.get(LeaveService);
+    emailSend = moduleRef.get(EmailService).send as unknown as jest.Mock;
+    dayEngine = moduleRef.get(DayEngine);
     tickets = moduleRef.get(TicketsService);
 
     planId = (await prisma.plan.create({ data: { name: `time-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
@@ -359,11 +365,11 @@ describe('Time and leave batch 1', () => {
     });
 
     it('a fix goes to the manager; beyond the monthly limit HR approves too; approval re-evaluates the day', async () => {
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(1), kind: 'full_day', reason: 'x' }).expect(400);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot' }).expect(400);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(1), kind: 'full_day', reason: 'Client visit all day long' }).expect(400);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot to check out at the gate' }).expect(400);
       const r = (await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Client visit all day' }).expect(201)).body;
       expect(r.hrStep).toBe(false);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Again' }).expect(409);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Again for the same day' }).expect(409);
       const t = (await inbox('boss')).find((x) => x.title.includes('fix'))!;
       await decide('boss', t.taskId, 'approve').expect(200);
       const day = await inA((tx) => tx.attendanceDay.findFirst({ where: { organizationId: org.A.id, employeeId: ids.empEmp, workOn: new Date(`${d(-1)}T00:00:00Z`) } }));
@@ -567,6 +573,68 @@ describe('Time and leave batch 1', () => {
       expect(hr.timeRequests).toBeGreaterThanOrEqual(mgr.timeRequests!);
       // The other company's admin counts only their own company's requests.
       expect((await counts('adminB')).timeRequests ?? 0).toBe(0);
+    });
+  });
+
+  describe('clocking in again after clocking out (founder decision 21 Oct 2026)', () => {
+    it('off: a second clock-in is refused; only HR turns it on; on: it is allowed and the day sums the sessions', async () => {
+      // "peer" clocked in and out today (the geofence test above). The location's shift does not allow it: refused.
+      const again = () => api('peer', 'post', '/time/me/punch').send({ kind: 'in', lat: 12.9716, lng: 77.5946, accuracyM: 20 });
+      expect((await again().expect(409)).body.message).toMatch(/already clocked out today/);
+      // Only the set-up key changes it, from a date, for the whole company.
+      const rule = { shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, weeklyOffs: [{ weekday: offWeekday }], checkIn: 'restricted', reclockIn: true };
+      await api('hrExec', 'post', `/time/setup/locations/${ids.locA}/rule`).send({ validFrom: d(3), ...rule }).expect(403);
+      await api('emp', 'post', `/time/setup/locations/${ids.locA}/rule`).send({ validFrom: d(3), ...rule }).expect(403);
+      await api('adminB', 'post', `/time/setup/locations/${ids.locA}/rule`).send({ validFrom: d(3), ...rule }).expect(404);
+      await api('hrAdmin', 'post', `/time/setup/locations/${ids.locA}/rule`).send({ validFrom: d(3), ...rule }).expect(201);
+      const loc = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body.locations.find((l: { id: string }) => l.id === ids.locA);
+      expect(loc.upcoming.find((r: { validFrom: string }) => r.validFrom === d(3))).toMatchObject({ reclockIn: true });
+      // Per shift: HR gives peer a shift that allows it, from today; then the second clock-in is accepted, still checked for the place.
+      const shift = { code: 'RC', name: 'Split day', colour: 'teal', night: false, reclockIn: true, validFrom: today, start: 1, end: 1439, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 450, breakMinutes: 30, breakAboveMinutes: 300 };
+      await api('hrExec', 'post', '/time/shifts').send(shift).expect(403);
+      const rc = (await api('hrAdmin', 'post', '/time/shifts').send(shift).expect(201)).body.id;
+      const pattern = (await api('hrAdmin', 'post', '/time/patterns').send({ name: 'Split days', kind: 'weekly', cycle: [rc, rc, rc, rc, rc, rc, rc] }).expect(201)).body.id;
+      for (const e of [ids.peerEmp, ids.otherEmp]) await api('hrAdmin', 'post', `/time/patterns/${pattern}/assign`).send({ scopeType: 'employee', scopeId: e, validFrom: today, offsetDays: 0 }).expect(201);
+      expect((await api('peer', 'post', '/time/me/punch').send({ kind: 'in', lat: 13.05, lng: 77.7, accuracyM: 20 }).expect(200)).body).toMatchObject({ accepted: false, verdict: 'outside' });
+      expect((await again().expect(200)).body).toMatchObject({ accepted: true, verdict: 'inside' });
+      expect((await api('peer', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body.shift).toMatchObject({ reclockIn: true });
+      // The day engine adds the sessions: 9:30-13:30 and 15:30-19:00, less the 30-minute break rule (other is on the split shift today).
+      const on = today;
+      await inA((tx) =>
+        tx.punch.createMany({
+          data: (
+            [
+              ['in', 570],
+              ['out', 810],
+              ['in', 930],
+              ['out', 1140],
+            ] as const
+          ).map(([kind, minute]) => ({ organizationId: org.A.id, employeeId: ids.otherEmp, punchedAt: instantAt(on, 'Asia/Kolkata', minute), workOn: new Date(`${on}T00:00:00Z`), kind, accepted: true, verdict: 'inside' })),
+        }),
+      );
+      await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, (tx) => dayEngine.evaluate(tx, { organizationId: org.A.id, isSuperAdmin: false }, ids.otherEmp, on, on));
+      const day = await inA((tx) => tx.attendanceDay.findFirst({ where: { organizationId: org.A.id, employeeId: ids.otherEmp, workOn: new Date(`${on}T00:00:00Z`) } }));
+      expect(day?.workedMinutes).toBe(4 * 60 + 3.5 * 60 - 30);
+    });
+  });
+
+  describe('a fix needs a real note (founder decision 21 Oct 2026)', () => {
+    it('a short reason is refused in plain words; the note reaches the approver in Approvals and the email, and stays with the day', async () => {
+      const short = await api('other', 'post', '/time/me/regularise').send({ on: d(-2), kind: 'full_day', inMinute: 570, outMinute: 1110, reason: '  forgot  ' }).expect(400);
+      expect(JSON.stringify(short.body)).toMatch(/Please say why, in a few words, so your manager can check it/);
+      await api('other', 'post', '/time/me/wfh').send({ on: d(5), reason: 'home' }).expect(400);
+      emailSend.mockClear();
+      const note = 'The gate reader at Bengaluru was down all morning';
+      await api('other', 'post', '/time/me/regularise').send({ on: d(-2), kind: 'full_day', inMinute: 570, outMinute: 1110, reason: note }).expect(201);
+      const task = (await inbox('boss')).find((x) => x.title.startsWith('other ') && x.title.includes('fix'))!;
+      expect(task.summary.find((s) => s.label === 'Why')?.value).toBe(note);
+      // Notices go out after the commit: wait for the approver's email.
+      for (let i = 0; i < 50 && !JSON.stringify(emailSend.mock.calls).includes(note); i++) await new Promise((r) => setTimeout(r, 200));
+      expect(JSON.stringify(emailSend.mock.calls)).toContain(note);
+      // The day card keeps the note, for the manager and HR to check later.
+      const card = (await api('hrExec', 'get', `/time/people/${ids.otherEmp}/days/${d(-2)}`).expect(200)).body;
+      expect(card.requests.map((r: { reason: string }) => r.reason)).toContain(note);
+      await api('peer', 'get', `/time/people/${ids.otherEmp}/days/${d(-2)}`).expect(404);
     });
   });
 });

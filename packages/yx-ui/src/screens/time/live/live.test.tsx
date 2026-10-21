@@ -149,12 +149,12 @@ describe('Me › Attendance (the designed calendar)', () => {
     await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
     expect(within(sheet).getByText('Work from home · counts as present')).toBeInTheDocument();
     expect(within(sheet).getByText('This will be WFH day 1 of 4 in October.')).toBeInTheDocument();
-    expect(within(sheet).getByText('Enter a reason')).toBeInTheDocument();
+    expect(within(sheet).getByText('Please say why, in a few words, so your manager can check it')).toBeInTheDocument();
     expect(within(sheet).queryByRole('alert')).toBeNull();
     expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
-    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber visit');
+    await ue.type(within(sheet).getByRole('textbox', { name: /^Why/ }), 'Plumber visit at home');
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
-    await waitFor(() => expect(live.onWfh).toHaveBeenCalledWith({ on: '2026-10-10', reason: 'Plumber visit' }));
+    await waitFor(() => expect(live.onWfh).toHaveBeenCalledWith({ on: '2026-10-10', reason: 'Plumber visit at home' }));
     expect((await screen.findAllByText('Work from home for 10 Oct sent to your manager')).length).toBeGreaterThan(0);
   });
 
@@ -166,7 +166,7 @@ describe('Me › Attendance (the designed calendar)', () => {
     await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
     expect(within(sheet).getByText('Goes to your manager, then HR')).toBeInTheDocument();
     expect(within(sheet).getByText('Approval: your manager → HR')).toBeInTheDocument();
-    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Family function');
+    await ue.type(within(sheet).getByRole('textbox', { name: /^Why/ }), 'Family function');
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
     expect(await within(sheet).findByText('Sat 10 Oct is your weekly off.')).toBeInTheDocument();
   });
@@ -180,7 +180,7 @@ describe('Me › Attendance (the designed calendar)', () => {
     const out = within(sheet).getByLabelText(/Check-out/);
     await ue.type(out, '6:10 pm');
     fireEvent.blur(out);
-    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Forgot to check out');
+    await ue.type(within(sheet).getByRole('textbox', { name: /^Why/ }), 'Forgot to check out');
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
     await waitFor(() => expect(live.onFix).toHaveBeenCalledWith({ on: '2026-10-06', kind: 'missed_out', outMinute: 1090, reason: 'Forgot to check out' }));
   });

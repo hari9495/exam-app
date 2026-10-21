@@ -286,6 +286,8 @@ export const formatDistance = (m: number) => (m < 1000 ? `${m} m` : `${(m / 1000
 // ------------------------------------------------------------------------------------------ the day engine
 
 export interface DayRule {
+  /** The shift allows clocking in again after clocking out: worked time is the sum of the sessions (21 Oct 2026). */
+  reclockIn?: boolean;
   shiftStart: number;
   shiftEnd: number;
   graceMinutes: number;
@@ -372,8 +374,26 @@ export function breakMinutes(punches: readonly { at: Date; kind: PunchKind }[], 
  * off is the larger of the breaks punched and the shift's break rule (Q3: `breakMinutes` above `breakAboveMinutes`), so
  * a short punched break never lowers the rule's break, and a long one is never counted twice.
  */
-export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes'>): number {
-  const gross = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
+/**
+ * Minutes inside the in→out sessions of a day (founder decision 21 Oct 2026): clocking in again after clocking out
+ * starts a new session, and the time between sessions is not worked.
+ */
+export function sessionMinutes(punches: readonly { at: Date; kind: PunchKind }[]): number {
+  let total = 0;
+  let open: number | null = null;
+  for (const p of [...punches].filter((x) => x.kind === 'in' || x.kind === 'out').sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in' && open === null) open = p.at.getTime();
+    else if (p.kind === 'out' && open !== null) {
+      total += p.at.getTime() - open;
+      open = null;
+    }
+  }
+  return Math.floor(total / 60_000);
+}
+
+export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes' | 'reclockIn'>): number {
+  // First in to last out (a regularised time counts). Where the shift allows clocking in again, the sum of the sessions.
+  const gross = r.reclockIn && punches.filter((p) => p.kind === 'in').length > 1 ? sessionMinutes(punches) : Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
   return Math.max(0, gross - Math.max(breakMinutes(punches, firstIn, lastOut), gross > r.breakAboveMinutes ? r.breakMinutes : 0));
 }
 

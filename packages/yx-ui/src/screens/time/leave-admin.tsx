@@ -2296,7 +2296,7 @@ export interface LiveLocations {
   state: LoadState;
   onRetry?: () => void;
   data: TimeSetup | null;
-  onSetRule: (locationId: string, input: { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field' }) => Promise<unknown>;
+  onSetRule: (locationId: string, input: { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field'; reclockIn?: boolean }) => Promise<unknown>;
   /** The site's allowed points, office networks, Wi-Fi names and phone binding (one save). */
   onSaveCheckIn: (locationId: string, input: { fences: { name: string; lat: number; lng: number; radiusM: number }[]; ipRanges: string[]; wifiNames: string[]; bindDevice: boolean }) => Promise<unknown>;
   /** Unbinds a person's phone: their next check-in binds the phone they use. */
@@ -2464,7 +2464,7 @@ function LiveLocationEditor({ live, data, location, onBack }: { live: LiveLocati
       await live.onSaveCheckIn(location.id, { fences: points.map((p) => ({ name: p.name.trim(), lat: Number(p.lat), lng: Number(p.lng), radiusM: p.r! })), ipRanges: ipList, wifiNames, bindDevice: bind });
       if (mode !== location.rule.checkIn) {
         const r = location.rule;
-        await live.onSetRule(location.id, { validFrom: data.today, shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, weeklyOffs: r.weeklyOffs, checkIn: mode as 'restricted' | 'field' });
+        await live.onSetRule(location.id, { validFrom: data.today, shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, weeklyOffs: r.weeklyOffs, checkIn: mode as 'restricted' | 'field', reclockIn: Boolean(r.reclockIn) });
       }
       toast({ tone: 'success', title: `Saved check-in at ${location.name}` });
       onBack();
@@ -2649,6 +2649,7 @@ function LiveRuleDrawer({ today, location, onClose, onSave }: { today: string; l
   const [grace, setGrace] = useState<number | null>(r.graceMinutes);
   const [offs, setOffs] = useState(r.weeklyOffs);
   const [checkIn, setCheckIn] = useState(r.checkIn);
+  const [reclockIn, setReclockIn] = useState(Boolean(r.reclockIn));
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const toggle = (weekday: number, on: boolean) => setOffs((x) => (on ? [...x.filter((o) => o.weekday !== weekday), { weekday }] : x.filter((o) => o.weekday !== weekday)));
@@ -2670,7 +2671,7 @@ function LiveRuleDrawer({ today, location, onClose, onSave }: { today: string; l
             onClick={() => {
               if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
-                await onSave(location.id, { validFrom, shiftName: shiftName.trim() || 'General', shiftStart: minute(start)!, shiftEnd: minute(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn });
+                await onSave(location.id, { validFrom, shiftName: shiftName.trim() || 'General', shiftStart: minute(start)!, shiftEnd: minute(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn, reclockIn });
                 toast({ tone: 'success', title: `Saved ${location.name} from ${dateText(validFrom)}` });
                 onClose();
               });
@@ -2718,6 +2719,7 @@ function LiveRuleDrawer({ today, location, onClose, onSave }: { today: string; l
         <FormField id="rl-checkin" label="Checking in">
           <Segment label="Checking in" value={checkIn} onChange={setCheckIn} options={[{ value: 'restricted', label: 'Inside the site or its network' }, { value: 'field', label: 'Anywhere, location recorded' }]} />
         </FormField>
+        <Switch label="Allow clocking in again after clocking out" description="For split shifts and field visits. Off: once someone clocks out, the day is closed (default)." checked={reclockIn} onChange={setReclockIn} />
       </div>
     </Drawer>
   );

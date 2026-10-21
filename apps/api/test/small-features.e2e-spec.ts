@@ -178,8 +178,8 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
 
   describe('request work from home', () => {
     it('checks the day: today or later, a working day, one request a day', async () => {
-      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(-1), reason: 'Plumber' }).expect(400)).body.message).toBe('Pick today or a later date.');
-      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(2), reason: 'Plumber' }).expect(400)).body.message).toMatch(/is your weekly off\.$/);
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(-1), reason: 'Plumber visit at home' }).expect(400)).body.message).toBe('Pick today or a later date.');
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(2), reason: 'Plumber visit at home' }).expect(400)).body.message).toMatch(/is your weekly off\.$/);
       await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: '' }).expect(400);
     });
 
@@ -187,7 +187,7 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       const r = (await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Plumber visit at home in the morning' }).expect(201)).body;
       expect(r).toMatchObject({ status: 'pending', hrStep: false });
       ids.wfh = r.id;
-      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Again' }).expect(409);
+      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Again on the same day' }).expect(409);
       const mine = (await api('emp', 'get', '/workflow/approvals/mine').expect(200)).body as { title: string; status: string }[];
       expect(mine.find((x) => x.title.includes('work from home'))).toMatchObject({ status: 'pending' });
       const me = (await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;

@@ -383,7 +383,7 @@ describe('Time and leave batch 2', () => {
       const locked = (await api('hrAdmin', 'post', '/time/periods/lock').send({ legalEntityId: ids.entityA, month: lockMonth }).expect(200)).body;
       expect(locked.frozen).toBeGreaterThan(0);
       // Regularisation, leave and OT on a locked day are refused in plain words.
-      expect((await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Late fix' }).expect(409)).body.message).toMatch(/locked for attendance and leave/);
+      expect((await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Late fix for this day' }).expect(409)).body.message).toMatch(/locked for attendance and leave/);
       await api('emp', 'post', '/time/me/overtime').send({ on: inLocked, reason: 'x' }).expect(409);
       // The database refuses it too (the app role, RLS on).
       await expect(inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${inLocked}T05:00:00Z`), workOn: new Date(`${inLocked}T00:00:00Z`), kind: 'in', accepted: true, verdict: 'no_fence' } }))).rejects.toThrow(/YX_PERIOD_LOCKED/);
@@ -434,7 +434,7 @@ describe('Time and leave batch 2', () => {
         await api(who, 'post', `/payroll/reopen-requests/${asked.id}/decide`).send({ decision: 'approve', confirmation: { phrase, impact: [{ label: 'Month', value: lockMonth }] } }).expect(200);
       }
       expect(await inA((tx) => tx.payrollFeedRow.count({ where: { organizationId: org.A.id, supersededAt: null } }))).toBe(0);
-      const fix = (await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Now open' }).expect(201)).body;
+      const fix = (await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Now open again, fixing it' }).expect(201)).body;
       await api('emp', 'post', `/time/me/regularise/${fix.id}/withdraw`).expect(200);
       const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { in: ['time.period.locked', 'payroll.period.reopened'] } }, select: { action: true } }));
       expect(actions.map((a) => a.action).sort()).toEqual(['payroll.period.reopened', 'time.period.locked']);

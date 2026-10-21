@@ -155,6 +155,7 @@ export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref,
       punches={punches}
       mode={data.shift.checkIn}
       wfhToday={data.wfhToday}
+      reclockIn={data.shift.reclockIn}
       dayOff={dayOff}
       punchesHref={attendanceHref}
       lateMarksBefore={data.days.filter((d) => d.on < data.today && (d.lateMinutes ?? 0) > 0).length}

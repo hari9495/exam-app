@@ -16,6 +16,7 @@ export const NotClockedIn: S = { name: 'Not clocked in', args: { clock: { defaul
 export const LateClockIn: S = { name: 'Late · clocked in 9:52 am', args: { clock: { defaultState: 'working', defaultPunches: [at('l', 'in', '09:52')], now: 600 } } };
 export const OnBreak: S = { name: 'On break', args: { clock: { defaultState: 'break', now: 13 * 60 + 25, defaultPunches: [at('a', 'in', '09:38'), at('b', 'break_start', '13:15')] } } };
 export const ClockedOut: S = { name: 'Clocked out · already clocked out', args: { clock: { defaultState: 'out', now: 19 * 60, defaultPunches: [at('a', 'in', '09:38'), at('b', 'break_start', '13:15'), at('c', 'break_end', '13:52'), at('d', 'out', '18:41')] } } };
+export const ClockInAgain: S = { name: 'Clocked out · clock in again (split shift)', args: { clock: { defaultState: 'out', now: 19 * 60, reclockIn: true, defaultPunches: [at('a', 'in', '09:38'), at('d', 'out', '13:10')] } } };
 export const LeftEarly: S = { name: 'Clocked out early', args: { clock: { defaultState: 'out', now: 17 * 60 + 20, defaultPunches: [at('a', 'in', '09:38'), at('b', 'out', '17:10')] } } };
 export const OutsideNetwork: S = { name: 'Blocked · outside office network', args: { clock: { defaultState: 'not_in', defaultPunches: [], inside: false } } };
 export const ChoseWfh: S = { name: 'Outside → clock in as WFH', args: { clock: { defaultState: 'not_in', defaultPunches: [], inside: false, defaultWorkMode: 'wfh' } } };

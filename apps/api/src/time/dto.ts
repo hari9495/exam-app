@@ -3,6 +3,8 @@ import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateS
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
+/** An attendance request's reason is a real note the approver can check (at least 10 characters after trimming). */
+export const REASON_MESSAGE = 'Please say why, in a few words, so your manager can check it';
 
 export class LeavePlanDto {
   @IsUUID()
@@ -142,7 +144,7 @@ export class WfhDto {
 
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_MESSAGE })
   @MaxLength(500)
   reason!: string;
 }
@@ -166,9 +168,10 @@ export class RegulariseDto {
   @Max(1439)
   outMinute?: number;
 
+  /** A real note for the approver, kept with the day (founder decision 21 Oct 2026). */
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_MESSAGE })
   @MaxLength(500)
   reason!: string;
 }
@@ -318,6 +321,11 @@ export class AttendanceRuleDto {
 
   @IsIn(['restricted', 'field'])
   checkIn!: 'restricted' | 'field';
+
+  /** People may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class YearEndDto {
@@ -385,6 +393,11 @@ export class ShiftDto extends ShiftTimesDto {
 
   @IsBoolean()
   night!: boolean;
+
+  /** People may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class ShiftDetailsDto {
@@ -402,6 +415,10 @@ export class ShiftDetailsDto {
 
   @IsBoolean()
   active!: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class PatternDto {

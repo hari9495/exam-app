@@ -37,8 +37,8 @@ export class AttendanceService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
-    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, noteInEmail: true, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, noteInEmail: true, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -111,7 +111,7 @@ export class AttendanceService implements OnModuleInit {
         zone: f.zone,
         mode: await settingOn(tx, c, 'attendance.mode', f, today),
         // Today's shift from the roster / pattern / location (Q1); null on a weekly off.
-        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
+        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false, reclockIn: Boolean(day.shift.reclockIn) } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
         fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
         // Working or on a break: the next punch closes the day (a break still open ends at check-out).
@@ -152,6 +152,8 @@ export class AttendanceService implements OnModuleInit {
       const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
       if (dto.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
       if (dto.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
+      // Clock in again after clocking out only where HR allows it for the day's shift (founder decision 21 Oct 2026).
+      if (dto.kind === 'in' && state === 'out' && !(shifts.get(workOn)?.reclockIn ?? rule.reclockIn)) throw new ConflictException("You have already clocked out today. To change today's times, regularise the day.");
       // An approved work-from-home day: the punch records where the person is and is never refused for the place.
       const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
       const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: wfh ? 'field' : rule.checkIn });
@@ -468,6 +470,8 @@ export class AttendanceService implements OnModuleInit {
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.
         punches: punches.map((p) => ({ ...this.punchView(p, names), minute: minutesInto(on, f.zone, p.punchedAt) })),
+        // The day's fixes and work-from-home asks with the person's own note, kept for HR to check later (21 Oct 2026).
+        requests: (await tx.attendanceRequest.findMany({ where: { organizationId: c.organizationId, employeeId, workOn: asDate(on) }, orderBy: { createdAt: 'asc' } })).map((r) => ({ id: r.id, kind: r.kind, status: r.status, reason: r.reason, at: r.createdAt })),
       };
     });
   }

@@ -1737,7 +1737,11 @@ export function LiveDayPanel({ day, person, viewer = 'hr', load, onFix, onWithdr
   }, [attempt]);
   if (failed) return <ErrorState title="The day card didn't load" description="Nothing has changed. Try again in a moment." onRetry={() => setAttempt((a) => a + 1)} />;
   if (!card) return <LoadingBlock rows={4} />;
-  return <DayCardBody live day={day} punches={toPunches(card)} shift={toShift(card)} viewer={viewer} person={person} monthDays={[day]} onFix={onFix} onWithdraw={onWithdraw} />;
+  // The day's latest fix or work-from-home ask, with the person's own note, stays on the card for HR (21 Oct 2026).
+  const req = card.requests?.at(-1);
+  const sent = req ? new Date(req.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  const note = req ? (req.status === 'pending' ? `Request sent ${sent}: ${req.reason}` : `${req.kind === 'wfh' ? 'Work from home' : 'Fix'} ${req.status === 'approved' ? 'approved' : req.status === 'rejected' ? 'not approved' : 'withdrawn'} (asked ${sent}): ${req.reason}`) : undefined;
+  return <DayCardBody live day={note ? { ...day, note } : day} punches={toPunches(card)} shift={toShift(card)} viewer={viewer} person={person} monthDays={[day]} onFix={onFix} onWithdraw={onWithdraw} />;
 }
 
 function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: MusterRow[]; /** The muster's month: only its days can be picked. */ monthDays: AttendanceDay[]; today: Date; onClose: () => void; onDone: (ids: string[], date: Date, reason: string) => void }) {

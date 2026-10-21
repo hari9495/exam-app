@@ -96,7 +96,7 @@ export class RosterService implements OnModuleInit {
         today,
         shifts: [...book.shifts.values()]
           .sort((a, b) => a.code.localeCompare(b.code))
-          .map((s) => ({ id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, active: s.active, versions: s.versions.map(({ from, v }) => ({ validFrom: from, start: v.startMinute, end: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes })) })),
+          .map((s) => ({ id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, active: s.active, reclockIn: s.reclockIn, versions: s.versions.map(({ from, v }) => ({ validFrom: from, start: v.startMinute, end: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes })) })),
         patterns: patterns.map((p) => ({
           id: p.id,
           name: p.name,
@@ -132,7 +132,7 @@ export class RosterService implements OnModuleInit {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       this.checkTimes(dto);
       if (await tx.shift.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
-      const s = await tx.shift.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, colour: dto.colour, night: dto.night, createdBy: c.userId ?? null } });
+      const s = await tx.shift.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, colour: dto.colour, night: dto.night, reclockIn: dto.reclockIn ?? false, createdBy: c.userId ?? null } });
       await tx.shiftVersion.create({ data: { organizationId: c.organizationId, shiftId: s.id, ...this.times(dto), createdBy: c.userId ?? null } });
       await audit(tx, c, 'time.shift.created', 'shift', s.id, { code: dto.code, name: dto.name, start: hhmm(dto.start), end: hhmm(dto.end), validFrom: dto.validFrom });
       return { id: s.id };
@@ -156,8 +156,8 @@ export class RosterService implements OnModuleInit {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const s = await tx.shift.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!s) throw new NotFoundException('No such shift.');
-      await tx.shift.update({ where: { id }, data: { name: dto.name, colour: dto.colour, night: dto.night, active: dto.active, version: { increment: 1 }, updatedAt: new Date() } });
-      await audit(tx, c, 'time.shift.changed', 'shift', id, { from: { name: s.name, colour: s.colour, night: s.night, active: s.active }, to: dto });
+      await tx.shift.update({ where: { id }, data: { name: dto.name, colour: dto.colour, night: dto.night, active: dto.active, reclockIn: dto.reclockIn ?? s.reclockIn, version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'time.shift.changed', 'shift', id, { from: { name: s.name, colour: s.colour, night: s.night, active: s.active, reclockIn: s.reclockIn }, to: dto });
       return { id };
     });
   }

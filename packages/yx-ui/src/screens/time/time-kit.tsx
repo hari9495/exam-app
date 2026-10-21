@@ -466,6 +466,8 @@ export interface ClockCardProps {
   dayOff?: string;
   /** Today is an approved work-from-home day: the badge shows and the place never blocks clock-in. */
   wfhToday?: boolean;
+  /** The shift allows clocking in again after clocking out (split shifts, field staff; HR turns it on). */
+  reclockIn?: boolean;
 }
 
 // A break is normal, not a risk: neutral.
@@ -532,6 +534,7 @@ export function ClockCard(p: ClockCardProps) {
     mode: workMode === 'office' ? mode : 'field',
     deviceApproved,
     outAt,
+    reclockIn: p.reclockIn,
   };
   const evaluated = evaluateClock(ctx);
   const { actions, block } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
@@ -683,13 +686,16 @@ export function ClockCard(p: ClockCardProps) {
         {state === 'not_in' && (
           <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in</Button>
         )}
+        {state === 'out' && p.reclockIn && (
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in again</Button>
+        )}
         {(state === 'working' || state === 'break') && (
           <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching === 'out'} onClick={() => act('clock_out')}>Clock out</Button>
         )}
         {breaks && (state === 'working' || state === 'break') && (
           <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
-        {state === 'out' && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
+        {state === 'out' && !p.reclockIn && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}
         {canNote && !noteOpen && <Button size="lg" icon={StickyNote} onClick={() => setNoteOpen(true)}>{note ? 'Edit note' : 'Add note'}</Button>}
         {state === 'break' && primary !== 'clock_out' && <span className="yx-tim-muted">End your break to clock out</span>}

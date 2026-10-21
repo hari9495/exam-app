@@ -134,7 +134,7 @@ export interface MyAttendance {
   zone: string;
   mode: 'punch' | 'assumed_present' | 'timesheet';
   /** Today's shift from the roster, pattern or location (off: a weekly off today). */
-  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean };
+  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean; /** Clocking in again after clocking out is allowed today. */ reclockIn?: boolean };
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
@@ -202,6 +202,8 @@ export interface DayCard {
   /** The shift that day (minutes after midnight); null on a weekly off. */
   shift?: { name: string; start: number; end: number; grace: number } | null;
   punches: (PunchRow & { minute: number })[];
+  /** Fixes and work-from-home asks for the day, with the person's note (kept for HR). */
+  requests?: { id: string; kind: string; status: string; reason: string; at: string }[];
 }
 
 export interface HrBalances {
@@ -277,6 +279,8 @@ export interface LocationRule {
   weeklyOffs: { weekday: number; nth?: number[] }[];
   checkIn: 'restricted' | 'field';
   starter?: boolean;
+  /** The location's default shift lets people clock in again after clocking out. */
+  reclockIn?: boolean;
 }
 
 export interface TimeSetup {
@@ -364,6 +368,8 @@ export interface ShiftRow {
   colour: string;
   night: boolean;
   active: boolean;
+  /** People may clock in again after clocking out (split shifts, field visits). Off by default. */
+  reclockIn?: boolean;
   versions: ShiftVersionRow[];
 }
 export interface OtRuleRow {
@@ -420,6 +426,7 @@ export interface ShiftInput {
   name: string;
   colour: string;
   night: boolean;
+  reclockIn?: boolean;
   validFrom: string;
   start: number;
   end: number;

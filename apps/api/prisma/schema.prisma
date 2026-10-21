@@ -4887,6 +4887,8 @@ model LocationAttendanceRule {
   weeklyOffs        Json     @default("[{\"weekday\":7}]") @map("weekly_offs")
   checkIn           String   @default("restricted") @map("check_in") @db.VarChar(10)
   alsoAllowed       String[] @default([]) @map("also_allowed") @db.Uuid
+  /// The location's default shift lets people clock in again after clocking out.
+  reclockIn         Boolean  @default(false) @map("reclock_in")
   createdBy         String?  @map("created_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -4964,6 +4966,8 @@ model Shift {
   name           String   @db.VarChar(60)
   colour         String   @default("blue") @db.VarChar(10)
   night          Boolean  @default(false)
+  /// People may clock in again after clocking out (split shifts, field visits). Off by default.
+  reclockIn      Boolean  @default(false) @map("reclock_in")
   active         Boolean  @default(true)
   version        Int      @default(1)
   createdBy      String?  @map("created_by") @db.Uuid

@@ -22,7 +22,7 @@ import type { OtRuleInput, OtRuleRow, ProjectRow, ShiftInput, ShiftSetup } from 
 export interface ShiftsSetupScreenProps {
   onCreateShift: (input: ShiftInput) => Promise<unknown>;
   onShiftTimes: (id: string, input: Omit<ShiftInput, 'code' | 'name' | 'colour' | 'night'>) => Promise<unknown>;
-  onShiftDetails: (id: string, input: { name: string; colour: string; night: boolean; active: boolean }) => Promise<unknown>;
+  onShiftDetails: (id: string, input: { name: string; colour: string; night: boolean; active: boolean; reclockIn?: boolean }) => Promise<unknown>;
   onCreatePattern: (input: { name: string; kind: 'weekly' | 'cycle'; cycle: (string | null)[] }) => Promise<unknown>;
   onAssignPattern: (id: string, input: { scopeType: string; scopeId?: string; validFrom: string; offsetDays: number }) => Promise<unknown>;
   onRemoveAssignment: (id: string) => Promise<unknown>;

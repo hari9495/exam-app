@@ -703,11 +703,11 @@ const isoOfDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pa
 const dateOfIso = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const minOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
 /** The editor's form for one live shift: its version in force today (or the first), in the designed fields. */
-interface LiveShiftForm { id: string | null; name: string; code: string; colour: string; night: boolean; active: boolean; start: string | null; end: string | null; grace: number | null; fullDay: number | null; halfDay: number | null; breakRule: 'fixed' | 'none'; breakMin: number | null; breakAbove: number | null }
+interface LiveShiftForm { id: string | null; name: string; code: string; colour: string; night: boolean; reclockIn: boolean; active: boolean; start: string | null; end: string | null; grace: number | null; fullDay: number | null; halfDay: number | null; breakRule: 'fixed' | 'none'; breakMin: number | null; breakAbove: number | null }
 function formOf(row: ShiftRow | null, today: string): LiveShiftForm {
   const v = row ? row.versions.find((x) => x.validFrom <= today) ?? row.versions[0] : undefined;
   return {
-    id: row?.id ?? null, name: row?.name ?? '', code: row?.code ?? '', colour: row?.colour ?? 'blue', night: row?.night ?? false, active: row?.active ?? true,
+    id: row?.id ?? null, name: row?.name ?? '', code: row?.code ?? '', colour: row?.colour ?? 'blue', night: row?.night ?? false, reclockIn: row?.reclockIn ?? false, active: row?.active ?? true,
     start: v ? hhmm(v.start) : '09:30', end: v ? hhmm(v.end) : '18:30', grace: v?.graceMinutes ?? 10,
     fullDay: v ? v.fullDayMinutes / 60 : 7.5, halfDay: v ? v.halfDayMinutes / 60 : 4,
     breakRule: v && v.breakMinutes === 0 ? 'none' : 'fixed', breakMin: v?.breakMinutes || 30, breakAbove: v ? v.breakAboveMinutes / 60 : 5,
@@ -757,10 +757,10 @@ function LiveShiftEditorView({ live, tab = 'shift' }: { live: LiveShiftEditor; t
     setBusy(true);
     setFailed('');
     try {
-      if (isNew) await live.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, ...timesOf() });
+      if (isNew) await live.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, reclockIn: f.reclockIn, ...timesOf() });
       else {
         const b = base!;
-        if (b.name !== f.name || b.colour !== f.colour || b.night !== f.night) await live.onShiftDetails(f.id!, { name: f.name.trim(), colour: f.colour, night: f.night, active: f.active });
+        if (b.name !== f.name || b.colour !== f.colour || b.night !== f.night || b.reclockIn !== f.reclockIn) await live.onShiftDetails(f.id!, { name: f.name.trim(), colour: f.colour, night: f.night, active: f.active, reclockIn: f.reclockIn });
         const timesChanged = (['start', 'end', 'grace', 'fullDay', 'halfDay', 'breakRule', 'breakMin', 'breakAbove'] as const).some((k) => b[k] !== f[k]);
         if (timesChanged) await live.onShiftTimes(f.id!, timesOf());
       }
@@ -775,7 +775,7 @@ function LiveShiftEditorView({ live, tab = 'shift' }: { live: LiveShiftEditor; t
   const toggleUse = async () => {
     setBusy(true);
     try {
-      await live.onShiftDetails(f.id!, { name: base!.name, colour: base!.colour, night: base!.night, active: !f.active });
+      await live.onShiftDetails(f.id!, { name: base!.name, colour: base!.colour, night: base!.night, active: !f.active, reclockIn: base!.reclockIn });
       toast({ tone: 'success', title: f.active ? `${f.name} shift is no longer used` : `${f.name} shift is in use again` });
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -896,6 +896,9 @@ function LiveShiftEditorView({ live, tab = 'shift' }: { live: LiveShiftEditor; t
                     <FormField label="Half day from (h)" id="half-day" error={halfDayError}><NumberField value={f.halfDay} min={0} max={24} decimals onChange={(v) => set({ halfDay: v })} /></FormField>
                   </FieldRow>
                   <p className="yx-tim-note">{f.halfDay != null ? `Under ${f.halfDay} h worked counts as absent. ` : ''}A missing punch shows as "Missing check-out".</p>
+                </FormSection>
+                <FormSection title="Clocking">
+                  <Switch label="Allow clocking in again after clocking out" description="For split shifts and field visits. Off: once someone clocks out, the day is closed (default)." checked={f.reclockIn} onChange={(v) => set({ reclockIn: v })} />
                 </FormSection>
                 <FormSection title="Allowances">
                   <Switch label="Night allowance" description="Counts for the night allowance in payroll. The women's night-work rules always follow the legal night window, whatever this says." checked={f.night} onChange={(v) => set({ night: v })} />
@@ -1289,6 +1292,9 @@ function StoryShiftEditor({ tab = 'shift', kind: kindProp = 'fixed', saveState }
                 {kind === 'flexi' && <FormField label="Overtime after (h worked)" helper="Flexi shifts have no fixed end, so overtime counts from hours worked"><NumberField value={f.flexiOt} min={0} max={24} decimals onChange={(v) => set({ flexiOt: v })} /></FormField>}
                 <Switch label="Needs pre-approval" description="Off: approved after the fact (default)" defaultChecked={false} />
                 <Switch label="Allow comp-off instead of pay" defaultChecked />
+              </FormSection>
+              <FormSection title="Clocking">
+                <Switch label="Allow clocking in again after clocking out" description="For split shifts and field visits. Off: once someone clocks out, the day is closed (default)." defaultChecked={false} />
               </FormSection>
               <FormSection title="Allowances">
                 <Switch label="Night allowance" description={night ? '₹150 per night shift, feeds payroll' : 'Allowance only for shifts overlapping 10 pm – 6 am'} defaultChecked={night} />

@@ -328,14 +328,16 @@ export interface LocationRule extends DayRule {
   weeklyOffs: WeeklyOffRule[];
   checkIn: 'restricted' | 'field';
   alsoAllowed: string[];
+  /** People may clock in again after clocking out (founder decision 21 Oct 2026). */
+  reclockIn: boolean;
 }
 
-export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [] };
+export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [], reclockIn: false };
 
 /** The location's dated rules in force on each date of a range (the latest valid_from on or before the date). */
 export async function rulesFor(tx: Tx, org: string, locationId: string, to: string): Promise<(on: string) => LocationRule> {
   const rows = await tx.locationAttendanceRule.findMany({ where: { organizationId: org, locationId, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
-  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed } }));
+  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn } }));
   return (on: string) => list.find((r) => r.from <= on)?.rule ?? DEFAULT_RULE;
 }
 

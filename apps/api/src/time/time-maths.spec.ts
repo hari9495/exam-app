@@ -1,4 +1,4 @@
-import { accrualsDue, addMonths, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, addMonths, applyFloors, sessionMinutes, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -208,6 +208,13 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
   it('short days are half days or absent; no punches on a past working day is absent', () => {
     expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('14:00'), kind: 'out' }] }).status).toBe('half_day');
     expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('11:00'), kind: 'out' }] }).status).toBe('absent');
+    // Clocking in again after clocking out (21 Oct 2026): worked is the sum of the sessions, not first in to last out.
+    const split = evaluateDay({ ...base, rule: { ...rule, reclockIn: true }, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('13:30'), kind: 'out' }, { at: at('15:30'), kind: 'in' }, { at: at('19:00'), kind: 'out' }] });
+    expect(split.workedMinutes).toBe(4 * 60 + 3.5 * 60 - 30);
+    expect(split.firstIn).toEqual(at('09:30'));
+    expect(split.lastOut).toEqual(at('19:00'));
+    // Without the shift's permission, the day stays first in to last out, as before.
+    expect(evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('13:30'), kind: 'out' }, { at: at('15:30'), kind: 'in' }, { at: at('19:00'), kind: 'out' }] }).workedMinutes).toBe(9.5 * 60 - 30);
     // TIM-27 leave by the hour: 2 hours off make a 9:30-14:00 day whole; the worked minutes shown stay the time worked.
     const off = evaluateDay({ ...base, punches: [{ at: at('09:30'), kind: 'in' }, { at: at('16:30'), kind: 'out' }], leaveMinutes: 120 });
     expect(off.status).toBe('present');
@@ -295,5 +302,15 @@ describe('addMonths (TIM-27 months worked)', () => {
   it('keeps the day, or the month end when the month is shorter', () => {
     expect(addMonths('2026-01-15', 6)).toBe('2026-07-15');
     expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+  });
+});
+
+describe('sessionMinutes (clock in again, 21 Oct 2026)', () => {
+  const t = (h: number, m = 0) => new Date(Date.UTC(2026, 9, 21, h, m));
+  it('adds each in→out session and leaves the gaps out', () => {
+    expect(sessionMinutes([{ at: t(4), kind: 'in' }, { at: t(8), kind: 'out' }, { at: t(10), kind: 'in' }, { at: t(12, 30), kind: 'out' }])).toBe(390);
+  });
+  it('ignores an open session and stray outs, and break punches', () => {
+    expect(sessionMinutes([{ at: t(3), kind: 'out' }, { at: t(4), kind: 'in' }, { at: t(5), kind: 'break_start' }, { at: t(6), kind: 'out' }, { at: t(7), kind: 'in' }])).toBe(120);
   });
 });

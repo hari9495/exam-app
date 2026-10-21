@@ -41,6 +41,8 @@ export interface ClockContext {
   deviceApproved: boolean;
   /** When already clocked out, the time, "18:41". */
   outAt?: string;
+  /** The shift lets people clock in again after clocking out (split shifts, field visits; HR sets it, off by default). */
+  reclockIn?: boolean;
 }
 
 export interface ClockBlock {
@@ -59,7 +61,7 @@ export function fmt12(hhmm: string) {
 
 /** Which buttons are live and, if clocking in or out is refused, the plain reason (M02 §B1, YX-AT-23, YX-MOB-05/08/18). */
 export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block: ClockBlock | null } {
-  if (c.state === 'out')
+  if (c.state === 'out' && !c.reclockIn)
     return {
       actions: [],
       block: {
@@ -104,7 +106,7 @@ export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block:
     };
   if (!c.inside && c.mode === 'restricted') {
     const where = c.distanceM !== undefined ? `, ${formatDistance(c.distanceM)} away` : '';
-    const clockVerb = c.state === 'not_in' ? 'Clock in' : 'Clock out';
+    const clockVerb = c.state === 'not_in' || c.state === 'out' ? 'Clock in' : 'Clock out';
     return {
       actions: c.state === 'working' ? ['start_break'] : c.state === 'break' ? ['end_break'] : [],
       block: {
@@ -116,13 +118,13 @@ export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block:
     };
   }
   const actions: ClockAction[] =
-    c.state === 'not_in' ? ['clock_in'] : c.state === 'working' ? ['clock_out', 'start_break'] : ['end_break'];
+    c.state === 'not_in' || c.state === 'out' ? ['clock_in'] : c.state === 'working' ? ['clock_out', 'start_break'] : ['end_break'];
   return { actions, block: null };
 }
 
 /** Next state after an action (the card's state machine). */
 export function nextClockState(s: ClockState, a: ClockAction): ClockState {
-  if (a === 'clock_in' && s === 'not_in') return 'working';
+  if (a === 'clock_in' && (s === 'not_in' || s === 'out')) return 'working';
   if (a === 'start_break' && s === 'working') return 'break';
   if (a === 'end_break' && s === 'break') return 'working';
   if (a === 'clock_out' && (s === 'working' || s === 'break')) return 'out';
