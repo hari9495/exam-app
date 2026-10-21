@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { OrgChartScreen } from '@yukthix/ui/frame';
 import type { OrgPerson } from '@yukthix/ui';
 import { csvText, downloadText, type OrgChartData } from '@yukthix/ui/workforce';
-import { todayIst, useYxPermissions } from '../../../../../lib/yx-org';
+import { todayIst, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
 import { useScope } from '../../../../../lib/yx-shell';
 import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
@@ -28,6 +28,8 @@ export default function YxOrgChartPage() {
   const q = new URLSearchParams({ ...(asOf !== today ? { asOf } : {}), ...(scope.entity ? { legalEntityId: scope.entity } : {}) }).toString();
   const chart = usePeople<OrgChartData>(`/org-chart${q ? `?${q}` : ''}`, { keepPrevious: true });
   const me = usePeople<{ employeeId: string }>('/me');
+  const entities = useOrg<{ id: string; name: string }[]>('/legal-entities', Boolean(scope.entity));
+  const entityName = entities.data?.find((e) => e.id === scope.entity)?.name;
   const data = chart.data;
   const people: OrgPerson[] = useMemo(
     () => [
@@ -60,7 +62,8 @@ export default function YxOrgChartPage() {
         truncated: Boolean(data?.truncated),
         ...(isHr ? { onOpenPerson: (personId: string) => router.push(`/yx/people/directory/${id(personId)}`) } : {}),
         ...(data?.nodes.length ? { onExportCsv: exportCsv } : {}),
-        ...(data?.vacancies?.length ? { positions: true } : {}),
+        // The Position switch stays for whoever may use it; an empty view says why (founder 21 Oct 2026).
+        ...(data?.positions ? { positions: true, noPositionsText: scope.entity ? `No open positions for ${entityName ?? 'this company'}` : 'No open positions' } : {}),
       }}
     />
   );
