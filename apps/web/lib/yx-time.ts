@@ -38,20 +38,34 @@ export function timeState(...qs: { isError: boolean; error: unknown; data: unkno
   return qs.every((q) => q.data !== undefined) ? 'ready' : 'loading';
 }
 
-/** The browser's location for a punch (YX-AT-23): the pin, or the plain reason it is missing. */
-export function browserLocation(): Promise<{ pin: Pin | null; problem?: string }> {
-  return new Promise((resolve) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve({ pin: null, problem: 'This browser cannot share your location. You can still check in from the office network.' });
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ pin: { lat: p.coords.latitude, lng: p.coords.longitude, accuracyM: Math.round(p.coords.accuracy) } }),
-      (e) =>
-        resolve({
-          pin: null,
-          problem: e.code === e.PERMISSION_DENIED ? 'Location is turned off for YukthiX in this browser. Allow it in the address bar, or check in from the office network.' : 'Your location could not be found. Move near a window or outdoors and try again.',
-        }),
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
-    );
-  });
+/** One location read from the browser; `high` asks for GPS, which on a laptop can take the whole timeout. */
+const readLocation = (high: boolean, timeout: number) =>
+  new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: high, timeout, maximumAge: high ? 30_000 : 300_000 }));
+
+/** Rough enough to trust for a geofence without asking for GPS (metres). */
+const GOOD_ENOUGH_M = 100;
+
+/**
+ * The browser's location for a punch (YX-AT-23): the pin, or the plain reason it is missing.
+ * A quick network-based fix first (instant on a laptop, reused for 5 minutes); GPS only when that fix is too rough
+ * (founder, 21 Oct: Clock in and breaks took up to 10 s on a laptop waiting for GPS).
+ */
+export async function browserLocation(): Promise<{ pin: Pin | null; problem?: string }> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return { pin: null, problem: 'This browser cannot share your location. You can still check in from the office network.' };
+  const pin = (p: GeolocationPosition): Pin => ({ lat: p.coords.latitude, lng: p.coords.longitude, accuracyM: Math.round(p.coords.accuracy) });
+  let quick: GeolocationPosition | null = null;
+  try {
+    quick = await readLocation(false, 4_000);
+    // A laptop has no GPS to improve on the network fix, so only a phone or tablet waits for it.
+    if (quick.coords.accuracy <= GOOD_ENOUGH_M || !/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) return { pin: pin(quick) };
+  } catch (e) {
+    if ((e as GeolocationPositionError).code === 1) return { pin: null, problem: 'Location is turned off for YukthiX in this browser. Allow it in the address bar, or check in from the office network.' };
+  }
+  try {
+    return { pin: pin(await readLocation(true, 8_000)) };
+  } catch {
+    return quick ? { pin: pin(quick) } : { pin: null, problem: 'Your location could not be found. Move near a window or outdoors and try again.' };
+  }
 }
 
 /** Today in India time (yyyy-mm-dd). */
