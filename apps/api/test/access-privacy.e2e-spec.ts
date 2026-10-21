@@ -876,8 +876,8 @@ ${await codeOf(ids.lakshmi)},KFPL,redesignation,${addDays(today, 16)},Title,AN
       await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Test over' }).expect(201);
     });
 
-    it('the org chart on another date is for company-wide HR only (YX-SEC-05)', async () => {
-      await api('hrTn', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(403);
+    it('the org chart on a past date: everyone who may open the chart (founder 20 Oct 2026), only their scope (YX-SEC-05)', async () => {
+      await api('hrTn', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(200);
       await api('hrTn', 'get', '/people/org-chart').expect(200);
       await api('hrAll', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(200);
     });

@@ -627,6 +627,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
         data-clickable={onRowClick ? true : undefined}
         onFocus={() => setFocusIdx(rowIndex)}
         onClick={(e) => {
+          // A click in a portal (a row menu's item) bubbles here through React, not the page: never open the row then.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           if ((e.target as HTMLElement).closest('button, a, input, [role="checkbox"], [data-no-row-click]')) return;
           onRowClick?.(row);
         }}
