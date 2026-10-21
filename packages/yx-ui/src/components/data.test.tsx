@@ -38,8 +38,9 @@ describe('DataTable', () => {
       expect(tick()).toBe('unchecked');
       expect(screen.getAllByText(/Hidden to fit\. Tick to show it/).length).toBeGreaterThan(0);
       await userEvent.click(screen.getByRole('button', { name: 'Reset columns' }));
-      // Every column is back, so nothing is hidden any more.
+      // Every column is back, and the Columns button stays so a column can be hidden again.
       expect(screen.queryByRole('button', { name: /hidden\)/ })).toBeNull();
+      expect(screen.getByRole('button', { name: /^Columns/ })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: /Note C/ })).toBeInTheDocument();
     } finally {
       width.mockRestore();

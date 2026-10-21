@@ -532,7 +532,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
   // Column and density settings only when there is something to thin: a table (not cards) with rows and columns that can hide.
   // A small fixed table, the empty state and phone cards get no settings, and then no toolbar band at all.
   // A short table (under 8 rows) with nothing hidden and no toolbar of its own gets none either, and none while loading or failed.
-  const someHidden = colState.hidden.length > 0 || autoHidden.length > 0;
+  // Once the person has changed columns (Reset included), the Columns button stays, so they can hide one again (founder, 21 Oct 2026).
+  const someHidden = colState.hidden.length > 0 || autoHidden.length > 0 || (colState.pinned?.length ?? 0) > 0;
   const colTools =
     !cards && state === 'ready' && rows.length > 0 && (someHidden || (columns.some((c) => c.optional) && (rows.length >= 8 || hasContent(toolbar))));
   // Phone cards have no header row, so "Select all" moves into the toolbar.
