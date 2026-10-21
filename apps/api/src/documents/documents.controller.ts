@@ -38,6 +38,12 @@ export class DocumentsController {
     return this.documents.mine(ctx, this.user(req));
   }
 
+  /** PPL-03: a manager's read-only view of a team member's documents below Confidential (decided by the service). */
+  @Get('team/:personId')
+  forTeam(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('personId', ParseUUIDPipe) personId: string) {
+    return this.documents.forTeam(ctx, this.user(req), personId);
+  }
+
   @Get('people/:personId')
   @RequireAnyPermission('document.view', 'document.manage')
   forPerson(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('personId', ParseUUIDPipe) personId: string) {

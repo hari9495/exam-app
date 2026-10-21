@@ -22,10 +22,10 @@ import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, R
 // Nothing is shown while acting for someone else (P02 YX-SEC-20).
 
 type Kind = RequestKind;
-type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic';
-const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic'];
+type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport';
+const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic', 'passport'];
 const BANK: Record<string, 'salary' | 'reimbursement'> = { bank_salary: 'salary', bank_reimbursement: 'reimbursement' };
-const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
+const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
 /** Views of someone's Confidential / Special data, shown to them in "Who accessed my data" (P02 §7, P08). */
 export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed'] as const;
@@ -87,6 +87,7 @@ export class ProfileService {
       const details = personal ? await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId } }) : null;
       return {
         employeeId,
+        personId: employee.personId,
         name: displayName(employee),
         self: a.self,
         employeeCode: employment?.employeeCode ?? null,
@@ -100,13 +101,23 @@ export class ProfileService {
         },
         personal: personal ? this.personalView(details) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
+        // Internal class: the work phone and email (PPL-03 key facts, Message).
+        work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
+        // Internal: the birthday as the directory shows it (day and month), unless the person hides it.
+        birthday: internal ? await this.birthday(tx, c, employeeId) : null,
         can: {
           editPersonal: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.profile.edit', employeeId))),
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
           reveal: !v.actingForOther && identity,
+          editWork: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
         },
       };
     });
+  }
+
+  private async birthday(tx: Tx, c: CompanyContext, employeeId: string) {
+    const d = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { dateOfBirth: true, hideBirthday: true } });
+    return d?.dateOfBirth && !d.hideBirthday ? isoDate(d.dateOfBirth).slice(5) : null;
   }
 
   private personalView(d: PersonalRow | null) {
@@ -122,6 +133,7 @@ export class ProfileService {
       postalCode: d?.postalCode ?? null,
       country: d?.country ?? null,
       hideBirthday: d?.hideBirthday ?? false,
+      maritalStatus: d?.maritalStatus ?? null,
     };
   }
 
@@ -136,6 +148,8 @@ export class ProfileService {
       aadhaar: maskTail(ids?.aadhaarLast4),
       uan: maskTail(ids?.uanLast4),
       esic: maskTail(ids?.esicLast4),
+      passport: maskTail(ids?.passportLast4),
+      passportExpiresOn: ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null,
       bankAccounts: banks.map((b) => ({ purpose: b.purpose, holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4), usableFrom: b.usableFrom })),
       pending: pending.map((p) => ({ requestId: p.id, kind: p.kind })),
     };
@@ -193,6 +207,7 @@ export class ProfileService {
       set('country', dto.country ?? null);
       set('stateCode', dto.stateCode ?? null);
       set('hideBirthday', dto.hideBirthday ?? false);
+      set('maritalStatus', dto.maritalStatus ?? null);
       const country = (data.country !== undefined ? data.country : current?.country) as string | null;
       const state = (data.stateCode !== undefined ? data.stateCode : current?.stateCode) as string | null;
       if (country && !isCountry(country)) throw new BadRequestException('Unknown country');
@@ -216,6 +231,78 @@ export class ProfileService {
     return out.view;
   }
 
+  /** Work phone (Internal): HR with employee.profile.edit for the person; the person asks HR (it is the company's line). */
+  setWorkPhone(ctx: TenantContext, v: Viewer, employeeId: string, workPhone: string | null) {
+    return this.history.run(ctx, async (tx, c) => {
+      await this.history.access(tx, c, v, employeeId);
+      if (v.actingForOther || !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing the work phone needs employee.profile.edit for this person.');
+      let phone: string | null = null;
+      if (workPhone?.trim()) {
+        try {
+          phone = e164(workPhone);
+        } catch {
+          throw new BadRequestException('That phone number is not valid.');
+        }
+      }
+      await tx.employee.update({ where: { id: employeeId }, data: { workPhone: phone } });
+      await audit(tx, c, 'employee.work_phone.updated', 'employee', employeeId, { cleared: phone === null });
+      return { workPhone: phone };
+    });
+  }
+
+  /**
+   * PPL-03 Activity: who did what on this person's record, newest first, each kind only where the viewer may see it:
+   * job changes (raised, decided; never pay values) for anyone who may open the record; identity and bank change
+   * requests (the kind, never values) for the person and identity keys; documents for the person and document keys;
+   * letters for the person and letter.issue. Twenty at most.
+   */
+  activity(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      const org = c.organizationId;
+      const may = async (keys: Parameters<ProfileService['can']>[3][]) => a.self || (await Promise.all(keys.map((k) => this.can(tx, c, v, k, employeeId)))).some(Boolean);
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: employeeId }, select: { personId: true } });
+      const out: { id: string; kind: 'change' | 'approval' | 'comment'; actorId: string | null; at: Date; text: string }[] = [];
+      const TYPE: Record<string, string> = { join: 'the joining', promotion: 'a promotion', transfer: 'a transfer', redesignation: 'a new designation', manager_change: 'a manager change', salary_revision: 'a salary revision', employment_type_change: 'an employment type change', confirmation: 'a confirmation', correction: 'a correction', notice: 'a notice period', notice_withdrawal: 'a resignation withdrawal', exit: 'the exit' };
+      const day = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      const changes = await tx.employeeChange.findMany({ where: { organizationId: org, employeeId }, orderBy: { requestedAt: 'desc' }, take: 20 });
+      for (const ch of changes) {
+        const what = `${TYPE[ch.changeType] ?? 'a change'} from ${day(ch.effectiveDate)}`;
+        out.push({ id: `ch-r-${ch.id}`, kind: 'change', actorId: ch.requestedBy, at: ch.requestedAt, text: `Raised ${what}` });
+        if (ch.decidedAt && ['approved', 'scheduled', 'effective', 'rejected'].includes(ch.status)) out.push({ id: `ch-d-${ch.id}`, kind: 'approval', actorId: ch.decidedBy, at: ch.decidedAt, text: `${ch.status === 'rejected' ? 'Rejected' : 'Approved'} ${what}` });
+      }
+      if (await may(['employee.identity.view', 'employee.identity.manage', 'employee.identity.approve'])) {
+        const reqs = await tx.employeeProfileRequest.findMany({ where: { organizationId: org, employeeId }, orderBy: { createdAt: 'desc' }, take: 10 });
+        for (const r of reqs) {
+          const label = (LABEL[r.kind as Kind] ?? r.kind).toLowerCase();
+          out.push({ id: `pr-r-${r.id}`, kind: 'change', actorId: r.requestedBy, at: r.createdAt, text: `Asked to change the ${label}` });
+          if (r.decidedAt && (r.status === 'approved' || r.status === 'rejected')) out.push({ id: `pr-d-${r.id}`, kind: 'approval', actorId: r.decidedBy, at: r.decidedAt, text: `${r.status === 'approved' ? 'Approved' : 'Rejected'} the ${label} change` });
+        }
+      }
+      if (await may(['document.view', 'document.manage'])) {
+        // Only document classes the viewer may see: Personal with employee.personal.view, Confidential / Special with identity.
+        const classes = a.self ? null : ['public', 'internal', ...((await this.can(tx, c, v, 'employee.personal.view', employeeId)) ? ['personal'] : []), ...((await this.can(tx, c, v, 'employee.identity.view', employeeId)) ? ['confidential', 'special'] : [])];
+        const allTypes = await tx.documentType.findMany({ where: { OR: [{ organizationId: org }, { organizationId: null }] }, select: { key: true, name: true, sensitivity: true } });
+        const seen = allTypes.filter((t) => !classes || classes.includes(t.sensitivity)).map((t) => t.key);
+        const docs = await tx.document.findMany({ where: { organizationId: org, personId: emp.personId, typeKey: { in: seen } }, orderBy: { createdAt: 'desc' }, take: 10 });
+        const name = (k: string) => (allTypes.find((t) => t.key === k)?.name ?? k.replace(/_/g, ' ')).toLowerCase();
+        const versions = await tx.documentVersion.findMany({ where: { organizationId: org, documentId: { in: docs.map((d) => d.id) } }, orderBy: { createdAt: 'desc' } });
+        for (const d of docs) {
+          for (const ver of versions.filter((x) => x.documentId === d.id)) out.push({ id: `dv-${ver.id}`, kind: 'comment', actorId: ver.uploadedBy, at: ver.createdAt, text: `Uploaded the ${name(d.typeKey)}` });
+          if (d.verifiedAt) out.push({ id: `dk-${d.id}`, kind: 'approval', actorId: d.verifiedBy, at: d.verifiedAt, text: `${d.status === 'rejected' ? 'Sent back' : 'Verified'} the ${name(d.typeKey)}` });
+        }
+      }
+      if (await may(['letter.issue'])) {
+        const letters = await tx.letterIssue.findMany({ where: { organizationId: org, personId: emp.personId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 10 });
+        for (const l of letters) if (l.issuedAt) out.push({ id: `li-${l.id}`, kind: 'approval', actorId: l.issuedBy, at: l.issuedAt, text: `Issued the ${l.title.split(':')[0].toLowerCase()}${l.referenceNo ? ` (${l.referenceNo})` : ''}` });
+      }
+      out.sort((x, y) => y.at.getTime() - x.at.getTime());
+      const top = out.slice(0, 20);
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: top.flatMap((e) => (e.actorId ? [e.actorId] : [])) } }, select: { id: true, name: true, email: true } });
+      return { entries: top.map((e) => ({ id: e.id, kind: e.kind, actor: e.actorId ? (users.find((u) => u.id === e.actorId)?.name || users.find((u) => u.id === e.actorId)?.email || 'Someone') : null, at: e.at.toISOString(), text: e.text })) };
+    });
+  }
+
   // ================= identity / bank / legal name: change with approval (§4.5, YX-SEC-13) =================
 
   private proposal(kind: Kind, value: ProposedValueDto): Proposal {
@@ -233,6 +320,7 @@ export class ProfileService {
   private display(kind: Kind, p: Proposal): Record<string, string | null> {
     if (kind === 'legal_name') return { legalName: p.legalName ?? null };
     if (BANK[kind]) return { holderName: p.holderName ?? null, ifsc: p.ifsc ?? null, account: maskTail(last4(p.accountNumber ?? '')) };
+    if (kind === 'passport') return { value: maskTail(last4(p.passport ?? '')), expiresOn: p.passportExpiresOn ?? null };
     return { value: maskTail(last4(p[kind as Identifier] ?? '')) };
   }
 
@@ -245,6 +333,7 @@ export class ProfileService {
     if (!ids) return null;
     if (kind === 'legal_name') return ids.legalName ? { legalName: ids.legalName } : null;
     const tail = ids[`${kind as Identifier}Last4`];
+    if (kind === 'passport') return tail ? { value: maskTail(tail), expiresOn: ids.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null } : null;
     return tail ? { value: maskTail(tail) } : null;
   }
 
@@ -311,6 +400,8 @@ export class ProfileService {
     }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (kind === 'legal_name') return ids?.legalName === p.legalName;
+    // A renewed passport may keep its number: the expiry is part of what is on file.
+    if (kind === 'passport') return ids?.passportHash === this.hash(c, 'passport', p.passport!) && (ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null) === p.passportExpiresOn;
     return ids?.[`${kind as Identifier}Hash`] === this.hash(c, kind as Identifier, p[kind as Identifier]!);
   }
 
@@ -421,7 +512,7 @@ export class ProfileService {
         const data: Record<string, unknown> =
           kind === 'legal_name'
             ? { legalName: p.legalName }
-            : { [`${kind}Enc`]: this.seal(c, r.employeeId, p[kind as Identifier]!), [`${kind}Hash`]: this.hash(c, kind as Identifier, p[kind as Identifier]!), [`${kind}Last4`]: last4(p[kind as Identifier]!) };
+            : { [`${kind}Enc`]: this.seal(c, r.employeeId, p[kind as Identifier]!), [`${kind}Hash`]: this.hash(c, kind as Identifier, p[kind as Identifier]!), [`${kind}Last4`]: last4(p[kind as Identifier]!), ...(kind === 'passport' ? { passportExpiresOn: new Date(`${p.passportExpiresOn}T00:00:00Z`) } : {}) };
         await tx.employeeIdentifiers.upsert({
           where: { organizationId_employeeId: { organizationId: c.organizationId, employeeId: r.employeeId } },
           create: { organizationId: c.organizationId, employeeId: r.employeeId, ...data },

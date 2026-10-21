@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { PersonHistoryScreen } from './person-history';
-import { JobChangesScreen } from './job-changes';
-import { AS_OF, AS_OF_FUTURE, AS_OF_PAY, CHANGES, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
+import { AS_OF, AS_OF_FUTURE, AS_OF_PAY, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const meta: Meta = { title: 'Screens/People/Job history', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -43,27 +42,3 @@ export const Manager: S = {
   ),
 };
 export const NoPerson: S = { name: '· no person chosen', render: () => <PersonHistoryScreen state="ready" people={PEOPLE} personId={null} onPickPerson={() => {}} today={TODAY_ISO} asOf={TODAY_ISO} onAsOf={() => {}} view={null} history={null} payShown={false} onShowPay={() => wait()} /> };
-
-function Changes({ view }: { view?: 'pending' | 'scheduled' | 'done' }) {
-  return (
-    <JobChangesScreen
-      state="ready"
-      today={TODAY_ISO}
-      rows={CHANGES}
-      defaultView={view}
-      canApprove
-      canManage
-      personHref={(id) => `#person-${id}`}
-      onPreview={() => wait().then(() => IMPACT)}
-      onApprove={() => wait()}
-      onReject={() => wait()}
-      onCancel={() => wait()}
-      onReschedule={() => wait()}
-      newChange={change}
-    />
-  );
-}
-
-export const WaitingForApproval: S = { name: 'Job changes · waiting for approval', render: () => <Changes /> };
-export const ScheduledChanges: S = { name: 'Job changes · scheduled', render: () => <Changes view="scheduled" /> };
-export const Done: S = { name: 'Job changes · done', render: () => <Changes view="done" /> };

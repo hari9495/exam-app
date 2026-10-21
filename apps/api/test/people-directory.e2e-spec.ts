@@ -132,6 +132,40 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     await app.close();
   });
 
+  it('Position view: open job openings as vacancies under their hiring manager, for HR and the hiring manager only', async () => {
+    const job = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.create({ data: { organizationId: org.A.id, title: 'Quality Inspector', status: 'open', createdById: users.hrA, hiringManagerId: users.empA, designationId: ids.desKF, departmentId: ids.deptKF, locationId: ids.locKF, headcount: 2 } }));
+    const hr = (await api('hrA', 'get', '/people/org-chart').expect(200)).body;
+    expect(hr.vacancies).toEqual([{ id: `job:${job.id}`, role: 'Analyst KF', department: 'Dept KF', location: 'Site KF', managerId: ids.arjun, openings: 2 }]);
+    expect(JSON.stringify(hr.vacancies)).not.toMatch(/candidate|applicant/i);
+    expect((await api('empA', 'get', '/people/org-chart').expect(200)).body.vacancies).toHaveLength(1); // the hiring manager's own
+    expect((await api('hrTn', 'get', '/people/org-chart').expect(200)).body.vacancies).toEqual([]); // scoped HR without hiring access
+    expect((await api('adminB', 'get', '/people/org-chart').expect(200)).body.vacancies).toEqual([]);
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.delete({ where: { id: job.id } }));
+  });
+
+  it('Position view by company (founder 21 Oct 2026): the job’s entity, else its location’s, else its hiring manager’s; none of these shows under All entities only; the switch stays on past dates', async () => {
+    const make = (title: string, extra: Record<string, string>) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.create({ data: { organizationId: org.A.id, title, status: 'open', createdById: users.hrA, ...extra } }));
+    const company = await make('Plant Engineer', {});
+    const byLocation = await make('Line Lead', { locationId: ids.locTN });
+    const byManager = await make('Quality Analyst', { hiringManagerId: users.empA }); // Arjun works for KF
+    const own = await make('Store Keeper', { legalEntityId: ids.leTN, locationId: ids.locKF }); // the job's own entity wins
+    const chart = async (q: string) => (await api('hrA', 'get', `/people/org-chart${q}`).expect(200)).body as { positions: boolean; vacancies: { id: string }[] };
+    const jobs = (b: { vacancies: { id: string }[] }) => b.vacancies.map((x) => x.id).sort();
+    const all = await chart('');
+    expect(all.positions).toBe(true);
+    expect(jobs(all)).toEqual([company, byLocation, byManager, own].map((j) => `job:${j.id}`).sort());
+    expect(jobs(await chart(`?legalEntityId=${ids.leKF}`))).toEqual([`job:${byManager.id}`]);
+    expect(jobs(await chart(`?legalEntityId=${ids.leTN}`))).toEqual([byLocation, own].map((j) => `job:${j.id}`).sort());
+    // Openings are not dated: a past chart has none, but HR keeps the switch (the screen says why it is empty).
+    const past = await chart('?asOf=2026-07-01');
+    expect(past).toMatchObject({ positions: true, vacancies: [] });
+    // The hiring manager keeps the switch for their own opening; scoped HR without hiring access has none.
+    expect((await api('empA', 'get', '/people/org-chart').expect(200)).body).toMatchObject({ positions: true, vacancies: [{ id: `job:${byManager.id}` }] });
+    expect((await api('hrTn', 'get', '/people/org-chart').expect(200)).body).toMatchObject({ positions: false, vacancies: [] });
+    expect((await api('adminB', 'get', '/people/org-chart').expect(200)).body.vacancies).toEqual([]);
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.job.deleteMany({ where: { id: { in: [company, byLocation, byManager, own].map((j) => j.id) } } }));
+  });
+
   it('a colleague sees Public fields only: no ID, status, joining date, phone or consultants', async () => {
     const body = await list('empA');
     expect(body.rows.map((r: { id: string }) => r.id).sort()).toEqual([ids.arjun, ids.meera, ids.imran].sort());
@@ -273,5 +307,23 @@ describe('People directory: workforce, cards, views, export (PPL-01; P02 Q4, §4
     const body = await list('empA');
     expect(byId(body, ids.imran)?.departmentPath).toEqual(['Operations', 'Dept TN']);
     expect(byId(body, ids.arjun)?.departmentPath).toEqual(['Dept KF']);
+  });
+
+  it('the org chart follows the top bar entity; a manager in another entity is a quiet line, never lost', async () => {
+    const ravi = (
+      await api('hrA', 'post', '/people/employees')
+        .send({ legalEntityId: ids.leTN, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, givenName: 'Ravi', workEmail: `ravi-${runId}@dir.test`, assignment: { locationId: ids.locTN, departmentId: ids.deptTN, designationId: ids.desTN, gradeId: ids.gradeTN, employmentTypeId: ids.typeTN, managerEmployeeId: ids.arjun } })
+        .expect(201)
+    ).body.id as string;
+    const tn = (await api('hrA', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.nodes as { id: string; legalEntity: { id: string } | null; managerId: string | null; managerOutside?: { name: string; legalEntity: string | null } }[];
+    expect(tn.map((n) => n.id)).toContain(ravi);
+    expect(tn.every((n) => n.legalEntity?.id === ids.leTN)).toBe(true);
+    expect(tn.map((n) => n.id)).not.toContain(ids.arjun);
+    expect((await api('hrA', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.truncated).toBe(false);
+    expect(tn.find((n) => n.id === ravi)).toMatchObject({ managerId: null, managerOutside: { name: 'Arjun Kulkarni', legalEntity: 'Entity KF' } });
+    const everyone = (await api('hrA', 'get', '/people/org-chart').expect(200)).body.nodes as { id: string; managerId: string | null }[];
+    expect(everyone.find((n) => n.id === ravi)!.managerId).toBe(ids.arjun);
+    // Another company's entity id shows nothing of A.
+    expect((await api('adminB', 'get', `/people/org-chart?legalEntityId=${ids.leTN}`).expect(200)).body.nodes).toEqual([]);
   });
 });

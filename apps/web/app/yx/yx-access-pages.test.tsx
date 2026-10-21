@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
+import { AS_OF, HISTORY } from '../../../../packages/yx-ui/src/screens/history/data';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -124,14 +125,18 @@ describe('/yx/people/profile', () => {
       'GET /people/profile-requests': { rows: [] },
       'GET /org/reference': { states: [{ code: 'IN-KA', name: 'Karnataka', country: 'IN' }], regions: [] },
       'POST /people/employees/p-divya/identity/reveal': (_: string, init: RequestInit) => (reveals.push(JSON.parse(String(init.body))), { field: 'pan', value: 'BQRPR4821K' }),
+      'GET /people/employees/p-divya/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-divya' } },
+      'GET /people/employees/p-divya/history': HISTORY,
+      'GET /people/employees/p-divya/person': { id: 'per-divya', roles: [] },
+      'GET /people/profile-requests?status=pending': { rows: [] },
+      'GET /me/leave': { balances: [] },
     });
+    // The designed person record (PPL-03): identity values masked until Show, and the look is recorded by the API.
     wrap(<YxProfilePage />);
     expect(await screen.findByText('•••• 821K')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Show full PAN' }));
+    await ue.click(screen.getByRole('button', { name: /^Show PAN/ }));
     expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
     expect(reveals).toEqual([{ field: 'pan' }]);
-    await ue.click(screen.getByRole('button', { name: 'Open job history' }));
-    expect(push).toHaveBeenCalledWith('/yx/people/history?person=p-divya');
   });
 });
 

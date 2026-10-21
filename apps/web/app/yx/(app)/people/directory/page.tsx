@@ -117,11 +117,10 @@ export default function YxDirectoryPage() {
     cards,
     sinceMonth,
     ...(d ? { persons: { roles: d.cards.persons.roles, people: d.cards.persons.people } } : {}),
-    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)) } : {}),
-    // No employee import yet (Import stays hidden until there is one).
+    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)), onImport: () => router.push('/yx/people/import') } : {}),
     ...(isHr
       ? {
-          onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/profile?person=${id(r.id)}`),
+          onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/directory/${id(r.id)}`),
           // One person: their job history, where changes are raised; several: a bulk change.
           onStartChange: (ids: string[]) => router.push(ids.length === 1 ? `/yx/people/history?person=${id(ids[0])}` : '/yx/people/bulk-changes'),
           onIssueLetter: (ids: string[]) => router.push(`/yx/people/letters?people=${ids.map(id).join(',')}`),
