@@ -12,8 +12,9 @@ test('HR: cards, ID and status, a saved view, export and Issue letter', async ({
   await page.goto('/yx/people/directory');
   const tabs = page.getByRole('tablist', { name: 'Workforce' });
   await expect(tabs.getByRole('tab', { name: /Employees/ })).toBeVisible({ timeout: 30_000 });
-  await expect(tabs.getByRole('tab', { name: /Contract workers/ })).toHaveCount(0);
-  await expect(tabs.getByRole('tab', { name: /Placements/ })).toHaveCount(0);
+  // HR holds the contract labour and placement keys, and the demo has both.
+  await expect(tabs.getByRole('tab', { name: /Contract workers/ })).toBeVisible();
+  await expect(tabs.getByRole('tab', { name: /Placements/ })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: /^Status/ })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: /^ID/ })).toBeVisible();
 

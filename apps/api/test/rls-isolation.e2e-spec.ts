@@ -50,6 +50,8 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   // M10 AT2: headcount plans.
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
+// People (PPL-17 buddies, PPL-30 succession): personal rows.
+const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Contract workers and placements (founder decision 21 Oct 2026).
 const WORKFORCE_ROLES_SUPPORT_EXCLUDED = ['contractors', 'contractor_licences', 'contract_deployments', 'placements',
@@ -708,7 +710,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...WORKFORCE_ROLES_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...WORKFORCE_ROLES_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {
