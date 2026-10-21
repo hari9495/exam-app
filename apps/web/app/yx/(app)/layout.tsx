@@ -18,7 +18,7 @@ import { useBellItems } from '../../../lib/yx-bell';
 import { useYxPalette } from '../../../lib/yx-palette';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { withNextHere } from '../../../lib/safe-next';
-import { useOrg, useYxPermissions } from '../../../lib/yx-org';
+import { useOrg, useYxPermissions, type Reference } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
 import { ME_SECURITY, activeLink, buildNav, type NavArea } from '../../../lib/yx-nav';
@@ -118,6 +118,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Company / period button: people who read the structure, when there is more than one entity; the period for pay.
   const seesEntities = perms.has('org.structure.view') || perms.has('org.settings.manage');
   const entities = useOrg<LegalEntity[]>('/legal-entities', seesEntities);
+  // The company list shows the state's name (Karnataka), as designed, not its code.
+  const reference = useOrg<Reference>('/reference', seesEntities);
+  const stateName = (code?: string | null) => (code ? (reference.data?.states.find((x) => x.code === code)?.name ?? code) : '');
   // The period is for pay, and for the month the HR Home counts (attendance exceptions, joining this month).
   const payPeriods = !support && (perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('attendance.view'));
 
@@ -189,13 +192,15 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 
   const entityList = entities.data?.filter((e) => !e.archivedAt) ?? [];
+  // Only Home reads the month (its counts); every other page shows the company alone, as designed (PLT-01, PPL-01).
+  const showPeriod = payPeriods && pathname === '/yx/home';
   const scopePicker =
-    entityList.length > 1 || payPeriods ? (
+    entityList.length > 1 || showPeriod ? (
       <ScopePicker
-        entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: '', state: e.registeredAddress?.state ?? '' }))] : []}
+        entities={entityList.length > 1 ? [{ id: 'all', name: `All entities (${entityList.length})`, gstin: '', state: '' }, ...entityList.map((e) => ({ id: e.id, name: e.name, gstin: e.gstin ?? '', state: stateName(e.registeredAddress?.state) }))] : []}
         entity={scope.entity ?? 'all'}
         onEntityChange={(id) => setScope({ ...scope, entity: !id || id === 'all' ? null : id })}
-        periods={payPeriods ? recentMonths() : undefined}
+        periods={showPeriod ? recentMonths() : undefined}
         period={scope.period}
         onPeriodChange={(p) => p && setScope({ ...scope, period: p })}
       />

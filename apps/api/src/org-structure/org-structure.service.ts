@@ -202,9 +202,12 @@ export class OrgStructureService {
 
   // ================= 4.1 legal entities =================
 
-  listEntities(ctx: TenantContext, includeArchived: boolean) {
+  listEntities(ctx: TenantContext, includeArchived: boolean, gstinFor: 'all' | ReadonlySet<string> = new Set()) {
     return this.run(ctx, async (tx, c) =>
-      (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, ...(includeArchived ? {} : { archivedAt: null }) }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }] })).map(legalEntityView),
+      (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, ...(includeArchived ? {} : { archivedAt: null }) }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }] })).map((r) => ({
+        ...legalEntityView(r),
+        ...((gstinFor === 'all' || gstinFor.has(r.id)) && r.gstin ? { gstin: r.gstin } : {}),
+      })),
     );
   }
 
