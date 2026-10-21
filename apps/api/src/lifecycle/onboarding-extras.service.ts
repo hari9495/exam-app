@@ -11,6 +11,7 @@ import { LettersService } from '../documents/letters/letters.service';
 import { joinerInScope } from '../documents/person-access';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { lookedAfter } from './people-registers.service';
 
 // Lifecycle batch 6e, the onboarding special cases (M01 §3.5; design §16.5):
 //   rehire   (LIFE-5.01, YX-LC-11 / 18) someone who worked here before joins on the same employee record; the
@@ -161,6 +162,9 @@ export class OnboardingExtrasService {
         const e = await tx.employee.findFirst({ where: { organizationId: org, id: dto.employeeId } });
         if (!e || e.personId === pb.personId || !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: e.id, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('Choose a current employee as the buddy.');
         userId = e.userId;
+        // A buddy in the pool looks after at most their cap of joiners at a time (PPL-41).
+        const inPool = dto.employeeId !== pb.buddyEmployeeId && (await tx.buddyPool.findUnique({ where: { organizationId_employeeId: { organizationId: org, employeeId: dto.employeeId } } }));
+        if (inPool && (await tx.preboarding.count({ where: { ...lookedAfter(org), buddyEmployeeId: dto.employeeId } })) >= inPool.cap) throw new BadRequestException(`${displayName(e)} already looks after ${inPool.cap === 1 ? '1 joiner' : `${inPool.cap} joiners`}. Choose another buddy.`);
       }
       await tx.preboarding.update({ where: { id }, data: { buddyEmployeeId: dto.employeeId, version: { increment: 1 } } });
       // The buddy's checklist tasks follow (the HR owner holds them while there is no buddy or the buddy has no login).

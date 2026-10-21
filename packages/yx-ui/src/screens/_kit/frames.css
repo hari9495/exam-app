@@ -63,3 +63,5 @@ body:has(.yx-phone) .yx-sheet { max-width: calc(var(--yx-space-16) * 6 + var(--y
 
 /* Live frame (design audit step 1): the frame's Area › Page trail stands in only where the page header has none of its own. */
 .yx-screen:has(.yx-page-header .yx-crumbs, .yx-object-header .yx-crumbs) > .yx-crumbs { display: none; }
+/* A designed page with its own, longer trail (a record: People > Directory > name) replaces the frame's Area > Page trail. */
+.yx-screen__crumbs:has(~ * nav[aria-label='Breadcrumb']) { display: none; }

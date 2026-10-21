@@ -4,7 +4,7 @@ import { stepUp } from './fixtures/time-db';
 
 // Lifecycle batch 6a, main flow on the seeded Kaveri Foods demo: Lakshmi (HR) adds a joiner to Divya's team; the
 // checklist starts with tasks due before the joining day; Lakshmi uploads the joiner's PAN card from the checklist and
-// verifies it in Documents to verify, which closes the PAN task; Divya sees the joiner under "Joining soon" on My team;
+// verifies it in Documents to verify, which closes the PAN task; Divya sees the joiner (joining day) on My team;
 // the IT agent finds the seeded joiner's IT tasks under My checklist tasks.
 //
 // Needs the API and web against the seeded database (locally: API on 3901, web on 3900 with
@@ -42,11 +42,15 @@ test('HR adds a joiner → uploads and verifies the PAN → the task closes; the
   await sheet.getByRole('combobox', { name: 'Manager' }).click();
   await hr.getByRole('option', { name: /Divya Raghunathan/ }).first().click();
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
-  await expect(hr.getByText(`${name.split(' ')[0]} was added`)).toBeVisible({ timeout: 30_000 });
+  // The designed toast (the text is also read out once by the live region).
+  await expect(hr.getByText(`${name.split(' ')[0]} added`).first()).toBeVisible({ timeout: 30_000 });
 
-  // The checklist: PAN due a week before the joining day; HR uploads it for the joiner.
-  await hr.getByRole('row', { name: new RegExp(name) }).getByRole('button', { name: 'Checklist' }).click();
-  const pan = hr.getByRole('row', { name: /Collect the PAN card/ });
+  // The checklist (the designed board, PPL-11: a card opens the journey record): PAN due a week before the joining day;
+  // HR uploads it for the joiner.
+  await hr.getByRole('button', { name, exact: true }).click();
+  await hr.waitForURL(/\/yx\/people\/onboarding\/[^/]+$/);
+  const journeyUrl = hr.url();
+  const pan = hr.getByRole('listitem').filter({ hasText: 'Collect the PAN card' });
   await expect(pan).toBeVisible();
   await pan.getByRole('button', { name: 'Upload' }).click();
   const up = hr.getByRole('dialog');
@@ -57,24 +61,26 @@ test('HR adds a joiner → uploads and verifies the PAN → the task closes; the
   // Documents to verify: Lakshmi verifies the PAN; the automation closes the checklist task.
   await hr.goto('/yx/people/documents');
   const doc = hr.getByRole('row', { name: new RegExp(name) });
-  await expect(doc.getByText('Clean')).toBeVisible({ timeout: 30_000 });
-  await doc.getByRole('button', { name: 'Verify' }).click();
+  // The designed queue (PPL-27): a clean upload waits as "Needs review"; Review opens it, then Mark verified.
+  await expect(doc.getByText('Needs review')).toBeVisible({ timeout: 30_000 });
+  await doc.getByRole('button', { name: 'Review' }).click();
+  await hr.getByRole('dialog').getByRole('button', { name: 'Mark verified' }).click();
   await expect(doc).toHaveCount(0);
-  await hr.goto('/yx/people/onboarding');
-  await hr.getByRole('row', { name: new RegExp(name) }).getByRole('button', { name: 'Checklist' }).click();
-  await hr.getByRole('radio', { name: 'All tasks' }).click();
+  await hr.goto(journeyUrl);
+  // The designed record lists open tasks; the verified PAN closes its task (it leaves the open list).
   await expect(async () => {
     await hr.reload();
-    await hr.getByRole('radio', { name: 'All tasks' }).click();
-    await expect(hr.getByRole('row', { name: /Collect the PAN card/ }).getByText('Done', { exact: true })).toBeVisible({ timeout: 2_000 });
+    await expect(hr.getByRole('heading', { name: /onboarding/ })).toBeVisible();
+    await expect(hr.getByRole('list', { name: /open tasks/ }).getByText('Collect the PAN card')).toHaveCount(0, { timeout: 2_000 });
   }).toPass({ timeout: 60_000 });
 
   // Divya sees the joiner on My team; the IT agent sees the seeded joiner's IT tasks.
   const divya = await signedIn(browser, 'panel@demo-org.test');
   await divya.goto('/yx/people/team');
-  await expect(divya.getByRole('heading', { name: 'Joining soon' })).toBeVisible();
-  await expect(divya.getByText(new RegExp(name))).toBeVisible();
+  // The designed team page (PPL-08): a joiner is a row with their joining day until day one.
+  await expect(divya.getByRole('row', { name: new RegExp(name) }).getByText(/^Joins /)).toBeVisible();
   const it = await signedIn(browser, 'it-agent@demo-org.test');
   await it.goto('/yx/people/my-tasks');
-  await expect(it.getByRole('row', { name: /Sneha Pillai.*Laptop or work device|Laptop or work device.*Sneha Pillai/ })).toBeVisible();
+  // The designed list (PPL-47): tasks grouped by person.
+  await expect(it.getByRole('region', { name: /Sneha Pillai/ }).getByText(/Laptop or work device/)).toBeVisible();
 });

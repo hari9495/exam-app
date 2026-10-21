@@ -16,6 +16,7 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'employee.salary.view',
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
@@ -92,6 +93,7 @@ export const YX_KEYS = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  'succession.manage',
   'asset.view',
   'asset.manage',
   // M05 expenses E1.
@@ -121,6 +123,13 @@ export const YX_KEYS = [
   'payroll.fnf.manage',
   'payroll.writeoff.approve',
   'statutory.filing.view',
+  // Contract workers and placements (founder decision 21 Oct 2026).
+  'clra.worker.view',
+  'clra.worker.manage',
+  'staffing.placement.view',
+  'staffing.placement.manage',
+  'clra.compliance.manage',
+  'clra.identity.view',
   'statutory.filing.generate',
   'statutory.filing.mark_filed',
   'statutory.challan.manage',

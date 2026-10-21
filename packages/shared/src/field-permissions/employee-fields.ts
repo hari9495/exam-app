@@ -70,6 +70,8 @@ export const CONFIDENTIAL_KEYS: readonly string[] = [
   'pay.range.view',
   'pay.range.manage',
   'org.entity.statutory.manage',
+  // People › Succession (PPL-26): HR and leadership only.
+  'succession.manage',
 ];
 export const holdsConfidential = (keys: readonly string[]) => keys.some((k) => CONFIDENTIAL_KEYS.includes(k));
 

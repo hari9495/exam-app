@@ -34,7 +34,7 @@ describe('buildNav: areas', () => {
 describe('buildNav: People', () => {
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Bulk changes', 'Job history', 'Possible same person']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -51,8 +51,8 @@ describe('buildNav: People', () => {
   });
 
   it('lifecycle pages follow their keys and the person own tasks', () => {
-    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Life events']);
-    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Life events', 'My checklist tasks']);
+    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Buddies', 'Life events']);
+    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Buddies', 'Life events', 'My checklist tasks']);
     expect(labels(nav(['lifecycle.exit.manage', 'employee.profile.view']), 'people')).toEqual(expect.arrayContaining(['Exit cases', 'Clearance', 'Retirements and contracts', 'Absconding', 'VRS schemes']));
     expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters']);
     expect(nav(['document.manage'])[1].sections[0].items[0].count).toBe('documentsToVerify');
@@ -117,6 +117,15 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
+    expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
+    expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));
+    const hr = nav(['employee.profile.view', 'payroll.fnf.manage']);
+    expect(labels(hr, 'people')).toContain('F&F');
+    expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('F&F');
+    // F&F is Payroll's page: on it, Payroll stays the open area.
+    expect(activeLink(hr, '/yx/payroll/fnf')?.area.id).toBe('pay');
+  });
   it('a System Admin finds security, Support access, Emails and Contact YukthiX', () => {
     const n = nav(['org.support_access.approve', 'notification.template.manage', 'org.yukthix_support.raise'], { role: 'org_admin' });
     expect(labels(n, 'settings')).toEqual(['Security settings', 'Single sign-on providers', 'Login activity', 'Support access', 'Emails', 'Text messages (SMS)', 'Contact YukthiX']);
@@ -135,5 +144,12 @@ describe('activeLink and meLinks', () => {
   });
   it('Me pages for the account menu', () => {
     expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+  });
+
+  it('contract labour and placements follow their own keys, never in a support session (21 Oct 2026)', () => {
+    const n = nav(['clra.worker.view', 'staffing.placement.view']);
+    expect(labels(n, 'contract')).toEqual(['Contractors', 'Contract workers', 'Vendor compliance', 'CLRA registers & returns', 'Reports']);
+    expect(labels(n, 'hire')).toContain('Placements');
+    expect(nav([]).some((a) => a.id === 'contract')).toBe(false);
   });
 });

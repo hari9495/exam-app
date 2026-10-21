@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'contractWorkers';
 
 export interface NavLink {
   id: string;
@@ -91,33 +91,41 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
       ...sec(team ? 'For my team' : 'Onboarding', [
         ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
-        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard'), L('batches', 'Batches', '/yx/people/batches')),
-        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation')),
+        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
+        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
+        ...when(onboardView, L('buddies', 'Buddies', '/yx/people/buddies')),
         ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
         ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
         ...when(team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
         ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
       ]),
       ...sec('Changes', [
         ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
         ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
         ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
       ]),
       ...sec('Exits', [
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        // F&F lives in Payroll (PPL-22 is the payroll settlement screen); People links to it.
+        ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/payroll/fnf')),
+        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
         ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
-        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
       ]),
       ...sec(undefined, [
         ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
         ...when(has('letter.issue'), L('letters', 'Letters', '/yx/people/letters')),
         ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
+        ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-      ...sec('More', when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people'))),
+      ...sec('More', [
+        ...when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
+        ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+      ]),
     ],
   };
 
@@ -210,18 +218,22 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Hiring',
     sections: support
       ? []
-      : sec(undefined, [
-          ...when(has('ats.headcount.manage'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
-          ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
-          ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
-          ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
-          ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
-          ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
-          ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
-          ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
-          ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
-          ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
-        ]),
+      : [
+          ...sec(undefined, [
+            ...when(has('ats.headcount.manage'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
+            ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
+            ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
+            ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
+            ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
+            ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
+            ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
+            ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
+            ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
+            ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
+          ]),
+          // The designed Staffing desk (HIR-17, founder decision 21 Oct 2026): placements with clients; the bench waits for its data.
+          ...sec('Staffing desk', when(has('staffing.placement.view'), L('hiring-placements', 'Placements', '/yx/hiring/placements'))),
+        ],
   };
 
   const performance: NavArea = {
@@ -299,16 +311,37 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
+  // Contract labour (CLB-01 … CLB-04 and Reports, founder decisions 21 Oct 2026): contractors, their workers, vendor
+  // compliance, registers and returns, reports; never in a
+  // support session.
+  const contract: NavArea = {
+    id: 'contract',
+    title: 'Contract labour',
+    sections: sec(
+      undefined,
+      when(
+        !support && has('clra.worker.view'),
+        L('contractors', 'Contractors', '/yx/contract/contractors'),
+        L('contract-workers', 'Contract workers', '/yx/contract/workers', 'contractWorkers'),
+        L('vendor-compliance', 'Vendor compliance', '/yx/contract/compliance'),
+        L('clra-registers', 'CLRA registers & returns', '/yx/contract/registers'),
+        L('contract-reports', 'Reports', '/yx/contract/reports'),
+      ),
+    ),
+  };
+
+  return [home, people, time, pays, compliance, hire, performance, helpdesk, contract, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
-/** The area and link a path belongs to: the longest link that is the path or a parent of it. */
+/** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two
+ * areas (People › F&F is Payroll's page) belongs to the area whose own paths it is under. */
 export function activeLink(areas: NavArea[], pathname: string): { area: NavArea; link: NavLink } | null {
   let best: { area: NavArea; link: NavLink } | null = null;
+  const home = (a: NavArea) => pathname.startsWith(`/yx/${a.id}`);
   for (const area of areas)
     for (const s of area.sections)
       for (const link of s.items)
-        if ((pathname === link.href || pathname.startsWith(`${link.href}/`)) && (!best || link.href.length > best.link.href.length)) best = { area, link };
+        if ((pathname === link.href || pathname.startsWith(`${link.href}/`)) && (!best || link.href.length > best.link.href.length || (link.href.length === best.link.href.length && home(area) && !home(best.area)))) best = { area, link };
   return best;
 }
 

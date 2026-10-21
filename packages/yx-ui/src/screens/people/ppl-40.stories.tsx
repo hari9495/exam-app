@@ -9,3 +9,4 @@ export const Applications: S = { name: 'HR · applications and approvals', rende
 export const Setup: S = { name: 'HR · scheme set-up', render: () => <VrsScheme tab="setup" /> };
 export const Apply: S = { name: 'Employee · apply with estimate', render: () => <VrsScheme persona="emp" /> };
 export const NotEligible: S = { name: 'Employee · not eligible', render: () => <VrsScheme persona="emp" eligible={false} /> };
+export const Permissions: S = { name: 'HR · government permission requests', render: () => <VrsScheme tab="permissions" /> };

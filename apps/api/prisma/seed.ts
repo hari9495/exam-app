@@ -18,6 +18,7 @@ import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
 import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b, seedPay5j } from './seed-pay';
 import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleAssets, seedLifecycleLetters } from './seed-lifecycle';
+import { WORKFORCE_ROLE_ORG_ADMIN_KEYS, WORKFORCE_ROLE_PERMISSIONS, seedWorkforceRoles } from './seed-workforce-roles';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
 const prisma = new PrismaClient();
@@ -89,6 +90,8 @@ export const PERMISSIONS = [
   ...PAY_PERMISSIONS,
   // M01 lifecycle batch 6a (also in the lifecycle_6a migration).
   ...LIFE_PERMISSIONS,
+  // Contract workers and placements (also in the contract_placements migration).
+  ...WORKFORCE_ROLE_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -216,6 +219,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'perf.comp.approve',
     // PM8: improvement plans.
     'perf.pip.manage',
+    // Contract workers and placements (founder decision 21 Oct 2026).
+    ...WORKFORCE_ROLE_ORG_ADMIN_KEYS,
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -444,6 +449,8 @@ async function main() {
       await seedPay5j(tx, demoOrg.id, panelHash);
       // Batch G1: India set up through the "Add a country" guide; leave and job names in Hindi and Tamil.
       await seedGlobal(tx, demoOrg.id);
+      // Contract workers and placements: contractors with licences, deployed workers and placements (founder decision 21 Oct 2026).
+      await seedWorkforceRoles(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.

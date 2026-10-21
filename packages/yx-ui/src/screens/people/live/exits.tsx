@@ -17,8 +17,8 @@ import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import { TaskForm } from './lifecycle';
 import type { AlumniMe, ExitStep, Handoff, Letter, MyDocuments, MyVrsScheme, Payee, Payees, QueueDocument } from './types';
-import { PayeesCard, VrsCard } from './special';
-import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyClearanceItem, MyResignation } from './types';
+import { VrsCard } from './special';
+import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyResignation } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
 // acknowledge), HR's exit cases and the exit workspace (PPL-19, with "Start exit"), clearance sign-offs (PPL-20) and the
@@ -48,8 +48,6 @@ const REASONS: Record<string, string> = {
   compensation: 'Pay and benefits',
   other: 'Something else',
 };
-const DEPT: Record<ClearanceItem['department'], string> = { manager_handover: 'Handover', it: 'IT', admin: 'Admin', finance: 'Finance', hr: 'HR', asset: 'Asset', custom: 'Other' };
-const ITEM: Record<ClearanceItem['status'], { label: string; tone: BadgeTone }> = { open: { label: 'To do', tone: 'warning' }, cleared: { label: 'Cleared', tone: 'success' }, waived: { label: 'Waived', tone: 'neutral' } };
 const COMPANY_TYPES: { value: Exclude<ExitType, 'resignation' | 'vrs'>; label: string }[] = [
   { value: 'retrenchment', label: 'Retrenchment' },
   { value: 'termination', label: 'Termination' },
@@ -331,60 +329,7 @@ export interface ExitCasesScreenProps {
   onOpen: (id: string) => void;
 }
 
-export function ExitCasesScreen(p: ExitCasesScreenProps) {
-  const [starting, setStarting] = useState(false);
-  const [show, setShow] = useState<'open' | 'all'>('open');
-  const rows = (p.rows ?? []).filter((r) => show === 'all' || ['submitted', 'accepted', 'cleared'].includes(r.status));
-  const columns: TableColumn<ExitRow>[] = [
-    { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.employeeCode ?? undefined }), width: 220, hideable: false },
-    { key: 'type', header: 'Exit', value: (r) => r.typeLabel, width: 170 },
-    { key: 'status', header: 'Where it stands', value: (r) => r.status, render: (r) => <StatusBadge status={r.status} />, width: 180 },
-    { key: 'lwd', header: 'Last working day', value: (r) => r.lastDay, render: (r) => dateText(r.lastDay), width: 150 },
-    { key: 'clearance', header: 'Clearance', value: (r) => r.clearance.open, render: (r) => (r.clearance.total ? <Text>{r.clearance.open ? `${r.clearance.open} of ${r.clearance.total} to do` : 'All done'}</Text> : <Text tone="secondary">Not started</Text>), width: 140, optional: true },
-    { key: 'interview', header: 'Exit interview', value: (r) => r.interview ?? '', render: (r) => <Text tone={r.interview === 'submitted' ? undefined : 'secondary'}>{r.interview === 'submitted' ? 'Done' : r.interview === 'sent' ? 'Not done' : 'None'}</Text>, width: 130, optional: true },
-  ];
-  return (
-    <LivePage
-      title="Exits"
-      description="Resignations and company exits of the people you look after. Open items in clearance never stop someone leaving: they go to payroll as recoveries."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="exits"
-      actions={
-        p.canStart ? (
-          <Button variant="primary" onClick={() => setStarting(true)}>
-            Start exit
-          </Button>
-        ) : undefined
-      }
-    >
-      <Segment label="Show" value={show} onChange={setShow} options={[{ value: 'open', label: 'In progress' }, { value: 'all', label: 'All' }]} />
-      {p.rows && (
-        <DataTable
-          label="Exits"
-          columns={columns}
-          rows={rows}
-          getRowId={(r) => r.id}
-          rowNoun={['exit', 'exits']}
-          cardSummary
-          empty={<EmptyState compact title="No exits in progress." />}
-          rowButtons={(r) => (
-            <Button size="sm" onClick={() => p.onOpen(r.id)}>
-              Open
-            </Button>
-          )}
-        />
-      )}
-      {starting && <StartExitDialog people={p.people} permissions={p.permissions ?? []} today={p.today} onClose={() => setStarting(false)} onStart={async (x) => {
-        const k = await p.onStart(x);
-        p.onOpen(k.id);
-        return k;
-      }} />}
-    </LivePage>
-  );
-}
-
-function StartExitDialog({ people, permissions, today, onClose, onStart }: { people: Choice[]; permissions: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
+export function StartExitDialog({ people, permissions, today, onClose, onStart }: { people: Choice[]; permissions: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
   const [who, setWho] = useState<string | null>(null);
   const [type, setType] = useState<Exclude<ExitType, 'resignation' | 'vrs'> | null>(null);
   const [basis, setBasis] = useState('');
@@ -462,98 +407,9 @@ export interface ExitCaseScreenProps {
   payeeDocuments?: Choice[];
   onPayees?: (payees: Payee[]) => Promise<unknown>;
 }
-type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
+export type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
 
-export function ExitCaseScreen(p: ExitCaseScreenProps) {
-  const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | null>(null);
-  const d = p.data;
-  return (
-    <LivePage
-      title={d ? `${d.name}: ${d.typeLabel.toLowerCase()}` : 'Exit'}
-      description={d ? <StatusBadge status={d.status} /> : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="this exit"
-      actions={
-        <Button size="sm" onClick={p.onBack}>
-          All exits
-        </Button>
-      }
-    >
-      {d && (
-        <>
-          <Card
-            title="The exit"
-            actions={
-              d.can.manage && d.status === 'accepted' && !d.pendingChange ? (
-                <Button size="sm" onClick={() => setAsk('notice')}>
-                  Change last day
-                </Button>
-              ) : undefined
-            }
-          >
-            <Facts
-              rows={[
-                ['Started', dateText(d.submittedOn)],
-                ['Notice', d.initiatedBy === 'employee' ? d.noticeLabel : null],
-                ['Last working day', dateText(d.lastDay)],
-                ['Reason', d.reasonText],
-                ['Exit interview', d.interview === 'submitted' ? 'Done' : d.interview === 'sent' ? 'Not done yet' : null],
-              ]}
-            />
-            {d.pendingChange && <InlineAlert tone="info" title={d.pendingChange.kind === 'withdrawal' ? 'Withdrawal waiting for a decision' : 'A new last day is waiting for approval'}>{d.pendingChange.lwd ? `Asked for ${dateText(d.pendingChange.lwd)}.` : 'The manager and HR decide.'}</InlineAlert>}
-            {d.noticeArrangement?.map((a, i) => (
-              <Text key={i} tone="secondary" size="sm" as="p">{`${a.kind === 'early_release' ? 'Early release' : a.kind === 'buyout' ? `Buy-out (${a.buyoutDays} days, paid by the ${a.buyoutBy})` : 'New last day'}: ${dateText(a.from)} → ${dateText(a.to)}. ${a.reason}`}</Text>
-            ))}
-            <div className="yx-lif-actions">
-              {d.journeyId && (
-                <Button size="sm" asChild>
-                  <a href={p.checklistHref(d.journeyId)}>Offboarding checklist</a>
-                </Button>
-              )}
-              {d.can.interview && d.interview === 'submitted' && (
-                <Button size="sm" onClick={() => setAsk('interview')}>
-                  Read exit interview
-                </Button>
-              )}
-            </div>
-          </Card>
-          {d.hr && (
-            <Card
-              title="HR only"
-              actions={
-                d.can.confidential ? (
-                  <Button size="sm" onClick={() => setAsk('hr')}>
-                    Edit
-                  </Button>
-                ) : undefined
-              }
-            >
-              <Facts
-                rows={[
-                  ['Open cases', Object.entries(d.hr.openCaseFlags).map(([k, v]) => `${k.toUpperCase() === 'POSH' ? 'POSH' : k[0].toUpperCase() + k.slice(1)}: ${v.replace(/_/g, ' ')}`).join(' · ')],
-                  ['Rehire', d.hr.rehireEligible === null ? 'Not decided' : d.hr.rehireEligible ? 'Eligible' : `Not eligible${d.hr.rehireReason ? ` (${d.hr.rehireReason})` : ''}`],
-                  ['Regretted loss', d.hr.regretted === null ? 'Not decided' : d.hr.regretted ? 'Yes' : 'No'],
-                  ['Backfill', d.hr.backfillRequested ? 'Asked for' : 'Not asked for'],
-                  ['Letters on hold', d.hr.holdReason ? `${d.hr.holdReason}${d.hr.holdReviewOn ? `, review on ${dateText(d.hr.holdReviewOn)}` : ''}` : 'No'],
-                ]}
-              />
-            </Card>
-          )}
-          <ClearanceTable items={d.clearance} canSign={d.can.manage && ['accepted', 'cleared'].includes(d.status)} onSignOff={p.onSignOff} />
-          {d.exitType === 'death' && p.payees && p.onPayees && <PayeesCard data={p.payees} documents={p.payeeDocuments ?? []} onSave={p.onPayees} />}
-          {p.steps && p.steps.length > 0 && <StepsCard steps={p.steps} onRetry={p.onRetryStep} onDone={p.onStepDone} />}
-          {p.handoff && <HandoffCard h={p.handoff} today={p.today} onSettled={p.onSettledOutside} />}
-        </>
-      )}
-      {d && ask === 'notice' && <NoticeDialog d={d} today={p.today} onClose={() => setAsk(null)} onNotice={p.onNotice} />}
-      {d && ask === 'hr' && d.hr && <HrFactsDialog d={d} onClose={() => setAsk(null)} onSave={p.onHrFacts} />}
-      {d && ask === 'interview' && <InterviewDialog onClose={() => setAsk(null)} load={p.onInterview} onNotes={p.onInterviewNotes} />}
-    </LivePage>
-  );
-}
-
-function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today: string; onClose: () => void; onNotice: ExitCaseScreenProps['onNotice'] }) {
+export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today: string; onClose: () => void; onNotice: ExitCaseScreenProps['onNotice'] }) {
   const [kind, setKind] = useState<'early_release' | 'buyout' | 'lwd_change'>('early_release');
   const [lwd, setLwd] = useState<Date | null>(null);
   const [by, setBy] = useState<'employee' | 'company'>('employee');
@@ -596,7 +452,7 @@ function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today
   );
 }
 
-function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () => void; onSave: ExitCaseScreenProps['onHrFacts'] }) {
+export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () => void; onSave: ExitCaseScreenProps['onHrFacts'] }) {
   const h = d.hr!;
   const tri = (b: boolean | null) => (b === null ? 'open' : b ? 'yes' : 'no');
   const fromTri = (s: string) => (s === 'open' ? null : s === 'yes');
@@ -650,7 +506,7 @@ function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClose: () =
   );
 }
 
-function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load: () => Promise<InterviewAnswers>; onNotes: (notes: string) => Promise<unknown> }) {
+export function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load: () => Promise<InterviewAnswers>; onNotes: (notes: string) => Promise<unknown> }) {
   const [data, setData] = useState<InterviewAnswers | null>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -686,39 +542,7 @@ function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load
 
 // ------------------------------------------------------------------------------------------ clearance (PPL-20)
 
-function ClearanceTable({ items, canSign, onSignOff, showPerson }: { items: (ClearanceItem | MyClearanceItem)[]; canSign: boolean; onSignOff: SignOffHandler; showPerson?: boolean }) {
-  const [item, setItem] = useState<ClearanceItem | null>(null);
-  const columns: TableColumn<ClearanceItem | MyClearanceItem>[] = [
-    ...(showPerson ? [{ key: 'person', header: 'Leaver', type: 'person' as const, value: (r: ClearanceItem | MyClearanceItem) => ('person' in r ? r.person : ''), person: (r: ClearanceItem | MyClearanceItem) => ({ name: 'person' in r ? r.person : '', secondary: 'lastDay' in r ? `Last day ${dateText(r.lastDay)}` : undefined }), width: 220, hideable: false }] : []),
-    { key: 'title', header: 'Item', value: (r) => r.title, render: (r) => <span className="yx-auth__item-main"><Text>{r.title}</Text><Text tone="secondary" size="sm">{`${DEPT[r.department]} · ${r.owner}`}</Text></span>, width: 300, hideable: !showPerson },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={ITEM[r.status].tone}>{ITEM[r.status].label}</Badge>, width: 110 },
-    { key: 'recovery', header: 'Recovery', value: (r) => r.recoveryAmount ?? '', render: (r) => (r.recoveryAmount ? <Text>{rupees(r.recoveryAmount)}</Text> : <Text tone="secondary">None</Text>), width: 120, optional: true },
-    { key: 'note', header: 'Note', value: (r) => r.note ?? r.recoveryReason ?? '', width: 220, optional: true },
-  ];
-  return (
-    <Card title="Clearance">
-      <DataTable
-        label="Clearance"
-        columns={columns}
-        rows={items}
-        getRowId={(r) => r.id}
-        rowNoun={['item', 'items']}
-        cardSummary
-        empty={<EmptyState compact title={showPerson ? 'No clearance sign-offs for you.' : 'Clearance starts when the exit is accepted.'} />}
-        rowButtons={(r) =>
-          canSign && r.status === 'open' ? (
-            <Button size="sm" onClick={() => setItem(r)}>
-              Sign off
-            </Button>
-          ) : null
-        }
-      />
-      {item && <SignOffDialog item={item} onClose={() => setItem(null)} onSignOff={onSignOff} />}
-    </Card>
-  );
-}
-
-function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceItem; onClose: () => void; onSignOff: SignOffHandler }) {
+export function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceItem; onClose: () => void; onSignOff: SignOffHandler }) {
   const [action, setAction] = useState<'clear' | 'waive'>('clear');
   const [note, setNote] = useState('');
   const [recovery, setRecovery] = useState(false);
@@ -758,24 +582,6 @@ function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceItem; onCl
   );
 }
 
-export interface ClearanceScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: MyClearanceItem[] | null;
-  onSignOff: SignOffHandler;
-}
-
-export function ClearanceScreen(p: ClearanceScreenProps) {
-  const [show, setShow] = useState<'open' | 'all'>('open');
-  const rows = (p.rows ?? []).filter((r) => show === 'all' || r.status === 'open');
-  return (
-    <LivePage title="Clearance" description="Sign-offs for people leaving that you or your team look after." state={p.state} onRetry={p.onRetry} what="clearance">
-      <Segment label="Show" value={show} onChange={setShow} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />
-      {p.rows && <ClearanceTable items={rows} canSign onSignOff={p.onSignOff} showPerson />}
-    </LivePage>
-  );
-}
-
 // ------------------------------------------------------------------------------------------ assets (PPL-25)
 
 export interface AssetsScreenProps {
@@ -792,64 +598,8 @@ export interface AssetsScreenProps {
   onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<unknown>;
 }
 
-const ASSET_STATUS: Record<AssetRow['status'], { label: string; tone: BadgeTone }> = { in_stock: { label: 'In stock', tone: 'success' }, assigned: { label: 'With someone', tone: 'info' }, in_repair: { label: 'In repair', tone: 'warning' }, retired: { label: 'Retired', tone: 'neutral' }, lost: { label: 'Lost', tone: 'danger' } };
 
-export function AssetsScreen(p: AssetsScreenProps) {
-  const [adding, setAdding] = useState(false);
-  const [issue, setIssue] = useState<AssetRow | null>(null);
-  const [back, setBack] = useState<AssetRow | null>(null);
-  const columns: TableColumn<AssetRow>[] = [
-    { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span className="yx-auth__item-main"><Text>{r.name}</Text><Text tone="secondary" size="sm">{`${r.category} · ${r.tag}`}</Text></span>, width: 260, hideable: false },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={ASSET_STATUS[r.status].tone}>{ASSET_STATUS[r.status].label}</Badge>, width: 130 },
-    { key: 'holder', header: 'With', value: (r) => r.holder?.name ?? '', render: (r) => (r.holder ? <span className="yx-auth__item-main"><Text>{r.holder.name}</Text><Text tone="secondary" size="sm">{`Since ${dateText(r.holder.issuedOn)}${r.holder.acknowledged ? ' · confirmed' : ''}`}</Text></span> : <Text tone="secondary">Nobody</Text>), width: 220 },
-    { key: 'cost', header: 'Cost', value: (r) => r.cost ?? '', render: (r) => (r.cost ? rupees(r.cost) : ''), width: 120, optional: true },
-  ];
-  return (
-    <LivePage
-      title="Assets"
-      description="Laptops, phones, cards and other company things, and who holds them. One list for HR and IT."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="assets"
-      grantedBy="your IT or HR admin"
-      actions={
-        p.canAdd ? (
-          <Button variant="primary" onClick={() => setAdding(true)}>
-            Add asset
-          </Button>
-        ) : undefined
-      }
-    >
-      {p.rows && (
-        <DataTable
-          label="Assets"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => r.id}
-          rowNoun={['asset', 'assets']}
-          cardSummary
-          empty={<EmptyState compact title="No assets yet." />}
-          rowButtons={(r) =>
-            !r.canManage ? null : r.status === 'in_stock' ? (
-              <Button size="sm" onClick={() => setIssue(r)}>
-                Issue
-              </Button>
-            ) : r.status === 'assigned' ? (
-              <Button size="sm" onClick={() => setBack(r)}>
-                Take back
-              </Button>
-            ) : null
-          }
-        />
-      )}
-      {adding && <AddAssetDrawer entities={p.entities} locations={p.locations} onClose={() => setAdding(false)} onAdd={p.onAdd} />}
-      {issue && <IssueDialog asset={issue} people={p.people} today={p.today} onClose={() => setIssue(null)} onIssue={p.onIssue} />}
-      {back && <ReturnDialog asset={back} today={p.today} onClose={() => setBack(null)} onReturn={p.onReturn} />}
-    </LivePage>
-  );
-}
-
-function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
+export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
   const [category, setCategory] = useState('');
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
@@ -923,135 +673,9 @@ function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Cho
   );
 }
 
-function IssueDialog({ asset, people, today, onClose, onIssue }: { asset: AssetRow; people: Choice[]; today: string; onClose: () => void; onIssue: AssetsScreenProps['onIssue'] }) {
-  const [who, setWho] = useState<string | null>(null);
-  const [on, setOn] = useState<Date | null>(fromKey(today));
-  const [condition, setCondition] = useState('New');
-  const ready = Boolean(who && on) && condition.trim().length >= 2;
-  return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Issue ${asset.name}`} consequence="The person is asked to confirm they received it." confirmLabel="Issue" confirmDisabled={!ready} onConfirm={async () => { await onIssue(asset, { employeeId: who!, issuedOn: dayKey(on!), condition: condition.trim() }); onClose(); }}>
-      <FormField id="is-who" label="To" required>
-        <Select aria-label="To" value={who} onChange={setWho} options={people} searchable />
-      </FormField>
-      <FormField id="is-on" label="Issued on" required>
-        <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Issued on" />
-      </FormField>
-      <FormField id="is-cond" label="Condition" required>
-        <TextField value={condition} onChange={setCondition} maxLength={200} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
-
-function ReturnDialog({ asset, today, onClose, onReturn }: { asset: AssetRow; today: string; onClose: () => void; onReturn: AssetsScreenProps['onReturn'] }) {
-  const [status, setStatus] = useState<'in_stock' | 'in_repair' | 'lost'>('in_stock');
-  const [on, setOn] = useState<Date | null>(fromKey(today));
-  const [condition, setCondition] = useState('');
-  const ready = Boolean(on) && condition.trim().length >= 2;
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      size="md"
-      title={`Take back ${asset.name}`}
-      consequence={status === 'lost' ? `The leaver's clearance item stays open, for a recovery${asset.cost ? ` (cost ${rupees(asset.cost)})` : ''}.` : 'A leaver’s clearance item for it is signed off.'}
-      confirmLabel={status === 'lost' ? 'Mark not returned' : 'Take back'}
-      confirmDisabled={!ready}
-      onConfirm={async () => {
-        await onReturn(asset, { returnedOn: dayKey(on!), condition: condition.trim(), status });
-        onClose();
-      }}
-    >
-      <Segment label="Outcome" value={status} onChange={setStatus} options={[{ value: 'in_stock', label: 'Back in stock' }, { value: 'in_repair', label: 'Needs repair' }, { value: 'lost', label: 'Not returned' }]} />
-      <FormField id="rt-on" label={status === 'lost' ? 'Recorded on' : 'Returned on'} required>
-        <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Returned on" />
-      </FormField>
-      <FormField id="rt-cond" label={status === 'lost' ? 'What happened' : 'Condition'} required>
-        <TextField value={condition} onChange={setCondition} maxLength={200} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
-
-
 // ------------------------------------------------------------------------------------------ 6d: after the last day
 
-const STEP: Record<ExitStep['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting', tone: 'neutral' }, held: { label: 'On hold', tone: 'warning' }, done: { label: 'Done', tone: 'success' }, failed: { label: 'Failed', tone: 'danger' }, manual: { label: 'Done by hand', tone: 'success' } };
-const WHEN: Record<ExitStep['timing'], string> = { at_lwd: 'On the last day', t0: 'After the last day', cleared: 'When cleared' };
-
-function StepsCard({ steps, onRetry, onDone }: { steps: ExitStep[]; onRetry?: (s: ExitStep) => Promise<unknown>; onDone?: (s: ExitStep, note: string) => Promise<unknown> }) {
-  const [manual, setManual] = useState<ExitStep | null>(null);
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
-  const columns: TableColumn<ExitStep>[] = [
-    { key: 'label', header: 'Step', value: (r) => r.label, render: (r) => <span className="yx-auth__item-main"><Text>{r.label}</Text><Text tone="secondary" size="sm">{WHEN[r.timing]}</Text></span>, width: 280, hideable: false },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={STEP[r.status].tone}>{STEP[r.status].label}</Badge>, width: 130 },
-    { key: 'error', header: 'Why', value: (r) => r.lastError ?? '', width: 280, optional: true },
-  ];
-  const retry = async (r: ExitStep) => {
-    if (!onRetry) return;
-    setBusy(r.handler);
-    try {
-      await onRetry(r);
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <Card title="After the last day">
-      <DataTable
-        label="Exit steps"
-        columns={columns}
-        rows={steps}
-        getRowId={(r) => r.handler}
-        rowNoun={['step', 'steps']}
-        cardSummary
-        rowButtons={(r) =>
-          r.status === 'failed' || r.status === 'pending' ? (
-            <>
-              {onRetry && (
-                <Button size="sm" loading={busy === r.handler} onClick={() => void retry(r)}>
-                  Retry
-                </Button>
-              )}
-              {onDone && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setNote('');
-                    setManual(r);
-                  }}
-                >
-                  Done by hand
-                </Button>
-              )}
-            </>
-          ) : null
-        }
-      />
-      {manual && onDone && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setManual(null)}
-          title={`${manual.label}: done by hand?`}
-          consequence="Say what you did. It is kept on the record."
-          confirmLabel="Mark done"
-          confirmDisabled={note.trim().length < 3}
-          onConfirm={async () => {
-            await onDone(manual, note.trim());
-            setManual(null);
-          }}
-        >
-          <FormField id="st-note" label="What was done" required>
-            <TextArea value={note} onChange={setNote} rows={2} maxLength={500} />
-          </FormField>
-        </ConfirmDialog>
-      )}
-    </Card>
-  );
-}
-
-function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string; onSettled?: (input: { settledOn: string; reason: string }) => Promise<unknown> }) {
+export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string; onSettled?: (input: { settledOn: string; reason: string }) => Promise<unknown> }) {
   const [settling, setSettling] = useState(false);
   const [on, setOn] = useState<Date | null>(fromKey(today));
   const [reason, setReason] = useState('');

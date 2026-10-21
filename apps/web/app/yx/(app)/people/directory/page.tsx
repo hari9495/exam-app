@@ -19,7 +19,7 @@ interface Ref {
 }
 interface Row {
   id: string;
-  kind: 'employee' | 'consultant';
+  kind: 'employee' | 'consultant' | 'contract_worker' | 'placement';
   name: string;
   designation: string | null;
   department: Ref | null;
@@ -33,6 +33,7 @@ interface Row {
   status?: string;
   phone?: string | null;
   via?: string | null;
+  roleStatus?: string;
 }
 interface Card {
   count: number;
@@ -41,11 +42,12 @@ interface Card {
 interface Workforce {
   me: { id: string; managerId: string | null; departmentId: string | null; locationId: string | null } | null;
   rows: Row[];
-  cards: { employees: Card; consultants: Card | null; persons: { roles: number; people: number; previous: number | null } };
+  cards: { employees: Card; consultants: Card | null; contractWorkers?: Card | null; placements?: Card | null; persons: { roles: number; people: number; previous: number | null } };
   previousMonth: string | null;
 }
 
 const id = encodeURIComponent;
+const KIND: Record<Row['kind'], WorkforceRow['kind']> = { employee: 'Employee', consultant: 'Consultant', contract_worker: 'Contract worker', placement: 'Placement' };
 const delta = (now: number, prev: number | null) => (prev === null ? null : now - prev);
 
 /** API rows → the designed screen's rows (names as shown; fields the person may not see stay empty). */
@@ -54,16 +56,17 @@ function toRow(r: Row): WorkforceRow {
     id: r.id,
     code: r.employeeCode ?? '',
     name: r.name,
-    kind: r.kind === 'consultant' ? 'Consultant' : 'Employee',
+    kind: KIND[r.kind],
     role: r.designation ?? '',
     department: r.department?.name ?? '',
     ...(r.departmentPath ? { departmentPath: r.departmentPath } : {}),
-    location: r.location?.name ?? r.legalEntity?.name ?? '',
+    // A placement works at the client's site (HIR-17).
+    location: r.location?.name ?? (r.kind === 'placement' ? 'Client site' : (r.legalEntity?.name ?? '')),
     manager: r.manager?.name ?? '',
     email: r.workEmail ?? '',
     phone: r.phone ?? '',
     ...(r.joinedOn ? { joined: new Date(`${r.joinedOn}T00:00:00`) } : {}),
-    status: r.status ?? '',
+    status: r.status ?? r.roleStatus ?? '',
     ...(r.via ? { via: r.via } : {}),
   };
 }
@@ -107,7 +110,9 @@ export default function YxDirectoryPage() {
   const cards: LiveDirectory['cards'] = d
     ? {
         Employee: { count: d.cards.employees.count, delta: delta(d.cards.employees.count, d.cards.employees.previous) },
+        ...(isHr && d.cards.contractWorkers ? { 'Contract worker': { count: d.cards.contractWorkers.count, delta: delta(d.cards.contractWorkers.count, d.cards.contractWorkers.previous) } } : {}),
         ...(isHr && d.cards.consultants ? { Consultant: { count: d.cards.consultants.count, delta: delta(d.cards.consultants.count, d.cards.consultants.previous) } } : {}),
+        ...(isHr && d.cards.placements ? { Placement: { count: d.cards.placements.count, delta: delta(d.cards.placements.count, d.cards.placements.previous) } } : {}),
         ...(isHr ? { 'All persons': { count: d.cards.persons.people, delta: delta(d.cards.persons.people, d.cards.persons.previous) } } : {}),
       }
     : {};
@@ -117,11 +122,18 @@ export default function YxDirectoryPage() {
     cards,
     sinceMonth,
     ...(d ? { persons: { roles: d.cards.persons.roles, people: d.cards.persons.people } } : {}),
-    ...(canHire ? { onAdd: (kind: WorkforceFilter) => (kind === 'Consultant' ? router.push('/yx/payroll/consultants') : setAdding(true)) } : {}),
-    // No employee import yet (Import stays hidden until there is one).
+    ...(canHire
+      ? {
+          // Each kind is added where it lives: the deploy form, the new placement form, consultants in payroll.
+          onAdd: (kind: WorkforceFilter) =>
+            kind === 'Consultant' ? router.push('/yx/payroll/consultants') : kind === 'Contract worker' ? router.push('/yx/contract/workers?deploy=1') : kind === 'Placement' ? router.push('/yx/hiring/placements?new=1') : setAdding(true),
+          onImport: () => router.push('/yx/people/import'),
+        }
+      : {}),
     ...(isHr
       ? {
-          onOpenRecord: (r: WorkforceRow) => router.push(`/yx/people/profile?person=${id(r.id)}`),
+          // Contract workers and placements open in their own module.
+          onOpenRecord: (r: WorkforceRow) => router.push(r.kind === 'Contract worker' ? '/yx/contract/workers' : r.kind === 'Placement' ? '/yx/hiring/placements' : `/yx/people/directory/${id(r.id)}`),
           // One person: their job history, where changes are raised; several: a bulk change.
           onStartChange: (ids: string[]) => router.push(ids.length === 1 ? `/yx/people/history?person=${id(ids[0])}` : '/yx/people/bulk-changes'),
           onIssueLetter: (ids: string[]) => router.push(`/yx/people/letters?people=${ids.map(id).join(',')}`),

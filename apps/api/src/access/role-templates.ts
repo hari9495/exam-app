@@ -20,6 +20,10 @@ const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
 // M01 lifecycle batch 6a: joiners and their checklists in scope, person documents (each type still needs its class key).
 const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'payroll.notice.waive'];
+// Contract workers and placements (founder decision 21 Oct 2026): HR Admin runs them, HR Executive reads them.
+const WORKFORCE_ROLES_ADMIN = ['clra.worker.view', 'clra.worker.manage', 'clra.compliance.manage', 'clra.identity.view', 'staffing.placement.view', 'staffing.placement.manage'];
+// Placements belong to a legal entity, so a site-scoped HR Executive reads contract workers only.
+const WORKFORCE_ROLES_VIEW = ['clra.worker.view'];
 const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage', 'letter.issue', 'lifecycle.exit.view'];
 // Batch 2: rosters in scope (HR Executive too), locking attendance months and maternity / paternity overrides (HR Admin).
 const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
@@ -61,7 +65,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, ...WORKFORCE_ROLES_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     key: 'hr_executive',
@@ -69,7 +73,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'location',
     summary: 'Day-to-day HR work: records, job changes and personal details for the people in scope.',
     cannot: 'Pay, identity and bank details, approvals.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.personal.view', 'employee.profile.edit', ...TIME_HR_VIEW, 'roster.manage', ...LIFE_HR_EXEC],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.personal.view', 'employee.profile.edit', ...TIME_HR_VIEW, 'roster.manage', ...LIFE_HR_EXEC, ...WORKFORCE_ROLES_VIEW],
   },
   {
     key: 'payroll_admin',
