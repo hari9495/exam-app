@@ -101,6 +101,7 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
   const [busy, setBusy] = useState<string | null>(null);
   const d = live.data;
   const enrolled = new Set((d?.enrolments ?? []).filter((e) => e.status !== 'Completed').map((e) => e.course.id));
+  const completed = new Set((d?.enrolments ?? []).filter((e) => e.status === 'Completed').map((e) => e.course.id));
   const fields: FilterFieldDef[] = useMemo(() => {
     const sources = [...new Set((d?.catalogue ?? []).map((c) => c.source))];
     const types = [...new Set((d?.catalogue ?? []).map((c) => c.type))];
@@ -211,6 +212,8 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
               action={
                 enrolled.has(c.id) ? (
                   <Badge tone="info">Enrolled</Badge>
+                ) : completed.has(c.id) ? (
+                  <Badge tone="success">Completed</Badge>
                 ) : d?.employee ? (
                   <Button size="sm" loading={busy === c.id} onClick={async () => {
                     setBusy(c.id);
@@ -898,7 +901,7 @@ function RuleDrawer({ rule, schema, live, onClose }: { rule: LiveRule | null; sc
         <FormField label="Rule name" required error={errors && name.trim().length < 2 ? 'Give the rule a name.' : null}>
           <TextField value={name} onChange={setName} />
         </FormField>
-        <ConditionBuilder schema={schema} value={conditions} onChange={setConditions} parts={['if']} />
+        <ConditionBuilder schema={schema} value={conditions} onChange={setConditions} parts={['if']} showSummary={false} emptyText="No conditions: everyone who works here." />
         {!people.ok && <InlineAlert tone="warning">{people.message}</InlineAlert>}
         <FieldRow>
           <FormField label="Course" required error={errors && !courseId ? 'Choose the course.' : null}>
@@ -992,11 +995,12 @@ export function LiveComplianceScreen({ live, persona = 'ld' }: { live: LiveCompl
                 <StatCard label="Expiring in 30 days" value={d.expiring} drill={{ label: 'Download the list', href: '#export', onClick: (e) => (e.preventDefault(), live.onExport()) }} />
                 <StatCard label="Mandatory courses" value={d.courses.length} drill={live.onRules ? { label: 'View assignment rules', href: '#rules', onClick: (e) => (e.preventDefault(), live.onRules!()) } : { label: 'View by department', href: '#by-department' }} />
               </div>
+              {/* Not anonymous data: compliance names people anyway, so small departments are shown (no group suppression). */}
               {d.courses.length === 0 ? (
                 <EmptyState title="No mandatory courses yet" description="Mark a published course as mandatory and assign it with a rule. Its completion shows here." />
               ) : (
                 <div id="by-department">
-                <Heatmap title="Completion by department" description="Share of assigned people with a valid completion. 95% and above is compliant; below 80% is non-compliant." xLabel="Department" columns={d.courses} rows={cells} max={100} format={(v) => `${v}%`} />
+                <Heatmap title="Completion by department" description="Share of assigned people with a valid completion. 95% and above is compliant; below 80% is non-compliant." xLabel="Department" columns={d.courses} rows={cells} max={100} format={(v) => `${v}%`} minGroupSize={1} />
                 </div>
               )}
               <Card title={`Overdue · ${d.overdue.length}`}>
