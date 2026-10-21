@@ -5,7 +5,7 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { bankRows, docRows, familyData, identityRows, payShown, upcoming } from './yx-record';
+import { bankRows, docRows, familyData, identityRows, jobRows, payShown, scheduledBody, upcoming } from './yx-record';
 import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
@@ -132,5 +132,31 @@ describe('person record Pay tab (PPL-03, founder 22 Oct 2026)', () => {
   it('no payslip and no regime yet are empty, not hidden', () => {
     const p = payShown({ ...comp, lastNetPay: null, taxRegime: null, next: null }, []);
     expect([p.lastNet, p.taxRegime, p.next]).toEqual([null, null, undefined]);
+  });
+});
+
+describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
+  const assignment = { designation: { name: 'Quality Analyst' }, grade: { name: 'G5' }, department: { name: 'Quality' }, location: { name: 'Hosur plant' }, manager: { name: 'Divya R' }, dottedLineManagers: [], employmentType: { name: 'Permanent' }, costCentres: [{ code: 'QA-HSR-01', name: 'QA', percent: '100' }], hoursPerWeek: null, normalWeekHours: '48' };
+  const view = (o: object) => ({ employee: { legalEntity: { name: 'Kaveri Foods' } }, assignment, status: { status: 'confirmed', validFrom: '2021-09-12', validTo: null }, job: { holidayCalendar: 'Tamil Nadu 2026', shiftPattern: 'Rotational (A / B / C)', noticePeriod: '60 days', probationEndsOn: '2021-09-11' }, ...o }) as unknown as AsOfView;
+  it("the design's fields in its order, then the live extras; Not set where nothing applies", () => {
+    expect(jobRows(view({}))).toEqual([
+      ['Designation', 'Quality Analyst'], ['Grade', 'G5'], ['Department', 'Quality'], ['Location', 'Hosur plant'], ['Manager', 'Divya R'], ['Employment type', 'Permanent'],
+      ['Probation', 'Confirmed on 12 Sept 2021'], ['Holiday calendar', 'Tamil Nadu 2026'], ['Shift pattern', 'Rotational (A / B / C)'], ['Cost centre', 'QA-HSR-01'], ['Notice period', '60 days'],
+      ['Working hours', 'Full-time (48 hours)'], ['Legal entity', 'Kaveri Foods'],
+    ]);
+    const bare = jobRows(view({ status: { status: 'probation', validFrom: '2026-07-01', validTo: null }, job: { holidayCalendar: null, shiftPattern: null, noticePeriod: null, probationEndsOn: '2026-12-31' }, assignment: { ...assignment, costCentres: [] } }));
+    expect(bare.filter(([l]) => ['Probation', 'Holiday calendar', 'Cost centre', 'Notice period'].includes(l))).toEqual([['Probation', 'On probation until 31 Dec 2026'], ['Holiday calendar', 'Not set'], ['Cost centre', 'Not set'], ['Notice period', 'Not set']]);
+  });
+  it('the scheduled banner: new grade, the CTC only with pay, who approved and when, the letter', () => {
+    const h = {
+      payAccess: true,
+      assignment: [{ changeId: 'c0', validFrom: '2021-03-12', supersededAt: null, grade: { name: 'G5' }, designation: { name: 'Quality Analyst' }, location: { name: 'Hosur' } }, { changeId: 'c1', validFrom: '2026-10-01', supersededAt: null, grade: { name: 'G6' }, designation: { name: 'Quality Lead' }, location: { name: 'Hosur' } }],
+      compensation: [{ changeId: 'c1', supersededAt: null, annualCtc: '780000.00', currency: 'INR' }],
+      status: [],
+      changes: [],
+    } as unknown as HistoryView;
+    const ch = { id: 'c1', status: 'scheduled', touchesPay: true, decidedAt: '2026-09-24T10:00:00Z', decidedByName: 'Karthik Subramanian', letter: { referenceNo: 'KF/HR/2026/0418', accepted: true }, impact: null } as unknown as ChangeRecord;
+    expect(scheduledBody(ch, h)).toBe('Designation Quality Lead, Grade G6, CTC ₹7,80,000 a year. Approved by Karthik Subramanian on 24 Sept 2026. Letter KF/HR/2026/0418 accepted.');
+    expect(scheduledBody({ ...ch, letter: null }, { ...h, payAccess: false, compensation: [] })).toBe('Designation Quality Lead, Grade G6, Pay changes. Approved by Karthik Subramanian on 24 Sept 2026.');
   });
 });

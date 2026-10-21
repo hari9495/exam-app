@@ -134,6 +134,15 @@ export function payShown(c: Compensation, banks: FieldRow[]): Extract<LiveRecord
   };
 }
 
+/** "Confirmed on 12 Sep 2021" / "On probation until 31 Dec 2026"; other statuses as they are. */
+function probationText(v: AsOfView): string {
+  const st = v.status;
+  if (!st) return 'Not set';
+  if (st.status === 'confirmed') return `Confirmed on ${dateText(st.validFrom)}`;
+  if (st.status === 'probation') return v.job?.probationEndsOn ? `On probation until ${dateText(v.job.probationEndsOn)}` : 'On probation';
+  return `${STATUS[st.status] ?? st.status} since ${dateText(st.validFrom)}`;
+}
+
 /** Current assignment (Job tab), as on the viewed date. */
 export function jobRows(v: AsOfView): [string, string][] {
   const a = v.assignment;
@@ -147,9 +156,13 @@ export function jobRows(v: AsOfView): [string, string][] {
     ['Manager', a.manager?.name ?? '—'],
     ...(a.dottedLineManagers?.length ? [['Secondary manager', a.dottedLineManagers.map((m) => m.name).filter(Boolean).join(', ')] as [string, string]] : []),
     ['Employment type', a.employmentType?.name ?? '—'],
-    ['Status', v.status ? `${STATUS[v.status.status] ?? v.status.status} since ${dateText(v.status.validFrom)}` : '—'],
+    ['Probation', probationText(v)],
+    ['Holiday calendar', v.job?.holidayCalendar ?? 'Not set'],
+    ['Shift pattern', v.job?.shiftPattern ?? 'Not set'],
+    ['Cost centre', a.costCentres.length ? a.costCentres.map((c) => (a.costCentres.length > 1 ? `${c.code ?? c.name} (${Number(c.percent)} %)` : (c.code ?? c.name))).join(', ') : 'Not set'],
+    ['Notice period', v.job?.noticePeriod ?? 'Not set'],
+    // Live extras the founder kept (22 Oct 2026), after the design's fields.
     ['Working hours', hours],
-    ...(a.costCentres.length ? [['Cost centre', a.costCentres.map((c) => `${c.code ?? c.name} (${Number(c.percent)} %)`).join(', ')] as [string, string]] : []),
     ['Legal entity', v.employee.legalEntity?.name ?? '—'],
   ];
 }
@@ -220,7 +233,26 @@ export function scheduledNotes(h: HistoryView): { title: string; body: string }[
   return h.changes
     .filter((c) => c.status === 'scheduled')
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
-    .map((c) => ({ title: `Scheduled: ${(TYPE[c.changeType] ?? c.changeType).toLowerCase()} from ${dateText(c.effectiveDate)}`, body: changeSummary(c, h) }));
+    .map((c) => ({ title: `Scheduled: ${(TYPE[c.changeType] ?? c.changeType).toLowerCase()} from ${dateText(c.effectiveDate)}`, body: scheduledBody(c, h) }));
+}
+
+/** The design's banner: the new values (CTC only with pay access), who approved it and when, and its letter. */
+export function scheduledBody(c: ChangeRecord, h: HistoryView): string {
+  const rows = h.assignment.filter((r) => !r.supersededAt).sort((a, b) => a.validFrom.localeCompare(b.validFrom));
+  const i = rows.findIndex((r) => r.changeId === c.id);
+  const now = i >= 0 ? rows[i] : null;
+  const was = i > 0 ? rows[i - 1] : null;
+  const facts: [string, string | null | undefined, string | null | undefined][] = now
+    ? [['Designation', was?.designation?.name, now.designation?.name], ['Grade', was?.grade?.name, now.grade?.name], ['Department', was?.department?.name, now.department?.name], ['Location', was?.location.name, now.location.name], ['Manager', was?.manager?.name, now.manager?.name]]
+    : [];
+  const parts = facts.filter(([, a, b]) => b && a !== b).map(([label, , b]) => `${label} ${b}`);
+  const comp = h.compensation.find((r) => r.changeId === c.id && !r.supersededAt);
+  if (comp) parts.push(`CTC ${money(comp.annualCtc, comp.currency)} a year`);
+  else if (c.touchesPay && !h.payAccess) parts.push('Pay changes');
+  const lines = [parts.length ? `${parts.join(', ')}.` : changeSummary(c, h)];
+  if (c.decidedAt) lines.push(`Approved${c.decidedByName ? ` by ${c.decidedByName}` : ''} on ${dateText(c.decidedAt)}.`);
+  if (c.letter) lines.push(`Letter ${c.letter.referenceNo} ${c.letter.accepted ? 'accepted' : 'issued'}.`);
+  return lines.join(' ');
 }
 
 const SENS: Record<string, FieldRow['cls']> = { public: 'Public', internal: 'Internal', personal: 'Personal', confidential: 'Confidential', special: 'Special' };

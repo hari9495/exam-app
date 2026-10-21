@@ -679,6 +679,10 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       const rows = [...(await auditRows('employee.family.updated')), ...(await auditRows('employee.emergency_contacts.updated'))];
       expect(rows.map((a) => a.metadata)).toEqual([{ members: 2, removed: 0, nominationsChanged: true, by: 'hr' }, { members: 2, removed: 0, nominationsChanged: false, by: 'hr' }, { count: 1, by: 'self' }]);
       expect(JSON.stringify(rows)).not.toMatch(/Shalini|9845022872/);
+      // Job tab (Internal): what is in force on the day, for the manager too; nothing set yet reads null.
+      const job = (await api('lakshmiU', 'get', `${path}/as-of`).expect(200)).body.job;
+      expect(Object.keys(job).sort()).toEqual(['holidayCalendar', 'noticePeriod', 'probationEndsOn', 'shiftPattern']);
+      expect(job.holidayCalendar).toBeNull();
     });
 
     it('pay: only with a salary grant reaching the person, audited; a department head with team salary sees their subtree (Q3)', async () => {
