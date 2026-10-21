@@ -60,10 +60,10 @@ const PANELS: Record<GrowthArea, { title: string; items: string[]; by: Partial<R
   },
   learning: {
     title: 'Learning',
-    items: ['My learning', 'Catalogue', 'My tests', 'Sessions', 'Compliance', 'Needs & budgets', 'Skills', 'Course builder'],
+    items: ['My learning', 'Catalogue', 'My tests', 'Sessions', 'Compliance', 'Needs & budgets', 'Skills', 'My team', 'Course builder'],
     by: {
       emp: ['My learning', 'Catalogue', 'My tests', 'Skills'],
-      mgr: ['My learning', 'Catalogue', 'My tests', 'Skills', 'Needs & budgets'],
+      mgr: ['My learning', 'Catalogue', 'My tests', 'Skills', 'My team', 'Needs & budgets'],
       fin: ['Needs & budgets'],
     },
   },

@@ -9,7 +9,7 @@ export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
-export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordLearning, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
@@ -33,3 +33,28 @@ export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { IssuedLettersRegister, type LiveLetters } from '../people/documents';
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
+// Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
+export { MyLearningScreen, CoursePlayerScreen, type Course as LearningCourse } from '../growth/learn-me';
+export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen } from '../growth/learn-admin';
+export {
+  CoursesListScreen,
+  TeamLearningScreen,
+  fromConditions,
+  type CourseDetails,
+  type CourseRow,
+  type BuilderLiveItem,
+  type LiveBuilder,
+  type LiveCertificate,
+  type LiveCompliance,
+  type LiveComplianceData,
+  type LiveCourses,
+  type LiveEnrolment,
+  type LiveMyLearning,
+  type LivePlayer,
+  type LivePlayerItem,
+  type LiveRule,
+  type LiveRules,
+  type LiveTeamLearning,
+  type RuleInput as LearningRuleInput,
+  type TeamLearningData,
+} from '../growth/learn-live';

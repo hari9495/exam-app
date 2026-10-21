@@ -23,12 +23,14 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, ProgressRing, RatingScale, SkillLevel, type Device } from './growth-kit';
 import { budgetCheck, enrol } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveCoursePlayerScreen, LiveMyLearningScreen, type LiveMyLearning, type LivePlayer } from './learn-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
 
 export type CourseType = 'Classroom' | 'Virtual' | 'Self-paced' | 'SCORM' | 'Assessment only';
-export type CourseSource = 'Kaveri Foods' | 'Provider' | 'Partner pack';
+/** The company's own name, a provider, or a partner pack (live: the company's name for its own courses). */
+export type CourseSource = 'Kaveri Foods' | 'Provider' | 'Partner pack' | (string & {});
 
 export interface Course {
   id: string;
@@ -74,7 +76,7 @@ function CourseCard({ c, action }: { c: Course; action?: ReactNode }) {
       <h3 className="yx-growth-card__title">{c.title}</h3>
       <span className="yx-growth-meta">
         {c.type} · {c.duration}
-        {c.source !== 'Kaveri Foods' ? ` · ${c.source === 'Provider' ? c.provider : 'Partner pack'}` : ''}
+        {c.source === 'Provider' ? ` · ${c.provider}` : c.source === 'Partner pack' ? ' · Partner pack' : ''}
       </span>
       <div className="yx-growth-row">
         {c.mandatory && <Badge tone="warning">Mandatory</Badge>}
@@ -101,6 +103,8 @@ export interface MyLearningProps {
   recommendations: { course: Course; reason: string }[];
   points?: { total: number; badges: string[]; optedOut?: boolean } | null;
   tab?: 'mine' | 'catalogue' | 'certificates';
+  /** Wired to the API (the core: assigned, catalogue, certificates). */
+  live?: LiveMyLearning;
 }
 
 const CAT_FIELDS: FilterFieldDef[] = [
@@ -109,7 +113,11 @@ const CAT_FIELDS: FilterFieldDef[] = [
 ];
 
 /** LRN-01 My learning (mobile first) + catalogue: assigned with due dates, continue, recommendations (AI, no auto-enrol), certificates. */
-export function MyLearningScreen({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
+export function MyLearningScreen(props: MyLearningProps) {
+  return props.live ? <LiveMyLearningScreen live={props.live} /> : <SampleMyLearning {...props} />;
+}
+
+function SampleMyLearning({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [optOut, setOptOut] = useState(!!points?.optedOut);
@@ -308,10 +316,16 @@ export interface CoursePlayerProps {
   currentId: string;
   scormStatus?: 'incomplete' | 'completed' | 'failed';
   completed?: boolean;
+  /** Wired to the API (PDF, video and link items). */
+  live?: LivePlayer;
 }
 
 /** LRN-02 Course player (T3): outline, sandboxed content, required items; SCORM status comes from the package (YX-LRN-09). */
-export function CoursePlayerScreen({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
+export function CoursePlayerScreen(props: CoursePlayerProps) {
+  return props.live ? <LiveCoursePlayerScreen live={props.live} /> : <SamplePlayer {...props} />;
+}
+
+function SamplePlayer({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
   const [items, setItems] = useState(initial);
   const [cur, setCur] = useState(currentId);
   const item = items.find((i) => i.id === cur) ?? items[0];

@@ -115,6 +115,8 @@ export interface LiveRecord {
   activity?: ActivityEntry[] | null;
   /** Performance tab (only for viewers who may see this person's goals or reviews). */
   performance?: RecordPerformance | null;
+  /** Learning tab: the person's courses (the person, their manager or training reports in scope; null: no tab). */
+  learning?: RecordLearning[] | null;
   onIssueLetter?: () => void;
   onRetry?: () => void;
   /** Dialogs and drawers the page opens. */
@@ -237,8 +239,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
     ...(!live || live.time ? [{ id: 'time' as const, label: 'Time' }] : []),
     ...(!live || live.documents ? [{ id: 'documents' as const, label: 'Documents', count: docCount }] : []),
     ...(!live || live.performance ? [{ id: 'performance' as const, label: 'Performance' }] : []),
-    // Learning: there is no learning module in the live app yet (left out).
-    ...(!live ? [{ id: 'learning' as const, label: 'Learning' }] : []),
+    ...(!live || live.learning ? [{ id: 'learning' as const, label: 'Learning' }] : []),
     ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
     ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
     ...(!live && international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
@@ -447,11 +448,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 )}
               </TabsContent>
               <TabsContent value="performance">{live ? live.performance && <PerformanceTab persona={persona} data={live.performance} /> : <PerformanceTab persona={persona} />}</TabsContent>
-              {!live && (
-                <TabsContent value="learning">
-                  <LearningTab />
-                </TabsContent>
-              )}
+              <TabsContent value="learning">{live ? live.learning && <LearningTab rows={live.learning} /> : <LearningTab />}</TabsContent>
               <TabsContent value="assets">{live ? live.assets && <AssetsTab name={name} rows={live.assets.rows} onIssue={persona === 'hr' ? live.assets.onIssue : undefined} /> : <AssetsTab name={ARJUN.name} rows={ARJUN_ASSETS} onIssue={persona === 'hr' ? () => {} : undefined} />}</TabsContent>
               <TabsContent value="history">
                 {live ? live.history && <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={live.history.rows} roles={live.history.roles} /> : <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={ARJUN_HISTORY} roles={ARJUN_ROLES} />}
@@ -922,15 +919,51 @@ function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerf
   );
 }
 
-function LearningTab() {
+/** One course on the person's record (PPL-03 Learning tab), from Learning. */
+export interface RecordLearning {
+  id: string;
+  course: string;
+  status: 'Requested' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue';
+  due: Date | null;
+  completed: Date | null;
+  validUntil: Date | null;
+  progress: number;
+}
+
+const LEARNING_SAMPLE: RecordLearning[] = [
+  { id: 'l1', course: 'Food safety (FSSC 22000) basics', status: 'Completed', due: null, completed: new Date(2026, 2, 10), validUntil: new Date(2027, 2, 10), progress: 100 },
+  { id: 'l2', course: 'Forklift refresher', status: 'Enrolled', due: new Date(2026, 9, 24), completed: null, validUntil: null, progress: 0 },
+  { id: 'l3', course: 'Tablet inspection app', status: 'In progress', due: null, completed: null, validUntil: null, progress: 60 },
+  { id: 'l4', course: 'POSH awareness 2026', status: 'Completed', due: null, completed: new Date(2026, 3, 4), validUntil: null, progress: 100 },
+];
+
+/** The badge for a course: what is valid, what is due, what is in progress (words, never colour only). */
+function learningBadge(r: RecordLearning): { label: string; tone: BadgeTone } {
+  if (r.status === 'Completed') return r.validUntil ? { label: `Valid to ${formatDate(r.validUntil)}`, tone: 'success' } : { label: `Completed ${formatDate(r.completed)}`, tone: 'success' };
+  if (r.status === 'Overdue') return { label: `Overdue · was due ${formatDate(r.due)}`, tone: 'danger' };
+  if (r.status === 'Requested') return { label: 'Waiting for approval', tone: 'info' };
+  if (r.status === 'In progress') return { label: `In progress · ${r.progress}%`, tone: 'info' };
+  return r.due ? { label: `Due by ${formatDate(r.due)}`, tone: 'warning' } : { label: 'Enrolled', tone: 'neutral' };
+}
+
+function LearningTab({ rows = LEARNING_SAMPLE }: { rows?: RecordLearning[] }) {
   return (
     <Card title="Learning">
-      <ul className="yx-ppl__successors">
-        <li><span>Food safety (FSSC 22000) basics</span><Badge tone="success">Valid to 10 Mar 2027</Badge></li>
-        <li><span>Forklift refresher</span><Badge tone="warning">Due by 24 Oct 2026</Badge></li>
-        <li><span>Tablet inspection app</span><Badge tone="info">In progress · 60%</Badge></li>
-        <li><span>POSH awareness 2026</span><Badge tone="success">Completed 4 Apr 2026</Badge></li>
-      </ul>
+      {rows.length === 0 ? (
+        <EmptyState compact title="No courses yet" description="Courses assigned to this person, and the ones they take, show here." />
+      ) : (
+        <ul className="yx-ppl__successors">
+          {rows.map((r) => {
+            const b = learningBadge(r);
+            return (
+              <li key={r.id}>
+                <span>{r.course}</span>
+                <Badge tone={b.tone}>{b.label}</Badge>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Card>
   );
 }

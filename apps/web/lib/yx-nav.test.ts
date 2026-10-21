@@ -18,8 +18,8 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract', 'visitors']) expect(areas(n)).not.toContain(unbuilt);
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'settings']);
+    for (const unbuilt of ['assess', 'analytics', 'engage', 'projects', 'contract', 'visitors']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; the exam tools not yet in YukthiX are one link to the older screens (19 Oct 2026)', () => {
@@ -28,6 +28,17 @@ describe('buildNav: areas', () => {
     const hiringOnly = nav(['pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
     expect(hiringOnly.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent pools']);
+  });
+});
+
+describe('buildNav: Learning', () => {
+  it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
+    expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue']);
+    expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My team']);
+    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Compliance', 'Course builder']);
+    expect(areas(nav(['learning.manage'], { support: true }))).not.toContain('learning');
+    expect(activeLink(nav(['learning.manage', 'learning.report.view'], { employee: true }), '/yx/learning/compliance/rules')?.link.label).toBe('Compliance');
+    expect(activeLink(nav([], { employee: true }), '/yx/learning/enrolments/abc')?.link.label).toBe('My learning');
   });
 });
 

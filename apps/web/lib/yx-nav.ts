@@ -224,6 +224,20 @@ export function buildNav(n: NavInput): NavArea[] {
         ]),
   };
 
+  // Learning (the core): the designed panel's names (LRN): My learning and Catalogue for employees, My team for
+  // managers, Compliance for training reports, Course builder for L&D. My tests, Sessions, Needs & budgets and Skills
+  // have no live page yet (hidden).
+  const learning: NavArea = {
+    id: 'learning',
+    title: 'Learning',
+    sections: sec(undefined, [
+      ...when(self, L('my-learning', 'My learning', '/yx/learning'), L('catalogue', 'Catalogue', '/yx/learning/catalogue')),
+      ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team')),
+      ...when(!support && has('learning.report.view'), L('learning-compliance', 'Compliance', '/yx/learning/compliance')),
+      ...when(!support && has('learning.manage'), L('course-builder', 'Course builder', '/yx/learning/courses')),
+    ]),
+  };
+
   const performance: NavArea = {
     id: 'performance',
     title: 'Performance',
@@ -299,7 +313,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  return [home, people, time, pays, compliance, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
+  return [home, people, time, pays, compliance, hire, performance, learning, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. */
