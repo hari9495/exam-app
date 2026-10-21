@@ -7,6 +7,8 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
 import { FilesService } from '../documents/files.service';
 import { registerVerifier, verifyCode, verifyLink } from '../documents/verify-code';
+import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
+import { holdersOf } from '../time/time-core';
 import { LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-core';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
 
@@ -18,6 +20,9 @@ import { addMonths, durationText, progressPct, shownStatus } from './learning-ru
 
 const TYPE_LABEL: Record<string, string> = { self_paced: 'Self-paced', classroom: 'Classroom', virtual: 'Virtual', scorm: 'SCORM', assessment: 'Assessment only' };
 const KIND_LABEL: Record<string, 'PDF' | 'Video' | 'Link'> = { pdf: 'PDF', video: 'Video', link: 'Link' };
+/** Courses that cost more than this carry a 12-month training bond the person accepts when asking (LRN-06). */
+export const BOND_ABOVE = 25000;
+const REQUEST_TYPE = 'learning.enrolment';
 const MIME: Record<'pdf' | 'video', { mime: string; maxMb: number }> = { pdf: { mime: 'application/pdf', maxMb: 20 }, video: { mime: 'video/mp4', maxMb: 100 } };
 type Course = Prisma.LearningCourseGetPayload<object>;
 
@@ -41,10 +46,21 @@ export class LearningService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly files: FilesService,
+    private readonly engine: ApprovalsEngine,
   ) {}
 
-  /** Certificates answer the public verify page, like letters and payslips. */
+  /** Certificates answer the public verify page, like letters and payslips; asking for a course is an approval request. */
   onModuleInit() {
+    this.engine.register({
+      key: REQUEST_TYPE,
+      label: 'Course enrolment',
+      risk: 'normal',
+      autoActions: false,
+      distinctSteps: true,
+      cardPreview: async () => 'full',
+      onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
+      requesterLink: () => '/yx/learning',
+    });
     registerVerifier(async (code) => {
       const r = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
         const cert = await tx.learningCertificate.findUnique({ where: { verifyCode: code } });
@@ -110,7 +126,7 @@ export class LearningService implements OnModuleInit {
   }
 
   private async enrolmentsOf(tx: Tx, c: CompanyContext, employeeId: string, today: string, company: string) {
-    const rows = await tx.learningEnrolment.findMany({ where: { organizationId: c.organizationId, employeeId, status: { not: 'cancelled' } }, orderBy: [{ dueOn: 'asc' }, { createdAt: 'desc' }] });
+    const rows = await tx.learningEnrolment.findMany({ where: { organizationId: c.organizationId, employeeId, status: { notIn: ['cancelled', 'declined'] } }, orderBy: [{ dueOn: 'asc' }, { createdAt: 'desc' }] });
     const courses = await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.courseId))] } } });
     const req = await this.requiredCounts(tx, c, rows.map((r) => r.id), courses.map((x) => x.id));
     return rows.flatMap((r) => {
@@ -144,23 +160,73 @@ export class LearningService implements OnModuleInit {
     });
   }
 
-  /** Enrol myself in a published course, or ask when it needs approval. */
-  enrol(ctx: TenantContext, courseId: string) {
-    return this.run(ctx, async (tx, c) => {
+  /**
+   * Enrol myself in a published course, or ask when it needs approval (LRN-06): the request goes to my manager, then to
+   * L&D (learning.manage over me; the company's admins when nobody holds it). Above the bond threshold I accept the bond.
+   */
+  async enrol(ctx: TenantContext, courseId: string, opts: { acceptBond?: boolean } = {}) {
+    let notices: Notice[] = [];
+    const out = await this.run(ctx, async (tx, c) => {
       const me = await ownEmployee(tx, c);
       if (!me) throw new ForbiddenException('Only employees enrol in courses.');
       const course = await tx.learningCourse.findFirst({ where: { organizationId: c.organizationId, id: courseId, status: 'published' } });
       if (!course) throw new NotFoundException('No such course.');
+      const bond = Number(course.cost) > BOND_ABOVE;
+      if (bond && !opts.acceptBond) throw new BadRequestException('Accept the training bond terms to continue.');
       const status = course.needsApproval ? 'requested' : 'enrolled';
+      let e: Prisma.LearningEnrolmentGetPayload<object>;
       try {
-        const e = await tx.learningEnrolment.create({ data: { organizationId: c.organizationId, employeeId: me, courseId, source: 'self', assignedOn: asDate(todayIst()), status, createdBy: c.userId ?? null } });
-        await audit(tx, c, status === 'requested' ? 'learning.enrolment.requested' : 'learning.enrolled', 'learning_enrolment', e.id, { course: course.title });
-        return { id: e.id, status: status === 'requested' ? 'Requested' : 'Enrolled' };
+        e = await tx.learningEnrolment.create({ data: { organizationId: c.organizationId, employeeId: me, courseId, source: 'self', assignedOn: asDate(todayIst()), status, bondAcceptedAt: bond ? new Date() : null, createdBy: c.userId ?? null } });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException(`You are already enrolled in ${course.title}.`);
         throw err;
       }
+      if (status === 'requested') {
+        const today = todayIst();
+        const person = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: me }, select: { personId: true, givenName: true, familyName: true, preferredName: true } });
+        let ld = (await holdersOf(tx, c.organizationId, 'learning.manage', me, today)).filter((u) => u !== c.userId);
+        if (!ld.length) ld = (await tx.user.findMany({ where: { organizationId: c.organizationId, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id).filter((u) => u !== c.userId);
+        if (!ld.length) throw new ConflictException('No one in L&D can approve courses yet. Ask an admin to grant learning.manage.');
+        const name = person.preferredName || [person.givenName, person.familyName].filter(Boolean).join(' ');
+        const sub = await this.engine.submit(tx, c, {
+          type: REQUEST_TYPE,
+          subjectType: 'learning_enrolment',
+          subjectId: e.id,
+          title: `${name}: ${course.title}`,
+          summary: [
+            { label: 'Course', value: `${course.title} (${TYPE_LABEL[course.type] ?? course.type}, ${durationText(course.durationMinutes)})` },
+            { label: 'Cost', value: Number(course.cost) ? `₹${Number(course.cost).toLocaleString('en-IN')}` : 'No cost' },
+            ...(bond ? [{ label: 'Training bond', value: '12 months, accepted' }] : []),
+          ],
+          subjectPersonId: person.personId,
+          requesterUserId: c.userId ?? null,
+          raisedByUserId: c.userId ?? null,
+          steps: [
+            { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', selfApproval: 'never' },
+            { name: 'L&D', approvers: [{ kind: 'users', userIds: ld.slice(0, 25) }], mode: 'any', selfApproval: 'never' },
+          ],
+          payload: {},
+          payloadFields: [],
+          fallbackUserIds: ld,
+        });
+        await tx.learningEnrolment.update({ where: { id: e.id }, data: { wfRequestId: sub.id } });
+        notices = sub.notices;
+      }
+      await audit(tx, c, status === 'requested' ? 'learning.enrolment.requested' : 'learning.enrolled', 'learning_enrolment', e.id, { course: course.title, ...(bond ? { bond: true } : {}) });
+      return { id: e.id, status: status === 'requested' ? 'Requested' : 'Enrolled' };
     });
+    if (notices.length) await this.engine.send(ctx, notices);
+    return out;
+  }
+
+  /** The approvals engine decided a request: approved enrols the person from today; refused leaves it declined. */
+  private async decided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+    const org = req.organizationId;
+    const e = await tx.learningEnrolment.findFirst({ where: { organizationId: org, wfRequestId: req.id } });
+    if (!e || e.status !== 'requested') return;
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
+    await tx.learningEnrolment.update({ where: { id: e.id }, data: outcome === 'approved' ? { status: 'enrolled', assignedOn: asDate(todayIst()), version: { increment: 1 } } : { status: 'declined', version: { increment: 1 } } });
+    await audit(tx, c, outcome === 'approved' ? 'learning.enrolment.approved' : 'learning.enrolment.declined', 'learning_enrolment', e.id, {});
   }
 
   /** LRN-02: my enrolment with the course outline, what is done, and the certificate once complete. */

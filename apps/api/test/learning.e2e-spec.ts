@@ -206,6 +206,39 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     await api('adminB', 'post', `/learning/courses/${paid}/enrol`).expect(403);
   });
 
+  it('a course needing approval: the manager, then L&D, decide in Approvals; a refusal can be asked again; the bond is accepted', async () => {
+    const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; step: { name: string } }[];
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject') => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, reason: decision === 'reject' ? 'Not this quarter' : undefined });
+    const status = async () => ((await api('arjunU', 'get', '/learning/me').expect(200)).body.enrolments as { course: { title: string }; status: string }[]).find((e) => e.course.title === 'Lean six sigma')?.status;
+    // Arjun asked for Lean six sigma (the self-enrolment test): his manager first, then L&D.
+    expect(await status()).toBe('Requested');
+    expect((await inbox('ldA')).filter((t) => t.title === 'Arjun: Lean six sigma')).toEqual([]);
+    const mgrTask = (await inbox('mgrU')).find((t) => t.title === 'Arjun: Lean six sigma')!;
+    expect(mgrTask.step.name).toBe('Manager');
+    await decide('mgrU', mgrTask.taskId, 'approve').expect(200);
+    expect(await status()).toBe('Requested');
+    const ldTask = (await inbox('ldA')).find((t) => t.title === 'Arjun: Lean six sigma')!;
+    expect(ldTask.step.name).toBe('L&D');
+    // Nobody else decides it; the person never does.
+    await decide('arjunU', ldTask.taskId, 'approve').expect((r) => expect([403, 404]).toContain(r.status));
+    await decide('ldA', ldTask.taskId, 'approve').expect(200);
+    expect(await status()).toBe('Enrolled');
+    // A bond course: the bond must be accepted; a refusal leaves it declined, and the person may ask again.
+    const cert = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'Certified quality auditor', mandatory: false, needsApproval: true, certificate: false, cost: 32000 }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${cert}/items`).send({ title: 'Course page', kind: 'link', minutes: 60, required: true, url: 'https://example.test/cqa' }).expect(201);
+    await api('ldA', 'post', `/learning/admin/courses/${cert}/status`).send({ status: 'published', version: 1 }).expect(200);
+    await api('imranU', 'post', `/learning/courses/${cert}/enrol`).send({}).expect(400);
+    await api('imranU', 'post', `/learning/courses/${cert}/enrol`).send({ acceptBond: true }).expect(201);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.findFirstOrThrow({ where: { courseId: cert } }))).bondAcceptedAt).not.toBeNull();
+    const t2 = (await inbox('mgrU')).find((t) => t.title === 'Imran: Certified quality auditor')!;
+    await decide('mgrU', t2.taskId, 'reject').expect(200);
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.findFirstOrThrow({ where: { courseId: cert } }))).status).toBe('declined');
+    expect(((await api('imranU', 'get', '/learning/me').expect(200)).body.enrolments as { course: { title: string } }[]).some((e) => e.course.title === 'Certified quality auditor')).toBe(false);
+    await api('imranU', 'post', `/learning/courses/${cert}/enrol`).send({ acceptBond: true }).expect(201);
+    expect(await audits('learning.enrolment.approved')).toHaveLength(1);
+    expect(await audits('learning.enrolment.declined')).toHaveLength(1);
+  });
+
   it('reminders 7 and 2 days ahead, the manager the day after, training reports after 7 days; each once', async () => {
     const remind = app.get(LearningAssignService);
     const setDue = (id: string, day: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.update({ where: { id }, data: { dueOn: new Date(`${day}T00:00:00Z`) } }));
@@ -253,7 +286,7 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     ]);
     expect((await api('arjunU', 'get', '/learning/team').expect(200)).body.people).toEqual([]);
     const tab = (await api('mgrU', 'get', `/learning/people/${ids.arjun}`).expect(200)).body;
-    expect(tab.map((r: { course: string; status: string }) => [r.course, r.status])).toEqual(expect.arrayContaining([['Fire safety and evacuation', 'Completed'], ['Lean six sigma', 'Requested']]));
+    expect(tab.map((r: { course: string; status: string }) => [r.course, r.status])).toEqual(expect.arrayContaining([['Fire safety and evacuation', 'Completed'], ['Lean six sigma', 'Enrolled']]));
     await api('arjunU', 'get', `/learning/people/${ids.arjun}`).expect(200);
     await api('ldA', 'get', `/learning/people/${ids.arjun}`).expect(200);
     await api('imranU', 'get', `/learning/people/${ids.arjun}`).expect(404);

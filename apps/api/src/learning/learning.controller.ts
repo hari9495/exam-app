@@ -72,6 +72,10 @@ export class RuleUpdateDto extends RuleDto {
   @IsInt() @Min(1) version!: number;
 }
 
+export class EnrolDto {
+  @IsOptional() @IsBoolean() acceptBond?: boolean;
+}
+
 export class EntityQueryDto {
   @IsOptional() @IsUUID() entityId?: string;
 }
@@ -110,9 +114,9 @@ export class LearningController {
   }
 
   @Post('courses/:id/enrol')
-  enrol(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  enrol(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EnrolDto) {
     ownSession(req);
-    return this.learning.enrol(ctx, id);
+    return this.learning.enrol(ctx, id, dto);
   }
 
   @Get('enrolments/:id')

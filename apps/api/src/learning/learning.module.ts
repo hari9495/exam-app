@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { WorkflowModule } from '../workflow/workflow.module';
 import { LearningController } from './learning.controller';
 import { LearningService } from './learning.service';
 import { LearningAssignService } from './learning-assign.service';
@@ -11,7 +12,7 @@ import { LearningReportsService } from './learning-reports.service';
 // rules, LRN-08 compliance, the manager's team view and the PPL-03 Learning tab). The daily check (rules, renewals,
 // reminders and escalation) runs on the scheduled sweeps.
 @Module({
-  imports: [AuthModule, DocumentsModule, NotificationsModule],
+  imports: [AuthModule, DocumentsModule, NotificationsModule, WorkflowModule],
   controllers: [LearningController],
   providers: [LearningService, LearningAssignService, LearningReportsService],
   exports: [LearningAssignService],

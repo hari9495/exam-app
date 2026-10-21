@@ -42,9 +42,25 @@ describe('My learning (LRN-01)', () => {
     const lean = screen.getByRole('article', { name: 'Lean six sigma' });
     expect(within(lean).getByText(/₹24,000 · needs approval/)).toBeInTheDocument();
     await ue.click(within(lean).getByRole('button', { name: 'Request' }));
-    await waitFor(() => expect(onEnrol).toHaveBeenCalledWith(expect.objectContaining({ id: 'c2' })));
+    const sheet = await screen.findByRole('dialog', { name: 'Enrol in Lean six sigma' });
+    expect(within(sheet).getByText('Goes to your manager, then L&D for approval.')).toBeInTheDocument();
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onEnrol).toHaveBeenCalledWith(expect.objectContaining({ id: 'c2' }), { acceptBond: false }));
     // Already enrolled: no second Enrol.
     expect(within(screen.getByRole('article', { name: 'Fire safety and evacuation' })).queryByRole('button')).toBeNull();
+  });
+});
+
+describe('Asking for a course (LRN-06)', () => {
+  it('above the bond threshold the bond is accepted before the request goes', async () => {
+    const onEnrol = vi.fn(async () => undefined);
+    wrap(<LiveMyLearningScreen live={{ state: 'ready', onRetry: vi.fn(), onTab: vi.fn(), onOpen: vi.fn(), onDownload: vi.fn(), onEnrol, tab: 'catalogue', data: { today: '2026-10-21', employee: true, enrolments: [], certificates: [], catalogue: [course({ id: 'c9', title: 'Certified quality auditor', cost: 32000, approval: true })] } }} />);
+    await ue.click(screen.getByRole('button', { name: 'Request' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Enrol in Certified quality auditor' });
+    expect(within(sheet).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    await ue.click(within(sheet).getByRole('checkbox', { name: 'I accept the training bond terms' }));
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onEnrol).toHaveBeenCalledWith(expect.objectContaining({ id: 'c9' }), { acceptBond: true }));
   });
 });
 

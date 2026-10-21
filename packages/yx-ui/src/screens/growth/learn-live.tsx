@@ -7,7 +7,7 @@ import { Button, IconButton, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Icon, Text } from '../../components/foundations';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
-import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Heatmap, StatCard } from '../../components/charts';
 import { DataTable } from '../../components/table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
@@ -64,7 +64,8 @@ export interface LiveMyLearning {
   tab: 'mine' | 'catalogue' | 'certificates';
   onTab: (tab: 'mine' | 'catalogue' | 'certificates') => void;
   onOpen: (enrolmentId: string) => void;
-  onEnrol: (course: Course) => Promise<void>;
+  /** Enrol, or ask when the course needs approval; above the bond threshold the bond is accepted first. */
+  onEnrol: (course: Course, opts: { acceptBond: boolean }) => Promise<void>;
   onDownload: (certificateId: string) => void;
 }
 
@@ -98,9 +99,9 @@ function LiveCourseCard({ c, action }: { c: Course; action?: ReactNode }) {
 export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Course | null>(null);
   const d = live.data;
-  const enrolled = new Set((d?.enrolments ?? []).filter((e) => e.status !== 'Completed').map((e) => e.course.id));
+  const open = new Map((d?.enrolments ?? []).filter((e) => e.status !== 'Completed').map((e) => [e.course.id, e.status]));
   const completed = new Set((d?.enrolments ?? []).filter((e) => e.status === 'Completed').map((e) => e.course.id));
   const fields: FilterFieldDef[] = useMemo(() => {
     const sources = [...new Set((d?.catalogue ?? []).map((c) => c.source))];
@@ -210,19 +211,12 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
               key={c.id}
               c={c}
               action={
-                enrolled.has(c.id) ? (
-                  <Badge tone="info">Enrolled</Badge>
+                open.has(c.id) ? (
+                  <Badge tone="info">{open.get(c.id) === 'Requested' ? 'Requested' : 'Enrolled'}</Badge>
                 ) : completed.has(c.id) ? (
                   <Badge tone="success">Completed</Badge>
                 ) : d?.employee ? (
-                  <Button size="sm" loading={busy === c.id} onClick={async () => {
-                    setBusy(c.id);
-                    try {
-                      await live.onEnrol(c);
-                    } finally {
-                      setBusy(null);
-                    }
-                  }}>
+                  <Button size="sm" onClick={() => setSheet(c)}>
                     {c.approval ? 'Request' : 'Enrol'}
                   </Button>
                 ) : undefined
@@ -255,7 +249,70 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
           </Tabs>
         )}
       </Loading>
+      {sheet && <EnrolSheet course={sheet} onClose={() => setSheet(null)} onEnrol={live.onEnrol} />}
     </GrowthFrame>
+  );
+}
+
+/** Courses above this carry a 12-month training bond (LRN-06; the design's threshold). */
+export const BOND_ABOVE = 25000;
+
+/** LRN-06 "self": enrol in a course, or ask when it needs approval; the bond is accepted first above the threshold. */
+function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () => void; onEnrol: LiveMyLearning['onEnrol'] }) {
+  const [bond, setBond] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const needsBond = course.cost > BOND_ABOVE;
+  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Enrol in ${course.title}`}
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={needsBond && !bond}
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onEnrol(course, { acceptBond: needsBond && bond });
+                onClose();
+              } catch {
+                // The page has said what went wrong; the sheet stays open to try again.
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {course.approval ? 'Send request' : 'Enrol'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <DescriptionList items={[{ label: 'Course', value: course.title }, { label: 'Session', value: course.type === 'Self-paced' ? 'Self-paced' : course.type }, { label: 'Cost per person', value: course.cost ? inr(course.cost) : 'No cost' }]} />
+        {needsBond && (
+          <Card title="Training bond">
+            <Text>
+              Courses above {inr(BOND_ABOVE)} have a 12-month service agreement. If you leave within 12 months, a pro-rata share of {inr(course.cost)} is recovered in your final settlement, after HR confirms.
+            </Text>
+            <div className="yx-growth-stack">
+              <Checkbox checked={bond} onChange={setBond} label="I accept the training bond terms" />
+            </div>
+          </Card>
+        )}
+        <div className="yx-growth-effect" aria-live="polite">
+          <span className="yx-growth-effect__title">What happens</span>
+          <ul>
+            <li>{course.approval ? 'Goes to your manager, then L&D for approval.' : 'You’re enrolled straight away.'}</li>
+            {course.certificate && <li>A certificate is issued on completion.</li>}
+          </ul>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 

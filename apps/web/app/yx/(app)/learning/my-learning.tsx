@@ -32,12 +32,13 @@ export function MyLearningPage({ tab }: { tab: 'mine' | 'catalogue' | 'certifica
         tab,
         onTab: (t) => router.push(ROUTE[t]),
         onOpen: (id) => router.push(`/yx/learning/enrolments/${encodeURIComponent(id)}`),
-        onEnrol: async (course) => {
+        onEnrol: async (course, opts) => {
           try {
-            const out = await write<{ id: string; status: string }>('POST', `/courses/${encodeURIComponent(course.id)}/enrol`);
+            const out = await write<{ id: string; status: string }>('POST', `/courses/${encodeURIComponent(course.id)}/enrol`, opts);
             toast({ tone: 'success', title: out.status === 'Requested' ? `You asked to join ${course.title}` : `You are enrolled in ${course.title}`, ...(out.status === 'Requested' ? { description: 'It starts once it is approved.' } : {}) });
           } catch (e) {
             toast({ tone: 'error', title: e instanceof Error ? e.message : 'That did not work. Try again.' });
+            throw e;
           }
         },
         onDownload: (id) => void files.download(`/certificates/${encodeURIComponent(id)}/pdf`, 'certificate.pdf').catch((e) => toast({ tone: 'error', title: e instanceof Error ? e.message : 'The certificate did not download.' })),

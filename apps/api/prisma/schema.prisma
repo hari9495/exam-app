@@ -10047,8 +10047,11 @@ model LearningEnrolment {
   ruleId         String?   @map("rule_id") @db.Uuid
   assignedOn     DateTime  @map("assigned_on") @db.Date
   dueOn          DateTime? @map("due_on") @db.Date
-  /// requested · enrolled · in_progress · completed · cancelled (overdue is enrolled or in_progress past due_on)
+  /// requested · enrolled · in_progress · completed · cancelled · declined (overdue is enrolled or in_progress past due_on)
   status         String    @default("enrolled") @db.VarChar(12)
+  /// The approval request (LRN-06) when the course needs approval.
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
   startedAt      DateTime? @map("started_at") @db.Timestamptz(3)
   completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid

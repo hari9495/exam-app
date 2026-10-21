@@ -39,7 +39,7 @@
   background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
 }
 .yx-growth-effect__title { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-sm); }
-.yx-growth-effect ul { margin: 0; padding-left: var(--yx-space-5); }
+.yx-growth-effect ul { margin: 0; padding-left: var(--yx-space-5); list-style: disc; }
 
 /* Drawer / sheet footers */
 .yx-growth-foot { display: flex; gap: var(--yx-space-2); justify-content: flex-end; flex-wrap: wrap; width: 100%; }
