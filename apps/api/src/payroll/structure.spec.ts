@@ -3,7 +3,7 @@ import { join } from 'path';
 import { Prisma } from '@prisma/client';
 import { PAY_VARIABLES, checkFormula } from '../rules-engine/expressions';
 import type { RuleSet } from '../statutory/evaluator';
-import { breakup, type ComponentDef, type Facts, type Line } from './structure';
+import { breakup, inCtcOf, lineBasis, type ComponentDef, type Facts, type Line } from './structure';
 import { STARTER_COMPONENTS, STARTER_TEMPLATE } from './starter';
 
 // PAY-2.07 / 2.08 / 2.09: the starter template worked out CTC-first and from fixed amounts; the CTC always adds up;
@@ -73,5 +73,21 @@ describe('salary structures (§7.3–7.4)', () => {
     const fixedHeavy = linesOf([{ code: 'basic', formula: '50000' }, { code: 'special', formula: '0' }]);
     expect(() => breakup({ lines: fixedHeavy, components, options, facts: facts({ esi: 'no' }), rules, ctc: '120000' })).toThrow(/too low/);
     expect(() => breakup({ lines: linesOf([{ code: 'basic', formula: '1' }]), components, options, facts: facts(), rules, ctc: '120000' })).toThrow(/balancing component/);
+  });
+});
+
+describe('the person record Pay tab (PPL-03, founder 22 Oct 2026)', () => {
+  it('the lines the CTC counts total exactly the CTC; gratuity outside the CTC is not one of them', () => {
+    const b = breakup({ lines: starter, components, options, facts: facts(), rules, ctc: '583200' });
+    const counted = b.lines.filter((l) => inCtcOf(components.find((c) => c.code === l.code)!, options));
+    expect(counted.some((l) => l.code === 'gratuity')).toBe(false);
+    expect(counted.reduce((s, l) => s.add(l.annual), new Prisma.Decimal(0)).sub(b.annualCtc).abs().lte('0.12')).toBe(true);
+  });
+
+  it('employer lines show their basis from the rules in force', () => {
+    const basis = (statutory: string) => lineBasis(components.find((c) => c.statutory === statutory)!, components, rules, '2026-10-01');
+    expect(basis('pf_employer')).toBe('12% of ₹15,000');
+    expect(basis('gratuity_provision')).toMatch(/^4\.81% of /);
+    expect(lineBasis(components.find((c) => c.code === 'basic')!, components, rules, '2026-10-01')).toBeNull();
   });
 });

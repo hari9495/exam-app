@@ -133,7 +133,7 @@ describe('/yx/people/profile', () => {
     });
     // The designed person record (PPL-03): identity values masked until Show, and the look is recorded by the API.
     wrap(<YxProfilePage />);
-    expect(await screen.findByText('•••• 821K')).toBeInTheDocument();
+    expect(await screen.findByText('XXXXXX821K')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: /^Show PAN/ }));
     expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
     expect(reveals).toEqual([{ field: 'pan' }]);

@@ -11,6 +11,7 @@ export type { MyRequest, NotifCategory, PlatformNotification } from '../platform
 // People › person record (design audit step 3): PPL-03 with the live record.
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
+export { ContactsDrawer, FamilyDrawer, type EmergencyContact, type FamilyMember, type Nomination, type RecordFamily } from '../people/family';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
 export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';

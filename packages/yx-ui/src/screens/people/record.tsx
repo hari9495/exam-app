@@ -19,6 +19,7 @@ import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/forma
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { FamilyCards, type RecordFamily } from './family';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
 export type RecordPanel = 'activity' | 'identity' | 'roles';
@@ -63,7 +64,23 @@ export interface RecordEvent {
 export type LiveRecordPay =
   | { kind: 'none'; grantedBy: string }
   | { kind: 'ask'; onShow: () => void; busy?: boolean; error?: string | null }
-  | { kind: 'shown'; ctc: number; currency: string; from: Date; next?: string; lines: { label: string; monthly: number }[]; banks: FieldRow[]; lastNet?: { amount: number; note: string } | null; taxRegime?: { label: string; note: string } | null };
+  | {
+      kind: 'shown';
+      ctc: number;
+      currency: string;
+      from: Date;
+      /** e.g. "₹7,80,000 from 1 Oct 2026 (scheduled)". */
+      next?: string;
+      /** The lines the CTC counts: the table's total is `ctc`, so the header and the table always agree. */
+      lines: { label: string; monthly: number }[];
+      /** Employer costs outside the CTC (e.g. a gratuity provision the template keeps out), shown under the total. */
+      outside?: { label: string; monthly: number }[];
+      banks: FieldRow[];
+      /** null: no payslip yet. */
+      lastNet?: { amount: number; note: string } | null;
+      /** null: no regime chosen for the tax year yet. */
+      taxRegime?: { label: string; note: string } | null;
+    };
 
 /** The Performance tab: the current goal period's goals, the last shared review and the next 1:1. */
 export interface RecordPerformance {
@@ -95,12 +112,14 @@ export interface LiveRecord {
   pending: { id: string; label: string; detail: string; onWithdraw?: () => void }[];
   onEditPersonal?: () => void;
   onRequestChange?: () => void;
+  /** Family, nominees and emergency contacts (Personal; null: the viewer may not see them). */
+  family?: RecordFamily | null;
   job: [string, string][] | null;
   scheduled: { title: string; body: string }[];
   pastChanges: number;
   pay: LiveRecordPay;
   /** null: no Time tab (no leave access). */
-  time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null } | null;
+  time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
   assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
   history: { rows: JobChange[]; roles: RecordRole[] } | null;
@@ -412,9 +431,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             <>
               <TabsContent value="overview">
                 {live ? (
-                  <OverviewTab persona={persona} relation={relation} name={name} personal={live.personal} identity={live.identity} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={name} today={today} personal={live.personal} identity={live.identity} family={live.family ?? undefined} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 ) : (
-                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} personal={ARJUN.personal} identity={ARJUN.identity} family={ARJUN} custom={ARJUN.custom} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} today={today} personal={ARJUN.personal} identity={ARJUN.identity} family={{ members: ARJUN.family, nominations: ARJUN.nominations, expected: ARJUN.expectedSchemes, contacts: ARJUN.emergency, note: ARJUN.familyNote, ...(persona === 'hr' ? { onEdit: () => {} } : {}), ...(self || persona === 'hr' ? { onEditContacts: () => {} } : {}) }} custom={ARJUN.custom} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 )}
               </TabsContent>
               <TabsContent value="job">
@@ -438,7 +457,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                   </div>
                 )}
               </TabsContent>
-              <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} /> : <TimeTab />}</TabsContent>
+              <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} attendance={live.time.attendance ?? null} /> : <TimeTab />}</TabsContent>
               <TabsContent value="documents">
                 {live ? (
                   live.documents && <DocumentsTab persona={persona} rows={live.documents.rows} hidden={live.documents.hidden} actions={live.documents} />
@@ -472,11 +491,6 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
 
 /* ------------------------------------------------------------------ tabs */
 
-interface FamilyData {
-  family: { name: string; relation: string; dependent: boolean }[];
-  nominations: { scheme: string; name: string; share: number }[];
-  emergency: { name: string; relation: string; phone: string }[];
-}
 interface CustomField {
   label: string;
   value: string;
@@ -484,7 +498,7 @@ interface CustomField {
   selfEdit: boolean;
 }
 
-function OverviewTab({ persona, relation, name, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: FamilyData; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
+function OverviewTab({ persona, relation, name, today, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; today: Date; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: RecordFamily; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
   const familyVis = fieldVisibility('Personal', persona, relation);
   const custom = allCustom.filter((c) => fieldVisibility(c.cls, persona, relation) !== 'hidden');
   const first = name.split(' ')[0];
@@ -511,69 +525,7 @@ function OverviewTab({ persona, relation, name, personal, identity, family, cust
         </Card>
       )}
       {family && familyVis !== 'hidden' ? (
-        <>
-          <Card title="Family and nominees">
-            <div className="yx-ppl__grid2">
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Family, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Family</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Relation</th>
-                    <th scope="col">Dependant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {family.family.map((f) => (
-                    <tr key={f.name}>
-                      <td>{f.name}</td>
-                      <td>{f.relation}</td>
-                      <td>{f.dependent ? 'Yes' : 'No'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Nominations, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Nominations</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Scheme</th>
-                    <th scope="col">Nominee</th>
-                    <th scope="col">Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {family.nominations.map((n) => (
-                    <tr key={n.scheme + n.name}>
-                      <td>{n.scheme}</td>
-                      <td>{n.name}</td>
-                      <td className="yx-ppl__num">{n.share}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-            <Text size="sm" tone="secondary" as="p">
-              Marital status changed on 2 Feb 2020. Nominations were reviewed after that change.
-            </Text>
-          </Card>
-          <Card title="Emergency contacts">
-            <ul className="yx-ppl__successors">
-              {family.emergency.map((e) => (
-                <li key={e.name}>
-                  <span>
-                    {e.name} · {e.relation}
-                  </span>
-                  <span>{formatPhone(e.phone)}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </>
+        <FamilyCards family={family} today={today} />
       ) : family ? (
         <Text size="sm" tone="secondary" as="p">
           Family, nominees and emergency contacts are Personal fields. Only {first} and HR see them.
@@ -636,8 +588,8 @@ const PAY_LINES = [
   { label: 'Gratuity provision (4.81% of basic)', monthly: 1106 },
 ];
 
-function SalaryTable({ lines, money }: { lines: { label: string; monthly: number }[]; money: (n: number) => string }) {
-  const monthly = lines.reduce((s, l) => s + l.monthly, 0);
+function SalaryTable({ lines, money, ctc, outside = [] }: { lines: { label: string; monthly: number }[]; money: (n: number) => string; ctc?: number; outside?: { label: string; monthly: number }[] }) {
+  const monthly = ctc !== undefined ? ctc / 12 : lines.reduce((s, l) => s + l.monthly, 0);
   return (
     <Card title="Salary structure (monthly)">
       <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
@@ -662,6 +614,15 @@ function SalaryTable({ lines, money }: { lines: { label: string; monthly: number
             <td className="yx-ppl__num">{money(monthly)}</td>
             <td className="yx-ppl__num">{money(monthly * 12)}</td>
           </tr>
+          {outside.map((l) => (
+            <tr key={l.label}>
+              <td>
+                {l.label} <Text size="sm" tone="secondary">(not in CTC)</Text>
+              </td>
+              <td className="yx-ppl__num">{money(l.monthly)}</td>
+              <td className="yx-ppl__num">{money(l.monthly * 12)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
       </div>
@@ -728,7 +689,8 @@ function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRe
         </div>
       </Card>
     );
-  const money = (n: number) => formatMoney(n, pay.currency);
+  // Whole rupees on screen, as the design (stored amounts keep their paise).
+  const money = (n: number) => formatMoney(Math.round(n), pay.currency);
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__grid3">
@@ -739,20 +701,28 @@ function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRe
             {pay.next ? ` · ${pay.next}` : ''}
           </Text>
         </Card>
-        {pay.lastNet && (
-          <Card title="Last net pay">
-            <span className="yx-ppl__num yx-figure" data-size="lg">{money(pay.lastNet.amount)}</span>
-            <Text size="sm" tone="secondary" as="p">{pay.lastNet.note}</Text>
-          </Card>
-        )}
-        {pay.taxRegime && (
-          <Card title="Tax regime">
-            <span className="yx-figure" data-size="lg">{pay.taxRegime.label}</span>
-            <Text size="sm" tone="secondary" as="p">{pay.taxRegime.note}</Text>
-          </Card>
-        )}
+        <Card title="Last net pay">
+          {pay.lastNet ? (
+            <>
+              <span className="yx-ppl__num yx-figure" data-size="lg">{money(pay.lastNet.amount)}</span>
+              <Text size="sm" tone="secondary" as="p">{pay.lastNet.note}</Text>
+            </>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">No payslip yet.</Text>
+          )}
+        </Card>
+        <Card title="Tax regime">
+          {pay.taxRegime ? (
+            <>
+              <span className="yx-figure" data-size="lg">{pay.taxRegime.label}</span>
+              <Text size="sm" tone="secondary" as="p">{pay.taxRegime.note}</Text>
+            </>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">Not chosen for this tax year yet.</Text>
+          )}
+        </Card>
       </div>
-      {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} />}
+      {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} ctc={pay.ctc} outside={pay.outside} />}
       {pay.banks.length > 0 && (
         <Card title="Bank accounts" actions={self && onRequestChange ? <Button size="sm" onClick={onRequestChange}>Request a change</Button> : undefined}>
           <FieldList rows={pay.banks} persona={persona} relation={self ? 'self' : 'other'} />
@@ -769,7 +739,32 @@ const SAMPLE_BALANCES = [
   { type: 'Earned leave', used: 6.5, total: 15 },
 ];
 
-function TimeTab({ balances = SAMPLE_BALANCES, unpaid }: { balances?: { type: string; used: number; total: number }[]; unpaid?: number | null }) {
+const SAMPLE_ATTENDANCE = {
+  title: 'Attendance, September 2026',
+  rows: [
+    ['Present', '20 days'],
+    ['Late marks', '2 (7 Sep, 18 Sep)'],
+    ['Missing punch', '1 (23 Sep, regularisation pending)'],
+    ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
+  ] as [string, string][],
+};
+
+function AttendanceCard({ attendance }: { attendance: { title: string; rows: [string, string][] } }) {
+  return (
+    <Card title={attendance.title}>
+      <dl className="yx-ppl__dl">
+        {attendance.rows.map(([l, v]) => (
+          <div key={l} className="yx-ppl__dl-row">
+            <dt>{l}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
+function TimeTab({ balances = SAMPLE_BALANCES, unpaid, attendance }: { balances?: { type: string; used: number; total: number }[]; unpaid?: number | null; attendance?: { title: string; rows: [string, string][] } | null }) {
   const live = unpaid !== undefined;
   return (
     <div className="yx-ppl__stack">
@@ -781,31 +776,20 @@ function TimeTab({ balances = SAMPLE_BALANCES, unpaid }: { balances?: { type: st
         ))}
       </div>
       {live ? (
-        unpaid !== null && (
-          <Card title="Unpaid leave">
-            <Text as="p">{unpaid === 0 ? 'None taken this year.' : `${unpaid} day${unpaid === 1 ? '' : 's'} taken this year.`}</Text>
-          </Card>
-        )
+        <>
+          {unpaid !== null && (
+            <Card title="Unpaid leave">
+              <Text as="p">{unpaid === 0 ? 'None taken this year.' : `${unpaid} day${unpaid === 1 ? '' : 's'} taken this year.`}</Text>
+            </Card>
+          )}
+          {attendance && <AttendanceCard attendance={attendance} />}
+        </>
       ) : (
         <>
           <Card title="Unpaid leave">
             <Text as="p">2 days taken this year (11 and 12 Jun 2026).</Text>
           </Card>
-          <Card title="Attendance, September 2026">
-            <dl className="yx-ppl__dl">
-              {[
-                ['Present', '20 days'],
-                ['Late marks', '2 (7 Sep, 18 Sep)'],
-                ['Missing punch', '1 (23 Sep, regularisation pending)'],
-                ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
-              ].map(([l, v]) => (
-                <div key={l} className="yx-ppl__dl-row">
-                  <dt>{l}</dt>
-                  <dd>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
+          <AttendanceCard attendance={SAMPLE_ATTENDANCE} />
         </>
       )}
     </div>

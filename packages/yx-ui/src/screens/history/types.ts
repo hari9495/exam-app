@@ -67,6 +67,8 @@ export interface AsOfView {
   payAccess: boolean;
   /** Present only when asked for ("Show pay"). */
   compensation: (Money & { validFrom: string; validTo: string | null }) | null;
+  /** PPL-03 Job tab: what is in force on the day (null values: not set). */
+  job?: { holidayCalendar: string | null; shiftPattern: string | null; noticePeriod: string | null; probationEndsOn: string | null } | null;
 }
 
 export interface ImpactLine {
@@ -126,6 +128,9 @@ export interface ChangeRecord {
   batchId?: string | null;
   payload: ChangePayload;
   impact: Impact | null;
+  /** Scheduled changes: who approved it, and the letter issued for it (HR and the person). */
+  decidedByName?: string | null;
+  letter?: { referenceNo: string; accepted: boolean } | null;
 }
 
 export interface HistoryRow {

@@ -140,7 +140,7 @@ export class DocumentsService {
       const types = await this.types(tx, org);
       const docs = await tx.document.findMany({ where: { organizationId: org, personId } });
       const out = [];
-      const askable: { key: string; name: string }[] = [];
+      const askable: { key: string; name: string; expiryTracked: boolean }[] = [];
       let canManage = false;
       for (const t of types) {
         const seen = await this.may(tx, c, v, 'view', t, personId).then(
@@ -156,7 +156,7 @@ export class DocumentsService {
         if (d && seen) {
           const f = await this.fileOf(tx, org, d);
           out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null });
-        } else if (!d && manage) askable.push({ key: t.key, name: t.name });
+        } else if (!d && manage) askable.push({ key: t.key, name: t.name, expiryTracked: t.expiryTracked });
       }
       return { person, personId, documents: out, askable, canManage };
     });

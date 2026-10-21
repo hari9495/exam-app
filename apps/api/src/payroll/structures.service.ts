@@ -15,7 +15,7 @@ import { PayDocumentsService } from './documents.service';
 import { CompensationChangeDto, CompensationInputDto, ComponentDto, FormulaCheckDto, LetterDto, StatutoryProfileDto, TemplateDto, TemplateVersionDto } from './dto-5b';
 import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 import { FNF_COMPONENTS, MODULE_COMPONENTS, STARTER_COMPONENTS, STARTER_TEMPLATE } from './starter';
-import { breakup, breakupJson, type ComponentDef, type Facts, type Line } from './structure';
+import { breakup, breakupJson, inCtcOf, lineBasis, type ComponentDef, type Facts, type Line } from './structure';
 
 // Batch 5b structures (PAY-2.06 formulas, 2.07 components, 2.08 templates, 2.09 compensation, 2.10 statutory profile).
 // Components and templates are company data (keys checked; an entity template needs the key on that entity, a
@@ -380,23 +380,35 @@ export class PayStructuresService {
         const pkg = await tx.compensationPackage.findFirst({ where: { organizationId: c.organizationId, changeId: comp.changeId } });
         const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: c.organizationId, packageId: pkg.id } }) : [];
         const comps = await tx.payComponent.findMany({ where: { organizationId: c.organizationId, id: { in: lines.map((l) => l.componentId) } } });
+        // PPL-03: which lines the CTC counts (the template's options, as the breakup did), so the table totals the CTC.
+        const ver = pkg?.templateVersionId ? await this.loadVersion(tx, c.organizationId, pkg.templateVersionId).catch(() => null) : null;
+        const rules = ver ? await this.rules.published() : [];
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.viewed', 'employee', employeeId, { asOn });
         // PPL-03 Pay tab: the last approved payslip's net pay and the tax regime of the current tax year (same grant, R1).
         await payScope(tx, [e.legalEntityId]);
         const slip = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, employeeId, status: 'approved', runType: 'regular' }, orderBy: [{ periodStart: 'desc' }, { version: 'desc' }] });
         const [y, m] = asOn.split('-').map(Number);
         const taxYear = m >= 4 ? `${y}-${String((y + 1) % 100).padStart(2, '0')}` : `${y - 1}-${String(y % 100).padStart(2, '0')}`;
-        const tax = await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear }, select: { regime: true, taxYear: true } });
+        const tax = await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear }, select: { id: true, regime: true, taxYear: true } });
+        const paidOn = slip ? await tx.paymentRecord.findFirst({ where: { organizationId: c.organizationId, payslipId: slip.id, status: { in: ['paid', 'cash'] } }, orderBy: { recordedAt: 'desc' }, select: { recordedAt: true } }) : null;
+        const proofsPending = tax ? await tx.taxDeclarationLine.count({ where: { organizationId: c.organizationId, workspaceId: tax.id, proofStatus: 'pending' } }) : 0;
+        // The next pay change already approved for a later date (a scheduled revision or promotion with pay).
+        const next = (await tx.employeeChange.findMany({ where: { organizationId: c.organizationId, employeeId, status: 'scheduled', effectiveDate: { gt: asDate(asOn) } }, orderBy: { effectiveDate: 'asc' }, select: { effectiveDate: true, payload: true } })).find((x) => (x.payload as { compensation?: { annualCtc?: string } } | null)?.compensation?.annualCtc);
         return {
-          lastNetPay: slip ? { month: slip.periodStart.toISOString().slice(0, 7), net: slip.net.toFixed(2), paid: slip.paymentStatus === 'paid' } : null,
-          taxRegime: tax ? { regime: tax.regime, taxYear: tax.taxYear } : null,
+          lastNetPay: slip ? { month: slip.periodStart.toISOString().slice(0, 7), net: slip.net.toFixed(2), paid: slip.paymentStatus === 'paid', paidOn: paidOn ? iso(paidOn.recordedAt) : null } : null,
+          taxRegime: tax ? { regime: tax.regime, taxYear: tax.taxYear, proofsPending } : null,
+          next: next ? { annualCtc: String((next.payload as { compensation: { annualCtc: string } }).compensation.annualCtc), from: iso(next.effectiveDate) } : null,
           validFrom: iso(comp.validFrom),
           validTo: iso(comp.validTo),
           currency: comp.currency,
           annualCtc: comp.annualCtc.toFixed(2),
           changeId: comp.changeId,
           package: pkg ? { entryMode: pkg.entryMode, payBasis: pkg.payBasis, rate: pkg.rate?.toFixed(2) ?? null, monthlyGross: pkg.monthlyGross.toFixed(2), codeWageAddBack: pkg.codeWageAddBack.toFixed(2), minWageCheck: pkg.minWageCheck, letterDocumentId: pkg.letterDocumentId } : null,
-          lines: lines.map((l) => { const k = comps.find((x) => x.id === l.componentId); return { code: k?.code, name: k?.name, kind: k?.kind, monthly: l.monthly.toFixed(2), annual: l.annual.toFixed(2), citation: l.citation }; }),
+          lines: lines.map((l) => {
+            const k = comps.find((x) => x.id === l.componentId);
+            const def = ver?.components.find((x) => x.id === l.componentId);
+            return { code: k?.code, name: k?.name, kind: k?.kind, monthly: l.monthly.toFixed(2), annual: l.annual.toFixed(2), citation: l.citation, inCtc: def && ver ? inCtcOf(def, ver.options) : k?.kind !== 'deduction', basis: def && ver ? lineBasis(def, ver.components, rules, iso(comp.validFrom)!) : null };
+          }),
         };
       }),
     );

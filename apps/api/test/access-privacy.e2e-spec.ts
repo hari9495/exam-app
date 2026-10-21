@@ -651,6 +651,54 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('adminB', 'get', `/people/employees/${ids.imran}/activity`).expect(404);
     });
 
+    it('PPL-03 family, nominees and emergency contacts: Personal class; HR edits family, the person their contacts; shares total 100', async () => {
+      const path = `/people/employees/${ids.imran}`;
+      const family = { members: [{ name: 'Shalini K', relation: 'Spouse', dateOfBirth: '1994-11-02', dependant: true }, { name: 'Suman K', relation: 'Mother', dependant: true }], nominations: [{ scheme: 'gratuity', member: 0, sharePercent: 60 }, { scheme: 'gratuity', member: 1, sharePercent: 40 }, { scheme: 'pf', member: 0, sharePercent: 100 }] };
+      // Shares per scheme total exactly 100; a nominee is one of the family being saved.
+      expect((await api('hrAll', 'put', `${path}/family`).send({ ...family, nominations: [{ scheme: 'gratuity', member: 0, sharePercent: 60 }] }).expect(400)).body.message).toMatch(/Gratuity shares must total 100/);
+      await api('hrAll', 'put', `${path}/family`).send({ ...family, nominations: [{ scheme: 'pf', member: 2, sharePercent: 100 }] }).expect(400);
+      // HR with employee.profile.edit saves; the person, a manager and HR without the edit key cannot; another company never finds the record.
+      const saved = (await api('hrAll', 'put', `${path}/family`).send(family).expect(200)).body;
+      expect(saved.nominations.map((n: { scheme: string; name: string; sharePercent: number }) => [n.scheme, n.name, n.sharePercent])).toEqual([['gratuity', 'Shalini K', 60], ['gratuity', 'Suman K', 40], ['pf', 'Shalini K', 100]]);
+      await api('imranU', 'put', `${path}/family`).send(family).expect(403);
+      await api('lakshmiU', 'put', `${path}/family`).send(family).expect(403);
+      await api('hrTn', 'put', `${path}/family`).send(family).expect(403);
+      await api('adminB', 'put', `${path}/family`).send(family).expect(404);
+      // A rename keeps the member (and its nominations); an unchanged nomination set is not re-reviewed.
+      const members = saved.members.map((m: { id: string; name: string; relation: string; dependant: boolean }) => ({ id: m.id, name: m.name, relation: m.relation, dependant: m.dependant }));
+      members[1].name = 'Suman Kulkarni';
+      const again = (await api('hrAll', 'put', `${path}/family`).send({ members, nominations: family.nominations }).expect(200)).body;
+      expect(again.nominations[1].name).toBe('Suman Kulkarni');
+      expect(again.nominationsReviewedAt).toBe(saved.nominationsReviewedAt);
+      // Emergency contacts: the person edits their own (phone validated); a manager cannot.
+      await api('imranU', 'put', `${path}/emergency-contacts`).send({ contacts: [{ name: 'Shalini K', relation: 'Spouse', phone: 'call me' }] }).expect(400);
+      expect((await api('imranU', 'put', `${path}/emergency-contacts`).send({ contacts: [{ name: 'Shalini K', relation: 'Spouse', phone: '98450 22872' }] }).expect(200)).body).toEqual([{ name: 'Shalini K', relation: 'Spouse', phone: '+919845022872' }]);
+      await api('lakshmiU', 'put', `${path}/emergency-contacts`).send({ contacts: [] }).expect(403);
+      await api('adminB', 'put', `${path}/emergency-contacts`).send({ contacts: [] }).expect(404);
+      // Reading: the person and HR with Personal access; never a manager; the person may not edit the family.
+      const own = (await api('imranU', 'get', `${path}/profile`).expect(200)).body;
+      expect(own.family.contacts).toHaveLength(1);
+      expect(own.can.editFamily).toBe(false);
+      expect((await api('hrTn', 'get', `${path}/profile`).expect(200)).body.family.members).toHaveLength(2);
+      const mgr = (await api('lakshmiU', 'get', `${path}/profile`).expect(200)).body;
+      expect(mgr.family).toBeNull();
+      expect(JSON.stringify(mgr)).not.toMatch(/Shalini|9845022872/);
+      // Audited without values.
+      const rows = [...(await auditRows('employee.family.updated')), ...(await auditRows('employee.emergency_contacts.updated'))];
+      expect(rows.map((a) => a.metadata)).toEqual([{ members: 2, removed: 0, nominationsChanged: true, by: 'hr' }, { members: 2, removed: 0, nominationsChanged: false, by: 'hr' }, { count: 1, by: 'self' }]);
+      expect(JSON.stringify(rows)).not.toMatch(/Shalini|9845022872/);
+      // Job tab (Internal): what is in force on the day, for the manager too; nothing set yet reads null.
+      const job = (await api('lakshmiU', 'get', `${path}/as-of`).expect(200)).body.job;
+      expect(Object.keys(job).sort()).toEqual(['holidayCalendar', 'noticePeriod', 'probationEndsOn', 'shiftPattern']);
+      expect(job.holidayCalendar).toBeNull();
+      // Time tab: the month's attendance in the muster's scope (the person, their manager); HR without attendance.view and another company never.
+      const month = today.slice(0, 7);
+      expect((await api('imranU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(200)).body).toMatchObject({ month, present: 0, late: [], missing: [] });
+      await api('lakshmiU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(200);
+      await api('arjunU', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(404);
+      await api('adminB', 'get', `/time/people/${ids.imran}/attendance?month=${month}`).expect(404);
+    });
+
     it('pay: only with a salary grant reaching the person, audited; a department head with team salary sees their subtree (Q3)', async () => {
       const tn = (await api('payrollTn', 'get', `/people/employees/${ids.imran}/history?pay=true`).expect(200)).body;
       expect(tn.compensation.map((r: { annualCtc: string }) => r.annualCtc)).toEqual(['610000.00']);

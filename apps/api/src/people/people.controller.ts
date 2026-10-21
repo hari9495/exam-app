@@ -26,7 +26,7 @@ import {
 } from './dto';
 import { PeopleService } from './people.service';
 import { ProfileService } from './profile.service';
-import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { EmergencyContactsDto, FamilyDto, PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
 //   implicit grants (YX-SEC-04)   directory and org chart for employees of the company (Public fields, P02 Q4);
@@ -147,6 +147,20 @@ export class PeopleController {
   async updatePersonal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PersonalDetailsDto) {
     ownSession(req);
     return this.profiles.updatePersonal(ctx, await this.viewer(req), id, dto);
+  }
+
+  /** PPL-03 family and nominations (Personal): HR with employee.profile.edit; each scheme's shares total 100. */
+  @Put('employees/:id/family')
+  async updateFamily(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FamilyDto) {
+    ownSession(req);
+    return this.profiles.updateFamily(ctx, await this.viewer(req), id, dto);
+  }
+
+  /** PPL-03 emergency contacts (Personal): the person edits their own; HR with employee.profile.edit. */
+  @Put('employees/:id/emergency-contacts')
+  async emergencyContacts(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EmergencyContactsDto) {
+    ownSession(req);
+    return this.profiles.setEmergencyContacts(ctx, await this.viewer(req), id, dto);
   }
 
   /** Identity, bank and legal-name changes go to approval; asking needs a fresh second factor (P02 §4.5). */

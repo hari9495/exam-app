@@ -425,6 +425,16 @@ describe('Person record (PPL-03)', () => {
     expect(screen.getByText(/have access to pay details for Arjun Kulkarni/)).toBeInTheDocument();
   });
 
+  it('pay: the table total is the header CTC, in whole rupees; empty cards say so', async () => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ pay: { kind: 'shown', ctc: 583200, currency: 'INR', from: day('2026-04-01'), lines: [{ label: 'Basic', monthly: 19440 }, { label: 'Special allowance', monthly: 28659.38 }, { label: 'Employer PF (12% of ₹15,000)', monthly: 500.62 }], outside: [{ label: 'Gratuity provision', monthly: 934.62 }], banks: [], lastNet: null, taxRegime: null } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Pay' }));
+    expect(screen.getAllByText('₹5,83,200')).toHaveLength(2);
+    expect(screen.getByText('₹48,600')).toBeInTheDocument();
+    expect(screen.queryByText(/\.\d\d$/)).toBeNull();
+    expect(screen.getByText('No payslip yet.')).toBeInTheDocument();
+    expect(screen.getByText('Not chosen for this tax year yet.')).toBeInTheDocument();
+  });
+
   it('pay is shown only after "Show pay"', async () => {
     const onShow = vi.fn();
     wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ pay: { kind: 'ask', onShow } })} />);

@@ -133,7 +133,19 @@ export interface ProfileView {
   /** Internal: the birthday as MM-DD (null when hidden or unknown). */
   birthday?: string | null;
   personId?: string;
-  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean };
+  /** PPL-03 family, nominations and emergency contacts (Personal class; null without it). */
+  family?: FamilyView | null;
+  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean; editFamily?: boolean };
+}
+
+export interface FamilyView {
+  members: { id: string; name: string; relation: string; dateOfBirth: string | null; dependant: boolean }[];
+  nominations: { scheme: string; familyMemberId: string | null; name: string; relation: string; sharePercent: number }[];
+  /** Schemes the person should name a nominee for. */
+  expectedSchemes: string[];
+  contacts: { name: string; relation: string; phone: string }[];
+  maritalChangedAt: string | null;
+  nominationsReviewedAt: string | null;
 }
 
 export interface ProfileRequestInput {

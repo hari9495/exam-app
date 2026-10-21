@@ -298,6 +298,11 @@ describe('Payroll batch 5b', () => {
     const mine = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(mine).toMatchObject({ annualCtc: '726000.00', package: { entryMode: 'ctc' } });
     expect(mine.lines.length).toBeGreaterThan(5);
+    // PPL-03 Pay tab (founder 22 Oct 2026): the lines the CTC counts total the header CTC; employer lines carry their basis.
+    const counted = (mine.lines as { annual: string; inCtc: boolean }[]).filter((l) => l.inCtc).reduce((s, l) => s + Number(l.annual), 0);
+    expect(Math.abs(counted - Number(mine.annualCtc))).toBeLessThan(0.5);
+    expect(mine.lines.find((l: { code: string }) => l.code === 'pf_employer')).toMatchObject({ inCtc: true, basis: '12% of ₹15,000' });
+    expect(mine.lines.find((l: { code: string }) => l.code === 'gratuity_provision')).toMatchObject({ inCtc: false });
     const seen = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(seen.changeId).toBe(ch.changeId);
     // PPL-03 Pay tab: the last approved payslip and the tax regime come with the same grant (none yet here).
