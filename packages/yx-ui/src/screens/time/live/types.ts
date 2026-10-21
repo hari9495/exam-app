@@ -85,9 +85,11 @@ export interface LeavePlan {
   warnings: string[];
 }
 
+export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
+
 export interface PunchRow {
   id: string;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   at: string;
   source: string;
   accepted: boolean;
@@ -116,7 +118,8 @@ export type FixKind = 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day';
 export interface FixRow {
   id: string;
   on: string;
-  kind: FixKind;
+  /** A fix of the day, or work from home on it (TIM-07). */
+  kind: FixKind | 'wfh';
   inMinute: number | null;
   outMinute: number | null;
   reason: string;
@@ -133,15 +136,26 @@ export interface MyAttendance {
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
+  /** On a break now (Start break pressed, End break not yet). */
+  onBreak?: boolean;
   days: DayRow[];
   requests: FixRow[];
   regularise: { limit: number; used: number };
+  /** Work-from-home days this month (asked for or approved) and the days a month the manager alone approves. */
+  wfh: { limit: number; used: number };
+  /** Today is an approved work-from-home day. */
+  wfhToday?: boolean;
+}
+
+export interface WfhInput {
+  on: string;
+  reason: string;
 }
 
 export interface PunchResult {
   accepted: boolean;
   duplicate: boolean;
-  kind: 'in' | 'out';
+  kind: PunchKind;
   message: string;
   verdict: string;
   distanceM: number | null;
@@ -167,7 +181,7 @@ export interface Muster {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; days: DayRow[] }[];
+  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; remindedOn?: string[]; days: DayRow[] }[];
 }
 
 export interface DayCard {

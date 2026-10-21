@@ -39,6 +39,21 @@ const monthName = (m: string) => day(`${m}-01`, { month: 'long' });
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const CLEARANCE: Record<string, string> = { it: 'IT', admin: 'Admin', asset: 'Assets', finance: 'Finance', hr: 'HR', manager_handover: 'Handover' };
 
+/** GET /payroll/me/home-pay: shown only when the company turned "Show net pay on the employee home" on. */
+export type HomePayResponse = { shown: false } | { shown: true; latest: { id: string; month: string; net: string } | null; previous: { month: string; net: string } | null };
+
+/** The employee's own net pay card (PLT-02 "HR shows pay"), or nothing when the company keeps pay off Home. */
+export function homePay(r: HomePayResponse | undefined): LiveHome['pay'] {
+  if (!r?.shown) return undefined;
+  if (!r.latest) return { label: 'Net pay', value: null, href: '/yx/me/payslips' };
+  return {
+    label: `Net pay, ${monthName(r.latest.month)}`,
+    value: Number(r.latest.net),
+    ...(r.previous ? { previous: Number(r.previous.net), previousLabel: monthName(r.previous.month) } : {}),
+    href: '/yx/me/payslips',
+  };
+}
+
 /** The live HR widgets in the designed Home's words (PLT-02 HR): the four count cards, due dates, joiners and leavers. */
 export function homeWidgets(w: HomeWidgets | undefined, today: string): Pick<LiveHome, 'stats' | 'due' | 'moves' | 'movesHref'> {
   if (!w) return {};
@@ -168,14 +183,17 @@ export function managerHome(input: {
   if (input.muster && people.length) {
     const todayOf = (p: (typeof people)[number]) => p.days.find((d) => d.on === today);
     const onLeave = people.filter((p) => todayOf(p)?.status === 'leave');
-    const notIn = people.filter((p) => NOT_IN.has(todayOf(p)?.status ?? ''));
+    // While the day is still on, the day engine says "not started" for everyone: checked in or not is the first punch.
+    const open = (p: (typeof people)[number], checkedIn: boolean) => todayOf(p)?.status === 'not_started' && Boolean(todayOf(p)?.firstIn) === checkedIn;
+    const notIn = people.filter((p) => NOT_IN.has(todayOf(p)?.status ?? '') || open(p, false));
     const late = people.filter((p) => (todayOf(p)?.lateMinutes ?? 0) > 0);
-    const inToday = people.filter((p) => ['present', 'half_day', 'missing_out'].includes(todayOf(p)?.status ?? ''));
+    const inToday = people.filter((p) => ['present', 'half_day', 'missing_out'].includes(todayOf(p)?.status ?? '') || open(p, true));
     out.team = {
       summary: `${inToday.length} in · ${onLeave.length} on leave · ${notIn.length} not checked in · ${late.length} late`,
       total: people.length,
       href: '/yx/time/muster',
-      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in' })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
+      // Nudge (PLT-02): someone not checked in yet can be reminded; the API checks scope and the day again.
+      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true, reminded: Boolean(p.remindedOn?.includes(today)) })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
     };
     const week = weekOf(today);
     const lastWeek = week.map((d) => new Date(new Date(`${d}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 10));

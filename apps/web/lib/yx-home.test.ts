@@ -1,4 +1,4 @@
-import { comingUp, employeeStats, hiringHome, homeWidgets, managerHome, myTasks } from './yx-home';
+import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks } from './yx-home';
 
 describe('hiringHome (recruiter Home)', () => {
   const now = new Date('2026-10-19T06:00:00Z');
@@ -74,6 +74,13 @@ describe('Employee home (parity with PLT-02 employee)', () => {
     expect(employeeStats({ now, before: att('2026-09-30', [day('2026-09-30', 'leave')]) }).every((x) => x.previous === undefined)).toBe(true);
   });
 
+  it('shows net pay only when the company turned it on, with last month when there is one', () => {
+    expect(homePay(undefined)).toBeUndefined();
+    expect(homePay({ shown: false })).toBeUndefined();
+    expect(homePay({ shown: true, latest: null, previous: null })).toEqual({ label: 'Net pay', value: null, href: '/yx/me/payslips' });
+    expect(homePay({ shown: true, latest: { id: 's', month: '2026-09', net: '86420.00' }, previous: { month: '2026-08', net: '84900.00' } })).toEqual({ label: 'Net pay, September', value: 86420, previous: 84900, previousLabel: 'August', href: '/yx/me/payslips' });
+  });
+
   it('lists the self-review, feedback and checklist tasks, and what is coming up', () => {
     expect(myTasks({ checklist: [{ id: 't', title: 'Upload PAN', dueOn: '2026-10-22' }], feedback: [{ id: 'f', employee: 'Meera', dueOn: null, open: true, done: false }], reviews: [{ id: 'r', cycle: 'H1 2026', next: { stage: 'self', dueOn: '2026-10-25' } }] })!.map((t) => t.text)).toEqual(['Write your self-review for H1 2026 by 25 Oct', 'Give feedback on Meera', 'Upload PAN by 22 Oct']);
     expect(comingUp([{ id: 'b', name: 'Arjun Mehta', kind: 'birthday', on: '2026-10-19' }], [{ id: 'h', on: '2026-10-20', name: 'Vijayadashami', kind: 'festival' }, { id: 'o', on: '2026-10-21', name: 'Optional', kind: 'optional' }], '2026-10-19')!.map((x) => `${x.name}: ${x.text}`)).toEqual(['Arjun Mehta: Birthday today', 'Vijayadashami: Holiday · 20 Oct 2026']);
@@ -82,13 +89,19 @@ describe('Employee home (parity with PLT-02 employee)', () => {
 
 describe('Manager home (parity with PLT-02 manager)', () => {
   it("builds team today, who's off and late check-ins against last week", () => {
-    const person = (id: string, days: { on: string; status: string; lateMinutes?: number }[]) => ({ id, name: id, code: null, location: '', me: false, mode: 'punch', missingPunchEffect: 'none', days: days.map((d) => ({ leavePart: null, workedMinutes: null, regularised: false, lateMinutes: null, ...d })) });
+    const person = (id: string, days: { on: string; status: string; lateMinutes?: number; firstIn?: string | null }[]) => ({ id, name: id, code: null, location: '', me: false, mode: 'punch', missingPunchEffect: 'none', days: days.map((d) => ({ leavePart: null, workedMinutes: null, regularised: false, lateMinutes: null, ...d })) });
     const m = managerHome({
       today: '2026-10-21',
       muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Sanjay', [{ on: '2026-10-21', status: 'missing_in' }]), person('Meera', [{ on: '2026-10-21', status: 'leave' }]), person('Kavya', [{ on: '2026-10-20', status: 'present', lateMinutes: 15 }, { on: '2026-10-13', status: 'present', lateMinutes: 5 }, { on: '2026-10-14', status: 'present', lateMinutes: 5 }, { on: '2026-10-21', status: 'present' }])] } as never,
       calendar: { from: '2026-10-19', to: '2026-10-25', scope: 'team', people: [{ id: 'm', name: 'Meera', code: null, me: false, holidays: [], days: [{ on: '2026-10-21', part: 'full', status: 'approved', code: 'CL', colour: 'green', name: 'Casual leave' }] }] } as never,
     });
     expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
+    // During the day: the first punch says who is in; someone with none yet is not checked in (and can be nudged).
+    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), { ...person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }]), remindedOn: ['2026-10-21'] }] } as never });
+    expect(during.team?.summary).toBe('1 in · 0 on leave · 1 not checked in · 0 late');
+    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true, reminded: true })]);
+    // Only someone not checked in can be nudged.
+    expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);
     expect(m.stats?.[0]).toMatchObject({ label: 'Late check-ins this week', value: 1, previous: 2, previousLabel: 'last week' });
   });
