@@ -46,6 +46,8 @@ export interface OrgChartData {
   futureDates?: boolean;
   nodes: OrgChartNode[];
   /** PPL-02 Position view: open job openings under their hiring manager (HR and hiring only). */
+  /** The viewer may use the Position view (HR, hiring, or a hiring manager), even when nothing is open today. */
+  positions?: boolean;
   vacancies?: { id: string; role: string; department: string | null; location: string | null; managerId: string | null; openings: number }[];
 }
 
