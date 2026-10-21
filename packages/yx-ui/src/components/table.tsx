@@ -70,6 +70,8 @@ export interface ColumnState {
   order: string[];
   hidden: string[];
   widths: Record<string, number>;
+  /** Columns the person ticked to show: never hidden to fit (the table scrolls instead). */
+  pinned?: string[];
 }
 
 export interface DataTableProps<R> {
@@ -865,7 +867,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       for (const pick of [(c: TableColumn<R>) => !!c.optional, plain]) {
         for (const c of [...shownByUser].reverse()) {
           if (total <= boxW - fixedW) break;
-          if (c.key === firstKey || want.includes(c.key) || !pick(c)) continue;
+          if (c.key === firstKey || want.includes(c.key) || colState.pinned?.includes(c.key) || !pick(c)) continue;
           want.push(c.key);
           total -= least(c);
         }
@@ -1106,6 +1108,7 @@ export function ColumnManager<R>({
     onChange({ ...state, order: n });
   };
   const hiddenCount = new Set([...state.hidden.filter((k) => k !== firstKey), ...autoHidden]).size;
+  const fitted = (key: string) => autoHidden.includes(key) && !state.hidden.includes(key);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -1122,10 +1125,17 @@ export function ColumnManager<R>({
               <li key={c.key} className="yx-colmgr__item">
                 <Checkbox
                   label={c.header}
-                  description={autoHidden.includes(c.key) && !state.hidden.includes(c.key) ? 'Hidden to fit; widen the window to see it' : undefined}
-                  checked={!state.hidden.includes(c.key) || c.key === firstKey}
+                  description={fitted(c.key) ? 'Hidden to fit. Tick to show it; the table then scrolls sideways.' : undefined}
+                  // Ticked means on screen: a column hidden to fit shows unticked (founder, 21 Oct 2026).
+                  checked={c.key === firstKey || (!state.hidden.includes(c.key) && !fitted(c.key))}
                   disabled={locked}
-                  onChange={(on) => onChange({ ...state, hidden: on ? state.hidden.filter((k) => k !== c.key) : [...state.hidden, c.key] })}
+                  onChange={(on) =>
+                    onChange({
+                      ...state,
+                      hidden: on ? state.hidden.filter((k) => k !== c.key) : [...state.hidden, c.key],
+                      pinned: on ? [...(state.pinned ?? []).filter((k) => k !== c.key), c.key] : (state.pinned ?? []).filter((k) => k !== c.key),
+                    })
+                  }
                 />
                 <span className="yx-colmgr__move">
                   <IconButton icon={ArrowUp} label={`Move ${c.header} up`} size="sm" disabled={i <= 1} onClick={() => move(c.key, -1)} />
@@ -1136,7 +1146,8 @@ export function ColumnManager<R>({
           })}
         </ul>
         <div className="yx-filter-editor__foot">
-          <Button size="sm" onClick={() => onChange({ order: defaultOrder, hidden: [], widths: {} })}>
+          {/* Reset shows every column again, the ones hidden to fit too. */}
+          <Button size="sm" onClick={() => onChange({ order: defaultOrder, hidden: [], widths: {}, pinned: defaultOrder })}>
             Reset columns
           </Button>
         </div>
