@@ -146,12 +146,35 @@ export class LearningService implements OnModuleInit {
     const rows = await tx.learningEnrolment.findMany({ where: { organizationId: c.organizationId, employeeId, status: { notIn: ['cancelled', 'declined'] } }, orderBy: [{ dueOn: 'asc' }, { createdAt: 'desc' }] });
     const courses = await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.courseId))] } } });
     const req = await this.requiredCounts(tx, c, rows.map((r) => r.id), courses.map((x) => x.id));
+    // Sessions: the next slot, and the place on the waitlist.
+    const sessionIds = [...new Set(rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])))];
+    const slots = sessionIds.length ? await tx.learningSessionSlot.findMany({ where: { organizationId: c.organizationId, sessionId: { in: sessionIds } }, orderBy: { startsAt: 'asc' } }) : [];
+    const waiting = sessionIds.length ? await tx.learningEnrolment.findMany({ where: { organizationId: c.organizationId, sessionId: { in: sessionIds }, status: 'waitlisted' }, orderBy: { waitlistedAt: 'asc' }, select: { id: true, sessionId: true } }) : [];
+    const now = Date.now();
+    const when = (d: Date) => d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
     return rows.flatMap((r) => {
       const course = courses.find((x) => x.id === r.courseId);
       if (!course) return [];
       const done = req.done.get(r.id) ?? 0;
       const total = req.total.get(r.courseId) ?? 0;
-      return [{ id: r.id, course: this.courseView(course, company), status: shownStatus({ status: r.status, dueOn: iso(r.dueOn) }, today), source: SOURCE_LABEL[r.source] ?? r.source, due: iso(r.dueOn), progress: r.status === 'completed' ? 100 : progressPct(done, total), completedOn: iso(r.completedAt) }];
+      const mine = slots.filter((x) => x.sessionId === r.sessionId);
+      const next = mine.find((x) => x.endsAt.getTime() > now);
+      const n = next ? mine.indexOf(next) + 1 : 0;
+      const queue = waiting.filter((w) => w.sessionId === r.sessionId);
+      const open = ['enrolled', 'in_progress', 'waitlisted'].includes(r.status);
+      return [{
+        id: r.id,
+        course: this.courseView(course, company),
+        status: shownStatus({ status: r.status, dueOn: iso(r.dueOn) }, today),
+        source: SOURCE_LABEL[r.source] ?? r.source,
+        due: iso(r.dueOn),
+        progress: r.status === 'completed' ? 100 : progressPct(done, total),
+        completedOn: iso(r.completedAt),
+        sessionId: r.sessionId,
+        nextSession: open && next ? `Session ${n} on ${when(next.startsAt)}` : null,
+        waitlistPosition: r.status === 'waitlisted' ? queue.findIndex((w) => w.id === r.id) + 1 : null,
+        canDecline: r.source === 'nominated' && !course.mandatory && (r.status === 'enrolled' || r.status === 'waitlisted'),
+      }];
     });
   }
 

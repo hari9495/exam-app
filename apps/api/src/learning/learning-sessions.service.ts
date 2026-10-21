@@ -447,6 +447,14 @@ export class LearningSessionsService {
     });
   }
 
+  /** Whether I run sessions as an internal trainer (the menu shows Sessions). */
+  async roles(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await ownEmployee(tx, c);
+      return { trainer: Boolean(me && (await tx.learningTrainer.count({ where: { organizationId: c.organizationId, employeeId: me } }))) };
+    });
+  }
+
   /** Scheduled sessions of a course with free seats, for self-enrolment and nominations. */
   async upcoming(ctx: TenantContext, courseId: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

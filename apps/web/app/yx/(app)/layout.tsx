@@ -1,5 +1,6 @@
 'use client';
 
+import { useLearning } from '../../../lib/yx-learning';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -61,6 +62,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
+  // Internal trainers get Learning › Sessions.
+  const learningRoles = useLearning<{ trainer: boolean }>('/me/roles');
   const counts = useWorkspaceCounts();
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
@@ -101,6 +104,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         clearance: Boolean(myClearance.data?.rows.length),
         tasks: Boolean(myTasks.data?.tasks.length),
         firstDays: Boolean(firstDays.data?.card),
+        trainer: Boolean(learningRoles.data?.trainer),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps

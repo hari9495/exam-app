@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { MyLearningScreen, type LearningCourse, type LiveCertificate, type LiveEnrolment, type LiveExternal } from '@yukthix/ui/frame';
+import { MyLearningScreen, type LearningCourse, type LiveCertificate, type LiveEnrolment, type LiveExternal, type SessionOption } from '@yukthix/ui/frame';
+import { apiFetch } from '../../../../lib/api-client';
+import { useAuth } from '../../../../lib/auth-context';
 import { loadState } from '../../../../lib/yx-org';
 import { useLearning, useLearningFiles, useLearningWrite } from '../../../../lib/yx-learning';
 
@@ -19,6 +21,9 @@ export function MyLearningPage({ tab }: { tab: 'mine' | 'catalogue' | 'certifica
   const me = useLearning<Me>('/me');
   const write = useLearningWrite();
   const files = useLearningFiles();
+  const { accessToken } = useAuth();
+  // A manager nominates their team from the catalogue.
+  const team = useLearning<{ people: { employeeId: string; name: string; role: string }[] }>('/team');
   return (
     <MyLearningScreen
       enrolments={[]}
@@ -36,6 +41,26 @@ export function MyLearningPage({ tab }: { tab: 'mine' | 'catalogue' | 'certifica
           try {
             const out = await write<{ id: string; status: string }>('POST', `/courses/${encodeURIComponent(course.id)}/enrol`, opts);
             toast({ tone: 'success', title: out.status === 'Requested' ? `You asked to join ${course.title}` : `You are enrolled in ${course.title}`, ...(out.status === 'Requested' ? { description: 'It starts once it is approved.' } : {}) });
+          } catch (e) {
+            toast({ tone: 'error', title: e instanceof Error ? e.message : 'That did not work. Try again.' });
+            throw e;
+          }
+        },
+        onSessions: (courseId) => apiFetch(`/learning/courses/${encodeURIComponent(courseId)}/sessions`, {}, accessToken ?? undefined) as Promise<SessionOption[]>,
+        team: (team.data?.people ?? []).map((p) => ({ value: p.employeeId, label: `${p.name}, ${p.role}` })),
+        onNominate: async (course, sessionId, employeeIds) => {
+          try {
+            const out = await write<{ result: { name: string; result: string }[] }>('POST', `/sessions/${encodeURIComponent(sessionId)}/nominate`, { employeeIds });
+            toast({ tone: 'success', title: `${out.result.length} ${out.result.length === 1 ? 'person' : 'people'} nominated for ${course.title}`, description: out.result.map((r) => `${r.name}: ${r.result}`).join(' · ') });
+          } catch (e) {
+            toast({ tone: 'error', title: e instanceof Error ? e.message : 'The nomination did not go. Try again.' });
+            throw e;
+          }
+        },
+        onDecline: async (id, reason) => {
+          try {
+            await write('POST', `/enrolments/${encodeURIComponent(id)}/decline`, { reason });
+            toast({ tone: 'success', title: 'Nomination declined', description: 'Your manager sees your reason.' });
           } catch (e) {
             toast({ tone: 'error', title: e instanceof Error ? e.message : 'That did not work. Try again.' });
             throw e;

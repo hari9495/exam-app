@@ -24,7 +24,8 @@ import { isGroup, type Rule, type RuleSchema } from '../../lib/rules';
 import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { GrowthFrame, ProgressRing } from './growth-kit';
-import { complianceCell } from './growth-logic';
+import { complianceCell, enrol as seatFor } from './growth-logic';
+import { DeclineSheet, NominateSheet, type SessionOption } from './learn-sessions-live';
 import type { Course, CourseType } from './learn-me';
 import type { LoadState } from './perf-goals';
 import './growth.css';
@@ -41,7 +42,7 @@ function Loading({ state, onRetry, what, children }: { state: LoadState; onRetry
 
 /* ================================================================== LRN-01 · My learning + catalogue */
 
-export type LiveEnrolmentStatus = 'Requested' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue';
+export type LiveEnrolmentStatus = 'Requested' | 'Waitlisted' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue';
 export interface LiveEnrolment {
   id: string;
   course: Course;
@@ -49,6 +50,10 @@ export interface LiveEnrolment {
   source: string;
   due: string | null;
   progress: number;
+  /** Sessions: "Session 1 on 8 Oct, 2:00 pm", the waitlist place, and whether a nomination may be declined. */
+  nextSession?: string | null;
+  waitlistPosition?: number | null;
+  canDecline?: boolean;
 }
 export interface LiveCertificate {
   id: string;
@@ -82,11 +87,17 @@ export interface LiveMyLearning {
   onTab: (tab: 'mine' | 'catalogue' | 'certificates') => void;
   onOpen: (enrolmentId: string) => void;
   /** Enrol, or ask when the course needs approval; above the bond threshold the bond is accepted first. */
-  onEnrol: (course: Course, opts: { acceptBond: boolean }) => Promise<void>;
+  onEnrol: (course: Course, opts: { acceptBond: boolean; sessionId?: string }) => Promise<void>;
+  /** Upcoming sessions of a classroom or virtual course. */
+  onSessions?: (courseId: string) => Promise<SessionOption[]>;
+  /** A manager's team, to nominate from the catalogue (empty: no Nominate). */
+  team?: SelectOption[];
+  onNominate?: (course: Course, sessionId: string, employeeIds: string[]) => Promise<void>;
+  onDecline?: (enrolmentId: string, reason: string) => Promise<void>;
   onDownload: (certificateId: string) => void;
 }
 
-const STATUS_TONE: Record<LiveEnrolmentStatus, BadgeTone> = { Overdue: 'danger', Requested: 'info', Enrolled: 'neutral', 'In progress': 'neutral', Completed: 'success' };
+const STATUS_TONE: Record<LiveEnrolmentStatus, BadgeTone> = { Overdue: 'danger', Requested: 'info', Waitlisted: 'info', Enrolled: 'neutral', 'In progress': 'neutral', Completed: 'success' };
 
 function LiveCourseCard({ c, action }: { c: Course; action?: ReactNode }) {
   return (
@@ -118,6 +129,8 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
   const [q, setQ] = useState('');
   const [sheet, setSheet] = useState<Course | null>(null);
   const [asking, setAsking] = useState(false);
+  const [declining, setDeclining] = useState<LiveEnrolment | null>(null);
+  const [nominating, setNominating] = useState<{ course: Course; sessions: SessionOption[] } | null>(null);
   const d = live.data;
   const open = new Map((d?.enrolments ?? []).filter((e) => e.status !== 'Completed').map((e) => [e.course.id, e.status]));
   const completed = new Set((d?.enrolments ?? []).filter((e) => e.status === 'Completed').map((e) => e.course.id));
@@ -188,8 +201,15 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
                   <span className="yx-growth-meta">
                     {e.source}
                     {e.due ? ` · due ${formatDate(day(e.due))}` : ''}
+                    {e.nextSession ? ` · ${e.nextSession}` : ''}
+                    {e.waitlistPosition ? ` · Waitlist position ${e.waitlistPosition}` : ''}
                   </span>
                 </div>
+                {e.canDecline && live.onDecline && (
+                  <Button size="sm" onClick={() => setDeclining(e)}>
+                    Decline
+                  </Button>
+                )}
                 {e.course.mandatory && <Badge tone="warning">Mandatory</Badge>}
                 <Badge tone={STATUS_TONE[e.status]}>{e.status}</Badge>
               </li>
@@ -247,9 +267,16 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
                 ) : completed.has(c.id) ? (
                   <Badge tone="success">Completed</Badge>
                 ) : d?.employee ? (
-                  <Button size="sm" onClick={() => setSheet(c)}>
-                    {c.approval ? 'Request' : 'Enrol'}
-                  </Button>
+                  <div className="yx-growth-row">
+                    {live.team?.length && live.onNominate && live.onSessions && (c.type === 'Classroom' || c.type === 'Virtual') ? (
+                      <Button size="sm" onClick={async () => setNominating({ course: c, sessions: await live.onSessions!(c.id) })}>
+                        Nominate
+                      </Button>
+                    ) : null}
+                    <Button size="sm" onClick={() => setSheet(c)}>
+                      {c.approval ? 'Request' : 'Enrol'}
+                    </Button>
+                  </div>
                 ) : undefined
               }
             />
@@ -280,7 +307,9 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
           </Tabs>
         )}
       </Loading>
-      {sheet && <EnrolSheet course={sheet} onClose={() => setSheet(null)} onEnrol={live.onEnrol} />}
+      {sheet && <EnrolSheet course={sheet} onClose={() => setSheet(null)} onEnrol={live.onEnrol} onSessions={live.onSessions} />}
+      {declining && live.onDecline && <DeclineSheet course={declining.course.title} mandatory={Boolean(declining.course.mandatory)} onClose={() => setDeclining(null)} onDecline={(reason) => live.onDecline!(declining.id, reason)} />}
+      {nominating && live.onNominate && <NominateSheet title={`Nominate for ${nominating.course.title}`} course={nominating.course.title} sessions={nominating.sessions} people={live.team ?? []} mandatory={Boolean(nominating.course.mandatory)} onClose={() => setNominating(null)} onNominate={(ids, sessionId) => live.onNominate!(nominating.course, sessionId!, ids)} />}
       {asking && live.onExternal && <ExternalSheet onClose={() => setAsking(false)} onSend={live.onExternal} />}
     </GrowthFrame>
   );
@@ -290,9 +319,17 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
 export const BOND_ABOVE = 25000;
 
 /** LRN-06 "self": enrol in a course, or ask when it needs approval; the bond is accepted first above the threshold. */
-function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () => void; onEnrol: LiveMyLearning['onEnrol'] }) {
+function EnrolSheet({ course, onClose, onEnrol, onSessions }: { course: Course; onClose: () => void; onEnrol: LiveMyLearning['onEnrol']; onSessions?: LiveMyLearning['onSessions'] }) {
   const [bond, setBond] = useState(false);
   const [busy, setBusy] = useState(false);
+  const sessionCourse = course.type === 'Classroom' || course.type === 'Virtual';
+  const [sessions, setSessions] = useState<SessionOption[] | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (sessionCourse && onSessions) void onSessions(course.id).then((xs) => (setSessions(xs), setSessionId(xs[0]?.id ?? null))).catch(() => setSessions([]));
+  }, [course.id, sessionCourse, onSessions]);
+  const picked = sessions?.find((x) => x.id === sessionId);
+  const seat = picked ? seatFor({ seats: picked.seats, enrolled: Array.from({ length: picked.enrolled }, (_, i) => `x${i}`), waitlist: Array.from({ length: picked.waitlist }, (_, i) => `w${i}`) }, 'me') : null;
   const needsBond = course.cost > BOND_ABOVE;
   const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
   return (
@@ -305,12 +342,12 @@ function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () 
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={needsBond && !bond}
+            disabled={(needsBond && !bond) || (sessionCourse && !sessionId)}
             loading={busy}
             onClick={async () => {
               setBusy(true);
               try {
-                await onEnrol(course, { acceptBond: needsBond && bond });
+                await onEnrol(course, { acceptBond: needsBond && bond, ...(sessionId ? { sessionId } : {}) });
                 onClose();
               } catch {
                 // The page has said what went wrong; the sheet stays open to try again.
@@ -325,7 +362,15 @@ function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () 
       }
     >
       <div className="yx-growth-stack">
-        <DescriptionList items={[{ label: 'Course', value: course.title }, { label: 'Session', value: course.type === 'Self-paced' ? 'Self-paced' : course.type }, { label: 'Cost per person', value: course.cost ? inr(course.cost) : 'No cost' }]} />
+        <DescriptionList items={[{ label: 'Course', value: course.title }, ...(sessionCourse ? [] : [{ label: 'Session', value: 'Self-paced' }]), { label: 'Cost per person', value: course.cost ? inr(course.cost) : 'No cost' }]} />
+        {sessionCourse &&
+          (sessions && sessions.length === 0 ? (
+            <InlineAlert tone="info">No session is scheduled yet. L&amp;D schedules sessions; ask them when the next one is.</InlineAlert>
+          ) : (
+            <FormField label="Session" required>
+              <Select value={sessionId} onChange={setSessionId} options={(sessions ?? []).map((x) => ({ value: x.id, label: `${x.label} · ${x.enrolled} of ${x.seats} seats` }))} placeholder="Choose a session" />
+            </FormField>
+          ))}
         {needsBond && (
           <Card title="Training bond">
             <Text>
@@ -339,7 +384,8 @@ function EnrolSheet({ course, onClose, onEnrol }: { course: Course; onClose: () 
         <div className="yx-growth-effect" aria-live="polite">
           <span className="yx-growth-effect__title">What happens</span>
           <ul>
-            <li>{course.approval ? 'Goes to your manager, then L&D for approval.' : 'You’re enrolled straight away.'}</li>
+            {seat && !course.approval && <li>You: {seat.result === 'Waitlisted' ? `Waitlist, position ${'position' in seat ? seat.position : ''}` : 'Enrolled'}</li>}
+            <li>{course.approval ? 'Goes to your manager, then L&D for approval.' : sessionCourse && seat?.result === 'Waitlisted' ? 'You get a seat when one frees up, and you’re told.' : 'You’re enrolled straight away.'}</li>
             {course.certificate && <li>A certificate is issued on completion.</li>}
           </ul>
         </div>

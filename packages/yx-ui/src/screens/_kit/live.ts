@@ -60,3 +60,19 @@ export {
   type RuleInput as LearningRuleInput,
   type TeamLearningData,
 } from '../growth/learn-live';
+// Learning sessions (LRN-04, 05, 06).
+export {
+  LiveSessionsScreen,
+  LiveSessionPageScreen,
+  LiveTrainerQrScreen,
+  CheckInScreen,
+  type LiveSessions,
+  type LiveSessionRow,
+  type LiveTrainerRow,
+  type LiveSessionPage,
+  type LiveSessionPageData,
+  type LiveTrainerQr,
+  type ScheduleInput,
+  type TrainerInput,
+  type SessionOption,
+} from '../growth/learn-sessions-live';

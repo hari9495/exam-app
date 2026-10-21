@@ -39,6 +39,8 @@ export interface NavInput {
   clearance: boolean;
   tasks: boolean;
   firstDays: boolean;
+  /** Runs learning sessions as an internal trainer. */
+  trainer?: boolean;
 }
 
 const L = (id: string, label: string, href: string, count?: CountKey): NavLink => ({ id, label, href, ...(count ? { count } : {}) });
@@ -233,6 +235,7 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: sec(undefined, [
       ...when(self, L('my-learning', 'My learning', '/yx/learning'), L('catalogue', 'Catalogue', '/yx/learning/catalogue')),
       ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team')),
+      ...when(!support && (has('learning.manage') || Boolean(n.trainer)), L('learning-sessions', 'Sessions', '/yx/learning/sessions')),
       ...when(!support && has('learning.report.view'), L('learning-compliance', 'Compliance', '/yx/learning/compliance')),
       ...when(!support && has('learning.manage'), L('course-builder', 'Course builder', '/yx/learning/courses')),
     ]),

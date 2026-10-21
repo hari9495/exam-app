@@ -35,7 +35,8 @@ describe('buildNav: Learning', () => {
   it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
     expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue']);
     expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My team']);
-    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Compliance', 'Course builder']);
+    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Sessions', 'Compliance', 'Course builder']);
+    expect(labels(nav([], { employee: true, trainer: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'Sessions']);
     expect(areas(nav(['learning.manage'], { support: true }))).not.toContain('learning');
     expect(activeLink(nav(['learning.manage', 'learning.report.view'], { employee: true }), '/yx/learning/compliance/rules')?.link.label).toBe('Compliance');
     expect(activeLink(nav([], { employee: true }), '/yx/learning/enrolments/abc')?.link.label).toBe('My learning');

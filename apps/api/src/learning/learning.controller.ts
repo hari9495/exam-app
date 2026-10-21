@@ -203,6 +203,11 @@ export class LearningController {
     return this.learning.enrol(ctx, id, dto);
   }
 
+  @Get('me/roles')
+  roles(@CurrentTenant() ctx: TenantContext) {
+    return this.sessions.roles(ctx);
+  }
+
   @Post('me/external')
   external(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ExternalDto) {
     ownSession(req);
