@@ -319,12 +319,14 @@ export function DataTable<R>(props: DataTableProps<R>) {
     hidden: defaultColumnState?.hidden ?? [],
     widths: defaultColumnState?.widths ?? Object.fromEntries(columns.filter((c) => c.width).map((c) => [c.key, c.width!])),
   }));
-  const updateCols = (fn: (s: ColumnState) => ColumnState) =>
-    setColState((s) => {
-      const n = fn(s);
-      onColumnStateChange?.(n);
-      return n;
-    });
+  const updateCols = (fn: (s: ColumnState) => ColumnState) => setColState(fn);
+  // Tell the page after the change, not inside the state update (a parent update while rendering is a React error).
+  const told = useRef(colState);
+  useEffect(() => {
+    if (told.current === colState) return;
+    told.current = colState;
+    onColumnStateChange?.(colState);
+  }, [colState]); // eslint-disable-line react-hooks/exhaustive-deps
   const byKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns]);
   const ordered = useMemo(() => {
     const keys = [...colState.order.filter((k) => byKey.has(k)), ...columns.map((c) => c.key).filter((k) => !colState.order.includes(k))];
