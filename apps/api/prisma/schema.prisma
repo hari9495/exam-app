@@ -10150,6 +10150,26 @@ model RestructureDraft {
   @@map("restructure_drafts")
 }
 
+/// PPL-07 "Save and exit": an employee import kept for the person who saved it. Deleted after 30 days.
+model EmployeeImportDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  fileName       String   @map("file_name") @db.VarChar(200)
+  rowCount       Int      @map("row_count")
+  /// upload · map · validate · review
+  step           String   @db.VarChar(20)
+  /// The file's columns and rows, the matching and the fixes, sealed as one value.
+  payloadEnc     String   @map("payload_enc")
+  savedAt        DateTime @default(now()) @map("saved_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId], map: "employee_import_drafts_owner_key")
+  @@index([expiresAt], map: "employee_import_drafts_expires_idx")
+  @@map("employee_import_drafts")
+}
+
 // ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
 
 model Nudge {

@@ -7,6 +7,7 @@ export default meta;
 type S = StoryObj;
 
 export const Upload: S = { name: 'Upload', render: () => <EmployeeImportWizard /> };
+export const Saved: S = { name: 'Saved import to resume', render: () => <EmployeeImportWizard saved /> };
 export const Map: S = { name: 'Match columns', render: () => <EmployeeImportWizard current="map" /> };
 export const Validation: S = { name: 'Validation preview with problems', render: () => <EmployeeImportWizard current="validate" /> };
 export const Clean: S = { name: 'Validation preview, all ready', render: () => <EmployeeImportWizard current="validate" rows={[SAMPLE_IMPORT[0], SAMPLE_IMPORT[4]]} /> };

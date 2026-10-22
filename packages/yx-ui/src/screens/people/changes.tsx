@@ -22,7 +22,7 @@ import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
-import { LiveEmployeeImport, type LiveImport } from './import';
+import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
 import { LiveRestructureWizard, type LiveRestructure } from './restructure';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
@@ -944,11 +944,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; live?: LiveImport }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean; live?: LiveImport }) {
   return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
 }
 
-function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload', saved = false }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});
@@ -982,6 +982,13 @@ function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SA
             summary: hasFile ? `kaveri-joiners-oct.xlsx · ${initialRows.length} rows · Kaveri Foods Pvt Ltd` : 'No file yet',
             content: (
               <div className="yx-ppl__form">
+                {saved && !hasFile && (
+                  <SavedImportNotice
+                    draft={{ fileName: 'kaveri-joiners-oct.xlsx', rows: initialRows.length, entity: 'Kaveri Foods Pvt Ltd', step: 'validate', savedAt: '2026-10-21T09:40:00Z', keptUntil: '2026-11-20T09:40:00Z' }}
+                    onResume={() => setHasFile(true)}
+                    onDiscard={async () => {}}
+                  />
+                )}
                 <FormField label="Legal entity" required helper="New people join this entity and get codes in its series (KF).">
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="kf" onChange={() => {}} />
                 </FormField>
