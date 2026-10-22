@@ -73,8 +73,12 @@ export class PermissionsGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const handler = context.getHandler();
-    const requiredAll = this.reflector.get<string[]>(PERMISSIONS_KEY, handler);
-    const requiredAny = this.reflector.get<string[]>(PERMISSIONS_ANY_KEY, handler);
+    // A @RequirePermissions on the controller class applies to every route too (it was ignored: drip, surveys and the
+    // custom-fields settings were open to any signed-in user). Route and class keys are both required.
+    const cls = context.getClass();
+    const all = [...(this.reflector.get<string[]>(PERMISSIONS_KEY, handler) ?? []), ...(this.reflector.get<string[]>(PERMISSIONS_KEY, cls) ?? [])];
+    const requiredAll = all.length ? [...new Set(all)] : undefined;
+    const requiredAny = this.reflector.get<string[]>(PERMISSIONS_ANY_KEY, handler) ?? this.reflector.get<string[]>(PERMISSIONS_ANY_KEY, cls);
     const stepUp = this.reflector.get<boolean>(STEP_UP_REQUIRED, handler) === true;
     const sensitiveAction = this.reflector.get<boolean>(SENSITIVE_ROLE_ACTION, handler) === true;
     const hasAllRequirement = Boolean(requiredAll && requiredAll.length > 0);
