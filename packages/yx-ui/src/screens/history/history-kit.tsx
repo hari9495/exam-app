@@ -513,7 +513,7 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
           </InlineAlert>
         ) : (
           <Text as="p" tone="secondary" size="sm">
-            What changes shows here once the change is filled in.
+            Fill in every required field, including the reason, to see what changes.
           </Text>
         )}
         {error && (
