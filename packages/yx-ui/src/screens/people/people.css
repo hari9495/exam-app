@@ -23,6 +23,11 @@
 .yx-ppl__family li { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--yx-space-2); }
 .yx-ppl__family-who { display: flex; flex-direction: column; min-width: 0; }
 .yx-ppl__family-meta { display: flex; align-items: center; gap: var(--yx-space-2); flex-shrink: 0; }
+.yx-ppl__family li.yx-ppl__scheme { flex-direction: column; align-items: stretch; gap: var(--yx-space-1); }
+.yx-ppl__scheme-head { display: flex; justify-content: space-between; align-items: center; gap: var(--yx-space-2); }
+.yx-ppl__nominees { list-style: none; margin: 0; padding: 0 0 0 var(--yx-space-3); display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-ppl__nominees li { display: flex; justify-content: space-between; gap: var(--yx-space-2); }
+.yx-ppl__share { font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .yx-ppl__contacts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-ppl__contacts li { display: flex; align-items: center; flex-wrap: wrap; gap: var(--yx-space-3); }
 .yx-ppl__footnote { display: flex; align-items: center; gap: var(--yx-space-1); margin-top: var(--yx-space-3); }

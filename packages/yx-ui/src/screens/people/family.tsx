@@ -68,7 +68,7 @@ export function schemeRows(nominations: Nomination[], expected: string[]) {
   const rows = schemes.map((scheme) => {
     const ns = nominations.filter((n) => n.scheme === scheme);
     // In hundredths, so 33.33 + 33.33 + 33.34 is exactly 100.
-    return { scheme, nominees: ns.map((n) => ({ name: n.name, share: n.share })), total: ns.reduce((s, n) => s + Math.round(n.share * 100), 0) / 100 };
+    return { scheme, nominees: ns.map((n) => ({ name: n.name, share: n.share, member: n.member })), total: ns.reduce((s, n) => s + Math.round(n.share * 100), 0) / 100 };
   });
   return { rows, missing: schemes.includes('all') ? [] : expected.filter((s) => !schemes.includes(s)) };
 }
@@ -120,15 +120,27 @@ export function FamilyCards({ family, today }: { family: RecordFamily; today: Da
             {rows.length || missing.length ? (
               <ul className="yx-ppl__family">
                 {rows.map((r) => (
-                  <li key={r.scheme}>
-                    <span>
-                      <strong>{schemeLabel(r.scheme)}</strong> — {r.nominees.map((n) => `${n.name} ${n.share}%`).join(' · ')}
+                  // One scheme per row, one nominee per line under it, spaced like Family (founder, 22 Oct 2026).
+                  <li key={r.scheme} className="yx-ppl__scheme">
+                    <span className="yx-ppl__scheme-head">
+                      <strong>{schemeLabel(r.scheme)}</strong>
+                      {r.total === 100 ? (
+                        <Badge tone="success"><Icon icon={Check} size="sm" /> 100%</Badge>
+                      ) : (
+                        <Badge tone="warning">{r.total}%, not 100%</Badge>
+                      )}
                     </span>
-                    {r.total === 100 ? (
-                      <Badge tone="success"><Icon icon={Check} size="sm" /> 100%</Badge>
-                    ) : (
-                      <Badge tone="warning">{r.total}%, not 100%</Badge>
-                    )}
+                    <ul className="yx-ppl__nominees">
+                      {r.nominees.map((n) => (
+                        <li key={n.name}>
+                          <span>
+                            {n.name}
+                            {n.member !== null && family.members[n.member] && <Text size="sm" tone="secondary"> · {family.members[n.member].relation}</Text>}
+                          </span>
+                          <span className="yx-ppl__share">{n.share}%</span>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
                 {missing.map((s) => (

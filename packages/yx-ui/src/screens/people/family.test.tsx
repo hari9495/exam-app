@@ -51,7 +51,11 @@ describe('FamilyCards', () => {
     expect(screen.getByText('31 yrs')).toBeInTheDocument();
     expect(screen.getAllByText('Dependant')).toHaveLength(1);
     const noms = within(screen.getByRole('region', { name: 'Nominations' }));
-    expect(noms.getByText(/Shalini Kulkarni 60% · Suman Kulkarni 40%/)).toBeInTheDocument();
+    // Each nominee on its own line with their share (founder, 22 Oct 2026).
+    const gratuity = within(noms.getByText('Gratuity').closest('li')!);
+    expect(gratuity.getByText('60%')).toBeInTheDocument();
+    expect(gratuity.getByText('40%')).toBeInTheDocument();
+    expect(gratuity.getAllByRole('listitem')).toHaveLength(2);
     expect(noms.getByText('100%')).toBeInTheDocument();
     expect(noms.getByText(/no nominee yet/)).toBeInTheDocument();
     const call = screen.getAllByRole('link');
