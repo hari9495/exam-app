@@ -214,7 +214,7 @@ Top-down tree with person cards (photo, name, role, team size) · expand / colla
 - **Badge:** 20 px high, 4 px radius, tinted background with darker text from §3, always text (never a dot alone). One status vocabulary per object: Draft, Pending, Approved, Rejected, Paid, Locked and so on, defined in the object catalogue.
 - **Tag:** neutral grey, user-defined labels, removable with ×.
 - **Avatar:** photo or initials on a muted tint derived from the name; sizes 20 / 24 / 32 / 40 / 64; groups show 3 avatars and "+N".
-- **Toast:** top centre, just under the top bar (founder, 21 Oct 2026: so nobody misses it), 5 s, with Undo wherever the action allows; at most 3 stacked; errors never auto-dismiss.
+- **Toast:** top centre, just under the top bar (founder, 21 Oct 2026: so nobody misses it); one colour per meaning (founder, 22 Oct 2026): green done, orange warning, red error, blue information; 5 s, with Undo wherever the action allows; at most 3 stacked; errors never auto-dismiss.
 - **Inline alert:** inside a form or section for errors and warnings tied to that content.
 - **Page banner:** system-wide states only, such as trial, maintenance, read-only or impersonation.
 

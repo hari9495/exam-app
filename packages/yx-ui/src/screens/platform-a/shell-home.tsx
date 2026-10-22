@@ -753,8 +753,10 @@ function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boo
       setState('done');
       toast({ tone: 'success', title: `Reminder sent to ${name}`, description: 'They get a notification, and an email if they allow it.' });
     } catch (e) {
-      setState('idle');
-      toast({ tone: 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+      // Already reminded (409): nothing went wrong, so a warning, and the button says it is done.
+      const conflict = (e as { status?: number })?.status === 409;
+      setState(conflict ? 'done' : 'idle');
+      toast({ tone: conflict ? 'warning' : 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
     }
   };
   return (
