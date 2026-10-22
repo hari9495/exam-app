@@ -189,6 +189,14 @@ describe('People annual increment (PPL-06)', () => {
     expect(r.batch).toBeNull();
   });
 
+  it('by rating, before any raise is typed: the check still lists the ratings, nobody is changed', async () => {
+    const r = (await inc('hr', { ...base(), mode: 'rating', byRating: [] }).expect(201)).body;
+    expect(r.ratingCycles.map((x: { id: string }) => x.id)).toEqual([ids.review]);
+    expect(r.bands).toEqual(['Exceeds', 'Meets', 'Partly meets']);
+    expect(r.people).toHaveLength(0);
+    expect(r.batch).toBeNull();
+  });
+
   it('one percent for everyone, rounded to rupees (333333 × 1.05 = 349999.65 → 350000)', async () => {
     const r = (await inc('hr', { ...base(), mode: 'percent', percent: '5' }).expect(201)).body;
     expect(r.people.find((p: { employeeId: string }) => p.employeeId === emp.kiran)).toMatchObject({ newCtc: '350000.00' });

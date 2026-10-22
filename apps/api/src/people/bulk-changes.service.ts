@@ -204,8 +204,9 @@ export class BulkChangesService {
   /** Dry run, then (unless only a dry run was asked for) the batch: stored all or nothing, pending approval. */
   private async submit(ctx: TenantContext, v: Viewer, build: (tx: Tx, c: CompanyContext) => Promise<Item[]>, meta: { source: 'csv' | 'reassign' | 'increment'; fileName?: string; reason: string; dryRun: boolean; letterTemplateId?: string }) {
     const preview = await this.history.preview(ctx, async (tx, c) => this.evaluate(tx, c, v, await build(tx, c)));
-    if (!preview.rows.length) throw new BadRequestException('There is nothing to change.');
+    // A check with no rows yet still answers: the increment's first check (no raise typed) brings the ratings to type them for.
     if (meta.dryRun) return { batch: null, ...preview };
+    if (!preview.rows.length) throw new BadRequestException('There is nothing to change.');
     if (preview.errors) throw new BadRequestException({ statusCode: 400, code: 'BULK_ROWS_INVALID', message: `${preview.errors} row(s) need fixing; nothing was saved.`, ...preview });
     const batch = await this.history.run(ctx, async (tx, c) => {
       const items = await build(tx, c);
