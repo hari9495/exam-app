@@ -393,7 +393,7 @@ describe('Org chart (PPL-02) and My team (PPL-08)', () => {
     const onStartChange = vi.fn();
     wrap(<TeamPage members={[{ id: 'p2', name: 'Arjun Kulkarni', role: 'Quality Analyst', today: 'Present · in 9:05 am', upcoming: 'Probation ends 14 Nov' }]} approvals={[]} tasks={[]} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), asOf: '20 Oct 2026, 10:21 am', onOpenMember, onStartChange, approvalsHref: '#', onReview: vi.fn(), onOpenTask: vi.fn() }} />);
     expect(screen.getByText('1 person · 1 present, 0 on leave, 0 late as of 20 Oct 2026, 10:21 am')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Nudge' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Request a hire' })).toBeNull();
     await ue.click(screen.getByRole('button', { name: 'Start a change' }));
     expect(onStartChange).toHaveBeenCalled();
@@ -403,8 +403,8 @@ describe('Org chart (PPL-02) and My team (PPL-08)', () => {
     const onNudge = vi.fn();
     const onRequestHire = vi.fn();
     wrap(<TeamPage members={[{ id: 'p1', name: 'Kavya Reddy', role: 'Supervisor', today: 'Not checked in', upcoming: '' }, { id: 'p2', name: 'Arjun Kulkarni', role: 'Quality Analyst', today: 'Present · in 9:05 am', upcoming: '' }]} approvals={[]} tasks={[]} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), asOf: null, approvalsHref: '#', onReview: vi.fn(), onOpenTask: vi.fn(), onNudge, onRequestHire }} />);
-    expect(screen.getAllByRole('button', { name: 'Nudge' })).toHaveLength(1);
-    await ue.click(within(screen.getByRole('row', { name: /Kavya/ })).getByRole('button', { name: 'Nudge' }));
+    expect(screen.getAllByRole('button', { name: /^Nudge/ })).toHaveLength(1);
+    await ue.click(within(screen.getByRole('row', { name: /Kavya/ })).getByRole('button', { name: /^Nudge/ }));
     expect(onNudge).toHaveBeenCalledWith('p1');
     await ue.click(screen.getByRole('button', { name: 'Request a hire' }));
     expect(onRequestHire).toHaveBeenCalled();
