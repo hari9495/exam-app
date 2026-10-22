@@ -215,7 +215,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       : null,
     custom: custom.data?.fields.length ? { rows: customRows(custom.data.fields), ...(custom.data.fields.some((f) => f.canEdit) ? { onEdit: () => setFamilyEdit('custom') } : {}) } : null,
     job: v ? jobRows(v) : null,
-    scheduled: h ? scheduledNotes(h) : [],
+    scheduled: h ? scheduledNotes(h, pay.data?.next) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
     pay: payState,
     time,

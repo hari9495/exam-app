@@ -271,15 +271,16 @@ export function historyRows(h: HistoryView, today: string): JobChange[] {
 }
 
 /** Scheduled changes for the Job tab. */
-export function scheduledNotes(h: HistoryView): { title: string; body: string }[] {
+/** nextPay: the Pay tab's scheduled CTC, once pay has been opened (pay is never fetched just for this banner). */
+export function scheduledNotes(h: HistoryView, nextPay?: Compensation['next']): { title: string; body: string }[] {
   return h.changes
     .filter((c) => c.status === 'scheduled')
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
-    .map((c) => ({ title: `Scheduled: ${(TYPE[c.changeType] ?? c.changeType).toLowerCase()} from ${dateText(c.effectiveDate)}`, body: scheduledBody(c, h) }));
+    .map((c) => ({ title: `Scheduled: ${(TYPE[c.changeType] ?? c.changeType).toLowerCase()} from ${dateText(c.effectiveDate)}`, body: scheduledBody(c, h, nextPay) }));
 }
 
 /** The design's banner: the new values (CTC only with pay access), who approved it and when, and its letter. */
-export function scheduledBody(c: ChangeRecord, h: HistoryView): string {
+export function scheduledBody(c: ChangeRecord, h: HistoryView, nextPay?: Compensation['next']): string {
   const rows = h.assignment.filter((r) => !r.supersededAt).sort((a, b) => a.validFrom.localeCompare(b.validFrom));
   const i = rows.findIndex((r) => r.changeId === c.id);
   const now = i >= 0 ? rows[i] : null;
@@ -295,7 +296,8 @@ export function scheduledBody(c: ChangeRecord, h: HistoryView): string {
     h.compensation.find((r) => r.changeId === c.id && !r.supersededAt) ??
     h.compensation.find((r) => !r.supersededAt && !!c.effectiveDate && r.validFrom.slice(0, 10) === c.effectiveDate.slice(0, 10));
   if (comp) parts.push(`CTC ${money(comp.annualCtc, comp.currency)} a year`);
-  else if (c.touchesPay && !h.payAccess) parts.push('Pay changes');
+  else if (nextPay && c.effectiveDate && nextPay.from.slice(0, 10) === c.effectiveDate.slice(0, 10)) parts.push(`CTC ${money(nextPay.annualCtc, 'INR')} a year`);
+  else if (c.touchesPay) parts.push(h.payAccess ? 'Pay changes · see Pay' : 'Pay changes');
   const lines = [parts.length ? `${parts.join(' · ')}.` : changeSummary(c, h)];
   if (c.decidedAt) lines.push(`Approved${c.decidedByName ? ` by ${c.decidedByName}` : ''} on ${dateText(c.decidedAt)}.`);
   if (c.letter) lines.push(`Letter ${c.letter.referenceNo} ${c.letter.accepted ? 'accepted' : 'issued'}.`);
