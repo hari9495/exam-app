@@ -143,7 +143,7 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
       onOpenChange={(o) => !o && onClose()}
       size="md"
       title="Change identity or bank details"
-      consequence="HR or payroll approves it; you will be asked to confirm it is you. A new bank account is used for pay only after a short waiting period, and we tell you by email when it changes."
+      consequence="HR approves it; you will be asked to confirm it is you. A new bank account is used for pay only after a short waiting period, and we tell you by email when it changes."
       confirmLabel="Send for approval"
       confirmDisabled={!ready}
       onConfirm={async () => {
