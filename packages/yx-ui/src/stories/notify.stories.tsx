@@ -45,7 +45,7 @@ function ToastDemo({ seed }: { seed: boolean }) {
     });
   }, [seed, toast]);
   return (
-    <Section title="Toasts sit bottom-left; hover or focus pauses the 5 s timer; errors stay until closed">
+    <Section title="Toasts sit top centre under the top bar; hover or focus pauses the 5 s timer; errors stay until closed">
       <Row>
         <Button onClick={() => toast({ title: 'Payslips published', description: '248 employees can see September payslips', tone: 'success' })}>Show success</Button>
         <Button onClick={() => toast({ title: 'Employee archived', onUndo: () => toast({ title: 'Employee restored' }) })}>Show with Undo</Button>

@@ -300,6 +300,22 @@ export class StatutoryFilingsService {
     });
   }
 
+  /**
+   * Home (PLT-02 finance): the hub of each legal entity the person may see (statutory.filing.view), for these wage months.
+   * Null without the key.
+   */
+  async homeDues(ctx: TenantContext, user: ScopeUser, months: string[], entityId?: string | null) {
+    const v = await payViewer(this.prisma, this.tenantPrisma, user);
+    if (v.actingForOther || !v.userId || !v.grants.has('statutory.filing.view')) return null;
+    const entities = await inCompany(this.tenantPrisma, ctx, async (tx, c) =>
+      tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: await entitiesFor(tx, c, v, 'statutory.filing.view') } }, select: { id: true, name: true } }),
+    );
+    const out = [];
+    for (const e of entities.filter((x) => !entityId || x.id === entityId))
+      for (const month of [...new Set(months)]) out.push({ entity: e.name, ...(await this.hub(ctx, user, e.id, month)) });
+    return out;
+  }
+
   // ------------------------------------------------------------------------------------------ filings (PAY-6.02, 6.03, 6.08)
 
   async generate(ctx: TenantContext, user: ScopeUser, dto: FilingDto) {

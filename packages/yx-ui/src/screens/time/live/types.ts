@@ -181,7 +181,7 @@ export interface Muster {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; days: DayRow[] }[];
+  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; remindedOn?: string[]; days: DayRow[] }[];
 }
 
 export interface DayCard {

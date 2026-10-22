@@ -1,4 +1,4 @@
-import { comingUp, employeeStats, hiringHome, homePay, homeWidgets, managerHome, myTasks } from './yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks } from './yx-home';
 
 describe('hiringHome (recruiter Home)', () => {
   const now = new Date('2026-10-19T06:00:00Z');
@@ -97,12 +97,83 @@ describe('Manager home (parity with PLT-02 manager)', () => {
     });
     expect(m.team?.summary).toBe('1 in · 1 on leave · 1 not checked in · 0 late');
     // During the day: the first punch says who is in; someone with none yet is not checked in (and can be nudged).
-    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }])] } as never });
+    const during = managerHome({ today: '2026-10-21', muster: { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('Ravi', [{ on: '2026-10-21', status: 'not_started', firstIn: '2026-10-21T04:00:00Z' }]), { ...person('Anu', [{ on: '2026-10-21', status: 'not_started', firstIn: null }]), remindedOn: ['2026-10-21'] }] } as never });
     expect(during.team?.summary).toBe('1 in · 0 on leave · 1 not checked in · 0 late');
-    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true })]);
+    expect(during.team?.rows).toEqual([expect.objectContaining({ name: 'Anu', nudge: true, reminded: true })]);
     // Only someone not checked in can be nudged.
     expect(m.team?.rows.map((r) => [r.name, Boolean(r.nudge)])).toEqual([['Sanjay', true], ['Meera', false]]);
     expect(m.off).toEqual([{ day: 'Wed 21 · today', who: 'Meera' }]);
     expect(m.stats?.[0]).toMatchObject({ label: 'Late check-ins this week', value: 1, previous: 2, previousLabel: 'last week' });
+  });
+});
+
+describe('Finance home (parity with PLT-02 finance)', () => {
+  const run = { entity: 'Kaveri Foods Pvt Ltd', preparedBy: 'Anita Desai', preparedByMe: false, requestId: 'wf1', approveNow: false };
+  const due = (month: string, pf: string, esi: string, tds: string, status = 'not_generated') => ({
+    entity: 'Kaveri Foods Pvt Ltd', entityId: 'le1', month, today: '2026-09-29',
+    cards: [
+      { statute: 'IN.PF', state: null, label: 'PF', amount: pf, dueOn: `${month === '2026-09' ? '2026-10' : '2026-09'}-15`, status, late: false },
+      { statute: 'IN.ESI', state: null, label: 'ESI', amount: esi, dueOn: `${month === '2026-09' ? '2026-10' : '2026-09'}-15`, status, late: false },
+      { statute: 'IN.PT', state: 'IN-KA', label: 'PT', amount: '49800.00', dueOn: null, status, late: false },
+    ],
+    tds: { amount: tds, dueOn: `${month === '2026-09' ? '2026-10' : '2026-09'}-07`, challanStatus: 'draft', late: false },
+  });
+
+  it('makes the four money cards against last month, the money going out and the action rows', () => {
+    const f = financeHome(
+      {
+        runs: [
+          { ...run, id: 'r8', month: '2026-08', status: 'paid', people: 245, net: '17985200.00', payOn: '2026-08-31' },
+          { ...run, id: 'r9', month: '2026-09', status: 'submitted', people: 248, net: '18240500.00', payOn: '2026-09-30', approveNow: true, preparedRole: 'Payroll executive', submittedOn: '2026-09-27T20:00:00Z', variance: { flagged: 3, threshold: '20' } },
+        ],
+        claims: { count: 23, amount: '184250.00', previous: 162300, batches: [{ id: 'b1', rows: 23, total: '184250.00', payOn: '2026-10-01', madeBy: 'Kiran Joshi', madeByMe: false }] },
+        dues: [due('2026-08', '2370000.00', '561000.00', '1455000.00', 'filed'), due('2026-09', '2412100.00', '556300.00', '1482600.00')],
+      },
+      '2026-09',
+      '2026-09-29',
+    );
+    expect(f.stats!.map((s) => [s.label, s.value, s.previous, s.previousLabel, s.empty, s.drill.label])).toEqual([
+      ['Claims approved, to pay', 184250, 162300, 'August', undefined, 'View 23 claims'],
+      ['September net payroll', 18240500, 17985200, 'August', undefined, 'Open run for approval'],
+      ['PF and ESI due 15 Oct', 2968400, 2931000, 'August', undefined, 'View challans'],
+      ['TDS to deposit by 7 Oct', 1482600, 1455000, 'August', undefined, 'View TDS'],
+    ]);
+    expect(f.moneyOut!.map((r) => [r.date, r.what, r.amount, r.status, r.action])).toEqual([
+      ['30 Sep', 'September salaries', 18240500, 'Waiting for your approval', 'Open run'],
+      ['1 Oct', 'Expense claims payout · 23 claims', 184250, 'File ready', 'Release'],
+      ['7 Oct', 'TDS on salaries', 1482600, 'Challan ready', 'Pay'],
+      ['15 Oct', 'Provident Fund', 2412100, 'Challan not generated', 'Generate challan'],
+      ['15 Oct', 'ESI', 556300, 'Challan not generated', 'Generate challan'],
+    ]);
+    expect(f.actions.map((a) => [a.title, a.who, a.note, a.href])).toEqual([
+      ['Approve September payroll · 248 employees · ₹1,82,40,500 net', 'Anita Desai', 'Prepared by Anita Desai, so you can approve it', '/yx/payroll/runs/r9'],
+      ['Release claims payout file · 23 claims', 'Kiran Joshi', undefined, '/yx/expenses/to-pay'],
+    ]);
+    expect(f.replaces).toEqual(['wf1']);
+    // Prepared late on 27 Sep (UTC) is 28 Sep in India; net up 1.4% on August.
+    expect({ ...f.approval, changePct: f.approval!.changePct!.toFixed(1) }).toEqual({ month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: '1.4', flagged: 3, threshold: '20', href: '/yx/payroll/runs/r9' });
+  });
+
+  it('words a month with nothing yet and leaves out what the API left out', () => {
+    const f = financeHome({ runs: [], dues: [due('2026-10', '0.00', '0.00', '0.00')] }, '2026-10', '2026-10-20');
+    expect(f.stats!.map((s) => [s.id, s.empty])).toEqual([
+      ['net', 'No payroll run for October yet'],
+      ['pf', 'Nothing due for October yet'],
+      ['tds', 'Nothing due for October yet'],
+    ]);
+    expect(f.moneyOut).toEqual([]);
+    expect(financeHome(undefined, '2026-10', '2026-10-20')).toEqual({ actions: [], replaces: [] });
+    // A payout file the person made is not theirs to release; a run still being calculated has no amount yet.
+    const g = financeHome(
+      { runs: [{ ...run, id: 'r10', month: '2026-10', status: 'draft', people: null, net: null, payOn: '2026-10-31' }], claims: { count: 0, amount: '0.00', batches: [{ id: 'b2', rows: 2, total: '900.00', payOn: '2026-10-21', madeBy: 'Suresh Pillai', madeByMe: true }] } },
+      '2026-10',
+      '2026-10-20',
+    );
+    expect(g.actions).toEqual([]);
+    expect(g.stats!.map((s) => s.empty)).toEqual(['No approved claims waiting', 'October payroll is not calculated yet']);
+    expect(g.moneyOut!.map((r) => [r.what, r.amount, r.status, r.action])).toEqual([
+      ['Expense claims payout · 2 claims', 900, 'File ready', 'Open'],
+      ['October salaries', null, 'Being prepared', 'Open run'],
+    ]);
   });
 });

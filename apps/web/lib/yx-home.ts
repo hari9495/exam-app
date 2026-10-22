@@ -1,4 +1,4 @@
-import type { ActionItem } from '@yukthix/ui';
+import { formatDate, formatINR, type ActionItem } from '@yukthix/ui';
 import type { LiveHome } from '@yukthix/ui/frame';
 import type { MyAttendance, MyLeave, Muster, TeamCalendar } from '@yukthix/ui/time';
 
@@ -21,6 +21,15 @@ export interface HomeWidgets {
   previous?: { month: string; attendanceExceptions?: number; notReadyForPayroll?: number; openCases?: number; joining?: number };
   /** People with a hiring key (recruiter Home). Each part is absent when the person may not open its page. */
   hiring?: HiringHome;
+  /** Payroll, expense payout and statutory people (finance Home). Each part is absent without its page's key. */
+  finance?: FinanceHome;
+}
+
+/** Amounts are rupees as decimal strings. */
+export interface FinanceHome {
+  runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean; preparedRole?: string | null; submittedOn?: string | null; variance?: { flagged: number; threshold: string } }[];
+  claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
 export interface HiringHome {
@@ -193,7 +202,7 @@ export function managerHome(input: {
       total: people.length,
       href: '/yx/time/muster',
       // Nudge (PLT-02): someone not checked in yet can be reminded; the API checks scope and the day again.
-      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
+      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true, reminded: Boolean(p.remindedOn?.includes(today)) })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
     };
     const week = weekOf(today);
     const lastWeek = week.map((d) => new Date(new Date(`${d}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 10));
@@ -285,4 +294,127 @@ export function comingUp(celebrations: { id: string; name: string; kind: 'birthd
     ...(celebrations ?? []).map((c) => ({ id: c.id, kind: 'person' as const, name: c.name, text: c.kind === 'birthday' ? `Birthday ${when(c.on)}` : `${plural(c.years ?? 1, 'year')} here ${when(c.on)}` })),
     ...(holidays ?? []).filter((h) => h.on >= today && h.kind !== 'optional').slice(0, 2).map((h) => ({ id: `h-${h.id}`, kind: 'holiday' as const, name: h.name, text: `Holiday · ${day(h.on, { day: 'numeric', month: 'short', year: 'numeric' })}` })),
   ];
+}
+
+/** "30 Sep", as the design writes dates (the browser's "Sept" differs). */
+const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const dm = (iso: string) => formatDate(localDay(iso)).replace(/ \d{4}$/, '');
+const RUNS = '/yx/payroll/runs';
+const STATUTORY = '/yx/payroll/statutory';
+const TO_PAY = '/yx/expenses/to-pay';
+const BEING_PREPARED = new Set(['draft', 'calculating', 'calculated', 'in_review', 'reopened']);
+const FILING: Record<string, { status: string; tone: 'neutral' | 'success'; action: string }> = {
+  not_generated: { status: 'Challan not generated', tone: 'neutral', action: 'Generate challan' },
+  generated: { status: 'Challan ready', tone: 'success', action: 'Upload' },
+  uploaded: { status: 'Uploaded, not filed yet', tone: 'success', action: 'Mark filed' },
+};
+const CHALLAN: Record<string, { status: string; tone: 'neutral' | 'success'; action: string }> = {
+  not_prepared: { status: 'Challan not prepared', tone: 'neutral', action: 'Prepare challan' },
+  draft: { status: 'Challan ready', tone: 'success', action: 'Pay' },
+};
+const rupees = (s: string | null | undefined) => Number(s ?? 0);
+const sumOf = <T>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x), 0);
+
+/**
+ * The finance Home (PLT-02 finance) from GET /workspace/home: the money cards for the chosen month (against the month
+ * before, only when that month has its own figure), "Money going out" in the next 30 days, and the action rows (a payroll
+ * run the person approves now, a claims payout file someone else made). Nothing is made up: a part the API left out stays
+ * out, and a month with nothing yet is said in words.
+ */
+export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval'> & { actions: ActionItem[]; replaces: string[] } {
+  if (!f) return { actions: [], replaces: [] };
+  const prev = prevMonthOf(month);
+  const name = monthName(month);
+  const stats: NonNullable<LiveHome['stats']> = [];
+  const vs = (n: number) => (n > 0 ? { previous: n, previousLabel: monthName(prev) } : {});
+
+  if (f.claims) {
+    const c = f.claims;
+    stats.push({ id: 'topay', title: 'To pay', label: 'Claims approved, to pay', value: rupees(c.amount), money: true, ...(c.count ? (c.previous !== undefined ? { previous: c.previous, previousLabel: monthName(prev) } : {}) : { empty: 'No approved claims waiting' }), drill: { label: c.count ? `View ${plural(c.count, 'claim')}` : 'Open To pay', href: TO_PAY } });
+  }
+  if (f.runs) {
+    const now = f.runs.filter((r) => r.month === month);
+    const before = f.runs.filter((r) => r.month === prev);
+    const one = now.length === 1 ? now[0] : null;
+    const drill = one ? { label: one.approveNow ? 'Open run for approval' : 'Open run', href: `${RUNS}/${encodeURIComponent(one.id)}` } : { label: 'Open payroll runs', href: `${RUNS}?month=${month}` };
+    const label = `${name} net payroll`;
+    if (!now.length) stats.push({ id: 'net', title: 'Payroll net', label, value: 0, money: true, empty: `No payroll run for ${name} yet`, drill });
+    else if (now.some((r) => r.net === null)) stats.push({ id: 'net', title: 'Payroll net', label, value: 0, money: true, empty: `${name} payroll is not calculated yet`, drill });
+    else stats.push({ id: 'net', title: 'Payroll net', label, value: sumOf(now, (r) => rupees(r.net)), money: true, ...(before.length && before.every((r) => r.net !== null) ? vs(sumOf(before, (r) => rupees(r.net))) : {}), drill });
+  }
+  if (f.dues) {
+    const dues = f.dues;
+    const pfEsi = (m: string) => dues.filter((d) => d.month === m).flatMap((d) => d.cards.filter((c) => c.statute === 'IN.PF' || c.statute === 'IN.ESI'));
+    const tds = (m: string) => dues.filter((d) => d.month === m).map((d) => d.tds);
+    const cards = pfEsi(month);
+    const pfDue = cards.find((c) => c.dueOn)?.dueOn;
+    const pf = sumOf(cards, (c) => rupees(c.amount));
+    stats.push({ id: 'pf', title: 'Statutory due', label: `PF and ESI due${pfDue ? ` ${dm(pfDue)}` : ''}`, value: pf, money: true, ...(pf ? vs(sumOf(pfEsi(prev), (c) => rupees(c.amount))) : { empty: `Nothing due for ${name} yet` }), drill: { label: 'View challans', href: STATUTORY } });
+    const t = tds(month);
+    const tdsDue = t.find((x) => x.dueOn)?.dueOn;
+    const tdsAmount = sumOf(t, (x) => rupees(x.amount));
+    stats.push({ id: 'tds', title: 'TDS', label: `TDS to deposit${tdsDue ? ` by ${dm(tdsDue)}` : ''}`, value: tdsAmount, money: true, ...(tdsAmount ? vs(sumOf(tds(prev), (x) => rupees(x.amount))) : { empty: `Nothing due for ${name} yet` }), drill: { label: 'View TDS', href: STATUTORY } });
+  }
+
+  // Money going out: due from today to 30 days ahead, and anything late that is not paid or filed yet.
+  const until = new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+  const soon = (on: string | null | undefined, late: boolean): on is string => Boolean(on && (late || on >= today) && on <= until);
+  // Rows name their legal entity only when more than one has money to pay.
+  const owing = (d: NonNullable<FinanceHome['dues']>[number]) => rupees(d.tds.amount) > 0 || d.cards.some((c) => rupees(c.amount) > 0);
+  const many = new Set([...(f.runs ?? []).map((r) => r.entity), ...(f.dues ?? []).filter(owing).map((d) => d.entity)]).size > 1;
+  const of = (entity: string) => (many ? `, ${entity}` : '');
+  const rows: (NonNullable<LiveHome['moneyOut']>[number] & { on: string })[] = [];
+  for (const r of f.runs ?? []) {
+    if (r.status === 'paid' || !soon(r.payOn, true)) continue;
+    const late = r.payOn < today;
+    const status = r.status === 'submitted' ? (r.approveNow ? 'Waiting for your approval' : 'Waiting for approval') : r.status === 'approved' ? 'Approved, not paid yet' : BEING_PREPARED.has(r.status) ? 'Being prepared' : r.status;
+    rows.push({ id: `run-${r.id}`, on: r.payOn, date: dm(r.payOn), what: `${monthName(r.month)} salaries${of(r.entity)}`, amount: r.net === null ? null : rupees(r.net), status: late ? `Late · ${status}` : status, tone: late ? 'danger' : r.status === 'approved' ? 'success' : 'warning', action: 'Open run', href: `${RUNS}/${encodeURIComponent(r.id)}` });
+  }
+  for (const b of f.claims?.batches ?? [])
+    if (soon(b.payOn, true)) rows.push({ id: `payout-${b.id}`, on: b.payOn, date: dm(b.payOn), what: `Expense claims payout · ${plural(b.rows, 'claim')}`, amount: rupees(b.total), status: 'File ready', tone: 'success', action: b.madeByMe ? 'Open' : 'Release', href: TO_PAY });
+  for (const d of f.dues ?? []) {
+    for (const c of d.cards) {
+      const s = FILING[c.status];
+      // Professional tax and LWF have no due date on record, so they cannot be placed on the timeline.
+      if (!s || (c.statute !== 'IN.PF' && c.statute !== 'IN.ESI') || !rupees(c.amount) || !soon(c.dueOn, c.late)) continue;
+      rows.push({ id: `${c.statute}-${d.entityId}-${d.month}`, on: c.dueOn, date: dm(c.dueOn), what: `${c.statute === 'IN.PF' ? 'Provident Fund' : 'ESI'}${of(d.entity)}`, amount: rupees(c.amount), status: c.late ? `Late · ${s.status}` : s.status, tone: c.late ? 'danger' : s.tone, action: s.action, href: STATUTORY });
+    }
+    const s = CHALLAN[d.tds.challanStatus];
+    if (s && rupees(d.tds.amount) && soon(d.tds.dueOn, d.tds.late))
+      rows.push({ id: `tds-${d.entityId}-${d.month}`, on: d.tds.dueOn, date: dm(d.tds.dueOn), what: `TDS on salaries${of(d.entity)}`, amount: rupees(d.tds.amount), status: d.tds.late ? `Late · ${s.status}` : s.status, tone: d.tds.late ? 'danger' : s.tone, action: s.action, href: STATUTORY });
+  }
+  const moneyOut = f.runs || f.claims || f.dues ? rows.sort((a, b) => a.on.localeCompare(b.on)).map(({ on: _on, ...r }) => r) : undefined;
+
+  const approve = (f.runs ?? []).filter((r) => r.approveNow);
+  const actions: ActionItem[] = [
+    ...approve.map((r) => ({
+      id: `run-${r.id}`,
+      type: 'Payroll run',
+      kind: 'review' as const,
+      who: r.preparedBy,
+      due: localDay(r.payOn),
+      href: `${RUNS}/${encodeURIComponent(r.id)}`,
+      title: [`Approve ${monthName(r.month)} payroll${of(r.entity)}`, r.people !== null ? plural(r.people, 'employee') : '', r.net !== null ? `${formatINR(rupees(r.net))} net` : ''].filter(Boolean).join(' · '),
+      note: `Prepared by ${r.preparedBy}, so you can approve it`,
+    })),
+    ...(f.claims?.batches ?? []).filter((b) => !b.madeByMe).map((b) => ({ id: `payout-${b.id}`, type: 'Payment', kind: 'review' as const, who: b.madeBy, title: `Release claims payout file · ${plural(b.rows, 'claim')}`, due: localDay(b.payOn), href: TO_PAY })),
+  ];
+  // "Payroll approval": the chosen month's run waiting for this person, with its change against last month.
+  const mine = approve.find((r) => r.month === month);
+  const last = (f.runs ?? []).filter((r) => r.month === prev);
+  const lastNet = last.length && last.every((r) => r.net !== null) ? sumOf(last, (r) => rupees(r.net)) : 0;
+  const approval: LiveHome['approval'] = mine
+    ? {
+        month: name,
+        preparedBy: mine.preparedBy,
+        ...(mine.preparedRole ? { role: mine.preparedRole } : {}),
+        ...(mine.submittedOn ? { on: dm(new Date(Date.parse(mine.submittedOn) + 330 * 60_000).toISOString().slice(0, 10)) } : {}),
+        ...(lastNet && mine.net !== null ? { previousMonth: monthName(prev), changePct: ((rupees(mine.net) - lastNet) / lastNet) * 100 } : {}),
+        flagged: mine.variance?.flagged ?? 0,
+        threshold: mine.variance?.threshold ?? '10',
+        href: `${RUNS}/${encodeURIComponent(mine.id)}`,
+      }
+    : undefined;
+  // The approvals inbox lists the same run; the finance row (with its headcount and net) takes its place.
+  return { stats, moneyOut, ...(approval ? { approval } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
 }
