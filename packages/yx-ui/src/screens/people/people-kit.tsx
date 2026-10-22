@@ -1,6 +1,6 @@
 // Reusable pieces for the People screens (M01, P02, P05, P06). Token-only CSS in people.css.
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, Eye, Lock } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { IconButton } from '../../components/button';
@@ -107,6 +107,8 @@ export function MaskedValue({ value, masked, canReveal, onReveal, label }: { val
     <span className="yx-ppl__masked">
       <span className="yx-mono">{shown ?? masked}</span>
       {canReveal && shown === null && <IconButton icon={Eye} size="sm" label={`Show ${label}. Your view is recorded.`} disabled={busy} onClick={() => void reveal()} />}
+      {/* Hide again, like a password field (founder, 22 Oct 2026); showing it again asks the server and is recorded again. */}
+      {shown !== null && <IconButton icon={EyeOff} size="sm" label={`Hide ${label}`} onClick={() => setShown(null)} />}
       {failed && (
         <Text size="sm" tone="danger">
           Could not show the {label}. Try again.
