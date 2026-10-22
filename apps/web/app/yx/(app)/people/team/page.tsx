@@ -73,7 +73,9 @@ export default function YxTeamPage() {
       // The muster carries who was reminded today, so the button turns to "Reminded".
       void muster.refetch();
     } catch (e) {
-      toast({ tone: 'error', title: `Could not remind ${name}`, description: (e as Error).message });
+      // Already reminded, already checked in or not working today: nothing went wrong, so a warning (orange), not an error.
+      const conflict = (e as Error & { status?: number }).status === 409;
+      toast({ tone: conflict ? 'warning' : 'error', title: conflict ? `${name} was not reminded` : `Could not remind ${name}`, description: (e as Error).message });
       void muster.refetch(); // "already reminded today": show it as Reminded
     }
   };
