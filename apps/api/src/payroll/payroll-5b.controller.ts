@@ -206,8 +206,9 @@ export class Payroll5bController {
     return this.structures.checkFormula(ctx, this.user(req), dto);
   }
 
+  /** Read by payroll set-up and by HR, who sets a person's salary on a template (founder 21 Oct 2026, option A). */
   @Get('templates')
-  @RequirePermissions('payroll.template.manage')
+  @RequireAnyPermission('payroll.template.manage', 'employee.salary.manage')
   templates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.structures.templates(ctx, this.user(req));
   }

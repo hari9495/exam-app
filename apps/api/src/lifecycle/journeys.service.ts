@@ -432,7 +432,7 @@ export class LifecycleJourneysService implements OnModuleInit {
           .map((t) => {
             const j = journeys.find((x) => x.id === t.journeyId)!;
             const p = persons.find((x) => x.id === j.personId)!;
-            return { ...this.taskView(t, n, true, today), title: words.step(j.id, t.key, t.title), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), anchorOn: iso(j.anchorOn) };
+            return { ...this.taskView(t, n, true, today), title: words.step(j.id, t.key, t.title), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), personId: j.personId, subject: { type: j.subjectType, id: j.subjectId }, anchorOn: iso(j.anchorOn) };
           }),
       };
     });

@@ -63,10 +63,12 @@ export interface MyChecklistTasksProps {
   /** Do, upload, issue, skip (live). Stories leave it out: the buttons show but do nothing. */
   actions?: TaskActions;
   onOpen?: (journeyId: string) => void;
+  /** lifecycle.onboarding.manage: Upload and Issue letter on HR's rows, as on the journey record (PPL-47). */
+  canManage?: boolean;
 }
 
 // PPL-47
-export function MyChecklistTasks({ tasks, today, state = 'ready', onRetry, actions, onOpen }: MyChecklistTasksProps) {
+export function MyChecklistTasks({ tasks, today, state = 'ready', onRetry, actions, onOpen, canManage = false }: MyChecklistTasksProps) {
   const [ask, setAsk] = useState<TaskAsk | null>(null);
   const noop: TaskActions = { onComplete: async () => undefined, onSkip: async () => undefined };
   const acts = actions ?? noop;
@@ -119,7 +121,7 @@ export function MyChecklistTasks({ tasks, today, state = 'ready', onRetry, actio
                       )}
                     </span>
                   </div>
-                  <StatusChecklist label={`Tasks for ${first.person ?? 'this person'}`} rows={g.map((t) => taskRow(t, undefined, taskButtons(t, setAsk, { manage: false, actions: acts })))} today={today} />
+                  <StatusChecklist label={`Tasks for ${first.person ?? 'this person'}`} rows={g.map((t) => taskRow(t, undefined, taskButtons(t, setAsk, { manage: canManage, actions: acts })))} today={today} />
                 </section>
               );
             })}

@@ -1,6 +1,6 @@
 // PPL-01 Employee directory · PPL-02 Org chart · PPL-08 Team page (M01 §3.2, §3.10; P02 Q4 directory fields; P01 YX-ORG-26).
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Download, Mail, Phone, Plus, Upload, UserPlus } from 'lucide-react';
+import { CalendarClock, Check, Download, Mail, Phone, Plus, Upload, UserPlus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Card, PageHeader } from '../../components/shell';
@@ -567,6 +567,8 @@ export interface TeamMember {
   role: string;
   today: string;
   upcoming: string;
+  /** Already reminded to check in today (Nudge shows "Reminded"). */
+  reminded?: boolean;
 }
 
 /** The live app's team (design audit step 3). Stories leave it out. */
@@ -652,7 +654,17 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
               getRowId={(r) => r.id}
               state={state === 'loading' ? 'loading' : 'ready'}
               {...(live?.onOpenMember ? { onRowClick: (r: TeamMember) => live.onOpenMember!(r.id) } : {})}
-              rowButtons={live ? (r: TeamMember) => (live.onNudge && r.today.startsWith('Not checked in') ? <Button size="sm" onClick={() => live.onNudge!(r.id)}>Nudge</Button> : null) : () => <Button size="sm">Nudge</Button>}
+              rowButtons={
+                live
+                  ? (r: TeamMember) =>
+                      live.onNudge && r.today.startsWith('Not checked in') ? (
+                        // Once reminded today it says so and stays done, after a reload too (founder, 22 Oct 2026).
+                        <Button size="sm" icon={r.reminded ? Check : undefined} disabled={r.reminded} aria-label={r.reminded ? `Reminded ${r.name}` : `Nudge ${r.name}`} onClick={() => live.onNudge!(r.id)}>
+                          {r.reminded ? 'Reminded' : 'Nudge'}
+                        </Button>
+                      ) : null
+                  : () => <Button size="sm">Nudge</Button>
+              }
             />
             {(!live || tasks.length > 0) && (
               <Card title="Onboarding and exit tasks">

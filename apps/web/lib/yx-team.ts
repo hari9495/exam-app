@@ -11,6 +11,7 @@ export interface TeamRow {
   role: string;
   today: string;
   upcoming: string;
+  reminded?: boolean;
 }
 
 const short = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -52,6 +53,7 @@ export function teamRows(members: ApiMember[], joiners: Joiner[], today: string,
       role: [m.designation?.name, m.relation === 'dotted' ? 'dotted line' : m.relation === 'indirect' ? `through ${m.manager?.name ?? 'your team'}` : null].filter(Boolean).join(' · '),
       today: todayText(m.id, today, muster, calendar),
       upcoming: upcomingText(m, today, calendar),
+      reminded: Boolean(muster?.people.find((p) => p.id === m.id)?.remindedOn?.includes(today)),
     })),
   ];
 }

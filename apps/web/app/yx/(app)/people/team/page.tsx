@@ -70,8 +70,11 @@ export default function YxTeamPage() {
     try {
       await apiFetch(`/time/people/${id(memberId)}/nudge`, { method: 'POST' }, accessToken ?? undefined);
       toast({ tone: 'success', title: `${name} was reminded to check in` });
+      // The muster carries who was reminded today, so the button turns to "Reminded".
+      void muster.refetch();
     } catch (e) {
       toast({ tone: 'error', title: `Could not remind ${name}`, description: (e as Error).message });
+      void muster.refetch(); // "already reminded today": show it as Reminded
     }
   };
   const approve = async (item: ActionItem) => {
