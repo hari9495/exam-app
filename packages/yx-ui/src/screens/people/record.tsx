@@ -958,7 +958,7 @@ function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[];
                 <td>{formatDate(a.issued)}</td>
                 <td>{a.condition}</td>
                 <td>
-                  <StatusBadge status={a.ack === 'Waiting' ? 'Waiting' : 'Accepted'} />
+                  <StatusBadge status={a.ack === 'Waiting' ? 'Waiting for confirmation' : 'Confirmed'} />
                 </td>
               </tr>
             ))}

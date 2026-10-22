@@ -317,7 +317,7 @@ describe('Assets (PPL-25)', () => {
   it('a return as "not returned" needs what happened and keeps the clearance open for a recovery', async () => {
     const onReturn = vi.fn(async () => undefined);
     wrap(<AssetRegister rows={[]} live={{ state: 'ready', onRetry: vi.fn(), rows: [row], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn }} />);
-    expect(screen.getByText('Waiting for acknowledgement')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for confirmation')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Return' }));
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
