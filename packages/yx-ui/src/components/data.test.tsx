@@ -26,6 +26,20 @@ const COLS: TableColumn<Row>[] = [
 ];
 
 describe('DataTable', () => {
+  // The page hears about a column change after the update, never while the table renders (Directory, 22 Oct 2026).
+  it('tells the page once after Reset columns, with no render-time update warning', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const told = vi.fn();
+    render(<DataTable label="Told" columns={COLS} rows={ROWS} getRowId={(r) => r.id} defaultColumnState={{ hidden: ['dept'] }} onColumnStateChange={told} />);
+    expect(told).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: /^Columns/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Reset columns' }));
+    expect(told).toHaveBeenCalledTimes(1);
+    expect(told.mock.calls[0][0].hidden).toEqual([]);
+    expect(err.mock.calls.some((c) => String(c[0]).includes('Cannot update a component'))).toBe(false);
+    err.mockRestore();
+  });
+
   // Founder 21 Oct 2026: ticked means on screen. A column hidden to fit shows unticked; ticking it or Reset brings it back.
   it('a column hidden to fit shows unticked, and Reset columns shows it again', async () => {
     const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(700);
