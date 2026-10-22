@@ -75,7 +75,13 @@ export function useRaiseChange() {
   const write = usePeopleWrite();
   return {
     onPreview: async (input: ChangeInput) => (await write<{ impact: Impact }>('POST', '/changes/preview', input)).impact,
-    onSubmit: async (input: ChangeInput) => void (await write('POST', '/changes', input)),
+    /** From a saved draft: the API removes the draft once the change is sent. */
+    onSubmit: async (input: ChangeInput, draftId?: string) => void (await write('POST', '/changes', draftId ? { ...input, draftId } : input)),
+    /** PPL-04 route line: who will decide it (names only). */
+    onRoute: async (employeeId: string, effectiveDate: string | null, pay: boolean) => {
+      const q = new URLSearchParams({ employeeId, pay: String(pay), ...(effectiveDate ? { effectiveDate } : {}) });
+      return (await write<{ approvers: string[] }>('GET', `/changes/route?${q}`)).approvers;
+    },
   };
 }
 

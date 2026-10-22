@@ -321,7 +321,7 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       ids.onBehalf = raised.body.id;
       await api('divyaA', 'post', '/people/changes/preview').send(body(ids.arjun)).expect(201);
       await api('divyaA', 'post', '/people/changes').send(body(ids.lakshmi)).expect(404); // above her
-      await api('divyaA', 'post', '/people/changes').send(body(ids.imran, { payload: { assignment: { departmentId: ids.qa } } })).expect(404); // beside her
+      await api('divyaA', 'post', '/people/changes').send(body(ids.imran, { payload: { assignment: { locationId: ids.mys, departmentId: ids.qa } } })).expect(404); // beside her
       await api('divyaA', 'post', '/people/changes').send(body(ids.divya)).expect(404); // herself
       await api('divyaA', 'post', '/people/changes').send({ ...body(ids.arjun), changeType: 'salary_revision', payload: { compensation: { increasePercent: '5' } } }).expect(403);
       await api('divyaA', 'post', '/people/changes').send({ ...body(ids.arjun), changeType: 'promotion', payload: { assignment: { designationId: ids.lead }, compensation: { annualCtc: '900000' } } }).expect(403);

@@ -132,6 +132,10 @@ export interface ChangeRecord {
   requestedByName?: string | null;
   decidedByName?: string | null;
   letter?: { referenceNo: string; accepted: boolean } | null;
+  /** PPL-04: a pending change's approvers (names; "you" when the reader is one). */
+  waitingFor?: string[];
+  /** PPL-05: the new values by name ("Quality Lead", "G6"). */
+  newValues?: string[];
 }
 
 export interface HistoryRow {

@@ -53,10 +53,12 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
 // People (PPL-17 buddies, PPL-30 succession): personal rows.
 const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors',
   // PPL-09 and PPL-10: restructures, the people they move and the continuity checklist.
-  'restructures', 'restructure_people', 'continuity_items', 'restructure_drafts'];
+  'restructures', 'restructure_people', 'continuity_items', 'restructure_drafts',
+  // PPL-04 change drafts may hold proposed pay.
+  'employee_change_drafts'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
-const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
+const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
 describe('PostgreSQL row-level security (app role)', () => {
   let prisma: PrismaService;
@@ -487,7 +489,7 @@ describe('PostgreSQL row-level security (app role)', () => {
   // P01 §4.4 employee core + P06 dated facts (YX-ORG-14, YX-HIS-01/07): forced-RLS tenant tables whose
   // composite keys stop a row pointing at another company's row; dated rows come only from approved changes
   // and are never rewritten or removed by the app role.
-  const HISTORY_TABLES = ['assignment_cost_centres', 'compensations', 'employee_assignments', 'employee_changes', 'employees', 'employment_status_periods', 'employments'];
+  const HISTORY_TABLES = ['assignment_cost_centres', 'compensations', 'employee_assignments', 'employee_change_drafts', 'employee_changes', 'employees', 'employment_status_periods', 'employments'];
 
   it('the employee and history tables are forced-RLS tenant tables', async () => {
     const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
@@ -516,6 +518,7 @@ describe('PostgreSQL row-level security (app role)', () => {
         tx.employeeChange.create({ data: { organizationId: orgB, employeeId: employee.id, employmentId: employment.id, changeType: 'join', effectiveDate: day('2026-04-01'), status, payload: {}, reason: 'join', ...(status === 'effective' ? { appliedAt: new Date() } : {}) } });
       const join = await change('effective');
       const pending = await change('pending');
+      await tx.employeeChangeDraft.create({ data: { organizationId: orgB, createdBy: userB, employeeId: employee.id, changeType: 'transfer', form: {} } });
       const assignment = await tx.employeeAssignment.create({
         data: { organizationId: orgB, legalEntityId: entity.id, employeeId: employee.id, employmentId: employment.id, validFrom: day('2026-04-01'), locationId: location.id, departmentId: department.id, designationId: designation.id, employmentTypeId: type.id, changeId: join.id },
       });

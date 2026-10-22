@@ -1,4 +1,4 @@
-import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloadProblem, reach, AssignmentValues, CompensationValues } from './history-rules';
+import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloadProblem, reach, unchangedProblem, AssignmentValues, CompensationValues } from './history-rules';
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
@@ -27,8 +27,19 @@ describe('change types (M01 §3.3)', () => {
     expect(payloadProblem('salary_revision', { compensation: { annualCtc: '1', increasePercent: '2' } })).toMatch(/either/);
     expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '60' }, { costCentreId: 'b', percent: '30' }] } })).toMatch(/total 100/);
     expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '50' }, { costCentreId: 'a', percent: '50' }] } })).toMatch(/twice/);
-    expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '33.34' }, { costCentreId: 'b', percent: '66.66' }] } })).toBeNull();
+    expect(payloadProblem('transfer', { assignment: { locationId: 'x', costCentres: [{ costCentreId: 'a', percent: '33.34' }, { costCentreId: 'b', percent: '66.66' }] } })).toBeNull();
     expect(payloadProblem('transfer', { assignment: {} })).toMatch(/sets nothing/);
+  });
+
+  it('PPL-04: a transfer moves the location, a promotion the designation or grade, to a value not already in force', () => {
+    expect(payloadProblem('transfer', { assignment: { departmentId: 'd2' } })).toBe('A transfer needs a new location.');
+    expect(payloadProblem('promotion', { assignment: { skillClass: 'skilled' } })).toBe('A promotion needs a new designation or grade.');
+    expect(payloadProblem('promotion', { assignment: { gradeId: 'g2' } })).toBeNull();
+    expect(unchangedProblem('transfer', { assignment: { locationId: 'loc' } }, A)).toMatch(/needs a new location: that is the one in force/);
+    expect(unchangedProblem('transfer', { assignment: { locationId: 'loc2' } }, A)).toBeNull();
+    expect(unchangedProblem('promotion', { assignment: { designationId: 'des', gradeId: 'g1' } }, A)).toMatch(/new designation or grade/);
+    expect(unchangedProblem('promotion', { assignment: { designationId: 'des', gradeId: 'g2' } }, A)).toBeNull();
+    expect(unchangedProblem('manager_change', { assignment: { managerEmployeeId: 'm1' } }, A)).toBeNull();
   });
 });
 

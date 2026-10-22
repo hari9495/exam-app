@@ -143,6 +143,7 @@ export default function YxTeamPage() {
         <ChangeDrawer
           options={{ ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }}
           onPreview={raise.onPreview}
+          onRoute={raise.onRoute}
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             toast({ tone: 'success', title: `Change for ${subjects.find((s) => s.id === input.employeeId)?.name ?? 'your team member'} sent to HR` });
