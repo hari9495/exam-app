@@ -287,11 +287,16 @@ export function scheduledBody(c: ChangeRecord, h: HistoryView): string {
   const facts: [string, string | null | undefined, string | null | undefined][] = now
     ? [['Designation', was?.designation?.name, now.designation?.name], ['Grade', was?.grade?.name, now.grade?.name], ['Department', was?.department?.name, now.department?.name], ['Location', was?.location.name, now.location.name], ['Manager', was?.manager?.name, now.manager?.name]]
     : [];
-  const parts = facts.filter(([, a, b]) => b && a !== b).map(([label, , b]) => `${label} ${b}`);
-  const comp = h.compensation.find((r) => r.changeId === c.id && !r.supersededAt);
+  // "New role: X · Grade G3 · CTC ₹7,80,000 a year" (founder, 22 Oct 2026).
+  const label: Record<string, string> = { Designation: 'New role:' };
+  const parts = facts.filter(([, a, b]) => b && a !== b).map(([l, , b]) => `${label[l] ?? l} ${b}`);
+  // The pay rise of a promotion can be its own dated row, so match it by the effective date too.
+  const comp =
+    h.compensation.find((r) => r.changeId === c.id && !r.supersededAt) ??
+    h.compensation.find((r) => !r.supersededAt && !!c.effectiveDate && r.validFrom.slice(0, 10) === c.effectiveDate.slice(0, 10));
   if (comp) parts.push(`CTC ${money(comp.annualCtc, comp.currency)} a year`);
   else if (c.touchesPay && !h.payAccess) parts.push('Pay changes');
-  const lines = [parts.length ? `${parts.join(', ')}.` : changeSummary(c, h)];
+  const lines = [parts.length ? `${parts.join(' · ')}.` : changeSummary(c, h)];
   if (c.decidedAt) lines.push(`Approved${c.decidedByName ? ` by ${c.decidedByName}` : ''} on ${dateText(c.decidedAt)}.`);
   if (c.letter) lines.push(`Letter ${c.letter.referenceNo} ${c.letter.accepted ? 'accepted' : 'issued'}.`);
   return lines.join(' ');
