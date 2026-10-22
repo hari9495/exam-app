@@ -489,7 +489,8 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
   );
   const summaryCell = (r: Sched) => (
     <span className="yx-ppl__type">
-      <span>{r.summary}</span>
+      {/* Only pay changes: the pay line alone, no empty job line. */}
+      {!(r.summary === '—' && payText(r)) && <span>{r.summary}</span>}
       {payText(r) && <span className="yx-ppl__sub">{payText(r)}</span>}
     </span>
   );
