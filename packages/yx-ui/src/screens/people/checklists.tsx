@@ -162,7 +162,7 @@ export function LifeEventsList({ rows, today, state = 'ready', onRetry, onOpen }
       },
       width: 210,
     },
-    { key: 'progress', header: 'Required tasks done', type: 'number', value: (r) => r.progress, render: (r) => <Meter value={r.progress} max={100} label={`${r.person}: required tasks done`} valueText={`${r.progress}%`} warnAt={101} />, width: 180 },
+    { key: 'progress', header: 'Required tasks done', type: 'number', value: (r) => r.progress, render: (r) => <Meter value={r.progress} max={100} label={`${r.person}: required tasks done`} valueText={`${r.progress}%`} warnAt={101} dangerAt={101} />, width: 180 },
   ];
   return (
     <PeopleFrame active="Life events">

@@ -810,7 +810,7 @@ function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Perso
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__row yx-ppl__row--between">
-        <Meter value={done} max={Math.max(total, 1)} label="Checklist complete" valueText={`${done} of ${total} verified`} warnAt={101} />
+        <Meter value={done} max={Math.max(total, 1)} label="Checklist complete" valueText={`${done} of ${total} verified`} warnAt={101} dangerAt={101} />
         <div className="yx-ppl__row">
           {persona === 'hr' && request && (
             <Button icon={Mail} onClick={request}>
