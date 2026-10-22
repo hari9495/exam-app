@@ -12,6 +12,7 @@ import YxLocationsPage from './(app)/settings/locations/page';
 import YxStructurePage from './(app)/settings/structure/page';
 import YxCompanyRulesPage from './(app)/settings/company-rules/page';
 import YxAccessSettingsPage from './(app)/settings/access-settings/page';
+import YxCustomFieldsPage from './(app)/settings/custom-fields/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -182,6 +183,28 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
     wrap(<YxCompanyRulesPage />);
     expect(await screen.findByText("You don't have access to the company rules")).toBeInTheDocument();
+  });
+});
+
+describe('/yx/settings/custom-fields (PPL-03 Additional details)', () => {
+  const FIELD = { id: 'cf-1', label: 'Blood group', fieldType: 'select', options: ['A positive', 'B positive'], dataClass: 'personal' };
+  it('lists the employee fields with their sensitivity; adding one posts an employee field with its class', async () => {
+    const create = jest.fn().mockResolvedValue({ ...FIELD, id: 'cf-2' });
+    route({ 'GET /people/custom-fields': [FIELD], 'POST /people/custom-fields': (_p: string, init: RequestInit) => create(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.settings.manage'] });
+    wrap(<YxCustomFieldsPage />);
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Blood group')).toBeInTheDocument();
+    expect(within(table).getByText('Personal')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add custom field' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Name/ }), 'Forklift licence number');
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith({ entityType: 'employee', label: 'Forklift licence number', fieldType: 'text', dataClass: 'internal' }));
+  });
+
+  it('a 403 shows no access', async () => {
+    route({ 'GET /people/custom-fields': forbidden(), [`GET ${PERMS_PATH}`]: [] });
+    wrap(<YxCustomFieldsPage />);
+    expect(await screen.findByText(/have access to custom fields/)).toBeInTheDocument();
   });
 });
 

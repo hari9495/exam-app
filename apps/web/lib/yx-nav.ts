@@ -291,7 +291,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
-        ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings')),
+        ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),
         ...when(adminRole, L('settings', 'Security settings', '/yx/settings/security'), L('identity-providers', 'Single sign-on providers', '/yx/settings/identity-providers')),
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),

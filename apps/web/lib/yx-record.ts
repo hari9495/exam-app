@@ -1,5 +1,5 @@
 import { formatINR, formatPhone } from '@yukthix/ui';
-import type { FieldRow, JobChange, LiveRecordPay, RecordDoc, RecordEvent, RecordFamily, RecordPerformance } from '@yukthix/ui/frame';
+import { CUSTOM_CLASS_LABEL, customValueText, type FieldRow, type JobChange, type LiveRecordPay, type RecordCustomField, type RecordCustomRow, type RecordDoc, type RecordEvent, type RecordFamily, type RecordPerformance } from '@yukthix/ui/frame';
 import type { AsOfView, ChangeRecord, HistoryView } from '@yukthix/ui/history';
 import type { ProfileView, RevealField } from '@yukthix/ui/access';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -384,4 +384,9 @@ export function performanceData(
 export function currentPeriod(periods: { id: string; fromOn: string; toOn: string; status: string }[], today: string): string | null {
   const open = periods.filter((p) => p.status === 'open');
   return (open.find((p) => p.fromOn <= today && today <= p.toOn) ?? open[0] ?? periods[0])?.id ?? null;
+}
+
+/** PPL-03 Additional details: the fields the API sent (already filtered by class) as card rows; only Personal ones are the person's to change. */
+export function customRows(fields: RecordCustomField[]): RecordCustomRow[] {
+  return fields.map((f) => ({ label: f.label, value: customValueText(f), cls: CUSTOM_CLASS_LABEL[f.dataClass], selfEdit: f.dataClass === 'personal' }));
 }

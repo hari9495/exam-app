@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { ContactsDrawer, FamilyDrawer, PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { ContactsDrawer, CustomFieldsDrawer, FamilyDrawer, PersonWorkspace, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -12,7 +12,7 @@ import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
-import { assetRows, attendanceCard, bankRows, currentPeriod, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
+import { assetRows, attendanceCard, bankRows, currentPeriod, customRows, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 import { reportErrors, UploadDocDialog, type AskableType } from './upload-doc-dialog';
 
@@ -69,6 +69,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const view = usePeople<AsOfView>(personId ? `/employees/${p}/as-of?date=${id(asOfParam ?? today)}` : null);
   const history = usePeople<HistoryView>(personId ? `/employees/${p}/history` : null);
   const person = usePeople<PersonRoles>(personId ? `/employees/${p}/person` : null);
+  // Additional details: the API sends only the fields (and values) the viewer's class access allows.
+  const custom = usePeople<{ fields: RecordCustomField[] }>(personId ? `/employees/${p}/custom-fields` : null);
   const requests = usePeople<{ rows: ProfileRequest[] }>(personId ? '/profile-requests?status=pending' : null);
   const reference = useOrg<Reference>('/reference');
   const self = Boolean(profile.data?.self);
@@ -104,7 +106,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
 
   const [editing, setEditing] = useState(false);
-  const [familyEdit, setFamilyEdit] = useState<'family' | 'contacts' | null>(null);
+  const [familyEdit, setFamilyEdit] = useState<'family' | 'contacts' | 'custom' | null>(null);
   const [changing, setChanging] = useState(false);
   const [withdrawing, setWithdrawing] = useState<ProfileRequest | null>(null);
   const [starting, setStarting] = useState(false);
@@ -211,6 +213,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     family: prof?.family
       ? { ...familyData(prof.family), ...(prof.can.editFamily ? { onEdit: () => setFamilyEdit('family') } : {}), ...(prof.can.editPersonal ? { onEditContacts: () => setFamilyEdit('contacts') } : {}) }
       : null,
+    custom: custom.data?.fields.length ? { rows: customRows(custom.data.fields), ...(custom.data.fields.some((f) => f.canEdit) ? { onEdit: () => setFamilyEdit('custom') } : {}) } : null,
     job: v ? jobRows(v) : null,
     scheduled: h ? scheduledNotes(h) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
@@ -328,6 +331,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
             await write('PUT', `/employees/${p}/emergency-contacts`, { contacts });
             void profile.refetch();
             done(`${self ? 'Your' : `${first}'s`} emergency contacts saved`);
+          }}
+          onClose={() => setFamilyEdit(null)}
+        />
+      )}
+      {familyEdit === 'custom' && custom.data && (
+        <CustomFieldsDrawer
+          fields={custom.data.fields}
+          onSave={async (values) => {
+            await write('PUT', `/employees/${p}/custom-fields`, { values });
+            done(`${self ? 'Your' : `${first}'s`} additional details saved`);
           }}
           onClose={() => setFamilyEdit(null)}
         />
