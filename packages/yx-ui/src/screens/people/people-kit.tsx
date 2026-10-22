@@ -196,8 +196,8 @@ export function FactRail({ title = 'Key facts', facts, events }: { title?: strin
         <>
           <h2 className="yx-ppl__rail-title">Coming up</h2>
           <ul className="yx-ppl__rail-events">
-            {events.map((e) => (
-              <li key={e.label}>
+            {events.map((e, i) => (
+              <li key={`${e.label}-${i}`}>
                 <span>{e.label}</span>
                 {e.date && <Badge tone={e.tone ?? 'neutral'}>{formatDate(e.date)}</Badge>}
                 {e.note && <Text size="sm" tone="secondary">{e.note}</Text>}
