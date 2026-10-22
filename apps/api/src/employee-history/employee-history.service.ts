@@ -522,15 +522,19 @@ export class EmployeeHistoryService {
       });
       const showPay = a.pay && withPay;
       const payRows = showPay ? rows.compensation.filter((r) => inPay(r.validFrom, r.validTo)) : [];
-      // PPL-03 scheduled-change banner: who approved it, and its letter (for HR and the person).
-      const sched = changes.filter((ch) => ch.status === 'scheduled');
-      const deciders = sched.length ? await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: sched.flatMap((ch) => (ch.decidedBy ? [ch.decidedBy] : [])) } }, select: { id: true, name: true, email: true } }) : [];
+      // PPL-03: who raised and who approved each effective or scheduled change, and its letter (letters for HR and the person).
+      const sched = changes.filter((ch) => ch.status === 'scheduled' || ch.status === 'effective');
+      const userIds = sched.flatMap((ch) => [ch.decidedBy, ch.requestedBy].filter((x): x is string => Boolean(x)));
+      const deciders = userIds.length ? await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [];
       const letters = sched.length && (a.hr || a.self) ? await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, subjectType: 'change', subjectId: { in: sched.map((ch) => ch.id) }, status: 'issued' }, select: { subjectId: true, referenceNo: true, acceptedAt: true } }) : [];
+      const nameOf = (id: string | null) => {
+        const u = id ? deciders.find((x) => x.id === id) : undefined;
+        return u ? u.name || u.email : null;
+      };
       const extra = (ch: (typeof all)[number]) => {
-        if (ch.status !== 'scheduled') return {};
-        const who = deciders.find((u) => u.id === ch.decidedBy);
+        if (ch.status !== 'scheduled' && ch.status !== 'effective') return {};
         const l = letters.find((x) => x.subjectId === ch.id && x.referenceNo);
-        return { decidedByName: who ? who.name || who.email : null, letter: l ? { referenceNo: l.referenceNo, accepted: Boolean(l.acceptedAt) } : null };
+        return { decidedByName: nameOf(ch.decidedBy), requestedByName: nameOf(ch.requestedBy), letter: l ? { referenceNo: l.referenceNo, accepted: Boolean(l.acceptedAt) } : null };
       };
       if (payRows.length) await this.auditPayView(tx, c, a, employeeId, 'history');
       return {
