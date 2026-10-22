@@ -35,7 +35,7 @@ import { useControllable } from './overlay';
 
 /* ======================= Toasts (§25) ======================= */
 
-export type ToastTone = 'default' | 'success' | 'error';
+export type ToastTone = 'default' | 'success' | 'warning' | 'error';
 
 export interface ToastOptions {
   title: ReactNode;
@@ -140,7 +140,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-const TOAST_ICON = { default: Info, success: CheckCircle2, error: AlertCircle } as const;
+const TOAST_ICON = { default: Info, success: CheckCircle2, warning: AlertTriangle, error: AlertCircle } as const;
 
 function Toast({ item, paused, onDismiss }: { item: ToastItem; paused: boolean; onDismiss: () => void }) {
   const tone = item.tone ?? 'default';
