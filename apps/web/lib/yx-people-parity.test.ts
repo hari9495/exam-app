@@ -165,8 +165,11 @@ describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
       changes: [],
     } as unknown as HistoryView;
     const ch = { id: 'c1', status: 'scheduled', touchesPay: true, decidedAt: '2026-09-24T10:00:00Z', decidedByName: 'Karthik Subramanian', letter: { referenceNo: 'KF/HR/2026/0418', accepted: true }, impact: null } as unknown as ChangeRecord;
-    expect(scheduledBody(ch, h)).toBe('Designation Quality Lead, Grade G6, CTC ₹7,80,000 a year. Approved by Karthik Subramanian on 24 Sept 2026. Letter KF/HR/2026/0418 accepted.');
-    expect(scheduledBody({ ...ch, letter: null }, { ...h, payAccess: false, compensation: [] })).toBe('Designation Quality Lead, Grade G6, Pay changes. Approved by Karthik Subramanian on 24 Sept 2026.');
+    expect(scheduledBody(ch, h)).toBe('New role: Quality Lead · Grade G6 · CTC ₹7,80,000 a year. Approved by Karthik Subramanian on 24 Sept 2026. Letter KF/HR/2026/0418 accepted.');
+    expect(scheduledBody({ ...ch, letter: null }, { ...h, payAccess: false, compensation: [] })).toBe('New role: Quality Lead · Grade G6 · Pay changes. Approved by Karthik Subramanian on 24 Sept 2026.');
+    // The pay rise stored as its own row on the same date still shows.
+    const own = { ...h, compensation: [{ changeId: 'c9', supersededAt: null, validFrom: '2026-10-01', annualCtc: '780000.00', currency: 'INR' }] } as unknown as HistoryView;
+    expect(scheduledBody({ ...ch, effectiveDate: '2026-10-01', letter: null } as ChangeRecord, own)).toContain('CTC ₹7,80,000 a year');
   });
 });
 
