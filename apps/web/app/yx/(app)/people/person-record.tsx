@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, ConfirmDialog, Dialog, FileUpload, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
 import { PersonWorkspace, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
-import { ChangeDrawer, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
+import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
 import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
@@ -346,6 +346,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             done(`Change for ${first} sent`);
+          }}
+          onSaveDraft={async (d) => {
+            await write('POST', '/changes/drafts', { employeeId: personId, ...(d.changeType ? { changeType: d.changeType } : {}), form: draftForm(d) });
+            done('Draft saved. Find it under People › Change action.');
           }}
           onClose={() => setStarting(false)}
         />
