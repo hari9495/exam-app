@@ -3,7 +3,7 @@ import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
-import { seedEmployees } from './seed-employees';
+import { seedEmployeeCustomFields, seedEmployees } from './seed-employees';
 import { seedGlobal } from './seed-global';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
@@ -352,6 +352,7 @@ async function main() {
         payroll: await userId('payroll@demo-org.test'),
         panel: await userId('panel@demo-org.test'),
       });
+      await seedEmployeeCustomFields(tx, demoOrg.id);
       await seedAccess(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
 
       // Local testing of every way in on the sign-in screen (README "Sign-in on your laptop"): codes by

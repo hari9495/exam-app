@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomFieldDefinition } from '@prisma/client';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
-import { CreateCustomFieldDto } from './dto/create-custom-field.dto';
+import { CF_ENTITY_TYPES, CreateCustomFieldDto, type CustomFieldEntityType } from './dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from './dto/update-custom-field.dto';
 
 export function slugify(label: string): string {
@@ -12,7 +12,7 @@ export function slugify(label: string): string {
 export class CustomFieldsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  list(context: TenantContext, entityType: 'candidate' | 'job', includeArchived = false): Promise<CustomFieldDefinition[]> {
+  list(context: TenantContext, entityType: CustomFieldEntityType, includeArchived = false): Promise<CustomFieldDefinition[]> {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.customFieldDefinition.findMany({
         where: {
@@ -51,16 +51,18 @@ export class CustomFieldsService {
           optionsJson: dto.fieldType === 'select' ? JSON.stringify(dedupe(dto.options ?? [])) : null,
           required: dto.required ?? false,
           showOnApply: dto.entityType === 'candidate' ? (dto.showOnApply ?? false) : false,
+          dataClass: dto.entityType === 'employee' ? (dto.dataClass ?? 'internal') : 'internal',
           position: dto.position ?? 0,
         },
       });
     });
   }
 
-  async update(context: TenantContext, id: string, dto: UpdateCustomFieldDto): Promise<CustomFieldDefinition> {
+  /** `kinds`: the entity types the caller's route manages (hiring settings never reach employee fields). */
+  async update(context: TenantContext, id: string, dto: UpdateCustomFieldDto, kinds: readonly CustomFieldEntityType[] = CF_ENTITY_TYPES): Promise<CustomFieldDefinition> {
     const orgId = context.organizationId as string;
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId } });
+      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId, entityType: { in: [...kinds] } } });
       if (!existing) throw new NotFoundException(`Custom field ${id} not found`);
       if (existing.fieldType === 'select' && dto.options !== undefined && dto.options.length === 0) {
         throw new BadRequestException('A select field needs at least one option');
@@ -71,6 +73,7 @@ export class CustomFieldsService {
           ...(dto.label !== undefined ? { label: dto.label } : {}),
           ...(dto.required !== undefined ? { required: dto.required } : {}),
           ...(dto.position !== undefined ? { position: dto.position } : {}),
+          ...(existing.entityType === 'employee' && dto.dataClass !== undefined ? { dataClass: dto.dataClass } : {}),
           ...(existing.entityType === 'candidate' && dto.showOnApply !== undefined ? { showOnApply: dto.showOnApply } : {}),
           ...(existing.fieldType === 'select' && dto.options !== undefined ? { optionsJson: JSON.stringify(dedupe(dto.options)) } : {}),
           // entityType, key, fieldType are immutable — never written here.
@@ -79,10 +82,10 @@ export class CustomFieldsService {
     });
   }
 
-  async archive(context: TenantContext, id: string): Promise<{ id: string; archivedAt: Date }> {
+  async archive(context: TenantContext, id: string, kinds: readonly CustomFieldEntityType[] = CF_ENTITY_TYPES): Promise<{ id: string; archivedAt: Date }> {
     const orgId = context.organizationId as string;
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
+      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId, entityType: { in: [...kinds] } }, select: { id: true } });
       if (!existing) throw new NotFoundException(`Custom field ${id} not found`);
       const archivedAt = new Date();
       await tx.customFieldDefinition.update({ where: { id }, data: { archivedAt } });

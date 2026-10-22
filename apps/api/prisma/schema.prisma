@@ -1434,6 +1434,8 @@ model CustomFieldDefinition {
   optionsJson    String?   @map("options_json") @db.Text
   required       Boolean   @default(false)
   showOnApply    Boolean   @default(false) @map("show_on_apply")
+  // Employee fields only: public | internal | personal | confidential (P02 §4.4).
+  dataClass      String    @default("internal") @map("data_class") @db.VarChar(20)
   position       Int       @default(0)
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

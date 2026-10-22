@@ -254,10 +254,22 @@ export const ARJUN = {
   ],
   custom: [
     { label: 'Forklift licence number', value: 'TN70 2019 0004412', cls: 'Internal' as FieldClass, selfEdit: false },
-    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: true },
+    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: false },
     { label: 'Blood group', value: 'B positive', cls: 'Personal' as FieldClass, selfEdit: true },
   ],
 };
+
+/** The company's employee fields (Settings › Custom fields) and Arjun's values on them, as the API sends them. */
+export const EMPLOYEE_FIELDS = [
+  { id: 'cf1', label: 'Forklift licence number', fieldType: 'text' as const, options: null, dataClass: 'internal' as const },
+  { id: 'cf2', label: 'T-shirt size', fieldType: 'select' as const, options: ['S', 'M', 'L', 'XL'], dataClass: 'public' as const },
+  { id: 'cf3', label: 'Blood group', fieldType: 'select' as const, options: ['A positive', 'B positive', 'O positive', 'AB positive'], dataClass: 'personal' as const },
+];
+export const ARJUN_CUSTOM_VALUES = [
+  { ...EMPLOYEE_FIELDS[0], required: false, value: 'TN70 2019 0004412', canEdit: true },
+  { ...EMPLOYEE_FIELDS[1], required: false, value: 'L', canEdit: true },
+  { ...EMPLOYEE_FIELDS[2], required: false, value: 'B positive', canEdit: true },
+];
 
 /** Dated job history (P06), newest first, with a scheduled promotion and a correction. */
 export interface JobChange {

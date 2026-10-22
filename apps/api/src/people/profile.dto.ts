@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
@@ -47,6 +47,12 @@ export class PersonalDetailsDto {
 
   @IsOptional() @IsIn(MARITAL)
   maritalStatus?: string | null;
+}
+
+/** PPL-03 Additional details: definition id -> value (null or '' clears); each value is checked against its field type. */
+export class CustomFieldValuesDto {
+  @IsObject()
+  values!: Record<string, unknown>;
 }
 
 /** Work phone (Internal): HR with employee.profile.edit; null clears it. */

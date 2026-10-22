@@ -112,7 +112,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields']);
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });

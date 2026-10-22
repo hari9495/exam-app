@@ -3,12 +3,14 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
-import { covers } from '../access/scope';
+import { covers, has } from '../access/scope';
+import { serializeCustomFieldValues, upsertCustomFieldValues, type CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
+import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-field.dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
 import { settingFor } from './probation';
-import { EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
 
 // The employee's own data beyond job facts (P02 §4.4–4.5; P01 §4.4; M01 §3.1, Q4):
 //   Personal      the person and HR holding employee.personal.view in scope; the person edits it directly,
@@ -664,6 +666,84 @@ export class ProfileService {
       await tx.employeeProfileRequest.update({ where: { id }, data: { status: 'cancelled', decidedBy: c.userId, decidedAt: new Date(), decisionNote: reason.trim() } });
       await audit(tx, c, 'employee.profile_change.cancelled', 'employee', r.employeeId, { requestId: id, kind: r.kind });
       return { id, status: 'cancelled' };
+    });
+  }
+
+  // ================= Additional details: the company's own employee fields (PPL-03, P18) =================
+
+  /**
+   * Which data classes of the company's employee fields the viewer reads and edits on this person (P02 §4.4), the
+   * same rules as the record's own fields: Public to anyone the directory serves (colleagues too); Internal to the
+   * person and those who may open the record (HR in scope, managers); Personal to the person and
+   * employee.personal.view; Confidential to the person and employee.identity.view, masked. HR edits with
+   * employee.profile.edit what they read; the person edits their own Personal fields (§4.5). Anyone else: 404.
+   */
+  private async fieldAccess(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    let a: Awaited<ReturnType<EmployeeHistoryService['access']>> | null = null;
+    try {
+      a = await this.history.access(tx, c, v, employeeId);
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      // A colleague: the person must exist and the viewer be served by the directory (HR or an employee here).
+      const exists = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } });
+      if (!exists || !(has(v, 'employee.profile.view') || (await this.history.ownEmployeeId(tx, c, v)))) throw e;
+    }
+    const self = Boolean(a?.self);
+    const read = new Set<CustomFieldDataClass>(['public']);
+    if (a && (self || covers(a.periods, todayIst()))) read.add('internal');
+    if (self || (await this.can(tx, c, v, 'employee.personal.view', employeeId))) read.add('personal');
+    if (self || (await this.can(tx, c, v, 'employee.identity.view', employeeId))) read.add('confidential');
+    const edit = new Set<CustomFieldDataClass>();
+    if (!v.actingForOther) {
+      if (self) edit.add('personal');
+      else if (await this.can(tx, c, v, 'employee.profile.edit', employeeId)) read.forEach((k) => edit.add(k));
+    }
+    return { self, read, edit };
+  }
+
+  private async employeeFields(tx: Tx, c: CompanyContext) {
+    return tx.customFieldDefinition.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', archivedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+  }
+
+  private async fieldsView(tx: Tx, c: CompanyContext, employeeId: string, access: { read: Set<CustomFieldDataClass>; edit: Set<CustomFieldDataClass> }) {
+    const defs = (await this.employeeFields(tx, c)).filter((d) => access.read.has(d.dataClass as CustomFieldDataClass));
+    if (!defs.length) return { fields: [] };
+    // Only the values of the fields the viewer may read are fetched at all.
+    const rows = await tx.customFieldValue.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, definitionId: { in: defs.map((d) => d.id) } } });
+    const values = serializeCustomFieldValues(rows, defs as CustomFieldDefinitionLite[]);
+    return {
+      fields: defs.map((d, i) => {
+        const value = values[i].value;
+        return {
+          id: d.id,
+          label: d.label,
+          fieldType: d.fieldType,
+          options: d.optionsJson ? (JSON.parse(d.optionsJson) as string[]) : null,
+          required: d.required,
+          dataClass: d.dataClass,
+          // Confidential: the last four only, like PAN and bank (P02 §4.4 masked level).
+          value: d.dataClass === 'confidential' && value !== null ? maskTail(last4(String(value))) : value,
+          canEdit: access.edit.has(d.dataClass as CustomFieldDataClass),
+        };
+      }),
+    };
+  }
+
+  customFields(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => this.fieldsView(tx, c, employeeId, await this.fieldAccess(tx, c, v, employeeId)));
+  }
+
+  /** Sets the given fields only; each must be one the viewer edits. Audited with the field keys, never values (P08). */
+  setCustomFields(ctx: TenantContext, v: Viewer, employeeId: string, dto: CustomFieldValuesDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const access = await this.fieldAccess(tx, c, v, employeeId);
+      const ids = Object.keys(dto.values);
+      const defs = (await this.employeeFields(tx, c)).filter((d) => ids.includes(d.id) && access.edit.has(d.dataClass as CustomFieldDataClass));
+      // Unknown, archived, hidden and read-only fields get one answer, so a field's existence is not leaked.
+      if (!ids.length || defs.length !== ids.length) throw new ForbiddenException('You may not change one or more of these fields.');
+      await upsertCustomFieldValues(tx, c.organizationId, 'employee', employeeId, defs as CustomFieldDefinitionLite[], dto.values);
+      await audit(tx, c, 'employee.custom_fields.updated', 'employee', employeeId, { fields: defs.map((d) => d.key), by: access.self ? 'self' : 'hr' });
+      return this.fieldsView(tx, c, employeeId, access);
     });
   }
 

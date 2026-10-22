@@ -114,6 +114,8 @@ export interface LiveRecord {
   onRequestChange?: () => void;
   /** Family, nominees and emergency contacts (Personal; null: the viewer may not see them). */
   family?: RecordFamily | null;
+  /** Additional details: the company's own fields the viewer may see (none: no card); onEdit when one is theirs to change. */
+  custom?: { rows: CustomField[]; onEdit?: () => void } | null;
   job: [string, string][] | null;
   scheduled: { title: string; body: string }[];
   pastChanges: number;
@@ -431,9 +433,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             <>
               <TabsContent value="overview">
                 {live ? (
-                  <OverviewTab persona={persona} relation={relation} name={name} today={today} personal={live.personal} identity={live.identity} family={live.family ?? undefined} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={name} today={today} personal={live.personal} identity={live.identity} family={live.family ?? undefined} custom={live.custom?.rows} onEditCustom={live.custom?.onEdit} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 ) : (
-                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} today={today} personal={ARJUN.personal} identity={ARJUN.identity} family={{ members: ARJUN.family, nominations: ARJUN.nominations, expected: ARJUN.expectedSchemes, contacts: ARJUN.emergency, note: ARJUN.familyNote, ...(persona === 'hr' ? { onEdit: () => {} } : {}), ...(self || persona === 'hr' ? { onEditContacts: () => {} } : {}) }} custom={ARJUN.custom} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} today={today} personal={ARJUN.personal} identity={ARJUN.identity} family={{ members: ARJUN.family, nominations: ARJUN.nominations, expected: ARJUN.expectedSchemes, contacts: ARJUN.emergency, note: ARJUN.familyNote, ...(persona === 'hr' ? { onEdit: () => {} } : {}), ...(self || persona === 'hr' ? { onEditContacts: () => {} } : {}) }} custom={ARJUN.custom} onEditCustom={self || persona === 'hr' ? () => {} : undefined} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
                 )}
               </TabsContent>
               <TabsContent value="job">
@@ -491,14 +493,15 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
 
 /* ------------------------------------------------------------------ tabs */
 
-interface CustomField {
+export interface CustomField {
   label: string;
-  value: string;
+  /** null: "Not set". */
+  value: string | null;
   cls: FieldClass;
   selfEdit: boolean;
 }
 
-function OverviewTab({ persona, relation, name, today, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; today: Date; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: RecordFamily; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
+function OverviewTab({ persona, relation, name, today, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onEditCustom, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; today: Date; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: RecordFamily; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onEditCustom?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
   const familyVis = fieldVisibility('Personal', persona, relation);
   const custom = allCustom.filter((c) => fieldVisibility(c.cls, persona, relation) !== 'hidden');
   const first = name.split(' ')[0];
@@ -537,7 +540,7 @@ function OverviewTab({ persona, relation, name, today, personal, identity, famil
         </Text>
       )}
       {custom.length > 0 && (
-        <Card title="Additional details">
+        <Card title="Additional details" actions={onEditCustom ? <Button size="sm" onClick={onEditCustom}>Edit</Button> : undefined}>
           <dl className="yx-ppl__dl">
             {custom.map((c) => (
               <div key={c.label} className="yx-ppl__dl-row">
@@ -545,7 +548,7 @@ function OverviewTab({ persona, relation, name, today, personal, identity, famil
                   {c.label} <ClassBadge cls={c.cls} />
                   {relation === 'self' && !c.selfEdit && <Badge tone="neutral">HR edits</Badge>}
                 </dt>
-                <dd>{c.value}</dd>
+                <dd>{c.value ?? <Text tone="secondary">Not set</Text>}</dd>
               </div>
             ))}
           </dl>

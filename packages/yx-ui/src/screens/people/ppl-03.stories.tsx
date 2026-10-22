@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PersonWorkspace } from './record';
-import { ARJUN, d, TODAY } from './people-data';
+import { ARJUN, ARJUN_CUSTOM_VALUES, EMPLOYEE_FIELDS, d, TODAY } from './people-data';
+import { CustomFieldsDrawer, EmployeeFieldsScreen } from './custom-fields';
 import { ContactsDrawer, FamilyDrawer } from './family';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
@@ -34,4 +35,17 @@ export const EditFamily: S = {
 export const EditContacts: S = {
   name: 'Employee · edit emergency contacts',
   render: () => <ContactsDrawer initial={ARJUN.emergency} onSave={async () => undefined} onClose={() => undefined} />,
+};
+// Additional details (P18 custom fields): HR edits each field with its own input; settings define them with a class.
+export const EditCustomFields: S = {
+  name: 'HR · edit additional details',
+  render: () => <CustomFieldsDrawer fields={ARJUN_CUSTOM_VALUES} onSave={async () => undefined} onClose={() => undefined} />,
+};
+export const CustomFieldsSettings: S = {
+  name: 'Settings · custom fields',
+  render: () => <EmployeeFieldsScreen state="ready" fields={EMPLOYEE_FIELDS} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
+};
+export const CustomFieldsSettingsEmpty: S = {
+  name: 'Settings · custom fields (none yet)',
+  render: () => <EmployeeFieldsScreen state="ready" fields={[]} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
 };

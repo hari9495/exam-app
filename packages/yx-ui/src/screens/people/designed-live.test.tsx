@@ -416,6 +416,29 @@ describe('Person record (PPL-03)', () => {
     expect(screen.getByText('Not chosen for this tax year yet.')).toBeInTheDocument();
   });
 
+  it('Additional details: label, class and value as the server sends them, "Not set" when empty, Edit only when given', async () => {
+    const onEdit = vi.fn();
+    const rows = [
+      { label: 'Forklift licence number', value: 'TN70 2019 0004412', cls: 'Internal' as const, selfEdit: false },
+      { label: 'T-shirt size', value: null, cls: 'Public' as const, selfEdit: false },
+    ];
+    const { unmount } = wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ custom: { rows, onEdit } })} />);
+    const card = screen.getByRole('heading', { name: 'Additional details' }).closest('.yx-card') as HTMLElement;
+    expect(within(card).getByText('TN70 2019 0004412')).toBeInTheDocument();
+    expect(within(card).getByText('Not set')).toBeInTheDocument();
+    expect(within(card).getByText('Internal')).toBeInTheDocument();
+    await ue.click(within(card).getByRole('button', { name: 'Edit' }));
+    expect(onEdit).toHaveBeenCalled();
+    unmount();
+    // A manager with read-only fields: no Edit; nothing to see: no card at all.
+    const second = wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-10-20')} live={live({ custom: { rows } })} />);
+    expect(screen.getByText('Additional details')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    second.unmount();
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-10-20')} live={live({ custom: { rows: [] } })} />);
+    expect(screen.queryByText('Additional details')).toBeNull();
+  });
+
   it('pay is shown only after "Show pay"', async () => {
     const onShow = vi.fn();
     wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ pay: { kind: 'ask', onShow } })} />);

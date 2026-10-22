@@ -179,3 +179,25 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
   }
 }
 
+
+/**
+ * PPL-03 "Additional details": the company's employee fields of the design (forklift licence, T-shirt size, blood
+ * group) and Arjun Kulkarni's values. Idempotent: a field is added once (by key), a value only where none is set.
+ */
+export async function seedEmployeeCustomFields(tx: Tx, organizationId: string): Promise<void> {
+  const fields = [
+    { key: 'forklift_licence_number', label: 'Forklift licence number', fieldType: 'text', dataClass: 'internal', options: null, value: 'TN70 2019 0004412' },
+    { key: 't_shirt_size', label: 'T-shirt size', fieldType: 'select', dataClass: 'public', options: ['S', 'M', 'L', 'XL'], value: 'L' },
+    { key: 'blood_group', label: 'Blood group', fieldType: 'select', dataClass: 'personal', options: ['A positive', 'A negative', 'B positive', 'B negative', 'AB positive', 'AB negative', 'O positive', 'O negative'], value: 'B positive' },
+  ];
+  const arjun = await tx.employee.findFirst({ where: { organizationId, workEmail: 'arjun.kulkarni@kaverifoods.test' }, select: { id: true } });
+  for (const [position, f] of fields.entries()) {
+    const where = { organizationId_entityType_key: { organizationId, entityType: 'employee', key: f.key } };
+    const def =
+      (await tx.customFieldDefinition.findUnique({ where })) ??
+      (await tx.customFieldDefinition.create({ data: { organizationId, entityType: 'employee', key: f.key, label: f.label, fieldType: f.fieldType, dataClass: f.dataClass, optionsJson: f.options ? JSON.stringify(f.options) : null, position } }));
+    if (!arjun) continue;
+    const ref = { organizationId_definitionId_entityId: { organizationId, definitionId: def.id, entityId: arjun.id } };
+    if (!(await tx.customFieldValue.findUnique({ where: ref }))) await tx.customFieldValue.create({ data: { organizationId, definitionId: def.id, entityType: 'employee', entityId: arjun.id, valueText: f.value } });
+  }
+}
