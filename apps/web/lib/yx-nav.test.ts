@@ -78,7 +78,9 @@ describe('buildNav: Time, Pay, Compliance', () => {
 
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
-    expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
+    expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Pay groups', 'Payslip layout', 'Country packs', 'Payroll budget', 'Salary templates']);
+    // Whoever sees the runs reads the payroll budget (read-only without set-up).
+    expect(labels(nav(['payroll.run.approve']), 'settings')).toContain('Payroll budget');
     expect(labels(n, 'compliance')).toEqual(['Statutory set-up', 'Statutory coverage']);
     expect(labels(n, 'pay')).toEqual(['Go-live readiness', 'Compensation']);
   });

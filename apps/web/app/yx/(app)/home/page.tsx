@@ -136,7 +136,7 @@ export default function YxHomePage() {
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
-    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval } : {}),
+    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval, trend: fin.trend } : {}),
     ...(hideKey
       ? {
           amounts: {

@@ -9,8 +9,8 @@ import { asDate, dateOf } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { coverage, inForce } from '../statutory/evaluator';
-import { LayoutDto, LegalOptionDto, MemberDto, PayGroupDto, RegistrationsDto } from './dto-5b';
-import { entitiesFor, payViewer, requireEntity, requireSelf } from './pay-access';
+import { BudgetDto, LayoutDto, LegalOptionDto, MemberDto, PayGroupDto, RegistrationsDto } from './dto-5b';
+import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 import { SAMPLE_VALUES, renderPayslipPdf } from './payslip-pdf';
 
 // Batch 5b set-up (PAY-2.04 entity statutory set-up, PAY-2.05 pay groups, PAY-2.11 coverage monitor, PAY-2.13 payslip
@@ -18,6 +18,13 @@ import { SAMPLE_VALUES, renderPayslipPdf } from './payslip-pdf';
 // payroll.statutory.setup (⚡ on the route). Legal options are only what the law leaves to the employer (YX-STAT-06).
 
 const iso = (d: Date | null) => (d ? dateOf(d) : null);
+/** Who reads a budget: payroll set-up, and whoever sees the entity's runs (the cost beside it). */
+const BUDGET_READ = ['payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'] as const;
+/** April to March of a financial year ("2026-27"). */
+export const yearMonths = (taxYear: string) => {
+  const y = Number(taxYear.slice(0, 4));
+  return Array.from({ length: 12 }, (_, i) => (i < 9 ? `${y}-${String(i + 4).padStart(2, '0')}` : `${y + 1}-${String(i - 8).padStart(2, '0')}`));
+};
 const STATE_STATUTES = new Set(['IN.PT', 'IN.LWF']);
 
 // What each legal option may be (the law's choices; rates come from the pack).
@@ -60,6 +67,84 @@ export class PaySetupService {
       const ids = [...new Set(reach.flatMap(([, x]) => x))];
       const rows = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: ids }, archivedAt: null }, select: { id: true, name: true, shortName: true }, orderBy: { name: 'asc' } });
       return rows.map((e) => ({ ...e, keys: reach.filter(([, x]) => x.includes(e.id)).map(([k]) => k) }));
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ payroll budget (finance Home)
+
+  /**
+   * A financial year's payroll budget for a legal entity, month by month, next to the cost on record (cost to company of
+   * the month's regular runs, not void). Read by payroll staff of the entity; changed with payroll.setup.manage.
+   */
+  budget(ctx: TenantContext, user: ScopeUser, entityId: string, taxYear: string) {
+    return this.run(ctx, user, async (tx, c, v) => {
+      const org = c.organizationId;
+      const reach = [...new Set((await Promise.all(BUDGET_READ.map((k) => entitiesFor(tx, c, v, k)))).flat())];
+      if (!reach.includes(entityId)) throw new NotFoundException('Not found');
+      await payScope(tx, [entityId]);
+      const months = yearMonths(taxYear);
+      const starts = months.map((m) => asDate(`${m}-01`));
+      const rows = await tx.payrollBudget.findMany({ where: { organizationId: org, legalEntityId: entityId, month: { in: starts } } });
+      const runs = await tx.payrollRun.findMany({ where: { organizationId: org, legalEntityId: entityId, runType: 'regular', status: { not: 'void' }, periodStart: { in: starts } }, select: { periodStart: true, totals: true } });
+      const people = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.updatedBy) } }, select: { id: true, name: true, email: true } });
+      const canEdit = (await entitiesFor(tx, c, v, 'payroll.setup.manage')).includes(entityId);
+      return {
+        entityId,
+        taxYear,
+        canEdit,
+        months: months.map((m) => {
+          const b = rows.find((r) => dateOf(r.month).startsWith(m));
+          const costs = runs.filter((r) => dateOf(r.periodStart).startsWith(m)).map((r) => (r.totals as { employerCost?: string | number } | null)?.employerCost);
+          const who = b ? people.find((u) => u.id === b.updatedBy) : null;
+          return {
+            month: m,
+            budget: b ? b.amount.toFixed(2) : null,
+            cost: costs.length && costs.every((x) => x !== undefined && x !== null) ? costs.reduce<Prisma.Decimal>((t, x) => t.add(x!), new Prisma.Decimal(0)).toFixed(2) : null,
+            changedBy: who ? who.name || who.email : null,
+            // India date of the change (the timestamp is UTC).
+            changedOn: b ? new Date(b.updatedAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) : null,
+          };
+        }),
+      };
+    });
+  }
+
+  /** The legal entities whose budget the person may read, each with whether they may change it. */
+  budgetEntities(ctx: TenantContext, user: ScopeUser) {
+    return this.run(ctx, user, async (tx, c, v) => {
+      const reach = [...new Set((await Promise.all(BUDGET_READ.map((k) => entitiesFor(tx, c, v, k)))).flat())];
+      const setup = await entitiesFor(tx, c, v, 'payroll.setup.manage');
+      const rows = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: reach }, archivedAt: null }, select: { id: true, name: true, shortName: true }, orderBy: { name: 'asc' } });
+      return rows.map((e) => ({ ...e, keys: setup.includes(e.id) ? ['payroll.setup.manage'] : [] }));
+    });
+  }
+
+  /** Sets (or clears, amount null) months of an entity's budget; each change is audited with the old and new amount. */
+  saveBudget(ctx: TenantContext, user: ScopeUser, dto: BudgetDto) {
+    return this.run(ctx, user, async (tx, c, v) => {
+      const org = c.organizationId;
+      await requireEntity(tx, c, v, 'payroll.setup.manage', dto.legalEntityId);
+      await payScope(tx, [dto.legalEntityId]);
+      if (new Set(dto.months.map((m) => m.month)).size !== dto.months.length) throw new BadRequestException('Each month once, please.');
+      let changed = 0;
+      for (const m of dto.months) {
+        const month = asDate(`${m.month}-01`);
+        const old = await tx.payrollBudget.findFirst({ where: { organizationId: org, legalEntityId: dto.legalEntityId, month } });
+        const to = m.amount === null || m.amount === undefined || m.amount === '' ? null : new Prisma.Decimal(m.amount);
+        if (to === null) {
+          if (!old) continue;
+          await tx.payrollBudget.delete({ where: { id: old.id } });
+          await audit(tx, c, 'payroll.budget.cleared', 'payroll_budget', old.id, { legalEntityId: dto.legalEntityId, month: m.month, from: old.amount.toFixed(2) });
+        } else {
+          if (old?.amount.eq(to)) continue;
+          const row = old
+            ? await tx.payrollBudget.update({ where: { id: old.id }, data: { amount: to, updatedBy: v.userId!, updatedAt: new Date() } })
+            : await tx.payrollBudget.create({ data: { organizationId: org, legalEntityId: dto.legalEntityId, month, amount: to, updatedBy: v.userId! } });
+          await audit(tx, c, 'payroll.budget.set', 'payroll_budget', row.id, { legalEntityId: dto.legalEntityId, month: m.month, from: old?.amount.toFixed(2) ?? null, to: to.toFixed(2) });
+        }
+        changed++;
+      }
+      return { changed };
     });
   }
 

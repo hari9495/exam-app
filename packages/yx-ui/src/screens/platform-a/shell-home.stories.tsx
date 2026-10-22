@@ -235,7 +235,7 @@ export const PLT02FinanceHidden: S = {
 };
 export const PLT02Finance: S = { name: 'PLT-02 · Role home · finance', render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts={false} /> };
 // Finance, live (home parity 20 Oct 2026): the designed finance widgets with live data only. Left out until they have a
-// source: "Payroll cost" against budget, Announcements, Coming up, the professional tax
+// source: Announcements, Coming up, the professional tax
 // row (no due date on record) and "All payments" (no such page yet).
 const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
   ...LIVE_HR,
@@ -258,6 +258,17 @@ const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
     { id: 'o4', date: '15 Oct', what: 'Provident Fund', amount: 2412100, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
     { id: 'o5', date: '15 Oct', what: 'ESI', amount: 556300, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
   ],
+  trend: {
+    months: [
+      { label: 'Apr', name: 'April', cost: 20850000, budget: 21400000 },
+      { label: 'May', name: 'May', cost: 20910000, budget: 21400000 },
+      { label: 'Jun', name: 'June', cost: 21120000, budget: 21400000 },
+      { label: 'Jul', name: 'July', cost: 21300000, budget: 21400000 },
+      { label: 'Aug', name: 'August', cost: 21280000, budget: 21400000 },
+      { label: 'Sep', name: 'September', cost: 21560000, budget: 21400000 },
+    ],
+    budgetHref: '#budget',
+  },
   approval: { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '#run' },
   due: undefined,
   moves: undefined,
@@ -283,6 +294,11 @@ function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden
 }
 export const PLT02FinanceLive: S = { name: 'PLT-02 · Role home · finance, live', render: () => <FinanceLive /> };
 export const PLT02FinanceLiveHidden: S = { name: 'PLT-02 · Role home · finance, live, amounts hidden', render: () => <FinanceLive hidden /> };
+// No payroll budget set yet (21 Oct 2026): the chart says so and, for someone who sets it, links to Payroll budget.
+export const PLT02FinanceLiveNoBudget: S = {
+  name: 'PLT-02 · Role home · finance, live, no budget yet',
+  render: () => <RoleHomeScreen persona="finance" data={FIN} live={{ ...LIVE_FIN, trend: { ...LIVE_FIN.trend!, months: LIVE_FIN.trend!.months.map((m) => ({ ...m, budget: null })) } }} />,
+};
 export const PLT02FinanceLiveQuiet: S = { name: 'PLT-02 · Role home · finance, live, nothing yet', render: () => <FinanceLive quiet /> };
 // The payroll preparer (Suresh in the demo): the run he prepared waits for someone else, so nothing needs his action
 // and there is no "Payroll approval" card; no claims card without the payout key.

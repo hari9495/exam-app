@@ -9973,3 +9973,19 @@ model Nudge {
   @@unique([organizationId, employeeId, item, onDay], map: "nudges_once_a_day_key")
   @@map("nudges")
 }
+
+/// Monthly payroll budget (cost to company) per legal entity (finance Home "Payroll cost vs budget"). Entity pay
+/// totals: the pay guard limits it to payroll staff of the entity. Every change is in the audit log.
+model PayrollBudget {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  month          DateTime @db.Date
+  amount         Decimal  @db.Decimal(16, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, legalEntityId, month])
+  @@map("payroll_budgets")
+}

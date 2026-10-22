@@ -272,6 +272,36 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Home (PLT-02 "Payroll cost vs budget"): cost to company of each month's regular runs (not void) against the payroll
+   * budget, for the entities whose runs the person sees. A month's budget shows only when every entity with a cost that
+   * month has one (a part budget would mislead). Null without a run key.
+   */
+  async homeCost(ctx: TenantContext, user: ScopeUser, months: string[], entityId?: string | null) {
+    const v = await payViewer(this.prisma, this.tenantPrisma, user);
+    if (v.actingForOther || !v.userId || !VIEW.some((k) => v.grants.has(k))) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())].filter((id) => !entityId || id === entityId);
+      await payScope(tx, ids);
+      const starts = months.map((m) => asDate(`${m}-01`));
+      const runs = await tx.payrollRun.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, runType: 'regular', status: { not: 'void' }, periodStart: { in: starts } }, select: { legalEntityId: true, periodStart: true, totals: true } });
+      const budgets = await tx.payrollBudget.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, month: { in: starts } } });
+      const setup = await entitiesFor(tx, c, v, 'payroll.setup.manage');
+      return {
+        canSetBudget: ids.some((id) => setup.includes(id)),
+        months: months.map((m) => {
+          const mine = runs.filter((r) => dateOf(r.periodStart).startsWith(m));
+          const costs = mine.map((r) => (r.totals as { employerCost?: string | number } | null)?.employerCost);
+          const cost = costs.length && costs.every((x) => x !== undefined && x !== null) ? costs.reduce<Prisma.Decimal>((t, x) => t.add(x!), D(0)) : null;
+          const set = budgets.filter((b) => dateOf(b.month).startsWith(m));
+          const covered = set.length > 0 && [...new Set(mine.map((r) => r.legalEntityId))].every((id) => set.some((b) => b.legalEntityId === id));
+          return { month: m, cost: cost?.toFixed(2) ?? null, budget: covered ? set.reduce((t, b) => t.add(b.amount), D(0)).toFixed(2) : null };
+        }),
+      };
+    });
+  }
+
   /** The payroll-run entities this person prepares runs for ([] without the key or when acting for someone else). */
   async preparesFor(ctx: TenantContext, user: ScopeUser): Promise<string[]> {
     const v = await this.viewer(user);

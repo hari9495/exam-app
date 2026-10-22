@@ -177,3 +177,15 @@ describe('Finance home (parity with PLT-02 finance)', () => {
     ]);
   });
 });
+
+describe('Finance home: payroll cost vs budget', () => {
+  it('turns the six months into chart points, with the budget link only for someone who sets it', () => {
+    const cost = { canSetBudget: true, months: [{ month: '2026-08', cost: '21280000.00', budget: '21400000.00' }, { month: '2026-09', cost: null, budget: '21400000.00' }] };
+    expect(financeHome({ cost }, '2026-09', '2026-09-29').trend).toEqual({
+      months: [{ label: 'Aug', name: 'August', cost: 21280000, budget: 21400000 }, { label: 'Sep', name: 'September', cost: null, budget: 21400000 }],
+      budgetHref: '/yx/payroll/budget',
+    });
+    expect(financeHome({ cost: { ...cost, canSetBudget: false } }, '2026-09', '2026-09-29').trend).not.toHaveProperty('budgetHref');
+    expect(financeHome({ runs: [] }, '2026-09', '2026-09-29').trend).toBeUndefined();
+  });
+});

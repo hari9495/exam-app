@@ -97,6 +97,8 @@ export interface FinanceHome {
   /** previous: claims to pay at the end of last month (rupees), only when on record and covering all the person sees now. */
   claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
   /** statutory.filing.view: the statutory hub per legal entity and wage month (approved payslips only). */
+  /** payroll.run.view, prepare or approve: the last six months' cost to company against the payroll budget. */
+  cost?: { canSetBudget: boolean; months: { month: string; cost: string | null; budget: string | null }[] };
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
@@ -216,6 +218,12 @@ export class WorkspaceService {
     const out: FinanceHome = {};
     const runs = await this.service(PayRunsService).homeRuns(ctx, user, months, entityId);
     if (runs) out.runs = runs;
+    const six = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 6 + i, 1));
+      return d.toISOString().slice(0, 7);
+    });
+    const cost = await this.service(PayRunsService).homeCost(ctx, user, six, entityId);
+    if (cost) out.cost = cost;
     const claims = await this.service(ExpensePaymentsService).homeSummary(ctx, user, entityId);
     if (claims) {
       const { whole, ...rest } = claims;
