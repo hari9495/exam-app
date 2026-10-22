@@ -157,6 +157,8 @@
   border-radius: var(--yx-radius-round);
   min-width: var(--yx-target-min); min-height: var(--yx-target-min);
 }
+/* Wider than other menus: the name and email read on one line (founder 20 Oct). */
+.yx-profile-menu { min-width: 260px; }
 .yx-profile-menu__who { display: flex; flex-direction: column; padding: var(--yx-space-2); }
 .yx-profile-menu__name { font-weight: var(--yx-weight-medium); }
 .yx-profile-menu__email { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
