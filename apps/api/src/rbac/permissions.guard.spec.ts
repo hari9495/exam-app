@@ -8,14 +8,27 @@ import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorat
 // Every staff request carries its session's assurance (JwtStrategy). Default: AAL2, just verified.
 const AAL2 = { assuranceLevel: 'aal2', mfaVerifiedAt: new Date(), mfaMethod: 'totp', mfaEnrolmentDueAt: new Date(0) };
 
+const HANDLER = {};
+const CLASS = class {};
+
 function mockContext(user: unknown): ExecutionContext {
   return {
     switchToHttp: () => ({ getRequest: () => ({ user: user && { session: AAL2, ...(user as object) } }) }),
-    getHandler: () => ({}),
+    getHandler: () => HANDLER,
+    getClass: () => CLASS,
   } as unknown as ExecutionContext;
 }
 
 describe('PermissionsGuard', () => {
+  // A @RequirePermissions on the controller class was ignored, so drip, surveys and custom-fields settings were open.
+  it('enforces a permission set on the controller class', async () => {
+    const reflector = { get: jest.fn((key: string, target: unknown) => (target === CLASS && key === PERMISSIONS_KEY ? ['pipeline:manage'] : undefined)) } as unknown as Reflector;
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) }, user: { findUnique: jest.fn().mockResolvedValue(null) } };
+    const tenantPrisma = { forTenant: jest.fn() };
+    const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+    await expect(guard.canActivate(mockContext({ role: 'interviewer', organizationId: 'org-1', id: 'u-1' }))).rejects.toThrow();
+  });
+
   it('allows access when the route requires no permissions', async () => {
     const reflector = { get: jest.fn().mockReturnValue(undefined) } as unknown as Reflector;
     const prisma = { rolePermission: { findMany: jest.fn() } };
@@ -279,7 +292,7 @@ describe('PermissionsGuard', () => {
       return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
     };
     const ctx = (user: object, ip: string) =>
-      ({ switchToHttp: () => ({ getRequest: () => ({ user: { session: AAL2, ...user }, ip }) }), getHandler: () => ({}) }) as unknown as ExecutionContext;
+      ({ switchToHttp: () => ({ getRequest: () => ({ user: { session: AAL2, ...user }, ip }) }), getHandler: () => ({}), getClass: () => CLASS }) as unknown as ExecutionContext;
     const admin = { role: 'org_admin', organizationId: ORG, permissionProfileId: null };
     beforeEach(() => invalidateTenantSecurityPolicy(ORG));
 
@@ -336,7 +349,7 @@ describe('PermissionsGuard', () => {
     const ctx = (user: object) =>
       ({
         switchToHttp: () => ({ getRequest: () => ({ user, ip: '203.0.113.1', method: 'PATCH', path: '/x', route: { path: '/x' } }) }),
-        getHandler: () => ({}),
+        getHandler: () => ({}), getClass: () => CLASS,
       }) as unknown as ExecutionContext;
     const admin = (session: object) => ({ userId: 'u-1', role: 'org_admin', organizationId: ORG, permissionProfileId: null, session });
     const outcome = async (promise: Promise<unknown>) => {
