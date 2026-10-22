@@ -75,9 +75,9 @@ export class DocumentsService {
     if (!(await reachesDocument(tx, c, v, action === 'view' ? 'document.view' : 'document.manage', t.sensitivity, personId, own))) {
       // Managing implies viewing (a verifier must open the file).
       if (action === 'view' && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own))) return { self: false, own };
-      // PPL-03 (founder 20 Oct 2026): a manager (the implicit view) sees the team's documents read-only, never a
-      // Confidential or Special one (PAN, bank proof, passport, Aadhaar).
-      if (action === 'view' && t.sensitivity !== 'confidential' && t.sensitivity !== 'special' && (await this.managesPerson(tx, c, own.employeeId, personId))) return { self: false, own };
+      // PPL-03: a manager (the implicit view) reads the team's Public and Internal documents only (a licence, a
+      // certificate); never Personal (photo, medical), Confidential or Special (founder 22 Oct 2026: need to know).
+      if (action === 'view' && (t.sensitivity === 'public' || t.sensitivity === 'internal') && (await this.managesPerson(tx, c, own.employeeId, personId))) return { self: false, own };
       throw new ForbiddenException('You cannot see this document.');
     }
     return { self: false, own };
@@ -89,7 +89,7 @@ export class DocumentsService {
     return Boolean(e && e.id !== own && covers(await implicitPeriods(tx, c, own, e.id), todayIst()));
   }
 
-  /** PPL-03 Documents tab for a manager: the team member's documents below Confidential, nothing to manage. */
+  /** PPL-03 Documents tab for a manager: the team member's Public and Internal documents, nothing to manage. */
   async forTeam(ctx: TenantContext, user: ScopeUser, personId: string) {
     const v = await this.viewer(user);
     const ok = await inCompany(this.tenantPrisma, ctx, async (tx, c) => this.managesPerson(tx, c, (await ownOf(tx, c, v)).employeeId, personId));
