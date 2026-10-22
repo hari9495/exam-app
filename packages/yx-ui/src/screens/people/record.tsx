@@ -88,6 +88,8 @@ export interface RecordPerformance {
   goals: { id: string; title: string; status: string; tone: BadgeTone }[];
   lastReview: string | null;
   nextOneOnOne: string | null;
+  /** "3 received · 1 given" this quarter; null while unknown (the line is then left out). */
+  feedback?: string | null;
   onOpenGoals?: () => void;
 }
 
@@ -863,7 +865,7 @@ function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Perso
   );
 }
 
-function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerformance }) {
+export function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerformance }) {
   if (data)
     return (
       <div className="yx-ppl__grid2">
@@ -884,7 +886,8 @@ function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerf
         <Card title="Reviews">
           <dl className="yx-ppl__rail-facts">
             <div><dt>Last review</dt><dd>{data.lastReview ?? 'None shared yet'}</dd></div>
-            {data.nextOneOnOne && <div><dt>Next 1:1</dt><dd>{data.nextOneOnOne}</dd></div>}
+            <div><dt>Next 1:1</dt><dd>{data.nextOneOnOne ?? 'None scheduled'}</dd></div>
+            {data.feedback != null && <div><dt>Feedback this quarter</dt><dd>{data.feedback}</dd></div>}
           </dl>
         </Card>
       </div>

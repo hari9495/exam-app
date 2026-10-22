@@ -104,6 +104,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const goals = usePerf<{ goals: { id: string; title: string; status: string; progress: number }[] }>(perfAllowed && periodId ? `/goals?period=${id(periodId)}&view=${profile.data?.self ? 'mine' : 'employee'}${profile.data?.self ? '' : `&employeeId=${p}`}` : null);
   const reviews = usePerf<{ employeeId: string; cycle: string; status: string; band: string | null }[]>(perfAllowed ? `/reviews?view=${profile.data?.self ? 'mine' : hr && perms.has('perf.review.view') ? 'scope' : 'team'}` : null);
   const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
+  // Counts only (PPL-03); the API decides who may ask (the person, their managers, HR with review access).
+  const feedbackCounts = usePerf<{ received: number; given: number }>(perfAllowed ? `/feedback/employee/${p}/counts` : null);
 
   const [editing, setEditing] = useState(false);
   const [familyEdit, setFamilyEdit] = useState<'family' | 'contacts' | 'custom' | null>(null);
@@ -253,7 +255,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
     performance:
       perfAllowed && (goals.data || reviews.data) && personId
-        ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
+        ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), feedback: feedbackCounts.data ? `${feedbackCounts.data.received} received · ${feedbackCounts.data.given} given` : null, onOpenGoals: () => router.push('/yx/performance/goals') }
         : null,
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
