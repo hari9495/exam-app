@@ -342,6 +342,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           options={options}
           employeeId={personId}
           onPreview={raise.onPreview}
+          onRoute={raise.onRoute}
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             done(`Change for ${first} sent`);

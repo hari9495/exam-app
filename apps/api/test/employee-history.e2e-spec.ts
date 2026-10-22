@@ -602,4 +602,83 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await read('outsiderA', ids.lakshmi).expect(404);
     });
   });
+
+  describe('PPL-04 change action: required fields, the approval route, drafts, the transfer impact', () => {
+    const in20 = addDays(today, 20);
+    beforeAll(async () => {
+      // Approvers are shown by name (the users here had none).
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        // The HR Approver without pay again (an earlier test granted it), so the pay route differs.
+        await tx.permissionProfile.updateMany({ where: { organizationId: org.A.id, name: 'HR Approver' }, data: { permissionsJson: JSON.stringify(['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']) } });
+        for (const [who, name] of [['approverA', 'Asha Approver'], ['payApproverA', 'Priya Payapprover'], ['payrollA', 'Pavan Payroll'], ['hrA', 'Hema HR']] as const) await tx.user.update({ where: { id: users[who] }, data: { name } });
+        ids.maa = (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: ids.kf, name: 'Chennai', code: 'MAA', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata', geoLat: '12.98', geoLng: '80.24', geoRadiusM: 200 } })).id;
+        await tx.holidayCalendar.create({ data: { organizationId: org.A.id, name: 'Karnataka 2026', locationId: ids.blr } });
+        await tx.holidayCalendar.create({ data: { organizationId: org.A.id, name: 'Tamil Nadu 2026', locationId: ids.maa } });
+      });
+      ids.nisha = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Nisha', joinedOn: today, overrideReason: undefined })).expect(201)).body.id;
+    });
+    const change = (extra: Record<string, unknown>) => ({ employeeId: ids.nisha, changeType: 'transfer', effectiveDate: in20, payload: { assignment: { locationId: ids.maa } }, reason: 'Chennai accounts', ...extra });
+
+    it('a transfer needs a new location, a promotion a new designation or grade (not the ones already in force)', async () => {
+      const no = async (body: Record<string, unknown>, msg: RegExp) => expect((await api('hrA', 'post', '/people/changes').send(change(body)).expect(400)).body.message).toMatch(msg);
+      await no({ payload: { assignment: { departmentId: ids.ppl } } }, /transfer needs a new location/);
+      await no({ payload: { assignment: { locationId: ids.blr } } }, /needs a new location: that is the one in force/);
+      await no({ changeType: 'promotion', payload: { assignment: { skillClass: 'skilled' } } }, /promotion needs a new designation or grade/);
+      await no({ changeType: 'promotion', payload: { assignment: { designationId: ids.analyst, gradeId: ids.g2 } } }, /new designation or grade: that is the one in force/);
+      // The preview checks the same.
+      await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { departmentId: ids.ppl } } })).expect(400);
+    });
+
+    it('the transfer impact lists what the new location carries: holidays, PT state with its slab, LWF, geofence', async () => {
+      const { impact } = (await api('hrA', 'post', '/people/changes/preview').send(change({})).expect(201)).body;
+      expect(impact.facts).toEqual(
+        expect.arrayContaining([
+          { fact: 'Location', from: 'Bengaluru', to: 'Chennai' },
+          { fact: 'Holiday calendar', from: 'Karnataka 2026', to: 'Tamil Nadu 2026' },
+          { fact: 'Professional tax state', from: 'Karnataka (monthly slab)', to: 'Tamil Nadu (half-yearly slab)' },
+          { fact: 'Labour welfare fund', from: 'Karnataka', to: 'Tamil Nadu' },
+          { fact: 'Geofence', from: 'No geofence', to: 'Chennai, 200 m' },
+        ]),
+      );
+      // Within the same state only what really moves: no PT or LWF row.
+      const mys = (await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { locationId: ids.mys } } })).expect(201)).body.impact.facts.map((f: { fact: string }) => f.fact);
+      expect(mys).not.toContain('Professional tax state');
+      expect(mys).not.toContain('Labour welfare fund');
+    });
+
+    it('the route names who decides, never the raiser; with pay only those who see pay; a waiting change says who it waits for', async () => {
+      const route = (who: Who, q: string) => api(who, 'get', `/people/changes/route?employeeId=${ids.nisha}${q}`);
+      expect((await route('hrA', '').expect(200)).body.approvers).toEqual(['Asha Approver', 'Pavan Payroll', 'Priya Payapprover']);
+      expect((await route('hrA', '&pay=true').expect(200)).body.approvers).toEqual(['Pavan Payroll', 'Priya Payapprover']);
+      await route('outsiderA', '').expect(403);
+      await api('adminB', 'get', `/people/changes/route?employeeId=${ids.nisha}`).expect(404);
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      const row = (who: Who) => api(who, 'get', '/people/changes?status=pending').expect(200).then((r) => r.body.find((x: { id: string }) => x.id === raised.id));
+      expect(await row('hrA')).toMatchObject({ waitingFor: ['Asha Approver', 'Pavan Payroll', 'Priya Payapprover'], requestedByName: 'Hema HR', newValues: ['Chennai'] });
+      expect((await row('approverA')).waitingFor).toEqual(['you', 'Pavan Payroll', 'Priya Payapprover']);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
+    it('drafts: only the raiser sees and edits theirs; another company gets 404; sending removes the draft', async () => {
+      const form = { changeType: 'transfer', values: { locationId: ids.maa }, reason: 'Half done' };
+      const saved = (await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, changeType: 'transfer', form }).expect(201)).body;
+      expect(saved).toMatchObject({ employeeId: ids.nisha, employeeName: 'Nisha', changeType: 'transfer', form });
+      await api('hrA', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, changeType: 'transfer', form: { ...form, reason: 'Nearly done' } }).expect(200);
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body.map((d: { id: string; form: { reason: string } }) => [d.id, d.form.reason])).toEqual([[saved.id, 'Nearly done']]);
+      // Someone else in the company, even with the same rights: not theirs.
+      expect((await api('payrollA', 'get', '/people/changes/drafts').expect(200)).body).toEqual([]);
+      await api('payrollA', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, form }).expect(404);
+      // Another company: neither the draft nor the person exists there.
+      await api('adminB', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, form }).expect(404);
+      await api('adminB', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form }).expect(404);
+      await api('outsiderA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form }).expect(403);
+      await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form: { big: 'x'.repeat(20001) } }).expect(400);
+      // Sent through the normal path (its checks apply), then gone.
+      await api('hrA', 'post', '/people/changes').send(change({ draftId: saved.id, payload: { assignment: { locationId: ids.blr } } })).expect(400);
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body).toHaveLength(1);
+      const sent = (await api('hrA', 'post', '/people/changes').send(change({ draftId: saved.id })).expect(201)).body;
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body).toEqual([]);
+      await api('hrA', 'post', `/people/changes/${sent.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+  });
 });

@@ -4,9 +4,10 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { buildViewer, covers, coversRange, grantPeriods, grantPeriodsFor, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, started, tenantWide, Viewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { audit, CompanyContext, companyContext, mapDbError, Tx } from '../org-structure/org-structure.service';
-import { addDays, asDate, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
+import { addDays, asDate, IN_STATES, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
-import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
+import { ChangeDraftDto, ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
+import { holdersOf } from '../time/time-core';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
 import { startProbation } from '../people/probation';
 import { serviceDates as datesFor, Spell } from './service-dates';
@@ -28,6 +29,7 @@ import {
   label,
   localToday,
   payloadProblem,
+  unchangedProblem,
   reach,
   Reach,
   Segment,
@@ -906,6 +908,7 @@ export class EmployeeHistoryService {
     const after = dates.map((d) => this.factsOn(afterRows, d));
     const names = await this.names(tx, c, [...before, ...after].flatMap((f) => (f.assignment ? [f.assignment] : [])));
     const own = this.diff(before[0], after[0], names);
+    own.facts.splice(own.facts.findIndex((f) => f.fact === 'Location') + 1, 0, ...(await this.locationEffects(tx, c, e, before[0].assignment?.locationId, after[0].assignment?.locationId, date)));
     const rebased = later
       .map((l) => {
         const i = dates.indexOf(isoDate(l.effectiveDate));
@@ -921,6 +924,40 @@ export class EmployeeHistoryService {
     };
   }
 
+  /**
+   * PPL-04 transfer impact (P06 §4.3): what a new location carries with it on the date: the holiday calendar, the
+   * professional tax state (with its slab basis), the labour welfare fund state and the geofence. Only rows that
+   * really change; PT / LWF follow the location unless the person's statutory profile fixes the state (as payroll does).
+   */
+  async locationEffects(tx: Tx, c: CompanyContext, e: Employment, fromId: string | undefined, toId: string | undefined, date: string) {
+    if (!fromId || !toId || fromId === toId) return [];
+    const org = c.organizationId;
+    const day = asDate(date);
+    const locs = await tx.location.findMany({ where: { organizationId: org, id: { in: [fromId, toId] } }, select: { id: true, name: true, state: true, geoLat: true, geoLng: true, geoRadiusM: true } });
+    const from = locs.find((l) => l.id === fromId);
+    const to = locs.find((l) => l.id === toId);
+    if (!from || !to) return [];
+    const out: { fact: string; from: string | null; to: string | null }[] = [];
+    const push = (fact: string, a: string | null, b: string | null) => a !== b && out.push({ fact, from: a, to: b });
+    const calendar = async (locationId: string) =>
+      ((await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId }, select: { name: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { name: true } })))?.name ?? null;
+    push('Holiday calendar', await calendar(from.id), await calendar(to.id));
+    const profile = await tx.employeeStatutory.findFirst({ where: { organizationId: org, employmentId: e.id, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] }, select: { ptState: true, lwfState: true } });
+    const rule = (statute: string, state: string) =>
+      tx.statutoryRuleSet.findFirst({ where: { statute, jurisdiction: state, status: 'published', validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] }, orderBy: { validFrom: 'desc' }, select: { values: true } });
+    const stateName = (s: string) => IN_STATES[s] ?? s;
+    const pt = async (state: string) => {
+      const basis = ((await rule('IN.PT', state))?.values as { basis?: string } | undefined)?.basis;
+      return basis ? `${stateName(state)} (${basis.replace(/_/g, '-')} slab)` : `${stateName(state)} (no professional tax)`;
+    };
+    if (!profile?.ptState) push('Professional tax state', await pt(from.state), await pt(to.state));
+    const lwf = async (state: string) => ((await rule('IN.LWF', state)) ? stateName(state) : `${stateName(state)} (no labour welfare fund)`);
+    if (!profile?.lwfState) push('Labour welfare fund', await lwf(from.state), await lwf(to.state));
+    const fence = (l: typeof from) => (l.geoLat !== null && l.geoLng !== null && l.geoRadiusM ? `${l.name}, ${l.geoRadiusM} m` : 'No geofence');
+    push('Geofence', fence(from), fence(to));
+    return out;
+  }
+
   private diff(b: Facts, a: Facts, n: Awaited<ReturnType<EmployeeHistoryService['names']>>) {
     const facts: { fact: string; from: string | null; to: string | null }[] = [];
     const push = (fact: string, from: string | null | undefined, to: string | null | undefined) => {
@@ -929,8 +966,7 @@ export class EmployeeHistoryService {
     const da = b.assignment ? this.describe(b.assignment, n) : null;
     const db = a.assignment ? this.describe(a.assignment, n) : null;
     push('Location', da?.location.name, db?.location.name);
-    // Derived effects the location carries (P06 §4.3): professional tax / LWF state and the clock it runs on.
-    push('State (professional tax, LWF, holidays)', da?.location.state, db?.location.state);
+    // The location's knock-on effects (holidays, PT, LWF, geofence) are added by locationEffects; here the clock.
     push('Time zone', da?.location.timezone, db?.location.timezone);
     push('Department', da?.department?.name, db?.department?.name);
     push('Designation', da?.designation?.name, db?.designation?.name);
@@ -981,6 +1017,14 @@ export class EmployeeHistoryService {
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);
     await this.checkRefs(tx, c, e, payload);
+    // PPL-04: a transfer to where the person already works (or a promotion to the same job) changes nothing.
+    const day = asDate(dto.effectiveDate);
+    const now = await tx.employeeAssignment.findFirst({
+      where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
+      select: { locationId: true, designationId: true, gradeId: true },
+    });
+    const unchanged = unchangedProblem(dto.changeType, payload, now);
+    if (unchanged) throw new BadRequestException(unchanged);
     const ch = await tx.employeeChange.create({
       data: {
         organizationId: c.organizationId,
@@ -1064,6 +1108,8 @@ export class EmployeeHistoryService {
   requestChange(ctx: TenantContext, v: Viewer, dto: ChangeRequestDto) {
     return this.run(ctx, async (tx, c) => {
       const { ch } = await this.createChange(tx, c, v, dto);
+      // Sent from a saved draft: the draft has done its job (only the raiser's own, never someone else's).
+      if (dto.draftId) await tx.employeeChangeDraft.deleteMany({ where: { organizationId: c.organizationId, id: dto.draftId, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' } });
       await audit(tx, c, 'employee.change.requested', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: dto.effectiveDate, touchesPay: Boolean(dto.payload.compensation) });
       return (await this.viewChanges(tx, c, v, [ch], 'change'))[0];
     });
@@ -1100,10 +1146,112 @@ export class EmployeeHistoryService {
       });
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.employeeId))] } } });
       const views = await this.viewChanges(tx, c, v, rows, 'change');
-      return views.map((view) => {
+      // PPL-04: who a pending change waits for (the approvers' names only).
+      const waiting = new Map<string, string[]>();
+      for (const r of rows.filter((x) => x.status === 'pending')) {
+        waiting.set(r.id, await this.approverNames(tx, c, r.employeeId, r.requestedBy, Boolean((r.payload as ChangePayload).compensation), isoDate(r.effectiveDate)));
+      }
+      // PPL-05 "What changes": the new values by name (a pending change has no stored impact yet), and who raised it.
+      const asked = views.map((x) => ({ costCentres: [], dottedLineManagerIds: [], ...(x.payload.assignment ?? {}) }) as AssignmentValues);
+      const n = await this.names(tx, c, asked, true);
+      const raisers = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.requestedBy).filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } });
+      return views.map((view, i) => {
         const p = people.find((x) => x.id === view.employeeId);
-        return { ...view, employeeName: p ? displayName(p) : null };
+        const a = asked[i];
+        const mgr = a.managerEmployeeId ? n.managers.get(a.managerEmployeeId) : undefined;
+        const newValues = [
+          a.designationId && n.designations.get(a.designationId)?.name,
+          a.gradeId && n.grades.get(a.gradeId)?.name,
+          a.locationId && n.locations.get(a.locationId)?.name,
+          a.departmentId && n.departments.get(a.departmentId)?.name,
+          a.employmentTypeId && n.types.get(a.employmentTypeId)?.name,
+          mgr && displayName(mgr),
+          view.payload.status && view.payload.status[0].toUpperCase() + view.payload.status.slice(1),
+        ].filter((x): x is string => Boolean(x));
+        return {
+          ...view,
+          employeeName: p ? displayName(p) : null,
+          requestedByName: raisers.find((u) => u.id === view.requestedBy)?.name?.trim() || null,
+          newValues,
+          ...(waiting.has(view.id) ? { waitingFor: waiting.get(view.id) } : {}),
+        };
       });
+    });
+  }
+
+  /**
+   * PPL-04 approval route: a change is decided by a holder of employee.change.approve whose grant reaches the person
+   * (with pay, one who also sees pay, R1), never by whoever raised it nor the person it is about (YX-SEC-11). Names
+   * only, as the approvals inbox shows a requester their approvers; "you" when the reader is one of them.
+   */
+  async approverNames(tx: Tx, c: CompanyContext, employeeId: string, raisedBy: string | null, pay: boolean, date: string): Promise<string[]> {
+    const org = c.organizationId;
+    const today = todayIst();
+    // shortcut: holdersOf checks the grant on one day (the later of today and the change date), not the whole span the change shapes.
+    const on = date > today ? date : today;
+    let ids = await holdersOf(tx, org, 'employee.change.approve', employeeId, on);
+    if (pay) {
+      const sees = new Set(await holdersOf(tx, org, 'employee.salary.view', employeeId, on));
+      ids = ids.filter((id) => sees.has(id));
+    }
+    const subject = (await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } }))?.userId ?? null;
+    ids = ids.filter((id) => id !== raisedBy && id !== subject);
+    if (!ids.length) return [];
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true } });
+    const names = users.filter((u) => u.id !== c.userId && u.name?.trim()).map((u) => u.name!.trim()).sort((a, b) => a.localeCompare(b));
+    return users.some((u) => u.id === c.userId) ? ['you', ...names] : names;
+  }
+
+  /** PPL-04: may the viewer raise a change for this person today (HR's scope, or a manager for their team)? 404 if not. */
+  async mustRaiseFor(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    // Company-wide grants reach everyone, so first: is this a person of the caller's company at all (forced RLS)?
+    if (!(await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId }, select: { id: true } }))) throw new NotFoundException('No open employment for that employee');
+    if (await this.reaches(tx, c, v, 'employee.change.manage', employeeId, todayIst())) return;
+    // A promotion is a type managers may raise, so this checks only the team (and answers 404 / 403 as a raise would).
+    await this.checkOnBehalf(tx, c, v, 'promotion', employeeId);
+  }
+
+  private async mayRaiseFor(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string): Promise<boolean> {
+    return this.mustRaiseFor(tx, c, v, employeeId).then(
+      () => true,
+      () => false,
+    );
+  }
+
+  /** The route line before a change is sent: who will decide it. */
+  changeRoute(ctx: TenantContext, v: Viewer, q: { employeeId: string; effectiveDate?: string; pay?: string }) {
+    return this.run(ctx, async (tx, c) => {
+      await this.mustRaiseFor(tx, c, v, q.employeeId);
+      return { approvers: await this.approverNames(tx, c, q.employeeId, c.userId ?? null, q.pay === 'true', q.effectiveDate ?? todayIst()) };
+    });
+  }
+
+  // ---- PPL-04 drafts: the raiser's own half-filled changes (forced RLS; only the raiser reads or writes them) ----
+
+  private async draftView(tx: Tx, c: CompanyContext, d: Prisma.EmployeeChangeDraftGetPayload<object>) {
+    const p = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: d.employeeId } });
+    return { id: d.id, employeeId: d.employeeId, employeeName: p ? displayName(p) : null, changeType: d.changeType, form: d.form, updatedAt: d.updatedAt };
+  }
+
+  listDrafts(ctx: TenantContext, v: Viewer) {
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.employeeChangeDraft.findMany({ where: { organizationId: c.organizationId, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' }, orderBy: { updatedAt: 'desc' }, take: 50 });
+      const out = [];
+      // A draft for someone the raiser no longer reaches stays out of sight (P02 §4.3).
+      for (const d of rows) if (await this.mayRaiseFor(tx, c, v, d.employeeId)) out.push(await this.draftView(tx, c, d));
+      return out;
+    });
+  }
+
+  saveDraft(ctx: TenantContext, v: Viewer, id: string | null, dto: ChangeDraftDto) {
+    return this.run(ctx, async (tx, c) => {
+      if (JSON.stringify(dto.form).length > 20000) throw new BadRequestException('The draft is too large.');
+      await this.mustRaiseFor(tx, c, v, dto.employeeId);
+      const data = { employeeId: dto.employeeId, changeType: dto.changeType ?? null, form: dto.form as Prisma.InputJsonObject, updatedAt: new Date() };
+      if (!id) return this.draftView(tx, c, await tx.employeeChangeDraft.create({ data: { ...data, organizationId: c.organizationId, createdBy: c.userId! } }));
+      const { count } = await tx.employeeChangeDraft.updateMany({ where: { organizationId: c.organizationId, id, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' }, data });
+      if (!count) throw new NotFoundException('Draft not found');
+      return this.draftView(tx, c, await tx.employeeChangeDraft.findFirstOrThrow({ where: { organizationId: c.organizationId, id } }));
     });
   }
 

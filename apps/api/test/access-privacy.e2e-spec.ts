@@ -371,7 +371,7 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     it('scoped HR changes and hires only inside the scope', async () => {
       const body = (employeeId: string) => ({ employeeId, changeType: 'redesignation', effectiveDate: addDays(today, 10), payload: { assignment: { designationId: ids.analyst } }, reason: 'Re-titled' });
       await api('hrTn', 'post', '/people/changes').send(body(ids.arjun)).expect(404);
-      const ch = (await api('hrTn', 'post', '/people/changes').send({ ...body(ids.imran), payload: { assignment: { gradeId: ids.g2 } }, changeType: 'promotion' }).expect(201)).body;
+      const ch = (await api('hrTn', 'post', '/people/changes').send({ ...body(ids.imran), payload: { assignment: { designationId: ids.lead, gradeId: ids.g2 } }, changeType: 'promotion' }).expect(201)).body;
       // The change list shows HR only the people its grants reach.
       const seen = (await api('hrTn', 'get', '/people/changes').expect(200)).body.map((c: { employeeId: string }) => c.employeeId);
       expect(new Set(seen)).toEqual(new Set([ids.imran, ids.kavya]));

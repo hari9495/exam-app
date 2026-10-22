@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
-import { ApproveDto, AsOfQueryDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto, ServiceDatesDto } from './dto';
+import { ApproveDto, AsOfQueryDto, ChangeDraftDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, ChangeRouteQueryDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto, ServiceDatesDto } from './dto';
 import { EmployeeHistoryService, RequestUser } from './employee-history.service';
 
 // People › job history and changes (P06 §4.3–4.7, §7; M01 §3.3). Permissions (P02 YX-SEC-01):
@@ -80,6 +80,36 @@ export class EmployeeHistoryController {
   @RequireAnyPermission('employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'request.raise_on_behalf')
   async changes(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ChangeListQueryDto) {
     return this.history.listChanges(ctx, await this.viewer(req), q);
+  }
+
+  /** PPL-04: who would decide a change for this person (names), before it is sent. */
+  @Get('changes/route')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
+  async route(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ChangeRouteQueryDto) {
+    ownSession(req);
+    return this.history.changeRoute(ctx, await this.viewer(req), q);
+  }
+
+  /** PPL-04: the caller's own saved drafts. */
+  @Get('changes/drafts')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
+  async drafts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.history.listDrafts(ctx, await this.viewer(req));
+  }
+
+  @Post('changes/drafts')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
+  async createDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ChangeDraftDto) {
+    ownSession(req);
+    return this.history.saveDraft(ctx, await this.viewer(req), null, dto);
+  }
+
+  @Put('changes/drafts/:id')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
+  async updateDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeDraftDto) {
+    ownSession(req);
+    return this.history.saveDraft(ctx, await this.viewer(req), id, dto);
   }
 
   @Post('changes/preview')

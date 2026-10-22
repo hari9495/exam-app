@@ -30,6 +30,13 @@ describe('scheduled changes (PPL-05)', () => {
   it('one fact reads from → to; pay stays out when hidden', () => {
     expect(changeWords(c({}))).toEqual({ summary: 'Bengaluru → Chennai' });
   });
+  it('a waiting change shows its new values, never the reason; pay masked without access, the new CTC with it', () => {
+    const waiting = { status: 'pending' as const, impact: null, reason: 'test', newValues: ['Quality Lead', 'G6'], changeType: 'promotion' as const };
+    expect(changeWords(c({ ...waiting, touchesPay: true, payload: {} }))).toEqual({ summary: 'Quality Lead · G6', pay: '₹ •••' });
+    expect(changeWords(c({ ...waiting, touchesPay: true, payload: { compensation: { annualCtc: '780000.00' } } }))).toEqual({ summary: 'Quality Lead · G6', pay: '→ ₹7,80,000' });
+    expect(changeWords(c({ ...waiting, touchesPay: false, payload: {}, newValues: [] }))).toEqual({ summary: '—' });
+    expect(scheduledRows([c({ ...waiting, requestedByName: 'Divya Raghunathan', payload: {} })], [], '2026-10-20')[0]).toMatchObject({ summary: 'Quality Lead · G6', raisedBy: 'Divya Raghunathan' });
+  });
   it('only waiting or scheduled changes from today on', () => {
     const rows = scheduledRows([c({}), c({ id: 'p', status: 'pending' }), c({ id: 'old', effectiveDate: '2026-10-01' }), c({ id: 'd', status: as('applied') })], [{ id: 'e', name: 'Arjun', employeeCode: 'KF-0142' } as never], '2026-10-20');
     expect(rows.map((r) => [r.id, r.status, r.code])).toEqual([

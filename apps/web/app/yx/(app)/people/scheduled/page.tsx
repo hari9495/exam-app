@@ -7,7 +7,7 @@ import { ScheduledChangesScreen } from '@yukthix/ui/frame';
 import { ChangeReview, ReasonDialog, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
-import { CHANGE_LABEL, scheduledRows } from '../../../../../lib/yx-changes';
+import { CHANGE_LABEL, PAY_MASK, scheduledRows } from '../../../../../lib/yx-changes';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -37,7 +37,7 @@ export default function YxScheduledChangesPage() {
       rows={shown}
       today={day(today)}
       // Pay amounts come only to people with pay access (the API decides); they stay hidden until "Show pay".
-      canSeePay={shown.some((r) => r.pay)}
+      canSeePay={shown.some((r) => r.pay && r.pay !== PAY_MASK)}
       live={{
         state: loadState(rows),
         onRetry: () => void rows.refetch(),

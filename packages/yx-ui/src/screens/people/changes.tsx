@@ -98,6 +98,30 @@ const REASON: Partial<Record<ChangeKind, string>> = {
 const MGR_KINDS: ChangeKind[] = ['Promotion', 'Transfer', 'Manager change', 'Contract extension'];
 const CURRENT_CTC = 690000;
 const BAND_MID = 820000;
+/** Half-filled changes the raiser saved ("Save draft"); only they see them. */
+const DRAFTS = [{ id: 'd1', name: 'Rohit Menon', kind: 'Transfer', savedAt: new Date(2026, 9, 20) }];
+type DraftRow = { id: string; name: string; kind: string | null; savedAt: Date };
+function DraftList({ drafts, onOpen }: { drafts: DraftRow[]; onOpen?: (id: string) => void }) {
+  if (!drafts.length) return null;
+  return (
+    <StatusChecklist
+      label="Your drafts"
+      rows={drafts.map(
+        (dr): ChecklistRow => ({
+          id: dr.id,
+          title: `${dr.name}${dr.kind ? ` · ${dr.kind}` : ''}`,
+          status: 'Draft',
+          note: `Saved ${formatDate(dr.savedAt)}`,
+          action: (
+            <Button size="sm" onClick={() => onOpen?.(dr.id)}>
+              Open
+            </Button>
+          ),
+        }),
+      )}
+    />
+  );
+}
 /** Changes already raised and waiting for someone. */
 const IN_PROGRESS = [
   { id: 'w1', name: 'Nisha Rao', kind: 'Manager change', effective: new Date(2026, 10, 2), waitingFor: 'Karthik Subramanian', mine: true },
@@ -122,7 +146,11 @@ export interface LiveChangeAction {
   state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   people: { id: string; name: string; role: string; department: string }[];
+  /** `note`: who it waits for ("waiting for Karthik Subramanian"), else when it was raised. */
   waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
+  /** The viewer's own saved drafts. */
+  drafts?: DraftRow[];
+  onOpenDraft?: (id: string) => void;
   onStart: (personId: string) => void;
   onOpenWaiting: (id: string) => void;
   /** The change form and the review drawer the page opens. */
@@ -151,6 +179,7 @@ function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveC
                   Start change
                 </Button>
               </div>
+              <DraftList drafts={live.drafts ?? []} onOpen={live.onOpenDraft} />
             </div>
           </Card>
           <Card title={`Waiting for approval (${live.waiting.length})`}>
@@ -231,6 +260,7 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
                 Start change
               </Button>
             </div>
+            <DraftList drafts={DRAFTS.filter(() => !mgr)} onOpen={() => setOpen(true)} />
           </div>
         </Card>
         <Card title={`Waiting for approval (${waiting.length})`}>

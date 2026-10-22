@@ -2526,6 +2526,20 @@ model EmployeeChange {
   @@map("employee_changes")
 }
 
+/// PPL-04 "Save draft": a half-filled change, seen and edited only by whoever started it (forced RLS, support excluded).
+model EmployeeChangeDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  changeType     String?  @map("change_type") @db.VarChar(32)
+  form           Json
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy, updatedAt(sort: Desc)], map: "employee_change_drafts_owner_idx")
+  @@map("employee_change_drafts")
+}
+
 model EmployeeAssignment {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String    @map("organization_id") @db.Uuid
