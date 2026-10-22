@@ -810,7 +810,8 @@ function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Perso
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__row yx-ppl__row--between">
-        <Meter value={done} max={Math.max(total, 1)} label="Checklist complete" valueText={`${done} of ${total} verified`} warnAt={101} dangerAt={101} />
+        {/* Nothing to count: no "0 of 0" bar. */}
+        {total > 0 ? <Meter value={done} max={total} label="Checklist complete" valueText={`${done} of ${total} verified`} warnAt={101} dangerAt={101} /> : <span />}
         <div className="yx-ppl__row">
           {persona === 'hr' && request && (
             <Button icon={Mail} onClick={request}>
@@ -825,7 +826,12 @@ function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Perso
         </div>
       </div>
       {docs.length === 0 ? (
-        <EmptyState title="No documents yet" description="Uploaded and requested documents appear here." />
+        persona === 'mgr' ? (
+          // A manager sees Public and Internal documents only (founder, 22 Oct 2026); the others exist but are not theirs to see.
+          <EmptyState title="No documents you can see" description="Personal and confidential documents stay with HR and the person." />
+        ) : (
+          <EmptyState title="No documents yet" description="Uploaded and requested documents appear here." />
+        )
       ) : (
         <ul className="yx-ppl__checklist" aria-label="Document checklist">
           {docs.map((d) => (
