@@ -5,7 +5,7 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { attendanceCard, bankRows, clock, docRows, familyData, identityRows, jobRows, leaveOrder, payShown, scheduledBody, upcoming } from './yx-record';
+import { attendanceCard, bankRows, historyRows, clock, docRows, familyData, identityRows, jobRows, leaveOrder, payShown, scheduledBody, upcoming } from './yx-record';
 import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
@@ -155,6 +155,22 @@ describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
     ]);
     const bare = jobRows(view({ status: { status: 'probation', validFrom: '2026-07-01', validTo: null }, job: { holidayCalendar: null, shiftPattern: null, noticePeriod: null, probationEndsOn: '2026-12-31' }, assignment: { ...assignment, costCentres: [] } }));
     expect(bare.filter(([l]) => ['Probation', 'Holiday calendar', 'Cost centre', 'Notice period'].includes(l))).toEqual([['Probation', 'On probation until 31 Dec 2026'], ['Holiday calendar', 'Not set'], ['Cost centre', 'Not set'], ['Notice period', 'Not set']]);
+  });
+  it('history rows: who raised it and the letter; a secondary manager change says from and to', () => {
+    const h = {
+      payAccess: false,
+      assignment: [
+        { changeId: 'c0', validFrom: '2024-07-01', supersededAt: null, grade: { name: 'G2' }, designation: { name: 'Quality Analyst' }, location: { name: 'Bengaluru' }, manager: { name: 'Divya R' }, dottedLineManagers: [] },
+        { changeId: 'c1', validFrom: '2026-07-01', supersededAt: null, grade: { name: 'G2' }, designation: { name: 'Quality Analyst' }, location: { name: 'Bengaluru' }, manager: { name: 'Divya R' }, dottedLineManagers: [{ name: 'Lakshmi V' }] },
+      ],
+      compensation: [],
+      status: [],
+      changes: [
+        { id: 'c1', changeType: 'manager_change', status: 'effective', effectiveDate: '2026-07-01', reason: 'Campus drive', impact: null, requestedByName: 'Lakshmi V', letter: { referenceNo: 'KF/HR/2026/0300', accepted: true } },
+      ],
+    } as unknown as HistoryView;
+    const [row] = historyRows(h, '2026-10-22');
+    expect(row).toMatchObject({ by: 'Lakshmi V', letter: 'KF/HR/2026/0300', summary: 'Secondary manager: — → Lakshmi V', state: 'current' });
   });
   it('the scheduled banner: new grade, the CTC only with pay, who approved and when, the letter', () => {
     const h = {

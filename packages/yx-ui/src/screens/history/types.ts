@@ -128,7 +128,8 @@ export interface ChangeRecord {
   batchId?: string | null;
   payload: ChangePayload;
   impact: Impact | null;
-  /** Scheduled changes: who approved it, and the letter issued for it (HR and the person). */
+  /** Effective and scheduled changes: who raised it, who approved it, and the letter issued for it (HR and the person). */
+  requestedByName?: string | null;
   decidedByName?: string | null;
   letter?: { referenceNo: string; accepted: boolean } | null;
 }

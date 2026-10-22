@@ -227,6 +227,8 @@ const TYPE: Record<string, string> = {
 const money = (amount: string, currency: string) => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(amount));
 
 /** What a change did, in words: from its impact preview, or from the dated rows it wrote (A → B). */
+const dotted = (r: { dottedLineManagers?: { name: string | null }[] } | null | undefined) => r?.dottedLineManagers?.map((m) => m.name).filter(Boolean).join(', ') || null;
+
 export function changeSummary(ch: ChangeRecord, h: HistoryView): string {
   if (ch.impact?.facts.length) return ch.impact.facts.map((f) => `${f.fact}: ${f.from ?? '—'} → ${f.to ?? '—'}`).join(' · ');
   const rows = h.assignment.filter((r) => !r.supersededAt).sort((a, b) => a.validFrom.localeCompare(b.validFrom));
@@ -241,6 +243,7 @@ export function changeSummary(ch: ChangeRecord, h: HistoryView): string {
       ['Department', was?.department?.name, now.department?.name],
       ['Location', was?.location.name, now.location.name],
       ['Manager', was?.manager?.name, now.manager?.name],
+      ['Secondary manager', dotted(was), dotted(now)],
     ];
     for (const [label, a, b] of facts) {
       if (!was) b && parts.push(b);
@@ -265,7 +268,9 @@ export function historyRows(h: HistoryView, today: string): JobChange[] {
     effective: day(c.effectiveDate),
     type: TYPE[c.changeType] ?? c.changeType,
     summary: changeSummary(c, h),
-    by: '',
+    // The design's second line ("By Lakshmi Venkatesan · letter KF/HR/2025/0211"); the screen adds "By" and "letter".
+    by: c.requestedByName ?? '',
+    ...(c.letter ? { letter: c.letter.referenceNo } : {}),
     state: c.status === 'scheduled' ? 'scheduled' : c.changeType === 'correction' ? 'correction' : c === current ? 'current' : 'past',
   }));
 }
