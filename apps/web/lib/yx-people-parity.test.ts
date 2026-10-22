@@ -170,6 +170,11 @@ describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
     // The pay rise stored as its own row on the same date still shows.
     const own = { ...h, compensation: [{ changeId: 'c9', supersededAt: null, validFrom: '2026-10-01', annualCtc: '780000.00', currency: 'INR' }] } as unknown as HistoryView;
     expect(scheduledBody({ ...ch, effectiveDate: '2026-10-01', letter: null } as ChangeRecord, own)).toContain('CTC ₹7,80,000 a year');
+    // Pay kept in payroll (no history row): the CTC once Pay was opened, "see Pay" before.
+    const none = { ...h, compensation: [] } as unknown as HistoryView;
+    const promo = { ...ch, effectiveDate: '2026-11-01', letter: null } as ChangeRecord;
+    expect(scheduledBody(promo, none, { annualCtc: '780000.00', from: '2026-11-01' })).toContain('CTC ₹7,80,000 a year');
+    expect(scheduledBody(promo, none)).toContain('Pay changes · see Pay');
   });
 });
 
