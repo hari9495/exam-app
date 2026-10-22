@@ -51,6 +51,7 @@ export default function YxEmployeeImportPage() {
             toast({ tone: 'error', title: e instanceof Error ? e.message : 'The import was not saved. Try again.' });
           }
         },
+        onExit: () => router.push('/yx/people/directory'),
         onResume: () => apiFetch(`${DRAFT}/content`, {}, accessToken ?? undefined) as Promise<ImportDraftState>,
         onDiscard: async () => {
           const name = draft.data?.draft?.fileName ?? 'the file';

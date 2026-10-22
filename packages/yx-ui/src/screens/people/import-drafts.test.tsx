@@ -56,9 +56,13 @@ describe('Employee import: save and exit (PPL-07)', () => {
     await waitFor(() => expect(live.onDiscard).toHaveBeenCalled());
   });
 
-  it('no saved import, no file: no notice and no Save and exit', () => {
-    render(<ToastProvider><LiveEmployeeImport live={make({ draft: null })} /></ToastProvider>);
+  it('no saved import, no file: no notice; Save and exit (as designed) only leaves, nothing is saved', async () => {
+    const onExit = vi.fn();
+    const live = make({ draft: null, onExit });
+    render(<ToastProvider><LiveEmployeeImport live={live} /></ToastProvider>);
     expect(screen.queryByText(/Saved import/)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Save and exit' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
+    expect(onExit).toHaveBeenCalled();
+    expect(live.onSaveDraft).not.toHaveBeenCalled();
   });
 });

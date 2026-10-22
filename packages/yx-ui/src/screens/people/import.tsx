@@ -105,6 +105,8 @@ export interface LiveImport {
   /** The person's saved import, if any ("Save and exit"). */
   draft?: ImportDraftSummary | null;
   onSaveDraft?: (state: ImportDraftState) => Promise<void>;
+  /** "Save and exit" before any file: nothing to keep, so it only leaves. */
+  onExit?: () => void;
   onResume?: () => Promise<ImportDraftState>;
   onDiscard?: () => Promise<void>;
 }
@@ -195,7 +197,7 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
   const saveAndExit =
     live.onSaveDraft && file && entity
       ? () => void live.onSaveDraft!({ legalEntityId: entity, step: (['upload', 'map', 'validate'].includes(step) ? step : 'review') as ImportDraftState['step'], file: { name: file.name, columns: file.data.columns, rows: file.data.rows }, mapping, edits })
-      : undefined;
+      : live.onExit;
 
   const rows = result?.rows ?? [];
   const bad = rows.filter((r) => r.issues.length);
