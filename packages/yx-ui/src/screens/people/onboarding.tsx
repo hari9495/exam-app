@@ -808,8 +808,8 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
       width: 220,
     },
     { key: 'joining', header: 'Joins', type: 'date', value: (r) => r.joining, render: (r) => <JoinsCell date={r.joining} today={today} />, width: 195 },
-    { key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>,
-    { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} />, width: 140 },
+    ...(live ? [{ key: 'members', header: 'Members', type: 'number', value: (r: Batch) => r.members, width: 120 } as TableColumn<Batch>] : [{ key: 'offers', header: 'Offers issued', value: (r: Batch) => r.offers, render: (r: Batch) => <OffersCell row={r} />, width: 175 } as TableColumn<Batch>]),
+    { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} dangerAt={101} />, width: 140 },
     { key: 'entity', header: 'Legal entity', value: (r) => r.entity, width: 260 },
   ];
   const canChange = !live || Boolean(live.onChangeDate);
@@ -872,7 +872,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
                 </span>
                 <JoinsCell date={r.joining} today={today} />
                 {!live && <OffersCell row={r} suffix=" offers issued" />}
-                <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}% pre-boarding done`} warnAt={101} />
+                <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}% pre-boarding done`} warnAt={101} dangerAt={101} />
                 {action(r)}
               </li>
             ))}
