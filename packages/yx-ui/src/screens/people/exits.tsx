@@ -400,6 +400,8 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           {
             id: 'clearance',
             title: 'Clearance',
+            // Items still open: the step stays "Open · 4 of 6 signed off", never "Done" because it was visited.
+            ...(d.clearance.length && done < d.clearance.length ? { status: 'open' as const, statusNote: `${done} of ${d.clearance.length} signed off` } : {}),
             summary: d.clearance.length ? `${done} of ${d.clearance.length} signed off` : 'Starts when the exit is accepted',
             content: d.clearance.length ? (
               <StatusChecklist
