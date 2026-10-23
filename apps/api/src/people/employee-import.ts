@@ -132,10 +132,11 @@ export function importDate(s: string): string | null {
   const t = s.trim();
   let y: number, m: number, d: number;
   let x: RegExpMatchArray | null;
-  if ((x = t.match(/^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/))) {
+  // "01 Oct 2026", and Excel's own CSV form "01-Oct-26": with the month as a word a 2-digit year is 20yy.
+  if ((x = t.match(/^(\d{1,2})[ -]([A-Za-z]{3})[ -](\d{2}|\d{4})$/))) {
     const i = MONTHS.findIndex((mm) => mm.toLowerCase() === x![2].toLowerCase());
     if (i < 0) return null;
-    [d, m, y] = [Number(x[1]), i + 1, Number(x[3])];
+    [d, m, y] = [Number(x[1]), i + 1, Number(x[3].length === 2 ? `20${x[3]}` : x[3])];
   } else if ((x = t.match(/^(\d{4})-(\d{2})-(\d{2})$/))) [y, m, d] = [Number(x[1]), Number(x[2]), Number(x[3])];
   else if ((x = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) [d, m, y] = [Number(x[1]), Number(x[2]), Number(x[3])];
   else return null;
