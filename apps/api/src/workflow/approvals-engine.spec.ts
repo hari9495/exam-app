@@ -51,6 +51,8 @@ describe('approvalSubject (email subjects in plain words, founder review 19 Oct 
   it('says who asks for what, never the step name, and never names them twice', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ title: 'Loan of ₹50,000.00', text: 'Loan: Payroll approval', type: 'workflow.approval.needed' }, 'Meera Iyer', false)).toBe('Meera Iyer asks for Loan of ₹50,000.00');
+    // Founder 23 Oct 2026: never "Arjun Kulkarni asks for Resignation of Arjun Kulkarni".
+    expect(approvalSubject({ title: 'Resignation of Arjun Kulkarni', text: 'Exit: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Resignation from Arjun Kulkarni');
   });
   it('reminders, escalations and the decision sent to the person who asked', () => {
     expect(approvalSubject({ ...leave, text: 'Still waiting for you: Manager', type: 'workflow.approval.reminder' }, 'Arjun Kulkarni', false)).toBe('Still waiting for your approval: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');

@@ -8,6 +8,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { personForEmployee } from '../people/persons';
+import { showDate } from '../people/employee-import';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { PreboardingPortalService } from './portal.service';
@@ -137,7 +138,7 @@ export class JoinersService {
     }
     const managers = await this.tenantPrisma.forTenant(ctx, (tx) => tx.employee.findMany({ where: { organizationId: ctx.organizationId, id: { in: added.map((a) => a.pb.managerEmployeeId).filter((x): x is string => Boolean(x)) }, userId: { not: null } }, select: { userId: true } }));
     const p = added.length === 1 ? await this.tenantPrisma.forTenant(ctx, (tx) => tx.person.findFirst({ where: { organizationId: ctx.organizationId, id: added[0].pb.personId }, select: { givenName: true, familyName: true, preferredName: true } })) : null;
-    const text = p ? `${displayName(p)} joins your team on ${added[0].pb.joiningOn.toISOString().slice(0, 10)}` : 'Someone is joining your team';
+    const text = p ? `${displayName(p)} joins your team on ${showDate(added[0].pb.joiningOn.toISOString().slice(0, 10))}` : 'Someone is joining your team';
     if (managers.length) void this.notifications.notify(ctx, user.userId!, managers.map((m) => m.userId!), 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: added[0].pb.id, contextText: text, linkPath: '/yx/people/team' }).catch(() => undefined);
   }
 
@@ -340,7 +341,12 @@ export class JoinersService {
       if (r.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (!ISO.test(dto.joiningOn) || dto.joiningOn < todayIst()) throw new BadRequestException('The new joining day must be today or later.');
       if (r.version !== dto.version) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      return { ok: true, moved: await this.moveIn(tx, c, r, dto.joiningOn, dto.reason) };
+      const moved = await this.moveIn(tx, c, r, dto.joiningOn, dto.reason);
+      // The manager was told the first joining day; tell them the new one (founder 23 Oct 2026).
+      const m = r.managerEmployeeId ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: r.managerEmployeeId, userId: { not: null } }, select: { userId: true } }) : null;
+      const p = await tx.person.findFirst({ where: { organizationId: c.organizationId, id: r.personId }, select: { givenName: true, familyName: true, preferredName: true } });
+      if (m?.userId && p && user.userId) void this.notifications.notify(c, user.userId, [m.userId], 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: r.id, contextText: `${displayName(p)} now joins your team on ${showDate(dto.joiningOn)}`, linkPath: '/yx/people/team' }).catch(() => undefined);
+      return { ok: true, moved };
     });
   }
 
