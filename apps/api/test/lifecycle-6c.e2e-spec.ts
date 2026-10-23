@@ -221,6 +221,10 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager' } }).expect(400);
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager', would_return: 'no', rating: 2, change: 'Fewer late calls' } }).expect(200);
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager', would_return: 'no', rating: 2 } }).expect(409);
+    // HR who owns the exit is told the answers are in; the manager is not (founder 24 Oct 2026).
+    const told = await inA((tx) => tx.userNotification.findMany({ where: { contextText: { contains: 'answered the exit interview' } }, select: { recipientUserId: true } }));
+    expect(told.length).toBeGreaterThan(0);
+    expect(told.some((t) => t.recipientUserId === users.mgr)).toBe(false);
     const m = (await api('mgr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     expect(m.interview).toBe('submitted');
     expect(JSON.stringify(m)).not.toMatch(/Fewer late calls|"main_reason"/);

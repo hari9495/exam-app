@@ -177,7 +177,16 @@ export class OffboardingService {
       await this.confidential(tx);
       await tx.exitInterviewAnswers.createMany({ data: [{ exitInterviewId: iv.id, organizationId: org, answersEnc: this.crypto.encrypt(JSON.stringify(values)) }] });
       await audit(tx, c, 'exit.interview.submitted', 'exit_case', k.id, {});
-      return { status: 'submitted' };
+      // HR who owns the exit is told it is in (founder 24 Oct 2026); only that it was answered, never the answers.
+      const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: k.id, status: { not: 'cancelled' } }, select: { ownerUserId: true } });
+      const p = await tx.employee.findFirst({ where: { organizationId: org, id: k.employeeId } });
+      return { status: 'submitted', tell: j?.ownerUserId ? { to: j.ownerUserId, who: p ? displayName(p) : 'A leaver', caseId: k.id } : null };
+    }).then(async (r) => {
+      if (r.tell)
+        await this.notifications
+          .notifySystem(ctx, [r.tell.to], 'exit.case.update', { entityType: 'exit_case', entityId: r.tell.caseId, contextText: `${r.tell.who} answered the exit interview`, linkPath: `/yx/people/exits/${r.tell.caseId}` }, { subject: `${r.tell.who} answered the exit interview`, html: '<p>The exit interview answers are in YukthiX. Only HR can read them.</p>' })
+          .catch(() => undefined);
+      return { status: r.status };
     });
   }
 
