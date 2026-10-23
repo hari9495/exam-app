@@ -62,6 +62,8 @@
 .yx-ppl__check-meta { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); }
 .yx-ppl__check-action { display: flex; gap: var(--yx-space-2); }
 .yx-ppl__check-side { display: flex; align-items: center; gap: var(--yx-space-3); flex: none; }
+/* A tall row (fields to fix under the title) keeps its status beside the title, not mid-row. */
+.yx-ppl__check-row:has(.yx-ppl__check-main .yx-ppl__stack) { align-items: flex-start; }
 .yx-ppl__owner { display: inline-flex; align-items: center; height: var(--yx-badge-height); padding: 0 var(--yx-space-2); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
 /* Phones: status above its button on the right, beside the task, not on a row of its own. */
 @media (max-width: 767px) { .yx-ppl__check-side { flex-direction: column; align-items: flex-end; gap: var(--yx-space-2); } }
