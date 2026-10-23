@@ -79,6 +79,8 @@ export interface LiveBoard {
   onAdd?: () => void;
   onImport?: () => void;
   onOpenCard: (id: string) => void;
+  /** The company the top-bar picker scopes the board to, when the group has more than one. */
+  entityName?: string;
   /** Drawers and dialogs the page opens. */
   children?: ReactNode;
 }
@@ -117,8 +119,8 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
           live?.noAccess
             ? undefined
             : total === 0
-            ? 'No one is onboarding right now.'
-            : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}`
+            ? `No one is onboarding right now${live?.entityName ? ` in ${live.entityName}. Switch company at the top to see the others` : ''}.`
+            : `${singles} ${singles === 1 ? 'joiner' : 'joiners'}${batches.length ? ` and ${batches.length} campus ${batches.length === 1 ? 'batch' : 'batches'} (${batches.reduce((n, b) => n + b.people, 0)} people)` : ''} · ${people} ${people === 1 ? 'person' : 'people'} in all, from offer accepted to 30 days in. ${live ? 'Open a card for the checklist.' : 'Drag a card or use Move to on each card.'}${live?.entityName ? ` Joiners of ${live.entityName}. Switch company at the top to see the others.` : ''}`
         }
         actions={
           <div className="yx-ppl__head-actions">

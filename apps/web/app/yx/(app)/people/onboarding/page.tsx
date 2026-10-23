@@ -37,6 +37,7 @@ export default function YxOnboardingPage() {
         error: board.isError,
         noAccess: loadState(board) === 'no-access',
         onRetry: () => void board.refetch(),
+        ...(sp.entity && places.entities.length > 1 ? { entityName: places.entities.find((e) => e.value === sp.entity)?.label } : {}),
         ...(canAdd ? { onAdd: () => setAdding(true), onImport: () => setImporting(true) } : {}),
         onOpenCard: (cardId) => router.push(cardId.startsWith('offer:') ? '/yx/people/ready-to-onboard' : `/yx/people/onboarding/${encodeURIComponent(cardId)}`),
         children: (
