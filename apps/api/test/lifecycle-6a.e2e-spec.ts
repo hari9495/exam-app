@@ -278,6 +278,8 @@ describe('Lifecycle batch 6a', () => {
     expect((await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/postpone`).send({ joiningOn: later, reason: 'Notice period at the old job', version: pb.version }).expect(200)).body.moved).toBeGreaterThan(0);
     expect((await task(ids.journey, 'collect_bank')).dueOn).toBe(addDays(before.dueOn, 14));
     expect((await task(ids.journey, 'collect_pan')).dueOn).toBe(done.dueOn);
+    // The manager is told the new joining day, in words (founder 23 Oct 2026).
+    expect(await drain(async () => Boolean(await inA((tx) => tx.userNotification.findFirst({ where: { recipientUserId: users.mgr, contextText: { contains: 'now joins your team on' } } }))))).toBe(true);
   });
 
   it('a joiner is reached by their planned place: Hosur plant HR sees nothing in Bengaluru', async () => {
