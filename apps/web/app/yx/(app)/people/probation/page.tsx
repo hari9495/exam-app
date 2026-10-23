@@ -7,6 +7,7 @@ import type { ProbationRow } from '@yukthix/ui/workforce';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
 import { useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { useScope } from '../../../../../lib/yx-shell';
 import { probationRows, RATING_SCORE } from '../../../../../lib/yx-onboarding';
 
 const id = encodeURIComponent;
@@ -19,7 +20,9 @@ export default function YxProbationPage() {
   const router = useRouter();
   const { toast } = useToast();
   const perms = useYxPermissions();
-  const list = usePeople<{ today: string; rows: ProbationRow[] }>('/probations');
+  // The company chosen in the top bar scopes the queue, as on the Directory.
+  const { scope } = useScope();
+  const list = usePeople<{ today: string; rows: ProbationRow[] }>(`/probations${scope.entity ? `?legalEntityId=${encodeURIComponent(scope.entity)}` : ''}`);
   const lifeWrite = useLifeWrite();
   const rows = list.data?.rows ?? [];
   const nameOf = (employeeId: string) => rows.find((r) => r.employeeId === employeeId)?.name ?? 'them';

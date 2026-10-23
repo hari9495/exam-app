@@ -17,6 +17,7 @@ import {
   EmployeeCodeDto,
   ExtendProbationDto,
   LinkLoginDto,
+  EntityQueryDto,
   OrgChartQueryDto,
   ReasonDto,
   ReassignDto,
@@ -248,8 +249,8 @@ export class PeopleController {
   // ---- probation (M01 §3.4) ----
 
   @Get('probations')
-  async probations(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.people.probations(ctx, await this.viewer(req));
+  async probations(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityQueryDto) {
+    return this.people.probations(ctx, await this.viewer(req), q.legalEntityId);
   }
 
   @Post('employees/:id/probation/extend')

@@ -40,6 +40,13 @@ export class DirectoryQueryDto {
   offset?: number;
 }
 
+/** The top bar's legal entity: only that entity's people. */
+export class EntityQueryDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
 export class OrgChartQueryDto {
   @IsOptional()
   @IsDateString({ strict: true })

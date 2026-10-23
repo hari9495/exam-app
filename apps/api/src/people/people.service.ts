@@ -488,7 +488,7 @@ export class PeopleService {
    * stands: running, review due (reminder lead before the end), overdue, extended, confirmation waiting or
    * confirmed from a date.
    */
-  probations(ctx: TenantContext, v: Viewer) {
+  probations(ctx: TenantContext, v: Viewer, legalEntityId?: string) {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       let employeeIds: string[] | null = null;
@@ -503,7 +503,7 @@ export class PeopleService {
         direct = new Set(team.members.filter((m) => m.relation === 'direct').map((m) => m.id));
         if (!employeeIds.length) return { today, rows: [] };
       }
-      const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
+      const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(legalEntityId ? { legalEntityId } : {}), ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
       const plans = await tx.probation.findMany({ where: { organizationId: c.organizationId, employmentId: { in: employments.map((e) => e.id) } }, orderBy: { plannedEndOn: 'asc' } });
       const state = await this.probationState(tx, c, plans.map((p) => p.employmentId));
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: employments.map((e) => e.employeeId) } } });
