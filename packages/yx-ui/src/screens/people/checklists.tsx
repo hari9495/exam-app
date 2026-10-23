@@ -24,13 +24,16 @@ export function taskButtons(t: JourneyTask, onAsk: (a: TaskAsk) => void, opts: {
   const out: ReactNode[] = [];
   if (t.canComplete) out.push(<Button key="do" size="sm" onClick={() => onAsk({ kind: CONTENT_ASK[t.kind]?.ask ?? 'done', task: t })}>{CONTENT_ASK[t.kind]?.button ?? 'Mark done'}</Button>);
   if (opts.manage && opts.actions.onIssueLetter && t.kind === 'letter' && t.status === 'open') out.push(<Button key="letter" size="sm" onClick={() => onAsk({ kind: 'letter', task: t })}>Issue letter</Button>);
-  if (opts.manage && opts.actions.onUpload && t.kind === 'document' && t.status === 'open') out.push(<Button key="up" size="sm" onClick={() => onAsk({ kind: 'upload', task: t })}>Upload</Button>);
+  if (opts.manage && opts.actions.onUpload && t.kind === 'document' && t.status === 'open') out.push(<Button key="up" size="sm" onClick={() => onAsk({ kind: 'upload', task: t })}>{docIn(t) ? 'Replace' : t.documentStatus === 'rejected' ? 'Upload again' : 'Upload'}</Button>);
   if (t.canSkip) out.push(<Button key="skip" size="sm" onClick={() => onAsk({ kind: 'skip', task: t })}>Skip</Button>);
   if (t.status === 'waiting' && !out.length) out.push(<Button key="wait" size="sm" disabled>Mark done</Button>);
   return out.length ? <>{out}</> : undefined;
 }
 
 /** One task as a checklist row (PPL-13 style): title, the law badge, owner, due day, status and buttons. */
+/** The file for a document task is in and waits for HR to verify it (the task closes on verification). */
+const docIn = (t: JourneyTask) => t.kind === 'document' && t.status === 'open' && Boolean(t.documentStatus) && !['requested', 'rejected', 'verified', 'expired'].includes(t.documentStatus!);
+
 export function taskRow(t: JourneyTask, when: string | undefined, action: ReactNode): ChecklistRow {
   return {
     id: t.id,
@@ -47,8 +50,8 @@ export function taskRow(t: JourneyTask, when: string | undefined, action: ReactN
     owner: t.assignee ?? t.ownerLabel,
     due: day(t.dueOn),
     when,
-    status: t.status === 'done' ? 'Done' : t.status === 'skipped' ? 'Skipped' : t.status === 'waiting' ? 'Blocked' : 'Pending',
-    note: t.status === 'waiting' ? 'Waiting for an earlier task' : t.status === 'skipped' && t.skipReason ? t.skipReason : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
+    status: t.status === 'done' ? 'Done' : t.status === 'skipped' ? 'Skipped' : t.status === 'waiting' ? 'Blocked' : docIn(t) ? 'Pending verification' : t.kind === 'document' && t.status === 'open' && t.documentStatus === 'rejected' ? 'Rejected' : 'Pending',
+    note: t.status === 'waiting' ? 'Waiting for an earlier task' : docIn(t) ? 'File uploaded. Done once HR verifies it in Documents.' : t.kind === 'document' && t.status === 'open' && t.documentStatus === 'rejected' ? 'The file was refused. Upload another one.' : t.status === 'skipped' && t.skipReason ? t.skipReason : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
     action,
   };
 }

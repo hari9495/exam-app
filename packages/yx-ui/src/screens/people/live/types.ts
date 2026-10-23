@@ -50,6 +50,8 @@ export interface JourneyTask {
   form: FormDef | null;
   /** Document tasks: the document type asked for. */
   documentType: string | null;
+  /** The person's document for a document task, when one is in: "uploaded" waits for HR to verify, "rejected" needs another file. */
+  documentStatus?: string | null;
   /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
   letterType?: string | null;
   answers: Record<string, unknown> | null;
