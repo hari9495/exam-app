@@ -182,13 +182,19 @@ describe('Lifecycle batch 6e', () => {
     }
     const loi = (await api('hr', 'post', `/lifecycle/batches/${batch.id}/loi`).expect(200)).body;
     expect(loi).toMatchObject({ issued: 2, failed: [] });
+    // PPL-14 "Offers issued": no appointment letter yet; the issued letters of intent are counted per batch.
+    const after = (await api('hr', 'get', '/lifecycle/batches').expect(200)).body.rows.find((x: { id: string }) => x.id === batch.id);
+    const intents = await inA((tx) => tx.letterIssue.count({ where: { personId: { in: after.members.map((m: { personId: string }) => m.personId) }, letterType: 'letter_of_intent', status: 'issued' } }));
+    expect(after).toMatchObject({ offersIssued: 0, lettersOfIntent: intents });
     // The buddy: not the manager; the day-30 check-in then goes to the buddy.
     const pa = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: a.id } }));
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.mgr, version: pa.version }).expect(400);
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.buddy, version: pa.version }).expect(200);
     const checkin = await inA((tx) => tx.journeyTask.findFirstOrThrow({ where: { journeyId: a.journeyId, key: 'buddy_checkin' } }));
     expect(checkin).toMatchObject({ assigneeUserId: users.buddy, dueOn: new Date(`${addDays(today, 75)}T00:00:00Z`) });
-    expect((await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.some((t: { id: string }) => t.id === checkin.id)).toBe(true);
+    const mine = (await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { id: string }) => t.id === checkin.id);
+    // PPL-47: each task names whose checklist it is, so HR can upload or issue the letter from My checklist tasks.
+    expect(mine).toMatchObject({ personId: expect.any(String), subject: { type: expect.any(String), id: expect.any(String) } });
   });
 
   it('death in service: nominations 60 / 40 become the payees in the hand-off; the family signs in and reads the letter', async () => {

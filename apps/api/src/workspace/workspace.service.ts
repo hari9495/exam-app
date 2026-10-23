@@ -410,10 +410,12 @@ export class WorkspaceService {
   }
 
   /** Counts for the side menu, each only for someone who may open the page it sits on. */
-  async counts(ctx: TenantContext, user: RequestUser): Promise<Record<string, number>> {
+  async counts(ctx: TenantContext, user: RequestUser, entityId: string | null = null): Promise<Record<string, number>> {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    // Possible same person is company-wide HR work (the page checks the same): a plant HR's scoped key does not count.
+    const linksPeople = !support && keys.has('employee.change.manage') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.change.manage']), 'employee.change.manage');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -423,6 +425,42 @@ export class WorkspaceService {
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
+      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
+      // count leaves out reviews that went to HR, which only HR decides) (company-wide
+      // for HR whose profile grant is, else the person's own direct reports); my open clearance sign-offs; logins that may
+      // be someone already on record. Each is gated by the same key as its page.
+      if (keys.has('lifecycle.onboarding.manage')) {
+        out.readyToOnboard = await one(Prisma.sql`SELECT count(*) AS n FROM offers o WHERE o.organization_id = ${org}::uuid AND o.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM preboardings p WHERE p.organization_id = o.organization_id AND p.offer_id = o.id AND p.status <> 'cancelled')`);
+      }
+      const today = todayIst();
+      // shortcut: the company-wide review lead (probation.review_lead_days); an entity's own lead is not applied here.
+      const lead = Number((await tx.setting.findFirst({ where: { organizationId: org, key: 'probation.review_lead_days', scopeType: 'tenant' }, select: { value: true } }))?.value ?? 15);
+      const hrWide = keys.has('employee.profile.view') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.profile.view']), 'employee.profile.view');
+      const mine = hrWide ? null : await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (hrWide || mine) {
+        out.probationsDue = await one(Prisma.sql`SELECT count(*) AS n FROM probations pr
+          JOIN employments m ON m.organization_id = pr.organization_id AND m.id = pr.employment_id AND m.exited_on IS NULL
+            ${entityId ? Prisma.sql`AND m.legal_entity_id = ${entityId}::uuid` : Prisma.empty}
+          JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
+            AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
+          WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
+            AND NOT EXISTS (SELECT 1 FROM employee_changes ch WHERE ch.organization_id = pr.organization_id AND ch.employment_id = pr.employment_id AND ch.change_type = 'confirmation' AND ch.status = 'pending')
+            ${mine ? Prisma.sql`AND pr.escalated_on IS NULL AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
+              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
+      }
+      out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
+        WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
+          AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
+      if (linksPeople) {
+        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM persons p
+          JOIN person_roles r ON r.organization_id = p.organization_id AND r.person_id = p.id AND r.role_type = 'login' AND r.source_table = 'users' AND r.end_on IS NULL
+          JOIN users u ON u.organization_id = r.organization_id AND u.id = r.source_id
+          LEFT JOIN employees e ON e.organization_id = p.organization_id AND lower(e.work_email::text) = lower(u.email::text) AND e.person_id <> p.id
+          JOIN persons m ON m.organization_id = p.organization_id AND m.status = 'active' AND m.id <> p.id AND (m.id = e.person_id OR lower(m.primary_email::text) = lower(u.email::text))
+          WHERE p.organization_id = ${org}::uuid AND p.status = 'active' AND p.primary_email IS NULL
+            AND NOT EXISTS (SELECT 1 FROM employees x WHERE x.organization_id = p.organization_id AND x.person_id = p.id)`);
+      }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });
       if (!support && keys.has('desk.ticket.work')) out.myTickets = await one(Prisma.sql`SELECT count(*) AS n FROM sd_tickets t WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.system_state NOT IN ('solved', 'closed')`);

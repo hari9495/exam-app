@@ -1,24 +1,29 @@
 // PPL-36 Possible same person · PPL-37 Merge / unmerge (P01 YX-ORG-26 / 27)
 // PPL-39 Union register · PPL-40 VRS scheme · PPL-42 Re-verification cycles (M01 §3.11).
 import { useState } from 'react';
+import { ErrorState } from '../../components/feedback';
+import { ListSkeleton } from './people-kit';
+import { ApplyDialog, ClosureDialog, DecideDialog, SchemeDialog, type RetrenchmentScreenProps } from './live/special';
+import type { IrPermission } from './live/types';
 import { FileText, GitMerge, Mail, Plus, Split } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
-import { TextArea } from '../../components/inputs';
+import { DatePicker } from '../../components/date';
+import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { matchPersons, reverificationDue, type Persona } from './people-logic';
 import { MATCHES, REVERIFY, UNIONS, VRS } from './people-data';
-import { CompareTable, MeFrame, PeopleFrame } from './people-kit';
+import { CompareTable, MeFrame, PeopleFrame, Segment } from './people-kit';
 
 /* ================================================================== PPL-36 same-person queue */
 
@@ -169,22 +174,212 @@ export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'mer
 
 type Union = (typeof UNIONS)[number];
 
+/** One union on the live register (PPL-39). Dates are ISO days. */
+export interface LiveUnion {
+  id: string;
+  name: string;
+  registrationNo: string | null;
+  legalEntityId: string;
+  locationId: string | null;
+  establishment: string;
+  recognition: 'recognised' | 'not_recognised';
+  basis: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  bearers: string | null;
+  /** Workers who signed a check-off authorisation for this union today. */
+  checkOff: number;
+}
+export type UnionInput = Omit<LiveUnion, 'id' | 'establishment' | 'checkOff'>;
+/** The live app's union register: the legal entities whose register the person keeps (industrial relations). */
+export interface LiveUnionRegister {
+  state: 'loading' | 'ready' | 'error' | 'no-access' | 'forbidden';
+  onRetry: () => void;
+  data: { entities: { id: string; name: string }[]; unions: LiveUnion[] } | null;
+  locations: { value: string; label: string; entityId: string }[];
+  onSave: (id: string | null, input: UnionInput) => Promise<void>;
+}
+
+const RECOGNITION = [
+  { value: 'recognised' as const, label: 'Recognised' },
+  { value: 'not_recognised' as const, label: 'Not recognised' },
+];
+const isoOf = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null);
+const dayOrNull = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`) : null);
+
+/** Add or edit a union: the establishment, recognition and its basis, the period and the office bearers. */
+export function UnionDialog({ union, entities, locations, onClose, onSave }: { union: LiveUnion | null; entities: { value: string; label: string }[]; locations: { value: string; label: string; entityId: string }[]; onClose: () => void; onSave: (id: string | null, input: UnionInput) => Promise<void> }) {
+  const [entity, setEntity] = useState<string | null>(union?.legalEntityId ?? (entities.length === 1 ? entities[0].value : null));
+  const [name, setName] = useState(union?.name ?? '');
+  const [reg, setReg] = useState(union?.registrationNo ?? '');
+  const [location, setLocation] = useState<string | null>(union?.locationId ?? null);
+  const [recognition, setRecognition] = useState<'recognised' | 'not_recognised'>(union?.recognition ?? 'not_recognised');
+  const [basis, setBasis] = useState(union?.basis ?? '');
+  const [from, setFrom] = useState<Date | null>(dayOrNull(union?.validFrom ?? null));
+  const [to, setTo] = useState<Date | null>(dayOrNull(union?.validTo ?? null));
+  const [bearers, setBearers] = useState(union?.bearers ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const needBasis = recognition === 'recognised' && !basis.trim();
+  const badDates = Boolean(from && to && to < from);
+  const can = Boolean(entity && name.trim().length >= 2 && !needBasis && !badDates);
+  const save = async () => {
+    if (!entity) return;
+    setSaving(true);
+    try {
+      await onSave(union?.id ?? null, { legalEntityId: entity, name: name.trim(), registrationNo: reg.trim() || null, locationId: location, recognition, basis: basis.trim() || null, validFrom: isoOf(from), validTo: isoOf(to), bearers: bearers.trim() || null });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={union ? `Edit ${union.name}` : 'Add a union'}
+      size="md"
+      preventClose={saving}
+      notice={error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!can} loading={saving} onClick={() => void save()}>
+            {union ? 'Save union' : 'Add union'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__form">
+        <FormField label="Legal entity" required>
+          <Select options={entities} value={entity} onChange={(v) => (setEntity(v), setLocation(null))} disabled={!!union} placeholder="Choose a legal entity" />
+        </FormField>
+        <FormField label="Union name" required>
+          <TextField value={name} onChange={setName} maxLength={200} />
+        </FormField>
+        <FormField label="Registration number">
+          <TextField value={reg} onChange={setReg} maxLength={60} />
+        </FormField>
+        <FormField label="Establishment" helper="Leave empty when the union covers the whole legal entity.">
+          <Select options={locations.filter((l) => l.entityId === entity)} value={location} onChange={setLocation} placeholder="The whole legal entity" />
+        </FormField>
+        <FormField label="Recognition" required>
+          <Segment label="Recognition" options={RECOGNITION} value={recognition} onChange={setRecognition} />
+        </FormField>
+        <FormField label="Basis" required={recognition === 'recognised'} error={needBasis ? 'Say on what basis the union is recognised.' : null} helper="For example: sole negotiating union, 58% of workers.">
+          <TextField value={basis} onChange={setBasis} maxLength={200} />
+        </FormField>
+        <div className="yx-ppl__row">
+          <FormField label="Valid from">
+            <DatePicker value={from} onChange={setFrom} />
+          </FormField>
+          <FormField label="Valid to" error={badDates ? 'The end date must be on or after the start date.' : null}>
+            <DatePicker value={to} onChange={setTo} />
+          </FormField>
+        </div>
+        <FormField label="Office bearers">
+          <TextArea rows={2} value={bearers} onChange={setBearers} maxLength={500} placeholder="President Murugesan V · Secretary Selvi R" />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+function LiveUnionRegisterScreen({ live }: { live: LiveUnionRegister }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LiveUnion | 'new' | null>(null);
+  const rows = live.data?.unions ?? [];
+  const open = rows.find((r) => r.id === openId);
+  const entities = (live.data?.entities ?? []).map((e) => ({ value: e.id, label: e.name }));
+  const recognised = (r: LiveUnion) => (r.recognition === 'recognised' ? 'Recognised' : 'Not recognised');
+  const cols: TableColumn<LiveUnion>[] = [
+    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}{r.registrationNo && <Text size="sm" tone="secondary" as="div" className="yx-mono">{r.registrationNo}</Text>}</span>, width: 210 },
+    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 150 },
+    { key: 'recognised', header: 'Recognition', type: 'status', value: recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 120 },
+    { key: 'to', header: 'Valid to', type: 'date', value: (r) => dayOrNull(r.validTo), width: 110 },
+    { key: 'checkOff', header: 'With check-off', type: 'number', value: (r) => r.checkOff, total: 'sum', width: 100 },
+  ];
+  const add = (
+    <Button variant="primary" icon={Plus} onClick={() => setEditing('new')}>
+      Add union
+    </Button>
+  );
+  if (live.state === 'forbidden')
+    return (
+      <PeopleFrame active="Union register">
+        <PageHeader title="Union register" />
+        <NoAccessState what="the union register" grantedBy="your HR admin" note="Union membership is Confidential: HR industrial relations only." />
+      </PeopleFrame>
+    );
+  return (
+    <PeopleFrame active="Union register">
+      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={entities.length ? add : undefined} />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the union register" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the union register" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : !live.data ? (
+        <ListSkeleton label="Loading the union register" />
+      ) : (
+        <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={entities.length ? add : undefined} />} />
+      )}
+      <Drawer
+        open={!!open}
+        onOpenChange={(o) => !o && setOpenId(null)}
+        title={open?.name ?? ''}
+        subtitle={open?.registrationNo ?? undefined}
+        meta={open && <Badge tone={open.recognition === 'recognised' ? 'success' : 'neutral'}>{recognised(open)}</Badge>}
+        footer={
+          <>
+            <Button onClick={() => setOpenId(null)}>Close</Button>
+            <Button variant="primary" onClick={() => open && setEditing(open)}>
+              Edit union
+            </Button>
+          </>
+        }
+      >
+        {open && (
+          <div className="yx-ppl__stack">
+            <dl className="yx-ppl__rail-facts">
+              <div><dt>Establishment</dt><dd>{open.establishment}</dd></div>
+              <div><dt>Recognition</dt><dd>{recognised(open)}{open.basis ? ` · ${open.basis}` : ''}</dd></div>
+              <div><dt>Valid</dt><dd>{open.validFrom ? `${formatDate(dayOrNull(open.validFrom)!)}${open.validTo ? ` to ${formatDate(dayOrNull(open.validTo)!)}` : ' onwards'}` : '—'}</dd></div>
+              <div><dt>Office bearers</dt><dd>{open.bearers ?? '—'}</dd></div>
+              <div><dt>Check-off</dt><dd>{open.checkOff} {open.checkOff === 1 ? 'worker has' : 'workers have'} signed a check-off authorisation</dd></div>
+            </dl>
+            <InlineAlert tone="info">Lay-off, strike and lockout days from Time appear on each member&apos;s timeline, not here.</InlineAlert>
+          </div>
+        )}
+      </Drawer>
+      {editing && <UnionDialog union={editing === 'new' ? null : editing} entities={entities} locations={live.locations} onClose={() => setEditing(null)} onSave={live.onSave} />}
+    </PeopleFrame>
+  );
+}
+
 // PPL-39
-export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultOpenId?: string }) {
+export function UnionRegister(props: { rows: Union[]; defaultOpenId?: string; live?: LiveUnionRegister }) {
+  return props.live ? <LiveUnionRegisterScreen live={props.live} /> : <SampleUnionRegister {...props} />;
+}
+
+function SampleUnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultOpenId?: string }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const open = rows.find((r) => r.id === openId);
   const cols: TableColumn<Union>[] = [
-    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div" className="yx-mono">{r.reg}</Text></span>, width: 280 },
-    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 200 },
-    { key: 'recognised', header: 'Recognition', type: 'status', value: (r) => r.recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 150 },
-    { key: 'to', header: 'Valid to', type: 'date', value: (r) => r.to, width: 130 },
-    { key: 'members', header: 'Members', type: 'number', value: (r) => r.members, total: 'sum', width: 110 },
+    { key: 'name', header: 'Union', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div" className="yx-mono">{r.reg}</Text></span>, width: 210 },
+    { key: 'establishment', header: 'Establishment', value: (r) => r.establishment, width: 150 },
+    { key: 'recognised', header: 'Recognition', type: 'status', value: (r) => r.recognised, statusTone: (v) => (v === 'Recognised' ? 'success' : 'neutral'), width: 120 },
+    { key: 'to', header: 'Valid to', type: 'date', value: (r) => r.to, width: 110 },
+    { key: 'checkOff', header: 'With check-off', type: 'number', value: (r) => Math.round(r.members * 0.9), total: 'sum', width: 100 },
   ];
+  const [editing, setEditing] = useState(false);
   return (
     <PeopleFrame active="Union register">
-      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={<Button variant="primary" icon={Plus}>Add union</Button>} />
-      <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={<Button variant="primary">Add union</Button>} />} />
-      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={open?.name ?? ''} subtitle={open?.reg} meta={open && <Badge tone={open.recognised === 'Recognised' ? 'success' : 'neutral'}>{open.recognised}</Badge>} footer={<><Button onClick={() => setOpenId(null)}>Close</Button><Button variant="primary">Edit union</Button></>}>
+      <PageHeader title="Union register" description="Unions per establishment with recognition basis and office bearers. Membership is Confidential: HR industrial relations and payroll (for check-off only)." actions={<Button variant="primary" icon={Plus} onClick={() => setEditing(true)}>Add union</Button>} />
+      <DataTable label="Unions" columns={cols} rows={rows} getRowId={(r) => r.id} onRowClick={(r) => setOpenId(r.id)} activeRowId={openId} empty={<EmptyState title="No unions recorded" description="Add unions registered at your establishments." action={<Button variant="primary" onClick={() => setEditing(true)}>Add union</Button>} />} />
+      {editing && <UnionDialog union={null} entities={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }]} locations={[{ value: 'hsr', label: 'Hosur plant', entityId: 'kf' }]} onClose={() => setEditing(false)} onSave={async () => {}} />}
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={open?.name ?? ''} subtitle={open?.reg} meta={open && <Badge tone={open.recognised === 'Recognised' ? 'success' : 'neutral'}>{open.recognised}</Badge>} footer={<><Button onClick={() => setOpenId(null)}>Close</Button><Button variant="primary" onClick={() => setEditing(true)}>Edit union</Button></>}>
         {open && (
           <div className="yx-ppl__stack">
             <dl className="yx-ppl__rail-facts">
@@ -192,7 +387,7 @@ export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultO
               <div><dt>Recognition</dt><dd>{open.recognised} · {open.basis}</dd></div>
               <div><dt>Valid</dt><dd>{open.from ? `${formatDate(open.from)} to ${formatDate(open.to)}` : '—'}</dd></div>
               <div><dt>Office bearers</dt><dd>{open.bearers}</dd></div>
-              <div><dt>Members</dt><dd>{open.members} · {Math.round(open.members * 0.9)} with check-off consent</dd></div>
+              <div><dt>Check-off</dt><dd>{Math.round(open.members * 0.9)} workers have signed a check-off authorisation</dd></div>
             </dl>
             <InlineAlert tone="info">Lay-off, strike and lockout days from Time appear on each member's timeline, not here.</InlineAlert>
           </div>
@@ -206,8 +401,139 @@ export function UnionRegister({ rows, defaultOpenId }: { rows: Union[]; defaultO
 
 type VrsApp = (typeof VRS.applications)[number];
 
+/** The live app's VRS schemes and government permissions (design audit step 3). */
+export type LiveVrs = RetrenchmentScreenProps & {
+  /** VRS applications are exit cases of type VRS. */
+  applications: { id: string; name: string; status: string; lastDay: string }[];
+  onOpenCase: (id: string) => void;
+};
+
+const IR_LABEL: Record<IrPermission['status'], { label: string; tone: 'warning' | 'success' | 'danger' }> = { applied: { label: 'Applied', tone: 'warning' }, granted: { label: 'Granted', tone: 'success' }, deemed: { label: 'Deemed granted', tone: 'success' }, refused: { label: 'Refused', tone: 'danger' } };
+const KIND_LABEL: Record<IrPermission['kind'], string> = { retrenchment: 'Retrenchment', layoff: 'Lay-off', closure: 'Closure' };
+const dayOf = (iso: string) => new Date(`${iso}T00:00:00`);
+
+function LiveVrsScheme({ live: p }: { live: LiveVrs }) {
+  const [t, setT] = useState<'applications' | 'setup' | 'permissions'>('applications');
+  const [pick, setPick] = useState<string | null>(null);
+  const [ask, setAsk] = useState<'apply' | 'scheme' | { decide: IrPermission } | { close: IrPermission } | null>(null);
+  const d = p.data;
+  const scheme = d?.schemes.find((s) => s.id === pick) ?? d?.schemes[0] ?? null;
+  const entity = (id: string | null) => p.entities.find((e) => e.value === id)?.label ?? 'All legal entities';
+  const open = scheme ? dayOf(scheme.opensOn) <= dayOf(p.today) && dayOf(scheme.closesOn) >= dayOf(p.today) : false;
+  type App = LiveVrs['applications'][number];
+  const cols: TableColumn<App>[] = [
+    { key: 'name', header: 'Applicant', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: `Last day ${formatDate(dayOf(r.lastDay))}` }), width: 240 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (/accepted|cleared|exited|closed/i.test(String(v)) ? 'success' : /withdrawn|not accepted/i.test(String(v)) ? 'neutral' : 'warning'), width: 240 },
+  ];
+  const permCols: TableColumn<IrPermission>[] = [
+    { key: 'kind', header: 'For', value: (r) => KIND_LABEL[r.kind], render: (r) => <span className="yx-ppl__type"><span>{KIND_LABEL[r.kind]}</span><span className="yx-ppl__sub">{entity(r.legalEntityId)}</span></span>, width: 220 },
+    { key: 'workers', header: 'Workers', type: 'number', value: (r) => r.workersAffected, width: 100 },
+    { key: 'applied', header: 'Applied', type: 'date', value: (r) => dayOf(r.appliedOn), width: 130 },
+    { key: 'authority', header: 'Authority', value: (r) => r.authority, width: 200 },
+    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={IR_LABEL[r.status].tone}>{IR_LABEL[r.status].label}</Badge>, width: 140 },
+  ];
+  return (
+    <PeopleFrame active="VRS schemes">
+      {p.state === 'no-access' ? (
+        <NoAccessState what="the schemes" grantedBy="your HR admin" />
+      ) : p.state === 'error' ? (
+        <ErrorState title="We couldn't load the schemes" description="Check your connection and try again." onRetry={p.onRetry} />
+      ) : !d ? (
+        <ListSkeleton label="Loading VRS schemes" />
+      ) : (
+        <>
+          {d.schemes.length > 1 && (
+            <div className="yx-ppl__row">
+              <span className="yx-ppl__head-select">
+                <Select aria-label="Scheme" size="sm" value={scheme?.id ?? null} onChange={setPick} options={d.schemes.map((s) => ({ value: s.id, label: s.name }))} />
+              </span>
+            </div>
+          )}
+          <ObjectHeader
+            name={scheme?.name ?? 'VRS schemes'}
+            icon={FileText}
+            secondary={scheme ? `Window ${formatDate(dayOf(scheme.opensOn))} to ${formatDate(dayOf(scheme.closesOn))} · ${entity(scheme.legalEntityId)}` : 'No voluntary retirement scheme yet.'}
+            status={scheme ? <Badge tone={open ? 'success' : 'neutral'}>{open ? 'Open' : dayOf(scheme.opensOn) > dayOf(p.today) ? 'Not open yet' : 'Closed'}</Badge> : undefined}
+            // Issue scheme letters: no bulk scheme letter in the live app yet (left out).
+            actions={
+              <>
+                <Button onClick={() => setAsk('apply')}>Record a permission request</Button>
+                <Button variant="primary" icon={Plus} onClick={() => setAsk('scheme')}>
+                  New VRS scheme
+                </Button>
+              </>
+            }
+          />
+          <Tabs value={t} onValueChange={(v) => setT(v as typeof t)}>
+            <TabsList aria-label="VRS scheme">
+              <TabsTrigger value="applications" count={p.applications.length || undefined}>Applications</TabsTrigger>
+              <TabsTrigger value="setup">Set-up</TabsTrigger>
+              <TabsTrigger value="permissions" count={d.requests.length || undefined}>Government permission</TabsTrigger>
+            </TabsList>
+            <TabsContent value="applications">
+              <DataTable
+                label="VRS applications"
+                columns={cols}
+                rows={p.applications}
+                getRowId={(r) => r.id}
+                onRowClick={(r) => p.onOpenCase(r.id)}
+                rowButtons={(r) => <Button size="sm" onClick={() => p.onOpenCase(r.id)}>Open exit case</Button>}
+                empty={<EmptyState title="No applications yet" description="Eligible employees apply from Resign while a scheme is open. Each application is an exit case of type VRS, approved like any exit." />}
+              />
+            </TabsContent>
+            <TabsContent value="setup">
+              {scheme ? (
+                <div className="yx-ppl__form">
+                  <FormField label="Eligibility rule">
+                    <Text as="p">{`Age ${scheme.minAge}+ and ${scheme.minServiceYears}+ years of service${scheme.legalEntityId ? ` at ${entity(scheme.legalEntityId)}` : ''}`}</Text>
+                  </FormField>
+                  <FormField label="Window">
+                    <Text as="p">{`${formatDate(dayOf(scheme.opensOn))} to ${formatDate(dayOf(scheme.closesOn))}`}</Text>
+                  </FormField>
+                  <InlineAlert tone="info">Approved applications open exit cases of type VRS. Gratuity, leave encashment and notice rules apply on top of the scheme benefit.</InlineAlert>
+                </div>
+              ) : (
+                <EmptyState title="No VRS scheme yet" description="Open a scheme with its window and who may apply." action={<Button onClick={() => setAsk('scheme')}>New VRS scheme</Button>} />
+              )}
+            </TabsContent>
+            <TabsContent value="permissions">
+              <div className="yx-ppl__stack">
+                <Text size="sm" tone="secondary" as="p">
+                  Retrenchment, lay-off and closure need the government&apos;s permission at 300 or more workers (IR Code). Workers on the rolls: {p.entities.map((e) => `${e.label} ${d.workers[e.value] ?? 0}`).join(' · ')}.
+                </Text>
+                <DataTable
+                  label="Government permission requests"
+                  columns={permCols}
+                  rows={d.requests}
+                  getRowId={(r) => r.id}
+                  rowButtons={(r) =>
+                    r.status === 'applied' ? (
+                      <Button size="sm" onClick={() => setAsk({ decide: r })}>Record the decision</Button>
+                    ) : r.kind === 'closure' && (r.status === 'granted' || r.status === 'deemed') ? (
+                      <Button size="sm" onClick={() => setAsk({ close: r })}>Start the closure exits</Button>
+                    ) : null
+                  }
+                  empty={<EmptyState title="No permission requests" description="Record a request when you apply to the government for a retrenchment, lay-off or closure." />}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
+      {ask === 'apply' && <ApplyDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onApply={p.onApply} />}
+      {ask === 'scheme' && <SchemeDialog entities={p.entities} today={p.today} onClose={() => setAsk(null)} onScheme={p.onScheme} />}
+      {ask && typeof ask === 'object' && 'decide' in ask && <DecideDialog r={ask.decide} today={p.today} onClose={() => setAsk(null)} onDecide={p.onDecide} />}
+      {ask && typeof ask === 'object' && 'close' in ask && <ClosureDialog r={ask.close} today={p.today} onClose={() => setAsk(null)} onClosure={p.onClosure} />}
+    </PeopleFrame>
+  );
+}
+
 // PPL-40
-export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = true }: { tab?: 'setup' | 'applications'; persona?: Persona; eligible?: boolean }) {
+export function VrsScheme(props: { tab?: 'setup' | 'applications' | 'permissions'; persona?: Persona; eligible?: boolean; live?: LiveVrs }) {
+  return props.live ? <LiveVrsScheme live={props.live} /> : <SampleVrsScheme {...props} />;
+}
+
+function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true }: { tab?: 'setup' | 'applications' | 'permissions'; persona?: Persona; eligible?: boolean }) {
   const [t, setT] = useState(tab);
   if (persona === 'emp')
     return (
@@ -243,10 +569,11 @@ export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = tru
   return (
     <PeopleFrame active="VRS schemes">
       <ObjectHeader name={VRS.name} icon={FileText} secondary={`Window ${formatDate(VRS.window[0])} to ${formatDate(VRS.window[1])} · ${VRS.eligible} eligible`} status={<Badge tone="success">Open</Badge>} actions={<Button variant="primary" icon={Mail}>Issue scheme letters</Button>} />
-      <Tabs value={t} onValueChange={(v) => setT(v as 'setup' | 'applications')}>
+      <Tabs value={t} onValueChange={(v) => setT(v as 'setup' | 'applications' | 'permissions')}>
         <TabsList aria-label="VRS scheme">
           <TabsTrigger value="applications" count={VRS.applications.length}>Applications</TabsTrigger>
           <TabsTrigger value="setup">Set-up</TabsTrigger>
+          <TabsTrigger value="permissions" count={1}>Government permission</TabsTrigger>
         </TabsList>
         <TabsContent value="applications">
           <DataTable label="VRS applications" columns={cols} rows={VRS.applications} getRowId={(r) => r.id} rowButtons={(r) => (r.status.startsWith('Pending HR') ? (<><Button size="sm">Reject</Button><Button variant="approve" size="sm">Approve</Button></>) : null)} rowActions={() => <MenuItem>Open exit case</MenuItem>} empty={<EmptyState title="No applications yet" description="Eligible employees can apply from Me while the window is open." />} />
@@ -263,6 +590,19 @@ export function VrsScheme({ tab = 'applications', persona = 'hr', eligible = tru
               <Select options={[{ value: 'm-hr', label: 'Manager, then HR head' }]} value="m-hr" onChange={() => {}} />
             </FormField>
             <InlineAlert tone="info">Approved applications open exit cases of type VRS. Gratuity, leave encashment and notice rules apply on top of the scheme benefit.</InlineAlert>
+          </div>
+        </TabsContent>
+        <TabsContent value="permissions">
+          <div className="yx-ppl__stack">
+            <Text size="sm" tone="secondary" as="p">
+              Retrenchment, lay-off and closure need the government&apos;s permission at 300 or more workers (IR Code). Workers on the rolls: Kaveri Foods Pvt Ltd 186 · Kaveri Foods Pvt Ltd (Tamil Nadu) 342.
+            </Text>
+            <ul className="yx-ppl__successors">
+              <li>
+                <span>Lay-off at Kaveri Foods Pvt Ltd (Tamil Nadu): 40 workers, applied 14 Sep 2026 to the Labour Commissioner, Chennai</span>
+                <Badge tone="warning">Applied</Badge>
+              </li>
+            </ul>
           </div>
         </TabsContent>
       </Tabs>

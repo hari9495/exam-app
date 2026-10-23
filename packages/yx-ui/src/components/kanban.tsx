@@ -50,6 +50,8 @@ export interface KanbanBoardProps {
   /** Singular noun for the empty text and the count: "candidate". */
   noun?: string;
   defaultCollapsed?: string[];
+  /** Stages follow the data (e.g. dates): no drag and no "Move to" menu. */
+  readOnly?: boolean;
   /** Stories: open a card's "Move to" menu. */
   defaultMoveMenuFor?: string;
   /** Stories: open the reason popover for a move. */
@@ -94,6 +96,7 @@ export function KanbanBoard({
   defaultCollapsed = [],
   defaultMoveMenuFor,
   defaultReasonFor,
+  readOnly = false,
 }: KanbanBoardProps) {
   const [cols, setCols] = useControllable(columns, defaultColumns ?? [], onColumnsChange);
   const [collapsed, setCollapsed] = useState<string[]>(defaultCollapsed);
@@ -168,6 +171,7 @@ export function KanbanBoard({
     if (drop?.col !== col || drop.index !== index) setDrop({ col, index });
   };
   const onDrop = (e: DragEvent<HTMLElement>, col: string) => {
+    if (readOnly) return;
     e.preventDefault();
     const id = dragId ?? e.dataTransfer.getData('text/plain');
     if (id) requestMove(id, col, drop?.col === col ? drop.index : undefined);
@@ -238,6 +242,7 @@ export function KanbanBoard({
                         columns={cols}
                         dragging={dragId === card.id}
                         onOpen={onOpenCard}
+                        movable={!readOnly}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/plain', card.id);
                           e.dataTransfer.effectAllowed = 'move';
@@ -315,15 +320,16 @@ interface CardItemProps {
   reasonOpen: boolean;
   onReasonOpenChange: (open: boolean) => void;
   reasonForm: ReactNode;
+  movable: boolean;
 }
 
-function CardItem({ card, col, columns, dragging, onOpen, onDragStart, onDragEnd, onMoveTo, defaultMenuOpen, pendingRef, reasonOpen, onReasonOpenChange, reasonForm }: CardItemProps) {
+function CardItem({ card, col, columns, dragging, onOpen, movable, onDragStart, onDragEnd, onMoveTo, defaultMenuOpen, pendingRef, reasonOpen, onReasonOpenChange, reasonForm }: CardItemProps) {
   const late = col.slaDays !== undefined && card.daysInStage > col.slaDays;
   return (
     <li data-card className="yx-kanban__item">
       <Popover open={reasonOpen} onOpenChange={onReasonOpenChange}>
         <PopoverAnchor asChild>
-          <article className="yx-kanban__card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd} data-dragging={dragging || undefined} data-late={late || card.next?.overdue || undefined} aria-label={card.name}>
+          <article className="yx-kanban__card" draggable={movable} onDragStart={onDragStart} onDragEnd={onDragEnd} data-dragging={dragging || undefined} data-late={late || card.next?.overdue || undefined} aria-label={card.name}>
             <div className="yx-kanban__top">
               <Avatar name={card.name} src={card.photo} size={24} />
               {onOpen ? (
@@ -335,6 +341,7 @@ function CardItem({ card, col, columns, dragging, onOpen, onDragStart, onDragEnd
                   {card.name}
                 </span>
               )}
+              {movable && (
               <Menu defaultOpen={defaultMenuOpen}>
                 <MenuTrigger asChild>
                   <IconButton icon={MoreHorizontal} label={`Move ${card.name}`} size="sm" />
@@ -356,6 +363,7 @@ function CardItem({ card, col, columns, dragging, onOpen, onDragStart, onDragEnd
                     ))}
                 </MenuContent>
               </Menu>
+              )}
             </div>
             <ul className="yx-kanban__facts">
               {card.facts.filter(Boolean).map((f, i) => (

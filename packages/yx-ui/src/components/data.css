@@ -1,3 +1,25 @@
+/* Frame notice bar: one line above every page (icon, text, link, close) */
+.yx-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--yx-space-2);
+  min-height: var(--yx-space-8);
+  padding: 0 var(--yx-space-1) 0 var(--yx-space-3);
+  border: var(--yx-border-width) solid var(--yx-color-warning-border);
+  border-radius: var(--yx-radius-card);
+  background: var(--yx-color-warning-bg);
+  color: var(--yx-color-text);
+  font-size: var(--yx-text-sm);
+  line-height: var(--yx-leading-sm);
+}
+.yx-notice > .yx-icon { flex: none; color: var(--yx-color-warning-text); }
+.yx-notice__text { flex: 1 1 auto; min-width: 0; padding: var(--yx-space-1) 0; }
+.yx-notice__action { flex: none; white-space: nowrap; padding-right: var(--yx-space-2); }
+.yx-notice[data-tone="info"] { border-color: var(--yx-color-info-border); background: var(--yx-color-info-bg); }
+.yx-notice[data-tone="info"] > .yx-icon { color: var(--yx-color-info-text); }
+.yx-notice[data-tone="danger"] { border-color: var(--yx-color-danger-border); background: var(--yx-color-danger-bg); }
+.yx-notice[data-tone="danger"] > .yx-icon { color: var(--yx-color-danger-text); }
+
 /* §25 Inline alert */
 .yx-alert {
   display: flex;
@@ -10,6 +32,8 @@
   color: var(--yx-color-text);
 }
 .yx-alert > .yx-icon { margin-top: var(--yx-space-half); color: var(--yx-color-info-text); }
+/* A link inside a message looks like a link (founder 24 Oct 2026: "Answer it" read as plain text). */
+.yx-alert__text a[href] { color: var(--yx-color-link); text-decoration: underline; }
 .yx-alert[data-tone="success"] { border-color: var(--yx-color-success-border); background: var(--yx-color-success-bg); }
 .yx-alert[data-tone="success"] > .yx-icon { color: var(--yx-color-success-text); }
 .yx-alert[data-tone="warning"] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }

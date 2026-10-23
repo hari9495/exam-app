@@ -258,14 +258,18 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       expect(page.people).toHaveLength(2);
     });
 
-    it('the org chart has managers and dotted lines; HR may look at another date, others see today', async () => {
+    it('the org chart has managers and dotted lines; a past date for everyone, a future date for HR only', async () => {
       const chart = (await api('arjunA', 'get', '/people/org-chart').expect(200)).body;
       const node = (id: string) => chart.nodes.find((n: { id: string }) => n.id === id);
       expect(node(ids.arjun)).toMatchObject({ managerId: ids.divya, dottedLineManagerIds: [ids.lakshmi], directReports: 1 });
       expect(node(ids.divya)).toMatchObject({ managerId: ids.lakshmi, directReports: 2 });
       expect(node(ids.divya).employeeCode).toBeUndefined();
       noPay(chart);
-      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(403);
+      // Founder 20 Oct 2026: past dates for everyone who may open the chart; future (unannounced changes) for HR only.
+      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(200);
+      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, 20)}`).expect(403);
+      expect((await api('hrA', 'get', `/people/org-chart?asOf=${addDays(today, 20)}`).expect(200)).body.futureDates).toBe(true);
+      expect((await api('arjunA', 'get', '/people/org-chart').expect(200)).body.futureDates).toBe(false);
       const past = (await api('hrA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(200)).body;
       expect(past.nodes.find((n: { id: string }) => n.id === ids.arjun).dottedLineManagerIds).toEqual([]);
       expect(past.nodes.some((n: { id: string }) => n.id === ids.kiran)).toBe(true);
@@ -317,7 +321,7 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       ids.onBehalf = raised.body.id;
       await api('divyaA', 'post', '/people/changes/preview').send(body(ids.arjun)).expect(201);
       await api('divyaA', 'post', '/people/changes').send(body(ids.lakshmi)).expect(404); // above her
-      await api('divyaA', 'post', '/people/changes').send(body(ids.imran, { payload: { assignment: { departmentId: ids.qa } } })).expect(404); // beside her
+      await api('divyaA', 'post', '/people/changes').send(body(ids.imran, { payload: { assignment: { locationId: ids.mys, departmentId: ids.qa } } })).expect(404); // beside her
       await api('divyaA', 'post', '/people/changes').send(body(ids.divya)).expect(404); // herself
       await api('divyaA', 'post', '/people/changes').send({ ...body(ids.arjun), changeType: 'salary_revision', payload: { compensation: { increasePercent: '5' } } }).expect(403);
       await api('divyaA', 'post', '/people/changes').send({ ...body(ids.arjun), changeType: 'promotion', payload: { assignment: { designationId: ids.lead }, compensation: { annualCtc: '900000' } } }).expect(403);
@@ -346,6 +350,9 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       const kiran = list.rows.find((r: { employeeId: string }) => r.employeeId === ids.kiran);
       expect(kiran).toMatchObject({ startOn: joinKiran, extendedMonths: 0, maxTotalMonths: 12, stage: 'review_due' });
       ids.kiranEnd = kiran.plannedEndOn;
+      // The top bar's company scopes the queue (founder 23 Oct 2026): Kiran joined Kaveri Foods, not the Tamil Nadu entity.
+      expect((await api('hrA', 'get', `/people/probations?legalEntityId=${ids.kf}`).expect(200)).body.rows.some((r: { employeeId: string }) => r.employeeId === ids.kiran)).toBe(true);
+      expect((await api('hrA', 'get', `/people/probations?legalEntityId=${ids.tn}`).expect(200)).body.rows.some((r: { employeeId: string }) => r.employeeId === ids.kiran)).toBe(false);
       // Three months for probationers, by company setting (P01 §4.6 scope: employment type).
       await api('adminA', 'put', '/org/settings').send({ key: 'probation.default_months', scopeType: 'employment_type', scopeId: ids.prob, value: '3' }).expect(200);
       ids.ravi = await hire({ givenName: 'Ravi', status: 'probation', joinedOn: '2026-01-31', workEmail: `ravi-${runId}@ppl.test` }, { employmentTypeId: ids.prob, managerEmployeeId: ids.divya });

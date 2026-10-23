@@ -8,6 +8,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { FileUpload } from '../../../components/upload';
 import { CodeField, NumberField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -17,8 +18,8 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { BulkLetterDialog, LetterEditor } from './special';
-import type { Choice, EditorParagraph, JoinerForms, JoinerPlaces, Letter, LetterTemplate, LetterTemplates, LoadState, PortalAnswers, PortalMe, ReadyOffer, SectionKey, Signatory } from './types';
+import { LetterEditor } from './special';
+import type { Choice, EditorParagraph, JoinerForms, JoinerPlaces, Letter, LetterTemplate, LetterTemplates, LoadState, PortalAnswers, PortalMe, SectionKey, Signatory } from './types';
 
 // Lifecycle batch 6b, wired (design §8, §9, §14): HR's joiner panel (forms, BGV, Mark joined, cancel), the
 // pre-boarding portal (T9-01), letter templates and signatories (PPL-29), the letters register (PPL-28), my letters,
@@ -257,8 +258,8 @@ export function JoinerPanel(p: JoinerPanelProps) {
           <FormField id="bg-note" label="Note" optional>
             <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
           </FormField>
-          <FormField id="bg-file" label="Report" optional helper="PDF, JPG or PNG. Kept as Special data.">
-            <input id="bg-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <FormField id="bg-file" label="Report" optional helper="Kept as Special data.">
+            <FileUpload id="bg-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
           </FormField>
         </ConfirmDialog>
       )}
@@ -691,92 +692,6 @@ export function MyLettersScreen(p: MyLettersScreenProps) {
   );
 }
 
-// ------------------------------------------------------------------------------------------ HR: letters register
-
-export interface LettersRegisterScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: Letter[] | null;
-  onDownload: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
-  verifyUrl: (code: string) => string;
-  /** 6e bulk wizard (PPL-28). */
-  bulk?: { types: Choice[]; people: Choice[]; onIssue: (letterType: string, personIds: string[]) => Promise<{ issued: number; failed: { personId: string; message: string }[] }>; /** Open with these people chosen (Issue letter from the directory). */ defaultPicked?: string[] };
-}
-
-export function LettersRegisterScreen(p: LettersRegisterScreenProps) {
-  const { busy, error, run } = useRun();
-  const [bulk, setBulk] = useState(Boolean(p.bulk?.defaultPicked?.length));
-  const [bulkDone, setBulkDone] = useState<string | null>(null);
-  const columns: TableColumn<Letter>[] = [
-    { key: 'person', header: 'Person', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200, hideable: false },
-    { key: 'title', header: 'Letter', value: (r) => r.title.split(': ')[0], width: 200 },
-    { key: 'ref', header: 'Reference', value: (r) => r.referenceNo ?? '', width: 200 },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={LETTER_STATUS[r.status].tone}>{LETTER_STATUS[r.status].label}</Badge>, width: 190 },
-    { key: 'accepted', header: 'Accepted', value: (r) => r.acceptedAt ?? '', render: (r) => (!r.personSigns ? <Text tone="secondary">Not needed</Text> : r.acceptedAt ? <Text>{dateText(r.acceptedAt.slice(0, 10))}</Text> : <Text tone="secondary">Not yet</Text>), width: 130, optional: true },
-  ];
-  return (
-    <LivePage
-      title="Letters"
-      description="Every letter as issued, with its reference and public check code. An issued letter never changes; a correction replaces it."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="letters"
-      grantedBy="your HR admin"
-      actions={p.bulk ? <Button onClick={() => setBulk(true)}>Issue to many</Button> : undefined}
-    >
-      {bulkDone && (
-        <InlineAlert tone="success" title="Bulk letters">
-          {bulkDone}
-        </InlineAlert>
-      )}
-      {bulk && p.bulk && (
-        <BulkLetterDialog
-          types={p.bulk.types}
-          people={p.bulk.people}
-          defaultPicked={p.bulk.defaultPicked}
-          onClose={() => setBulk(false)}
-          onIssue={async (t, ids) => {
-            const r = await p.bulk!.onIssue(t, ids);
-            setBulkDone(`${r.issued} issued${r.failed.length ? `; ${r.failed.length} not: ${r.failed[0].message}` : ''}.`);
-          }}
-        />
-      )}
-      {error && (
-        <InlineAlert tone="danger" title="Not downloaded">
-          {error}
-        </InlineAlert>
-      )}
-      {p.rows && (
-        <DataTable
-          label="Issued letters"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => r.id}
-          rowNoun={['letter', 'letters']}
-          cardSummary
-          empty={<EmptyState compact title="No letters yet." description="Issue letters from a joiner's checklist." />}
-          rowButtons={(r) =>
-            r.status === 'issued' || r.status === 'superseded' ? (
-              <>
-                <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, () => p.onDownload(r, 'letter'))}>
-                  Download
-                </Button>
-                {r.verifyCode && (
-                  <Button size="sm" asChild>
-                    <a href={p.verifyUrl(r.verifyCode)} target="_blank" rel="noreferrer">
-                      Check page
-                    </a>
-                  </Button>
-                )}
-              </>
-            ) : null
-          }
-        />
-      )}
-    </LivePage>
-  );
-}
-
 // ------------------------------------------------------------------------------------------ settings: templates and signatories
 
 export interface LetterTemplatesScreenProps {
@@ -961,7 +876,7 @@ function UploadTemplate({ onClose, onUpload }: { onClose: () => void; onUpload: 
       <Segment label="Approval" value={approval} onChange={setApproval} options={[{ value: 'yes', label: 'Signatory approves first' }, { value: 'no', label: 'Issued at once' }]} />
       <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
       <FormField id="ut-file" label="Word file (.docx)" required error={v.errorOf('ut-file')} helper="No macros and no linked pictures. Unknown placeholders are refused with a suggestion.">
-        <input id="ut-file" className="yx-input" type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <FileUpload id="ut-file" upload={async (f) => setFile(f)} accept={['.docx']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
       </FormField>
     </Drawer>
   );
@@ -986,120 +901,9 @@ function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[];
       <FormField id="sg-title" label="Title on letters" required>
         <TextField value={title} onChange={setTitle} maxLength={100} />
       </FormField>
-      <FormField id="sg-image" label="Signature image" optional helper="PNG or JPG, up to 1 MB.">
-        <input id="sg-image" className="yx-input" type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+      <FormField id="sg-image" label="Signature image" optional>
+        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} maxSize={1024 * 1024} multiple={false} onItemsChange={(items) => items.length === 0 && setImage(null)} />
       </FormField>
-    </ConfirmDialog>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ Ready to onboard (PPL-12)
-
-export interface ReadyToOnboardScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: ReadyOffer[] | null;
-  places: JoinerPlaces;
-  onCreate: (o: ReadyOffer, input: { givenName: string; familyName: string | null; joiningOn: string; legalEntityId: string; locationId: string; departmentId: string | null; designationId: string | null; employmentTypeId: string | null; managerEmployeeId: string | null }) => Promise<unknown>;
-  changesHref: string;
-}
-
-const PERSON_TYPE: Record<ReadyOffer['personType'], { label: string; tone: BadgeTone }> = {
-  new: { label: 'New person', tone: 'info' },
-  ex_employee: { label: 'Worked here before', tone: 'warning' },
-  internal: { label: 'Current employee', tone: 'neutral' },
-};
-
-export function ReadyToOnboardScreen(p: ReadyToOnboardScreenProps) {
-  const [open, setOpen] = useState<ReadyOffer | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const columns: TableColumn<ReadyOffer>[] = [
-    { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.email }), width: 240, hideable: false },
-    { key: 'job', header: 'Job', value: (r) => r.jobTitle, width: 200 },
-    { key: 'start', header: 'Start date in the offer', value: (r) => r.startDate, render: (r) => dateText(r.startDate), width: 170 },
-    { key: 'type', header: 'Who', value: (r) => r.personType, render: (r) => <Badge tone={PERSON_TYPE[r.personType].tone}>{PERSON_TYPE[r.personType].label}</Badge>, width: 170 },
-  ];
-  return (
-    <LivePage title="Ready to onboard" description="Accepted offers waiting to become joiners. A current employee is never onboarded: their move is a job change." state={p.state} onRetry={p.onRetry} what="accepted offers">
-      {done && (
-        <InlineAlert tone="success" title="Done">
-          {done}
-        </InlineAlert>
-      )}
-      {p.rows && (
-        <DataTable
-          label="Accepted offers"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => r.offerId}
-          rowNoun={['offer', 'offers']}
-          cardSummary
-          empty={<EmptyState compact title="No accepted offers waiting." />}
-          rowButtons={(r) =>
-            r.personType === 'internal' ? (
-              <Button size="sm" asChild>
-                <a href={p.changesHref}>Job change</a>
-              </Button>
-            ) : (
-              <Button size="sm" variant="primary" onClick={() => setOpen(r)}>
-                Create joiner
-              </Button>
-            )
-          }
-        />
-      )}
-      {open && <FromOfferDialog offer={open} places={p.places} onClose={() => setOpen(null)} onCreate={async (x) => {
-        await p.onCreate(open, x);
-        setDone(`${x.givenName} is now a joiner. Their checklist has started and they were invited to the joining portal.`);
-        setOpen(null);
-      }} />}
-    </LivePage>
-  );
-}
-
-function FromOfferDialog({ offer, places, onClose, onCreate }: { offer: ReadyOffer; places: JoinerPlaces; onClose: () => void; onCreate: (x: Parameters<ReadyToOnboardScreenProps['onCreate']>[1]) => Promise<void> }) {
-  const [first, ...rest] = offer.name.split(' ');
-  const [given, setGiven] = useState(first);
-  const [family, setFamily] = useState(rest.join(' '));
-  const [date, setDate] = useState<Date | null>(fromKey(offer.startDate));
-  const [entity, setEntity] = useState<string | null>(places.entities.length === 1 ? places.entities[0].value : null);
-  const [location, setLocation] = useState<string | null>(null);
-  const [dept, setDept] = useState<string | null>(null);
-  const [desig, setDesig] = useState<string | null>(null);
-  const [type, setType] = useState<string | null>(null);
-  const [manager, setManager] = useState<string | null>(null);
-  const ok = given.trim() && date && entity && location;
-  return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Create a joiner from ${offer.name}'s offer`} confirmLabel="Create joiner" confirmDisabled={!ok} onConfirm={async () => onCreate({ givenName: given.trim(), familyName: family.trim() || null, joiningOn: dayKey(date!), legalEntityId: entity!, locationId: location!, departmentId: dept, designationId: desig, employmentTypeId: type, managerEmployeeId: manager })}>
-      <div className="yx-lif-grid">
-        <FormField id="fo-given" label="First name" required>
-          <TextField value={given} onChange={setGiven} maxLength={100} />
-        </FormField>
-        <FormField id="fo-family" label="Last name" optional>
-          <TextField value={family} onChange={setFamily} maxLength={100} />
-        </FormField>
-        <FormField id="fo-date" label="Joining day" required>
-          <DatePicker value={date} onChange={setDate} aria-label="Joining day" />
-        </FormField>
-        <FormField id="fo-entity" label="Legal entity" required>
-          <Select aria-label="Legal entity" value={entity} onChange={(x) => { setEntity(x); setLocation(null); }} options={places.entities} />
-        </FormField>
-        <FormField id="fo-location" label="Location" required>
-          <Select aria-label="Location" value={location} onChange={setLocation} options={places.locations.filter((l) => l.entityId === entity)} disabled={!entity} />
-        </FormField>
-        <FormField id="fo-dept" label="Department" optional>
-          <Select aria-label="Department" value={dept} onChange={setDept} options={places.departments} clearable searchable />
-        </FormField>
-        <FormField id="fo-desig" label="Designation" optional>
-          <Select aria-label="Designation" value={desig} onChange={setDesig} options={places.designations} clearable searchable />
-        </FormField>
-        <FormField id="fo-type" label="Employment type" optional>
-          <Select aria-label="Employment type" value={type} onChange={setType} options={places.employmentTypes} clearable />
-        </FormField>
-        <FormField id="fo-manager" label="Manager" optional>
-          <Select aria-label="Manager" value={manager} onChange={setManager} options={places.managers} clearable searchable />
-        </FormField>
-      </div>
     </ConfirmDialog>
   );
 }

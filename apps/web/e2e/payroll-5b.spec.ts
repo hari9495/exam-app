@@ -12,7 +12,7 @@ import { stepUp } from './fixtures/time-db';
 const PASSWORD = 'Passw0rd!2026';
 const SHOTS = process.env.E2E_SCREENSHOTS;
 
-test('Suresh checks the set-up, then works out a salary from a CTC and sends it for approval', async ({ browser }) => {
+test('Suresh checks the set-up; HR works out a salary from a CTC and sends it for approval', async ({ browser }) => {
   test.setTimeout(240_000);
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   await signIn(page, 'payroll@demo-org.test', PASSWORD);
@@ -44,21 +44,33 @@ test('Suresh checks the set-up, then works out a salary from a CTC and sends it 
   await expect(page.getByRole('list', { name: 'Always shown' })).toContainText('Net wages paid');
   await shot('5b-layout');
 
-  // Arjun's salary from a CTC: the breakup cites the PF rule; it goes for approval.
+  // Founder 21 Oct 2026 (option A): only HR changes pay. Suresh reads the salary in force, but has no new salary.
   await page.goto('/yx/payroll/compensation');
   await page.getByRole('textbox', { name: 'Find a person' }).fill('Arjun');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.getByRole('button', { name: /Arjun Kulkarni/ }).click();
   await expect(page.getByText('Salary in force')).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('combobox', { name: 'Template' }).click();
-  await page.getByRole('option', { name: /Standard monthly/ }).click();
-  await page.getByRole('textbox', { name: 'Annual CTC' }).fill('900000');
-  await page.getByRole('button', { name: 'Work out the breakup' }).click();
-  const breakup = page.getByRole('table', { name: 'Salary breakup' });
+  await expect(page.getByRole('region', { name: 'New or revised salary' })).toHaveCount(0);
+
+  // Lakshmi (HR) works out Arjun's salary from a CTC: the breakup cites the PF rule; it goes for approval.
+  const hr = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
+  await signIn(hr, 'hr@demo-org.test', PASSWORD);
+  await hr.waitForURL((url) => !url.pathname.includes('sign-in'));
+  await stepUp('hr@demo-org.test');
+  await hr.goto('/yx/payroll/compensation');
+  await hr.getByRole('textbox', { name: 'Find a person' }).fill('Arjun');
+  await hr.getByRole('button', { name: 'Search', exact: true }).click();
+  await hr.getByRole('button', { name: /Arjun Kulkarni/ }).click();
+  await expect(hr.getByText('Salary in force')).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('combobox', { name: 'Template' }).click();
+  await hr.getByRole('option', { name: /Standard monthly/ }).click();
+  await hr.getByRole('textbox', { name: 'Annual CTC' }).fill('900000');
+  await hr.getByRole('button', { name: 'Work out the breakup' }).click();
+  const breakup = hr.getByRole('table', { name: 'Salary breakup' });
   await expect(breakup).toContainText('Provident fund (employee)');
   await expect(breakup).toContainText('₹75,000.00');
   await shot('5b-compensation');
-  await page.getByRole('region', { name: 'New or revised salary' }).getByRole('textbox', { name: /Reason/ }).fill(`Annual review ${Date.now()}`);
-  await page.getByRole('button', { name: 'Send for approval' }).click();
-  await expect(page.getByText('Sent for approval.', { exact: false })).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('region', { name: 'New or revised salary' }).getByRole('textbox', { name: /Reason/ }).fill(`Annual review ${Date.now()}`);
+  await hr.getByRole('button', { name: 'Send for approval' }).click();
+  await expect(hr.getByText('Sent for approval.', { exact: false })).toBeVisible({ timeout: 30_000 });
 });

@@ -160,8 +160,10 @@ export class PayStructuresService {
 
   templates(ctx: TenantContext, user: ScopeUser) {
     return this.run(ctx, user, async (tx, c, v) => {
-      this.need(v, 'payroll.template.manage');
-      const ids = await entitiesFor(tx, c, v, 'payroll.template.manage');
+      // Payroll set-up, or HR choosing the template when it sets someone's salary (founder 21 Oct 2026, option A).
+      const key = has(v, 'payroll.template.manage') ? 'payroll.template.manage' : 'employee.salary.manage';
+      if (!has(v, key)) throw new ForbiddenException('This needs payroll.template.manage.');
+      const ids = await entitiesFor(tx, c, v, key);
       const rows = await tx.salaryTemplate.findMany({ where: { organizationId: c.organizationId, OR: [{ legalEntityId: null }, { legalEntityId: { in: ids } }] }, orderBy: { name: 'asc' } });
       const versions = await tx.salaryTemplateVersion.findMany({ where: { organizationId: c.organizationId, templateId: { in: rows.map((r) => r.id) } }, orderBy: { version: 'desc' } });
       return rows.map((t) => ({ id: t.id, name: t.name, legalEntityId: t.legalEntityId, status: t.status, versions: versions.filter((x) => x.templateId === t.id).map((x) => ({ id: x.id, version: x.version, validFrom: iso(x.validFrom), codeWageFlag: x.codeWageFlag, validatedAt: x.validatedAt })) }));
@@ -381,7 +383,15 @@ export class PayStructuresService {
         const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: c.organizationId, packageId: pkg.id } }) : [];
         const comps = await tx.payComponent.findMany({ where: { organizationId: c.organizationId, id: { in: lines.map((l) => l.componentId) } } });
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.viewed', 'employee', employeeId, { asOn });
+        // PPL-03 Pay tab: the last approved payslip's net pay and the tax regime of the current tax year (same grant, R1).
+        await payScope(tx, [e.legalEntityId]);
+        const slip = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, employeeId, status: 'approved', runType: 'regular' }, orderBy: [{ periodStart: 'desc' }, { version: 'desc' }] });
+        const [y, m] = asOn.split('-').map(Number);
+        const taxYear = m >= 4 ? `${y}-${String((y + 1) % 100).padStart(2, '0')}` : `${y - 1}-${String(y % 100).padStart(2, '0')}`;
+        const tax = await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear }, select: { regime: true, taxYear: true } });
         return {
+          lastNetPay: slip ? { month: slip.periodStart.toISOString().slice(0, 7), net: slip.net.toFixed(2), paid: slip.paymentStatus === 'paid' } : null,
+          taxRegime: tax ? { regime: tax.regime, taxYear: tax.taxYear } : null,
           validFrom: iso(comp.validFrom),
           validTo: iso(comp.validTo),
           currency: comp.currency,

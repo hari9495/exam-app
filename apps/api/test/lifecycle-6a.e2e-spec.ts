@@ -34,6 +34,7 @@ describe('Lifecycle batch 6a', () => {
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const server = () => app.getHttpServer();
+  const todayUtc = () => new Date().toISOString().slice(0, 10); // createdAt day, as the API reports it
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   type Who = 'adminA' | 'adminB' | 'hr' | 'it' | 'mgr' | 'emp' | 'plantHr';
@@ -202,7 +203,7 @@ describe('Lifecycle batch 6a', () => {
     const dir = (await api('hr', 'get', '/people/directory?q=Kavya').expect(200)).body;
     expect(JSON.stringify(dir)).not.toContain(`Kavya`);
     const board = (await api('hr', 'get', '/lifecycle/joiners').expect(200)).body;
-    expect(board.joiners.find((x: { id: string }) => x.id === ids.joiner)).toMatchObject({ joiningOn: joining, manager: `mgr ${run}` });
+    expect(board.joiners.find((x: { id: string }) => x.id === ids.joiner)).toMatchObject({ joiningOn: joining, manager: `mgr ${run}`, addedOn: todayUtc(), nextTask: { title: expect.any(String), dueOn: expect.any(String), ownerType: expect.any(String) } });
     const soon = (await api('mgr', 'get', '/lifecycle/joining-soon').expect(200)).body;
     expect(soon.map((x: { id: string }) => x.id)).toEqual([ids.joiner]);
     await api('emp', 'get', '/lifecycle/joiners').expect(403);
@@ -260,6 +261,9 @@ describe('Lifecycle batch 6a', () => {
     const queue = (await api('hr', 'get', '/documents/queue').expect(200)).body;
     const doc = queue.find((d: { personId: string }) => d.personId === ids.joinerPerson);
     expect(doc.typeKey).toBe('pan_card');
+    // The uploader is HR, not the joiner the document is about (founder 23 Oct 2026).
+    expect(doc.uploadedBy).toBeTruthy();
+    expect(doc.uploadedBy).not.toBe(doc.person);
     await api('hr', 'post', `/documents/${doc.id}/decision`).send({ decision: 'reject', version: doc.version }).expect(400);
     await api('hr', 'post', `/documents/${doc.id}/decision`).send({ decision: 'verify', version: doc.version }).expect(200);
     expect(await drain(async () => (await task(ids.journey, 'collect_pan')).status === 'done')).toBe(true);
@@ -274,6 +278,8 @@ describe('Lifecycle batch 6a', () => {
     expect((await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/postpone`).send({ joiningOn: later, reason: 'Notice period at the old job', version: pb.version }).expect(200)).body.moved).toBeGreaterThan(0);
     expect((await task(ids.journey, 'collect_bank')).dueOn).toBe(addDays(before.dueOn, 14));
     expect((await task(ids.journey, 'collect_pan')).dueOn).toBe(done.dueOn);
+    // The manager is told the new joining day, in words (founder 23 Oct 2026).
+    expect(await drain(async () => Boolean(await inA((tx) => tx.userNotification.findFirst({ where: { recipientUserId: users.mgr, contextText: { contains: 'now joins your team on' } } }))))).toBe(true);
   });
 
   it('a joiner is reached by their planned place: Hosur plant HR sees nothing in Bengaluru', async () => {
@@ -306,7 +312,8 @@ describe('Lifecycle batch 6a', () => {
     const file = await api('emp', 'get', `/documents/${photo.id}/file`).expect(200);
     expect(file.headers['x-content-type-options']).toBe('nosniff');
     expect(file.headers['content-disposition']).toMatch(/^attachment/);
-    await api('mgr', 'get', `/documents/${photo.id}/file`).expect(403);
+    // PPL-03: the manager reads the team's documents below Confidential (the photo), never the HR route.
+    await api('mgr', 'get', `/documents/${photo.id}/file`).expect(200);
     await api('mgr', 'get', `/documents/people/${ids.empPerson}`).expect(403);
     // HTML renamed as a PNG is refused before storing.
     const refused = await api('emp', 'post', `/documents/people/${ids.empPerson}/photo`).attach('file', HTML_AS_PNG, 'me.png').expect(400);
@@ -334,10 +341,21 @@ describe('Lifecycle batch 6a', () => {
     expect(await inA((tx) => documentsBlockingPay(tx, org.A.id, [employment.id]))).toEqual([]);
     const mine = (await api('emp', 'get', '/documents/me').expect(200)).body;
     expect(mine.documents.map((d: { typeKey: string }) => d.typeKey).sort()).toEqual(['pan_card', 'photo']);
+    // The manager's read-only Documents tab: the photo, never the PAN card; nothing to request or verify.
+    const team = (await api('mgr', 'get', `/documents/team/${ids.empPerson}`).expect(200)).body;
+    expect(team.documents.map((d: { typeKey: string }) => d.typeKey)).toEqual(['photo']);
+    expect(team).toMatchObject({ askable: [], canManage: false });
+    await api('mgr', 'get', `/documents/${v2.id}/file`).expect(403);
+    // Not the manager: the employee about their own manager, another company.
+    await api('emp', 'get', `/documents/team/${await inA(async (tx) => (await tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp } })).personId)}`).expect(404);
+    await api('adminB', 'get', `/documents/team/${ids.empPerson}`).expect(404);
+    // HR and the employee are unchanged.
+    expect((await api('hr', 'get', `/documents/people/${ids.empPerson}`).expect(200)).body.documents.map((d: { typeKey: string }) => d.typeKey).sort()).toEqual(['pan_card', 'photo']);
   });
 
   it('expiring documents remind at the type’s days and expire on the day; due and overdue tasks remind once', async () => {
     const passport = (await api('hr', 'post', `/documents/people/${ids.empPerson}/passport`).field('expiresOn', addDays(today, 30)).attach('file', PNG, 'pp.png').expect(201)).body;
+    expect((await api('hr', 'get', `/documents/people/${ids.empPerson}`).expect(200)).body.documents.find((d: { id: string }) => d.id === passport.id)).toMatchObject({ uploadedAt: expect.any(String) });
     expect((await documents.expirySweep(today)).reminded).toBeGreaterThanOrEqual(1);
     expect((await documents.expirySweep(today)).reminded).toBe(0);
     await documents.expirySweep(addDays(today, 30));

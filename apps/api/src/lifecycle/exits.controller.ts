@@ -171,6 +171,12 @@ export class ExitsController {
 
   // ------------------------------------------------------------------------------------------ assets
 
+  /** PPL-03: what one person holds (themselves, asset.view, or their managers); decided by the service. */
+  @Get('people/:employeeId/assets')
+  personAssets(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.offboarding.personAssets(ctx, this.user(req), employeeId);
+  }
+
   @Get('assets')
   @RequirePermissions('asset.view')
   assets(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {

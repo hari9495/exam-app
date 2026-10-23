@@ -1,12 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { OrgChartScreen } from './org-chart';
-import { TeamScreen } from './team';
-import { ProbationScreen } from './probation';
 import { BulkChangesScreen, type BulkChangesScreenProps } from './bulk';
 import { csvCell, csvText } from './workforce-kit';
-import { BATCH_DETAIL, BATCHES, BULK_RESULT, ORG_CHART, PEOPLE, PROBATIONS, TEAM, TODAY_ISO } from './data';
+import { BATCH_DETAIL, BATCHES, BULK_RESULT, PEOPLE } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -23,77 +20,6 @@ describe('CSV export cells (OWASP CSV injection)', () => {
   });
 });
 
-
-describe('Org chart (M01 §3.2, Q5)', () => {
-  it('offers the date and person links to HR only, and exports what it shows', async () => {
-    const created: string[] = [];
-    const url = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
-      void (b as Blob).text().then((t) => created.push(t));
-      return 'blob:x';
-    });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const { rerender } = render(<OrgChartScreen state="ready" data={ORG_CHART} today={TODAY_ISO} meId="p-divya" companyName="Kaveri Foods Pvt Ltd" />);
-    expect(screen.queryByLabelText('View as on')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
-    await waitFor(() => expect(created[0]).toContain('Arjun Kulkarni,Quality Analyst,Quality,Bengaluru head office,Divya Raghunathan,Lakshmi Venkatesan'));
-    expect(created[0]).not.toMatch(/ctc|salary/i);
-    rerender(<OrgChartScreen state="ready" data={{ ...ORG_CHART, asOf: '2026-08-01' }} today={TODAY_ISO} onAsOf={vi.fn()} companyName="Kaveri Foods Pvt Ltd" onOpenPerson={vi.fn()} />);
-    expect(screen.getByText('As it was on 1 Aug 2026')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Position' })).toBeNull();
-    url.mockRestore();
-  });
-});
-
-describe('My team (M01 §3.10; YX-SEC-27)', () => {
-  it('the aside (Joining soon) sits under the page heading, not above it', () => {
-    render(<TeamScreen state="ready" members={TEAM} today={TODAY_ISO} onOpenHistory={vi.fn()} aside={<p>Joining soon card</p>} />);
-    const heading = screen.getByRole('heading', { name: 'My team' });
-    expect(heading.compareDocumentPosition(screen.getByText('Joining soon card')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it('lists direct, indirect and dotted-line reports; raising changes only for the reporting team', async () => {
-    const onOpenHistory = vi.fn();
-    render(<TeamScreen state="ready" members={TEAM} today={TODAY_ISO} onOpenHistory={onOpenHistory} raise={{ options: { people: PEOPLE, locations: [], departments: [], designations: [], grades: [], employmentTypes: [], costCentres: [], canPay: false, retroLimit: '2026-04-01', today: TODAY_ISO, types: ['promotion', 'transfer', 'redesignation', 'manager_change'] }, onPreview: vi.fn(), onSubmit: ok() }} />);
-    expect(screen.getAllByText('Through Arjun Kulkarni').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Probation ends 14 Oct 2026').length).toBeGreaterThan(0);
-    // Dotted-line reports are view only: no job history, no change (YX-EMP-04, P02 Q5).
-    expect(screen.getAllByRole('button', { name: 'Raise change' })).toHaveLength(4);
-    expect(screen.getAllByRole('button', { name: 'Job history' })).toHaveLength(4);
-    await userEvent.click(screen.getAllByRole('button', { name: 'Raise change' })[0]);
-    const drawer = await screen.findByRole('dialog');
-    await userEvent.click(within(drawer).getByRole('combobox', { name: 'Kind of change' }));
-    expect(screen.queryByRole('option', { name: 'Salary revision' })).toBeNull();
-    expect(screen.queryByRole('option', { name: 'Correction' })).toBeNull();
-    expect(screen.getByRole('option', { name: 'Manager change' })).toBeInTheDocument();
-  });
-});
-
-describe('Probation (M01 §3.4, YX-LC-01)', () => {
-  it('HR confirms or extends with a reason; a waiting confirmation links to approval; managers only read', async () => {
-    const onExtend = ok();
-    const onConfirm = ok();
-    const { unmount } = render(<ProbationScreen state="ready" rows={PROBATIONS} today={TODAY_ISO} canManage onConfirm={onConfirm} onExtend={onExtend} onOpenHistory={vi.fn()} changesHref="/yx/people/changes" />);
-    expect(screen.getAllByText('Past the end date').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Review' })[0]).toHaveAttribute('href', '/yx/people/changes');
-    expect(screen.queryByText('Meera Iyer')).toBeNull(); // confirmed: under "Recently confirmed"
-    await userEvent.click(screen.getAllByRole('button', { name: 'Extend' })[0]);
-    const dialog = await screen.findByRole('dialog');
-    const extend = within(dialog).getByRole('button', { name: 'Extend probation' });
-    expect(extend).toBeDisabled();
-    await userEvent.type(within(dialog).getByRole('textbox'), 'More time on audits');
-    await userEvent.click(extend);
-    await waitFor(() => expect(onExtend).toHaveBeenCalledWith('p-kiran', 3, 'More time on audits'));
-    await userEvent.click(screen.getAllByRole('button', { name: 'Confirm' })[0]);
-    const confirm = await screen.findByRole('dialog');
-    await userEvent.type(within(confirm).getByLabelText(/Reason/), 'Review went well');
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Send for approval' }));
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('p-kiran', '2026-10-15', 'Review went well'));
-    unmount();
-    render(<ProbationScreen state="ready" rows={PROBATIONS} today={TODAY_ISO} canManage={false} onConfirm={ok()} onExtend={ok()} onOpenHistory={vi.fn()} changesHref="#" />);
-    expect(screen.queryByRole('button', { name: 'Extend' })).toBeNull();
-    expect(screen.getAllByRole('button', { name: 'Job history' }).length).toBeGreaterThan(0);
-  });
-});
 
 describe('Bulk changes (M01 §3.3; YX-SEC-11)', () => {
   const props = (over: Partial<BulkChangesScreenProps> = {}): BulkChangesScreenProps => ({

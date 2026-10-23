@@ -102,7 +102,9 @@ export interface SubmitInput {
  */
 export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
   const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
-  const asks = who ? `${who} asks for ${what}` : `A request waits for you: ${what}`;
+  // A request about the asker themself ("Resignation of Arjun Kulkarni") reads "Resignation from Arjun Kulkarni".
+  const about = who && what.endsWith(` of ${who}`) ? `${what.slice(0, -(who.length + 4))} from ${who}` : null;
+  const asks = about ?? (who ? `${who} asks for ${what}` : `A request waits for you: ${what}`);
   if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
   if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
   if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;

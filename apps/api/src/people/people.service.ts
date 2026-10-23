@@ -165,23 +165,30 @@ export class PeopleService {
    * look at any date ("view as on", P06 §4.7); everyone else, scoped HR included, sees today's chart, since a past
    * chart of the whole company would show leavers and people never in their scope (P02 §4.3, YX-SEC-05).
    */
-  orgChart(ctx: TenantContext, v: Viewer, asOf: string | undefined) {
+  orgChart(ctx: TenantContext, v: Viewer, asOf: string | undefined, entityId?: string) {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       if (!hr(v) && !(await this.own(tx, c, v))) throw new ForbiddenException('The org chart is for employees of this company.');
-      if (asOf && asOf !== today && !tenantWide(v, 'employee.profile.view')) throw new ForbiddenException('Only company-wide HR can see the org chart on another date.');
+      // Founder 20 Oct 2026: a past date for everyone who may open the chart; a future date shows scheduled changes that
+      // may not be announced yet, so only HR and org.structure.view holders see it.
+      const future = hr(v) || holds(v, 'org.structure.view');
+      if (asOf && asOf > today && !future) throw new ForbiddenException('Only HR can see the org chart on a future date.');
       const date = asOf ?? today;
       const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${date}::date`);
       // ponytail: one flat list for the whole company; page by subtree when a company passes ~5,000 people.
-      const rows = await this.active(tx, c, date, Prisma.empty, { limit: 5000, offset: 0 }, inScope);
-      const n = await this.labels(tx, c, rows);
+      const all = await this.active(tx, c, date, Prisma.empty, { limit: 5000, offset: 0 }, inScope);
+      // The top bar's legal entity (option B): only its people; a manager in another entity becomes a quiet line.
+      const rows = entityId ? all.filter((r) => r.legal_entity_id === entityId) : all;
+      const n = await this.labels(tx, c, all);
       const present = new Set(rows.map((r) => r.id));
+      const byId = new Map(all.map((r) => [r.id, r]));
       const reports = new Map<string, number>();
       for (const r of rows) if (r.manager_employee_id) reports.set(r.manager_employee_id, (reports.get(r.manager_employee_id) ?? 0) + 1);
       return {
         asOf: date,
-        truncated: rows.length ? Number(rows[0].total) > rows.length : false,
-        otherDates: tenantWide(v, 'employee.profile.view'),
+        truncated: all.length ? Number(all[0].total) > all.length : false,
+        otherDates: true,
+        futureDates: future,
         nodes: rows.map((r) => ({
           id: r.id,
           name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }),
@@ -191,12 +198,59 @@ export class PeopleService {
           legalEntity: n.entity(r.legal_entity_id),
           // A manager who is not employed on the date cannot be in force (YX-ORG-09), so ids always resolve.
           managerId: r.manager_employee_id && present.has(r.manager_employee_id) ? r.manager_employee_id : null,
+          ...(r.manager_employee_id && !present.has(r.manager_employee_id) && byId.has(r.manager_employee_id)
+            ? (() => {
+                const m = byId.get(r.manager_employee_id)!;
+                return { managerOutside: { name: displayName({ givenName: m.given_name, familyName: m.family_name, preferredName: m.preferred_name }), legalEntity: n.entity(m.legal_entity_id)?.name ?? null } };
+              })()
+            : {}),
           dottedLineManagerIds: r.dotted.filter((d) => present.has(d)),
           directReports: reports.get(r.id) ?? 0,
           ...(r.in_scope ? { employeeCode: r.employee_code } : {}),
         })),
+        ...(await this.vacancies(tx, c, v, present, date, entityId)),
       };
     });
+  }
+
+  /**
+   * The Position view (PPL-02): open job openings as vacant positions under their hiring manager. Only for people who
+   * run hiring (pipeline:manage) or company-wide HR, plus a hiring manager's own openings. No candidate data: the role,
+   * department, location and how many are open. Openings are not dated, so only today's chart has them; the switch
+   * stays for whoever may use it (`positions`), and the screen says why it is empty.
+   * The legal entity of an opening (founder 21 Oct 2026): the job's own entity, else its location's, else its hiring
+   * manager's today; an opening with none of these belongs to the company and shows under "All entities" only.
+   */
+  private async vacancies(tx: Tx, c: CompanyContext, v: Viewer, present: Set<string>, date: string, entityId?: string) {
+    if (v.actingForOther) return { positions: false, vacancies: [] };
+    const all = v.grants.has('pipeline:manage') || tenantWide(v, 'employee.profile.view');
+    const open = await tx.job.findMany({ where: { organizationId: c.organizationId, status: 'open', deletedAt: null, ...(all ? {} : { hiringManagerId: v.userId ?? '00000000-0000-0000-0000-000000000000' }) }, select: { id: true, title: true, hiringManagerId: true, designationId: true, departmentId: true, department: true, locationId: true, location: true, legalEntityId: true, headcount: true }, take: 500 });
+    const positions = all || open.length > 0;
+    if (date !== todayIst() || !open.length) return { positions, vacancies: [] };
+    const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { in: open.flatMap((j) => (j.hiringManagerId ? [j.hiringManagerId] : [])) } }, select: { id: true, userId: true } });
+    const locations = await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: open.flatMap((j) => (j.locationId ? [j.locationId] : [])) } }, select: { id: true, name: true, legalEntityId: true } });
+    const employments = managers.length ? await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId: { in: managers.map((m) => m.id) }, joinedOn: { lte: new Date(`${date}T00:00:00Z`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: new Date(`${date}T00:00:00Z`) } }] }, select: { employeeId: true, legalEntityId: true } }) : [];
+    const entityOf = (j: (typeof open)[number]) => {
+      const m = managers.find((x) => x.userId === j.hiringManagerId)?.id;
+      return j.legalEntityId ?? locations.find((l) => l.id === j.locationId)?.legalEntityId ?? (m ? employments.find((e) => e.employeeId === m)?.legalEntityId : undefined) ?? null;
+    };
+    const jobs = entityId ? open.filter((j) => entityOf(j) === entityId) : open;
+    const designations = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.designationId ? [j.designationId] : [])) } }, select: { id: true, name: true } });
+    const departments = await tx.department.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.departmentId ? [j.departmentId] : [])) } }, select: { id: true, name: true } });
+    return {
+      positions,
+      vacancies: jobs.map((j) => {
+        const m = managers.find((x) => x.userId === j.hiringManagerId)?.id ?? null;
+        return {
+          id: `job:${j.id}`,
+          role: designations.find((d) => d.id === j.designationId)?.name ?? j.title,
+          department: departments.find((d) => d.id === j.departmentId)?.name ?? j.department ?? null,
+          location: locations.find((l) => l.id === j.locationId)?.name ?? j.location ?? null,
+          managerId: m && present.has(m) ? m : null,
+          openings: j.headcount ?? 1,
+        };
+      }),
+    };
   }
 
   /**
@@ -434,7 +488,7 @@ export class PeopleService {
    * stands: running, review due (reminder lead before the end), overdue, extended, confirmation waiting or
    * confirmed from a date.
    */
-  probations(ctx: TenantContext, v: Viewer) {
+  probations(ctx: TenantContext, v: Viewer, legalEntityId?: string) {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       let employeeIds: string[] | null = null;
@@ -449,10 +503,17 @@ export class PeopleService {
         direct = new Set(team.members.filter((m) => m.relation === 'direct').map((m) => m.id));
         if (!employeeIds.length) return { today, rows: [] };
       }
-      const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
+      const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(legalEntityId ? { legalEntityId } : {}), ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
       const plans = await tx.probation.findMany({ where: { organizationId: c.organizationId, employmentId: { in: employments.map((e) => e.id) } }, orderBy: { plannedEndOn: 'asc' } });
       const state = await this.probationState(tx, c, plans.map((p) => p.employmentId));
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: employments.map((e) => e.employeeId) } } });
+      // Today's designation and manager for the queue (Internal fields the viewer already reaches for these people).
+      const assigns = await tx.employeeAssignment.findMany({
+        where: { organizationId: c.organizationId, employmentId: { in: plans.map((p) => p.employmentId) }, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] },
+        select: { employmentId: true, designationId: true, managerEmployeeId: true },
+      });
+      const designations = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: assigns.map((a) => a.designationId) } }, select: { id: true, name: true } });
+      const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: assigns.map((a) => a.managerEmployeeId).filter((x): x is string => Boolean(x)) } } });
       const rows = [];
       for (const p of plans) {
         const e = employments.find((x) => x.id === p.employmentId)!;
@@ -478,7 +539,13 @@ export class PeopleService {
           pendingConfirmationId: state.pendingChange(e.id),
           stage: confirmedFrom ? 'confirmed' : state.pendingChange(e.id) ? 'awaiting_approval' : end < today ? 'overdue' : today >= reviewDueOn ? 'review_due' : p.extendedMonths ? 'extended' : 'running',
           maxTotalMonths: maxTotal,
-          canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id),
+          // Once a missed review went to HR (the end date passed), HR decides; the manager no longer reviews.
+          canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id) && !p.escalatedOn,
+          designation: designations.find((d) => d.id === assigns.find((a) => a.employmentId === e.id)?.designationId)?.name ?? null,
+          manager: (() => {
+            const m = managers.find((x) => x.id === assigns.find((a) => a.employmentId === e.id)?.managerEmployeeId);
+            return m ? displayName(m) : null;
+          })(),
         });
       }
       return { today, rows };

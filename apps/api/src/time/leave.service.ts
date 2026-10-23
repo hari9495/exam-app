@@ -649,6 +649,18 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
+  /** PPL-03 Time tab: one person's balances, read-only: themselves, leave.view in scope, or their managers (implicit view). */
+  async personBalances(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await this.ownId(tx, c, v);
+      const today = new Date().toISOString().slice(0, 10);
+      await mustSee(tx, c, v, own, 'leave.view', employeeId, today, true);
+      const f = await factsOn(tx, c.organizationId, employeeId, today);
+      return { balances: f ? await this.balancesIn(tx, c, f, today) : [] };
+    });
+  }
+
   /** One person's ledger (TIM-21): self, or HR in leave.view scope. */
   async ledger(ctx: TenantContext, user: ScopeUser, employeeId: string) {
     const v = await this.viewer(user);

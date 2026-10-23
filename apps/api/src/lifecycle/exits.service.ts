@@ -693,6 +693,16 @@ export class ExitsService implements OnModuleInit {
       await this.notifications
         .notifySystem(ctx, users, 'exit.clearance.assigned', { entityType: 'exit_case', entityId: exitCaseId, contextText: who ? `Clearance sign-off for ${who}, who is leaving` : 'A leaver needs your clearance sign-off', linkPath: '/yx/people/clearance' }, { subject: 'A clearance sign-off is waiting for you', html: '<p>A clearance item for someone leaving is waiting for you in YukthiX.</p>' })
         .catch(() => undefined);
+    // The leaver is told their exit interview is ready (founder 24 Oct 2026: it was only reachable from Me > Resign).
+    const leaver = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const iv = await tx.exitInterview.findFirst({ where: { organizationId: ctx.organizationId, exitCaseId, status: 'sent' }, select: { id: true } });
+      const k = iv && (await tx.exitCase.findFirst({ where: { organizationId: ctx.organizationId, id: exitCaseId }, select: { employeeId: true } }));
+      return k ? (await tx.employee.findFirst({ where: { organizationId: ctx.organizationId, id: k.employeeId }, select: { userId: true } }))?.userId ?? null : null;
+    });
+    if (leaver)
+      await this.notifications
+        .notifySystem(ctx, [leaver], 'exit.interview.sent', { entityType: 'exit_case', entityId: exitCaseId, contextText: 'Your exit interview is ready. Only HR reads your answers.', linkPath: '/yx/me/exit-interview' }, { subject: 'Your exit interview is ready', html: '<p>Your exit interview is ready in YukthiX. Only HR reads your answers.</p>' })
+        .catch(() => undefined);
   }
 
   // ------------------------------------------------------------------------------------------ notice changes (LIFE-3.03)
@@ -801,6 +811,13 @@ export class ExitsService implements OnModuleInit {
         tx.clearanceItem.groupBy({ by: ['exitCaseId', 'status'], where: { organizationId: org, exitCaseId: { in: ids } }, _count: { _all: true } }),
         tx.exitInterview.findMany({ where: { organizationId: org, exitCaseId: { in: ids } }, select: { exitCaseId: true, status: true } }),
       ]);
+      // The leaver's manager (the latest assignment of the employment that ends): the list's Manager column.
+      const assigns = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: shown.map((x) => x.k.employmentId) }, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, managerEmployeeId: true } });
+      const bosses = await tx.employee.findMany({ where: { organizationId: org, id: { in: assigns.map((a) => a.managerEmployeeId).filter((x): x is string => Boolean(x)) } } });
+      const managerOf = (employmentId: string) => {
+        const m = bosses.find((b) => b.id === assigns.find((a) => a.employmentId === employmentId)?.managerEmployeeId);
+        return m ? displayName(m) : null;
+      };
       const out = shown.map(({ k, manage }) => {
         const mine = items.filter((i) => i.exitCaseId === k.id);
         return {
@@ -809,6 +826,7 @@ export class ExitsService implements OnModuleInit {
           employeeCode: jobs.find((j) => j.id === k.employmentId)?.employeeCode ?? null,
           clearance: { open: mine.filter((i) => i.status === 'open').reduce((n, i) => n + i._count._all, 0), total: mine.reduce((n, i) => n + i._count._all, 0) },
           interview: ivs.find((i) => i.exitCaseId === k.id)?.status ?? null,
+          manager: managerOf(k.employmentId),
           canManage: manage,
         };
       });
@@ -901,6 +919,8 @@ export class ExitsService implements OnModuleInit {
       await this.history.lockEmployment(tx, c, e.id);
       const p = await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id } });
       if (!p) throw new NotFoundException('No such probation.');
+      // A missed review went to HR on the end date: from then HR decides, not the manager (who is told the outcome).
+      if (isManager && p.escalatedOn && !(await this.history.reaches(tx, c, v, 'employee.change.manage', employeeId, today))) throw new ForbiddenException('This review went to HR when the probation ended. HR decides now; you are told the outcome.');
       const state = await this.people.confirmationState(tx, c, e.id);
       if (state.confirmedFrom) throw new ConflictException('The probation is already confirmed.');
       if (state.pendingChangeId) throw new ConflictException('A confirmation is already waiting for approval.');

@@ -126,6 +126,11 @@ export interface ChangeRecord {
   batchId?: string | null;
   payload: ChangePayload;
   impact: Impact | null;
+  /** PPL-04: a pending change's approvers (names; "you" when the reader is one). */
+  waitingFor?: string[];
+  /** PPL-05: who raised it, and the new values by name ("Quality Lead", "G6"). */
+  requestedByName?: string | null;
+  newValues?: string[];
 }
 
 export interface HistoryRow {

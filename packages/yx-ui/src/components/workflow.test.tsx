@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { OrgChart, buildOrgTree, type OrgPerson } from './orgchart';
+import { OrgChart, buildOrgTree, canvasHeight, fitScale, type OrgPerson } from './orgchart';
 import { KanbanBoard, moveCard, type KanbanColumn } from './kanban';
 import { SetupChecklist, Stepper, checklistProgress, type ChecklistSection } from './stepper';
 import { DocumentViewer, documentKind, esignSummary } from './document';
@@ -149,6 +149,11 @@ function Wizard(props: { onContinue?: (id: string) => boolean | void }) {
 const current = () => screen.getByRole('button', { current: 'step' });
 
 describe('Stepper', () => {
+  // Founder 24 Oct 2026: a visited step with work left says so ("Open · 4 of 6 signed off"), never "Done".
+  it('an open step shows its note, not Done, after it was passed', () => {
+    render(<Stepper title="Exit" finishLabel="Finish" steps={[{ id: 'a', title: 'Approval', content: 'A' }, { id: 'b', title: 'Clearance', status: 'open', statusNote: '4 of 6 signed off', content: 'B' }, { id: 'c', title: 'Interview', content: 'C' }]} defaultCurrent="c" />);
+    expect(screen.getByText(/Open · 4 of 6 signed off/)).toBeInTheDocument();
+  });
   it('Back keeps typed data', async () => {
     const user = userEvent.setup();
     render(<Wizard />);
@@ -243,5 +248,18 @@ describe('DocumentViewer', () => {
     render(<DocumentViewer fileName="form.docx" versions={[{ id: 'v', label: 'Version 1', url: '#', uploadedBy: 'Sana Nizami', uploadedAt: new Date(2026, 8, 28), size: 1 }]} />);
     expect(screen.getByText("We can't preview .docx files here.")).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+});
+
+describe('org chart opening zoom (PPL-02)', () => {
+  it('fits in whole tens of a per cent, never above 100 % nor below 60 %', () => {
+    expect(fitScale(1000, 400, 800, 300)).toBe(1); // small tree: no zoom-in past 100 %
+    // The canvas fills the room left both ways: shrinks when a notice pushes the page past the bottom, grows back after.
+    expect(canvasHeight(400, 700, 635)).toBe(335);
+    expect(canvasHeight(120, 400, 910)).toBe(630);
+    expect(canvasHeight(300, 2000, 635)).toBe(120); // never below 120 px
+    expect(canvasHeight(300, 100, 2000)).toBe(760); // nor above 760 px
+    expect(fitScale(900, 250, 1200, 330)).toBe(0.7); // first two levels into the visible canvas
+    expect(fitScale(400, 100, 3000, 900)).toBe(0.6); // a very wide top level scrolls instead of shrinking past 60 %
   });
 });

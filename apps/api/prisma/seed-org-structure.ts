@@ -13,12 +13,17 @@ async function ensure<T>(find: () => Promise<T | null>, create: () => Promise<T>
 
 const IST = 'Asia/Kolkata';
 // P02 §4.2 templates as permission profiles: Payroll Admin holds pay; HR Admin runs records without pay.
-const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
+export const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
+// Founder 21 Oct 2026: the demo HR sees salaries and runs the annual increment (the salary grant and pay ranges).
+export const HR_PAY = ['employee.salary.view', 'employee.salary.manage', 'pay.range.view'];
+// Founder 21 Oct 2026: bank and identity changes are approved by HR only (payroll reads the approved details).
+export const HR_IDENTITY_APPROVE = ['employee.identity.approve'];
 // Step 2d (P02 §4.4–4.5): HR Admin also holds Personal data and raises identity / bank changes; Payroll approves them.
-const HR_ADMIN = ['org:view', 'org.structure.view', 'org.settings.manage', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage'];
+export const HR_ADMIN = ['org:view', 'org.structure.view', 'org.settings.manage', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage', 'succession.manage', ...HR_PAY, ...HR_IDENTITY_APPROVE];
 // The panel role's keys plus raising changes for one's team (P02 YX-SEC-27); the structure masters (names and
 // codes, no pay) to pick a new designation or location in those changes.
-const TEAM_MANAGER = ['org:view', 'results:view', 'interview:view_assigned', 'request.raise_on_behalf', 'org.structure.view'];
+// PPL-08: Divya asks for a hire for her team ("Request a hire", ats.requisition.raise; it always goes for approval).
+const TEAM_MANAGER = ['org:view', 'results:view', 'interview:view_assigned', 'request.raise_on_behalf', 'org.structure.view', 'ats.requisition.raise'];
 const FROM = new Date('2026-04-01T00:00:00.000Z');
 
 export async function seedOrgStructure(tx: Tx, organizationId: string, passwordHash: string): Promise<void> {

@@ -1,13 +1,13 @@
-import { useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
-import { Upload, UserPlus } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
-import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
+import { EmptyState, InlineAlert,  } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { FileUpload } from '../../../components/upload';
 import { NumberField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -18,7 +18,7 @@ import { dayKey } from '../../../lib/dates';
 import { WhenBadge } from '../../history/history-kit';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { JOURNEY_KIND_LABEL, type FirstThirtyDays, type FormDef, type ImportResult, type Joiner, type JoinerBoard, type JoinerInput, type JoinerPlaces, type Journey, type JourneyKind, type JourneyTask, type LifeJourneyRow, type LoadState, type MyTasks, type QueueDocument } from './types';
+import { type FirstThirtyDays, type FormDef, type ImportResult, type JoinerInput, type JoinerPlaces, type JourneyKind, type JourneyTask, type LoadState,  } from './types';
 
 // Lifecycle batch 6a, wired (M01-LIFECYCLE-BUILD-DESIGN §14): the onboarding board (PPL-11), a checklist (PPL-13),
 // my checklist tasks, the document verification queue (PPL-27) and "Joining soon" for managers. A joiner is not an
@@ -44,133 +44,9 @@ const KIND_HINT: Record<JourneyTask['kind'], string> = {
 };
 /** What a journey's day 0 is, in words (6f adds life events). */
 const ANCHOR_WORD: Record<JourneyKind, string> = { onboarding: 'Joins', offboarding: 'Leaves', new_manager: 'Manages from', transfer: 'Moves', parental_leave: 'Leave from', return_to_work: 'Back on' };
-const DAY_WORD: Record<JourneyKind, string> = { onboarding: 'joining', offboarding: 'last working', new_manager: 'first', transfer: 'move', parental_leave: 'first leave', return_to_work: 'return' };
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
 
-// ------------------------------------------------------------------------------------------ onboarding board
-
-export interface OnboardingBoardScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: JoinerBoard | null;
-  places: JoinerPlaces;
-  onOpen: (journeyId: string) => void;
-  onAdd: (input: JoinerInput) => Promise<unknown>;
-  onImport: (csv: string, commit: boolean) => Promise<ImportResult>;
-}
-
-type Show = 'all' | 'week' | 'late';
-
-export function OnboardingBoardScreen(p: OnboardingBoardScreenProps) {
-  const [show, setShow] = useState<Show>('all');
-  const [adding, setAdding] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const d = p.data;
-  const rows = useMemo(() => {
-    if (!d) return [];
-    const weekEnd = new Date(fromKey(d.today).getTime() + 7 * 86_400_000);
-    return d.joiners.filter((j) => j.status === 'invited' && (show === 'all' || (show === 'week' ? fromKey(j.joiningOn) <= weekEnd : j.overdueTasks > 0)));
-  }, [d, show]);
-  const columns: TableColumn<Joiner>[] = [
-    { key: 'name', header: 'Joiner', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.designation ?? undefined }), width: 230, hideable: false },
-    {
-      key: 'joining',
-      header: 'Joins on',
-      value: (r) => r.joiningOn,
-      render: (r) => (
-        <span className="yx-auth__item-main">
-          <Text>{dateText(r.joiningOn)}</Text>
-          {d && <WhenBadge date={r.joiningOn} today={d.today} />}
-        </span>
-      ),
-      width: 170,
-    },
-    { key: 'place', header: 'Where', value: (r) => [r.location, r.department].filter(Boolean).join(' · '), width: 200 },
-    { key: 'manager', header: 'Manager', value: (r) => r.manager ?? '', width: 160, optional: true },
-    {
-      key: 'progress',
-      header: 'Checklist',
-      value: (r) => r.progress,
-      render: (r) => (
-        <span className="yx-auth__item-main">
-          <Meter value={r.progress} max={100} label={`${r.name}: checklist done`} warnAt={101} dangerAt={101} />
-          {r.overdueTasks > 0 ? <Badge tone="danger">{`${r.overdueTasks} overdue`}</Badge> : <Text tone="secondary" size="sm">{`${r.openTasks} to do`}</Text>}
-        </span>
-      ),
-      width: 200,
-    },
-  ];
-  return (
-    <LivePage
-      title="Onboarding"
-      description="People joining soon and their checklists, from the day they are added to their joining day. A joiner becomes an employee on the joining day."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="joiners"
-      actions={
-        d?.canAdd ? (
-          <>
-            <Button icon={Upload} onClick={() => setImporting(true)}>
-              Import joiners
-            </Button>
-            <Button variant="primary" icon={UserPlus} onClick={() => setAdding(true)}>
-              Add joiner
-            </Button>
-          </>
-        ) : undefined
-      }
-    >
-      {done && (
-        <InlineAlert tone="success" title="Done">
-          {done}
-        </InlineAlert>
-      )}
-      <Segment label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'Everyone' }, { value: 'week', label: 'Joining this week' }, { value: 'late', label: 'Overdue tasks' }]} />
-      <DataTable
-        label="Joiners"
-        columns={columns}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowNoun={['joiner', 'joiners']}
-        cardSummary
-        onRowClick={(r) => r.journeyId && p.onOpen(r.journeyId)}
-        rowButtons={(r) =>
-          r.journeyId ? (
-            <Button size="sm" onClick={() => p.onOpen(r.journeyId!)}>
-              Checklist
-            </Button>
-          ) : null
-        }
-        empty={<EmptyState compact title={show === 'all' ? 'No one is joining right now.' : 'No one here.'} description={d?.canAdd && show === 'all' ? 'Add a joiner by hand or import a file.' : undefined} />}
-      />
-      {adding && (
-        <AddJoinerDrawer
-          places={p.places}
-          today={d?.today ?? dayKey(new Date())}
-          onClose={() => setAdding(false)}
-          onAdd={async (x) => {
-            await p.onAdd(x);
-            setAdding(false);
-            setDone(`${x.givenName} was added. Their checklist has started.`);
-          }}
-        />
-      )}
-      {importing && (
-        <ImportDrawer
-          onClose={() => setImporting(false)}
-          onImport={p.onImport}
-          onDone={(n) => {
-            setImporting(false);
-            setDone(`${n} ${n === 1 ? 'joiner was' : 'joiners were'} added.`);
-          }}
-        />
-      )}
-    </LivePage>
-  );
-}
-
-function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlaces; today: string; onClose: () => void; onAdd: (x: JoinerInput) => Promise<void> }) {
+export function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlaces; today: string; onClose: () => void; onAdd: (x: JoinerInput) => Promise<void> }) {
   const [given, setGiven] = useState('');
   const [family, setFamily] = useState('');
   const [email, setEmail] = useState('');
@@ -275,13 +151,11 @@ function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlac
 
 const IMPORT_HEADER = 'given_name,family_name,email,phone,joining_on,legal_entity,location,department,designation,employment_type,manager_code';
 
-function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: (csv: string, commit: boolean) => Promise<ImportResult>; onDone: (n: number) => void }) {
+export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: (csv: string, commit: boolean) => Promise<ImportResult>; onDone: (n: number) => void }) {
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const { busy, error, run } = useRun();
-  const read = async (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const read = async (f: File) => {
     setCsv(await f.text());
     setPreview(null);
   };
@@ -318,7 +192,7 @@ function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onIm
         {`Columns: ${IMPORT_HEADER}. Dates as YYYY-MM-DD; the legal entity by its short name, the rest by code or name; the manager by employee code.`}
       </Text>
       <FormField id="imp-file" label="CSV file">
-        <input id="imp-file" className="yx-input" type="file" accept=".csv,text/csv" onChange={(e) => void read(e)} />
+        <FileUpload id="imp-file" upload={read} accept={['.csv']} multiple={false} maxSize={2 * 1024 * 1024} />
       </FormField>
       <FormField id="imp-text" label="Or paste the rows" optional>
         <TextArea
@@ -363,8 +237,8 @@ export interface TaskActions {
   onIssueLetter?: (task: JourneyTask) => Promise<unknown>;
 }
 
-type Ask = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload' | 'read' | 'watch' | 'survey'; task: JourneyTask };
-const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: Ask['kind']; button: string; confirm: string }>> = {
+export type TaskAsk = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload' | 'read' | 'watch' | 'survey'; task: JourneyTask };
+export const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: TaskAsk['kind']; button: string; confirm: string }>> = {
   form: { ask: 'form', button: 'Fill in', confirm: 'Submit' },
   letter: { ask: 'letter', button: 'Record the letter', confirm: 'Issue letter' },
   read: { ask: 'read', button: 'Read', confirm: 'I have read this' },
@@ -373,7 +247,7 @@ const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: Ask['kind']; butto
 };
 
 function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { tasks: JourneyTask[]; today: string; showPerson?: boolean; actions: TaskActions; onOpen?: (journeyId: string) => void; canUpload?: boolean }) {
-  const [ask, setAsk] = useState<Ask | null>(null);
+  const [ask, setAsk] = useState<TaskAsk | null>(null);
   const columns: TableColumn<JourneyTask>[] = [
     ...(showPerson
       ? [{ key: 'person', header: 'For', type: 'person' as const, value: (r: JourneyTask) => r.person ?? '', person: (r: JourneyTask) => ({ name: r.person ?? '', secondary: r.anchorOn ? `${ANCHOR_WORD[r.journeyKind ?? 'onboarding']} ${dateText(r.anchorOn)}` : undefined }), width: 220, hideable: false }]
@@ -407,7 +281,7 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
           )}
           {r.status === 'skipped' && r.skipReason && (
             <Text tone="secondary" size="sm">
-              {r.skipReason}
+              Why skipped: {r.skipReason}
             </Text>
           )}
         </span>
@@ -473,7 +347,7 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
   );
 }
 
-function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions; onClose: () => void }) {
+export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: TaskActions; onClose: () => void }) {
   const t = ask.task;
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -558,8 +432,8 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
         </FormField>
       )}
       {ask.kind === 'upload' && (
-        <FormField id="tk-file" label="File" required helper="PDF, JPG or PNG.">
-          <input id="tk-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <FormField id="tk-file" label="File" required>
+          <FileUpload id="tk-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
         </FormField>
       )}
       {ask.kind === 'form' && t.form && <TaskForm form={t.form} answers={answers} onChange={setAnswers} errors={formErrors} />}
@@ -602,8 +476,10 @@ function StepContent({ task }: { task: JourneyTask }) {
 /** The few field types checklist forms use; the server checks the answers (P19 forms). */
 export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; answers: Record<string, unknown>; onChange: (a: Record<string, unknown>) => void; errors: Record<string, string> }) {
   const set = (k: string, v: unknown) => onChange({ ...answers, [k]: v });
+  // A short whole-number scale (a 1 to 5 rating) is clicked, not typed (founder 24 Oct 2026).
+  const scale = (f: FormDef['sections'][number]['fields'][number]) => (f.min !== undefined && f.max !== undefined && Number.isInteger(f.min) && Number.isInteger(f.max) && f.max - f.min <= 9 ? Array.from({ length: f.max - f.min + 1 }, (_, i) => f.min! + i) : null);
   return (
-    <>
+    <div className="yx-ppl__form">
       {form.sections.flatMap((s) =>
         s.fields.map((f) => {
           const id = `tf-${f.key}`;
@@ -614,6 +490,8 @@ export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; a
                 <Checkbox checked={val === true} onChange={(c) => set(f.key, c)} aria-label={f.label} />
               ) : f.type === 'textarea' ? (
                 <TextArea value={typeof val === 'string' ? val : ''} onChange={(x) => set(f.key, x)} rows={3} maxLength={f.max ?? 2000} />
+              ) : f.type === 'number' && scale(f) ? (
+                <Segment label={f.label} options={scale(f)!.map((n) => ({ value: n, label: String(n) }))} value={typeof val === 'number' ? val : null} onChange={(x) => set(f.key, x)} />
               ) : f.type === 'number' ? (
                 <NumberField value={typeof val === 'number' ? val : null} onChange={(x) => set(f.key, x)} min={f.min} max={f.max} />
               ) : f.type === 'date' ? (
@@ -627,59 +505,11 @@ export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; a
           );
         }),
       )}
-    </>
+    </div>
   );
 }
 
-// ------------------------------------------------------------------------------------------ one checklist
-
-export interface JourneyScreenProps extends TaskActions {
-  state: LoadState;
-  onRetry?: () => void;
-  data: Journey | null;
-  /** HR moves the joining day (YX-LC-13). */
-  onPostpone?: (joiningOn: string, reason: string) => Promise<unknown>;
-  onBack: () => void;
-  /** Joiner details and actions (6b: forms, BGV, Mark joined), shown above the tasks. */
-  children?: ReactNode;
-}
-
-export function JourneyScreen(p: JourneyScreenProps) {
-  const j = p.data;
-  const [show, setShow] = useState<'open' | 'all'>('open');
-  const [moving, setMoving] = useState(false);
-  const tasks = j ? j.tasks.filter((t) => show === 'all' || t.status === 'open' || t.status === 'waiting') : [];
-  return (
-    <LivePage
-      title={j ? `${j.person}: ${j.kind === 'onboarding' ? 'onboarding' : j.kind === 'offboarding' ? 'offboarding' : JOURNEY_KIND_LABEL[j.kind].toLowerCase()}` : 'Checklist'}
-      description={j ? `${ANCHOR_WORD[j.kind]} ${j.kind === 'onboarding' || j.kind === 'offboarding' ? 'on ' : ''}${dateText(j.anchorOn)}. Checklist: ${j.template}${j.owner ? `, run by ${j.owner}` : ''}. Due dates follow the ${DAY_WORD[j.kind]} day.` : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="this checklist"
-      actions={
-        <>
-          <Button onClick={p.onBack}>Back</Button>
-          {j?.canManage && j.status === 'active' && j.subjectType === 'preboarding' && p.onPostpone && <Button onClick={() => setMoving(true)}>Change joining day</Button>}
-        </>
-      }
-    >
-      {j && (
-        <>
-          <Card title="Progress">
-            <Meter value={j.progress} max={100} label="Required tasks done" warnAt={101} dangerAt={101} valueText={`${j.progress}% of required tasks done`} />
-            {j.status !== 'active' && <Badge tone={j.status === 'done' ? 'success' : 'neutral'}>{j.status === 'done' ? 'Checklist complete' : 'Checklist cancelled'}</Badge>}
-          </Card>
-          {p.children}
-          <Segment label="Show" value={show} onChange={setShow} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All tasks' }]} />
-          <TaskTable tasks={tasks} today={j.today} actions={p} canUpload={j.canManage} />
-        </>
-      )}
-      {moving && j && p.onPostpone && <PostponeDialog current={j.anchorOn} today={j.today} onClose={() => setMoving(false)} onPostpone={p.onPostpone} />}
-    </LivePage>
-  );
-}
-
-function PostponeDialog({ current, today, onClose, onPostpone }: { current: string; today: string; onClose: () => void; onPostpone: (joiningOn: string, reason: string) => Promise<unknown> }) {
+export function PostponeDialog({ current, today, onClose, onPostpone }: { current: string; today: string; onClose: () => void; onPostpone: (joiningOn: string, reason: string) => Promise<unknown> }) {
   const [date, setDate] = useState<Date | null>(fromKey(current));
   const [reason, setReason] = useState('');
   const ready = Boolean(date) && dayKey(date!) !== current && reason.trim().length >= 3;
@@ -704,30 +534,6 @@ function PostponeDialog({ current, today, onClose, onPostpone }: { current: stri
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
       </FormField>
     </ConfirmDialog>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ my tasks
-
-export interface MyTasksScreenProps extends TaskActions {
-  state: LoadState;
-  onRetry?: () => void;
-  data: MyTasks | null;
-  onOpen: (journeyId: string) => void;
-}
-
-export function MyTasksScreen(p: MyTasksScreenProps) {
-  const overdue = p.data?.tasks.filter((t) => t.overdue).length ?? 0;
-  return (
-    <LivePage
-      title="My checklist tasks"
-      description={p.data ? (overdue ? `${overdue} ${overdue === 1 ? 'task is' : 'tasks are'} overdue. Oldest first.` : 'Tasks for joiners and leavers given to you or your team. Oldest first.') : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="your tasks"
-    >
-      {p.data && <TaskTable tasks={p.data.tasks} today={p.data.today} showPerson actions={p} onOpen={p.onOpen} />}
-    </LivePage>
   );
 }
 
@@ -774,153 +580,6 @@ export function FirstThirtyDaysScreen(p: FirstThirtyDaysScreenProps) {
             </Card>
           ))}
         </>
-      )}
-    </LivePage>
-  );
-}
-
-export interface LifeJourneysScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: LifeJourneyRow[] | null;
-  onOpen: (journeyId: string) => void;
-}
-
-/** Design §7.5: active life-event checklists in the viewer's scope (new manager, transfer, parental leave, return). */
-export function LifeJourneysScreen(p: LifeJourneysScreenProps) {
-  const columns: TableColumn<LifeJourneyRow>[] = [
-    { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }), width: 220, hideable: false },
-    { key: 'kind', header: 'Life event', value: (r) => r.kindLabel, width: 160 },
-    { key: 'on', header: 'Day', value: (r) => r.anchorOn, render: (r) => <Text>{dateText(r.anchorOn)}</Text>, width: 140 },
-    { key: 'progress', header: 'Required tasks done', value: (r) => r.progress, render: (r) => <Text>{`${r.progress}%`}</Text>, width: 170 },
-  ];
-  return (
-    <LivePage title="Life events" description="Checklists for new managers, transfers, parental leave and return to work. Each starts by itself once the company turns it on in Settings › Checklists." state={p.state} onRetry={p.onRetry} what="life-event checklists">
-      {p.rows && (
-        <DataTable
-          label="Life-event checklists"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => r.id}
-          rowNoun={['checklist', 'checklists']}
-          cardSummary
-          empty={<EmptyState compact title="No life-event checklists running." description="Turn one on in Settings › Checklists › Life events." />}
-          rowButtons={(r) => (
-            <Button size="sm" onClick={() => p.onOpen(r.id)}>
-              Checklist
-            </Button>
-          )}
-        />
-      )}
-    </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ joining soon (managers)
-
-export function JoiningSoonCard({ rows, today, onOpen }: { rows: Joiner[]; today: string; onOpen: (journeyId: string) => void }) {
-  if (!rows.length) return null;
-  return (
-    <Card title="Joining soon">
-      <ul className="yx-lif-list">
-        {rows.map((r) => (
-          <li key={r.id}>
-            <Text>{`${r.name}${r.designation ? `, ${r.designation}` : ''}`}</Text> <Text tone="secondary">{`joins ${dateText(r.joiningOn)}`}</Text> <WhenBadge date={r.joiningOn} today={today} />{' '}
-            {r.journeyId && (
-              <Button size="sm" onClick={() => onOpen(r.journeyId!)}>
-                Checklist
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ document verification queue
-
-export interface DocumentQueueScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  rows: QueueDocument[] | null;
-  onDownload: (doc: QueueDocument) => Promise<unknown>;
-  onDecide: (doc: QueueDocument, decision: 'verify' | 'reject', reason?: string) => Promise<unknown>;
-}
-
-export function DocumentQueueScreen(p: DocumentQueueScreenProps) {
-  const [rejecting, setRejecting] = useState<QueueDocument | null>(null);
-  const [reason, setReason] = useState('');
-  const { busy, error, run } = useRun();
-  const columns: TableColumn<QueueDocument>[] = [
-    { key: 'person', header: 'Person', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200, hideable: false },
-    { key: 'type', header: 'Document', value: (r) => r.typeName, width: 220 },
-    { key: 'at', header: 'Uploaded', value: (r) => r.uploadedAt ?? '', render: (r) => (r.uploadedAt ? dateText(r.uploadedAt.slice(0, 10)) : ''), width: 130 },
-    {
-      key: 'scan',
-      header: 'Virus check',
-      value: (r) => r.file?.scanStatus ?? '',
-      render: (r) => <Badge tone={r.file?.scanStatus === 'clean' ? 'success' : r.file?.scanStatus === 'infected' ? 'danger' : 'warning'}>{r.file?.scanStatus === 'clean' ? 'Clean' : r.file?.scanStatus === 'infected' ? 'Blocked: virus found' : 'Being checked'}</Badge>,
-      width: 170,
-    },
-  ];
-  return (
-    <LivePage title="Documents to verify" description="PAN, Aadhaar, bank proof, education and experience proofs are used by payroll only once verified. Open the file, then verify it or say why it is rejected; the person sees the reason." state={p.state} onRetry={p.onRetry} what="documents to verify">
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      {p.rows && (
-        <DataTable
-          label="Documents to verify"
-          columns={columns}
-          rows={p.rows}
-          getRowId={(r) => r.id}
-          rowNoun={['document', 'documents']}
-          cardSummary
-          empty={<EmptyState compact title="Nothing to verify." description="Uploaded documents that need checking appear here." />}
-          rowButtons={(r) =>
-            r.file?.scanStatus === 'clean' ? (
-              <>
-                <Button size="sm" loading={busy === `dl-${r.id}`} onClick={() => void run(`dl-${r.id}`, () => p.onDownload(r))}>
-                  Open file
-                </Button>
-                <Button size="sm" variant="primary" loading={busy === `ok-${r.id}`} onClick={() => void run(`ok-${r.id}`, () => p.onDecide(r, 'verify'))}>
-                  Verify
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setReason('');
-                    setRejecting(r);
-                  }}
-                >
-                  Reject
-                </Button>
-              </>
-            ) : null
-          }
-        />
-      )}
-      {rejecting && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setRejecting(null)}
-          size="md"
-          title={`Reject ${rejecting.person}'s ${rejecting.typeName}?`}
-          consequence="They are asked to upload it again and see your reason."
-          confirmLabel="Reject"
-          confirmDisabled={reason.trim().length < 3}
-          onConfirm={async () => {
-            await p.onDecide(rejecting, 'reject', reason.trim());
-            setRejecting(null);
-          }}
-        >
-          <FormField id="rj-reason" label="Reason" required>
-            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
-          </FormField>
-        </ConfirmDialog>
       )}
     </LivePage>
   );

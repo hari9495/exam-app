@@ -45,7 +45,8 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     | 'divyaU'
     | 'arjunU'
     | 'imranU'
-    | 'outsider';
+    | 'outsider'
+    | 'payApprove';
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const up = (who: Who) => markSteppedUp(tenantPrisma, token[who]);
   /** The step-up window has passed (P12 YX-IAM-02). */
@@ -137,7 +138,10 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     ]);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     roles.records = await profile('HR Records', ['org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.personal.view']);
-    roles.payroll = await profile('Payroll TN', ['employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'employee.aadhaar.view', 'pay.range.view']);
+    // Founder 21 Oct 2026: bank and identity changes are approved by HR only, so this second HR person (TN) holds HR's
+    // identity grant with the approval; approval alone (payroll's old template) decides nothing.
+    roles.payroll = await profile('HR identity TN', ['employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'pay.range.view']);
+    const approveOnly = await profile('Payroll approver (approve key only)', ['employee.profile.view', 'employee.identity.view', 'employee.identity.approve']);
     roles.orgAdmin = await profile('Org settings', ['org.structure.view', 'org.settings.manage']);
     roles.teamSalary = await profile('Team salary', ['employee.salary.view']);
     roles.withAts = await profile('Records + candidates', ['employee.profile.view', 'candidate:manage']);
@@ -154,6 +158,7 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       ['hrOps', 'A', 'panel', null],
       ['orgTn', 'A', 'panel', null],
       ['payrollTn', 'A', 'panel', null],
+      ['payApprove', 'A', 'panel', approveOnly],
       ['lakshmiU', 'A', 'panel', null],
       ['divyaU', 'A', 'panel', null],
       ['arjunU', 'A', 'panel', null],
@@ -366,7 +371,7 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     it('scoped HR changes and hires only inside the scope', async () => {
       const body = (employeeId: string) => ({ employeeId, changeType: 'redesignation', effectiveDate: addDays(today, 10), payload: { assignment: { designationId: ids.analyst } }, reason: 'Re-titled' });
       await api('hrTn', 'post', '/people/changes').send(body(ids.arjun)).expect(404);
-      const ch = (await api('hrTn', 'post', '/people/changes').send({ ...body(ids.imran), payload: { assignment: { gradeId: ids.g2 } }, changeType: 'promotion' }).expect(201)).body;
+      const ch = (await api('hrTn', 'post', '/people/changes').send({ ...body(ids.imran), payload: { assignment: { designationId: ids.lead, gradeId: ids.g2 } }, changeType: 'promotion' }).expect(201)).body;
       // The change list shows HR only the people its grants reach.
       const seen = (await api('hrTn', 'get', '/people/changes').expect(200)).body.map((c: { employeeId: string }) => c.employeeId);
       expect(new Set(seen)).toEqual(new Set([ids.imran, ids.kavya]));
@@ -529,6 +534,9 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('imranU', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(403); // no approve key at all
       await up('hrAll');
       await api('hrAll', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(403);
+      // The approval key without HR's identity grant (payroll) decides nothing; it still reads approved details elsewhere.
+      await up('payApprove');
+      await api('payApprove', 'post', `/people/profile-requests/${ids.bankReq}/approve`).send({}).expect(404);
       await up('payrollTn');
       const queue = (await api('payrollTn', 'get', '/people/profile-requests?status=pending').expect(200)).body.rows;
       expect(queue.map((r: { id: string }) => r.id)).toEqual(expect.arrayContaining([ids.bankReq, ids.panReq]));
@@ -604,6 +612,43 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('hrTn', 'post', `/people/employees/${ids.arjun}/identity/reveal`).send({ field: 'pan' }).expect(404);
       expect((await auditRows('employee.identity.viewed')).map((a) => [a.actor, a.entityId, a.metadata.field])).toEqual([[users.payrollTn, ids.imran, 'pan']]);
       expect((await auditRows('employee.aadhaar.viewed')).map((a) => [a.actor, a.entityId])).toEqual([[users.payrollTn, ids.imran]]);
+    });
+
+    it('PPL-03 record parity: marital status (Personal), passport by approved request, work phone (Internal), activity by key', async () => {
+      // Marital status: the person edits it; HR with Personal access reads it; a manager never.
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ maritalStatus: 'married' }).expect(200);
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ maritalStatus: 'complicated' }).expect(400);
+      expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal.maritalStatus).toBe('married');
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personal).toBeNull();
+      // The birthday (Internal, as the directory shows it) is on the record for the manager; never the year.
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.birthday).toBe('05-17');
+      // Passport: a change with approval, masked on the record, the number only to identity access.
+      await up('imranU');
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728' }, reason: 'New passport' }).expect(400);
+      const pp = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728', passportExpiresOn: '2031-02-08' }, reason: 'New passport' }).expect(201)).body.id;
+      await up('payrollTn');
+      await api('payrollTn', 'post', `/people/profile-requests/${pp}/approve`).send({}).expect(201);
+      expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.identity).toMatchObject({ passport: '•••• 7728', passportExpiresOn: '2031-02-08' });
+      await up('payrollTn');
+      expect((await api('payrollTn', 'post', `/people/employees/${ids.imran}/identity/reveal`).send({ field: 'passport' }).expect(201)).body.value).toBe('Z4417728');
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.identity).toBeNull();
+      // Work phone: HR with employee.profile.edit sets it; Internal, so the manager reads it; nobody else writes it.
+      await api('hrAll', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 3142' }).expect(200);
+      await api('hrAll', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: 'call me' }).expect(400);
+      await api('lakshmiU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(403);
+      await api('imranU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(403);
+      await api('arjunU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
+      await api('adminB', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.work).toMatchObject({ phone: '+914440123142' });
+      // Activity: identity requests only for the person and identity keys; nobody outside the record.
+      const mine = (await api('imranU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string; actor: string | null }[];
+      expect(mine.some((e) => e.text === 'Asked to change the passport')).toBe(true);
+      expect(mine.some((e) => e.text === 'Approved the passport change')).toBe(true);
+      const mgr = (await api('lakshmiU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string }[];
+      expect(mgr.some((e) => /passport|bank|PAN/i.test(e.text))).toBe(false);
+      expect(JSON.stringify(mgr)).not.toMatch(/Z4417728|7728/);
+      await api('arjunU', 'get', `/people/employees/${ids.imran}/activity`).expect(404);
+      await api('adminB', 'get', `/people/employees/${ids.imran}/activity`).expect(404);
     });
 
     it('pay: only with a salary grant reaching the person, audited; a department head with team salary sees their subtree (Q3)', async () => {
@@ -839,8 +884,8 @@ ${await codeOf(ids.lakshmi)},KFPL,redesignation,${addDays(today, 16)},Title,AN
       await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Test over' }).expect(201);
     });
 
-    it('the org chart on another date is for company-wide HR only (YX-SEC-05)', async () => {
-      await api('hrTn', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(403);
+    it('the org chart on a past date: everyone who may open the chart (founder 20 Oct 2026), only their scope (YX-SEC-05)', async () => {
+      await api('hrTn', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(200);
       await api('hrTn', 'get', '/people/org-chart').expect(200);
       await api('hrAll', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(200);
     });

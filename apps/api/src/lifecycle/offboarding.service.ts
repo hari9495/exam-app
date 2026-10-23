@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { checkAnswers } from '../rules-engine/forms';
 import { displayName } from '../employee-history/employee-history.service';
@@ -115,6 +115,16 @@ export class OffboardingService {
         data: { status: dto.action === 'clear' ? 'cleared' : 'waived', note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
       });
       if (!n.count) throw new ConflictException('Someone else signed this off. Reload it.');
+      // An asset item cleared with nothing owed means the asset came back: record the return as "Take back" does
+      // (founder 23 Oct 2026: the Assets tab still showed the phone with the leaver).
+      if (i.assetAssignmentId && dto.action === 'clear' && !dto.recoveryAmount) {
+        const x = await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId, returnedOn: null } });
+        if (x) {
+          await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(todayIst()), returnCondition: (dto.note?.trim() || 'Returned at clearance').slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
+          await tx.asset.update({ where: { id: x.assetId }, data: { status: 'in_stock', version: { increment: 1 } } });
+          await freezeSettlementIn(tx, c, k.id, 'asset_returned');
+        }
+      }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
       if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);
@@ -167,7 +177,16 @@ export class OffboardingService {
       await this.confidential(tx);
       await tx.exitInterviewAnswers.createMany({ data: [{ exitInterviewId: iv.id, organizationId: org, answersEnc: this.crypto.encrypt(JSON.stringify(values)) }] });
       await audit(tx, c, 'exit.interview.submitted', 'exit_case', k.id, {});
-      return { status: 'submitted' };
+      // HR who owns the exit is told it is in (founder 24 Oct 2026); only that it was answered, never the answers.
+      const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: k.id, status: { not: 'cancelled' } }, select: { ownerUserId: true } });
+      const p = await tx.employee.findFirst({ where: { organizationId: org, id: k.employeeId } });
+      return { status: 'submitted', tell: j?.ownerUserId ? { to: j.ownerUserId, who: p ? displayName(p) : 'A leaver', caseId: k.id } : null };
+    }).then(async (r) => {
+      if (r.tell)
+        await this.notifications
+          .notifySystem(ctx, [r.tell.to], 'exit.case.update', { entityType: 'exit_case', entityId: r.tell.caseId, contextText: `${r.tell.who} answered the exit interview`, linkPath: `/yx/people/exits/${r.tell.caseId}` }, { subject: `${r.tell.who} answered the exit interview`, html: '<p>The exit interview answers are in YukthiX. Only HR can read them.</p>' })
+          .catch(() => undefined);
+      return { status: r.status };
     });
   }
 
@@ -235,8 +254,31 @@ export class OffboardingService {
             status: a.status,
             version: a.version,
             canManage: this.reachesAsset(v, 'asset.manage', a),
-            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), acknowledged: Boolean(o.ackEvidence) } : null,
+            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) } : null,
           };
+        }),
+      };
+    });
+  }
+
+  /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
+  async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { id: true, personId: true } });
+      if (!emp) throw new NotFoundException('Not found');
+      const own = await ownOf(tx, c, v);
+      const team = own.employeeId !== emp.id && covers(await implicitPeriods(tx, c, own.employeeId, emp.id), todayIst());
+      const self = own.employeeId === emp.id;
+      const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId: emp.personId, returnedOn: null }, orderBy: { issuedOn: 'asc' } });
+      const assets = await tx.asset.findMany({ where: { organizationId: org, id: { in: open.map((o) => o.assetId) } } });
+      const shown = assets.filter((a) => self || team || this.reachesAsset(v, 'asset.view', a));
+      if (!self && !team && !v.grants.has('asset.view')) throw new NotFoundException('Not found');
+      return {
+        rows: open.flatMap((o) => {
+          const a = shown.find((x) => x.id === o.assetId);
+          return a ? [{ tag: a.tag, name: a.name, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) }] : [];
         }),
       };
     });

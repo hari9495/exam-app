@@ -50,6 +50,8 @@ export interface JourneyTask {
   form: FormDef | null;
   /** Document tasks: the document type asked for. */
   documentType: string | null;
+  /** The person's document for a document task, when one is in: "uploaded" waits for HR to verify, "rejected" needs another file. */
+  documentStatus?: string | null;
   /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
   letterType?: string | null;
   answers: Record<string, unknown> | null;
@@ -66,6 +68,9 @@ export interface JourneyTask {
   journeyId?: string;
   journeyKind?: JourneyKind;
   person?: string;
+  /** My tasks only: whose checklist, so HR can upload or issue the letter from here (PPL-47). */
+  personId?: string;
+  subject?: { type: string; id: string };
   anchorOn?: string;
 }
 
@@ -135,6 +140,9 @@ export interface Joiner {
   openTasks: number;
   overdueTasks: number;
   version: number;
+  /** The next open task (the board card's next step) and the day the joiner was added. */
+  nextTask?: { title: string; dueOn: string; ownerType: OwnerType } | null;
+  addedOn?: string;
   /** 6e */
   personType?: 'new' | 'rehire';
   batchId?: string | null;
@@ -193,7 +201,12 @@ export interface QueueDocument {
   expiresOn: string | null;
   rejectReason: string | null;
   file: { name: string; scanStatus: 'pending' | 'clean' | 'infected'; size: number } | null;
-  uploadedAt?: string;
+  uploadedAt?: string | null;
+  /** Who uploaded the current file (HR or the person). */
+  uploadedBy?: string | null;
+  verifiedAt?: string | null;
+  /** How many files were uploaded over time (a person's documents). */
+  versions?: number;
   version: number;
 }
 
@@ -331,6 +344,10 @@ export interface ReadyOffer {
   phone: string | null;
   startDate: string;
   jobTitle: string;
+  /** Where the job is (PPL-12). */
+  location?: string | null;
+  /** The day the offer was accepted (null for older offers). */
+  acceptedOn?: string | null;
   personType: 'new' | 'ex_employee' | 'internal';
 }
 
@@ -365,6 +382,8 @@ export interface ExitRow extends ExitCase {
   employeeCode: string | null;
   clearance: { open: number; total: number };
   interview: 'sent' | 'submitted' | 'skipped' | null;
+  /** The leaver's manager (the list's Manager column). */
+  manager?: string | null;
   canManage: boolean;
 }
 export interface ClearanceItem {
@@ -434,7 +453,7 @@ export interface AssetRow {
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
   version: number;
   canManage: boolean;
-  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; acknowledged: boolean } | null;
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean } | null;
 }
 export interface MyAsset {
   assignmentId: string;
@@ -511,6 +530,9 @@ export interface Batch {
   status: 'open' | 'closed';
   version: number;
   members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+  /** Members with an issued appointment letter; members still on a letter of intent only. */
+  offersIssued?: number;
+  lettersOfIntent?: number;
 }
 export interface Payee {
   id?: string;
