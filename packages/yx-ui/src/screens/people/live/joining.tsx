@@ -8,6 +8,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { FileUpload } from '../../../components/upload';
 import { CodeField, NumberField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -258,7 +259,7 @@ export function JoinerPanel(p: JoinerPanelProps) {
             <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
           </FormField>
           <FormField id="bg-file" label="Report" optional helper="PDF, JPG or PNG. Kept as Special data.">
-            <input id="bg-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <FileUpload id="bg-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
           </FormField>
         </ConfirmDialog>
       )}
@@ -875,7 +876,7 @@ function UploadTemplate({ onClose, onUpload }: { onClose: () => void; onUpload: 
       <Segment label="Approval" value={approval} onChange={setApproval} options={[{ value: 'yes', label: 'Signatory approves first' }, { value: 'no', label: 'Issued at once' }]} />
       <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
       <FormField id="ut-file" label="Word file (.docx)" required error={v.errorOf('ut-file')} helper="No macros and no linked pictures. Unknown placeholders are refused with a suggestion.">
-        <input id="ut-file" className="yx-input" type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <FileUpload id="ut-file" upload={async (f) => setFile(f)} accept={['.docx']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
       </FormField>
     </Drawer>
   );
@@ -901,7 +902,7 @@ function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[];
         <TextField value={title} onChange={setTitle} maxLength={100} />
       </FormField>
       <FormField id="sg-image" label="Signature image" optional helper="PNG or JPG, up to 1 MB.">
-        <input id="sg-image" className="yx-input" type="file" accept=".png,.jpg,.jpeg" onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setImage(null)} />
       </FormField>
     </ConfirmDialog>
   );

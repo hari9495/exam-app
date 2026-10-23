@@ -7,6 +7,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { FileUpload } from '../../../components/upload';
 import { TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -906,7 +907,7 @@ export function MyDocumentsScreen(p: MyDocumentsScreenProps) {
           }}
         >
           <FormField id="md-file" label="File" required>
-            <input id="md-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
           </FormField>
         </ConfirmDialog>
       )}
