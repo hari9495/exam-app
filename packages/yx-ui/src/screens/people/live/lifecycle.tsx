@@ -476,8 +476,10 @@ function StepContent({ task }: { task: JourneyTask }) {
 /** The few field types checklist forms use; the server checks the answers (P19 forms). */
 export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; answers: Record<string, unknown>; onChange: (a: Record<string, unknown>) => void; errors: Record<string, string> }) {
   const set = (k: string, v: unknown) => onChange({ ...answers, [k]: v });
+  // A short whole-number scale (a 1 to 5 rating) is clicked, not typed (founder 24 Oct 2026).
+  const scale = (f: FormDef['sections'][number]['fields'][number]) => (f.min !== undefined && f.max !== undefined && Number.isInteger(f.min) && Number.isInteger(f.max) && f.max - f.min <= 9 ? Array.from({ length: f.max - f.min + 1 }, (_, i) => f.min! + i) : null);
   return (
-    <>
+    <div className="yx-ppl__form">
       {form.sections.flatMap((s) =>
         s.fields.map((f) => {
           const id = `tf-${f.key}`;
@@ -488,6 +490,8 @@ export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; a
                 <Checkbox checked={val === true} onChange={(c) => set(f.key, c)} aria-label={f.label} />
               ) : f.type === 'textarea' ? (
                 <TextArea value={typeof val === 'string' ? val : ''} onChange={(x) => set(f.key, x)} rows={3} maxLength={f.max ?? 2000} />
+              ) : f.type === 'number' && scale(f) ? (
+                <Segment label={f.label} options={scale(f)!.map((n) => ({ value: n, label: String(n) }))} value={typeof val === 'number' ? val : null} onChange={(x) => set(f.key, x)} />
               ) : f.type === 'number' ? (
                 <NumberField value={typeof val === 'number' ? val : null} onChange={(x) => set(f.key, x)} min={f.min} max={f.max} />
               ) : f.type === 'date' ? (
@@ -501,7 +505,7 @@ export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; a
           );
         }),
       )}
-    </>
+    </div>
   );
 }
 
