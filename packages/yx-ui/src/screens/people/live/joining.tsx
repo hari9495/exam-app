@@ -258,7 +258,7 @@ export function JoinerPanel(p: JoinerPanelProps) {
           <FormField id="bg-note" label="Note" optional>
             <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
           </FormField>
-          <FormField id="bg-file" label="Report" optional helper="PDF, JPG or PNG. Kept as Special data.">
+          <FormField id="bg-file" label="Report" optional helper="Kept as Special data.">
             <FileUpload id="bg-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
           </FormField>
         </ConfirmDialog>
@@ -901,8 +901,8 @@ function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[];
       <FormField id="sg-title" label="Title on letters" required>
         <TextField value={title} onChange={setTitle} maxLength={100} />
       </FormField>
-      <FormField id="sg-image" label="Signature image" optional helper="PNG or JPG, up to 1 MB.">
-        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setImage(null)} />
+      <FormField id="sg-image" label="Signature image" optional>
+        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} maxSize={1024 * 1024} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setImage(null)} />
       </FormField>
     </ConfirmDialog>
   );
