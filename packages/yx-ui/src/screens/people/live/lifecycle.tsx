@@ -281,7 +281,7 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
           )}
           {r.status === 'skipped' && r.skipReason && (
             <Text tone="secondary" size="sm">
-              {r.skipReason}
+              Why skipped: {r.skipReason}
             </Text>
           )}
         </span>

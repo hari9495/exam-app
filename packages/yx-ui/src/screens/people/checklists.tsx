@@ -51,7 +51,7 @@ export function taskRow(t: JourneyTask, when: string | undefined, action: ReactN
     due: day(t.dueOn),
     when,
     status: t.status === 'done' ? 'Done' : t.status === 'skipped' ? 'Skipped' : t.status === 'waiting' ? 'Blocked' : docIn(t) ? 'Pending verification' : t.kind === 'document' && t.status === 'open' && t.documentStatus === 'rejected' ? 'Rejected' : 'Pending',
-    note: t.status === 'waiting' ? 'Waiting for an earlier task' : docIn(t) ? 'File uploaded. Done once HR verifies it in Documents.' : t.kind === 'document' && t.status === 'open' && t.documentStatus === 'rejected' ? 'The file was refused. Upload another one.' : t.status === 'skipped' && t.skipReason ? t.skipReason : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
+    note: t.status === 'waiting' ? 'Waiting for an earlier task' : docIn(t) ? 'File uploaded. Done once HR verifies it in Documents.' : t.kind === 'document' && t.status === 'open' && t.documentStatus === 'rejected' ? 'The file was refused. Upload another one.' : t.status === 'skipped' && t.skipReason ? `Why skipped: ${t.skipReason}` : t.status === 'done' && t.completedBy ? `Done by ${t.completedBy}` : undefined,
     action,
   };
 }
