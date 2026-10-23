@@ -22,7 +22,7 @@ export function useNarrow(maxWidth = 767) {
 
 /* ------------------------------------------------------------------ Stepper (§19) */
 
-export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo';
+export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo' | 'open';
 
 export interface StepperStep {
   id: string;
@@ -30,7 +30,8 @@ export interface StepperStep {
   /** One short line under the title in the step list. */
   description?: string;
   /** Force a status. Otherwise steps before the current one are done and later ones are to do. */
-  status?: 'error' | 'locked' | 'done';
+  /** "open": visited but not finished ("Open · 4 of 6 signed off"), never shown as Done. */
+  status?: 'error' | 'locked' | 'done' | 'open';
   /** Why the step is locked or what to fix: "Add company details first". */
   statusNote?: string;
   /** The fix for an error step ("Fix LWF registration"), shown as the button in its alert. */
@@ -76,6 +77,7 @@ const STATUS: Record<StepStatus, { icon: IconComponent; text: string }> = {
   error: { icon: AlertCircle, text: 'Needs changes' },
   locked: { icon: Lock, text: 'Locked' },
   todo: { icon: Circle, text: 'Not started' },
+  open: { icon: Circle, text: 'Open' },
 };
 
 /** Vertical wizard for processes with a real order (§19): onboarding, payroll run, company setup. */
@@ -117,7 +119,7 @@ export function Stepper({
   }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusOf = (s: StepperStep, i: number): StepStatus =>
-    s.status ?? (i === index ? 'current' : i < index || i <= furthest ? 'done' : 'todo');
+    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : i < index || i <= furthest ? 'done' : 'todo');
   const canOpen = (s: StepperStep, i: number) => s.status !== 'locked' && i <= Math.max(furthest, index);
   // A locked step can't be opened from the list, from Continue or from Back (B7).
   const go = (i: number) => {
@@ -151,7 +153,7 @@ export function Stepper({
               onClick={() => go(i)}
             >
               <span className="yx-stepper__marker">
-                {st === 'todo' || st === 'current' ? <span aria-hidden="true">{i + 1}</span> : <Icon icon={icon} />}
+                {st === 'todo' || st === 'current' || st === 'open' ? <span aria-hidden="true">{i + 1}</span> : <Icon icon={icon} />}
               </span>
               <span className="yx-stepper__text">
                 <span className="yx-stepper__title">{s.title}</span>

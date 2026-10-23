@@ -17,6 +17,7 @@
 .yx-stepper__item[data-status="current"] .yx-stepper__marker { border-color: var(--yx-color-action-primary); background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); }
 .yx-stepper__item[data-status="done"] .yx-stepper__marker { border-color: var(--yx-color-success-border); background: var(--yx-color-success-bg); color: var(--yx-color-success-text); }
 .yx-stepper__item[data-status="error"] .yx-stepper__marker { border-color: var(--yx-color-danger-border); background: var(--yx-color-danger-bg); color: var(--yx-color-danger-text); }
+.yx-stepper__item[data-status="open"] .yx-stepper__marker { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); color: var(--yx-color-warning-text); }
 .yx-stepper__item[data-status="locked"] .yx-stepper__marker { border-style: dashed; color: var(--yx-color-text-muted); }
 .yx-stepper__text { display: flex; flex-direction: column; min-width: 0; }
 .yx-stepper__title { font-weight: var(--yx-weight-medium); }
