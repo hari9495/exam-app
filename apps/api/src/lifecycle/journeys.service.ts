@@ -394,6 +394,10 @@ export class LifecycleJourneysService implements OnModuleInit {
       // G1: the journey's name and steps in the reader's language where the company translated them.
       const words = await journeyWords(tx, c, [j]);
       const today = todayIst();
+      // A document task stays open until HR verifies the file; say when the file is already in (or was refused).
+      const docKeys = tasks.flatMap((x) => (x.kind === 'document' && (x.config as { typeKey?: string }).typeKey ? [(x.config as { typeKey: string }).typeKey] : []));
+      const docs = docKeys.length ? await tx.document.findMany({ where: { organizationId: org, personId: j.personId, typeKey: { in: docKeys } }, select: { typeKey: true, status: true } }) : [];
+      const docStatus = (x: (typeof tasks)[number]) => (x.kind === 'document' ? (docs.find((d) => d.typeKey === (x.config as { typeKey?: string }).typeKey)?.status ?? null) : null);
       return {
         id: j.id,
         kind: j.kind,
@@ -408,7 +412,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
         today,
-        tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title) })),
+        tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title), documentStatus: docStatus(x) })),
       };
     });
   }
