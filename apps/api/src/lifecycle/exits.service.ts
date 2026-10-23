@@ -909,6 +909,8 @@ export class ExitsService implements OnModuleInit {
       await this.history.lockEmployment(tx, c, e.id);
       const p = await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id } });
       if (!p) throw new NotFoundException('No such probation.');
+      // A missed review went to HR on the end date: from then HR decides, not the manager (who is told the outcome).
+      if (isManager && p.escalatedOn && !(await this.history.reaches(tx, c, v, 'employee.change.manage', employeeId, today))) throw new ForbiddenException('This review went to HR when the probation ended. HR decides now; you are told the outcome.');
       const state = await this.people.confirmationState(tx, c, e.id);
       if (state.confirmedFrom) throw new ConflictException('The probation is already confirmed.');
       if (state.pendingChangeId) throw new ConflictException('A confirmation is already waiting for approval.');

@@ -539,7 +539,8 @@ export class PeopleService {
           pendingConfirmationId: state.pendingChange(e.id),
           stage: confirmedFrom ? 'confirmed' : state.pendingChange(e.id) ? 'awaiting_approval' : end < today ? 'overdue' : today >= reviewDueOn ? 'review_due' : p.extendedMonths ? 'extended' : 'running',
           maxTotalMonths: maxTotal,
-          canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id),
+          // Once a missed review went to HR (the end date passed), HR decides; the manager no longer reviews.
+          canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id) && !p.escalatedOn,
           designation: designations.find((d) => d.id === assigns.find((a) => a.employmentId === e.id)?.designationId)?.name ?? null,
           manager: (() => {
             const m = managers.find((x) => x.id === assigns.find((a) => a.employmentId === e.id)?.managerEmployeeId);

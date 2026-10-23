@@ -76,9 +76,11 @@ export function recentMonths(today = new Date(), n = 6): { value: string; label:
 
 export function useWorkspaceCounts() {
   const { accessToken } = useAuth();
+  // The top bar's company: the Probation count follows it, like the list.
+  const { scope } = useScope();
   return useQuery<Partial<Record<CountKey | 'notifications', number>>>({
-    queryKey: ['yx', 'workspace', 'counts'],
-    queryFn: () => apiFetch('/workspace/counts', {}, accessToken ?? undefined),
+    queryKey: ['yx', 'workspace', 'counts', scope.entity ?? ''],
+    queryFn: () => apiFetch(`/workspace/counts${scope.entity ? `?legalEntityId=${encodeURIComponent(scope.entity)}` : ''}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
     refetchInterval: 60_000,
     retry: false,

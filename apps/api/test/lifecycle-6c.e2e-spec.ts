@@ -287,6 +287,11 @@ describe('Lifecycle batch 6c', () => {
     await api('hr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 1, comments: 'One more month on the line', rating: 3 }).expect(200);
     const arunJob = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.arun } }));
     expect((await inA((tx) => tx.probation.findFirstOrThrow({ where: { employmentId: arunJob.id } }))).extendedMonths).toBe(3);
+    // A missed review went to HR (escalated on the end date): the manager no longer reviews, HR does (founder 23 Oct 2026).
+    await inA((tx) => tx.probation.updateMany({ where: { employmentId: arunJob.id }, data: { escalatedOn: new Date() } }));
+    expect((await api('mgr', 'get', '/people/probations').expect(200)).body.rows.find((r: { employeeId: string }) => r.employeeId === emp.arun).canReview).toBe(false);
+    expect((await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'confirm', comments: 'Late review' }).expect(403)).body.message).toMatch(/went to HR/);
+    await inA((tx) => tx.probation.updateMany({ where: { employmentId: arunJob.id }, data: { escalatedOn: null } }));
     await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'terminate', comments: 'Safety rules not followed' }).expect(200);
     const k = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { employeeId: emp.arun } }));
     expect(k).toMatchObject({ exitType: 'probation_termination', status: 'submitted' });
