@@ -202,6 +202,8 @@ export interface QueueDocument {
   rejectReason: string | null;
   file: { name: string; scanStatus: 'pending' | 'clean' | 'infected'; size: number } | null;
   uploadedAt?: string | null;
+  /** Who uploaded the current file (HR or the person). */
+  uploadedBy?: string | null;
   verifiedAt?: string | null;
   /** How many files were uploaded over time (a person's documents). */
   versions?: number;
