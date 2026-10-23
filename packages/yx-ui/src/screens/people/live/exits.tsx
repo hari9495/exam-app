@@ -129,8 +129,16 @@ export function ResignationScreen(p: ResignationScreenProps) {
           {k.pendingChange?.kind === 'withdrawal' && <InlineAlert tone="info" title="Withdrawal asked for">Your manager and HR decide on it.</InlineAlert>}
           {k.lettersHeld && <InlineAlert tone="warning" title="Your relieving letter is on hold">HR will contact you.</InlineAlert>}
           {k.interview === 'sent' && (
-            <InlineAlert tone="info" title="Your exit interview is ready">
-              <a href={p.interviewHref}>Answer it</a> before your last day. Only HR reads your answers.
+            <InlineAlert
+              tone="info"
+              title="Your exit interview is ready"
+              actions={
+                <Button asChild size="sm" variant="primary">
+                  <a href={p.interviewHref}>Answer the exit interview</a>
+                </Button>
+              }
+            >
+              Answer it before your last day. Only HR reads your answers.
             </InlineAlert>
           )}
         </Card>
