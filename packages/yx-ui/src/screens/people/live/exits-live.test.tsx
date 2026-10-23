@@ -27,7 +27,7 @@ describe('Me › Resign (PPL-18)', () => {
     const current = { id: 'k', employeeId: 'e', exitType: 'resignation' as const, typeLabel: 'Resignation', initiatedBy: 'employee' as const, reasonCode: 'family', reasonText: 'x', submittedOn: '2026-10-01', requestedLwd: null, noticePeriod: '30d', noticeLabel: '30 days', standardLwd: '2026-10-31', approvedLwd: '2026-10-31', lastDay: '2026-10-31', noticeArrangement: null, status: 'accepted' as const, pendingChange: null, lettersHeld: true, version: 2, interview: 'sent' as const };
     render(<ResignationScreen state="ready" data={{ ...data, current }} onResign={vi.fn()} onWithdraw={vi.fn()} interviewHref="/i" />);
     expect(screen.getByText('Your relieving letter is on hold')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Answer it' })).toHaveAttribute('href', '/i');
+    expect(screen.getByRole('link', { name: 'Answer the exit interview' })).toHaveAttribute('href', '/i');
   });
 });
 
