@@ -686,7 +686,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           {
             id: 'letters',
             title: 'Letters',
-            summary: `${ready.length} transfer letters · bulk issue after approval`,
+            summary: letterType ? `${ready.length} transfer ${ready.length === 1 ? 'letter' : 'letters'} (${live.letterTypes?.find((t) => t.value === letterType)?.label ?? 'template chosen'}) · bulk issue after approval` : 'No template chosen · no letters',
             content: (
               <div className="yx-ppl__form">
                 <FormField label="Letter template" helper="Change the wording or the merge fields in Settings › Letter templates.">
