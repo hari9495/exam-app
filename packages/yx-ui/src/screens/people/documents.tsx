@@ -173,7 +173,7 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
                 {...(file && typeof file === 'object' ? { mimeType: file.type } : {})}
                 state={file === 'error' ? 'error' : file === 'loading' || !file ? 'loading' : 'ready'}
                 onDownload={() => live.onDownload(open)}
-                versions={[{ id: 'current', label: `Version ${open.versions ?? 1}`, url: file && typeof file === 'object' ? file.url : '', uploadedBy: open.person ?? '', uploadedAt: open.uploadedAt ? new Date(open.uploadedAt) : new Date(), size: open.file?.size ?? 0 }]}
+                versions={[{ id: 'current', label: `Version ${open.versions ?? 1}`, url: file && typeof file === 'object' ? file.url : '', uploadedBy: open.uploadedBy ?? open.person ?? '', uploadedAt: open.uploadedAt ? new Date(open.uploadedAt) : new Date(), size: open.file?.size ?? 0 }]}
               />
             )}
           </div>

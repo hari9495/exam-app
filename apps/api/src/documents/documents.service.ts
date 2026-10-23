@@ -62,6 +62,13 @@ export class DocumentsService {
     return t;
   }
 
+  /** Who uploaded the current file (HR for the person, or the person): the latest version's uploader. */
+  private async uploaderName(tx: Tx, org: string, documentId: string) {
+    const v = await tx.documentVersion.findFirst({ where: { organizationId: org, documentId }, orderBy: { version: 'desc' }, select: { uploadedBy: true } });
+    const u = v?.uploadedBy ? await tx.user.findFirst({ where: { organizationId: org, id: v.uploadedBy }, select: { name: true, email: true } }) : null;
+    return u ? u.name || u.email : null;
+  }
+
   private async personName(tx: Tx, org: string, personId: string) {
     const p = await tx.person.findFirst({ where: { organizationId: org, id: personId } });
     if (!p) throw new NotFoundException('No such person.');
@@ -155,7 +162,7 @@ export class DocumentsService {
         const d = docs.find((x) => x.typeKey === t.key);
         if (d && seen) {
           const f = await this.fileOf(tx, org, d);
-          out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null });
+          out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null, uploadedBy: await this.uploaderName(tx, org, d.id) });
         } else if (!d && manage) askable.push({ key: t.key, name: t.name });
       }
       return { person, personId, documents: out, askable, canManage };
@@ -184,7 +191,7 @@ export class DocumentsService {
         const r = await this.may(tx, c, v, 'manage', t, d.personId).catch(() => null);
         if (!r || r.self || r.own.personId === d.personId) continue;
         const f = await this.fileOf(tx, org, d);
-        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString() });
+        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString(), uploadedBy: await this.uploaderName(tx, org, d.id) });
       }
       return out;
     });

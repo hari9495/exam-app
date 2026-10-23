@@ -261,6 +261,9 @@ describe('Lifecycle batch 6a', () => {
     const queue = (await api('hr', 'get', '/documents/queue').expect(200)).body;
     const doc = queue.find((d: { personId: string }) => d.personId === ids.joinerPerson);
     expect(doc.typeKey).toBe('pan_card');
+    // The uploader is HR, not the joiner the document is about (founder 23 Oct 2026).
+    expect(doc.uploadedBy).toBeTruthy();
+    expect(doc.uploadedBy).not.toBe(doc.person);
     await api('hr', 'post', `/documents/${doc.id}/decision`).send({ decision: 'reject', version: doc.version }).expect(400);
     await api('hr', 'post', `/documents/${doc.id}/decision`).send({ decision: 'verify', version: doc.version }).expect(200);
     expect(await drain(async () => (await task(ids.journey, 'collect_pan')).status === 'done')).toBe(true);
