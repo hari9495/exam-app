@@ -244,6 +244,7 @@ export function ExitInterviewScreen(p: ExitInterviewScreenProps) {
             </InlineAlert>
           )}
           <TaskForm form={d.form} answers={answers} onChange={setAnswers} errors={errors} />
+          <div className="yx-ppl__form-actions">
           <Button
             variant="primary"
             disabled={missing.length > 0}
@@ -264,6 +265,7 @@ export function ExitInterviewScreen(p: ExitInterviewScreenProps) {
           >
             Send answers
           </Button>
+          </div>
         </Card>
       )}
     </LivePage>

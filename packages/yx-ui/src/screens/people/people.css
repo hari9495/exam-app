@@ -15,6 +15,8 @@
 .yx-ppl__row--between { justify-content: space-between; }
 .yx-ppl__row--tight { row-gap: var(--yx-space-1); }
 .yx-ppl__form { display: flex; flex-direction: column; gap: var(--yx-space-4); max-width: var(--yx-form-max); }
+/* The send button below a form keeps the same gap as the fields above it. */
+.yx-ppl__form-actions { margin-top: var(--yx-space-4); }
 .yx-ppl__section-title { margin: 0; font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-weight: var(--yx-weight-semibold); }
 .yx-ppl__sub { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }
 .yx-ppl__muted { color: var(--yx-color-text-secondary); }
