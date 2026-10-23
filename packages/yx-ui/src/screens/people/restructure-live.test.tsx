@@ -153,7 +153,7 @@ describe('Restructure wizard (PPL-09)', () => {
     // Letters: the transfer letter template starts chosen; bulk issue after approval.
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByRole('combobox', { name: /Letter template/ })).toHaveTextContent('Transfer letter');
-    expect(screen.getByText(/opens the bulk issue for the 1 people who moved/)).toBeInTheDocument();
+    expect(screen.getByText(/opens the bulk issue for the 1 person who moved/)).toBeInTheDocument();
     // Save and exit keeps the wizard as it was left, on the same draft.
     await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
     expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'merge', fromEntityId: 'tn', intoEntityId: 'kf', effectiveDate: '2026-11-01', locationMap: { hsr: 'blr' }, reason: 'Merger', letterType: 'transfer', step: 'letters' }), 'Merge Kaveri TN into Kaveri Foods', 'd1');
@@ -211,8 +211,8 @@ describe('Restructure record (PPL-09) and continuity checklist (PPL-10)', () => 
   it('the approver approves once; the sender sees no approve button', async () => {
     const onApprove = vi.fn(async () => undefined);
     const { unmount } = wrap(<RestructureRecord state="ready" onRetry={vi.fn()} data={base} today={new Date(2026, 9, 20)} onApprove={onApprove} onReject={vi.fn()} />);
-    await ue.click(screen.getByRole('button', { name: 'Approve and move 1 people' }));
-    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Approve and move 1 people' }));
+    await ue.click(screen.getByRole('button', { name: 'Approve and move 1 person' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Approve and move 1 person' }));
     await waitFor(() => expect(onApprove).toHaveBeenCalled());
     unmount();
     wrap(<RestructureRecord state="ready" onRetry={vi.fn()} data={{ ...base, canDecide: false, canCancel: true, mine: true }} today={new Date(2026, 9, 20)} onApprove={onApprove} onCancel={vi.fn()} />);

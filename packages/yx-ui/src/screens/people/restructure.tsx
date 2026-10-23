@@ -18,6 +18,8 @@ import { Text } from '../../components/foundations';
 import { formatDate } from '../../lib/format';
 import { ListSkeleton, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
+const persons = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
+
 export type RestructureKind = 'merge' | 'close' | 'demerge' | 'within';
 export interface MoveOptions {
   leave: 'carry' | 'lapse';
@@ -337,7 +339,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   // The employments in the plan (left-out people not counted): from the check, or before it from today's head counts.
   const moveCount = preview ? people.filter((p) => p.status !== 'left_out').length : across && from ? moving.reduce((n, l) => n + l.people, 0) : null;
   const mapBlocked = unmapped ? `Choose a place in ${intoE?.name ?? 'the new entity'} for every row first` : undefined;
-  const entityOptions = s.entities.map((e) => ({ value: e.id, label: `${e.name} · ${e.people} people` }));
+  const entityOptions = s.entities.map((e) => ({ value: e.id, label: `${e.name} · ${persons(e.people)}` }));
   const finishBlocked = mapBlocked
     ? mapBlocked
     : !input
@@ -462,7 +464,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           {
             id: 'scope',
             title: 'What moves',
-            summary: preview ? `${ready.length} people · ${across ? `into ${intoE?.name ?? ''}` : 'inside the entity'} · ${date}` : 'Not filled in yet',
+            summary: preview ? `${persons(ready.length)} · ${across ? `into ${intoE?.name ?? ''}` : 'inside the entity'} · ${date}` : 'Not filled in yet',
             content: (
               <div className="yx-ppl__form">
                 <FormField label="Action" required>
@@ -487,13 +489,13 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                 )}
                 {(kind === 'demerge' || kind === 'within') && from && (
                   <FormField label="Who moves" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
-                    <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${l.people} people` }))} value={locations} onChange={setLocations} />
+                    <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
                   </FormField>
                 )}
                 {kind === 'within' && from && (
                   <>
                     <FormField label="Departments">
-                      <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${d.byEntity[from]} people` }))} value={departments} onChange={setDepartments} />
+                      <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${persons(d.byEntity[from])}` }))} value={departments} onChange={setDepartments} />
                     </FormField>
                     <Card title="Move to">
                       <div className="yx-ppl__form">
@@ -524,10 +526,10 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                     {moving.length ? (
                       <dl className="yx-ppl__dl">
                         {moving.map((l) => (
-                          <div key={l.id} className="yx-ppl__dl-row"><dt>{l.name}</dt><dd>{l.people} people</dd></div>
+                          <div key={l.id} className="yx-ppl__dl-row"><dt>{l.name}</dt><dd>{persons(l.people)}</dd></div>
                         ))}
                         {s.departments.filter((dp) => dp.byEntity[from]).map((dp) => (
-                          <div key={dp.id} className="yx-ppl__dl-row"><dt>{dp.name}</dt><dd>{dp.byEntity[from]} people</dd></div>
+                          <div key={dp.id} className="yx-ppl__dl-row"><dt>{dp.name}</dt><dd>{persons(dp.byEntity[from])}</dd></div>
                         ))}
                       </dl>
                     ) : (
@@ -573,7 +575,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                                 <td>
                                   <span className="yx-ppl__type">
                                     <span>{l.name}</span>
-                                    <span className="yx-ppl__sub">{l.people} people</span>
+                                    <span className="yx-ppl__sub">{persons(l.people)}</span>
                                   </span>
                                 </td>
                                 <td>
@@ -586,7 +588,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                                 <td>
                                   <span className="yx-ppl__type">
                                     <span>{m.name}</span>
-                                    <span className="yx-ppl__sub">{MASTER_TEXT[m.kind]} only for {fromE?.name} · {m.byEntity[from!]} people</span>
+                                    <span className="yx-ppl__sub">{MASTER_TEXT[m.kind]} only for {fromE?.name} · {persons(m.byEntity[from!])}</span>
                                   </span>
                                 </td>
                                 <td>
@@ -664,7 +666,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
             title: closes ? 'Close the old entity' : 'Checks',
             status: reached >= 2 && (blockedCheck || cannot.length) ? 'error' : undefined,
             statusNote: reached < 2 ? undefined : blockedCheck ? 'Payroll month not ready' : cannot.length ? `${cannot.length} can't move` : undefined,
-            summary: !preview ? 'Not checked yet' : blockedCheck ? `Blocked: ${lower(blockedCheck.note ?? blockedCheck.title)}` : cannot.length ? `${cannot.length} people can't move` : 'All checks pass',
+            summary: !preview ? 'Not checked yet' : blockedCheck ? `Blocked: ${lower(blockedCheck.note ?? blockedCheck.title)}` : cannot.length ? `${persons(cannot.length)} can't move` : 'All checks pass',
             content: !preview ? (
               <ListSkeleton rows={4} label="Checking the plan" />
             ) : (
@@ -690,7 +692,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                 <FormField label="Letter template" helper="Change the wording or the merge fields in Settings › Letter templates.">
                   <Select options={live.letterTypes ?? []} value={letterType} onChange={setLetterType} placeholder={live.letterTypes?.length ? 'Choose a template' : 'No active letter templates'} disabled={!live.letterTypes?.length} />
                 </FormField>
-                <InlineAlert tone="info">Letters are made only after approval. The restructure page then opens the bulk issue for the {ready.length} people who moved, with this template chosen.</InlineAlert>
+                <InlineAlert tone="info">Letters are made only after approval. The restructure page then opens the bulk issue for the {ready.length === 1 ? '1 person' : `${ready.length} people`} who moved, with this template chosen.</InlineAlert>
               </div>
             ),
           },
@@ -873,7 +875,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
           <span className="yx-ppl__row">
             {d.canCancel && onCancel && <Button onClick={() => setAsk('cancel')}>Cancel restructure</Button>}
             {d.canDecide && onReject && <Button onClick={() => setAsk('reject')}>Reject</Button>}
-            {d.canDecide && onApprove && <Button variant="approve" onClick={() => setAsk('approve')}>Approve and move {count} people</Button>}
+            {d.canDecide && onApprove && <Button variant="approve" onClick={() => setAsk('approve')}>Approve and move {persons(count)}</Button>}
             {d.status === 'done' && moved.length > 0 && onLetters && <Button onClick={() => onLetters(moved.map((p) => p.employeeId), d.plan?.letterType)}>Issue transfer letters</Button>}
           </span>
         }
@@ -910,7 +912,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
         }
       />
       {ask === 'approve' ? (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={`Approve “${d.title}”?`} consequence={`${count} ${count === 1 ? 'person moves' : 'people move'} on ${formatDate(day(d.effectiveDate))}. Each person moves on their own; anyone who can't move stays where they are, with the reason.`} confirmLabel={`Approve and move ${count} people`} confirmVariant="approve" onConfirm={decide} />
+        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={`Approve “${d.title}”?`} consequence={`${count} ${count === 1 ? 'person moves' : 'people move'} on ${formatDate(day(d.effectiveDate))}. Each person moves on their own; anyone who can't move stays where they are, with the reason.`} confirmLabel={`Approve and move ${persons(count)}`} confirmVariant="approve" onConfirm={decide} />
       ) : ask ? (
         <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={ask === 'reject' ? `Reject “${d.title}”?` : `Cancel “${d.title}”?`} consequence="No one moves." confirmLabel={ask === 'reject' ? 'Reject' : 'Cancel restructure'} cancelLabel="Keep it" destructive confirmDisabled={why.trim().length < 3} onConfirm={decide}>
           <FormField label="Reason" required>
