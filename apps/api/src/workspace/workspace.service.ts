@@ -425,7 +425,8 @@ export class WorkspaceService {
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
-      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (company-wide
+      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
+      // count leaves out reviews that went to HR, which only HR decides) (company-wide
       // for HR whose profile grant is, else the person's own direct reports); my open clearance sign-offs; logins that may
       // be someone already on record. Each is gated by the same key as its page.
       if (keys.has('lifecycle.onboarding.manage')) {
@@ -444,7 +445,7 @@ export class WorkspaceService {
           JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
             AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
           WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
-            ${mine ? Prisma.sql`AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
+            ${mine ? Prisma.sql`AND pr.escalated_on IS NULL AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
               AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
       }
       out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
