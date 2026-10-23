@@ -259,7 +259,7 @@ export function JoinerPanel(p: JoinerPanelProps) {
             <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
           </FormField>
           <FormField id="bg-file" label="Report" optional helper="Kept as Special data.">
-            <FileUpload id="bg-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
+            <FileUpload id="bg-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
           </FormField>
         </ConfirmDialog>
       )}
@@ -876,7 +876,7 @@ function UploadTemplate({ onClose, onUpload }: { onClose: () => void; onUpload: 
       <Segment label="Approval" value={approval} onChange={setApproval} options={[{ value: 'yes', label: 'Signatory approves first' }, { value: 'no', label: 'Issued at once' }]} />
       <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
       <FormField id="ut-file" label="Word file (.docx)" required error={v.errorOf('ut-file')} helper="No macros and no linked pictures. Unknown placeholders are refused with a suggestion.">
-        <FileUpload id="ut-file" upload={async (f) => setFile(f)} accept={['.docx']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
+        <FileUpload id="ut-file" upload={async (f) => setFile(f)} accept={['.docx']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
       </FormField>
     </Drawer>
   );
@@ -902,7 +902,7 @@ function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[];
         <TextField value={title} onChange={setTitle} maxLength={100} />
       </FormField>
       <FormField id="sg-image" label="Signature image" optional>
-        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} maxSize={1024 * 1024} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setImage(null)} />
+        <FileUpload id="sg-image" upload={async (f) => setImage(f)} accept={['.png', '.jpg', '.jpeg']} maxSize={1024 * 1024} multiple={false} onItemsChange={(items) => items.length === 0 && setImage(null)} />
       </FormField>
     </ConfirmDialog>
   );
