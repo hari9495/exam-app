@@ -350,6 +350,9 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       const kiran = list.rows.find((r: { employeeId: string }) => r.employeeId === ids.kiran);
       expect(kiran).toMatchObject({ startOn: joinKiran, extendedMonths: 0, maxTotalMonths: 12, stage: 'review_due' });
       ids.kiranEnd = kiran.plannedEndOn;
+      // The top bar's company scopes the queue (founder 23 Oct 2026): Kiran joined Kaveri Foods, not the Tamil Nadu entity.
+      expect((await api('hrA', 'get', `/people/probations?legalEntityId=${ids.kf}`).expect(200)).body.rows.some((r: { employeeId: string }) => r.employeeId === ids.kiran)).toBe(true);
+      expect((await api('hrA', 'get', `/people/probations?legalEntityId=${ids.tn}`).expect(200)).body.rows.some((r: { employeeId: string }) => r.employeeId === ids.kiran)).toBe(false);
       // Three months for probationers, by company setting (P01 §4.6 scope: employment type).
       await api('adminA', 'put', '/org/settings').send({ key: 'probation.default_months', scopeType: 'employment_type', scopeId: ids.prob, value: '3' }).expect(200);
       ids.ravi = await hire({ givenName: 'Ravi', status: 'probation', joinedOn: '2026-01-31', workEmail: `ravi-${runId}@ppl.test` }, { employmentTypeId: ids.prob, managerEmployeeId: ids.divya });
