@@ -370,6 +370,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const treaty = await withPayScope(tx, all, () => tx.taxWorkspace.findMany({ where: { organizationId: org, employeeId: { in: ids }, taxYear: ty, dtaaCountry: { not: null } }, select: { employeeId: true, dtaaCountry: true } }));
     for (const x of treaty) found.push({ employeeId: x.employeeId, checkKey: 'tax_dtaa', severity: 'warn', message: `${nameOf(x.employeeId)}: claims treaty (DTAA) relief with ${x.dtaaCountry}; TDS is worked out without it. Check it by hand.` });
     for (const x of elsewhere) found.push({ employeeId: x.employeeId, checkKey: 'tax_continuity', severity: 'info', message: `${nameOf(x.employeeId)}: pay from another entity of the company this tax year is counted for tax.` });
+    // PPL-10: what is still open after a move into this entity (PF, ESI, tax, pay) shows here until done.
+    const moved = await tx.continuityItem.groupBy({ by: ['employeeId'], where: { organizationId: org, legalEntityId: run.legalEntityId, status: 'open', employeeId: { in: ids } }, _count: { _all: true } });
+    for (const x of moved) found.push({ employeeId: x.employeeId, checkKey: 'transfer_continuity', severity: 'warn', message: `${nameOf(x.employeeId)}: ${x._count._all} continuity ${x._count._all === 1 ? 'item is' : 'items are'} open after the move to this entity (People › Restructure).` });
     const lop = await withPayScope(tx, [run.legalEntityId], () => tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: ids } } }));
     const days = Number(monthRange(month).to.slice(8));
     for (const l of lop) if (D(l.lopDays).gt(days)) found.push({ employeeId: l.employeeId, checkKey: 'lop_too_many', severity: 'block', message: `${nameOf(l.employeeId)}: ${l.lopDays.toString()} loss-of-pay days in a ${days}-day month.` });

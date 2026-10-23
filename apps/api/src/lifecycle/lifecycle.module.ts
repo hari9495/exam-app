@@ -23,6 +23,8 @@ import { AlumniPortalController } from './alumni.controller';
 import { OnboardingExtrasService } from './onboarding-extras.service';
 import { ExitExtrasService } from './exit-extras.service';
 import { SpecialCasesController } from './special-cases.controller';
+import { PeopleRegistersController } from './people-registers.controller';
+import { PeopleRegistersService } from './people-registers.service';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { LifecycleJobs } from './lifecycle-jobs';
 import { PreboardingPortalController } from './portal.controller';
@@ -32,8 +34,8 @@ import { PreboardingPortalService } from './portal.service';
 // reviews, resignations, company exits, clearance, exit interviews and assets (6c).
 @Module({
   imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
-  controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService],
+  controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
   exports: [LifecycleJourneysService, ExitsService],
 })

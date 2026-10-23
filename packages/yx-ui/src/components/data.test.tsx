@@ -26,6 +26,42 @@ const COLS: TableColumn<Row>[] = [
 ];
 
 describe('DataTable', () => {
+  // The page hears about a column change after the update, never while the table renders (Directory, 22 Oct 2026).
+  it('tells the page once after Reset columns, with no render-time update warning', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const told = vi.fn();
+    render(<DataTable label="Told" columns={COLS} rows={ROWS} getRowId={(r) => r.id} defaultColumnState={{ hidden: ['dept'] }} onColumnStateChange={told} />);
+    expect(told).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: /^Columns/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Reset columns' }));
+    expect(told).toHaveBeenCalledTimes(1);
+    expect(told.mock.calls[0][0].hidden).toEqual([]);
+    expect(err.mock.calls.some((c) => String(c[0]).includes('Cannot update a component'))).toBe(false);
+    err.mockRestore();
+  });
+
+  // Founder 21 Oct 2026: ticked means on screen. A column hidden to fit shows unticked; ticking it or Reset brings it back.
+  it('a column hidden to fit shows unticked, and Reset columns shows it again', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(700);
+    vi.stubGlobal('ResizeObserver', class { constructor(private cb: (e: unknown[]) => void) {} observe() { this.cb([]); } unobserve() {} disconnect() {} });
+    try {
+      const cols: TableColumn<Row>[] = [...COLS, ...['A', 'B', 'C'].map((x) => ({ key: `note${x}`, header: `Note ${x}`, value: (r: Row) => r.name, optional: true }))];
+      render(<DataTable label="Fit" columns={cols} rows={ROWS} getRowId={(r) => r.id} />);
+      await userEvent.click(await screen.findByRole('button', { name: /Columns \(\d hidden\)/ }));
+      const tick = () => [...document.querySelectorAll('.yx-colmgr__item')].find((li) => li.textContent?.startsWith('Note C'))!.querySelector('[data-state]')!.getAttribute('data-state');
+      expect(tick()).toBe('unchecked');
+      expect(screen.getAllByText(/Hidden to fit\. Tick to show it/).length).toBeGreaterThan(0);
+      await userEvent.click(screen.getByRole('button', { name: 'Reset columns' }));
+      // Every column is back, and the Columns button stays so a column can be hidden again.
+      expect(screen.queryByRole('button', { name: /hidden\)/ })).toBeNull();
+      expect(screen.getByRole('button', { name: /^Columns/ })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: /Note C/ })).toBeInTheDocument();
+    } finally {
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   // Affordance guard (PR #146): a sort button is named by its header, so a column without header text gets none.
   it('never draws an unnamed sort button; every column menu has a name', () => {
     render(<DataTable label="Words" columns={[...COLS, { key: 'act', header: ' ', value: () => '' }]} rows={ROWS} getRowId={(r) => r.id} />);
@@ -104,6 +140,18 @@ describe('DataTable', () => {
     expect(screen.getByText('3 selected')).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: 'Clear selection' }));
     expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it('choosing an item in a row menu (a portal) never also opens the row', async () => {
+    const u = userEvent.setup();
+    const open = vi.fn();
+    const pick = vi.fn();
+    const { MenuItem } = await import('./menu');
+    render(<DataTable label="People" columns={COLS} rows={ROWS} getRowId={(r) => r.id} onRowClick={open} rowActions={() => <MenuItem onSelect={pick}>Add joiners</MenuItem>} />);
+    await u.click(within(screen.getAllByRole('row')[1]).getByRole('button', { name: /actions|more/i }));
+    await u.click(screen.getByRole('menuitem', { name: 'Add joiners' }));
+    expect(pick).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('row click and keyboard open the row; J/K move; Space selects', async () => {

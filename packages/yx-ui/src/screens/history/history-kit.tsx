@@ -1,17 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
+import { ErrorSummary, FormField, type FormErrorItem, useSaveErrors } from '../../components/field';
+import { Card } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
-import { dateLabel, daysBetweenIso, useRun } from '../org/org-kit';
+import { dateLabel, daysBetweenIso, errorText, useRun } from '../org/org-kit';
+import '../people/people.css';
 import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine } from './types';
 
 // Pieces shared by the job-history screens.
@@ -107,6 +109,62 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
         </InlineAlert>
       )}
     </div>
+  );
+}
+
+/** PPL-04 "What changes": the impact as a Now / From table, then the warnings. */
+export function DesignImpact({ impact }: { impact: Impact }) {
+  const pay = impact.pay === 'hidden' ? [] : impact.pay;
+  const rows = [...impact.facts.map((l) => ({ ...l, money: false })), ...pay.map((l) => ({ ...l, money: true }))];
+  const value = (v: string | null, isMoney: boolean) => (isMoney ? moneyLine(v) : (v ?? '—'));
+  return (
+    <Card title={`What changes (${rows.length})`}>
+      <div className="yx-ppl__stack">
+        {rows.length === 0 ? (
+          <Text as="p" tone="secondary">Nothing changes on that date: the values are already the same.</Text>
+        ) : (
+          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="What changes, scrolls sideways on small screens">
+            <table className="yx-ppl__impact">
+              <thead>
+                <tr>
+                  <th scope="col">What changes</th>
+                  <th scope="col">Now</th>
+                  <th scope="col">From {dateLabel(impact.effectiveDate)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.fact}>
+                    <th scope="row">{r.fact}</th>
+                    <td>{value(r.from, r.money)}</td>
+                    <td data-changed>{value(r.to, r.money)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {impact.pay === 'hidden' && <Text as="p" tone="secondary" size="sm">Pay changes too. Only people with pay access see the amounts.</Text>}
+        {impact.retro && (
+          <InlineAlert tone="warning" title="This changes the past">
+            {`Payroll will settle the difference for ${impact.retro.months.map(monthName).join(', ')} in the next run. Payslips already issued stay as they are.`}
+          </InlineAlert>
+        )}
+        {impact.rebased.length > 0 && (
+          <InlineAlert tone="warning" title={`${impact.rebased.length} later change${impact.rebased.length === 1 ? '' : 's'} will be recalculated`}>
+            <ul className="yx-hist__rebased">
+              {impact.rebased.map((r) => (
+                <li key={r.changeId}>
+                  <Text weight="medium">{`${TYPE_LABEL[r.changeType]} on ${dateLabel(r.effectiveDate)}`}</Text>
+                  <Lines lines={r.facts} />
+                  {r.pay === 'hidden' ? <Text tone="secondary" size="sm">Its pay is recalculated too.</Text> : r.pay.length > 0 && <Lines lines={r.pay} money />}
+                </li>
+              ))}
+            </ul>
+          </InlineAlert>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -221,15 +279,15 @@ export interface ChangeDrawerProps {
   onClose: () => void;
 }
 
-/** Pick the kind of change, the date and the new values; preview the impact; send it for approval. */
+/** PPL-04: pick the type, the date and the new values; what changes shows as you fill it in; send it for approval. */
 export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose }: ChangeDrawerProps) {
   const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '' });
   const [impact, setImpact] = useState<Impact | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<ChangeDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
-    setImpact(null);
     setDirty(true);
   };
   const { input, errors } = changeInput(draft, options);
@@ -251,96 +309,139 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
     [options, entity, draft.employeeId],
   );
   const date = draft.effectiveDate ? dayKey(draft.effectiveDate) : null;
-  const preview = () => {
-    if (!input) return saveErrors.reveal();
-    void run('preview', async () => setImpact(await onPreview(input)));
-  };
+  // What changes follows the form: worked out a moment after the last edit, once the change is complete.
+  const key = input ? JSON.stringify(input) : null;
+  useEffect(() => {
+    setImpact(null);
+    setPreviewError(null);
+    if (!key) return;
+    let current = true;
+    const t = setTimeout(() => {
+      onPreview(JSON.parse(key) as ChangeInput).then(
+        (i) => current && setImpact(i),
+        (e) => current && setPreviewError(errorText(e)),
+      );
+    }, 500);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
   const submit = () => {
     if (!input || !impact) return saveErrors.reveal();
     void run('submit', () => onSubmit(input)).then((ok) => ok && onClose());
   };
   const types = (options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay);
+  const label = (f: Field) => (draft.changeType === 'correction' ? FIELD_LABEL[f] : `New ${FIELD_LABEL[f].toLowerCase()}`);
+  const past = date && date < options.today;
   return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
-      size="md"
+      size="lg"
       dirty={dirty}
-      title={person ? `Change for ${person.name}` : 'New job change'}
-      subtitle="Someone else approves it before it takes effect."
+      title={person ? `Change for ${person.name}` : 'Change action'}
+      subtitle={person ? [person.designation, person.department, person.location].filter(Boolean).join(' · ') : 'Raise a change for one person.'}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy !== null}>Cancel</Button>
-          <Button loading={busy === 'preview'} onClick={preview}>Preview impact</Button>
-          <Button variant="primary" loading={busy === 'submit'} disabled={!impact} onClick={submit}>Send for approval</Button>
+          <Button onClick={onClose} disabled={busy !== null}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={busy === 'submit'} onClick={submit}>
+            Send for approval
+          </Button>
         </>
       }
     >
-      <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); preview(); }} noValidate>
+      <form
+        className="yx-ppl__stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        noValidate
+      >
         <ErrorSummary errors={saveErrors.shownErrors} />
-        <FormSection title="The change">
+        <Text size="sm" tone="secondary" as="p">
+          Someone who approves job changes decides it before it takes effect. Nobody approves their own.
+        </Text>
+        <div className="yx-ppl__form">
           {!employeeId && (
             <FormField id="ch-person" label="Person" required error={errorOf('ch-person')}>
               <Select value={draft.employeeId} onChange={(v) => set({ employeeId: v, values: {} })} options={options.people.map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` }))} searchable aria-label="Person" />
             </FormField>
           )}
-          <FormField id="ch-type" label="Kind of change" required error={errorOf('ch-type')}>
-            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '' })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
+          <FormField id="ch-type" label="Change type" required error={errorOf('ch-type')}>
+            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '' })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Change type" />
           </FormField>
-          <FormField id="ch-date" label="Takes effect on" required helper="The day starts at midnight where the person works." error={errorOf('ch-date')}>
-            <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Takes effect on" />
+          <FormField
+            id="ch-date"
+            label="Effective date"
+            required
+            helper={past ? (draft.changeType === 'correction' ? 'This corrects the record from that date. The earlier record is kept and marked as corrected.' : 'This date is in the past, so payroll settles any difference in the next run.') : 'Applied at the start of that day where the person works.'}
+            error={errorOf('ch-date')}
+          >
+            <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Effective date" />
           </FormField>
-          {date && date < options.today && (
-            <InlineAlert tone="warning">{draft.changeType === 'correction' ? 'This corrects the record from that date. The earlier record is kept and marked as corrected.' : 'This date is in the past. Payroll settles any difference in the next run.'}</InlineAlert>
-          )}
-        </FormSection>
-        {draft.changeType && (
-          <FormSection title="New values">
-            {errorOf('ch-values') && <InlineAlert tone="danger">{errorOf('ch-values')}</InlineAlert>}
-            {FIELDS[draft.changeType].map((f) => (
-              <FormField key={f} id={`ch-${f}`} label={FIELD_LABEL[f]} optional={draft.changeType === 'correction' || draft.changeType === 'transfer' || f === 'gradeId' || f === 'skillClass'}>
-                <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable placeholder="No change" aria-label={FIELD_LABEL[f]} />
+          {draft.changeType && errorOf('ch-values') && <InlineAlert tone="danger">{errorOf('ch-values')}</InlineAlert>}
+          {draft.changeType &&
+            FIELDS[draft.changeType].map((f) => (
+              <FormField key={f} id={`ch-${f}`} label={label(f)} optional={draft.changeType === 'correction' || draft.changeType === 'transfer' || f === 'gradeId' || f === 'skillClass'}>
+                <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable placeholder="No change" aria-label={label(f)} />
               </FormField>
             ))}
-            {DOTTED_TYPES.has(draft.changeType) && (
-              <FormField label="Dotted-line managers" helper="They see the person and give feedback; they do not approve requests.">
-                <Segment label="Dotted-line managers" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'set' as const, label: 'Set new ones' }]} value={draft.dotted === null ? 'keep' : 'set'} onChange={(v) => set({ dotted: v === 'keep' ? null : [] })} />
+          {draft.changeType && DOTTED_TYPES.has(draft.changeType) && (
+            <FormField label="Dotted-line managers" helper="They see the person and give feedback; they do not approve requests.">
+              <Segment label="Dotted-line managers" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'set' as const, label: 'Set new ones' }]} value={draft.dotted === null ? 'keep' : 'set'} onChange={(v) => set({ dotted: v === 'keep' ? null : [] })} />
+            </FormField>
+          )}
+          {draft.changeType && DOTTED_TYPES.has(draft.changeType) && draft.dotted !== null && (
+            <FormField id="ch-dotted" label="New dotted-line managers" optional helper="Leave empty to remove them all.">
+              <MultiSelect value={draft.dotted} onChange={(dotted) => set({ dotted })} options={choices.managerEmployeeId} searchable aria-label="New dotted-line managers" />
+            </FormField>
+          )}
+          {draft.changeType && HOURS_TYPES.has(draft.changeType) && (
+            <FormField label="Hours a week" helper="Full-time follows the normal week where the person works. FTE is worked out from it.">
+              <Segment label="Hours a week" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'full' as const, label: 'Full-time' }, { value: 'set' as const, label: 'Part-time' }]} value={draft.hours ?? 'keep'} onChange={(hours) => set({ hours })} />
+            </FormField>
+          )}
+          {draft.changeType && HOURS_TYPES.has(draft.changeType) && draft.hours === 'set' && (
+            <FormField id="ch-hours" label="Part-time hours a week" required helper="For example 24 or 37.5." error={errorOf('ch-hours')}>
+              <TextField value={draft.hoursValue ?? ''} onChange={(hoursValue) => set({ hoursValue: hoursValue.trim() })} inputMode="decimal" maxLength={4} />
+            </FormField>
+          )}
+          {draft.changeType === 'confirmation' && (
+            <Text as="p" tone="secondary">
+              The probation ends and the person is confirmed from this date.
+            </Text>
+          )}
+          {draft.changeType === 'correction' && (
+            <FormField label="Employment status">
+              <Segment label="Employment status" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'confirmed' as const, label: 'Confirmed' }]} value={draft.confirm ? 'confirmed' : 'keep'} onChange={(v) => set({ confirm: v === 'confirmed' })} />
+            </FormField>
+          )}
+          {draft.changeType && options.canPay && PAY_TYPES.has(draft.changeType) && (
+            <>
+              <FormField label="Pay given as">
+                <Segment label="Pay given as" options={[{ value: 'amount' as const, label: 'New annual CTC' }, { value: 'percent' as const, label: 'Increase %' }]} value={draft.payMode} onChange={(payMode) => set({ payMode, pay: '' })} />
               </FormField>
-            )}
-            {DOTTED_TYPES.has(draft.changeType) && draft.dotted !== null && (
-              <FormField id="ch-dotted" label="New dotted-line managers" optional helper="Leave empty to remove them all.">
-                <MultiSelect value={draft.dotted} onChange={(dotted) => set({ dotted })} options={choices.managerEmployeeId} searchable aria-label="New dotted-line managers" />
+              <FormField
+                id="ch-pay"
+                label={draft.payMode === 'amount' ? 'New annual CTC (₹)' : 'Increase (%)'}
+                optional={draft.changeType !== 'salary_revision'}
+                helper={draft.payMode === 'percent' ? 'Applied to the pay in force on the date, even if that changes later.' : 'The compensation record is created in this same change.'}
+                error={errorOf('ch-pay')}
+              >
+                <TextField value={draft.pay} onChange={(pay) => set({ pay: pay.trim() })} inputMode="decimal" maxLength={16} />
               </FormField>
-            )}
-            {HOURS_TYPES.has(draft.changeType) && (
-              <FormField label="Hours a week" helper="Full-time follows the normal week where the person works. FTE is worked out from it.">
-                <Segment label="Hours a week" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'full' as const, label: 'Full-time' }, { value: 'set' as const, label: 'Part-time' }]} value={draft.hours ?? 'keep'} onChange={(hours) => set({ hours })} />
-              </FormField>
-            )}
-            {HOURS_TYPES.has(draft.changeType) && draft.hours === 'set' && (
-              <FormField id="ch-hours" label="Part-time hours a week" required helper="For example 24 or 37.5." error={errorOf('ch-hours')}>
-                <TextField value={draft.hoursValue ?? ''} onChange={(hoursValue) => set({ hoursValue: hoursValue.trim() })} inputMode="decimal" maxLength={4} />
-              </FormField>
-            )}
-            {draft.changeType === 'confirmation' && <Text as="p" tone="secondary">The probation ends and the person is confirmed from this date.</Text>}
-            {draft.changeType === 'correction' && (
-              <FormField label="Employment status">
-                <Segment label="Employment status" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'confirmed' as const, label: 'Confirmed' }]} value={draft.confirm ? 'confirmed' : 'keep'} onChange={(v) => set({ confirm: v === 'confirmed' })} />
-              </FormField>
-            )}
-            {options.canPay && PAY_TYPES.has(draft.changeType) && (
-              <>
-                <FormField label="Pay given as">
-                  <Segment label="Pay given as" options={[{ value: 'amount' as const, label: 'New annual CTC' }, { value: 'percent' as const, label: 'Increase %' }]} value={draft.payMode} onChange={(payMode) => set({ payMode, pay: '' })} />
-                </FormField>
-                <FormField id="ch-pay" label={draft.payMode === 'amount' ? 'Annual CTC (₹)' : 'Increase (%)'} optional={draft.changeType !== 'salary_revision'} helper={draft.payMode === 'percent' ? 'Applied to the pay in force on the date, even if that changes later.' : undefined} error={errorOf('ch-pay')}>
-                  <TextField value={draft.pay} onChange={(pay) => set({ pay: pay.trim() })} inputMode="decimal" maxLength={16} />
-                </FormField>
-              </>
-            )}
-          </FormSection>
-        )}
-        <FormSection title="Why">
+            </>
+          )}
+          {draft.changeType && !options.canPay && PAY_TYPES.has(draft.changeType) && draft.changeType !== 'correction' && (
+            <InlineAlert tone="info" title="Pay is added before approval">
+              You don&apos;t have pay access, so someone who has it adds the new CTC before approval.
+            </InlineAlert>
+          )}
           <FormField id="ch-reason" label="Reason" required helper="Shown on the person's timeline and to the approver." error={errorOf('ch-reason')}>
             <TextArea value={draft.reason} onChange={(reason) => set({ reason })} rows={2} maxLength={1000} />
           </FormField>
@@ -349,9 +450,23 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
               <TextArea value={draft.overrideReason} onChange={(overrideReason) => set({ overrideReason })} rows={2} maxLength={1000} />
             </FormField>
           )}
-        </FormSection>
-        {impact ? <ImpactPanel impact={impact} /> : <Text as="p" tone="secondary" size="sm">Preview the impact to send it for approval.</Text>}
-        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        </div>
+        {impact ? (
+          <DesignImpact impact={impact} />
+        ) : previewError ? (
+          <InlineAlert tone="warning" title="We couldn't work out what changes">
+            {previewError}
+          </InlineAlert>
+        ) : (
+          <Text as="p" tone="secondary" size="sm">
+            What changes shows here once the change is filled in.
+          </Text>
+        )}
+        {error && (
+          <InlineAlert tone="danger" title="Not sent">
+            {error}
+          </InlineAlert>
+        )}
       </form>
     </Drawer>
   );

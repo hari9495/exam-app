@@ -2467,6 +2467,7 @@ model Employee {
   familyName     String?  @map("family_name") @db.VarChar(100)
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
+  workPhone      String?  @map("work_phone") @db.VarChar(16)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2688,6 +2689,7 @@ model EmployeeChangeBatch {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote   String?   @map("decision_note") @db.VarChar(1000)
   compCycleId    String?   @map("comp_cycle_id") @db.Uuid
+  letterTemplateId String? @map("letter_template_id") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
@@ -2736,6 +2738,7 @@ model EmployeePersonalDetails {
   postalCode     String?   @map("postal_code") @db.VarChar(12)
   country        String?   @db.Char(2)
   hideBirthday   Boolean   @default(false) @map("hide_birthday")
+  maritalStatus  String?   @map("marital_status") @db.VarChar(20)
   updatedBy      String?   @map("updated_by") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2760,6 +2763,10 @@ model EmployeeIdentifiers {
   esicEnc        String?  @map("esic_enc")
   esicHash       String?  @map("esic_hash") @db.Char(64)
   esicLast4      String?  @map("esic_last4") @db.Char(4)
+  passportEnc       String?   @map("passport_enc")
+  passportHash      String?   @map("passport_hash") @db.Char(64)
+  passportLast4     String?   @map("passport_last4") @db.Char(4)
+  passportExpiresOn DateTime? @map("passport_expires_on") @db.Date
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([organizationId, employeeId])
@@ -9156,6 +9163,13 @@ model Union {
   legalEntityId  String   @map("legal_entity_id") @db.Uuid
   name           String   @db.VarChar(200)
   registrationNo String?  @map("registration_no") @db.VarChar(60)
+  /// PPL-39 union register: the establishment, recognition and basis, its period and office bearers.
+  locationId     String?   @map("location_id") @db.Uuid
+  recognition    String    @default("not_recognised") @db.VarChar(16)
+  basis          String?   @db.VarChar(200)
+  validFrom      DateTime? @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  bearers        String?   @db.VarChar(500)
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -9957,6 +9971,128 @@ model HomeSnapshot {
   takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("home_snapshots")
+}
+
+/// PPL-41: colleagues who volunteer as buddies, and how many joiners each looks after at a time.
+model BuddyPool {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  cap            Int      @default(2) @db.SmallInt
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("buddy_pool")
+}
+
+/// PPL-26: a critical position and its nominated successors (Confidential, succession.manage).
+model SuccessionPosition {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  title               String   @db.VarChar(120)
+  incumbentEmployeeId String?  @map("incumbent_employee_id") @db.Uuid
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("succession_positions")
+}
+
+model Successor {
+  organizationId String   @map("organization_id") @db.Uuid
+  positionId     String   @map("position_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  /// now · 1_2y · 3y
+  readiness      String   @db.VarChar(8)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([positionId, employeeId])
+  @@index([organizationId], map: "successors_org_idx")
+  @@map("successors")
+}
+
+/// PPL-09: a bulk move inside a legal entity or between legal entities, sent once, approved once by someone else.
+model Restructure {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// merge · close · demerge · within
+  kind           String    @db.VarChar(8)
+  fromEntityId   String    @map("from_entity_id") @db.Uuid
+  intoEntityId   String?   @map("into_entity_id") @db.Uuid
+  effectiveOn    DateTime  @map("effective_on") @db.Date
+  plan           Json
+  reason         String    @db.VarChar(500)
+  overrideReason String?   @map("override_reason") @db.VarChar(500)
+  /// pending · scheduled (approved, runs on the effective date) · done · rejected · cancelled
+  status         String    @default("pending") @db.VarChar(10)
+  requestedBy    String    @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(500)
+  ranAt          DateTime? @map("ran_at") @db.Timestamptz(3)
+  moved          Int       @default(0)
+  failed         Int       @default(0)
+  version        Int       @default(1)
+
+  @@unique([organizationId, id], map: "restructures_org_id_key")
+  @@index([organizationId, status], map: "restructures_org_status_idx")
+  @@map("restructures")
+}
+
+model RestructurePerson {
+  organizationId  String  @map("organization_id") @db.Uuid
+  restructureId   String  @map("restructure_id") @db.Uuid
+  employeeId      String  @map("employee_id") @db.Uuid
+  employmentId    String  @map("employment_id") @db.Uuid
+  options         Json    @default("{}")
+  /// pending · moved · failed · left_out
+  status          String  @default("pending") @db.VarChar(8)
+  failReason      String? @map("fail_reason") @db.VarChar(500)
+  newEmploymentId String? @map("new_employment_id") @db.Uuid
+  changeId        String? @map("change_id") @db.Uuid
+  result          Json?
+
+  @@id([restructureId, employeeId])
+  @@index([organizationId], map: "restructure_people_org_idx")
+  @@map("restructure_people")
+}
+
+/// PPL-10: what still has to happen for one person after a move between legal entities.
+model ContinuityItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  restructureId  String    @map("restructure_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  /// The entity the person moved into.
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  key            String    @db.VarChar(20)
+  title          String    @db.VarChar(300)
+  owner          String    @db.VarChar(20)
+  dueOn          DateTime? @map("due_on") @db.Date
+  status         String    @default("open") @db.VarChar(8)
+  note           String?   @db.VarChar(300)
+  doneBy         String?   @map("done_by") @db.Uuid
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@unique([restructureId, employeeId, key], map: "continuity_items_key")
+  @@index([organizationId, legalEntityId, status], map: "continuity_items_open_idx")
+  @@map("continuity_items")
+}
+
+/// PPL-09 "Save and exit": a half-planned restructure, seen and changed only by its creator. RLS in migration 20261204000001_restructure_drafts.
+model RestructureDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  title          String   @db.VarChar(200)
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy, updatedAt], map: "restructure_drafts_owner_idx")
+  @@map("restructure_drafts")
 }
 
 // ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----

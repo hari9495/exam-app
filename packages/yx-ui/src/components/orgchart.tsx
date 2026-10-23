@@ -20,6 +20,8 @@ export interface OrgPerson {
   vacant?: boolean;
   /** Dotted-line manager, drawn as a dashed connector. */
   dottedManagerId?: string;
+  /** A manager outside the chart shown (another legal entity): a quiet line, so nobody silently loses their manager. */
+  reportsTo?: string;
 }
 
 export type OrgView = 'reporting' | 'department' | 'position';
@@ -91,8 +93,10 @@ export interface OrgChartProps {
   onViewChange?: (view: OrgView) => void;
   /** Enter on a card, or "View profile" in the list. */
   onOpenPerson?: (person: OrgPerson) => void;
-  /** Adds Export PNG / Export PDF buttons. */
-  onExport?: (format: 'png' | 'pdf') => void;
+  /** Adds the Export menu. */
+  onExport?: (format: 'png' | 'pdf' | 'csv') => void;
+  /** Formats in the Export menu (default PNG and PDF). */
+  exportFormats?: ('png' | 'pdf' | 'csv')[];
   /** 'list' forces the phone drill-down. Default: tree, list below 768 px. */
   layout?: 'auto' | 'tree' | 'list';
   /** Expanded node ids, or 'all'. Default: top two levels. */
@@ -116,11 +120,14 @@ const VIEWS: { id: OrgView; label: string }[] = [
   { id: 'department', label: 'Department' },
   { id: 'position', label: 'Position' },
 ];
+const EXPORT_LABEL = { png: 'Image (PNG)', pdf: 'PDF', csv: 'Spreadsheet (CSV)' } as const;
 const MIN = 0.4;
 const MAX = 1.6;
 // Fitting never goes below 60 %: the collapse buttons (40 px) stay 24 px targets (WCAG 2.5.8). A wider tree scrolls;
 // zooming out further is still there for whoever wants the whole shape.
 const FIT_MIN = 0.6;
+/** The zoom that fits w x h (at 100 %) into a box: whole tens of a per cent, never above 100 % or below FIT_MIN. */
+export const fitScale = (boxW: number, boxH: number, w: number, h: number) => Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(boxW / w, boxH / h) * 10) / 10));
 const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
 const team = (n: number) => (n === 1 ? '1 person in team' : `${n} people in team`);
 
@@ -132,6 +139,7 @@ export function OrgChart({
   onViewChange,
   onOpenPerson,
   onExport,
+  exportFormats = ['png', 'pdf'],
   layout = 'auto',
   defaultExpanded,
   defaultSelected,
@@ -173,6 +181,33 @@ export function OrgChart({
   const pendingFocus = useRef<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [vpHeight, setVpHeight] = useState<number | null>(null);
+  // The canvas takes the height left on the page (a notice above it shrinks it), so the page itself never scrolls.
+  useLayoutEffect(() => {
+    const vp = viewportRef.current;
+    const main = vp?.closest('main');
+    if (!vp || !main) return;
+    const size = () => {
+      const over = main.scrollHeight - main.clientHeight;
+      const cur = vp.getBoundingClientRect().height;
+      const next = Math.max(120, Math.min(760, Math.round(cur - over)));
+      if (Math.abs(next - cur) > 1) setVpHeight(next);
+    };
+    size();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(size) : null;
+    for (const child of Array.from(main.children)) ro?.observe(child);
+    // A notice added or removed above the chart (View as on) changes the room left.
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestAnimationFrame(size)) : null;
+    mo?.observe(main, { childList: true, subtree: true });
+    window.addEventListener('resize', size);
+    return () => {
+      ro?.disconnect();
+      mo?.disconnect();
+      window.removeEventListener('resize', size);
+    };
+  }, []);
+  const scaleRef = useRef(1); // the zoom the cards are laid out at now (fit reads it after a re-layout)
+  const userZoomed = useRef(false);
   const uid = useId();
 
   // Changing the view rebuilds the tree; reset to its top two levels.
@@ -208,10 +243,21 @@ export function OrgChart({
         vp.scrollTop += (a.top + b.top) / 2 - (box.top + box.height / 2) + a.height / 2;
       }
     } else {
-      // The top of the organisation starts fitted to the screen, nobody cut off at the edges.
-      fit();
+      // The top of the organisation opens with its first two levels in the part of the canvas on screen (as designed).
+      fit(true);
       const vp = viewportRef.current;
       if (vp) vp.scrollLeft = (vp.scrollWidth - vp.clientWidth) / 2;
+      // A banner or notice that loads above the chart pushes it down: fit again until the person zooms themselves.
+      const page = vp?.closest('main')?.firstElementChild;
+      if (page && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => !userZoomed.current && fit(true));
+        ro.observe(page);
+        const stop = setTimeout(() => ro.disconnect(), 5000);
+        return () => {
+          ro.disconnect();
+          clearTimeout(stop);
+        };
+      }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -274,18 +320,36 @@ export function OrgChart({
     e.preventDefault();
   };
 
-  const fit = () => {
+  const fit = (firstTwoLevels = false) => {
     const vp = viewportRef.current;
     const ct = contentRef.current;
     if (!vp || !ct || !ct.scrollWidth) return;
-    const w = ct.scrollWidth / scale;
-    const h = ct.scrollHeight / scale;
-    setScale(Math.max(FIT_MIN, Math.min(1, Math.floor(Math.min(vp.clientWidth / w, vp.clientHeight / h) * 10) / 10)));
+    const k = scaleRef.current;
+    const w = ct.scrollWidth / k;
+    let h = ct.scrollHeight / k;
+    let boxH = vp.clientHeight;
+    if (firstTwoLevels) {
+      // Height down to the lowest card of the first two levels; the box is the part of the canvas above the fold.
+      const top = ct.getBoundingClientRect().top;
+      const ids = roots.flatMap((r) => [r, ...r.children]).map((n) => n.id);
+      const deepest = Math.max(...ids.map((id) => refs.current.get(id)?.querySelector('.yx-org__card')?.getBoundingClientRect().bottom ?? 0)) - top;
+      if (deepest > 0) h = (deepest + 24 * k) / k; // + the canvas padding below
+      const onScreen = window.innerHeight - vp.getBoundingClientRect().top;
+      if (onScreen > 0) boxH = Math.min(boxH, onScreen);
+    }
+    const next = fitScale(vp.clientWidth, boxH, w, h);
+    scaleRef.current = next;
+    setScale(next);
+  };
+  const zoomBy = (d: number) => {
+    userZoomed.current = true;
+    scaleRef.current = clamp(scaleRef.current + d);
+    setScale(scaleRef.current);
   };
   const onZoomKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    if (e.key === '+' || e.key === '=') setScale((s) => clamp(s + 0.1));
-    else if (e.key === '-' || e.key === '−') setScale((s) => clamp(s - 0.1));
+    if (e.key === '+' || e.key === '=') zoomBy(0.1);
+    else if (e.key === '-' || e.key === '−') zoomBy(-0.1);
     else return;
     e.preventDefault();
   };
@@ -437,6 +501,7 @@ export function OrgChart({
           <span className="yx-org__name">{position ? p!.role : p!.name}</span>
           <span className="yx-org__role">{position ? p!.name : p!.role}</span>
           {n.size > 0 && <span className="yx-org__meta">{team(n.size)}</span>}
+          {p!.reportsTo && view !== 'department' && <span className="yx-org__meta">Reports to {p!.reportsTo}</span>}
           {p!.dottedManagerId && view !== 'department' && nameOf(p!.dottedManagerId) && (
             <span className="yx-org__meta">Dotted line to {nameOf(p!.dottedManagerId)}</span>
           )}
@@ -594,12 +659,12 @@ export function OrgChart({
         {search}
         {viewSwitch}
         <div className="yx-org__tools">
-          <IconButton icon={ZoomOut} variant="secondary" size="sm" label="Zoom out (−)" onClick={() => setScale((s) => clamp(s - 0.1))} disabled={scale <= MIN} />
+          <IconButton icon={ZoomOut} variant="secondary" size="sm" label="Zoom out (−)" onClick={() => zoomBy(-0.1)} disabled={scale <= MIN} />
           <span className="yx-org__zoom" aria-live="polite">
             {Math.round(scale * 100)}%
           </span>
-          <IconButton icon={ZoomIn} variant="secondary" size="sm" label="Zoom in (+)" onClick={() => setScale((s) => clamp(s + 0.1))} disabled={scale >= MAX} />
-          <IconButton icon={Maximize} variant="secondary" size="sm" label="Fit to screen" onClick={fit} />
+          <IconButton icon={ZoomIn} variant="secondary" size="sm" label="Zoom in (+)" onClick={() => zoomBy(0.1)} disabled={scale >= MAX} />
+          <IconButton icon={Maximize} variant="secondary" size="sm" label="Fit to screen" onClick={() => ((userZoomed.current = true), fit())} />
           {showMe}
           {onExport && (
             <Menu>
@@ -610,8 +675,11 @@ export function OrgChart({
                 </Button>
               </MenuTrigger>
               <MenuContent align="end">
-                <MenuItem onSelect={() => onExport('png')}>Image (PNG)</MenuItem>
-                <MenuItem onSelect={() => onExport('pdf')}>PDF</MenuItem>
+                {exportFormats.map((f) => (
+                  <MenuItem key={f} onSelect={() => onExport(f)}>
+                    {EXPORT_LABEL[f]}
+                  </MenuItem>
+                ))}
               </MenuContent>
             </Menu>
           )}
@@ -625,6 +693,7 @@ export function OrgChart({
       <div
         className="yx-org__viewport"
         ref={viewportRef}
+        style={vpHeight ? { height: vpHeight } : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

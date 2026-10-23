@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { d } from './platform-data';
 import {
@@ -7,7 +7,7 @@ import {
 import { ShieldCheck, UserRound } from 'lucide-react';
 import { CommandPalette, ProfileMenu } from '../../components/shell';
 import { NotificationCentre } from '../../components/notify';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, NoticeBar } from '../../components/feedback';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
@@ -24,7 +24,7 @@ const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
 /* PLT-01 */
 // Slots the live app needs (design audit step 1): banners above every page, breadcrumbs below the top level, Me and
 // My security in the account menu, and server search that says it is searching.
-const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
+const liveFrame = (over: { paletteOpen?: boolean; banner?: ReactNode } = {}) => (
   <DesktopFrame
     area="people"
     panelTitle="People"
@@ -36,7 +36,7 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
       onHelp: () => {},
       notifications: <NotificationCentre items={[]} onMarkAllRead={() => {}} settingsHref="#notification-preferences" now={TODAY} />,
       profile: <ProfileMenu name="Lakshmi Venkatesan" email="lakshmi.v@kaverifoods.in" links={[{ label: 'Me', icon: UserRound, onSelect: () => {} }, { label: 'My security', icon: ShieldCheck, onSelect: () => {} }]} />,
-      banner: (
+      banner: over.banner ?? (
         <InlineAlert tone="warning" title="Support session in Kaveri Foods until 15 Oct, 6:00 pm" actions={<Button size="sm">Leave the company</Button>}>
           Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
         </InlineAlert>
@@ -49,6 +49,15 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
   </DesktopFrame>
 );
 export const PLT01LiveSlots: S = { name: 'PLT-01 · App shell · live slots (banner, breadcrumbs, Me menu)', render: () => liveFrame() };
+// The MFA notice (founder 20 Oct 2026): one line, hidden until tomorrow with the close button; after the deadline it stays.
+export const PLT01Mfa: S = {
+  name: 'PLT-01 · App shell · secure your account (one line, can hide for today)',
+  render: () => liveFrame({ banner: <NoticeBar action={<a className="yx-link" href="#me-security">Set it up</a>} onDismiss={() => {}}>Add a passkey or an authenticator app by 2 Nov 2026. After that, admin pages pause.</NoticeBar> }),
+};
+export const PLT01MfaOverdue: S = {
+  name: 'PLT-01 · App shell · secure your account, overdue (cannot hide)',
+  render: () => liveFrame({ banner: <NoticeBar tone="danger" action={<a className="yx-link" href="#me-security">Set it up</a>}>Admin pages are paused until you add a passkey or an authenticator app.</NoticeBar> }),
+};
 export const PLT01Searching: S = { name: 'PLT-01 · App shell · search waiting for the server', render: () => liveFrame({ paletteOpen: true }) };
 export const PLT01Shell: S = { name: 'PLT-01 · App shell · HR (all entities, period)', render: () => <AppShellScreen persona="hr" /> };
 export const PLT01Employee: S = { name: 'PLT-01 · App shell · employee rail', render: () => <AppShellScreen persona="employee" /> };

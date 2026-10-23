@@ -36,6 +36,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // reminder lead, the most it may run with extensions, and auto-confirmation (off unless the company opts in).
   'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
   'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
+  // PPL-06 (founder 20 Oct 2026): when a raise takes someone above their grade's pay range maximum (Structure › Grades),
+  // the company decides: warn and let the approver decide, cap the new pay at the maximum, or refuse until it is changed.
+  'pay.band.above_max': { label: 'A raise above the pay range maximum', scopes: ['tenant', 'legal_entity'], dated: false, values: ['warn', 'cap', 'block'], default: 'warn' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
   // Auto-confirmation is a system change with no approver (YX-SEC-11), so turning it on is the access admin's.
   'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off', guard: 'access.role.manage' },

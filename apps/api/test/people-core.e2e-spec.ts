@@ -258,14 +258,18 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       expect(page.people).toHaveLength(2);
     });
 
-    it('the org chart has managers and dotted lines; HR may look at another date, others see today', async () => {
+    it('the org chart has managers and dotted lines; a past date for everyone, a future date for HR only', async () => {
       const chart = (await api('arjunA', 'get', '/people/org-chart').expect(200)).body;
       const node = (id: string) => chart.nodes.find((n: { id: string }) => n.id === id);
       expect(node(ids.arjun)).toMatchObject({ managerId: ids.divya, dottedLineManagerIds: [ids.lakshmi], directReports: 1 });
       expect(node(ids.divya)).toMatchObject({ managerId: ids.lakshmi, directReports: 2 });
       expect(node(ids.divya).employeeCode).toBeUndefined();
       noPay(chart);
-      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(403);
+      // Founder 20 Oct 2026: past dates for everyone who may open the chart; future (unannounced changes) for HR only.
+      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(200);
+      await api('arjunA', 'get', `/people/org-chart?asOf=${addDays(today, 20)}`).expect(403);
+      expect((await api('hrA', 'get', `/people/org-chart?asOf=${addDays(today, 20)}`).expect(200)).body.futureDates).toBe(true);
+      expect((await api('arjunA', 'get', '/people/org-chart').expect(200)).body.futureDates).toBe(false);
       const past = (await api('hrA', 'get', `/people/org-chart?asOf=${addDays(today, -20)}`).expect(200)).body;
       expect(past.nodes.find((n: { id: string }) => n.id === ids.arjun).dottedLineManagerIds).toEqual([]);
       expect(past.nodes.some((n: { id: string }) => n.id === ids.kiran)).toBe(true);

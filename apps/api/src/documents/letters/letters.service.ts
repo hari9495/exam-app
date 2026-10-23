@@ -15,8 +15,9 @@ import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, templateFields } from './docx';
-import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest } from './fields';
+import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
+import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
 // LIFE-2.04 … 2.07 letters (P05 §4.3 / §4.4; design §9.3–§9.6), reusing payroll 5a's pieces (D10): the reference
 // number format, the verify code and public page, and the DSC signing adapter with its signed-PDF check.
@@ -30,8 +31,8 @@ import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf }
 
 /** Letters an employee may get for themselves at once (P05 Q8). */
 export const SELF_CERTIFICATES = ['employment_certificate'];
-type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null };
-const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view'] as const;
+type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay };
+const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const REQUEST_TYPE = 'letter.issue';
 export const ESIGN_NOTICE = 'G-19 v1';
@@ -314,12 +315,32 @@ export class LettersService implements OnModuleInit {
     return t;
   }
 
+  /** A template HR picked (PPL-06): active, of this type, for the person's entity or the whole company. */
+  private async chosenTemplate(tx: Tx, org: string, letterType: string, id: string, legalEntityId: string) {
+    const t = await tx.letterTemplate.findFirst({ where: { organizationId: org, id, letterType, status: 'active', OR: [{ legalEntityId }, { legalEntityId: null }] } });
+    if (!t) throw new BadRequestException('That letter template is not active for this legal entity. Choose another in Settings › Letter templates.');
+    return t;
+  }
+
+  /**
+   * PPL-06: an increment letter's preview with figures the caller computed from the change engine (never numbered,
+   * never kept). The caller has already checked the salary grant for the person.
+   */
+  async previewPay(ctx: TenantContext, dto: { personId: string; templateId?: string; pay: LetterPay }) {
+    const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.prepare(tx, c, null, { letterType: 'increment', ...dto });
+      return { ...r, docx: await this.fileBytes(tx, c.organizationId, r.t.fileId) };
+    });
+    return { file: await previewMark(await this.toPdf(fillDocx(p.docx, p.data))), name: 'preview.pdf', contentType: 'application/pdf' };
+  }
+
   /** May the viewer issue letters to this person, with every field class the template uses? */
   private async mayIssue(tx: Tx, c: CompanyContext, v: Viewer, personId: string, fields: string[]) {
     const own = await ownOf(tx, c, v);
     if (v.actingForOther || own.personId === personId) throw new ForbiddenException('You cannot issue letters to yourself.');
     if (!(await reachesPerson(tx, c, v, 'letter.issue', personId, own))) throw new ForbiddenException('You cannot issue letters to this person.');
     if (fields.some((f) => FIELDS[f]?.cls === 'personal') && !(await reachesPerson(tx, c, v, 'employee.personal.view', personId, own))) throw new ForbiddenException('This letter uses personal details you cannot see (YX-DOC-08).');
+    if (fields.some((f) => FIELDS[f]?.cls === 'pay') && !(await reachesPerson(tx, c, v, 'employee.salary.view', personId, own))) throw new ForbiddenException('This letter shows pay, which you cannot see (R1).');
   }
 
   private async signatoryFor(tx: Tx, org: string, legalEntityId: string, signatoryId?: string | null) {
@@ -331,15 +352,15 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; pay?: LetterPay }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
-    const t = await this.activeTemplate(tx, c.organizationId, dto.letterType, base.legalEntityId);
+    const t = dto.templateId ? await this.chosenTemplate(tx, c.organizationId, dto.letterType, dto.templateId, base.legalEntityId) : await this.activeTemplate(tx, c.organizationId, dto.letterType, base.legalEntityId);
     // Null: the system issues it (exit letters, LIFE-4.03; a person's own certificate, LIFE-4.06).
     if (v) await this.mayIssue(tx, c, v, dto.personId, t.fields);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
-    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null });
+    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null });
     const missing = missingFields(t.fields, data);
     if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: `This letter cannot be made yet. Missing: ${missing.map((m) => FIELDS[m].label.toLowerCase()).join(', ')}${missing.some((m) => m.startsWith('signatory')) ? ' (name a signatory for the legal entity in Settings › Letter templates)' : ''}.`, errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
     return { t, data, signer, legalEntityId: base.legalEntityId };
@@ -499,9 +520,15 @@ export class LettersService implements OnModuleInit {
     const users = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const l = await tx.letterIssue.findFirstOrThrow({ where: { organizationId: ctx.organizationId, id } });
       const emp = await tx.employee.findFirst({ where: { organizationId: ctx.organizationId, personId: l.personId, userId: { not: null } }, select: { userId: true } });
-      return emp?.userId ? [emp.userId] : [];
+      const u = emp?.userId ? await tx.user.findFirst({ where: { organizationId: ctx.organizationId, id: emp.userId }, select: { id: true, email: true } }) : null;
+      const company = (await tx.organization.findUnique({ where: { id: ctx.organizationId! }, select: { name: true } }))?.name ?? null;
+      return u ? [{ id: u.id, email: u.email, company, title: l.title.split(':')[0] }] : [];
     });
-    if (users.length) await this.notifications.notifySystem(ctx, users, 'letter.ready', { entityType: 'letter_issue', entityId: id, contextText: 'A letter for you is ready in YukthiX', linkPath: '/yx/me/letters' }, { subject: 'A letter for you is ready', html: '<p>A letter for you is ready. Open YukthiX to read it.</p>' }).catch(() => undefined);
+    // The person's notice, in the YukthiX account-email layout (noticeEmail): the letter's name and where to read it.
+    for (const u of users) {
+      const mail = await noticeEmail({ to: u.email, company: u.company, subject: `Your ${u.title.toLowerCase()} is ready`, heading: `Your ${u.title.toLowerCase()} is ready`, blocks: [text('Open YukthiX to read and download it. It is also kept in My documents and letters.'), button('Open my letters', appUrl('/yx/me/letters'))] });
+      await this.notifications.notifySystem(ctx, [u.id], 'letter.ready', { entityType: 'letter_issue', entityId: id, contextText: `Your ${u.title.toLowerCase()} is ready in YukthiX`, linkPath: '/yx/me/letters' }, { subject: mail.subject, html: mail.html }).catch(() => undefined);
+    }
   }
 
   /** The company's token-signed PDF (payroll's check: valid signature, CCA chain, not revoked, exactly our bytes). */

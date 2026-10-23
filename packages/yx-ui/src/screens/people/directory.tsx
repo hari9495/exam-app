@@ -7,12 +7,14 @@ import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type ColumnState, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
 import { Avatar, Badge } from '../../components/display';
 import { TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { NeedsActionList, type ActionItem } from '../../components/dashboard';
 import { OrgChart, type OrgPerson, type OrgView } from '../../components/orgchart';
+import { exportOrgChart } from '../../components/orgchart-export';
+import { dayKey } from '../../lib/dates';
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { Select } from '../../components/select';
@@ -112,7 +114,7 @@ export interface DirectoryScreenProps {
   persona: Persona;
   rows: WorkforceRow[];
   defaultFilter?: WorkforceFilter;
-  state?: 'ready' | 'loading' | 'error';
+  state?: 'ready' | 'loading' | 'error' | 'no-access';
   defaultQuery?: string;
   defaultFilters?: FilterValue[];
   defaultOpenId?: string;
@@ -252,7 +254,9 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
         <p className="yx-ppl__sub">{personsLine(live ? live.persons ?? { roles: rows.length, people: rows.length } : { roles: rows.length, people: DISTINCT_PERSONS })}</p>
       )}
       {persona !== 'hr' && me && <QuickChips value={quick} onChange={setQuick} />}
-      {state === 'error' ? (
+      {state === 'no-access' ? (
+        <NoAccessState what="the directory" grantedBy="your HR admin" />
+      ) : state === 'error' ? (
         <ErrorState title="We couldn't load the directory" description="Check your connection and retry. Your filters are kept." onRetry={live ? live.onRetry : () => {}} reference={live ? undefined : 'REF-PPL01-7F2A'} />
       ) : (
         <DataTable
@@ -465,11 +469,31 @@ export interface OrgChartScreenProps {
   defaultView?: OrgView;
   persona?: Persona;
   defaultSelected?: string;
+  /** The live app's chart (design audit step 3). Stories leave it out. */
+  live?: LiveOrgChart;
+}
+
+export interface LiveOrgChart {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  companyName: string;
+  /** Company-wide HR may look at another date; others see today. */
+  onAsOn?: (d: Date) => void;
+  meId?: string;
+  truncated: boolean;
+  onOpenPerson?: (id: string) => void;
+  onExportCsv?: () => void;
+  /** Offer the Position view (open job openings shown as vacant positions). */
+  positions?: boolean;
+  /** The latest date "View as on" may show (today for everyone but HR, founder 20 Oct 2026). */
+  maxAsOn?: Date;
 }
 
 // PPL-02
-export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'reporting', persona = 'hr', defaultSelected }: OrgChartScreenProps) {
-  const [asOn, setAsOn] = useState<Date | null>(asOnProp);
+export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'reporting', persona = 'hr', defaultSelected, live }: OrgChartScreenProps) {
+  const [ownAsOn, setOwnAsOn] = useState<Date | null>(asOnProp);
+  const asOn = live ? asOnProp : ownAsOn;
+  const setAsOn = (d: Date | null) => (live ? live.onAsOn?.(d ?? today) : setOwnAsOn(d));
   const past = asOn && daysBetween(asOn, today) > 0;
   const future = asOn && daysBetween(today, asOn) > 0;
   return (
@@ -478,12 +502,14 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
         title="Org chart"
         description="Built from current assignments. Dotted lines show secondary managers; they are not in approval chains."
         actions={
-          <div className="yx-ppl__asof">
-            <label className="yx-ppl__sub" htmlFor="org-asof">
-              View as on
-            </label>
-            <DatePicker id="org-asof" aria-label="View as on" value={asOn} onChange={setAsOn} max={new Date(today.getFullYear() + 1, 11, 31)} />
-          </div>
+          !live || live.onAsOn ? (
+            <div className="yx-ppl__asof">
+              <label className="yx-ppl__sub" htmlFor="org-asof">
+                View as on
+              </label>
+              <DatePicker id="org-asof" aria-label="View as on" value={asOn} onChange={setAsOn} max={live?.maxAsOn ?? new Date(today.getFullYear() + 1, 11, 31)} />
+            </div>
+          ) : undefined
         }
       />
       {past && asOn && (
@@ -492,20 +518,38 @@ export function OrgChartScreen({ people, asOn: asOnProp, today, defaultView = 'r
         </InlineAlert>
       )}
       {future && asOn && (
-        <InlineAlert tone="info" title={`Showing the org as it will be on ${formatDate(asOn)}`}>
-          Scheduled changes up to that date are applied, for example {ORG_PROMOTED.name}'s promotion on 1 Oct 2026.
+        <InlineAlert tone="info" title={`Showing the org as it will be on ${formatDate(asOn)}`} actions={live ? <Button size="sm" onClick={() => setAsOn(today)}>Back to today</Button> : undefined}>
+          {live ? 'Approved changes up to that date are applied.' : `Scheduled changes up to that date are applied, for example ${ORG_PROMOTED.name}'s promotion on 1 Oct 2026.`}
         </InlineAlert>
       )}
-      <OrgChart
-        people={people}
-        defaultView={defaultView}
-        onExport={() => {}}
-        rootLabel="Kaveri Foods Pvt Ltd"
-        defaultSelected={defaultSelected}
-        meId={ME.id}
-        openOnMe={persona !== 'hr'}
-        onRequestHire={persona === 'hr' ? () => {} : undefined}
-      />
+      {live?.truncated && <InlineAlert tone="warning" title="Only the first 5,000 people are shown.">Use the directory to find anyone else.</InlineAlert>}
+      {live?.state === 'loading' ? (
+        <Skeleton height={320} />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the org chart" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live ? (
+        <OrgChart
+          people={people}
+          defaultView={defaultView}
+          views={live.positions ? ['reporting', 'department', 'position'] : ['reporting', 'department']}
+          {...(live.onExportCsv ? { onExport: (f: 'png' | 'pdf' | 'csv') => (f === 'csv' ? live.onExportCsv!() : void exportOrgChart(people.filter((x) => !x.vacant), f, live.companyName, `org-chart-${dayKey(asOn ?? today)}`)), exportFormats: ['png' as const, 'pdf' as const, 'csv' as const] } : {})}
+          rootLabel={live.companyName}
+          meId={live.meId}
+          openOnMe={persona !== 'hr' && Boolean(live.meId)}
+          onOpenPerson={live.onOpenPerson ? (p) => live.onOpenPerson!(p.id) : undefined}
+        />
+      ) : (
+        <OrgChart
+          people={people}
+          defaultView={defaultView}
+          onExport={() => {}}
+          rootLabel="Kaveri Foods Pvt Ltd"
+          defaultSelected={defaultSelected}
+          meId={ME.id}
+          openOnMe={persona !== 'hr'}
+          onRequestHire={persona === 'hr' ? () => {} : undefined}
+        />
+      )}
     </PeopleFrame>
   );
 }
@@ -520,8 +564,30 @@ export interface TeamMember {
   upcoming: string;
 }
 
+/** The live app's team (design audit step 3). Stories leave it out. */
+export interface LiveTeam {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  /** "as of 20 Oct 2026, 9:42 am"; null when there is no attendance to count. */
+  asOf: string | null;
+  onOpenMember?: (id: string) => void;
+  onStartChange?: () => void;
+  approvalsHref: string;
+  onReview: () => void;
+  /** Quick approve of a request that may be decided here (the API checks it again). */
+  onApprove?: (item: ActionItem) => void;
+  /** Remind someone who has not checked in today (once a day; the API checks the reach). */
+  onNudge?: (id: string) => void;
+  /** ats.requisition.raise: "Request a hire" opens the requisition sheet. */
+  onRequestHire?: () => void;
+  onOpenTask: (id: string) => void;
+}
+
+const todayTone = (t: string) => (t.startsWith('Present') ? 'success' : t.startsWith('Late') || t.startsWith('Not checked in') ? 'warning' : t.startsWith('On leave') || t.startsWith('Weekly off') || t.startsWith('Holiday') ? 'neutral' : 'info');
+
 // PPL-08
-export function TeamPage({ members, approvals, tasks, today, state = 'ready' }: { members: TeamMember[]; approvals: ActionItem[]; tasks: { id: string; title: string; due: Date; kind: string }[]; today: Date; state?: 'ready' | 'loading' }) {
+export function TeamPage({ members, approvals, tasks, today, state: ownState = 'ready', live }: { members: TeamMember[]; approvals: ActionItem[]; tasks: { id: string; title: string; due: Date; kind: string }[]; today: Date; state?: 'ready' | 'loading'; live?: LiveTeam }) {
+  const state = live ? live.state : ownState;
   const present = members.filter((m) => m.today.startsWith('Present')).length;
   const away = members.filter((m) => m.today.startsWith('On leave')).length;
   const late = members.filter((m) => m.today.startsWith('Late')).length;
@@ -531,47 +597,80 @@ export function TeamPage({ members, approvals, tasks, today, state = 'ready' }: 
       key: 'today',
       header: 'Today',
       value: (r) => r.today,
-      render: (r) => <Badge tone={r.today.startsWith('Present') ? 'success' : r.today.startsWith('Late') ? 'warning' : r.today.startsWith('On leave') ? 'neutral' : 'info'}>{r.today}</Badge>,
+      render: (r) => (r.today ? <Badge tone={todayTone(r.today)}>{r.today}</Badge> : '—'),
       width: 220,
+      optional: true,
     },
-    { key: 'upcoming', header: 'Upcoming', value: (r) => r.upcoming, width: 240 },
+    { key: 'upcoming', header: 'Upcoming', value: (r) => r.upcoming, width: 240, optional: true },
   ];
+  const description = live
+    ? `${members.length} ${members.length === 1 ? 'person' : 'people'}${live.asOf ? ` · ${present} present, ${away} on leave, ${late} late as of ${live.asOf}` : ''}`
+    : `${members.length} people · ${present} present, ${away} on leave, ${late} late as of ${formatDate(today)}, 9:42 am`;
   return (
     <PeopleFrame active="My team" persona="mgr">
       <PageHeader
         title="My team"
-        description={`${members.length} people · ${present} present, ${away} on leave, ${late} late as of ${formatDate(today)}, 9:42 am`}
+        description={description}
         actions={
-          <>
-            <Button icon={UserPlus}>Request a hire</Button>
-            <Button variant="primary">Start a change</Button>
-          </>
+          live ? (
+            <>
+              {live.onRequestHire && (
+                <Button icon={UserPlus} onClick={live.onRequestHire}>
+                  Request a hire
+                </Button>
+              )}
+              {live.onStartChange && members.length > 0 && (
+                <Button variant="primary" onClick={live.onStartChange}>
+                  Start a change
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button icon={UserPlus}>Request a hire</Button>
+              <Button variant="primary">Start a change</Button>
+            </>
+          )
         }
       />
-      {members.length === 0 && state === 'ready' ? (
-        <EmptyState title="No one reports to you yet" description="When HR assigns people to you, you'll see their day, requests and tasks here." help={<a href="#help">How reporting lines are set</a>} />
+      {state === 'error' && live ? (
+        <ErrorState title="We couldn't load your team" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : members.length === 0 && state === 'ready' ? (
+        <EmptyState title="No one reports to you yet" description="When HR assigns people to you, you'll see their day, requests and tasks here." help={live ? undefined : <a href="#help">How reporting lines are set</a>} />
       ) : (
         <div className="yx-ppl__split">
           <div className="yx-ppl__main">
-            <DataTable label="Team members" columns={cols} rows={members} getRowId={(r) => r.id} state={state} rowButtons={() => <Button size="sm">Nudge</Button>} />
-            <Card title="Onboarding and exit tasks">
-              <ul className="yx-ppl__checklist" aria-label="Tasks">
-                {tasks.map((t) => (
-                  <li key={t.id} className="yx-ppl__check-row">
-                    <div className="yx-ppl__check-main">
-                      <span className="yx-ppl__check-title">{t.title}</span>
-                      <Text size="sm" tone={daysBetween(t.due, today) > 0 ? 'danger' : 'secondary'}>
-                        {t.kind} · due {formatDate(t.due)}
-                      </Text>
-                    </div>
-                    <Button size="sm">Open</Button>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            <DataTable
+              label="Team members"
+              columns={cols}
+              rows={members}
+              getRowId={(r) => r.id}
+              state={state === 'loading' ? 'loading' : 'ready'}
+              {...(live?.onOpenMember ? { onRowClick: (r: TeamMember) => live.onOpenMember!(r.id) } : {})}
+              rowButtons={live ? (r: TeamMember) => (live.onNudge && r.today.startsWith('Not checked in') ? <Button size="sm" onClick={() => live.onNudge!(r.id)}>Nudge</Button> : null) : () => <Button size="sm">Nudge</Button>}
+            />
+            {(!live || tasks.length > 0) && (
+              <Card title="Onboarding and exit tasks">
+                <ul className="yx-ppl__checklist" aria-label="Tasks">
+                  {tasks.map((t) => (
+                    <li key={t.id} className="yx-ppl__check-row">
+                      <div className="yx-ppl__check-main">
+                        <span className="yx-ppl__check-title">{t.title}</span>
+                        <Text size="sm" tone={daysBetween(t.due, today) > 0 ? 'danger' : 'secondary'}>
+                          {t.kind} · due {formatDate(t.due)}
+                        </Text>
+                      </div>
+                      <Button size="sm" onClick={live ? () => live.onOpenTask(t.id) : undefined}>
+                        Open
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
           </div>
           <div className="yx-ppl__stack">
-            <NeedsActionList items={approvals} viewAllHref="#approvals" today={today} loading={state === 'loading'} title="Waiting for you" onApprove={() => {}} onReview={() => {}} />
+            <NeedsActionList items={approvals} viewAllHref={live?.approvalsHref ?? '#approvals'} today={today} loading={state === 'loading'} title="Waiting for you" onApprove={live ? live.onApprove : () => {}} onReview={live ? live.onReview : () => {}} />
           </div>
         </div>
       )}

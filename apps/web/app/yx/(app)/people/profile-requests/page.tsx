@@ -23,7 +23,7 @@ export default function YxProfileRequestsPage() {
       canDecide={perms.has('employee.identity.approve')}
       onApprove={async (requestId, overrideReason) => void (await write('POST', `/profile-requests/${id(requestId)}/approve`, overrideReason ? { overrideReason } : {}))}
       onReject={async (requestId, reason) => void (await write('POST', `/profile-requests/${id(requestId)}/reject`, { reason }))}
-      onOpenProfile={(employeeId) => router.push(`/yx/people/profile?person=${id(employeeId)}`)}
+      onOpenProfile={(employeeId) => router.push(`/yx/people/directory/${id(employeeId)}`)}
     />
   );
 }

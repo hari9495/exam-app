@@ -8,3 +8,40 @@ export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, type Live
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
+// People › person record (design audit step 3): PPL-03 with the live record.
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
+export type { FieldRow, JobChange } from '../people/people-data';
+// PPL-02 Org chart and PPL-08 My team with live data.
+export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
+export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';
+// PPL-08 "Request a hire": the designed HIR-02 requisition sheet.
+export { RequisitionSheet, type LiveRequisitionSheet } from '../hiring/hiring-plan';
+export type { PlanLine } from '../hiring/hiring-logic';
+// Onboarding (PPL-11 to PPL-17, PPL-41) with live data.
+export { OnboardingBoard, joinerCard, type JoinerCard, type LiveBoard } from '../people/onboarding';
+export type { KanbanColumn } from '../../components/kanban';
+export { ReadyToOnboardQueue, type LiveReady, type ReadyRow } from '../people/onboarding';
+export { PreboardingBatches, type BatchRow, type LiveBatches } from '../people/onboarding';
+export { ProbationQueue, type LiveProbation, type ProbRow, type ProbationDraft, type ProbationOutcome } from '../people/onboarding';
+export { JourneyRecord, type LiveJourney } from '../people/onboarding';
+export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
+export { BulkChangesWizard, ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
+export type { IncrementInput, IncrementResult, LiveIncrement } from '../people/increment';
+export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
+export { ExitCaseWorkspace } from '../people/exits';
+export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
+export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
+export { VrsScheme, type LiveVrs } from '../people/relations';
+export { UpcomingExits } from '../people/upcoming';
+export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
+export { IssuedLettersRegister, type LiveLetters } from '../people/documents';
+export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
+// People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
+export { EmployeeImportWizard } from '../people/changes';
+export type { ImportFile, ImportInput, ImportResult, LiveImport } from '../people/import';
+export { BuddyPanel, type LiveBuddies } from '../people/onboarding';
+export { SuccessionScreen, type LiveSuccession } from '../people/assets';
+export { UnionRegister, type LiveUnionRegister } from '../people/relations';
+// People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
+export { RestructureWizard } from '../people/changes';
+export { RestructureRecord, type ContinuityItemData, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
