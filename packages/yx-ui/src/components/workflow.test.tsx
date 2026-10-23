@@ -151,7 +151,7 @@ const current = () => screen.getByRole('button', { current: 'step' });
 describe('Stepper', () => {
   // Founder 24 Oct 2026: a visited step with work left says so ("Open · 4 of 6 signed off"), never "Done".
   it('an open step shows its note, not Done, after it was passed', () => {
-    render(<Stepper title="Exit" steps={[{ id: 'a', title: 'Approval', content: 'A' }, { id: 'b', title: 'Clearance', status: 'open', statusNote: '4 of 6 signed off', content: 'B' }, { id: 'c', title: 'Interview', content: 'C' }]} defaultCurrent="c" />);
+    render(<Stepper title="Exit" finishLabel="Finish" steps={[{ id: 'a', title: 'Approval', content: 'A' }, { id: 'b', title: 'Clearance', status: 'open', statusNote: '4 of 6 signed off', content: 'B' }, { id: 'c', title: 'Interview', content: 'C' }]} defaultCurrent="c" />);
     expect(screen.getByText(/Open · 4 of 6 signed off/)).toBeInTheDocument();
   });
   it('Back keeps typed data', async () => {
