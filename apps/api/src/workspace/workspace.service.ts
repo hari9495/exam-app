@@ -410,7 +410,7 @@ export class WorkspaceService {
   }
 
   /** Counts for the side menu, each only for someone who may open the page it sits on. */
-  async counts(ctx: TenantContext, user: RequestUser): Promise<Record<string, number>> {
+  async counts(ctx: TenantContext, user: RequestUser, entityId: string | null = null): Promise<Record<string, number>> {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
@@ -440,6 +440,7 @@ export class WorkspaceService {
       if (hrWide || mine) {
         out.probationsDue = await one(Prisma.sql`SELECT count(*) AS n FROM probations pr
           JOIN employments m ON m.organization_id = pr.organization_id AND m.id = pr.employment_id AND m.exited_on IS NULL
+            ${entityId ? Prisma.sql`AND m.legal_entity_id = ${entityId}::uuid` : Prisma.empty}
           JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
             AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
           WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date

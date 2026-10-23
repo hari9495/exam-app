@@ -24,6 +24,13 @@ export class WorkspaceHomeDto {
   legalEntityId?: string;
 }
 
+export class WorkspaceCountsDto {
+  /** The top bar's company: counts of lists that follow it (Probation) count only its people. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
 // The app frame's data (design audit step 1). No permission key of its own: each section of the search and each
 // count applies the rule of the page it links to, inside the company's RLS context.
 @Controller('workspace')
@@ -42,7 +49,7 @@ export class WorkspaceController {
   }
 
   @Get('counts')
-  counts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.workspace.counts(ctx, req.user as RequestUser);
+  counts(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: WorkspaceCountsDto) {
+    return this.workspace.counts(ctx, req.user as RequestUser, dto.legalEntityId ?? null);
   }
 }

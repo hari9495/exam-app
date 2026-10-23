@@ -1145,6 +1145,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
   const action = (r: Row) => {
     if (live) {
       if (r.state === 'waiting') return <Button size="sm" variant="review" onClick={live.onOpenApproval}>Review</Button>;
+      if (mgr && r.state === 'escalated') return <Text size="sm" tone="secondary">HR decides</Text>;
       if (!mayAct(r)) return null;
       return <Button size="sm" variant="review" onClick={() => openRow(r)}>{r.live?.canReview ? 'Review' : 'Decide'}</Button>;
     }
