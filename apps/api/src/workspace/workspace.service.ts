@@ -445,6 +445,7 @@ export class WorkspaceService {
           JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
             AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
           WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
+            AND NOT EXISTS (SELECT 1 FROM employee_changes ch WHERE ch.organization_id = pr.organization_id AND ch.employment_id = pr.employment_id AND ch.change_type = 'confirmation' AND ch.status = 'pending')
             ${mine ? Prisma.sql`AND pr.escalated_on IS NULL AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
               AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
       }
