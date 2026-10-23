@@ -32,6 +32,8 @@
   color: var(--yx-color-text);
 }
 .yx-alert > .yx-icon { margin-top: var(--yx-space-half); color: var(--yx-color-info-text); }
+/* A link inside a message looks like a link (founder 24 Oct 2026: "Answer it" read as plain text). */
+.yx-alert__text a[href] { color: var(--yx-color-link); text-decoration: underline; }
 .yx-alert[data-tone="success"] { border-color: var(--yx-color-success-border); background: var(--yx-color-success-bg); }
 .yx-alert[data-tone="success"] > .yx-icon { color: var(--yx-color-success-text); }
 .yx-alert[data-tone="warning"] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }
