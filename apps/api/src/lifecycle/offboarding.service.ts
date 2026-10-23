@@ -115,6 +115,16 @@ export class OffboardingService {
         data: { status: dto.action === 'clear' ? 'cleared' : 'waived', note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
       });
       if (!n.count) throw new ConflictException('Someone else signed this off. Reload it.');
+      // An asset item cleared with nothing owed means the asset came back: record the return as "Take back" does
+      // (founder 23 Oct 2026: the Assets tab still showed the phone with the leaver).
+      if (i.assetAssignmentId && dto.action === 'clear' && !dto.recoveryAmount) {
+        const x = await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId, returnedOn: null } });
+        if (x) {
+          await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(todayIst()), returnCondition: (dto.note?.trim() || 'Returned at clearance').slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
+          await tx.asset.update({ where: { id: x.assetId }, data: { status: 'in_stock', version: { increment: 1 } } });
+          await freezeSettlementIn(tx, c, k.id, 'asset_returned');
+        }
+      }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
       if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);

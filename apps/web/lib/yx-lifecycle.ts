@@ -24,6 +24,8 @@ export function useLifeWrite() {
   return async <T = unknown>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(path, { method, ...(body === undefined ? {} : body instanceof FormData ? { body } : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['lifecycle'] });
+    // The side-menu counts (Clearance, Exit cases, Documents…) follow at once, not a minute later.
+    void queryClient.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     return result as T;
   };
 }

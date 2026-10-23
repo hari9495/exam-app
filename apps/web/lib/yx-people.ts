@@ -34,7 +34,10 @@ export function usePeopleWrite() {
   const queryClient = useQueryClient();
   return async <T = unknown>(method: 'POST' | 'PUT' | 'GET' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(`/people${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
-    if (method !== 'GET') await queryClient.invalidateQueries({ queryKey: ['yx', 'people'] });
+    if (method !== 'GET') {
+      await queryClient.invalidateQueries({ queryKey: ['yx', 'people'] });
+      void queryClient.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }); // the side-menu counts follow at once
+    }
     return result as T;
   };
 }

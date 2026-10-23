@@ -190,7 +190,12 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', version: handover.version }).expect(404);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'waive', version: handover.version }).expect(400);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', note: 'All files moved', version: handover.version }).expect(200);
-    await api('hr', 'post', `/lifecycle/assets/${ids.laptop}/return`).send({ returnedOn: today, condition: 'Good', status: 'in_stock' }).expect(200);
+    // Signing off the laptop's clearance item (nothing owed) records the return too (founder 23 Oct 2026).
+    const k0 = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
+    const lt = k0.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));
+    await api('hr', 'post', `/lifecycle/clearance/${lt.id}/sign-off`).send({ action: 'clear', note: 'Handed back, good', version: lt.version }).expect(200);
+    expect(await inA((tx) => tx.asset.findFirstOrThrow({ where: { id: ids.laptop } }))).toMatchObject({ status: 'in_stock' });
+    expect(await inA((tx) => tx.assetAssignment.findFirst({ where: { assetId: ids.laptop, returnedOn: null } }))).toBeNull();
     await api('hr', 'post', `/lifecycle/assets/${ids.phone}/return`).send({ returnedOn: today, condition: 'Not handed back', status: 'lost' }).expect(200);
     let k = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     const laptopItem = k.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));
