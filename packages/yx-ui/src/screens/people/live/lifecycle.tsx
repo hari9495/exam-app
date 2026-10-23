@@ -433,7 +433,7 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
       )}
       {ask.kind === 'upload' && (
         <FormField id="tk-file" label="File" required>
-          <FileUpload id="tk-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
+          <FileUpload id="tk-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
         </FormField>
       )}
       {ask.kind === 'form' && t.form && <TaskForm form={t.form} answers={answers} onChange={setAnswers} errors={formErrors} />}

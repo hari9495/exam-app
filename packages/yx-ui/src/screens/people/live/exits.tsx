@@ -907,7 +907,7 @@ export function MyDocumentsScreen(p: MyDocumentsScreenProps) {
           }}
         >
           <FormField id="md-file" label="File" required>
-            <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
+            <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
           </FormField>
         </ConfirmDialog>
       )}
