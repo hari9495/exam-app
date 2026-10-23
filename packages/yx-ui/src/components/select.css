@@ -34,6 +34,8 @@
 }
 .yx-select[data-size="sm"] { height: var(--yx-control-sm); }
 .yx-select:hover { border-color: var(--yx-color-text-muted); }
+/* In a drawer or dialog the form is the panel: a choice lines up with the text boxes beside it. */
+.yx-drawer .yx-select, .yx-dialog .yx-select { max-width: none; }
 .yx-select:focus-visible, .yx-select[aria-expanded="true"] { border-color: var(--yx-color-focus-ring); outline: var(--yx-border-width) solid var(--yx-color-focus-ring); }
 .yx-select[data-invalid] { border-color: var(--yx-input-border-error); }
 .yx-select:disabled { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); color: var(--yx-color-text-disabled); cursor: not-allowed; }
