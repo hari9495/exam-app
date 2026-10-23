@@ -979,7 +979,9 @@ export class EmployeeHistoryService {
     push('Dotted-line managers (visibility only)', dotted(da), dotted(db));
     const ccs = (d: typeof da) => d?.costCentres.map((x) => `${x.code} ${x.percent}%`).join(', ') || null;
     push('Cost centres', ccs(da), ccs(db));
-    push('Employment status', b.status?.status, a.status?.status);
+    // Shown as the status badges read: "Probation → Confirmed", "Notice".
+    const word = (x: string | undefined) => (x ? x.charAt(0).toUpperCase() + x.slice(1) : x);
+    push('Employment status', word(b.status?.status), word(a.status?.status));
     const money = (p: CompensationValues | null) => (p ? `${p.currency} ${p.annualCtc}` : null);
     const pay = (money(b.compensation) ?? null) !== (money(a.compensation) ?? null) ? [{ fact: 'Annual CTC', from: money(b.compensation), to: money(a.compensation) }] : [];
     return { facts, pay };
