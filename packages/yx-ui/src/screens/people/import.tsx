@@ -327,7 +327,7 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
           {
             id: 'validate',
             title: 'Check rows',
-            summary: result ? `${ready.length} rows ready · ${bad.length} rows skipped` : 'Not checked yet',
+            summary: result ? `${ready.length} ${ready.length === 1 ? 'row' : 'rows'} ready · ${bad.length} ${bad.length === 1 ? 'row' : 'rows'} skipped` : 'Not checked yet',
             content: failed ? (
               <InlineAlert tone="danger" title="The rows were not checked" actions={<Button size="sm" onClick={() => void check()}>Try again</Button>}>
                 {failed}
