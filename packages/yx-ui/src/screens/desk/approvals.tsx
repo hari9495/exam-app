@@ -7,9 +7,13 @@ import { TextArea } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { Dialog } from '../../components/overlay';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { DeskPage, when } from './desk-kit';
 import type { ApprovalHistory, ApprovalTask, Delegation, PickKind, PickOption } from './esm-types';
+
+/** A request's plain dates (2026-11-22) read as everywhere else: 22 Nov 2026. */
+const shown = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(new Date(`${v}T00:00:00`)) : v);
 import { LivePicker } from './service-form';
 import type { LoadState } from './types';
 
@@ -95,7 +99,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                         {t.summary.map((s) => (
                           <div key={s.label}>
                             <dt>{s.label}</dt>
-                            <dd>{s.value}</dd>
+                            <dd>{shown(s.value)}</dd>
                           </div>
                         ))}
                       </dl>
