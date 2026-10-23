@@ -213,6 +213,9 @@ describe('Lifecycle batch 6c', () => {
   });
 
   it('exit interview: the answers stay HR-only; the manager learns only that it is done (API and raw query)', async () => {
+    // The leaver was told it is ready when the exit was accepted (founder 24 Oct 2026).
+    await automation.dispatch().catch(() => undefined);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.ravi, type: 'exit.interview.sent' } }))).toBeGreaterThan(0);
     const form = (await api('ravi', 'get', '/lifecycle/me/exit-interview').expect(200)).body;
     expect(form.status).toBe('sent');
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager' } }).expect(400);

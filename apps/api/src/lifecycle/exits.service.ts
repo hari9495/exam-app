@@ -693,6 +693,16 @@ export class ExitsService implements OnModuleInit {
       await this.notifications
         .notifySystem(ctx, users, 'exit.clearance.assigned', { entityType: 'exit_case', entityId: exitCaseId, contextText: who ? `Clearance sign-off for ${who}, who is leaving` : 'A leaver needs your clearance sign-off', linkPath: '/yx/people/clearance' }, { subject: 'A clearance sign-off is waiting for you', html: '<p>A clearance item for someone leaving is waiting for you in YukthiX.</p>' })
         .catch(() => undefined);
+    // The leaver is told their exit interview is ready (founder 24 Oct 2026: it was only reachable from Me > Resign).
+    const leaver = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const iv = await tx.exitInterview.findFirst({ where: { organizationId: ctx.organizationId, exitCaseId, status: 'sent' }, select: { id: true } });
+      const k = iv && (await tx.exitCase.findFirst({ where: { organizationId: ctx.organizationId, id: exitCaseId }, select: { employeeId: true } }));
+      return k ? (await tx.employee.findFirst({ where: { organizationId: ctx.organizationId, id: k.employeeId }, select: { userId: true } }))?.userId ?? null : null;
+    });
+    if (leaver)
+      await this.notifications
+        .notifySystem(ctx, [leaver], 'exit.interview.sent', { entityType: 'exit_case', entityId: exitCaseId, contextText: 'Your exit interview is ready. Only HR reads your answers.', linkPath: '/yx/me/exit-interview' }, { subject: 'Your exit interview is ready', html: '<p>Your exit interview is ready in YukthiX. Only HR reads your answers.</p>' })
+        .catch(() => undefined);
   }
 
   // ------------------------------------------------------------------------------------------ notice changes (LIFE-3.03)
