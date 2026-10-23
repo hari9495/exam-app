@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent,  } from 'react';
+import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
@@ -7,6 +7,7 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert,  } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { FileUpload } from '../../../components/upload';
 import { NumberField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -154,9 +155,7 @@ export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => voi
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const { busy, error, run } = useRun();
-  const read = async (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const read = async (f: File) => {
     setCsv(await f.text());
     setPreview(null);
   };
@@ -193,7 +192,7 @@ export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => voi
         {`Columns: ${IMPORT_HEADER}. Dates as YYYY-MM-DD; the legal entity by its short name, the rest by code or name; the manager by employee code.`}
       </Text>
       <FormField id="imp-file" label="CSV file">
-        <input id="imp-file" className="yx-input" type="file" accept=".csv,text/csv" onChange={(e) => void read(e)} />
+        <FileUpload id="imp-file" upload={read} accept={['.csv']} multiple={false} maxSize={2 * 1024 * 1024} />
       </FormField>
       <FormField id="imp-text" label="Or paste the rows" optional>
         <TextArea
@@ -434,7 +433,7 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
       )}
       {ask.kind === 'upload' && (
         <FormField id="tk-file" label="File" required helper="PDF, JPG or PNG.">
-          <input id="tk-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <FileUpload id="tk-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)} />
         </FormField>
       )}
       {ask.kind === 'form' && t.form && <TaskForm form={t.form} answers={answers} onChange={setAnswers} errors={formErrors} />}
