@@ -275,6 +275,8 @@ export class FnfService implements OnModuleInit {
       : null;
     const net = slip?.net ?? null;
     const today = todayIst();
+    // Each line says whether it is paid or recovered (a recovery is never shown as "To pay").
+    const kinds = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: [...new Set(items.map((i) => i.componentCode))] } }, select: { code: true, kind: true } })).map((c) => [c.code.toLowerCase(), c.kind]));
     return {
       id: f.id,
       employeeId: f.employeeId,
@@ -288,7 +290,7 @@ export class FnfService implements OnModuleInit {
       runStatus: run?.status ?? null,
       secondRunId: f.secondRunId,
       net: net?.toFixed(2) ?? null,
-      items: items.map((i) => ({ id: i.id, componentCode: i.componentCode, amount: i.amount.toFixed(2), label: i.label, held: i.holdReason, inRun: i.runId, byPayroll: i.createdBy !== SYSTEM })),
+      items: items.map((i) => ({ id: i.id, componentCode: i.componentCode, kind: kinds.get(i.componentCode.toLowerCase()) === 'deduction' ? ('deduction' as const) : ('earning' as const), amount: i.amount.toFixed(2), label: i.label, held: i.holdReason, inRun: i.runId, byPayroll: i.createdBy !== SYSTEM })),
       // Death in service: who is paid and how much each gets of the net (accounts shown by their last four digits only).
       payees: ((f.payees as Payee[]) ?? []).map((p) => ({
         kind: p.kind,
