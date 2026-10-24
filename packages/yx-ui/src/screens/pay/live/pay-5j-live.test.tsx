@@ -147,6 +147,17 @@ describe('batch 5j payroll screens', () => {
     await waitFor(() => expect(onFiled).toHaveBeenCalledWith('fl1', expect.objectContaining({ phrase: 'FILED PF 2026-09' })));
   });
 
+  // Founder 25 Oct 2026: a recovery is money the leaver owes, never "To pay".
+  it('F&F: a recovery line shows as a deduction to recover', async () => {
+    const rec = { ...FNF[0], items: [{ id: 'r1', componentCode: 'fnf_recovery', kind: 'deduction' as const, amount: '4500.00', label: 'Laptop: Damaged', held: null, inRun: null, byPayroll: false }] };
+    render(<FnfScreen state="ready" settlements={[rec]} nameOf={(id) => PEOPLE.find((x) => x.employeeId === id)!.name} onOpenRun={vi.fn()} onHold={ok} onAdd={ok} onWaiveNotice={ok} onSecondRun={async () => ({ runId: 'r10' })} />);
+    await ue.click(screen.getByRole('button', { name: 'Open the settlement of Sridhar Fernandes' }));
+    const lines = screen.getByRole('table', { name: 'Settlement lines' });
+    expect(lines).toHaveTextContent(/−₹4,500/);
+    expect(lines).toHaveTextContent('To recover');
+    expect(lines).not.toHaveTextContent('To pay');
+  });
+
   it('F&F: a held line shows why, and is released for the second run', async () => {
     const onHold = vi.fn(async () => ({}));
     render(<FnfScreen state="ready" settlements={FNF} nameOf={(id) => PEOPLE.find((x) => x.employeeId === id)!.name} onOpenRun={vi.fn()} onHold={onHold} onAdd={ok} onWaiveNotice={ok} onSecondRun={async () => ({ runId: 'r10' })} />);

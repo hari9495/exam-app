@@ -234,6 +234,8 @@ export interface TdsReturnRow {
 export interface FnfItem {
   id: string;
   componentCode: string;
+  /** A deduction (a recovery) is money the leaver owes. */
+  kind?: 'earning' | 'deduction';
   amount: string;
   label: string | null;
   held: string | null;

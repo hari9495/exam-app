@@ -370,7 +370,7 @@ export class OffboardingService {
         const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
         if (!items.length) throw new BadRequestException('A recovery goes on a leaver’s F&F; this person is not leaving.');
         for (const i of items) {
-          await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `${lost ? 'Not returned' : `Returned on ${dto.returnedOn}`}: ${dto.condition.trim()}`.slice(0, 1000), recoveryAmount: new Prisma.Decimal(recovery), recoveryReason: `${lost ? 'Not returned' : 'Damage'}: ${dto.condition.trim()}`.slice(0, 300), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });
+          await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `${lost ? 'Not returned' : `Returned on ${dto.returnedOn}`}: ${dto.condition.trim()}`.slice(0, 1000), recoveryAmount: new Prisma.Decimal(recovery), recoveryReason: (lost ? `Not returned: ${dto.condition.trim()}` : dto.condition.trim()).slice(0, 300), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });
           await freezeSettlementIn(tx, c, i.exitCaseId, 'recovery');
           await this.maybeClearedIn(tx, c, i.exitCaseId);
         }

@@ -565,8 +565,9 @@ function FnfDrawer({ s, onClose, ...p }: FnfScreenProps & { s: FnfSettlementView
                 {s.items.map((i) => (
                   <tr key={i.id}>
                     <th scope="row">{i.label ?? i.componentCode}</th>
-                    <td>{rupees(i.amount)}</td>
-                    <td>{i.held ? <Badge tone="warning">Held: {i.held}</Badge> : <Badge tone="success">To pay</Badge>}</td>
+                    {/* A recovery is money the leaver owes: shown as a deduction, never "To pay" (founder 25 Oct 2026). */}
+                    <td>{i.kind === 'deduction' ? `−${rupees(i.amount)}` : rupees(i.amount)}</td>
+                    <td>{i.held ? <Badge tone="warning">Held: {i.held}</Badge> : i.kind === 'deduction' ? <Badge tone="neutral">To recover</Badge> : <Badge tone="success">To pay</Badge>}</td>
                     <td>
                       {editable &&
                         (i.held ? (
