@@ -401,7 +401,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
   const [failed, setFailed] = useState<string | null>(null);
   const { toast } = useToast();
   const cols: TableColumn<LiveLetter>[] = [
-    { key: 'ref', header: 'Reference', type: 'id', value: (r) => r.referenceNo ?? '', width: 190 },
+    { key: 'ref', header: 'Reference', type: 'id', value: (r) => r.referenceNo ?? '', width: 250 },
     { key: 'type', header: 'Letter', value: (r) => r.title.split(': ')[0], groupable: true, width: 190 },
     { key: 'to', header: 'To', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200 },
     { key: 'issued', header: 'Issued', type: 'date', value: (r) => (r.issuedAt ? new Date(r.issuedAt) : null), width: 130 },
