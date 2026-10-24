@@ -55,7 +55,7 @@ export default function YxAssetsPage() {
         },
         onReturn: async (a, x) => {
           await write('POST', `/lifecycle/assets/${id(a.id)}/return`, x);
-          toast({ tone: 'success', title: x.status === 'lost' ? `${a.name} (${a.tag}) marked not returned by ${a.holder?.name ?? 'the holder'}` : `${a.name} (${a.tag}) returned by ${a.holder?.name ?? 'the holder'}` });
+          toast({ tone: 'success', title: x.status === 'lost' ? `${a.name} (${a.tag}) marked not returned by ${a.holder?.name ?? 'the holder'}` : `${a.name} (${a.tag}) returned by ${a.holder?.name ?? 'the holder'}`, ...(x.recoveryAmount ? { description: `₹${Number(x.recoveryAmount).toLocaleString('en-IN')} goes on their F&F as a recovery.` } : {}) });
         },
         children: adding && (
           <AddAssetDrawer

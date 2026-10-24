@@ -196,14 +196,13 @@ describe('Lifecycle batch 6c', () => {
     await api('hr', 'post', `/lifecycle/clearance/${lt.id}/sign-off`).send({ action: 'clear', note: 'Handed back, good', version: lt.version }).expect(200);
     expect(await inA((tx) => tx.asset.findFirstOrThrow({ where: { id: ids.laptop } }))).toMatchObject({ status: 'in_stock' });
     expect(await inA((tx) => tx.assetAssignment.findFirst({ where: { assetId: ids.laptop, returnedOn: null } }))).toBeNull();
-    await api('hr', 'post', `/lifecycle/assets/${ids.phone}/return`).send({ returnedOn: today, condition: 'Not handed back', status: 'lost' }).expect(200);
+    // Not returned, charged in the same form (founder 24 Oct 2026): the recovery goes on the F&F and signs the item off.
+    await api('hr', 'post', `/lifecycle/assets/${ids.phone}/return`).send({ returnedOn: today, condition: 'Not handed back', status: 'lost', recoveryAmount: '15000.00' }).expect(200);
     let k = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     const laptopItem = k.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));
     const phoneItem = k.clearance.find((i: { title: string }) => i.title.includes('Galaxy'));
     expect(laptopItem.status).toBe('cleared');
-    expect(phoneItem.status).toBe('open');
-    await api('hr', 'post', `/lifecycle/clearance/${phoneItem.id}/sign-off`).send({ action: 'clear', recoveryAmount: '15000.00', version: phoneItem.version }).expect(400);
-    await api('hr', 'post', `/lifecycle/clearance/${phoneItem.id}/sign-off`).send({ action: 'clear', recoveryAmount: '15000.00', recoveryReason: 'Phone not returned (book value)', version: phoneItem.version }).expect(200);
+    expect(phoneItem).toMatchObject({ status: 'cleared', recoveryAmount: '15000.00' });
     for (const i of k.clearance.filter((x: { status: string; department: string }) => x.status === 'open' && x.department !== 'asset' && x.department !== 'manager_handover')) {
       await api('hr', 'post', `/lifecycle/clearance/${i.id}/sign-off`).send({ action: 'clear', version: i.version }).expect(200);
     }

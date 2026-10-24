@@ -453,7 +453,8 @@ export interface AssetRow {
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
   version: number;
   canManage: boolean;
-  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean } | null;
+  /** leavingOn: the holder's last working day when they are leaving (the return can then carry an F&F recovery). */
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean; leavingOn?: string | null } | null;
 }
 export interface MyAsset {
   assignmentId: string;
