@@ -560,7 +560,7 @@ function FnfDrawer({ s, onClose, ...p }: FnfScreenProps & { s: FnfSettlementView
         <section aria-label="Settlement lines">
           <h3 className="yx-pay-section-title">Lines</h3>
           {s.items.length ? (
-            <table className="yx-tim-table" aria-label="Settlement lines">
+            <table className="yx-pay-table" aria-label="Settlement lines">
               <tbody>
                 {s.items.map((i) => (
                   <tr key={i.id}>
