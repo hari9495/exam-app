@@ -25,7 +25,8 @@ import type { AssetRow } from './live/types';
 
 /* ================================================================== PPL-25 asset register */
 
-export type Asset = (typeof ASSETS)[number];
+// cost: empty when the company did not record it (shown as "—", never ₹0).
+export type Asset = Omit<(typeof ASSETS)[number], 'cost'> & { cost: number | null };
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const FIELDS: FilterFieldDef[] = [
   { key: 'type', label: 'Type', type: 'multi', options: opt(['Laptop', 'Tablet', 'Phone', 'Two-wheeler']) },

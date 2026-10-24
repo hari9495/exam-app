@@ -34,7 +34,7 @@ export default function YxAssetsPage() {
     location: where(a),
     status: STATUS[a.status],
     holder: a.holder?.name ?? '',
-    cost: a.cost ? Number(a.cost) : 0,
+    cost: a.cost ? Number(a.cost) : null,
     purchased: new Date(`${a.purchasedOn ?? today}T00:00:00`),
     live: a,
   }));
