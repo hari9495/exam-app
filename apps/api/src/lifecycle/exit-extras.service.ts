@@ -13,6 +13,7 @@ import { holdersOf } from '../time/time-core';
 import { ExitsService } from './exits.service';
 import { addDaysIso } from './exit-rules';
 import { freezeSettlementIn } from './settlement';
+import { withPayScope } from '../payroll/pay-access';
 
 // Lifecycle batch 6e, the exit special cases (M01 §3.7; design §16.5):
 //   death         (LIFE-5.04, YX-LC-16) the payees: the nominations, else legal heirs with a succession certificate;
@@ -189,7 +190,9 @@ export class ExitExtrasService {
       const t = await this.timelineOr404(tx, c, v, id);
       if (t.status !== 'running' || t.version !== dto.version) throw new ConflictException('This timeline is not running or changed meanwhile.');
       await tx.abscondingTimeline.update({ where: { id }, data: { status: 'stopped', stoppedReason: dto.reason.trim(), version: { increment: 1 } } });
-      // The salary hold is released with the M03 hold, when payroll is built; the attendance fix stays with M02.
+      // The person is back: the absconding salary hold is released (the held pay goes in the next payment).
+      const job = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: t.employmentId }, select: { legalEntityId: true } });
+      await withPayScope(tx, [job.legalEntityId], () => tx.payrollWithhold.updateMany({ where: { organizationId: c.organizationId, employmentId: t.employmentId, reasonCode: 'absconding', trigger: 'exit', releasedAt: null }, data: { releasedAt: new Date(), releasedBy: c.userId ?? null } }));
       await audit(tx, c, 'absconding.stopped', 'employee', t.employeeId, { timelineId: id, reason: dto.reason.trim() });
       return { ok: true };
     });
@@ -242,7 +245,12 @@ export class ExitExtrasService {
       for (const s of steps) {
         if (s.doneAt || s.dueOn > today) continue;
         if (s.key === 'hold') {
-          s.note = 'Salary hold: payroll holds come with M03. HR and the manager were told.';
+          // A real payroll hold (founder 25 Oct 2026: the note said holds would come later, but the salary was still paid).
+          await withPayScope(tx, [e.legalEntityId], async () => {
+            const open = await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: e.id, releasedAt: null }, select: { id: true } });
+            if (!open) await tx.payrollWithhold.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}` } });
+          });
+          s.note = `Salary on hold in payroll from ${s.dueOn}. HR and the manager were told.`;
         } else if (s.key === 'abandoned') {
           if (!e.exitedOn) exitCaseId = await this.exits.openSystemExitIn(tx, c, t.employeeId, 'absconding', iso(t.lastPresentOn), `Deemed abandonment: absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}`);
           status = 'abandoned';

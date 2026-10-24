@@ -257,7 +257,11 @@ describe('Lifecycle batch 6e', () => {
     await extras.runTimeline(org.A.id, t2.id, today);
     let r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
     expect(r2.steps.map((s: { doneAt: string | null }) => Boolean(s.doneAt))).toEqual([true, false, false, false]);
+    // Day 3 places a real payroll hold; stopping on return releases it (founder 25 Oct 2026).
+    const hold = () => inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.findFirst({ where: { employeeId: emp.ajay, reasonCode: 'absconding' } }); });
+    expect(await hold()).toMatchObject({ trigger: 'exit', releasedAt: null });
     await api('hr', 'post', `/lifecycle/absconding/${t2.id}/stop`).send({ reason: 'Came back, was in hospital', version: r2.version }).expect(200);
+    expect((await hold())?.releasedAt).toBeTruthy();
     await extras.runTimeline(org.A.id, t2.id, addDays(today, 30));
     r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
     expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null });
