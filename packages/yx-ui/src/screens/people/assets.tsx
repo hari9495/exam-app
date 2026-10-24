@@ -51,7 +51,7 @@ export interface LiveAssets {
   people: { id: string; name: string; role?: string; department?: string }[];
   onAdd?: () => void;
   onIssue: (a: AssetRow, input: { employeeId: string; issuedOn: string; condition: string }) => Promise<void>;
-  onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<void>;
+  onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string }) => Promise<void>;
   /** The add-asset form the page opens. */
   children?: ReactNode;
 }
@@ -63,6 +63,7 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
   const [on, setOn] = useState<Date | null>(live.today);
   const [condition, setCondition] = useState<string | null>(issuing ? 'New' : 'Good');
   const [note, setNote] = useState('');
+  const [recovery, setRecovery] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const run = async (fn: () => Promise<void>) => {
@@ -78,6 +79,10 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
     }
   };
   const first = (name: string) => name.split(' ')[0];
+  // A leaver's damaged or missing asset can be charged on their F&F (design PPL-25 return dialog).
+  const leavingOn = returning?.holder?.leavingOn ?? null;
+  const holderFirst = first(returning?.holder?.name ?? 'They');
+  const charge = Boolean(leavingOn) && (condition === 'Damaged' || condition === 'Not returned');
   return (
     <>
       <Dialog
@@ -123,7 +128,7 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
               onClick={() =>
                 returning &&
                 void run(() =>
-                  live.onReturn(returning, { returnedOn: dayKeyOf(on!), condition: [condition, note.trim()].filter(Boolean).join(': '), status: condition === 'Not returned' ? 'lost' : condition === 'Damaged' ? 'in_repair' : 'in_stock' }),
+                  live.onReturn(returning, { returnedOn: dayKeyOf(on!), condition: [condition, note.trim()].filter(Boolean).join(': '), status: condition === 'Not returned' ? 'lost' : condition === 'Damaged' ? 'in_repair' : 'in_stock', ...(charge && recovery ? { recoveryAmount: recovery.toFixed(2) } : {}) }),
                 )
               }
             >
@@ -140,11 +145,19 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
           <FormField label="Return condition" required>
             <Select options={opt(['Good', 'Fair', 'Damaged', 'Not returned'])} value={condition} onChange={setCondition} />
           </FormField>
+          {charge && (
+            <FormField label="Recovery amount" optional helper={`Added to ${holderFirst}'s F&F as a recovery line. HR can waive it.`}>
+              <CurrencyField value={recovery} onChange={setRecovery} />
+            </FormField>
+          )}
           <FormField label={condition === 'Not returned' ? 'What happened' : 'Note'} required={condition === 'Not returned'} optional={condition !== 'Not returned'}>
             <TextArea rows={2} value={note} onChange={setNote} maxLength={150} />
           </FormField>
           <InlineAlert tone="info">
-            {condition === 'Not returned'
+            {leavingOn ? `${holderFirst} is leaving on ${formatDate(new Date(`${leavingOn}T00:00:00`))}. ` : ''}
+            {charge && recovery
+              ? `The recovery goes on ${holderFirst}'s F&F and the clearance item is signed off.`
+              : condition === 'Not returned'
               ? `A leaver's clearance item stays open for a recovery${returning?.cost ? ` of the asset's cost` : ''}.`
               : condition === 'Damaged'
                 ? 'The asset goes to repair. A leaver’s clearance item for it is signed off.'

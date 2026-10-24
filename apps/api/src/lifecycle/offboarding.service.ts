@@ -236,6 +236,13 @@ export class OffboardingService {
       const rows = (await tx.asset.findMany({ where: { organizationId: org }, orderBy: [{ category: 'asc' }, { tag: 'asc' }], take: 2000 })).filter((a) => this.reachesAsset(v, 'asset.view', a));
       const open = await tx.assetAssignment.findMany({ where: { organizationId: org, assetId: { in: rows.map((a) => a.id) }, returnedOn: null } });
       const people = await tx.employee.findMany({ where: { organizationId: org, personId: { in: open.map((o) => o.personId) } } });
+      // A holder who is leaving (their asset is on an open clearance item): the return form offers a recovery for F&F.
+      const leaving = await tx.clearanceItem.findMany({ where: { organizationId: org, status: 'open', assetAssignmentId: { in: open.map((o) => o.id) } }, select: { assetAssignmentId: true, exitCaseId: true } });
+      const cases = leaving.length ? await tx.exitCase.findMany({ where: { organizationId: org, id: { in: leaving.map((l) => l.exitCaseId) } }, select: { id: true, approvedLwd: true, standardLwd: true } }) : [];
+      const lastDayOf = (assignmentId: string) => {
+        const k = cases.find((c) => c.id === leaving.find((l) => l.assetAssignmentId === assignmentId)?.exitCaseId);
+        return k ? iso(k.approvedLwd ?? k.standardLwd) : null;
+      };
       return {
         today: todayIst(),
         rows: rows.map((a) => {
@@ -254,7 +261,7 @@ export class OffboardingService {
             status: a.status,
             version: a.version,
             canManage: this.reachesAsset(v, 'asset.manage', a),
-            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) } : null,
+            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence), leavingOn: lastDayOf(o.id) } : null,
           };
         }),
       };
@@ -345,7 +352,7 @@ export class OffboardingService {
     return { ok: true };
   }
 
-  async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) {
+  async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string | null }) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -357,8 +364,19 @@ export class OffboardingService {
       if (!lost) await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: dto.condition.trim(), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       else await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: `Not returned: ${dto.condition.trim()}`.slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       await tx.asset.update({ where: { id: assetId }, data: { status: dto.status, version: { increment: 1 } } });
+      // A recovery (damage or loss, founder 24 Oct 2026) signs the leaver's clearance item off with it: an F&F recovery line.
+      const recovery = dto.recoveryAmount && Number(dto.recoveryAmount) > 0 ? dto.recoveryAmount : null;
+      if (recovery) {
+        const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
+        if (!items.length) throw new BadRequestException('A recovery goes on a leaver’s F&F; this person is not leaving.');
+        for (const i of items) {
+          await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `${lost ? 'Not returned' : `Returned on ${dto.returnedOn}`}: ${dto.condition.trim()}`.slice(0, 1000), recoveryAmount: new Prisma.Decimal(recovery), recoveryReason: `${lost ? 'Not returned' : 'Damage'}: ${dto.condition.trim()}`.slice(0, 300), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });
+          await freezeSettlementIn(tx, c, i.exitCaseId, 'recovery');
+          await this.maybeClearedIn(tx, c, i.exitCaseId);
+        }
+      }
       // Returning closes its clearance item; a lost asset leaves the item open for a recovery.
-      if (!lost) {
+      if (!lost && !recovery) {
         const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
         for (const i of items) {
           await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `Returned on ${dto.returnedOn}: ${dto.condition.trim()}`.slice(0, 1000), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });
