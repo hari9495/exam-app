@@ -81,7 +81,7 @@ export default function YxAbscondingPage() {
                 open
                 onOpenChange={(o) => !o && setStopping(null)}
                 title={`Stop the absconding timeline for ${stopping.name}?`}
-                consequence="No further notices go out. Regularise the absence in Time to release the salary hold."
+                consequence="No further notices go out, and the salary hold is released (the held pay goes in the next payment). Regularise the absent days in Time."
                 confirmLabel="Stop timeline"
                 confirmDisabled={text.trim().length < 3}
                 onConfirm={async () => {

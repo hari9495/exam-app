@@ -265,6 +265,9 @@ describe('Lifecycle batch 6e', () => {
     await extras.runTimeline(org.A.id, t2.id, addDays(today, 30));
     r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
     expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null });
+    // Resumed (still absent): the hold comes back.
+    await api('hr', 'post', `/lifecycle/absconding/${t2.id}/resume`).send({ version: r2.version }).expect((r) => expect([200, 201]).toContain(r.status));
+    expect(await inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.count({ where: { employeeId: emp.ajay, reasonCode: 'absconding', releasedAt: null } }); })).toBe(1);
   });
 
   it('contract end: reminders at 30 and 7 days, an exit only when the policy says so; retirement opens months ahead', async () => {
