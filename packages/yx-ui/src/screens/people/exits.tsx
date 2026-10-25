@@ -1118,7 +1118,7 @@ function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbscon
     id: s.key,
     title: `Day ${s.day}: ${s.label}`,
     due: isoDay(s.dueOn),
-    status: s.doneAt ? 'Done' : r!.status === 'stopped' ? 'Draft' : 'Scheduled',
+    status: s.doneAt ? 'Done' : r!.status === 'stopped' ? 'Not needed' : 'Scheduled',
     note: [s.note, s.dispatchRef ? `registered post ${s.dispatchRef}` : null].filter(Boolean).join(' · ') || undefined,
     action:
       s.doneAt && (s.key === 'notice_1' || s.key === 'notice_2') && !s.dispatchRef ? (

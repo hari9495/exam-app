@@ -205,6 +205,14 @@ export class ExitExtrasService {
       const t = await this.timelineOr404(tx, c, v, id);
       if (t.status !== 'stopped' || t.version !== dto.version) throw new ConflictException('This timeline is not stopped or changed meanwhile.');
       await tx.abscondingTimeline.update({ where: { id }, data: { status: 'running', stoppedReason: null, version: { increment: 1 } } });
+      // Still absent: the salary hold released on stop comes back when day 3 has passed.
+      if ((t.steps as unknown as Step[]).some((s) => s.key === 'hold' && s.doneAt)) {
+        const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: t.employmentId } });
+        await withPayScope(tx, [e.legalEntityId], async () => {
+          if (!(await tx.payrollWithhold.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, releasedAt: null }, select: { id: true } })))
+            await tx.payrollWithhold.create({ data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}` } });
+        });
+      }
       await audit(tx, c, 'absconding.resumed', 'employee', t.employeeId, { timelineId: id });
     });
     await this.runTimeline(ctx.organizationId!, id);
