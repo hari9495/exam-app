@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { showDate } from '../../src/people/employee-import';
 
 // One-off for databases whose absconding timelines passed day 3 before the salary hold was wired to payroll
 // (25 Oct 2026): each running timeline whose hold step is done gets its payroll hold (reason absconding) and the
@@ -21,7 +22,7 @@ const prisma = new PrismaClient();
       const open = await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: e.id, releasedAt: null } });
       const first = new Date(t.lastPresentOn.getTime() + 86_400_000).toISOString().slice(0, 10);
       if (!open) await tx.payrollWithhold.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${first}` } });
-      hold.note = `Salary on hold in payroll from ${hold.dueOn}. HR and the manager were told.`;
+      hold.note = `Salary on hold in payroll from ${showDate(hold.dueOn)}. HR and the manager were told.`;
       await tx.abscondingTimeline.update({ where: { id: t.id }, data: { steps: steps as unknown as object } });
       lines.push(`${t.employeeId}: ${open ? 'hold already there' : 'hold added'}`);
     }
