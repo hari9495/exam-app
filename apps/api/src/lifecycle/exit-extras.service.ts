@@ -14,6 +14,7 @@ import { ExitsService } from './exits.service';
 import { addDaysIso } from './exit-rules';
 import { freezeSettlementIn } from './settlement';
 import { withPayScope } from '../payroll/pay-access';
+import { showDate } from '../people/employee-import';
 
 // Lifecycle batch 6e, the exit special cases (M01 §3.7; design §16.5):
 //   death         (LIFE-5.04, YX-LC-16) the payees: the nominations, else legal heirs with a succession certificate;
@@ -250,7 +251,7 @@ export class ExitExtrasService {
             const open = await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: e.id, releasedAt: null }, select: { id: true } });
             if (!open) await tx.payrollWithhold.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}` } });
           });
-          s.note = `Salary on hold in payroll from ${s.dueOn}. HR and the manager were told.`;
+          s.note = `Salary on hold in payroll from ${showDate(s.dueOn)}. HR and the manager were told.`;
         } else if (s.key === 'abandoned') {
           if (!e.exitedOn) exitCaseId = await this.exits.openSystemExitIn(tx, c, t.employeeId, 'absconding', iso(t.lastPresentOn), `Deemed abandonment: absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}`);
           status = 'abandoned';
