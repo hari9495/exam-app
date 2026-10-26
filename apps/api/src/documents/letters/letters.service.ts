@@ -310,7 +310,7 @@ export class LettersService implements OnModuleInit {
     this.requireKey(v, 'letter.template.manage');
     const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const t = await this.templateRow(tx, c.organizationId, id);
-      const data = personId ? (await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t })).data : sampleData();
+      const data = personId ? (await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t })).data : { ...sampleData(), reference_no: `KF/${typeCode(t.letterType)}/2026/000042` };
       return { docx: await this.fileBytes(tx, c.organizationId, t.fileId), data };
     });
     const pdf = await previewMark(await this.toPdf(fillDocx(p.docx, p.data)));
