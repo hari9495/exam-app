@@ -340,7 +340,8 @@ describe('Lifecycle batch 6e', () => {
     expect(back.paragraphs).toEqual([{ text: '{{legal_entity}}', bold: true, heading: true }, { text: 'Dear {{employee_name}},', bold: false, heading: false }, { text: 'Thank you.', bold: true, heading: false }]);
     await api('adminA', 'post', '/letters/templates/compose').send({ letterType: 'bad_one', name: 'Bad', requiresApproval: false, personSigns: false, paragraphs: [{ text: 'Dear {{emp_nme}}' }] }).expect(400);
     const people = await inA((tx) => tx.employee.findMany({ where: { id: { in: [emp.buddy, emp.kavi] } }, select: { personId: true } }));
-    const bulk = (await api('hr', 'post', '/letters/bulk').send({ letterType: 'employment_certificate', personIds: people.map((x) => x.personId) }).expect(200)).body;
+    const cert = (await api('hr', 'get', '/letters/templates').expect(200)).body.templates.find((x: { letterType: string; status: string }) => x.letterType === 'employment_certificate' && x.status === 'active');
+    const bulk = (await api('hr', 'post', '/letters/bulk').send({ templateId: cert.id, source: 'people', personIds: people.map((x) => x.personId), confirm: 'ISSUE 2 LETTERS' }).expect(200)).body;
     expect(bulk).toMatchObject({ issued: 2, failed: [] });
   });
 

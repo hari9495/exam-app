@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
+import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
@@ -60,6 +60,14 @@ export class LettersController {
   @RequirePermissions('letter.template.manage')
   paragraphs(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.letters.paragraphs(ctx, this.user(req), id);
+  }
+
+  /** The bulk wizard's preview: each person will get the letter, or why not (nothing is kept). */
+  @Post('bulk/check')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  bulkCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BulkLetterCheckDto) {
+    return this.letters.bulkCheck(ctx, this.user(req), dto);
   }
 
   @Post('bulk')

@@ -360,6 +360,35 @@ describe('Lifecycle batch 6b', () => {
     }
   });
 
+  it('PPL-28 bulk issue: the preview lists who fails and why; the issue checks everything again and needs the typed count', async () => {
+    const divya = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }))).personId;
+    const outsider = (await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.person.create({ data: { organizationId: org.B.id, givenName: 'Other', familyName: run } }))).id;
+    const body = { templateId: ids.tpl_appointment, source: 'people', personIds: [row.personId, divya, outsider, row.personId] };
+    await api('mgr', 'post', '/letters/bulk/check').send(body).expect(403);
+    const check = (await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body;
+    expect(check.letterType).toBe('appointment');
+    expect(check.rows).toHaveLength(3);
+    expect(check.rows[0]).toMatchObject({ personId: row.personId, name: `Kavya ${run}`, ready: true });
+    expect(check.rows[1]).toMatchObject({ personId: divya, ready: false });
+    expect(check.rows[1].reason).toMatch(/Missing: .*manager/);
+    // Another company's person is refused and never named.
+    expect(check.rows[2]).toEqual({ personId: outsider, name: null, ready: false, reason: 'You cannot issue letters to this person.' });
+    // The go-live source: current employees with no appointment letter (Divya), only with an appointment template.
+    const golive = (await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_appointment, source: 'no_appointment' }).expect(200)).body;
+    expect(golive.rows.map((r: { personId: string }) => r.personId)).toEqual([divya]);
+    await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_confirmation, source: 'no_appointment' }).expect(400);
+    // No typed confirmation, or the wrong count: nothing is issued.
+    await api('hr', 'post', '/letters/bulk').send(body).expect(400);
+    expect((await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 3 LETTERS' }).expect(400)).body.code).toBe('BULK_CONFIRM');
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: row.personId, status: 'pending_approval' } }))).toBe(0);
+    expect((await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 1 LETTER' }).expect(200)).body).toEqual({ issued: 1, failed: [] });
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: row.personId, status: 'pending_approval' } }))).toBe(1);
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: { in: [divya, outsider] } } }))).toBe(0);
+    // A replay of the same request is checked again: Kavya's letter is now on its way, so no one passes.
+    expect((await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body.rows[0]).toMatchObject({ ready: false, reason: expect.stringMatching(/already on its way/) });
+    await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 1 LETTER' }).expect(400);
+  });
+
   // ------------------------------------------------------------------------------------------ joining and cancelling (LIFE-2.08)
 
   it('joining: on the day, with the identity check; the hire, identity and bank as change requests, the portal closed', async () => {
