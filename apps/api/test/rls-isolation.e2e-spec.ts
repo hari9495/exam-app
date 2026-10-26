@@ -15,7 +15,7 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5b.
   'statutory_registrations', 'entity_statutory_options', 'pay_groups', 'pay_group_members', 'pay_components', 'salary_templates', 'salary_template_versions', 'salary_template_lines', 'compensation_packages', 'compensation_lines', 'employee_statutory', 'establishment_coverage', 'pay_import_batches', 'opening_balances', 'as_paid_lines', 'previous_employment_income', 'payslip_layouts',
   // Batch 5c.
-  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
+  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'payroll_run_counters', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
   // Batch 5d.
   'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
   // Batch 5e.
@@ -33,7 +33,9 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5i.
   'special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
-const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
+const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines',
+  // PPL-30 share links.
+  'document_shares'];
 // M05 expenses E2: claims, their lines, the approvers' changes and the flags (§5.8).
 const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_line_changes', 'expense_flags', 'trips', 'trip_legs', 'trip_bookings', 'expense_advances', 'advance_settlements', 'expense_payments', 'expense_payout_batches', 'expense_event_receipts', 'expense_journals'];
 // M06 PM3: feedback and 1:1s (M06-BUILD-DESIGN 5.10).

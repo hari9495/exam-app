@@ -623,8 +623,8 @@ export class LettersService implements OnModuleInit {
     });
     // The person's notice, in the YukthiX account-email layout (noticeEmail): the letter's name and where to read it.
     for (const u of users) {
-      const mail = await noticeEmail({ to: u.email, company: u.company, subject: `Your ${u.title.toLowerCase()} is ready`, heading: `Your ${u.title.toLowerCase()} is ready`, blocks: [text('Open YukthiX to read and download it. It is also kept in My documents and letters.'), button('Open my letters', appUrl('/yx/me/letters'))] });
-      await this.notifications.notifySystem(ctx, [u.id], 'letter.ready', { entityType: 'letter_issue', entityId: id, contextText: `Your ${u.title.toLowerCase()} is ready in YukthiX`, linkPath: '/yx/me/letters' }, { subject: mail.subject, html: mail.html }).catch(() => undefined);
+      const mail = await noticeEmail({ to: u.email, company: u.company, subject: `Your ${u.title.toLowerCase()} is ready`, heading: `Your ${u.title.toLowerCase()} is ready`, blocks: [text('Open YukthiX to read and download it. It is also kept in My documents and letters.'), button('Open my documents and letters', appUrl('/yx/me/documents'))] });
+      await this.notifications.notifySystem(ctx, [u.id], 'letter.ready', { entityType: 'letter_issue', entityId: id, contextText: `Your ${u.title.toLowerCase()} is ready in YukthiX`, linkPath: '/yx/me/documents' }, { subject: mail.subject, html: mail.html }).catch(() => undefined);
     }
   }
 
@@ -732,10 +732,11 @@ export class LettersService implements OnModuleInit {
     const rows = await tx.letterIssue.findMany({ where: { organizationId: org, personId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' } });
     const srs = await tx.signatureRequest.findMany({ where: { organizationId: org, personId, letterIssueId: { in: rows.map((r) => r.id) } } });
     const consent = await tx.consentRecord.findFirst({ where: { organizationId: org, personId, purpose: 'esign', withdrawnAt: null }, select: { id: true } });
+    const sizes = new Map((await tx.file.findMany({ where: { organizationId: org, id: { in: rows.flatMap((r) => (r.fileId ? [r.fileId] : [])) } }, select: { id: true, size: true } })).map((f) => [f.id, f.size]));
     return {
       letters: rows.map((r) => {
         const sr = srs.find((s) => s.letterIssueId === r.id);
-        return this.letterView(r, { signature: sr ? { status: sr.status, signedAt: sr.signedAt?.toISOString() ?? null } : null });
+        return { ...this.letterView(r, { signature: sr ? { status: sr.status, signedAt: sr.signedAt?.toISOString() ?? null } : null }), size: (r.fileId && sizes.get(r.fileId)) ?? null };
       }),
       esignAccepted: Boolean(consent),
     };
