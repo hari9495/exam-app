@@ -115,8 +115,13 @@ describe('approvals inbox (P03)', () => {
     await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Do not approve' })).toBeDisabled();
-    await ue.type(within(dialog).getByRole('textbox'), 'Not this quarter');
-    await ue.click(within(dialog).getByRole('button', { name: 'Do not approve' }));
+    // Cancel drops the typed reason: opening again starts empty.
+    await ue.type(within(dialog).getByRole('textbox'), 'test only');
+    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
+    expect(within(await screen.findByRole('dialog')).getByRole('textbox')).toHaveValue('');
+    await ue.type(within(screen.getByRole('dialog')).getByRole('textbox'), 'Not this quarter');
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Do not approve' }));
     expect(onDecide).toHaveBeenCalledWith(TASK, 'reject', 'Not this quarter');
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onDecide).toHaveBeenCalledWith(TASK, 'approve', '');

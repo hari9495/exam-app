@@ -54,6 +54,11 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
   }, [focus, props.tasks.length]);
   const [rejecting, setRejecting] = useState<ApprovalTask | null>(null);
   const [reason, setReason] = useState('');
+  // Closing the box drops what was typed: the next "Do not approve" starts empty (founder 26 Oct 2026).
+  const closeReject = () => {
+    setRejecting(null);
+    setReason('');
+  };
   const [delegate, setDelegate] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(new Date());
   const [to, setTo] = useState<Date | null>(null);
@@ -217,20 +222,19 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
       </div>
       <Dialog
         open={Boolean(rejecting)}
-        onOpenChange={(o) => !o && setRejecting(null)}
-        title={`Not approve ${rejecting?.title ?? ''}?`}
-        description="Say why. The person who asked sees your reason."
+        onOpenChange={(o) => !o && closeReject()}
+        title="Do not approve this request?"
+        description={`${rejecting?.title ?? ''}. Say why. The person who asked sees your reason.`}
         footer={
           <>
-            <Button onClick={() => setRejecting(null)}>Cancel</Button>
+            <Button onClick={closeReject}>Cancel</Button>
             <Button
               variant="danger"
               disabled={!reason.trim() || busy === 'reject'}
               onClick={() =>
                 void run('reject', async () => {
                   await props.onDecide(rejecting!, 'reject', reason.trim());
-                  setRejecting(null);
-                  setReason('');
+                  closeReject();
                 })
               }
             >
