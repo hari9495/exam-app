@@ -233,7 +233,7 @@ export class LettersService implements OnModuleInit {
         const name = p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : null;
         try {
           await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t });
-          await this.noOtherLetter(tx, c.organizationId, personId, t);
+          await this.noOtherLetter(tx, c.organizationId, personId, t, await this.letterEmployment(tx, c.organizationId, personId));
           return { personId, name, ready: true, reason: null };
         } catch (e) {
           if (!(e instanceof HttpException)) throw e;
@@ -463,10 +463,27 @@ export class LettersService implements OnModuleInit {
     return { t, data, signer, legalEntityId: base.legalEntityId };
   }
 
-  /** Nothing else blocks a new letter: none of this type on its way, and for a "one per person" type none issued (a correction replaces it). */
-  private async noOtherLetter(tx: Tx, org: string, personId: string, t: Template, supersedesId?: string | null) {
+  /**
+   * The employment a new letter is for: the current one; none yet while the person is joining (linked when the employment
+   * is made, so a rehire's new job starts afresh); otherwise the last one (letters after leaving).
+   */
+  private async letterEmployment(tx: Tx, org: string, personId: string) {
+    const staff = await tx.employee.findMany({ where: { organizationId: org, personId }, select: { id: true } });
+    const jobs = await tx.employment.findMany({ where: { organizationId: org, employeeId: { in: staff.map((e) => e.id) } }, orderBy: { joinedOn: 'desc' }, select: { id: true, exitedOn: true } });
+    const today = new Date(`${todayIst()}T00:00:00Z`);
+    const current = jobs.find((j) => !j.exitedOn || j.exitedOn >= today);
+    if (current) return current.id;
+    if (await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: 'invited' }, select: { id: true } })) return null;
+    return jobs[0]?.id ?? null;
+  }
+
+  /**
+   * Nothing else blocks a new letter: none of this type on its way, and for a "one per person" type none issued for the
+   * same employment (a correction replaces it; a rehire's new job may have its own).
+   */
+  private async noOtherLetter(tx: Tx, org: string, personId: string, t: Template, employmentId: string | null, supersedesId?: string | null) {
     if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
-    const held = t.onePerPerson && !supersedesId && (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { referenceNo: true } }));
+    const held = t.onePerPerson && !supersedesId && (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, employmentId, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { referenceNo: true } }));
     if (held) throw new ConflictException(`Already issued: ${held.referenceNo}. Use Issue a correction to replace it.`);
   }
 
@@ -498,7 +515,8 @@ export class LettersService implements OnModuleInit {
         const old = await tx.letterIssue.findFirst({ where: { organizationId: org, id: dto.supersedesId } });
         if (!old || old.status !== 'issued' || old.personId !== dto.personId || old.letterType !== dto.letterType) throw new BadRequestException('Only an issued letter of the same type for the same person can be corrected.');
       }
-      await this.noOtherLetter(tx, org, dto.personId, t, dto.supersedesId);
+      const employmentId = await this.letterEmployment(tx, org, dto.personId);
+      await this.noOtherLetter(tx, org, dto.personId, t, employmentId, dto.supersedesId);
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: dto.personId } });
       const title = `${t.name}: ${[p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ')}`.slice(0, 150);
       const l = await tx.letterIssue.create({
@@ -509,6 +527,7 @@ export class LettersService implements OnModuleInit {
           letterType: t.letterType,
           title,
           personId: dto.personId,
+          employmentId,
           legalEntityId,
           subjectType: dto.subjectType ?? null,
           subjectId: dto.subjectId ?? null,

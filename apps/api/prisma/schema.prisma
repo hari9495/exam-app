@@ -6126,6 +6126,8 @@ model LetterIssue {
   letterType       String    @map("letter_type") @db.VarChar(40)
   title            String    @db.VarChar(150)
   personId         String    @map("person_id") @db.Uuid
+  /// The employment the letter is for ("one per person" counts per employment); null while the person is still joining.
+  employmentId     String?   @map("employment_id") @db.Uuid
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
   subjectType      String?   @map("subject_type") @db.VarChar(12)
   subjectId        String?   @map("subject_id") @db.Uuid

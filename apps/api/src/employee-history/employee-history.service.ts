@@ -1506,6 +1506,8 @@ export class EmployeeHistoryService {
       await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);
       await this.checkRefs(tx, c, e, payload);
       await addRole(tx, c, personId, 'employee', { table: 'employments', id: e.id }, e.joinedOn);
+      // Letters asked for while the person was joining (appointment, letter of intent) are for this employment (PPL-28).
+      await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, personId, employmentId: null }, data: { employmentId: e.id } });
       if (dto.userId) await addRole(tx, c, personId, 'login', { table: 'users', id: dto.userId }, e.joinedOn);
       // M01 §3.4: a joiner on probation gets the company's probation plan.
       if (dto.status === 'probation') await startProbation(tx, c, e.id, dto.joinedOn, { legalEntityId: entity.id, employmentTypeId: payload.assignment?.employmentTypeId, gradeId: payload.assignment?.gradeId });
