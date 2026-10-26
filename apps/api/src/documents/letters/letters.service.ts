@@ -15,7 +15,7 @@ import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields } from './docx';
-import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest, type LetterFnf, type LetterPay } from './fields';
+import { FIELDS, STARTER_LETTERS, letterData, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
@@ -29,10 +29,15 @@ import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 //   e-sign     the person reads it, ticks "I accept" and enters a one-time code (G-19 disclosure once); a sealed
 //              acceptance copy (the issued pages + a certificate page) is stored; the issued file is never touched.
 
-/** Letters an employee may get for themselves at once (P05 Q8). */
-export const SELF_CERTIFICATES = ['employment_certificate'];
+/**
+ * PPL-31 (P05 Q8): letter types an employee may ask for themselves, in the order offered. The company decides which by
+ * switching the template on, and which need HR first by the template's "needs approval".
+ */
+export const SELF_CERTIFICATES = ['salary_certificate', 'address_proof', 'employment_certificate', 'noc'];
+/** The approval subject of a certificate the employee asked for (its decision notice links back to their page). */
+const SELF_REQUEST = 'certificate_request';
 type BulkInput = { templateId: string; source: 'people' | 'no_appointment'; personIds?: string[] };
-type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf };
+type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const REQUEST_TYPE = 'letter.issue';
@@ -75,7 +80,7 @@ export class LettersService implements OnModuleInit {
       label: 'Letter',
       risk: 'normal',
       autoActions: false,
-      requesterLink: () => '/yx/people/letters',
+      requesterLink: (r) => (r.subjectType === SELF_REQUEST ? '/yx/me/documents/certificate' : '/yx/people/letters'),
       cardPreview: async () => 'neutral',
       onDecided: async (tx, req, outcome) => {
         const n = await tx.letterIssue.updateMany({ where: { organizationId: req.organizationId, id: req.subjectId, status: 'pending_approval' }, data: { status: outcome === 'approved' ? 'rendering' : 'rejected' } });
@@ -441,7 +446,7 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; template?: Template; pay?: LetterPay; fnf?: LetterFnf }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; template?: Template; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
@@ -450,7 +455,8 @@ export class LettersService implements OnModuleInit {
     // Null: the system issues it (exit letters, LIFE-4.03; a person's own certificate, LIFE-4.06).
     if (v) await this.mayIssue(tx, c, v, dto.personId, t.fields);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
-    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null });
+    const gross = t.fields.includes('monthly_gross') ? await monthlyGross(tx, c, dto.personId, base.legalEntityId) : null;
+    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null, request: dto.request ?? null, gross });
     const missing = missingFields(t.fields, data);
     if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: `This letter cannot be made yet. Missing: ${missing.map((m) => FIELDS[m].label.toLowerCase()).join(', ')}${missing.some((m) => m.startsWith('signatory')) ? ' (name a signatory for the legal entity in Settings › Letter templates)' : ''}.`, errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
     return { t, data, signer, legalEntityId: base.legalEntityId };
@@ -517,18 +523,19 @@ export class LettersService implements OnModuleInit {
         const approvers = signs ? [signer.row.userId] : (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active', id: { not: c.userId ?? undefined } }, select: { id: true }, take: 25 })).map((u) => u.id);
         const sub = await this.approvals.submit(tx, c, {
           type: REQUEST_TYPE,
-          subjectType: 'letter_issue',
+          subjectType: dto.request ? SELF_REQUEST : 'letter_issue',
           subjectId: l.id,
           // What the letter is and who it is for: the approver's inbox and the requester's decision notice both read it.
           title: `${t.name} for ${title.split(': ').slice(1).join(': ')}`,
           summary: [
             { label: 'Letter', value: t.name },
             { label: 'For', value: title.split(': ').slice(1).join(': ') },
+            ...(dto.request ? [{ label: 'Purpose', value: dto.request.purpose }, ...(dto.request.addressedTo ? [{ label: 'Addressed to', value: dto.request.addressedTo }] : [])] : []),
           ],
           subjectPersonId: dto.personId,
           requesterUserId: c.userId ?? null,
           raisedByUserId: c.userId ?? null,
-          steps: [{ name: 'Signatory', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any' }],
+          steps: [{ name: dto.request ? 'HR' : 'Signatory', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any' }],
           payload: {},
           payloadFields: [],
           fallbackUserIds: [],
@@ -705,18 +712,50 @@ export class LettersService implements OnModuleInit {
   }
 
   /** My letters (issued to me), with what is waiting for my acceptance. */
-  /** PPL-31 (P05 Q8): an employee's own certificate, issued at once (the company switches the template on). */
-  async myCertificate(ctx: TenantContext, user: ScopeUser, letterType: string) {
-    if (!SELF_CERTIFICATES.includes(letterType)) throw new BadRequestException('That certificate is not available here.');
-    const v = await this.viewer(user);
+  /** The signed-in employee's person and legal entity, while employed (PPL-31: certificates are for current employees). */
+  private async employedSelf(tx: Tx, c: CompanyContext, v: Viewer) {
     if (v.actingForOther) throw new ForbiddenException('Only the employee asks for their own certificate.');
-    const personId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const own = await ownOf(tx, c, v);
-      const open = own.employeeId ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId, exitedOn: null }, select: { id: true } }) : null;
-      if (!own.personId || !open) throw new ForbiddenException('Certificates are for current employees.');
-      return own.personId;
+    const own = await ownOf(tx, c, v);
+    const open = own.employeeId ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId, exitedOn: null }, orderBy: { joinedOn: 'desc' }, select: { legalEntityId: true } }) : null;
+    if (!own.personId || !open) throw new ForbiddenException('Certificates are for current employees.');
+    return { personId: own.personId, legalEntityId: open.legalEntityId };
+  }
+
+  /** The switched-on certificate templates for the person's legal entity, one per type, in SELF_CERTIFICATES order. */
+  private async selfTemplates(tx: Tx, org: string, legalEntityId: string) {
+    const rows = await tx.letterTemplate.findMany({ where: { organizationId: org, letterType: { in: SELF_CERTIFICATES }, status: 'active', language: 'en', OR: [{ legalEntityId }, { legalEntityId: null }] }, orderBy: { createdAt: 'asc' } });
+    return SELF_CERTIFICATES.flatMap((k) => {
+      const t = rows.find((r) => r.letterType === k && r.legalEntityId === legalEntityId) ?? rows.find((r) => r.letterType === k);
+      return t ? [t] : [];
     });
-    return this.issueSystem(ctx, { letterType, personId });
+  }
+
+  /** PPL-31: the certificates I may ask for, and any still waiting for HR (with who holds it). */
+  async myCertificates(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await this.employedSelf(tx, c, v);
+      const kinds = await this.selfTemplates(tx, org, me.legalEntityId);
+      const waiting = await tx.letterIssue.findMany({ where: { organizationId: org, personId: me.personId, letterType: { in: kinds.map((t) => t.letterType) }, status: 'pending_approval' }, select: { letterType: true, createdAt: true, wfRequestId: true } });
+      const tasks = await tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: waiting.flatMap((w) => (w.wfRequestId ? [w.wfRequestId] : [])) }, status: 'open' }, select: { requestId: true, assigneeUserId: true } });
+      const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: tasks.map((t) => t.assigneeUserId) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      return kinds.map((t) => {
+        const w = waiting.find((x) => x.letterType === t.letterType);
+        return { letterType: t.letterType, name: t.name, requiresApproval: t.requiresApproval, pending: w ? { requestedAt: w.createdAt.toISOString(), approvers: tasks.filter((x) => x.requestId === w.wfRequestId).map((x) => names.get(x.assigneeUserId) ?? '') } : null };
+      });
+    });
+  }
+
+  /** PPL-31 (P05 Q8): an employee's own certificate: issued at once, or sent to HR when its template needs approval. */
+  async myCertificate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; purpose: string; addressedTo?: string }) {
+    const v = await this.viewer(user);
+    const personId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await this.employedSelf(tx, c, v);
+      if (!(await this.selfTemplates(tx, c.organizationId, me.legalEntityId)).some((t) => t.letterType === dto.letterType)) throw new BadRequestException('Your company does not offer that certificate here. Ask HR for it.');
+      return me.personId;
+    });
+    return this.issueSystem(ctx, { letterType: dto.letterType, personId, request: { purpose: dto.purpose, addressedTo: dto.addressedTo ?? '' } });
   }
 
   async mine(ctx: TenantContext, user: ScopeUser) {

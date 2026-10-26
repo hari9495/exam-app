@@ -447,6 +447,61 @@ describe('Lifecycle batch 6b', () => {
     expect((await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body.some((r: { offerId: string }) => r.offerId === offers.fresh)).toBe(false);
   });
 
+  it('PPL-31 my certificate: instant with number and code, or HR approves first (approve and reject reach the bell); only my own, only switched-on kinds', async () => {
+    for (const letterType of ['employment_certificate', 'address_proof', 'noc']) {
+      const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
+      await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+      await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    }
+    const divya = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }))).personId;
+    const cert = (body: Record<string, unknown>) => api('mgr', 'post', '/letters/me/certificates').send(body);
+    // The kinds the company switched on, in the design's order; the salary certificate is not switched on here.
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body).toEqual([
+      { letterType: 'address_proof', name: 'Address proof', requiresApproval: false, pending: null },
+      { letterType: 'employment_certificate', name: 'Employment certificate', requiresApproval: false, pending: null },
+      { letterType: 'noc', name: 'No objection certificate (NOC)', requiresApproval: true, pending: null },
+    ]);
+    // Instant: issued at once with a gap-free number and a public check code; the person's words are on it (sealed).
+    const l = (await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'The Branch Manager, Canara Bank, Hosur' }).expect(201)).body;
+    expect(l).toMatchObject({ status: 'issued', personId: divya, referenceNo: expect.stringMatching(/\/0{5}1$/), verifyCode: expect.any(String) });
+    expect((await request(server()).get(`/api/v1/public/pay/verify/${l.verifyCode}`).expect(200)).body).toMatchObject({ kind: 'Employment certificate', name: `Divya ${run}`, status: 'current' });
+    const row = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: l.id } }));
+    expect(row.dataEnc).not.toContain('Canara');
+    expect((await api('mgr', 'get', '/letters/me').expect(200)).body.letters.some((x: { id: string }) => x.id === l.id)).toBe(true);
+    // Blank fields block it (no home address recorded); limits and plain text on the person's words; nothing else accepted.
+    expect((await cert({ letterType: 'address_proof', purpose: 'Rental agreement' }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
+    await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'x'.repeat(161) }).expect(400);
+    await cert({ letterType: 'employment_certificate', purpose: 'Home\nloan' }).expect(400);
+    await cert({ letterType: 'employment_certificate' }).expect(400);
+    // Only for myself: naming another person is refused, and someone with no job here gets none.
+    await cert({ letterType: 'employment_certificate', purpose: 'Home loan', personId: row.personId }).expect(400);
+    expect((await api('hr', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(403)).body.message).toMatch(/current employees/);
+    await api('hr', 'get', '/letters/me/certificates').expect(403);
+    // A kind the company did not switch on, or one that is not a certificate, is refused.
+    expect((await cert({ letterType: 'salary_certificate', purpose: 'Home loan' }).expect(400)).body.message).toMatch(/does not offer/);
+    await cert({ letterType: 'relieving', purpose: 'Home loan' }).expect(400);
+    // NOC: to the entity's signatory through the approvals engine; the person sees who holds it; one at a time.
+    const noc = (await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(201)).body;
+    expect(noc).toMatchObject({ status: 'pending_approval', referenceNo: null });
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body.find((k: { letterType: string }) => k.letterType === 'noc').pending).toEqual({ requestedAt: expect.any(String), approvers: [`signer ${run}`] });
+    await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(409);
+    const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: noc.id } }));
+    expect(req.summary).toEqual(expect.arrayContaining([{ label: 'Purpose', value: 'Visa application' }]));
+    let task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req.id, status: 'open' } }));
+    await api('signer', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'reject', reason: 'Ask after your probation review' }).expect(200);
+    const no = await inA((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.mgr, type: 'workflow.approval.decided', entityId: req.id } }));
+    expect(no).toMatchObject({ linkPath: '/yx/me/documents/certificate', contextText: expect.stringMatching(/not approved: Ask after your probation review$/) });
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: noc.id } }))).status).toBe('rejected');
+    // Asked again and approved: numbered, issued and in the bell.
+    const again = (await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(201)).body;
+    const req2 = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: again.id } }));
+    task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req2.id, status: 'open' } }));
+    await api('signer', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+    expect(await drain(async () => (await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: again.id } }))).status === 'issued')).toBe(true);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.mgr, type: 'letter.ready', entityId: again.id } }))).toBe(1);
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body.find((k: { letterType: string }) => k.letterType === 'noc').pending).toBeNull();
+  });
+
   it('two companies stay apart: B reads nothing of A by API, query or portal', async () => {
     await api('adminB', 'get', `/letters/${ids.letter}/file`).expect(404);
     expect((await api('adminB', 'get', '/letters/templates').expect(200)).body.templates).toEqual([]);

@@ -50,6 +50,26 @@ export class StarterLetterDto {
   letterType!: string;
 }
 
+/** PPL-31: an employee's own certificate. The words go on the letter only through its merge fields (escaped, never parsed). */
+const PLAIN = /^[^\p{Cc}]*$/u;
+export class MyCertificateDto {
+  @Matches(LETTER_TYPE)
+  letterType!: string;
+
+  @trim()
+  @IsString()
+  @Length(2, 80)
+  @Matches(PLAIN, { message: 'purpose is plain text on one line' })
+  purpose!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(160)
+  @Matches(PLAIN, { message: 'addressedTo is plain text on one line' })
+  addressedTo?: string;
+}
+
 export class SignatoryDto {
   @IsUUID()
   legalEntityId!: string;

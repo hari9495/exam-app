@@ -90,8 +90,8 @@ describe('PPL-30 document share links', () => {
     await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
     await markSteppedUp(tenantPrisma, token.adminA);
     await api('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.adminA).field('title', 'Head of People').expect(201);
-    ids.letter = (await api('emp1', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate' }).expect(201)).body.id;
-    ids.letter2 = (await api('emp2', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate' }).expect(201)).body.id;
+    ids.letter = (await api('emp1', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(201)).body.id;
+    ids.letter2 = (await api('emp2', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(201)).body.id;
     // A pay document of emp1 (as payroll would issue it), its file sealed in the shared store.
     const fileRef = await store.put(`pay/${org.A.id}/share-${run}.pdf`, PAY_PDF);
     const sha = createHash('sha256').update(PAY_PDF).digest('hex');

@@ -251,11 +251,11 @@ describe('Lifecycle batch 6d', () => {
     const h = (await api('hr', 'post', `/lifecycle/exits/${ids.kiranCase}/settled-outside`).send({ settledOn: today, reason: 'Paid by bank transfer on the day' }).expect(200)).body;
     expect(h.settledOutside).toEqual({ on: today, reason: 'Paid by bank transfer on the day' });
     expect((await api('hr', 'get', `/lifecycle/exits/${ids.kiranCase}`).expect(200)).body.status).toBe('closed');
-    const cert = (await api('hr2', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate' }).expect(403)).body;
+    const cert = (await api('hr2', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(403)).body;
     expect(cert.message).toMatch(/current employees/);
-    const mine = (await api('mgr', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate' }).expect(201)).body;
+    const mine = (await api('mgr', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(201)).body;
     expect(mine).toMatchObject({ status: 'issued', letterType: 'employment_certificate' });
-    await api('mgr', 'post', '/letters/me/certificates').send({ letterType: 'relieving' }).expect(400);
+    await api('mgr', 'post', '/letters/me/certificates').send({ letterType: 'relieving', purpose: 'Home loan' }).expect(400);
   });
 
   it('two companies apart', async () => {
