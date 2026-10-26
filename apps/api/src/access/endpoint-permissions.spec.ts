@@ -52,7 +52,9 @@ const IMPLICIT: Record<string, string[]> = {
   AccessController: [],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
-  DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam'], // PPL-03: a manager's read-only view of the team's Public and Internal documents
+  // PPL-03: a manager's read-only view of the team's Public and Internal documents.
+  // PPL-30: share links to my own issued letters and pay documents (the service refuses anyone else's).
+  DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam', 'myShares', 'share', 'revokeShare'],
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
   LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate', 'certificates'], // 6d / PPL-31: my own certificates
   // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
