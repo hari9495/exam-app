@@ -1013,7 +1013,8 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         avatarName={who}
         person
         secondary={`${EXIT[s.exitType] ?? s.exitType} · last working day ${formatDate(lwd)}${s.runReference ? ` · off-cycle run ${s.runReference}` : ''}`}
-        status={<StatusBadge status={s.status === 'settled' ? 'Settled' : s.overdue ? 'Overdue' : (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft')} />}
+        // A calculated run whose lines changed since has no current payslip: it needs recalculating before approval.
+        status={<StatusBadge status={s.status === 'settled' ? 'Settled' : s.overdue ? 'Overdue' : s.runStatus === 'calculated' && !s.salary ? 'Needs recalculating' : (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft')} />}
         actions={
           <>
             {live.can.prepare && s.runId && (

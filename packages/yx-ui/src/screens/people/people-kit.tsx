@@ -66,7 +66,7 @@ export function MeFrame({ active, children }: { active: MePage; children: ReactN
 
 export const STATUS_TONE: Record<string, BadgeTone> = {
   Verified: 'success', Done: 'success', Approved: 'success', Issued: 'success', Valid: 'success', Covered: 'success', Match: 'success', Accepted: 'success', Active: 'success', Confirmed: 'success', 'Waiting for confirmation': 'warning',
-  Pending: 'warning', 'Pending verification': 'warning', 'Needs review': 'warning', Expiring: 'warning', Waiting: 'warning', 'Pending approval': 'warning', 'Review due': 'warning', Held: 'warning', 'Due soon': 'warning', Draft: 'neutral',
+  Pending: 'warning', 'Pending verification': 'warning', 'Needs review': 'warning', Expiring: 'warning', Waiting: 'warning', 'Pending approval': 'warning', 'Needs recalculating': 'warning', 'Review due': 'warning', Held: 'warning', 'Due soon': 'warning', Draft: 'neutral',
   Missing: 'danger', Rejected: 'danger', Failed: 'danger', Blocked: 'danger', Overdue: 'danger', Expired: 'danger', Escalated: 'danger', 'With HR': 'danger', 'No successor': 'danger', 'No ready successor': 'warning', Mismatch: 'danger',
   Refused: 'danger', Correction: 'warning', Current: 'success', Past: 'neutral',
   Scheduled: 'info', 'In progress': 'info', Ready: 'success', 'On approval': 'neutral', 'Fix needed': 'warning', Skipped: 'neutral', Leaving: 'warning', Superseded: 'neutral', Scanning: 'info', 'Auto-verified': 'success',
