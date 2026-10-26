@@ -477,33 +477,3 @@ export function VrsCard({ schemes, today, onApply }: { schemes: MyVrsScheme[]; t
     </Card>
   );
 }
-
-// ------------------------------------------------------------------------------------------ bulk wizard (PPL-28)
-
-export function BulkLetterDialog({ types, people, onClose, onIssue, defaultPicked = [] }: { types: Choice[]; people: Choice[]; onClose: () => void; onIssue: (letterType: string, personIds: string[]) => Promise<unknown>; defaultPicked?: string[] }) {
-  const [type, setType] = useState<string | null>(null);
-  const [picked, setPicked] = useState<string[]>(defaultPicked);
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      size="md"
-      title="Issue a letter to many"
-      consequence="Each letter goes through the usual checks; letters that need approval wait for the signatory."
-      confirmLabel={`Issue to ${picked.length}`}
-      confirmDisabled={!type || !picked.length}
-      onConfirm={async () => {
-        await onIssue(type!, picked);
-        onClose();
-      }}
-    >
-      <FormField id="bl-type" label="Letter" required>
-        <Select aria-label="Letter" value={type} onChange={setType} options={types} />
-      </FormField>
-      <Checkbox checked={picked.length === people.length && people.length > 0} onChange={(c) => setPicked(c ? people.map((x) => x.value) : [])} label="Everyone listed" />
-      {people.map((x) => (
-        <Checkbox key={x.value} checked={picked.includes(x.value)} onChange={(c) => setPicked(c ? [...picked, x.value] : picked.filter((y) => y !== x.value))} label={x.label} />
-      ))}
-    </ConfirmDialog>
-  );
-}

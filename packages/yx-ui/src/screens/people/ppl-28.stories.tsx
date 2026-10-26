@@ -47,3 +47,31 @@ const missingFields = () => Promise.reject(Object.assign(new Error('This letter 
 export const LiveIssue: S = { name: 'Live · issue letter · preview with real data', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Experience letter') };
 export const LiveApproval: S = { name: 'Live · issue letter · approval before issue', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
 export const LiveMissing: S = { name: 'Live · issue letter · missing fields block generation', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(missingFields)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
+
+/** The live bulk issue with the API's shapes: four people chosen in the directory, two that can't get the letter. */
+const liveBulk = {
+  state: 'ready' as const,
+  onRetry: () => {},
+  templates: [T('t3', 'increment', 'Increment letter', false)],
+  people: [{ value: 'p1', label: 'Arjun Kulkarni · KF-0142' }],
+  picked: ['p1', 'p2', 'p3', 'p4'],
+  letterType: 'increment',
+  onCheck: async () => ({ letterType: 'increment', rows: [{ personId: 'p1', name: 'Arjun Kulkarni', ready: true, reason: null }, { personId: 'p2', name: 'Meera Pillai', ready: true, reason: null }, { personId: 'p3', name: 'Thomas George', ready: false, reason: 'This letter cannot be made yet. Missing: annual CTC after the raise.' }, { personId: 'p4', name: 'Aisha Khan', ready: false, reason: 'A letter of this type for this person is already on its way.' }] }),
+  onPreview: async () => INCREMENT_LETTER_PDF,
+  onIssue: async () => {},
+};
+const continueTo =
+  (times: number): S['play'] =>
+  async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    for (let i = 0; i < times; i++) await userEvent.click(await body.findByRole('button', { name: 'Continue' }));
+  };
+export const LiveBulk: S = { name: 'Live · bulk issue · preview with failures', render: () => <ToastProvider><BulkLetterWizard live={liveBulk} /></ToastProvider>, play: continueTo(2) };
+export const LiveBulkConfirm: S = {
+  name: 'Live · bulk issue · typed confirmation',
+  render: () => <ToastProvider><BulkLetterWizard live={liveBulk} /></ToastProvider>,
+  play: async (ctx) => {
+    await continueTo(3)!(ctx);
+    await userEvent.click(await within(ctx.canvasElement.ownerDocument.body).findByRole('button', { name: 'Issue 2 letters' }));
+  },
+};

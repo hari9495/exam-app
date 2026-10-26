@@ -47,7 +47,6 @@ export {
   PayeesCard,
   ContractDialog,
   VrsCard,
-  BulkLetterDialog,
   type BatchesScreenProps,
   type UpcomingExitsScreenProps,
   type RetrenchmentScreenProps,
