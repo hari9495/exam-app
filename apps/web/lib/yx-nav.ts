@@ -113,8 +113,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('Exits', [
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        // F&F lives in Payroll (PPL-22 is the payroll settlement screen); People links to it.
-        ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/payroll/fnf')),
+        // Same F&F page as Pay's, at a People address so HR stays in the People menu (founder decision 26 Oct 2026).
+        ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/people/fnf')),
         ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
         ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
         ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),

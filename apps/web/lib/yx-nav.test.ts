@@ -133,7 +133,8 @@ describe('buildNav: Settings', () => {
     const hr = nav(['employee.profile.view', 'payroll.fnf.manage']);
     expect(labels(hr, 'people')).toContain('F&F');
     expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('F&F');
-    // F&F is Payroll's page: on it, Payroll stays the open area.
+    // One F&F page, two addresses: the menu stays in the area it was opened from.
+    expect(activeLink(hr, '/yx/people/fnf')?.area.id).toBe('people');
     expect(activeLink(hr, '/yx/payroll/fnf')?.area.id).toBe('pay');
   });
   it('a System Admin finds security, Support access, Emails and Contact YukthiX', () => {

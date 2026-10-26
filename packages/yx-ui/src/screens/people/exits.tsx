@@ -1220,7 +1220,7 @@ function SampleFnfCalculator({ variant = 'standard', today }: { variant?: FnfVar
         )}
         {variant === 'standard' && (
           <Text size="sm" tone="secondary">
-            Gratuity: {years} years {months} months counts as {years + (months >= 6 ? 1 : 0)} years (more than 6 months rounds up). Due within 30 days.
+            Gratuity: {years} years {months} months counts as {years + (months >= 6 ? 1 : 0)} years (6 months or more rounds up). Due within 30 days.
           </Text>
         )}
       </div>
