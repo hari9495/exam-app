@@ -7010,10 +7010,23 @@ model PayrollRun {
   postedAt       DateTime? @map("posted_at") @db.Timestamptz(3)
   totals         Json?
   voidReason     String?   @map("void_reason") @db.VarChar(500)
+  /// PPL-22: "FNF-2026-0041" for F&F runs (payroll_run_counters), null for other runs.
+  reference      String?   @db.VarChar(20)
   version        Int       @default(1)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, reference])
   @@map("payroll_runs")
+}
+
+model PayrollRunCounter {
+  organizationId String @map("organization_id") @db.Uuid
+  kind           String @db.VarChar(12)
+  year           Int    @db.SmallInt
+  lastNo         Int    @default(0) @map("last_no")
+
+  @@id([organizationId, kind, year])
+  @@map("payroll_run_counters")
 }
 
 model RunEmployee {

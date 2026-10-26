@@ -174,7 +174,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private view(r: Run) {
-    return { id: r.id, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
+    return { id: r.id, reference: r.reference, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
   }
 
   async list(ctx: TenantContext, user: ScopeUser, month?: string, entityId?: string | null) {
@@ -984,6 +984,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         await tx.oneTimePay.updateMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, runId: run.id, holdReason: { not: null } }, data: { runId: null } });
         const held = await tx.oneTimePay.count({ where: { organizationId: org, employmentId: f.employmentId, source: 'fnf', sourceRef: f.id, status: 'approved', holdReason: { not: null } } });
         if (!held && (f.secondRunId === run.id || !f.secondRunId)) await tx.fnfSettlement.update({ where: { id: f.id }, data: { status: 'settled', version: { increment: 1 } } });
+        // PPL-22: the F&F statement letter goes to the person's documents (FnfService issues it).
+        await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payroll.fnf.run_approved', payload: { fnfSettlementId: f.id, runId: run.id } } });
       }
     if (run.runType !== 'regular') {
       await audit(tx, c, 'payroll.run.approved', 'payroll_run', run.id, { calcVersion: run.calcVersion, people: slips.length, net: slips.reduce((t, s) => t.add(s.net), D(0)).toFixed(2), offcycle: run.offcycleKind });

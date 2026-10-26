@@ -274,7 +274,7 @@ export function ExplainedLines({ lines, title, action }: { lines: FnfLine[]; tit
                   {l.label}
                   {l.auto && <Badge tone="info">Pulled automatically</Badge>}
                   {l.wage && <Badge tone="neutral">Wage line</Badge>}
-                  {l.held && <Badge tone="warning">{l.heldWhy ? `Held: ${l.heldWhy}` : 'Held for open case'}</Badge>}
+                  {l.held && <Badge tone="warning">{l.heldTag ?? 'Held for open case'}</Badge>}
                   {l.byPayroll && <Badge tone="neutral">Added by payroll</Badge>}
                   {l.kind === 'recovery' && l.amount !== 0 && <Badge tone="neutral">To recover</Badge>}
                 </span>
@@ -283,6 +283,11 @@ export function ExplainedLines({ lines, title, action }: { lines: FnfLine[]; tit
               <Text size="sm" tone="secondary" as="p">
                 How it's calculated: {l.how}
               </Text>
+              {l.heldReason && (
+                <Text size="sm" tone="secondary" as="p">
+                  Held because: {l.heldReason}
+                </Text>
+              )}
               {action?.(l)}
             </details>
           </li>

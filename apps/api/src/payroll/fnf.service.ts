@@ -11,6 +11,8 @@ import { StatutoryRulesService } from '../statutory/statutory.service';
 import { gratuityDue, inForce, retrenchment, serviceYears } from '../statutory/evaluator';
 import { workingDaysUntil } from '../lifecycle/exit-rules';
 import { holidaysNear } from '../lifecycle/settlement';
+import { LettersService } from '../documents/letters/letters.service';
+import type { LetterFnf } from '../documents/letters/fields';
 import { hashValue, sealValue } from '../people/profile.service';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
@@ -35,6 +37,15 @@ import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+// Indian grouping of whole rupees ("1,23,456") from the digits themselves (no floats).
+const grouped = (i: string) => (i.length > 3 ? `${i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${i.slice(-3)}` : i);
+// "₹1,23,456.78" for the statement letter.
+const inr = (x: Prisma.Decimal) => {
+  const [i, f] = x.toFixed(2).split('.');
+  return `₹${grouped(i)}.${f}`;
+};
+/** Money inside an explanation ("₹26000.00 a month") written as the page writes it ("₹26,000 a month", "₹1,008.33"). */
+export const moneyText = (s: string) => s.replace(/₹(\d+)(?:\.(\d{2}))?/g, (_m, i: string, f?: string) => `₹${grouped(i)}${f && f !== '00' ? `.${f}` : ''}`);
 type Settlement = Prisma.FnfSettlementGetPayload<object>;
 type Payee = { kind: string; name: string; relation: string; sharePercent: string; accountEnc?: string | null; accountHash?: string | null; accountLast4?: string | null; ifsc?: string | null };
 const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
@@ -55,13 +66,73 @@ export class FnfService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly rules: StatutoryRulesService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly letters: LettersService,
   ) {}
 
   onModuleInit() {
     this.automation.subscribe(async (ev) => {
+      if (ev.type === 'payroll.fnf.run_approved' && typeof ev.payload.fnfSettlementId === 'string' && typeof ev.payload.runId === 'string')
+        await this.issueStatement(ev.organizationId, ev.payload.fnfSettlementId, ev.payload.runId).catch((e: Error) => this.logger.warn(`F&F statement for ${ev.payload.fnfSettlementId}: ${e.message}`));
       if (ev.type !== 'exit.settlement_inputs.ready' || typeof ev.payload.exitCaseId !== 'string') return;
       await this.fromInputs(ev.organizationId, ev.payload.exitCaseId).catch((e: Error) => this.logger.error(`F&F for exit ${ev.payload.exitCaseId}: ${e.message}`));
     });
+  }
+
+  /** "FNF-2026-0041": gap-free per company and year (the counter row is held by this transaction, like letter numbers). */
+  private async runReference(tx: Tx, org: string) {
+    const year = Number(todayIst().slice(0, 4));
+    const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
+      INSERT INTO payroll_run_counters (organization_id, kind, year, last_no) VALUES (${org}::uuid, 'fnf', ${year}, 1)
+      ON CONFLICT (organization_id, kind, year) DO UPDATE SET last_no = payroll_run_counters.last_no + 1 RETURNING last_no AS n`;
+    return `FNF-${year}-${String(n).padStart(4, '0')}`;
+  }
+
+  /**
+   * PPL-22: the F&F statement letter, issued by the system into the person's letters when an F&F run is approved (once
+   * per run). A second run's statement supersedes the first. Needs the company's active "F&F statement" template.
+   */
+  async issueStatement(org: string, settlementId: string, runId: string) {
+    const x = await this.tenantPrisma.forTenant(this.sys(org), async (tx) => {
+      // The system reads the settlement under the pay guard of the company's entities, then of its own entity only.
+      await payScope(tx, (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id));
+      const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, id: settlementId } });
+      if (!f || (f.runId !== runId && f.secondRunId !== runId)) return null;
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, id: f.employeeId }, select: { personId: true } });
+      if (!emp?.personId) return null;
+      if (await tx.letterIssue.findFirst({ where: { organizationId: org, letterType: 'fnf_statement', subjectType: 'payroll_run', subjectId: runId, status: { notIn: ['rejected', 'withdrawn'] } }, select: { id: true } })) return null;
+      const previous = await tx.letterIssue.findFirst({ where: { organizationId: org, personId: emp.personId, letterType: 'fnf_statement', status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { id: true } });
+      await payScope(tx, [f.legalEntityId]);
+      return { personId: emp.personId, supersedesId: previous?.id ?? null, fnf: await this.statement(tx, org, f) };
+    });
+    if (!x) return null;
+    return this.letters.issueSystem({ organizationId: org, isSuperAdmin: false, userId: null }, { letterType: 'fnf_statement', personId: x.personId, subjectType: 'payroll_run', subjectId: runId, supersedesId: x.supersedesId, fnf: x.fnf });
+  }
+
+  /** The statement's figures: every approved F&F payslip of the settlement (first and second run), as the settlement view adds them. */
+  private async statement(tx: Tx, org: string, f: Settlement): Promise<LetterFnf> {
+    const runs = await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [f.runId, f.secondRunId].filter((x): x is string => !!x) }, status: { in: ['approved', 'paid'] } }, orderBy: { createdAt: 'asc' } });
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, runId: { in: runs.map((r) => r.id) }, employmentId: f.employmentId, status: 'approved' }, select: { id: true } });
+    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) } }, orderBy: [{ payslipId: 'asc' }, { position: 'asc' }] });
+    const st = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: [...new Set(lines.map((l) => l.componentCode))] } }, select: { code: true, statutory: true } })).map((c) => [c.code.toLowerCase(), c.statutory]));
+    const statOf = (code: string) => st.get(code.toLowerCase()) ?? null;
+    const sum = (xs: typeof lines) => xs.reduce((t, l) => t.add(l.amount), D(0));
+    const earned = lines.filter((l) => l.kind === 'earning' || l.kind === 'reimbursement');
+    const ded = lines.filter((l) => l.kind === 'deduction');
+    const earnings = sum(earned);
+    const recoveries = sum(ded.filter((l) => !statOf(l.componentCode)));
+    const tds = sum(ded.filter((l) => statOf(l.componentCode) === 'tds'));
+    const statutory = sum(ded.filter((l) => statOf(l.componentCode) && statOf(l.componentCode) !== 'tds'));
+    const net = earnings.sub(recoveries).sub(tds).sub(statutory).add(sum(lines.filter((l) => l.componentCode === 'net_rounding')));
+    return {
+      run: runs.map((r) => r.reference ?? r.id).join(' and '),
+      lines: [...earned.map((l) => `${l.name} ${inr(l.amount)}`), ...ded.map((l) => `less ${l.name} ${inr(l.amount)}`)].join('; ') || 'None',
+      earnings: inr(earnings),
+      recoveries: inr(recoveries),
+      tds: inr(tds),
+      statutory: inr(statutory),
+      netLabel: net.lt(0) ? 'Net amount to be recovered from you' : 'Net payable to you',
+      net: inr(net.abs()),
+    };
   }
 
   private sys(org: string) {
@@ -114,6 +185,7 @@ export class FnfService implements OnModuleInit {
               periodEnd: asDate(to),
               runType: 'offcycle',
               offcycleKind: 'fnf',
+              reference: await this.runReference(tx, org),
               preparedBy: SYSTEM,
             },
           });
@@ -212,7 +284,7 @@ export class FnfService implements OnModuleInit {
       items.push({
         code: 'fnf_recovery',
         amount: D(r.amount!),
-        label: `${r.title}${r.reason ? `: ${r.reason}` : ''}`.slice(0, 200),
+        label: `${r.title}${r.reason ? ` · ${r.reason}` : ''}`.slice(0, 200),
         hold: r.status === 'open' ? 'Not returned or signed off yet.' : undefined,
       });
     for (const i of items) {
@@ -317,6 +389,10 @@ export class FnfService implements OnModuleInit {
     const comp = (code: string) => comps.get(code.toLowerCase());
     const kindOf = (code: string) => (comp(code)?.kind === 'deduction' ? ('deduction' as const) : comp(code)?.kind === 'employer' ? ('employer' as const) : ('earning' as const));
     const explain = (i: (typeof items)[number]) => {
+      const e = explained(i);
+      return { ...e, title: moneyText(e.title), how: moneyText(e.how) };
+    };
+    const explained = (i: (typeof items)[number]) => {
       const name = comp(i.componentCode)?.name ?? i.componentCode;
       if (i.source === 'm05') return { title: `Pending reimbursement: ${i.reason.replace(/^Expense claim: /, '')}`, how: 'An approved expense claim not paid yet: it is paid with this settlement.', auto: true };
       if (i.reason !== WORKED_OUT) return { title: i.label ?? name, how: `Added by payroll: ${i.reason}`, auto: false };
@@ -335,7 +411,7 @@ export class FnfService implements OnModuleInit {
           .filter((l) => !(l.sourceRef && ids.has(l.sourceRef)) && ['earning', 'reimbursement', 'deduction'].includes(l.kind))
           .map((l) => {
             const st = comp(l.componentCode)?.statutory;
-            return { code: l.componentCode, name: l.name, group: l.kind !== 'deduction' ? ('earning' as const) : st === 'tds' ? ('tds' as const) : st ? ('statutory' as const) : ('recovery' as const), amount: l.amount.toFixed(2), how: l.explanation };
+            return { code: l.componentCode, name: l.name, group: l.kind !== 'deduction' ? ('earning' as const) : st === 'tds' ? ('tds' as const) : st ? ('statutory' as const) : ('recovery' as const), amount: l.amount.toFixed(2), how: moneyText(l.explanation) };
           })
       : null;
     const sum = (xs: Prisma.Decimal[]) => xs.reduce((t, x) => t.add(x), D(0));
@@ -368,6 +444,7 @@ export class FnfService implements OnModuleInit {
       workingDaysLeft,
       status: f.status,
       runId: f.runId,
+      runReference: run?.reference ?? null,
       runStatus: run?.status ?? null,
       secondRunId: f.secondRunId,
       net: net?.toFixed(2) ?? null,
@@ -381,6 +458,8 @@ export class FnfService implements OnModuleInit {
         wage: WAGE.includes(i.componentCode),
         claim: i.source === 'm05',
         held: i.holdReason,
+        // The short tag for a hold the system made (lines() holds only for these two); payroll's own holds say why in full.
+        heldTag: i.holdReason && i.source === 'fnf' && i.createdBy === SYSTEM ? (i.componentCode === 'fnf_recovery' ? 'not returned yet' : 'permission needed') : null,
         inRun: i.runId,
         byPayroll: i.source === 'fnf' && i.createdBy !== SYSTEM,
       })),
@@ -578,6 +657,7 @@ export class FnfService implements OnModuleInit {
           periodEnd: asDate(to),
           runType: 'offcycle',
           offcycleKind: 'fnf',
+          reference: await this.runReference(tx, org),
           preparedBy: v.userId!,
         },
       });

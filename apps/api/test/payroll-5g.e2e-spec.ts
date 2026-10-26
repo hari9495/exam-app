@@ -1,3 +1,6 @@
+// The F&F statement letter: the template preview passes the (fake) virus check and letters are made by the fake converter.
+process.env.SD_SCANNER = 'dev-fake';
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -6,14 +9,14 @@ import cookieParser from 'cookie-parser';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
-import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService, OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
 import { freezeSettlementIn } from '../src/lifecycle/settlement';
-import { FnfService } from '../src/payroll/fnf.service';
+import { FnfService, moneyText } from '../src/payroll/fnf.service';
 import { MODULE_COMPONENTS } from '../src/payroll/starter';
 import { serviceYears } from '../src/statutory/evaluator';
 import type { CompanyContext } from '../src/org-structure/org-structure.service';
@@ -384,6 +387,12 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
   });
 
   it('F&F from the hand-off: deadline over a weekend and a holiday; retrenchment lines held without permission, paid in a second run', async () => {
+    // PPL-22: the company switches on the starter F&F statement and names who signs for the entity.
+    const tpl = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'fnf_statement' }).expect(201)).body.id;
+    await api('adminA', 'get', `/letters/templates/${tpl}/preview`).expect(200);
+    await api('adminA', 'post', `/letters/templates/${tpl}/activate`).expect(200);
+    await stepUp('adminA');
+    await api('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.adminA).field('title', 'Director').expect(201);
     let friday = plus(today, 1);
     while (new Date(`${friday}T00:00:00Z`).getUTCDay() !== 5) friday = plus(friday, 1);
     await inA(async (tx) => {
@@ -393,7 +402,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const id = await exitCase(ids.emp2, 'retrenchment', friday, { retrenchment: { selectionBasis: 'Last in, first out', noticeMode: 'pay_in_lieu', workers: 350 } });
     const f = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
     // Friday, then Saturday, Sunday, the Monday holiday: Tuesday and Wednesday are the two working days.
-    expect(f).toMatchObject({ lwd: friday, deadline: plus(friday, 5), status: 'open', runStatus: 'draft' });
+    expect(f).toMatchObject({ lwd: friday, deadline: plus(friday, 5), status: 'open', runStatus: 'draft', runReference: `FNF-${today.slice(0, 4)}-0001` });
     const notice = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_pay');
     expect(notice.held).toMatch(/permission/);
     expect(f.items.find((i: { componentCode: string }) => i.componentCode === 'reskilling_fund').held).toMatch(/permission/);
@@ -402,6 +411,34 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     // The leaver is paid in the F&F run, not the next regular run.
     const slips = await approveRun(f.runId);
     expect(slips.map((s) => s.employeeId)).toEqual([ids.emp2]);
+    // The approval asks for the F&F statement letter; it is issued once into the person's letters with the net.
+    const personOf = async (employeeId: string) => (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: employeeId } }))).personId!;
+    const person = await personOf(ids.emp2);
+    expect(await inA((tx) => tx.eventOutbox.count({ where: { organizationId: org.A.id, eventType: 'payroll.fnf.run_approved', payload: { path: ['runId'], equals: f.runId } } }))).toBe(1);
+    const statements = () => inA((tx) => tx.letterIssue.findMany({ where: { personId: person, letterType: 'fnf_statement' }, orderBy: { createdAt: 'asc' } }));
+    // The outbox worker may get there first: asking again is harmless (once per run), so ask until it is issued.
+    const statementFor = async (runId: string) => {
+      for (let i = 0; i < 40; i++) {
+        await fnf.issueStatement(org.A.id, id, runId).catch(() => undefined);
+        if ((await statements()).some((l) => l.subjectId === runId && l.status === 'issued')) return;
+        await new Promise((ok) => setTimeout(ok, 250));
+      }
+    };
+    await statementFor(f.runId);
+    await statementFor(f.runId);
+    const crypto = app.get(OrgSecretsCryptoService);
+    const dataOf = (enc: string) => JSON.parse(crypto.decrypt(enc)) as Record<string, string>;
+    const inr = (v: string) => {
+      const [i, d] = Number(v).toFixed(2).split('.');
+      return `₹${i.length > 3 ? `${i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${i.slice(-3)}` : i}.${d}`;
+    };
+    const [first1] = await statements();
+    expect(await statements()).toHaveLength(1);
+    expect(first1).toMatchObject({ status: 'issued', subjectType: 'payroll_run', subjectId: f.runId, referenceNo: expect.stringMatching(/\/FNF\//) });
+    expect(dataOf(first1.dataEnc)).toMatchObject({ fnf_run: `FNF-${today.slice(0, 4)}-0001`, fnf_net_label: 'Net payable to you', fnf_net: inr(slips[0].net) });
+    // The leaver sees it among their letters; another employee cannot open it.
+    expect(((await api('emp2', 'get', '/letters/me').expect(200)).body.letters as { id: string }[]).map((l) => l.id)).toContain(first1.id);
+    await api('emp1', 'get', `/letters/${first1.id}/file`).expect(403);
     const lines = (await linesOf(slips[0].id)).body.lines as { code: string }[];
     expect(lines.some((l) => l.code === 'notice_pay')).toBe(false);
     // The permission came: the held lines are released and paid in the second run.
@@ -412,7 +449,16 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdmin', 'patch', `/payroll/fnf/${id}`).send({ version: after.version, reason: 'Government permission granted', items: held }).expect(200);
     const second = (await api('payAdmin', 'post', `/payroll/fnf/${id}/second-run`).expect(201)).body;
     expect(second.lines).toBe(held.length);
+    // Gap-free per company and year: the second F&F run takes the next number; another company starts at 1.
+    expect((await api('payAdmin', 'get', `/payroll/runs/${second.runId}`).expect(200)).body.reference).toBe(`FNF-${today.slice(0, 4)}-0002`);
+    expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => (fnf as unknown as { runReference: (t: unknown, o: string) => Promise<string> }).runReference(tx, org.B.id))).toBe(`FNF-${today.slice(0, 4)}-0001`);
     const s2 = await approveRun(second.runId);
+    // The second run's statement supersedes the first and covers both runs.
+    await statementFor(second.runId);
+    const [old, fresh] = await statements();
+    expect(old.status).toBe('superseded');
+    expect(fresh).toMatchObject({ status: 'issued', supersedesId: old.id, subjectId: second.runId });
+    expect(dataOf(fresh.dataEnc)).toMatchObject({ fnf_run: `FNF-${today.slice(0, 4)}-0001 and FNF-${today.slice(0, 4)}-0002`, fnf_net: inr(String(Number(slips[0].net) + Number(s2[0].net))) });
     expect((await linesOf(s2[0].id)).body.lines.find((l: { code: string }) => l.code === 'notice_pay')).toBeTruthy();
     expect((await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body.status).toBe('settled');
   });
@@ -435,7 +481,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const line = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_recovery');
     expect(line.label).toMatch(/^Notice not served: 20 days/);
     // PPL-22: each line is explained and tagged; the claim is pulled into the F&F run.
-    expect(line).toMatchObject({ kind: 'deduction', title: 'Notice period recovery', how: line.label, wage: false, auto: false, claim: false, byPayroll: false, held: null });
+    expect(line).toMatchObject({ kind: 'deduction', title: 'Notice period recovery', how: moneyText(line.label), wage: false, auto: false, claim: false, byPayroll: false, held: null });
     const claim = f.items.find((i: { id: string }) => i.id === claimLine);
     expect(claim).toMatchObject({ kind: 'earning', amount: '3450.00', title: 'Pending reimbursement: Travel to Mysuru', auto: true, claim: true, wage: false, inRun: f.runId, byPayroll: false });
     // Before the run is calculated: only the settlement lines are counted; salary, TDS and net wait for the run.
@@ -463,7 +509,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const slipLines = (await linesOf(slip.id)).body.lines as { code: string; amount: string; kind: string; explanation: string }[];
     // The payslip's earnings that are not settlement lines: salary to the last day.
     const salaryEarn = slipLines.filter((l) => l.kind === 'earning' && !earned.some((i: { componentCode: string }) => i.componentCode === l.code));
-    expect(c.salary.filter((l: { group: string }) => l.group === 'earning')).toEqual(salaryEarn.map((l) => expect.objectContaining({ code: l.code, amount: l.amount, how: l.explanation })));
+    expect(c.salary.filter((l: { group: string }) => l.group === 'earning')).toEqual(salaryEarn.map((l) => expect.objectContaining({ code: l.code, amount: l.amount, how: moneyText(l.explanation) })));
     expect(Math.round(Number(c.totals.earnings) * 100)).toBe(paise(salaryEarn) + paise(earned));
     expect(c.totals.wageLines).toBe(rupee(paise(salaryEarn) + paise(wages)));
     expect(c.totals.recoveries).toBe(line.amount);

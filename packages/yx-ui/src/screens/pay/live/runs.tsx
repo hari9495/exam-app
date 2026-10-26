@@ -44,7 +44,7 @@ const STATUS: Record<RunStatus, { label: string; tone: BadgeTone }> = {
 };
 export const RunStatusBadge = ({ status }: { status: RunStatus }) => <Badge tone={STATUS[status].tone}>{STATUS[status].label}</Badge>;
 const KIND: Record<OffcycleKind, string> = { bonus: 'Bonus', arrears: 'Arrears', correction: 'Correction', payment: 'Payment', fnf: 'Full and final' };
-export const runName = (r: Pick<PayRun, 'runType' | 'offcycleKind' | 'month'> & { range?: PayRun['range'] }) => `${r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}`} · ${r.range ? `${dateText(r.range.from)} to ${dateText(r.range.to)}` : monthText(r.month)}`;
+export const runName = (r: Pick<PayRun, 'runType' | 'offcycleKind' | 'month' | 'reference'> & { range?: PayRun['range'] }) => `${r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}`} · ${r.range ? `${dateText(r.range.from)} to ${dateText(r.range.to)}` : monthText(r.month)}${r.reference ? ` · ${r.reference}` : ''}`;
 const stageOf = (s: RunStatus, published: boolean): RunStage =>
   published ? 'Published' : s === 'paid' ? 'Paid' : s === 'approved' ? 'Approved and locked' : s === 'submitted' || s === 'in_review' ? 'In review' : s === 'calculated' ? 'Calculated' : 'Draft';
 
@@ -121,7 +121,7 @@ export function PayRunsScreen(p: PayRunsScreenProps) {
                 .filter((r) => r.month === m)
                 .map((r) => (
                   <tr key={r.id}>
-                    <th scope="row">{r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}`}</th>
+                    <th scope="row">{r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}${r.reference ? ` · ${r.reference}` : ''}`}</th>
                     <td>{p.groups.find((g) => g.id === r.payGroupId)?.name ?? ''}</td>
                     <td>
                       <RunStatusBadge status={r.status} />

@@ -10,6 +10,8 @@ export interface PayRun {
   month: string;
   runType: 'regular' | 'offcycle';
   offcycleKind: OffcycleKind | null;
+  /** F&F runs: "FNF-2026-0041". */
+  reference?: string | null;
   status: RunStatus;
   calcVersion: number;
   totals: { people: number; gross: string; deductions: string; net: string; employerCost: string; failed: number; skipped: number } | null;
@@ -248,6 +250,8 @@ export interface FnfItem {
   /** An approved expense claim paid with the settlement (held or changed in Expenses, not here). */
   claim: boolean;
   held: string | null;
+  /** A short category for a hold the system made ("permission needed", "not returned yet"); the full reason is `held`. */
+  heldTag: string | null;
   inRun: string | null;
   byPayroll: boolean;
 }
@@ -270,6 +274,8 @@ export interface FnfSettlementView {
   overdue: boolean;
   status: string;
   runId: string | null;
+  /** "FNF-2026-0041". */
+  runReference: string | null;
   runStatus: string | null;
   secondRunId: string | null;
   net: string | null;

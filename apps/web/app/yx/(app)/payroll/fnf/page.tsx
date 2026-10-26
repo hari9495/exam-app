@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { FnfCalculator } from '@yukthix/ui/frame';
@@ -22,13 +21,6 @@ export default function YxPayFnfPage() {
   const nameOf = useNames();
   const patch = (s: FnfSettlementView, body: object) => write(`/fnf/${id(s.id)}`, { version: s.version, ...body }, 'PATCH');
   const done = (title: string) => toast({ tone: 'success', title });
-  // While an F&F run calculates, look again every two seconds.
-  const calculating = list.data?.some((s) => s.runStatus === 'calculating');
-  useEffect(() => {
-    if (!calculating) return;
-    const t = setInterval(() => void list.refetch(), 2000);
-    return () => clearInterval(t);
-  }, [calculating]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <FnfCalculator
       today={new Date(`${todayIst()}T00:00:00`)}
@@ -41,7 +33,14 @@ export default function YxPayFnfPage() {
         onOpenRun: (runId) => router.push(`/yx/payroll/runs/${id(runId)}`),
         onRecalculate: async (s) => {
           await write(`/runs/${id(s.runId!)}/calculate`);
-          done(`The F&F run for ${nameOf(s.employeeId)} is being calculated`);
+          // The run calculates in the background: look every second until it is done, then say so.
+          let status: string | null = 'calculating';
+          for (let i = 0; i < 180 && status === 'calculating'; i++) {
+            await new Promise((ok) => setTimeout(ok, 1000));
+            status = (await list.refetch()).data?.find((x) => x.id === s.id)?.runStatus ?? null;
+          }
+          if (status !== 'calculated') throw new Error('The F&F run did not calculate. Open the F&F run to see why.');
+          done(`F&F for ${nameOf(s.employeeId)} recalculated`);
         },
         onSubmit: async (s) => {
           await write(`/runs/${id(s.runId!)}/submit`, {});

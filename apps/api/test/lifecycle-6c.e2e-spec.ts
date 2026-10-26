@@ -203,6 +203,12 @@ describe('Lifecycle batch 6c', () => {
     const phoneItem = k.clearance.find((i: { title: string }) => i.title.includes('Galaxy'));
     expect(laptopItem.status).toBe('cleared');
     expect(phoneItem).toMatchObject({ status: 'cleared', recoveryAmount: '15000.00' });
+    // PPL-22: payroll's line names the asset and the condition it came back in, once each.
+    const handoff = await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.exitSettlementInput.findFirstOrThrow({ where: { exitCaseId: ids.raviCase, supersededAt: null } });
+    });
+    expect(handoff.recoveries).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'asset', title: `Galaxy A35 (PH-${run})`, reason: 'Not returned: Not handed back', amount: '15000.00', status: 'recorded' })]));
     for (const i of k.clearance.filter((x: { status: string; department: string }) => x.status === 'open' && x.department !== 'asset' && x.department !== 'manager_handover')) {
       await api('hr', 'post', `/lifecycle/clearance/${i.id}/sign-off`).send({ action: 'clear', version: i.version }).expect(200);
     }

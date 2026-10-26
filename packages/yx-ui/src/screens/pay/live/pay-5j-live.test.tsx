@@ -170,7 +170,8 @@ describe('batch 5j payroll screens', () => {
     const onRecalculate = vi.fn(async () => ({}));
     render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [FNF[1]], onSubmit, onRecalculate })} />);
     expect(screen.getByText('F&F · Arjun Kulkarni')).toBeInTheDocument();
-    expect(screen.getByText(/^Resignation · last working day 19 Oct 2026/)).toBeInTheDocument();
+    expect(screen.getByText('Resignation · last working day 19 Oct 2026 · off-cycle run FNF-2026-0041')).toBeInTheDocument();
+    expect(screen.getByText("Payment goes in the bank file; the F&F statement letter goes to Arjun's documents. Changes after payment follow corrections.")).toBeInTheDocument();
     expect(screen.getByText('2 working days left')).toBeInTheDocument();
     expect(screen.getByText('Wages due on exit by 21 Oct 2026')).toBeInTheDocument();
     expect(screen.getByText('Gratuity: not due. 2 years 4 months of service; gratuity needs 5 years.')).toBeInTheDocument();
@@ -183,9 +184,11 @@ describe('batch 5j payroll screens', () => {
     const recoveries = screen.getByRole('region', { name: 'Recoveries' });
     expect(recoveries).toHaveTextContent(/Expense advance: Delhi trip.*Pulled automatically.*To recover.*₹5,000/);
     expect(recoveries).not.toHaveTextContent('To pay');
-    expect(screen.getByRole('region', { name: 'Tax' })).toHaveTextContent(/Income tax \(TDS\)₹6,210.*Provident fund₹1,800/);
+    expect(screen.getByRole('region', { name: 'Tax' })).toHaveTextContent('Income tax (TDS)₹6,210');
+    expect(screen.getByRole('region', { name: 'Tax' })).not.toHaveTextContent('Provident fund');
+    expect(screen.getByRole('region', { name: 'Statutory deductions' })).toHaveTextContent('Provident fund₹1,800');
     const totals = screen.getByText('Totals').closest('section') as HTMLElement;
-    expect(totals).toHaveTextContent('Earnings₹46,450of which wage lines₹43,000Recoveries₹5,000TDS₹6,210PF, ESI, PT and LWF₹1,800Net payable₹33,440');
+    expect(totals).toHaveTextContent('Earnings₹46,450of which wage lines₹43,000Recoveries₹5,000TDS₹6,210Statutory deductions₹1,800Net payable₹33,440');
     // A claim is changed in Expenses: only the settlement's own lines can be held.
     expect(screen.getAllByRole('button', { name: 'Hold', hidden: true })).toHaveLength(2);
     await ue.click(screen.getByRole('button', { name: 'Recalculate' }));
@@ -200,7 +203,10 @@ describe('batch 5j payroll screens', () => {
     expect(screen.getByText('Part of this F&F is held')).toBeInTheDocument();
     expect(screen.getByText('Pay now').parentElement).toHaveTextContent('Pay now—');
     expect(screen.getByText('Held back').parentElement).toHaveTextContent('Held back₹44,000');
-    expect(screen.getByRole('region', { name: 'Earnings' })).toHaveTextContent(/Notice pay.*Held: The establishment has 350 workers/);
+    // As the design's held story: a short tag by the title, the full reason inside the opened line.
+    const notice = within(screen.getByRole('region', { name: 'Earnings' })).getByText('Notice pay').closest('li') as HTMLElement;
+    expect(within(notice).getByText('Held: permission needed')).toBeInTheDocument();
+    expect(within(notice).getByText("Held because: The establishment has 350 workers: the government's permission for retrenchment is needed first.")).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Tax' })).toHaveTextContent('Worked out on the final income for the year when the F&F run is calculated.');
     expect(screen.getByText('Gratuity: 5 years 7 months counts as 6 years (6 months or more rounds up). Due within 30 days, by 15 Nov 2026.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
