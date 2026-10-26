@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
+import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, MyCertificateDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
@@ -164,10 +164,15 @@ export class LettersController {
     return this.letters.attachSignature(ctx, this.user(req), id, file?.buffer);
   }
 
+  @Get('me/certificates')
+  certificates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.letters.myCertificates(ctx, this.user(req));
+  }
+
   @Post('me/certificates')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  certificate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: StarterLetterDto) {
-    return this.letters.myCertificate(ctx, this.user(req), dto.letterType);
+  certificate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: MyCertificateDto) {
+    return this.letters.myCertificate(ctx, this.user(req), dto);
   }
 
   @Get('me')

@@ -1,6 +1,7 @@
 import { CompanyContext, Tx } from '../../org-structure/org-structure.service';
 import { todayIst } from '../../org-structure/org-validation';
 import { settingFor } from '../../people/probation';
+import { withPayScope } from '../../payroll/pay-access';
 import { buildDocx } from './docx';
 
 // LIFE-2.04 the merge-field registry (P05 §4.3, YX-DOC-07 / 08): every field a letter template may use, its plain
@@ -58,6 +59,11 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   fnf_statutory: { label: 'F&F PF, ESI, PT and LWF', cls: 'pay', sample: '₹1,800.00' },
   fnf_net_label: { label: 'F&F net (payable or to recover)', cls: 'pay', sample: 'Net payable to you' },
   fnf_net: { label: 'F&F net amount', cls: 'pay', sample: '₹33,440.00' },
+  // PPL-31 certificates an employee asks for: their own words (escaped by the filler, never read as placeholders) and
+  // the current gross from payroll.
+  certificate_purpose: { label: 'Purpose (written by the employee who asked; blank when HR issues it)', cls: 'internal', optional: true, sample: 'Home loan' },
+  addressed_to: { label: 'Addressed to (written by the employee who asked; blank when not given)', cls: 'internal', optional: true, sample: 'The Branch Manager, Canara Bank, Hosur' },
+  monthly_gross: { label: 'Gross monthly salary (current)', cls: 'pay', sample: '₹1,12,400' },
 };
 
 const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -112,7 +118,27 @@ export interface LetterFnf {
   net: string;
 }
 
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+/** What an employee wrote when asking for their own certificate (PPL-31). */
+export interface CertificateRequest {
+  purpose: string;
+  addressedTo: string;
+}
+
+/** The person's current gross monthly salary from their pay package, or null when payroll has none (PPL-31). */
+export async function monthlyGross(tx: Tx, c: CompanyContext, personId: string, legalEntityId: string): Promise<string | null> {
+  const org = c.organizationId;
+  const emp = await tx.employee.findFirst({ where: { organizationId: org, personId }, select: { id: true } });
+  const e = emp ? await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id }, orderBy: { joinedOn: 'desc' }, select: { id: true } }) : null;
+  if (!e) return null;
+  const on = new Date(`${todayIst()}T00:00:00Z`);
+  return withPayScope(tx, [legalEntityId], async () => {
+    const comp = await tx.compensation.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }] }, orderBy: { validFrom: 'desc' } });
+    const pkg = comp ? await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId }, select: { monthlyGross: true } }) : null;
+    return pkg ? pkg.monthlyGross.toFixed(2) : null;
+  });
+}
+
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -185,6 +211,9 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     fnf_statutory: extra.fnf?.statutory ?? '',
     fnf_net_label: extra.fnf?.netLabel ?? '',
     fnf_net: extra.fnf?.net ?? '',
+    certificate_purpose: extra.request?.purpose ?? '',
+    addressed_to: extra.request?.addressedTo ?? '',
+    monthly_gross: extra.gross ? inr(extra.gross) : '',
   };
   return { data, legalEntityId: place.legalEntityId };
 }
@@ -207,6 +236,9 @@ const LETTERHEAD: Para[] = [
   { text: '' },
 ];
 const SIGNED: Para[] = [{ text: '' }, { text: 'For {{legal_entity}}' }, { text: '' }, { text: '' }, { text: '{{signatory_name}}', bold: true }, { text: '{{signatory_title}}' }];
+// PPL-31: an employee's own certificate goes to whom they named, else to whom it may concern, and says why they asked.
+const ADDRESSEE = '{{addressed_to}}{{^addressed_to}}To whom it may concern{{/addressed_to}}';
+const AT_REQUEST = 'This certificate is issued at their request.{{#certificate_purpose}} Purpose: {{certificate_purpose}}.{{/certificate_purpose}}';
 const letter = (to: string[], subject: string, body: string[]): Para[] => [...LETTERHEAD, ...to.map((text) => ({ text })), ...(to.length ? [{ text: '' }] : []), { text: `Subject: ${subject}`, bold: true }, { text: '' }, ...body.map((text) => ({ text })), ...SIGNED];
 
 /**
@@ -355,15 +387,49 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
       'We will pay the dues to the nominees or legal heirs and help the family with the provident fund, pension, insurance and gratuity claims. Our HR team will contact you.',
     ]),
   },
+  // PPL-31: the certificates an employee may ask for themselves (instant, or HR approves first: requiresApproval).
+  {
+    letterType: 'salary_certificate',
+    name: 'Salary certificate',
+    revision: 1,
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: letter([ADDRESSEE], 'Salary certificate for {{employee_name}}', [
+      'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}. Their gross monthly salary is {{monthly_gross}}.',
+      AT_REQUEST,
+    ]),
+  },
+  {
+    letterType: 'address_proof',
+    name: 'Address proof',
+    revision: 1,
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: letter([ADDRESSEE], 'Address proof for {{employee_name}}', [
+      'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}. Their home address in our records is {{address}}.',
+      AT_REQUEST,
+    ]),
+  },
   {
     letterType: 'employment_certificate',
     name: 'Employment certificate',
-    revision: 2,
+    revision: 3,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: letter(['To whom it may concern'], 'Employment certificate for {{employee_name}}', [
+    paragraphs: letter([ADDRESSEE], 'Employment certificate for {{employee_name}}', [
       'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} in the {{department}} department at {{location}}, since {{joining_date}}.',
-      'This certificate is issued at their request.',
+      AT_REQUEST,
+    ]),
+  },
+  {
+    letterType: 'noc',
+    name: 'No objection certificate (NOC)',
+    revision: 1,
+    requiresApproval: true,
+    personSigns: false,
+    paragraphs: letter([ADDRESSEE], 'No objection certificate for {{employee_name}}', [
+      'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}.',
+      '{{legal_entity}} has no objection to this request.{{#certificate_purpose}} Purpose: {{certificate_purpose}}.{{/certificate_purpose}}',
     ]),
   },
 ];

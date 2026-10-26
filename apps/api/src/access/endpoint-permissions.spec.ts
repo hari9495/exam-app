@@ -57,7 +57,7 @@ const IMPLICIT: Record<string, string[]> = {
   ReverificationController: ['forPerson'], // PPL-42: the person, HR in scope or the manager (decided by the service)
   DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam'], // PPL-03: a manager's read-only view of the team's Public and Internal documents
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
-  LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
+  LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate', 'certificates'], // 6d / PPL-31: my own certificates
   // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
   // Batch 6e: VRS schemes open to me, and applying.
   SpecialCasesController: ['myVrs', 'applyVrs'],

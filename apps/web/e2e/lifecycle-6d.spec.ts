@@ -72,11 +72,15 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await expect(hr.getByRole('button', { name: 'Clearance In progress' })).toBeVisible();
   await expect(hr.getByRole('listitem').filter({ hasText: 'Work and files handed over' }).getByText('Pending')).toBeVisible();
 
-  // Divya: an instant employment certificate.
+  // Divya: an instant employment certificate (PPL-31).
   const divya = await signedIn(browser, 'panel@demo-org.test');
   await divya.goto('/yx/me/documents');
-  await divya.getByRole('button', { name: 'Request a certificate' }).click();
-  await expect(divya.getByText('Your employment certificate is ready')).toBeVisible({ timeout: 30_000 });
+  await divya.getByRole('link', { name: 'Request a certificate' }).click();
+  await divya.getByRole('radio', { name: 'Employment certificate' }).click();
+  await divya.getByRole('combobox', { name: 'Purpose' }).click();
+  await divya.getByRole('option', { name: 'Home loan' }).click();
+  await divya.getByRole('button', { name: 'Generate certificate' }).click();
+  await expect(divya.getByText(/^Employment certificate ready · /)).toBeVisible({ timeout: 30_000 });
   // The old My letters address opens the same page (PPL-30).
   await divya.goto('/yx/me/letters');
   await expect(divya).toHaveURL(/\/yx\/me\/documents$/);
