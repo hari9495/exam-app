@@ -105,6 +105,10 @@ export interface FnfLine {
   wage?: boolean;
   /** Held by company policy (an open case); never a wage line. */
   held?: boolean;
+  /** Live: why the line is held (shown instead of "open case"). */
+  heldWhy?: string;
+  /** Live: added or changed by payroll. */
+  byPayroll?: boolean;
 }
 export function fnfTotals(lines: FnfLine[]) {
   const sum = (k: FnfLine['kind']) => lines.filter((l) => l.kind === k).reduce((s, l) => s + l.amount, 0);

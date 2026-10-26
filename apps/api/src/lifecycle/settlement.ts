@@ -11,11 +11,11 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export type SettlementCause = 'accepted' | 'lwd_changed' | 'recovery' | 'asset_returned' | 'exited' | 'hold' | 'payees';
 
-/** The days the person's calendar is closed around a date (their location's calendar, else the company's). */
-async function holidaysNear(tx: Tx, org: string, locationId: string | null, from: string): Promise<Set<string>> {
+/** The days the person's calendar is closed from a date (to 20 days on, or `to`): their location's calendar, else the company's. */
+export async function holidaysNear(tx: Tx, org: string, locationId: string | null, from: string, to?: string): Promise<Set<string>> {
   const cal = (locationId && (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId } }))) || (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));
   if (!cal) return new Set();
-  const until = new Date(new Date(`${from}T00:00:00Z`).getTime() + 20 * 86_400_000);
+  const until = to ? new Date(`${to}T00:00:00Z`) : new Date(new Date(`${from}T00:00:00Z`).getTime() + 20 * 86_400_000);
   const rows = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, halfDay: false, holidayOn: { gte: new Date(`${from}T00:00:00Z`), lte: until } }, select: { holidayOn: true } });
   return new Set(rows.map((r) => iso(r.holidayOn)));
 }

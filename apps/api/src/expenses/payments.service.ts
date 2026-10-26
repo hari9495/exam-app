@@ -13,6 +13,7 @@ import { inForce } from '../statutory/evaluator';
 import { writeBankFile, type BankLayout, type BankRow } from '../statutory/bank-format';
 import { PayrollIntakeService } from '../payroll/intake.service';
 import { withPayScope } from '../payroll/pay-access';
+import { refreezeExitOf } from '../lifecycle/settlement';
 import { buildExpenseJournal, journalCsv, type ExpenseMapping, type JournalInput } from './journal';
 
 // Expenses batch E3 (M05-BUILD-DESIGN §10 – §12; XP-3.03 … XP-3.07): paying approved claims.
@@ -155,6 +156,8 @@ export class ExpensePaymentsService implements OnModuleInit {
     await tx.expensePayment.create({ data: { organizationId: org, claimId: claim.id, legalEntityId: claim.legalEntityId, employeeId: claim.employeeId, route: 'payroll', payMonth: asDate(`${month}-01`), oneTimePayIds: ids, amount: net, taxableAmount: taxable, status: 'queued', createdBy: by } });
     await tx.expenseClaim.update({ where: { id: claim.id }, data: { route: 'payroll', paymentStatus: 'in_payroll', version: { increment: 1 } } });
     await audit(tx, c, 'expense.claim.to_payroll', 'expense_claim', claim.id, { month, exempt: exempt.toFixed(2), taxable: taxable.toFixed(2) });
+    // A leaver's claim is paid with the F&F settlement: a new hand-off revision makes payroll pick it up.
+    await refreezeExitOf(tx, c, claim.employmentId);
     return true;
   }
 

@@ -34,6 +34,8 @@ export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../p
 export { ExitCaseWorkspace } from '../people/exits';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
+// PPL-22 F&F calculator with the live settlements (Payroll › Full and final).
+export { FnfCalculator, type LiveFnf } from '../people/exits';
 export { VrsScheme, type LiveVrs } from '../people/relations';
 export { ReverificationCycles, type ReverifData, type ReverifRow, type ReverifRule, type ReverifRuleInput } from '../people/reverification';
 export { UpcomingExits } from '../people/upcoming';

@@ -1,7 +1,7 @@
 import { checkAnswers } from '../rules-engine/forms';
 import { capSegments } from '../employee-history/history-rules';
 import { todayIst } from '../org-structure/org-validation';
-import { EXIT_INTERVIEW_FORM, alumniUntil, lwdStage, noticeLabel, parseNotice, standardLwd, wagesDueBy } from './exit-rules';
+import { EXIT_INTERVIEW_FORM, alumniUntil, lwdStage, noticeLabel, parseNotice, standardLwd, wagesDueBy, workingDaysUntil } from './exit-rules';
 
 describe('exit rules (lifecycle 6c)', () => {
   it('notice in calendar days runs from the day after the resignation', () => {
@@ -33,6 +33,12 @@ describe('exit rules (lifecycle 6c)', () => {
     expect(wagesDueBy('2026-10-30', new Set())).toBe('2026-11-03');
     expect(wagesDueBy('2026-10-30', new Set(['2026-11-02']))).toBe('2026-11-04');
     expect(wagesDueBy('2026-11-03', new Set())).toBe('2026-11-05');
+  });
+
+  it('working days left to the F&F deadline skip weekends and holidays; negative once overdue', () => {
+    expect(workingDaysUntil('2026-10-30', '2026-11-04', new Set(['2026-11-02']))).toBe(2);
+    expect(workingDaysUntil('2026-11-04', '2026-11-04', new Set())).toBe(0);
+    expect(workingDaysUntil('2026-11-09', '2026-11-04', new Set())).toBe(-3);
   });
 
   it('the last day ends at the end of the IST day', () => {

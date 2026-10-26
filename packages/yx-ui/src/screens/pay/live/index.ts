@@ -67,7 +67,7 @@ export {
 export { PayRunsScreen, PayRunScreen, PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName, type PayRunsScreenProps, type PayRunScreenProps } from './runs';
 export { PayInputsScreen, PersonPicker, type PayInputsScreenProps, type PersonHit, type LopRow, type HoldRow } from './inputs';
 export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
-export { StatutoryHubScreen, FnfScreen, ArrearsScreen, type StatutoryHubScreenProps, type FnfScreenProps, type ArrearsScreenProps } from './compliance';
+export { StatutoryHubScreen, ArrearsScreen, type StatutoryHubScreenProps, type ArrearsScreenProps } from './compliance';
 export { GoLiveScreen, type GoLiveScreenProps, type GoLiveReadiness, type ReadinessItem, type ParallelRunView } from './golive';
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';

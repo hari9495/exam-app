@@ -29,9 +29,9 @@ const tax: TaxInputs = {
 
 describe('batch 5g: exit pay and off-cycle payslips', () => {
   it('counts service as the laws do: whole years, a part year over six months counts', () => {
-    expect(serviceYears('2020-01-01', '2024-12-31')).toEqual({ completed: 4, counted: 5 });
-    expect(serviceYears('2020-01-01', '2025-05-31')).toEqual({ completed: 5, counted: 5 });
-    expect(serviceYears('2020-01-15', '2020-07-13')).toEqual({ completed: 0, counted: 0 });
+    expect(serviceYears('2020-01-01', '2024-12-31')).toEqual({ completed: 4, counted: 5, months: 59 });
+    expect(serviceYears('2020-01-01', '2025-05-31')).toEqual({ completed: 5, counted: 5, months: 64 });
+    expect(serviceYears('2020-01-15', '2020-07-13')).toEqual({ completed: 0, counted: 0, months: 5 });
   });
 
   it('gratuity: 15/26 of the last wage per year after five years, any service on death, up to the cap', () => {
