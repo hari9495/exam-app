@@ -6,6 +6,7 @@ import { ErrorSummary, FormField, useSaveErrors } from '../../../components/fiel
 import { CodeField, TextField } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
+import { AuthFrame } from '../../auth/kit';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { IrreversibleSheet } from '../pay-kit';
@@ -327,8 +328,7 @@ export function VerifyDocumentScreen(p: VerifyDocumentScreenProps) {
       ];
   const save = useSaveErrors(errors);
   return (
-    <div className="yx-auth__page yx-tim-live">
-      <Card title="Check a YukthiX document">
+    <AuthFrame title="Check a document" subtitle="Type the 10-letter code printed at the foot of a letter, payslip or certificate to see whether it is genuine and current." note="Anyone holding the document can check it">
         <form
           className="yx-tim-form"
           onSubmit={(e) => {
@@ -355,8 +355,7 @@ export function VerifyDocumentScreen(p: VerifyDocumentScreenProps) {
             </InlineAlert>
           )}
         </form>
-      </Card>
-    </div>
+    </AuthFrame>
   );
 }
 
