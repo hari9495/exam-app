@@ -60,3 +60,8 @@ describe('hiring pages moved to YukthiX', () => {
     expect(redirects.some((r) => r.destination === '/v2/panel/interviews')).toBe(false);
   });
 });
+
+// PPL-30 (founder 26 Oct 2026): old My letters links and bookmarks open Me › Documents and letters.
+it('/yx/me/letters goes to Documents and letters', async () => {
+  expect(await config.redirects()).toContainEqual({ source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false });
+});

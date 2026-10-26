@@ -1,4 +1,4 @@
-import { activeLink, buildNav, meLinks, type NavInput } from './yx-nav';
+import { accountLinks, activeLink, buildNav, type NavInput } from './yx-nav';
 
 // The menu by product area (design audit step 1). These replace the old WorkspaceShell menu tests: each link shows to
 // exactly the people who may open its page, by the same keys as before.
@@ -9,10 +9,10 @@ const labels = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.i
 const sections = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.map((s) => s.label ?? '') ?? [];
 
 describe('buildNav: areas', () => {
-  it('someone with no keys and no record: Home (Home, Approvals, My security) and the Helpdesk; nothing unbuilt', () => {
+  it('someone with no keys and no record: Home (Home, Approvals, Notifications, Search, My requests) and the Helpdesk; nothing unbuilt', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
-    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
+    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
     expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Service catalogue', 'Chat with us']);
   });
 
@@ -108,7 +108,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
-    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'My letters', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'Privacy', 'My exit']);
     expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
@@ -153,7 +153,10 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/performance')?.link.label).toBe('Goals');
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
-  it('Me pages for the account menu', () => {
-    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+  it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
+    expect(n.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'Privacy', 'My exit']);
+    expect(activeLink(n, '/yx/me/letters')).toBeNull();
+    expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Language', 'My security']);
+    expect(accountLinks({ support: true, employee: false }).map((l) => l.label)).toEqual(['My security']);
   });
 });

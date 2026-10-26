@@ -72,14 +72,11 @@ export function buildNav(n: NavInput): NavArea[] {
         L('search', 'Search', '/yx/search'),
         ...when(!support, L('my-requests', 'My requests', '/yx/me/requests')),
       ]),
+      // The designed Me menu (PPL-30 MeFrame, founder 26 Oct 2026). Personal settings are in the avatar menu (accountLinks).
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-letters', 'My letters', '/yx/me/letters')),
-        ...when(!support, L('delegation', 'Delegation', '/yx/me/delegation')),
-        ...when(!support, L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
-        ...when(employee, L('my-data', 'My data', '/yx/me/privacy'), L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language'), L('resign', 'Resign', '/yx/me/resignation')),
-        L('me', 'My security', ME_SECURITY),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };
@@ -326,7 +323,17 @@ export function activeLink(areas: NavArea[], pathname: string): { area: NavArea;
   return best;
 }
 
-/** The person's own pages for the account menu (founder decision 15 Oct 2026: "Me" in the avatar menu). */
-export function meLinks(areas: NavArea[]): NavLink[] {
-  return areas.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items ?? [];
+/**
+ * The avatar menu's personal settings (founder decisions 15 and 26 Oct 2026): delegation, notification preferences, my
+ * assets (the Me menu in the design has no place for them), language and my security.
+ */
+export function accountLinks(n: Pick<NavInput, 'support' | 'employee'>): NavLink[] {
+  return [
+    ...when(!n.support, L('delegation', 'Delegation', '/yx/me/delegation'), L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
+    ...when(n.employee, L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language')),
+    L('me', 'My security', ME_SECURITY),
+  ];
 }
+
+/** The menu plus the avatar menu's pages under Account, so the command palette still finds them. */
+export const withAccount = (areas: NavArea[], n: Pick<NavInput, 'support' | 'employee'>): NavArea[] => areas.map((a) => (a.id === 'home' ? { ...a, sections: [...a.sections, { label: 'Account', items: accountLinks(n) }] } : a));

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AlumniScreen, MyDocumentsScreen, ResignationScreen } from './exits';
+import { AlumniScreen, ResignationScreen } from './exits';
 import type { MyResignation } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -31,17 +31,13 @@ describe('Me › Resign (PPL-18)', () => {
   });
 });
 
-describe('Alumni and my documents', () => {
-  it('alumni see their letters; my documents asks for a file before uploading', async () => {
+describe('Alumni', () => {
+  it('alumni see their letters', async () => {
     const onDownload = vi.fn(async () => ({}));
     const letter = { id: 'l', title: 'Relieving letter: Ravi', letterType: 'relieving', personId: 'p', referenceNo: 'KF/REL/2026/000001', verifyCode: null, status: 'issued' as const, renderError: null, issuedAt: null, personSigns: false, acceptedAt: null, signature: null, supersededById: null };
-    const { unmount } = render(<AlumniScreen data={{ company: 'Kaveri Foods', name: 'Ravi', lastDay: '2026-10-30', accessUntil: '2033-10-30', letters: [letter] }} onDownload={onDownload} onSignOut={vi.fn()} />);
+    render(<AlumniScreen data={{ company: 'Kaveri Foods', name: 'Ravi', lastDay: '2026-10-30', accessUntil: '2033-10-30', letters: [letter] }} onDownload={onDownload} onSignOut={vi.fn()} />);
     expect(screen.getByText(/until 30 Oct 2033/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Download' }));
     expect(onDownload).toHaveBeenCalledWith(letter);
-    unmount();
-    render(<MyDocumentsScreen state="ready" data={{ documents: [{ id: 'd', personId: 'p', typeKey: 'pan_card', typeName: 'PAN card', sensitivity: 'confidential', status: 'requested', expiresOn: null, rejectReason: null, file: null, version: 1 }] }} onDownload={vi.fn()} onUpload={vi.fn()} onCertificate={vi.fn()} lettersHref="#" />);
-    await ue.click(screen.getByRole('button', { name: 'Upload' }));
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Upload' })).toBeDisabled();
   });
 });

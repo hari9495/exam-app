@@ -30,6 +30,8 @@ const nextConfig = {
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
+      // PPL-30 (founder 26 Oct 2026): My letters is part of Me › Documents and letters.
+      { source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false },
       // M10 AT1 / AT5 (founder D1): the jobs list and each job's workspace are YukthiX Hiring pages.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },

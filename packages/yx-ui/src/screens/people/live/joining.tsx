@@ -5,7 +5,7 @@ import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
-import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
+import { InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { FileUpload } from '../../../components/upload';
@@ -615,7 +615,7 @@ function LetterList({ letters, onDownload, onAccept }: { letters: Letter[]; onDo
   );
 }
 
-function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign }: { letter: Letter; disclosureNeeded: boolean; onClose: () => void; onCode: () => Promise<unknown>; onSign: (x: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown> }) {
+export function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign }: { letter: Letter; disclosureNeeded: boolean; onClose: () => void; onCode: () => Promise<unknown>; onSign: (x: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown> }) {
   const [disclosure, setDisclosure] = useState(!disclosureNeeded);
   const [accept, setAccept] = useState(false);
   const [code, setCode] = useState('');
@@ -668,25 +668,6 @@ function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign }: { l
         </Button>
       )}
     </ConfirmDialog>
-  );
-}
-
-export interface MyLettersScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: { letters: Letter[]; esignAccepted: boolean } | null;
-  onDownload: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
-  onSignCode: (l: Letter) => Promise<unknown>;
-  onSign: (l: Letter, input: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown>;
-}
-
-export function MyLettersScreen(p: MyLettersScreenProps) {
-  const [signing, setSigning] = useState<Letter | null>(null);
-  return (
-    <LivePage title="My letters" description="Letters issued to you. Anyone you give one to can check it with the code printed on it." state={p.state} onRetry={p.onRetry} what="your letters">
-      {p.data && (p.data.letters.length ? <LetterList letters={p.data.letters} onDownload={p.onDownload} onAccept={setSigning} /> : <EmptyState compact title="No letters yet." />)}
-      {signing && p.data && <AcceptDialog letter={signing} disclosureNeeded={!p.data.esignAccepted} onClose={() => setSigning(null)} onCode={() => p.onSignCode(signing)} onSign={(x) => p.onSign(signing, x)} />}
-    </LivePage>
   );
 }
 

@@ -7,7 +7,7 @@ import { Button, IconButton } from '../../components/button';
 import { Breadcrumbs, Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
-import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
@@ -19,6 +19,8 @@ import { DocumentViewer, PdfPages } from '../../components/document';
 import { RichTextEditor } from '../../components/editor';
 import { LetterDocument, type LetterData } from '../../components/print';
 import { Stepper } from '../../components/stepper';
+import { DatePicker } from '../../components/date';
+import { dayKey } from '../../lib/dates';
 import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
@@ -29,6 +31,7 @@ import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, Letter as LiveL
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
+import { AcceptDialog } from './live/joining';
 
 const SCAN = (title: string) =>
   'data:image/svg+xml;utf8,' +
@@ -1626,25 +1629,346 @@ function TestRender({ live, t, viewed, onViewed }: { live: LiveLetterTemplates; 
 
 /* ================================================================== PPL-30 my documents */
 
-type Doc = (typeof MY_DOCS)[number];
-const docTone = (s: string) => (s.startsWith('Verified') || s.startsWith('Accepted') || s.startsWith('Published') || s.startsWith('Acknowledged') || s.startsWith('Valid') ? 'success' : s.startsWith('Expiring') || s.startsWith('Pending') ? 'warning' : 'neutral');
+type Doc = { id: string; name: string; kind: string; status: string; date: Date | null; size: number | null };
+const docTone = (s: string) =>
+  s.startsWith('Verified') || s.startsWith('Accepted') || s.startsWith('Published') || s.startsWith('Acknowledged') || s.startsWith('Valid') || s.startsWith('Issued')
+    ? 'success'
+    : s.startsWith('Expiring') || s.startsWith('Pending') || s.startsWith('Waiting') || s.startsWith('HR asked')
+      ? 'warning'
+      : s.startsWith('Expired') || s.startsWith('Not accepted')
+        ? 'danger'
+        : s.startsWith('Being')
+          ? 'info'
+          : 'neutral';
+const docColumns = <R extends Doc>(): TableColumn<R>[] => [
+  { key: 'name', header: 'Document', value: (r) => r.name, width: 320 },
+  { key: 'kind', header: 'Kind', value: (r) => r.kind, groupable: true, width: 120 },
+  { key: 'date', header: 'Date', type: 'date', value: (r) => r.date, width: 130 },
+  { key: 'size', header: 'Size', value: (r) => (r.size == null ? '' : formatBytes(r.size)), width: 100 },
+  { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => docTone(String(v)), width: 200 },
+];
+const MY_DOCS_TEXT = 'Your uploads, letters, payslips, tax forms, certificates and policies. After you leave, you can still download payslips, Form 16 and letters for 7 years.';
+const SHARE_TEXT = 'For a loan or visa application. The link expires and every download is logged.';
+const SHARE_DAYS = [
+  { value: '1', label: '1 day' },
+  { value: '7', label: '7 days' },
+  { value: '30', label: '30 days' },
+];
+const NO_DOCS = 'Upload your PAN, bank proof and certificates. Letters from HR appear here when issued.';
 
-// PPL-30
-export function MyDocuments({ rows, shareOpen = false }: { rows: Doc[]; shareOpen?: boolean }) {
-  const [share, setShare] = useState(shareOpen);
-  const [days, setDays] = useState<string | null>('7');
-  const cols: TableColumn<Doc>[] = [
-    { key: 'name', header: 'Document', value: (r) => r.name, width: 320 },
-    { key: 'kind', header: 'Kind', value: (r) => r.kind, groupable: true, width: 120 },
-    { key: 'date', header: 'Date', type: 'date', value: (r) => r.date, width: 130 },
-    { key: 'size', header: 'Size', value: (r) => formatBytes(r.size), width: 100 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => docTone(String(v)), width: 200 },
-  ];
+/** One of the person's own pay documents (GET /payroll/me/documents). */
+export interface MyPayDocument {
+  id: string;
+  kind: string;
+  kindLabel: string;
+  title: string;
+  referenceNo: string;
+  status: 'awaiting_signature' | 'issued' | 'superseded';
+  issuedAt: string;
+  verifyCode: string | null;
+  size?: number | null;
+}
+export type MyLetter = LiveLetter & { size?: number | null };
+export type MyDocSource = { kind: 'upload'; doc: QueueDocument } | { kind: 'letter'; letter: MyLetter } | { kind: 'pay'; doc: MyPayDocument };
+
+/** The live Me › Documents and letters (PPL-30): uploads, issued letters and pay documents in one list. The API checks every call. */
+export interface LiveMyDocuments {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  uploads: QueueDocument[];
+  letters: MyLetter[];
+  pay: MyPayDocument[];
+  /** The person agreed to accept letters electronically (else the acceptance asks first). */
+  esignAccepted: boolean;
+  /** Document types the person may upload themselves. */
+  uploadTypes: { key: string; name: string; expiryTracked: boolean }[];
+  /** The person's links that still work. */
+  shares: { id: string; source: string; sourceId: string }[];
+  onDownload: (d: MyDocSource, which?: 'acceptance') => Promise<unknown>;
+  onUpload: (typeKey: string, file: File, expiresOn: string | null) => Promise<unknown>;
+  /** The instant employment certificate (P05 Q8). */
+  onCertificate: () => Promise<unknown>;
+  /** Makes a link and returns it as a full address. */
+  onShare: (source: 'letter' | 'pay', id: string, days: number) => Promise<string>;
+  onStopSharing: (shareIds: string[]) => Promise<unknown>;
+  onSignCode: (l: LiveLetter) => Promise<unknown>;
+  onSign: (l: LiveLetter, input: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown>;
+  verifyUrl: (code: string) => string;
+}
+
+type LiveDoc = Doc & { src: MyDocSource };
+const EXPIRY_WARN_DAYS = 30;
+const PAY_KIND: Record<string, string> = { payslip: 'Payslip', form16: 'Tax form', form130: 'Tax form', form131: 'Tax form', revision_letter: 'Letter' };
+const at = (iso: string | null | undefined) => (iso ? new Date(iso) : null);
+const onDay = (key: string) => new Date(`${key}T00:00:00`);
+
+function uploadStatus(d: QueueDocument, soon: string) {
+  if (d.status === 'requested') return 'HR asked for it';
+  if (d.status === 'rejected') return 'Not accepted';
+  if (d.status === 'expired') return 'Expired';
+  if (d.status === 'uploaded') return d.file?.scanStatus === 'pending' ? 'Being checked' : 'Pending verification';
+  if (d.expiresOn) return `${d.expiresOn <= soon ? 'Expiring' : 'Valid to'} ${formatDate(onDay(d.expiresOn))}`;
+  return 'Verified';
+}
+
+function liveRows(live: LiveMyDocuments, soon: string): LiveDoc[] {
+  const uploads = live.uploads.map<LiveDoc>((d) => ({ id: `u-${d.id}`, name: d.typeName, kind: 'Upload', date: at(d.uploadedAt), size: d.file?.size ?? null, status: uploadStatus(d, soon), src: { kind: 'upload', doc: d } }));
+  const letters = live.letters.map<LiveDoc>((l) => ({
+    id: `l-${l.id}`,
+    name: [l.title.split(': ')[0], l.referenceNo].filter(Boolean).join(' '),
+    kind: l.letterType.includes('certificate') ? 'Certificate' : 'Letter',
+    date: at(l.issuedAt),
+    size: l.size ?? null,
+    status: l.status === 'superseded' ? 'Superseded' : l.signature?.status === 'open' ? 'Waiting for your acceptance' : l.acceptedAt ? 'Accepted' : 'Issued',
+    src: { kind: 'letter', letter: l },
+  }));
+  const pay = live.pay.map<LiveDoc>((d) => ({ id: `p-${d.id}`, name: d.title, kind: PAY_KIND[d.kind] ?? d.kindLabel, date: at(d.issuedAt), size: d.size ?? null, status: d.status === 'superseded' ? 'Superseded' : d.status === 'issued' ? 'Published' : 'Being signed', src: { kind: 'pay', doc: d } }));
+  // Newest first; a document HR asked for (no file yet) at the top.
+  return [...uploads, ...letters, ...pay].sort((a, b) => (b.date?.getTime() ?? Infinity) - (a.date?.getTime() ?? Infinity));
+}
+
+const shareable = (s: MyDocSource) => (s.kind === 'letter' ? s.letter.status === 'issued' : s.kind === 'pay' && s.doc.status === 'issued');
+const idOf = (s: MyDocSource) => (s.kind === 'letter' ? s.letter.id : s.doc.id);
+const hasFile = (s: MyDocSource) => (s.kind === 'upload' ? s.doc.file?.scanStatus === 'clean' : true);
+const codeOf = (s: MyDocSource) => (s.kind === 'letter' ? s.letter.verifyCode : s.kind === 'pay' ? s.doc.verifyCode : null);
+
+function LiveMyDocumentsPage({ live }: { live: LiveMyDocuments }) {
+  const { toast } = useToast();
+  const today = dayKey(new Date());
+  const soon = dayKey(new Date(Date.now() + EXPIRY_WARN_DAYS * 86_400_000));
+  const rows = liveRows(live, soon);
+  const [share, setShare] = useState<LiveDoc | null>(null);
+  const [upload, setUpload] = useState<{ typeKey: string | null } | null>(null);
+  const [accepting, setAccepting] = useState<LiveLetter | null>(null);
+  const [cert, setCert] = useState(false);
+  const fail = (e: unknown) => toast({ tone: 'error', title: "That didn't work", description: e instanceof Error ? e.message : undefined });
+  const expiring = live.uploads.filter((d) => d.expiresOn && d.status !== 'requested' && d.expiresOn <= soon).sort((a, b) => a.expiresOn!.localeCompare(b.expiresOn!));
+  const first = expiring[0];
+  const sharesOf = (s: MyDocSource) => (s.kind === 'upload' ? [] : live.shares.filter((x) => x.source === s.kind && x.sourceId === idOf(s)));
+  const uploadable = (s: MyDocSource) => (s.kind === 'upload' && live.uploadTypes.some((t) => t.key === s.doc.typeKey) ? s.doc : null);
+  const startUpload = live.uploadTypes.length ? () => setUpload({ typeKey: null }) : undefined;
+  const requestCertificate = async () => {
+    setCert(true);
+    try {
+      await live.onCertificate();
+      toast({ tone: 'success', title: 'Your employment certificate is ready', description: 'It is at the top of the list, with a code anyone can check.' });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setCert(false);
+    }
+  };
   return (
     <MeFrame active="Documents & letters">
       <PageHeader
         title="Documents and letters"
-        description="Your uploads, letters, payslips, tax forms, certificates and policies. After you leave, you can still download payslips, Form 16 and letters for 7 years."
+        description={MY_DOCS_TEXT}
+        actions={
+          <>
+            <Button icon={Mail} loading={cert} onClick={() => void requestCertificate()}>
+              Request a certificate
+            </Button>
+            {startUpload && (
+              <Button variant="primary" icon={Upload} onClick={startUpload}>
+                Upload
+              </Button>
+            )}
+          </>
+        }
+      />
+      {first && (
+        <InlineAlert tone="warning" title={`${first.typeName} ${first.expiresOn! < today ? 'expired' : 'expires'} on ${formatDate(onDay(first.expiresOn!))}`}>
+          {`Upload the renewed ${first.typeName} so it stays valid.${expiring.length > 1 ? ` ${expiring.length - 1} more ${expiring.length === 2 ? 'document expires' : 'documents expire'} soon.` : ''}`}
+        </InlineAlert>
+      )}
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load your documents" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="My documents"
+          columns={docColumns<LiveDoc>()}
+          rows={rows}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : 'ready'}
+          rowButtons={(r) => (hasFile(r.src) ? <IconButton icon={Download} label={`Download ${r.name}`} size="sm" variant="secondary" onClick={() => void live.onDownload(r.src).catch(fail)} /> : null)}
+          rowActions={(r) => {
+            const s = r.src;
+            const links = sharesOf(s);
+            const code = codeOf(s);
+            const up = uploadable(s);
+            const items = [
+              shareable(s) && (
+                <MenuItem key="share" icon={Share2} onSelect={() => setShare(r)}>
+                  Share a link
+                </MenuItem>
+              ),
+              links.length > 0 && (
+                <MenuItem
+                  key="stop"
+                  onSelect={() =>
+                    void live
+                      .onStopSharing(links.map((x) => x.id))
+                      .then(() => toast({ tone: 'success', title: `Sharing stopped for ${r.name}`, description: 'The link no longer opens.' }))
+                      .catch(fail)
+                  }
+                >
+                  Stop sharing
+                </MenuItem>
+              ),
+              s.kind === 'letter' && s.letter.status === 'issued' && s.letter.signature?.status === 'open' && (
+                <MenuItem key="accept" onSelect={() => setAccepting(s.letter)}>
+                  Read and accept
+                </MenuItem>
+              ),
+              s.kind === 'letter' && s.letter.signature?.status === 'signed' && (
+                <MenuItem key="accepted" icon={Download} onSelect={() => void live.onDownload(s, 'acceptance').catch(fail)}>
+                  Download accepted copy
+                </MenuItem>
+              ),
+              code && (
+                <MenuItem key="verify" icon={Copy} onSelect={() => void navigator.clipboard?.writeText(new URL(live.verifyUrl(code), window.location.origin).href).then(() => toast({ tone: 'success', title: 'Check link copied' }))}>
+                  Copy verification link
+                </MenuItem>
+              ),
+              up && (
+                <MenuItem key="upload" icon={Upload} onSelect={() => setUpload({ typeKey: up.typeKey })}>
+                  {up.file ? 'Upload a new version' : 'Upload'}
+                </MenuItem>
+              ),
+            ].filter(Boolean);
+            return items.length ? <>{items}</> : null;
+          }}
+          empty={
+            <EmptyState
+              title="No documents yet"
+              description={NO_DOCS}
+              action={
+                startUpload ? (
+                  <Button variant="primary" onClick={startUpload}>
+                    Upload
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
+        />
+      )}
+      {share && <ShareDialog key={share.id} row={share} onShare={live.onShare} onClose={() => setShare(null)} />}
+      {upload && <UploadDialog types={live.uploadTypes} typeKey={upload.typeKey} today={today} onClose={() => setUpload(null)} onUpload={live.onUpload} />}
+      {accepting && (
+        <AcceptDialog
+          letter={accepting}
+          disclosureNeeded={!live.esignAccepted}
+          onClose={() => setAccepting(null)}
+          onCode={() => live.onSignCode(accepting)}
+          onSign={async (x) => {
+            await live.onSign(accepting, x);
+            toast({ tone: 'success', title: `${accepting.title.split(': ')[0]} accepted`, description: 'Your sealed copy is in the list.' });
+          }}
+        />
+      )}
+    </MeFrame>
+  );
+}
+
+function ShareDialog({ row, onShare, onClose }: { row: LiveDoc; onShare: LiveMyDocuments['onShare']; onClose: () => void }) {
+  const { toast } = useToast();
+  const [days, setDays] = useState<string | null>('7');
+  const [link, setLink] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const copy = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // One link per dialog: made on the first copy; after that its length is fixed.
+      const url = link || (await onShare(row.src.kind as 'letter' | 'pay', idOf(row.src), Number(days)));
+      setLink(url);
+      await navigator.clipboard?.writeText(url);
+      toast({ tone: 'success', title: 'Link copied', description: `It works for ${SHARE_DAYS.find((d) => d.value === days)?.label} and opens only this document.` });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "We couldn't make the link. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Share ${row.name}`}
+      description={SHARE_TEXT}
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          <Button variant="primary" icon={Link2} loading={busy} onClick={() => void copy()}>
+            Copy link
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        <FormField label="Link works for">
+          <Select aria-label="Link works for" options={SHARE_DAYS} value={days} onChange={setDays} disabled={Boolean(link)} />
+        </FormField>
+        <TextField readOnly value={link} placeholder="The link appears here when you copy it" aria-label="Share link" />
+        {error && <InlineAlert tone="danger" title={error} />}
+      </div>
+    </Dialog>
+  );
+}
+
+function UploadDialog({ types, typeKey, today, onClose, onUpload }: { types: LiveMyDocuments['uploadTypes']; typeKey: string | null; today: string; onClose: () => void; onUpload: LiveMyDocuments['onUpload'] }) {
+  const { toast } = useToast();
+  const [key, setKey] = useState<string | null>(typeKey ?? (types.length === 1 ? types[0].key : null));
+  const [file, setFile] = useState<File | null>(null);
+  const [expires, setExpires] = useState<Date | null>(null);
+  const type = types.find((t) => t.key === key);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={type ? `Upload ${type.name}` : 'Upload a document'}
+      consequence="A PDF or a photo. HR checks it before it counts."
+      confirmLabel="Upload"
+      confirmDisabled={!type || !file || (type.expiryTracked && !expires)}
+      onConfirm={async () => {
+        await onUpload(type!.key, file!, type!.expiryTracked && expires ? dayKey(expires) : null);
+        toast({ tone: 'success', title: `${type!.name} uploaded`, description: 'HR checks it. You can see its status in the list.' });
+        onClose();
+      }}
+    >
+      <div className="yx-ppl__stack">
+        <FormField label="Document type" required>
+          <Select aria-label="Document type" options={types.map((t) => ({ value: t.key, label: t.name }))} value={key} onChange={setKey} disabled={Boolean(typeKey)} />
+        </FormField>
+        <FormField id="md-file" label="File" required>
+          <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
+        </FormField>
+        {type?.expiryTracked && (
+          <FormField label="Expires on" required>
+            <DatePicker value={expires} onChange={setExpires} min={onDay(today)} aria-label="Expires on" />
+          </FormField>
+        )}
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+// PPL-30
+export function MyDocuments({ rows, shareOpen = false, live }: { rows: Doc[]; shareOpen?: boolean; live?: LiveMyDocuments }) {
+  if (live) return <LiveMyDocumentsPage live={live} />;
+  return <SampleMyDocuments rows={rows} shareOpen={shareOpen} />;
+}
+
+function SampleMyDocuments({ rows, shareOpen }: { rows: Doc[]; shareOpen: boolean }) {
+  const [share, setShare] = useState(shareOpen);
+  const [days, setDays] = useState<string | null>('7');
+  return (
+    <MeFrame active="Documents & letters">
+      <PageHeader
+        title="Documents and letters"
+        description={MY_DOCS_TEXT}
         actions={
           <>
             <Button icon={Mail}>Request a certificate</Button>
@@ -1657,7 +1981,7 @@ export function MyDocuments({ rows, shareOpen = false }: { rows: Doc[]; shareOpe
       <InlineAlert tone="warning" title="Forklift licence expires on 24 Oct 2026">Upload the renewed licence so your plant access continues.</InlineAlert>
       <DataTable
         label="My documents"
-        columns={cols}
+        columns={docColumns<Doc>()}
         rows={rows}
         getRowId={(r) => r.id}
         rowButtons={() => <IconButton icon={Download} label="Download" size="sm" variant="secondary" />}
@@ -1669,13 +1993,13 @@ export function MyDocuments({ rows, shareOpen = false }: { rows: Doc[]; shareOpe
             <MenuItem icon={Upload}>Upload a new version</MenuItem>
           </>
         )}
-        empty={<EmptyState title="No documents yet" description="Upload your PAN, bank proof and certificates. Letters from HR appear here when issued." action={<Button variant="primary">Upload</Button>} />}
+        empty={<EmptyState title="No documents yet" description={NO_DOCS} action={<Button variant="primary">Upload</Button>} />}
       />
       <Dialog
         open={share}
         onOpenChange={setShare}
         title="Share Payslip, August 2026"
-        description="For a loan or visa application. The link expires and every download is logged."
+        description={SHARE_TEXT}
         footer={
           <>
             <Button onClick={() => setShare(false)}>Close</Button>
@@ -1687,7 +2011,7 @@ export function MyDocuments({ rows, shareOpen = false }: { rows: Doc[]; shareOpe
       >
         <div className="yx-ppl__stack">
           <FormField label="Link works for">
-            <Select options={[{ value: '1', label: '1 day' }, { value: '7', label: '7 days' }, { value: '30', label: '30 days' }]} value={days} onChange={setDays} />
+            <Select options={SHARE_DAYS} value={days} onChange={setDays} />
           </FormField>
           <TextField readOnly value="https://docs.kaverifoods.in/s/7Qm2-Xk9p" aria-label="Share link" />
         </div>

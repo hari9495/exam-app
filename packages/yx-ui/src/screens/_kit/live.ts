@@ -38,6 +38,8 @@ export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { BulkLetterWizard, IssuedLettersRegister, type LiveBulkLetters, type LiveLetters } from '../people/documents';
 export { LetterTemplatesList, type LiveLetterTemplates, type TemplateSpec } from '../people/documents';
+// PPL-30 Me › Documents and letters: uploads, letters and pay documents in one list, with expiring share links.
+export { MyDocuments, type LiveMyDocuments, type MyDocSource, type MyLetter, type MyPayDocument } from '../people/documents';
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
 export { EmployeeImportWizard } from '../people/changes';

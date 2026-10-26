@@ -7,7 +7,6 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { FileUpload } from '../../../components/upload';
 import { TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -17,7 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import { TaskForm } from './lifecycle';
-import type { AlumniMe, ExitStep, Handoff, Letter, MyDocuments, MyVrsScheme, Payee, Payees, QueueDocument } from './types';
+import type { AlumniMe, ExitStep, Handoff, Letter, MyVrsScheme, Payee, Payees } from './types';
 import { VrsCard } from './special';
 import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyResignation } from './types';
 
@@ -801,126 +800,5 @@ export function AlumniScreen({ data, onDownload, onSignOut }: AlumniScreenProps)
         )}
       </Card>
     </div>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ Me › My documents (PPL-30, PPL-31)
-
-export interface MyDocumentsScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: MyDocuments | null;
-  onDownload: (d: QueueDocument) => Promise<unknown>;
-  onUpload: (d: QueueDocument, file: File) => Promise<unknown>;
-  onCertificate: () => Promise<unknown>;
-  lettersHref: string;
-}
-
-const DOC: Record<QueueDocument['status'], { label: string; tone: BadgeTone }> = {
-  requested: { label: 'HR asked for it', tone: 'warning' },
-  uploaded: { label: 'Being checked', tone: 'info' },
-  verified: { label: 'Verified', tone: 'success' },
-  rejected: { label: 'Not accepted', tone: 'danger' },
-  expired: { label: 'Expired', tone: 'warning' },
-};
-
-export function MyDocumentsScreen(p: MyDocumentsScreenProps) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [upload, setUpload] = useState<QueueDocument | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const act = async (key: string, fn: () => Promise<unknown>) => {
-    setBusy(key);
-    setError(null);
-    try {
-      await fn();
-      return true;
-    } catch (e) {
-      setError((e as Error).message);
-      return false;
-    } finally {
-      setBusy(null);
-    }
-  };
-  const columns: TableColumn<QueueDocument>[] = [
-    { key: 'type', header: 'Document', value: (r) => r.typeName, width: 240, hideable: false },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <span className="yx-auth__item-main"><Badge tone={DOC[r.status].tone}>{DOC[r.status].label}</Badge>{r.rejectReason && <Text tone="secondary" size="sm">{r.rejectReason}</Text>}</span>, width: 220 },
-    { key: 'expires', header: 'Expires', value: (r) => r.expiresOn ?? '', render: (r) => (r.expiresOn ? dateText(r.expiresOn) : ''), width: 130, optional: true },
-  ];
-  return (
-    <LivePage
-      title="My documents"
-      description="Documents the company holds about you. Upload what HR asks for; only people allowed to see each kind can open it."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="your documents"
-      actions={
-        <Button loading={busy === 'cert'} onClick={async () => setDone(await act('cert', p.onCertificate))}>
-          Get an employment certificate
-        </Button>
-      }
-    >
-      {done && (
-        <InlineAlert tone="success" title="Your certificate is ready">
-          It is in <a href={p.lettersHref}>My letters</a>, with a code anyone can check.
-        </InlineAlert>
-      )}
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      {p.data && (
-        <DataTable
-          label="My documents"
-          columns={columns}
-          rows={p.data.documents}
-          getRowId={(r) => r.id}
-          rowNoun={['document', 'documents']}
-          cardSummary
-          empty={<EmptyState compact title="No documents yet." />}
-          rowButtons={(r) => (
-            <>
-              {r.file && r.file.scanStatus === 'clean' && (
-                <Button size="sm" loading={busy === r.id} onClick={() => void act(r.id, () => p.onDownload(r))}>
-                  Download
-                </Button>
-              )}
-              {(r.status === 'requested' || r.status === 'rejected' || r.status === 'expired') && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => {
-                    setFile(null);
-                    setUpload(r);
-                  }}
-                >
-                  Upload
-                </Button>
-              )}
-            </>
-          )}
-        />
-      )}
-      {upload && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setUpload(null)}
-          title={`Upload ${upload.typeName}`}
-          consequence="A PDF or a photo, up to 10 MB. HR checks it."
-          confirmLabel="Upload"
-          confirmDisabled={!file}
-          onConfirm={async () => {
-            await p.onUpload(upload, file!);
-            setUpload(null);
-          }}
-        >
-          <FormField id="md-file" label="File" required>
-            <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
-          </FormField>
-        </ConfirmDialog>
-      )}
-    </LivePage>
   );
 }
