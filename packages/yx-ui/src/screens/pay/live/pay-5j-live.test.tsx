@@ -189,8 +189,8 @@ describe('batch 5j payroll screens', () => {
     expect(screen.getByRole('region', { name: 'Statutory deductions' })).toHaveTextContent('Provident fund₹1,800');
     const totals = screen.getByText('Totals').closest('section') as HTMLElement;
     expect(totals).toHaveTextContent('Earnings₹46,450of which wage lines₹43,000Recoveries₹5,000TDS₹6,210Statutory deductions₹1,800Net payable₹33,440');
-    // A claim is changed in Expenses: only the settlement's own lines can be held.
-    expect(screen.getAllByRole('button', { name: 'Hold', hidden: true })).toHaveLength(2);
+    // Founder 26 Oct 2026: no Hold on wage lines (due in 2 working days), recoveries or claims (changed in Expenses).
+    expect(screen.queryAllByRole('button', { name: 'Hold', hidden: true })).toHaveLength(0);
     await ue.click(screen.getByRole('button', { name: 'Recalculate' }));
     await waitFor(() => expect(onRecalculate).toHaveBeenCalledWith(FNF[1]));
     await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
@@ -218,14 +218,15 @@ describe('batch 5j payroll screens', () => {
     const onHold = vi.fn(async () => ({}));
     const onAdd = vi.fn(async () => ({}));
     const onWaiveNotice = vi.fn(async () => ({}));
-    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ onHold, onAdd, onWaiveNotice })} />);
+    const gratuity = { ...FNF[1], items: [...FNF[1].items, { ...FNF[1].items[0], id: 'j4', componentCode: 'gratuity', title: 'Gratuity', wage: false }] };
+    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [FNF[0], gratuity], onHold, onAdd, onWaiveNotice })} />);
     await ue.click(screen.getByRole('combobox', { name: 'Settlement for' }));
     await ue.click(screen.getByRole('option', { name: 'Arjun Kulkarni · Resignation' }));
-    await ue.click(screen.getAllByRole('button', { name: 'Hold', hidden: true })[0]);
+    await ue.click(screen.getByRole('button', { name: 'Hold', hidden: true }));
     let dialog = await screen.findByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Leave balance disputed');
     await ue.click(within(dialog).getByRole('button', { name: 'Hold' }));
-    await waitFor(() => expect(onHold).toHaveBeenCalledWith(FNF[1], 'j1', 'Leave balance disputed', 'Leave balance disputed'));
+    await waitFor(() => expect(onHold).toHaveBeenCalledWith(gratuity, 'j4', 'Leave balance disputed', 'Leave balance disputed'));
     await ue.click(screen.getByRole('button', { name: 'More settlement actions' }));
     await ue.click(await screen.findByRole('menuitem', { name: 'Add a line' }));
     dialog = await screen.findByRole('dialog');
@@ -236,13 +237,13 @@ describe('batch 5j payroll screens', () => {
     expect(within(dialog).getByRole('button', { name: 'Add line' })).toBeDisabled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Canteen dues at exit');
     await ue.click(within(dialog).getByRole('button', { name: 'Add line' }));
-    await waitFor(() => expect(onAdd).toHaveBeenCalledWith(FNF[1], { componentCode: 'fnf_recovery', amount: '1200.50', label: 'Canteen dues' }, 'Canteen dues at exit'));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith(gratuity, { componentCode: 'fnf_recovery', amount: '1200.50', label: 'Canteen dues' }, 'Canteen dues at exit'));
     await ue.click(screen.getByRole('button', { name: 'More settlement actions' }));
     await ue.click(await screen.findByRole('menuitem', { name: 'Waive notice recovery' }));
     dialog = await screen.findByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Leaving to care for a parent');
     await ue.click(within(dialog).getByRole('button', { name: 'Waive' }));
-    await waitFor(() => expect(onWaiveNotice).toHaveBeenCalledWith(FNF[1], 'Leaving to care for a parent'));
+    await waitFor(() => expect(onWaiveNotice).toHaveBeenCalledWith(gratuity, 'Leaving to care for a parent'));
   });
 
   it('F&F: without payroll.fnf.manage the lines are read-only and the run is not prepared here', () => {

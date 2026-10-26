@@ -446,6 +446,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect(after.status).toBe('open');
     await api('payAdmin', 'post', `/payroll/fnf/${id}/second-run`).expect(409);
     const held = after.items.filter((i: { held: string | null }) => i.held).map((i: { id: string }) => ({ id: i.id, holdReason: null }));
+    // Founder 26 Oct 2026: a wage line can't be put on hold by hand (due in 2 working days).
+    await api('payAdmin', 'patch', `/payroll/fnf/${id}`).send({ version: after.version, reason: 'Dispute', items: [{ id: held[0].id, holdReason: 'Dispute' }] }).expect(400);
     await api('payAdmin', 'patch', `/payroll/fnf/${id}`).send({ version: after.version, reason: 'Government permission granted', items: held }).expect(200);
     const second = (await api('payAdmin', 'post', `/payroll/fnf/${id}/second-run`).expect(201)).body;
     expect(second.lines).toBe(held.length);
