@@ -297,6 +297,25 @@ describe('Lifecycle batch 6b', () => {
     expect((await request(server()).get(`/api/v1/public/pay/verify/${ids.code}`).expect(200)).body.status).toBe('superseded');
   });
 
+  it('a signatory who asks for their own letter: a company admin approves (no "no approver" warning); not approved, the asker hears why', async () => {
+    // Founder test 26 Oct 2026 (PPL-28): HR is the entity's signatory and issues the letter herself.
+    await inA((tx) => tx.signatory.updateMany({ where: { legalEntityId: ids.entity }, data: { userId: users.hr } }));
+    try {
+      const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(201)).body;
+      const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: l.id } }));
+      expect((req.steps as { approverIds: string[] }[])[0].approverIds).toEqual([users.adminA]);
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'workflow.approval.no_approver', entityId: req.id } }))).toBe(0);
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req.id, status: 'open' } }));
+      await api('adminA', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'reject', reason: 'test only' }).expect(200);
+      const bell = await inA((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.hr, type: 'workflow.approval.decided', entityId: req.id } }));
+      expect(bell.contextText).toBe(`Appointment letter for Kavya ${run} not approved: test only`);
+      // The register keeps the letter, marked not approved (never left "pending approval").
+      expect((await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === l.id)).toMatchObject({ status: 'rejected' });
+    } finally {
+      await inA((tx) => tx.signatory.updateMany({ where: { legalEntityId: ids.entity }, data: { userId: users.signer } }));
+    }
+  });
+
   // ------------------------------------------------------------------------------------------ joining and cancelling (LIFE-2.08)
 
   it('joining: on the day, with the identity check; the hire, identity and bank as change requests, the portal closed', async () => {
