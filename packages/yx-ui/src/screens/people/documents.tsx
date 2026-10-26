@@ -1114,8 +1114,12 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
                 <Select aria-label="Letterhead" options={[{ value: '', label: "Each person's legal entity" }, ...entities]} value={entity} onChange={(v) => setEntity(v ?? '')} />
               </FormField>
             )}
-            <Segment label="Before issue" value={approval} onChange={setApproval} options={[{ value: 'instant', label: 'Instant' }, { value: 'approval', label: 'Approval' }]} />
-            <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
+            <FormField label="Before issue" helper="Approval: the legal entity's signatory approves each letter first.">
+              <Segment label="Before issue" value={approval} onChange={setApproval} options={[{ value: 'instant', label: 'Instant' }, { value: 'approval', label: 'Approval' }]} />
+            </FormField>
+            <FormField label="The person">
+              <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
+            </FormField>
           </>
         )}
       </div>
