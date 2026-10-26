@@ -76,6 +76,7 @@
 .yx-ppl__lines summary { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-4); cursor: pointer; min-height: var(--yx-target-min); }
 .yx-ppl__lines summary:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-focus-width); border-radius: var(--yx-radius-control); }
 .yx-ppl__lines details p { margin: var(--yx-space-2) 0 0; }
+.yx-ppl__lines details > button { margin-top: var(--yx-space-3); }
 .yx-ppl__line-label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
 .yx-ppl__lines summary { list-style: none; }
 .yx-ppl__lines summary::-webkit-details-marker { display: none; }

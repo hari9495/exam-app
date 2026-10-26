@@ -952,7 +952,8 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
           Release
         </Button>
       );
-    if (firstDone || !runOpen) return null;
+    // Only a non-wage payment may wait (gratuity, reimbursements): wage lines are due in 2 working days, and a recovery is not paid.
+    if (firstDone || !runOpen || i.kind !== 'earning' || i.wage) return null;
     return (
       <Button
         size="sm"

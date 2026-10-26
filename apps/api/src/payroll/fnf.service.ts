@@ -535,6 +535,8 @@ export class FnfService implements OnModuleInit {
         const row = await tx.oneTimePay.findFirst({ where: { organizationId: org, id: x.id, source: 'fnf', sourceRef: f.id, status: 'approved' } });
         if (!row) throw new NotFoundException('Not found');
         if (firstDone && !second && row.runId) throw new ConflictException('This line was paid in the F&F run.');
+        if (x.holdReason && (WAGE.includes(row.componentCode) || (await tx.payComponent.findFirst({ where: { organizationId: org, code: row.componentCode } }))?.kind !== 'earning'))
+          throw new BadRequestException('Only a non-wage payment can be held: wage lines are due within 2 working days, and a recovery is not paid.');
         await tx.oneTimePay.update({
           where: { id: row.id },
           data: {
