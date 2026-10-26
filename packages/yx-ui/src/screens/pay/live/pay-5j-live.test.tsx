@@ -214,6 +214,12 @@ describe('batch 5j payroll screens', () => {
     await waitFor(() => expect(onHold).toHaveBeenCalledWith(FNF[0], 'i1', null, 'Released for payment'));
   });
 
+  it('F&F: a calculated run whose lines changed since says it needs recalculating', () => {
+    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [{ ...FNF[1], salary: null }] })} />);
+    expect(screen.getByText('Needs recalculating')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
+  });
+
   it('F&F: hold with a reason, add a line, waive the notice, and pick another settlement', async () => {
     const onHold = vi.fn(async () => ({}));
     const onAdd = vi.fn(async () => ({}));
