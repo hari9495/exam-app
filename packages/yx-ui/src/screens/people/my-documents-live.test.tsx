@@ -6,7 +6,7 @@ import { MyDocuments, type LiveMyDocuments } from './documents';
 import type { Letter, QueueDocument } from './live/types';
 
 // PPL-30 live: one list of uploads, letters and pay documents; the expiry alert; share an expiring link (own issued
-// letters and pay documents only), stop sharing, upload, the instant certificate, the OTP acceptance.
+// letters and pay documents only), stop sharing, upload, the link to Request a certificate, the OTP acceptance.
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const inDays = (n: number) => {
@@ -28,7 +28,7 @@ function page(over: Partial<LiveMyDocuments> = {}) {
     shares: [],
     onDownload: vi.fn(async () => {}),
     onUpload: vi.fn(async () => {}),
-    onCertificate: vi.fn(async () => {}),
+    certificateHref: '/yx/me/documents/certificate',
     onShare: vi.fn(async () => 'https://api.example.test/public/shares/o/t'),
     onStopSharing: vi.fn(async () => {}),
     onSignCode: vi.fn(async () => {}),
@@ -98,11 +98,9 @@ describe('PPL-30 documents and letters, live', () => {
     expect(live.onSignCode).toHaveBeenCalledWith(LETTER);
   });
 
-  it('uploads a renewed document with its expiry date, and makes the certificate', async () => {
-    const live = page();
-    await ue.click(screen.getByRole('button', { name: 'Request a certificate' }));
-    expect(live.onCertificate).toHaveBeenCalled();
-    expect(await screen.findByText('Your employment certificate is ready')).toBeInTheDocument();
+  it('uploads a renewed document with its expiry date; Request a certificate opens its page', async () => {
+    page();
+    expect(screen.getByRole('link', { name: 'Request a certificate' })).toHaveAttribute('href', '/yx/me/documents/certificate');
     await ue.click(screen.getAllByRole('button', { name: 'Upload' })[0]);
     const dialog = screen.getByRole('dialog', { name: 'Upload Forklift licence' });
     expect(within(dialog).getByRole('button', { name: 'Upload' })).toBeDisabled();

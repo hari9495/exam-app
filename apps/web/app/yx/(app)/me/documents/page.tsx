@@ -15,7 +15,7 @@ interface DocType {
 }
 
 // Me › Documents and letters (PPL-30): my uploads, the letters issued to me (accepted with a one-time code), my pay
-// documents, the instant employment certificate (PPL-31, P05 Q8) and expiring share links. My letters lives here now.
+// documents, the way to Request a certificate (PPL-31, P05 Q8) and expiring share links. My letters lives here now.
 export default function YxMyDocumentsPage() {
   const uploads = useLife<MyUploads & { personId: string | null }>('/documents/me');
   const letters = useLife<{ letters: MyLetter[]; esignAccepted: boolean }>('/letters/me');
@@ -51,7 +51,7 @@ export default function YxMyDocumentsPage() {
           if (expiresOn) form.append('expiresOn', expiresOn);
           return write('POST', `/documents/people/${encodeURIComponent(uploads.data?.personId ?? '')}/${encodeURIComponent(typeKey)}`, form);
         },
-        onCertificate: () => write('POST', '/letters/me/certificates', { letterType: 'employment_certificate' }),
+        certificateHref: '/yx/me/documents/certificate',
         onShare: async (source, id, days) => {
           const s = await write<{ path: string }>('POST', '/documents/shares', { source, id, days });
           return new URL(`${API_BASE}${s.path}`, window.location.origin).href;

@@ -24,7 +24,7 @@ import { dayKey } from '../../lib/dates';
 import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
-import { Text } from '../../components/foundations';
+import { Icon, Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
 import type { FieldClass,  } from './people-logic';
 import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
@@ -1686,8 +1686,8 @@ export interface LiveMyDocuments {
   shares: { id: string; source: string; sourceId: string }[];
   onDownload: (d: MyDocSource, which?: 'acceptance') => Promise<unknown>;
   onUpload: (typeKey: string, file: File, expiresOn: string | null) => Promise<unknown>;
-  /** The instant employment certificate (P05 Q8). */
-  onCertificate: () => Promise<unknown>;
+  /** Request a certificate (PPL-31), its own page. */
+  certificateHref: string;
   /** Makes a link and returns it as a full address. */
   onShare: (source: 'letter' | 'pay', id: string, days: number) => Promise<string>;
   onStopSharing: (shareIds: string[]) => Promise<unknown>;
@@ -1740,24 +1740,12 @@ function LiveMyDocumentsPage({ live }: { live: LiveMyDocuments }) {
   const [share, setShare] = useState<LiveDoc | null>(null);
   const [upload, setUpload] = useState<{ typeKey: string | null } | null>(null);
   const [accepting, setAccepting] = useState<LiveLetter | null>(null);
-  const [cert, setCert] = useState(false);
   const fail = (e: unknown) => toast({ tone: 'error', title: "That didn't work", description: e instanceof Error ? e.message : undefined });
   const expiring = live.uploads.filter((d) => d.expiresOn && d.status !== 'requested' && d.expiresOn <= soon).sort((a, b) => a.expiresOn!.localeCompare(b.expiresOn!));
   const first = expiring[0];
   const sharesOf = (s: MyDocSource) => (s.kind === 'upload' ? [] : live.shares.filter((x) => x.source === s.kind && x.sourceId === idOf(s)));
   const uploadable = (s: MyDocSource) => (s.kind === 'upload' && live.uploadTypes.some((t) => t.key === s.doc.typeKey) ? s.doc : null);
   const startUpload = live.uploadTypes.length ? () => setUpload({ typeKey: null }) : undefined;
-  const requestCertificate = async () => {
-    setCert(true);
-    try {
-      await live.onCertificate();
-      toast({ tone: 'success', title: 'Your employment certificate is ready', description: 'It is at the top of the list, with a code anyone can check.' });
-    } catch (e) {
-      fail(e);
-    } finally {
-      setCert(false);
-    }
-  };
   return (
     <MeFrame active="Documents & letters">
       <PageHeader
@@ -1765,8 +1753,11 @@ function LiveMyDocumentsPage({ live }: { live: LiveMyDocuments }) {
         description={MY_DOCS_TEXT}
         actions={
           <>
-            <Button icon={Mail} loading={cert} onClick={() => void requestCertificate()}>
-              Request a certificate
+            <Button asChild>
+              <a href={live.certificateHref}>
+                <Icon icon={Mail} />
+                <span className="yx-button__label">Request a certificate</span>
+              </a>
             </Button>
             {startUpload && (
               <Button variant="primary" icon={Upload} onClick={startUpload}>
@@ -2074,30 +2065,164 @@ export function MyDocumentsPhone({ rows, cameraOpen = false }: { rows: Doc[]; ca
 
 export type CertType = 'salary' | 'address' | 'employment' | 'noc';
 const CERT_LABEL: Record<CertType, string> = { salary: 'Salary certificate', address: 'Address proof', employment: 'Employment verification', noc: 'No objection certificate (NOC)' };
+const PURPOSES = ['Home loan', 'Visa application', 'Rental agreement', 'Higher studies'].map((x) => ({ value: x, label: x }));
+const NEEDS_HR = 'Needs HR approval (company setting)';
+const INSTANT = 'Ready instantly';
+const SAMPLE_CERTS = (Object.keys(CERT_LABEL) as CertType[]).map((k) => ({ value: k, label: CERT_LABEL[k], description: k === 'noc' ? NEEDS_HR : INSTANT }));
 
-function CertFields({ type, setType }: { type: CertType; setType: (t: CertType) => void }) {
+interface CertForm {
+  type: string | null;
+  purpose: string | null;
+  to: string;
+}
+
+function CertFields({ options, form, onChange }: { options: { value: string; label: string; description: string; disabled?: boolean }[]; form: CertForm; onChange: (f: CertForm) => void }) {
   return (
     <div className="yx-ppl__form">
       <FormField label="Certificate" required>
-        <RadioGroup
-          value={type}
-          onChange={(v) => setType(v as CertType)}
-          options={(Object.keys(CERT_LABEL) as CertType[]).map((k) => ({ value: k, label: CERT_LABEL[k], description: k === 'noc' ? 'Needs HR approval (company setting)' : 'Ready instantly' }))}
-        />
+        <RadioGroup value={form.type ?? ''} onChange={(v) => onChange({ ...form, type: v })} options={options} />
       </FormField>
       <FormField label="Purpose" required>
-        <Select options={['Home loan', 'Visa application', 'Rental agreement', 'Higher studies'].map((x) => ({ value: x, label: x }))} value="Home loan" onChange={() => {}} />
+        <Select aria-label="Purpose" options={PURPOSES} value={form.purpose} onChange={(v) => onChange({ ...form, purpose: v })} />
       </FormField>
       <FormField label="Addressed to" optional>
-        <TextField defaultValue="The Branch Manager, Canara Bank, Hosur" />
+        <TextField aria-label="Addressed to" value={form.to} maxLength={160} onChange={(v) => onChange({ ...form, to: v })} />
       </FormField>
     </div>
   );
 }
 
+/** One certificate the employee may ask for (GET /letters/me/certificates): switched on by the company. */
+export interface MyCertificateKind {
+  letterType: string;
+  name: string;
+  requiresApproval: boolean;
+  /** Still waiting for HR, and who holds it. */
+  pending: { requestedAt: string; approvers: string[] } | null;
+}
+
+/** The live PPL-31: the certificates the company switched on, made at once or sent to HR. The API checks every call. */
+export interface LiveCertificateRequest {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  kinds: MyCertificateKind[];
+  /** Documents and letters (Cancel goes back there). */
+  backHref: string;
+  onRequest: (x: { letterType: string; purpose: string; addressedTo?: string }) => Promise<LiveLetter>;
+  /** The issued certificate as a PDF address for the preview. */
+  onOpen: (l: LiveLetter) => Promise<string>;
+  onDownload: (l: LiveLetter) => Promise<unknown>;
+  onShare: LiveMyDocuments['onShare'];
+}
+
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+const listOf = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+const shortName = (name: string) => name.match(/\(([^)]+)\)$/)?.[1] ?? name;
+function certText(kinds: MyCertificateKind[]) {
+  const instant = kinds.filter((k) => !k.requiresApproval).map((k, i) => (i ? lowerFirst(k.name) : k.name));
+  return instant.length
+    ? `${listOf(instant)} ${instant.length > 1 ? 'are' : 'is'} generated instantly with the company signatory and a QR code anyone can verify.`
+    : 'HR approves each certificate first. It comes with the company signatory and a QR code anyone can verify.';
+}
+
+function LiveCertificatePage({ live, today }: { live: LiveCertificateRequest; today: Date }) {
+  const { toast } = useToast();
+  const free = live.kinds.find((k) => !k.pending);
+  const [form, setForm] = useState<CertForm>({ type: null, purpose: null, to: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ letter: LiveLetter; kind: MyCertificateKind; url: string | null } | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const type = form.type ?? (free ?? live.kinds[0])?.letterType ?? null;
+  const kind = live.kinds.find((k) => k.letterType === type);
+  const options = live.kinds.map((k) => ({
+    value: k.letterType,
+    label: k.name,
+    description: k.pending ? `Sent to HR on ${formatDate(new Date(k.pending.requestedAt))}. Waiting for ${listOf(k.pending.approvers) || 'HR'}.` : k.requiresApproval ? NEEDS_HR : INSTANT,
+    disabled: Boolean(k.pending),
+  }));
+  const send = async () => {
+    if (!kind || !form.purpose) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const letter = await live.onRequest({ letterType: kind.letterType, purpose: form.purpose, ...(form.to.trim() ? { addressedTo: form.to.trim() } : {}) });
+      const url = letter.status === 'issued' ? await live.onOpen(letter).catch(() => null) : null;
+      setDone({ letter, kind, url });
+      toast({ tone: 'success', title: letter.status === 'pending_approval' ? `${shortName(kind.name)} request sent to HR` : letter.status === 'issued' ? `${kind.name} ready` : `${kind.name} is being prepared` });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't work. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fail = (e: unknown) => toast({ tone: 'error', title: "That didn't work", description: e instanceof Error ? e.message : undefined });
+  const body = () => {
+    if (live.state === 'loading') return <Skeleton height="var(--yx-space-16)" />;
+    if (live.state === 'error') return <ErrorState title="We couldn't load the certificates" description="Check your connection and try again." onRetry={live.onRetry} />;
+    if (live.state === 'no-access') return <EmptyState title="Certificates are for current employees" description="Ask HR if you need a letter about your time here." />;
+    if (!live.kinds.length) return <EmptyState title="No certificates to ask for yet" description="Your company has not switched on any certificates. Ask HR." />;
+    if (done?.letter.status === 'issued') {
+      const l = done.letter;
+      return (
+        <div className="yx-ppl__stack">
+          <InlineAlert tone="success" title={`${done.kind.name} ready · ${l.referenceNo}`}>{`It is in your documents. Verification code ${l.verifyCode}. HR can see that you requested it.`}</InlineAlert>
+          <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Certificate preview">
+            {done.url ? <PdfPages url={done.url} label={`${done.kind.name} ${l.referenceNo}`} /> : <InlineAlert tone="info" title="The preview did not open">Download the PDF to read it.</InlineAlert>}
+          </div>
+          <div className="yx-ppl__row">
+            <Button icon={Share2} onClick={() => setSharing(true)}>
+              Share a link
+            </Button>
+            <Button variant="primary" icon={Download} onClick={() => void live.onDownload(l).catch(fail)}>
+              Download PDF
+            </Button>
+          </div>
+          {sharing && <ShareDialog row={{ id: l.id, name: `${done.kind.name} ${l.referenceNo}`, kind: 'Certificate', status: 'Issued', date: today, size: null, src: { kind: 'letter', letter: l } }} onShare={live.onShare} onClose={() => setSharing(false)} />}
+        </div>
+      );
+    }
+    if (done?.letter.status === 'pending_approval') {
+      const waiting = live.kinds.find((k) => k.letterType === done.kind.letterType)?.pending;
+      return (
+        <Card title={`${shortName(done.kind.name)} request sent`}>
+          <ApprovalTimeline now={today} steps={[{ id: '1', label: 'Requested', status: 'done', approver: 'You', at: waiting ? new Date(waiting.requestedAt) : today }, { id: '2', label: 'HR', status: 'current', approver: listOf(waiting?.approvers ?? []) || 'HR' }]} />
+        </Card>
+      );
+    }
+    if (done) return <InlineAlert tone="info" title={`${done.kind.name} is being prepared`}>It appears in your documents in a few minutes.</InlineAlert>;
+    return (
+      <>
+        <CertFields options={options} form={{ ...form, type }} onChange={setForm} />
+        {error && <InlineAlert tone="danger" title={error} />}
+        <div className="yx-ppl__row">
+          <Button asChild>
+            <a href={live.backHref}>Cancel</a>
+          </Button>
+          <Button variant="primary" loading={busy} disabled={!kind || Boolean(kind.pending) || !form.purpose} onClick={() => void send()}>
+            {kind?.requiresApproval ? 'Send to HR' : 'Generate certificate'}
+          </Button>
+        </div>
+      </>
+    );
+  };
+  return (
+    <MeFrame active="Documents & letters">
+      <PageHeader title="Request a certificate" description={certText(live.kinds)} />
+      {body()}
+    </MeFrame>
+  );
+}
+
 // PPL-31
-export function CertificateRequest({ type: initial = 'salary', generated = false, today }: { type?: CertType; generated?: boolean; today: Date }) {
-  const [type, setType] = useState<CertType>(initial);
+export function CertificateRequest({ type: initial = 'salary', generated = false, today, live }: { type?: CertType; generated?: boolean; today: Date; live?: LiveCertificateRequest }) {
+  if (live) return <LiveCertificatePage live={live} today={today} />;
+  return <SampleCertificateRequest initial={initial} generated={generated} today={today} />;
+}
+
+function SampleCertificateRequest({ initial, generated, today }: { initial: CertType; generated: boolean; today: Date }) {
+  const [form, setForm] = useState<CertForm>({ type: initial, purpose: 'Home loan', to: 'The Branch Manager, Canara Bank, Hosur' });
+  const type = form.type as CertType;
   return (
     <MeFrame active="Documents & letters">
       <PageHeader title="Request a certificate" description="Salary certificate, address proof and employment verification are generated instantly with the company signatory and a QR code anyone can verify." />
@@ -2130,7 +2255,7 @@ export function CertificateRequest({ type: initial = 'salary', generated = false
         </Card>
       ) : (
         <>
-          <CertFields type={type} setType={setType} />
+          <CertFields options={SAMPLE_CERTS} form={form} onChange={setForm} />
           <div className="yx-ppl__row">
             <Button>Cancel</Button>
             <Button variant="primary">{type === 'noc' ? 'Send to HR' : 'Generate certificate'}</Button>
@@ -2143,12 +2268,12 @@ export function CertificateRequest({ type: initial = 'salary', generated = false
 
 // PPL-31 · phone
 export function CertificateRequestPhone() {
-  const [type, setType] = useState<CertType>('address');
+  const [form, setForm] = useState<CertForm>({ type: 'address', purpose: 'Home loan', to: 'The Branch Manager, Canara Bank, Hosur' });
   return (
     <PhoneFrame tab="requests" title="Certificate">
-      <CertFields type={type} setType={setType} />
+      <CertFields options={SAMPLE_CERTS} form={form} onChange={setForm} />
       <Button variant="primary" fullWidth>
-        {type === 'noc' ? 'Send to HR' : 'Generate certificate'}
+        {form.type === 'noc' ? 'Send to HR' : 'Generate certificate'}
       </Button>
     </PhoneFrame>
   );
