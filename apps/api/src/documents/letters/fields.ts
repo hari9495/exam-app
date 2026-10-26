@@ -199,7 +199,8 @@ type Para = { text: string; bold?: boolean; heading?: boolean; centre?: boolean 
 // the addressee, a subject, the body and who signs. The QR code and the check line are stamped on issue (pdf.ts).
 const LETTERHEAD: Para[] = [
   { text: '{{legal_entity}}', heading: true },
-  { text: '{{#legal_entity_address}}{{legal_entity_address}}{{/legal_entity_address}}{{#legal_entity_cin}} · CIN {{legal_entity_cin}}{{/legal_entity_cin}}', centre: true },
+  { text: '{{#legal_entity_address}}{{legal_entity_address}}{{/legal_entity_address}}', centre: true },
+  { text: '{{#legal_entity_cin}}CIN {{legal_entity_cin}}{{/legal_entity_cin}}', centre: true },
   { text: '' },
   { text: 'Ref: {{reference_no}}' },
   { text: 'Date: {{today}}' },

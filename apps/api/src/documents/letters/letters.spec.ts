@@ -40,8 +40,8 @@ describe('letter templates (YX-DOC-07 / 15)', () => {
       const text = docxParagraphs(starterDocx(s.letterType)!).join('\n');
       for (const part of ['{{legal_entity}}', 'Ref: {{reference_no}}', 'Date: {{today}}', 'Subject: ', '{{signatory_name}}', '{{signatory_title}}']) expect(text).toContain(part);
     }
-    const head = docxParagraphs(fillDocx(starterDocx('experience')!, { ...sampleData(), legal_entity_cin: '' })).slice(0, 2);
-    expect(head).toEqual(['Kaveri Foods Pvt Ltd', '4th Floor, Prestige Meridian, MG Road, Bengaluru 560001']);
+    const head = docxParagraphs(fillDocx(starterDocx('experience')!, { ...sampleData(), legal_entity_cin: '' })).slice(0, 3);
+    expect(head).toEqual(['Kaveri Foods Pvt Ltd', '4th Floor, Prestige Meridian, MG Road, Bengaluru 560001', '']);
     expect(missingFields(['legal_entity_cin', 'legal_entity_address'], { legal_entity_cin: '', legal_entity_address: '' })).toEqual([]);
   });
 
