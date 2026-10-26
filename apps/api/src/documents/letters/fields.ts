@@ -44,6 +44,15 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   new_ctc: { label: 'Annual CTC after the raise', cls: 'pay', sample: '₹5,83,200' },
   raise_percent: { label: 'Raise (per cent)', cls: 'pay', sample: '8%' },
   effective_date: { label: 'Raise effective from', cls: 'pay', sample: '1 November 2026' },
+  // PPL-22 F&F statement: filled by payroll from the approved F&F run(s), never by hand.
+  fnf_run: { label: 'F&F run reference', cls: 'pay', sample: 'FNF-2026-0041' },
+  fnf_lines: { label: 'F&F lines (each line and its amount)', cls: 'pay', sample: 'Basic ₹25,000.00; Leave encashment ₹8,000.00; less Settlement recovery ₹5,000.00' },
+  fnf_earnings: { label: 'F&F earnings', cls: 'pay', sample: '₹46,450.00' },
+  fnf_recoveries: { label: 'F&F recoveries', cls: 'pay', sample: '₹5,000.00' },
+  fnf_tds: { label: 'F&F TDS', cls: 'pay', sample: '₹6,210.00' },
+  fnf_statutory: { label: 'F&F PF, ESI, PT and LWF', cls: 'pay', sample: '₹1,800.00' },
+  fnf_net_label: { label: 'F&F net (payable or to recover)', cls: 'pay', sample: 'Net payable to you' },
+  fnf_net: { label: 'F&F net amount', cls: 'pay', sample: '₹33,440.00' },
 };
 
 const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -86,7 +95,19 @@ export interface LetterPay {
 }
 const inr = (v: string) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(v));
 
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+/** An F&F statement's figures, worked out by payroll from the approved F&F run(s) (already formatted). */
+export interface LetterFnf {
+  run: string;
+  lines: string;
+  earnings: string;
+  recoveries: string;
+  tds: string;
+  statutory: string;
+  netLabel: string;
+  net: string;
+}
+
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -146,6 +167,14 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     new_ctc: extra.pay ? inr(extra.pay.newCtc) : '',
     raise_percent: extra.pay ? `${Number(extra.pay.percent)}%` : '',
     effective_date: extra.pay ? longDate(extra.pay.effectiveDate) : '',
+    fnf_run: extra.fnf?.run ?? '',
+    fnf_lines: extra.fnf?.lines ?? '',
+    fnf_earnings: extra.fnf?.earnings ?? '',
+    fnf_recoveries: extra.fnf?.recoveries ?? '',
+    fnf_tds: extra.fnf?.tds ?? '',
+    fnf_statutory: extra.fnf?.statutory ?? '',
+    fnf_net_label: extra.fnf?.netLabel ?? '',
+    fnf_net: extra.fnf?.net ?? '',
   };
   return { data, legalEntityId: place.legalEntityId };
 }
@@ -251,6 +280,25 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; requi
       { text: 'Dear {{employee_name}} ({{employee_code}}),' },
       { text: 'You have been relieved of your duties as {{designation}} at the close of work on {{last_working_day}}.' },
       { text: 'We thank you for your work with us and wish you well.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  // PPL-22: issued by the system when an F&F run is approved; a second run's approval issues one that supersedes it.
+  {
+    letterType: 'fnf_statement',
+    name: 'F&F statement',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Full and final settlement statement', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
+      { text: 'This is your full and final settlement after your last working day, {{last_working_day}}, paid in off-cycle run {{fnf_run}}.' },
+      { text: 'Lines: {{fnf_lines}}' },
+      { text: 'Earnings {{fnf_earnings}}. Recoveries {{fnf_recoveries}}. TDS {{fnf_tds}}. PF, ESI, PT and LWF {{fnf_statutory}}.' },
+      { text: '{{fnf_net_label}}: {{fnf_net}}', bold: true },
       { text: 'For {{legal_entity}}' },
       { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
     ],

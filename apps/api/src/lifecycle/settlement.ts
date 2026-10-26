@@ -31,13 +31,13 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
   const items = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId } });
   const recoveries = [];
   for (const i of items) {
-    if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title: i.title, amount: i.recoveryAmount.toFixed(2), reason: i.recoveryReason, status: 'recorded' });
-    else if (i.status === 'open' && i.assetAssignmentId) {
-      // Not returned yet: payroll sees the book value as a possible recovery until it comes back or is signed off.
-      const x = await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId } });
-      const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { cost: true } }) : null;
-      recoveries.push({ source: 'asset', title: i.title, amount: asset?.cost?.toFixed(2) ?? null, reason: 'Not returned yet', status: 'open' });
-    }
+    // An asset's line names the asset itself ("Dell Latitude 5440 (KF-LT-0002)") and the condition it came back in.
+    const x = i.assetAssignmentId ? await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId } }) : null;
+    const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { name: true, tag: true, cost: true } }) : null;
+    const title = asset ? `${asset.name} (${asset.tag})` : i.title;
+    if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title, amount: i.recoveryAmount.toFixed(2), reason: x?.returnCondition ?? i.recoveryReason, status: 'recorded' });
+    // Not returned yet: payroll sees the book value as a possible recovery until it comes back or is signed off.
+    else if (i.status === 'open' && x) recoveries.push({ source: 'asset', title, amount: asset?.cost?.toFixed(2) ?? null, reason: 'Not returned yet', status: 'open' });
   }
   // M05 XP-4.06: expense advances not yet settled go to F&F (M01 Q7); from the last day on they are marked as such.
   const advances = await tx.expenseAdvance.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ['paid', 'to_fnf'] } } });

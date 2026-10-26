@@ -249,6 +249,7 @@ export class ArrearsService {
         postedAt: null,
         totals: null,
         voidReason: null,
+        reference: null,
         subPeriod: 0,
         rangeStart: null,
         version: 1,

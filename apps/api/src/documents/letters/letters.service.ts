@@ -15,7 +15,7 @@ import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, templateFields } from './docx';
-import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest, type LetterPay } from './fields';
+import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest, type LetterFnf, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
@@ -31,12 +31,12 @@ import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
 /** Letters an employee may get for themselves at once (P05 Q8). */
 export const SELF_CERTIFICATES = ['employment_certificate'];
-type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay };
+type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const REQUEST_TYPE = 'letter.issue';
 export const ESIGN_NOTICE = 'G-19 v1';
-const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF' };
+const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF', fnf_statement: 'FNF' };
 const typeCode = (t: string) => TYPE_CODE[t] ?? t.slice(0, 4).toUpperCase();
 type Template = Prisma.LetterTemplateGetPayload<object>;
 type Letter = Prisma.LetterIssueGetPayload<object>;
@@ -352,7 +352,7 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; pay?: LetterPay }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
@@ -360,7 +360,7 @@ export class LettersService implements OnModuleInit {
     // Null: the system issues it (exit letters, LIFE-4.03; a person's own certificate, LIFE-4.06).
     if (v) await this.mayIssue(tx, c, v, dto.personId, t.fields);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
-    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null });
+    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null });
     const missing = missingFields(t.fields, data);
     if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: `This letter cannot be made yet. Missing: ${missing.map((m) => FIELDS[m].label.toLowerCase()).join(', ')}${missing.some((m) => m.startsWith('signatory')) ? ' (name a signatory for the legal entity in Settings › Letter templates)' : ''}.`, errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
     return { t, data, signer, legalEntityId: base.legalEntityId };

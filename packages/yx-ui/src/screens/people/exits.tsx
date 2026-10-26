@@ -882,7 +882,8 @@ function liveLines(s: FnfSettlementView, lwd: Date) {
     auto: i.auto || undefined,
     wage: i.wage || undefined,
     held: !!i.held || undefined,
-    heldWhy: i.held ?? undefined,
+    heldTag: i.held ? (i.heldTag ? `Held: ${i.heldTag}` : 'Held') : undefined,
+    heldReason: i.held ?? undefined,
     byPayroll: i.byPayroll || undefined,
   }));
   const slip = s.salary ?? [];
@@ -897,13 +898,13 @@ function liveLines(s: FnfSettlementView, lwd: Date) {
     wage: true,
   };
   const slipLine = (k: FnfSlipLine['group'], kind: FnfLine['kind']) => slip.filter((l) => l.group === k).map((l, n): FnfLine => ({ id: `${k}-${n}`, kind, label: l.name, amount: amountOf(l.amount), how: l.how }));
-  const tax: FnfLine[] = s.salary
-    ? [...slipLine('tds', 'tax'), ...slipLine('statutory', 'tax')]
-    : [{ id: 'tds', kind: 'tax', label: 'TDS on final income', amount: 0, how: 'Worked out on the final income for the year when the F&F run is calculated.' }];
+  // As the design: only TDS is under Tax; PF, ESI, PT and LWF are statutory deductions of their own.
+  const tax: FnfLine[] = s.salary ? slipLine('tds', 'tax') : [{ id: 'tds', kind: 'tax', label: 'TDS on final income', amount: 0, how: 'Worked out on the final income for the year when the F&F run is calculated.' }];
   return {
     earnings: [salary, ...items.filter((l) => l.group === 'earning')],
     recoveries: [...items.filter((l) => l.group === 'recovery'), ...slipLine('recovery', 'recovery')],
     tax,
+    statutory: slipLine('statutory', 'tax'),
     employer: items.filter((l) => l.group === 'employer'),
   };
 }
@@ -1010,7 +1011,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         name={`F&F · ${who}`}
         avatarName={who}
         person
-        secondary={`${EXIT[s.exitType] ?? s.exitType} · last working day ${formatDate(lwd)}${s.runId ? ' · off-cycle F&F run' : ' · no pay group, so no F&F run'}`}
+        secondary={`${EXIT[s.exitType] ?? s.exitType} · last working day ${formatDate(lwd)}${s.runReference ? ` · off-cycle run ${s.runReference}` : ''}`}
         status={<StatusBadge status={s.status === 'settled' ? 'Settled' : s.overdue ? 'Overdue' : (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft')} />}
         actions={
           <>
@@ -1085,7 +1086,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
               <div data-sub><dt>of which wage lines</dt><dd>{formatINR(amountOf(t.wageLines))}</dd></div>
               <div><dt>Recoveries</dt><dd>{formatINR(amountOf(t.recoveries))}</dd></div>
               <div><dt>TDS</dt><dd>{t.tds === null ? '—' : formatINR(amountOf(t.tds))}</dd></div>
-              {amountOf(t.statutory) !== 0 && <div><dt>PF, ESI, PT and LWF</dt><dd>{formatINR(amountOf(t.statutory))}</dd></div>}
+              {amountOf(t.statutory) !== 0 && <div><dt>Statutory deductions</dt><dd>{formatINR(amountOf(t.statutory))}</dd></div>}
               {amountOf(t.rounding) !== 0 && <div><dt>Rounding</dt><dd>{formatINR(amountOf(t.rounding))}</dd></div>}
               <div><dt>{netLabel}</dt><dd><strong>{net === null ? '—' : formatINR(Math.abs(net))}</strong></dd></div>
             </dl>
@@ -1104,13 +1105,14 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
             </Card>
           )}
           <Card title="After approval">
-            <Text as="p">{`Payment goes in the F&F run's bank file for ${first}. Held lines are paid in a second run once released; changes after payment follow corrections.`}</Text>
+            <Text as="p">Payment goes in the bank file; the F&F statement letter goes to {first}'s documents. Changes after payment follow corrections.</Text>
           </Card>
         </div>
         <div className="yx-ppl__main">
           <Text size="sm" tone="secondary" as="p">Open a line to see how it's worked out.</Text>
           <ExplainedLines title="Earnings" lines={lines.earnings} action={lineAction} />
           <ExplainedLines title="Recoveries" lines={lines.recoveries} action={lineAction} />
+          <ExplainedLines title="Statutory deductions" lines={lines.statutory} />
           <ExplainedLines title="Tax" lines={lines.tax} />
           <ExplainedLines title="Paid by the company" lines={lines.employer} action={lineAction} />
         </div>

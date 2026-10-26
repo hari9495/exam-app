@@ -105,8 +105,9 @@ export interface FnfLine {
   wage?: boolean;
   /** Held by company policy (an open case); never a wage line. */
   held?: boolean;
-  /** Live: why the line is held (shown instead of "open case"). */
-  heldWhy?: string;
+  /** Live: the short held tag ("Held", "Held: permission needed") and the full reason, shown in the opened line. */
+  heldTag?: string;
+  heldReason?: string;
   /** Live: added or changed by payroll. */
   byPayroll?: boolean;
 }
