@@ -976,4 +976,28 @@ describe('/yx/approvals', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Approved: Arjun Kulkarni: Casual leave, 27 Oct (1 day)')).toBeInTheDocument();
   });
+
+  it('a decision updates the side-menu Approvals count without a reload', async () => {
+    const TASK = { taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Casual leave', summary: [], requester: 'Arjun Kulkarni', raisedBy: null, onBehalfOf: null, step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: NOW };
+    let decided = false;
+    (usePathname as jest.Mock).mockReturnValue('/yx/approvals');
+    route({
+      'GET /auth/mfa': MFA,
+      'GET /rbac/me/permissions': [],
+      get 'GET /workspace/counts'() {
+        return { approvals: decided ? 1 : 2, notifications: 0 };
+      },
+      'GET /workflow/approvals/inbox': [TASK],
+      'GET /workflow/delegations': [],
+      get 'POST /workflow/approvals/tasks/t1/decide'() {
+        decided = true;
+        return {};
+      },
+    });
+    wrap(<ToastProvider><YxAppLayout><YxApprovalsPage /></YxAppLayout></ToastProvider>);
+    const home = screen.getByRole('navigation', { name: 'Home' });
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('1'));
+  });
 });
