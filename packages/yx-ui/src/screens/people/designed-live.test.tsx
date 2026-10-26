@@ -299,7 +299,7 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
 });
 
 describe('Absconding (PPL-24)', () => {
-  const r: AbscondingRow = { id: 'a1', employeeId: 'e', name: 'Karthik Raja', lastPresentOn: '2026-10-12', status: 'running', stoppedReason: null, exitCaseId: null, version: 1, steps: [{ key: 'notice_1', label: 'Notice 1', day: 7, dueOn: '2026-10-19', doneAt: '2026-10-19T05:00:00Z', note: null, dispatchRef: null }] };
+  const r: AbscondingRow = { id: 'a1', employeeId: 'e', name: 'Karthik Raja', designation: 'Warehouse Associate', location: 'Hosur plant', lastPresentOn: '2026-10-12', firstAbsentOn: '2026-10-13', policy: 'Starter template v1 (company-edited)', salaryHeldSince: '2026-10-15', salaryReleased: false, status: 'running', stoppedReason: null, exitCaseId: null, version: 1, steps: [{ key: 'notice_1', label: 'Notice 1', day: 7, dueOn: '2026-10-19', doneAt: '2026-10-19T05:00:00Z', note: null, dispatchRef: null }] };
   it('a running timeline can be stopped; a sent notice asks for dispatch proof', async () => {
     const onStop = vi.fn();
     const onDispatch = vi.fn();
@@ -309,6 +309,15 @@ describe('Absconding (PPL-24)', () => {
     expect(onStop).toHaveBeenCalledWith(r);
     await ue.click(screen.getByRole('button', { name: 'Add dispatch proof' }));
     expect(onDispatch).toHaveBeenCalledWith(r, 'notice_1');
+  });
+  it('the header names the role, place, first day absent, policy and salary hold; a dispatched notice shows its post number', () => {
+    const sent = { ...r, steps: [{ ...r.steps[0], note: 'Notice issued in YukthiX', dispatchRef: 'RK 4471 2291 IN' }] };
+    wrap(<AbscondingTimeline today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), rows: [sent], onStart: vi.fn(), onStop: vi.fn(), onResume: vi.fn(), onDispatch: vi.fn(), onOpenExit: vi.fn() }} />);
+    expect(screen.getByText('Warehouse Associate · Hosur plant · first absent 13 Oct 2026 · last present 12 Oct 2026')).toBeInTheDocument();
+    expect(screen.getByText('Starter template v1 (company-edited)')).toBeInTheDocument();
+    expect(screen.getByText('On hold since 15 Oct')).toBeInTheDocument();
+    expect(screen.getByText('Sent by registered post RK 4471 2291 IN')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add dispatch proof' })).toBeNull();
   });
 });
 

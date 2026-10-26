@@ -88,6 +88,7 @@ export default function YxTeamPage() {
     } catch (e) {
       toast({ tone: 'error', title: `Could not approve ${t.title}`, description: (e as Error).message });
     }
+    void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     await qc.invalidateQueries({ queryKey: ['workflow'] });
   };
   const myTasks = teamTasks(tasks.data?.tasks ?? []);

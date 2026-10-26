@@ -1464,7 +1464,7 @@ function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbscon
     title: `Day ${s.day}: ${s.label}`,
     due: isoDay(s.dueOn),
     status: s.doneAt ? 'Done' : r!.status === 'stopped' ? 'Not needed' : 'Scheduled',
-    note: [s.note, s.dispatchRef ? `registered post ${s.dispatchRef}` : null].filter(Boolean).join(' · ') || undefined,
+    note: (s.dispatchRef ? `Sent by registered post ${s.dispatchRef}` : s.note) ?? undefined,
     action:
       s.doneAt && (s.key === 'notice_1' || s.key === 'notice_2') && !s.dispatchRef ? (
         <Button size="sm" icon={Upload} onClick={() => live.onDispatch(r!, s.key)}>
@@ -1498,10 +1498,14 @@ function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbscon
             name={`Absconding · ${r.name}`}
             avatarName={r.name}
             person
-            secondary={`last present ${formatDate(lastPresent!)}`}
+            secondary={[r.designation, r.location, `first absent ${formatDate(isoDay(r.firstAbsentOn))}`, `last present ${formatDate(lastPresent!)}`].filter(Boolean).join(' · ')}
             status={<Badge tone={ABSC[r.status].tone}>{ABSC[r.status].label}</Badge>}
-            // Policy name and the salary hold date are not on the timeline record yet (left out).
-            facts={[{ label: 'Day of unauthorised absence', value: r.status === 'stopped' ? 'Stopped' : String(absentDays) }]}
+            facts={[
+              { label: 'Day of unauthorised absence', value: r.status === 'stopped' ? 'Stopped' : String(absentDays) },
+              { label: 'Policy', value: r.policy },
+              // No salary fact before the day-3 hold: nothing has happened to the pay yet.
+              ...(r.salaryHeldSince ? [{ label: 'Salary', value: `On hold since ${formatDate(isoDay(r.salaryHeldSince)).replace(/ \d{4}$/, '')}` }] : r.salaryReleased ? [{ label: 'Salary', value: 'Released' }] : []),
+            ]}
             actions={
               <>
                 <Button onClick={live.onStart}>Start a timeline</Button>

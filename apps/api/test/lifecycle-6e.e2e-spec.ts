@@ -245,6 +245,8 @@ describe('Lifecycle batch 6e', () => {
     row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
     expect(row.status).toBe('abandoned');
     expect(row.steps.every((s: { doneAt: string | null }) => s.doneAt)).toBe(true);
+    // The header (PPL-24 design): role and place, first day absent (no attendance: the next day), policy, salary hold.
+    expect(row).toMatchObject({ designation: 'Operator', location: 'Bengaluru', firstAbsentOn: addDays(lastPresent, 1), policy: 'Starter template v1', salaryHeldSince: addDays(lastPresent, 3), salaryReleased: false });
     const k = (await api('hr', 'get', `/lifecycle/exits/${row.exitCaseId}`).expect(200)).body;
     expect(k).toMatchObject({ exitType: 'absconding', lastDay: lastPresent, status: 'accepted' });
     expect(k.hr.rehireEligible).toBe(false);
@@ -255,8 +257,14 @@ describe('Lifecycle batch 6e', () => {
     emp.ajay = await hire('Ajay', 'SF-031');
     const t2 = (await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.ajay, lastPresentOn: addDays(today, -4) }).expect(201)).body;
     await extras.runTimeline(org.A.id, t2.id, today);
+    // Attendance names the first day absent; the entity's own days make the policy company-edited.
+    await inA(async (tx) => {
+      await tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: emp.ajay, workOn: new Date(`${addDays(today, -2)}T00:00:00Z`), mode: 'punch', status: 'absent' } });
+      await tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'legal_entity', scopeId: ids.entity, key: 'absconding.days', value: '3,7,14,21' } });
+    });
     let r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
     expect(r2.steps.map((s: { doneAt: string | null }) => Boolean(s.doneAt))).toEqual([true, false, false, false]);
+    expect(r2).toMatchObject({ firstAbsentOn: addDays(today, -2), policy: 'Starter template v1 (company-edited)', salaryHeldSince: addDays(today, -1) });
     // Day 3 places a real payroll hold; stopping on return releases it (founder 25 Oct 2026).
     const hold = () => inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.findFirst({ where: { employeeId: emp.ajay, reasonCode: 'absconding' } }); });
     expect(await hold()).toMatchObject({ trigger: 'exit', releasedAt: null });
@@ -264,7 +272,7 @@ describe('Lifecycle batch 6e', () => {
     expect((await hold())?.releasedAt).toBeTruthy();
     await extras.runTimeline(org.A.id, t2.id, addDays(today, 30));
     r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
-    expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null });
+    expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null, salaryHeldSince: null, salaryReleased: true });
     // Resumed (still absent): the hold comes back.
     await api('hr', 'post', `/lifecycle/absconding/${t2.id}/resume`).send({ version: r2.version }).expect((r) => expect([200, 201]).toContain(r.status));
     expect(await inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.count({ where: { employeeId: emp.ajay, reasonCode: 'absconding', releasedAt: null } }); })).toBe(1);

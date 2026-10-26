@@ -19,6 +19,8 @@ import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
 import YxApprovalsPage from './(app)/approvals/page';
+import YxNotFound from './not-found';
+import YxError from './error';
 import { ToastProvider } from '@yukthix/ui';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }), useSearchParams: () => new URLSearchParams() }));
@@ -975,5 +977,48 @@ describe('/yx/approvals', () => {
     wrap(<ToastProvider><YxApprovalsPage /></ToastProvider>);
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Approved: Arjun Kulkarni: Casual leave, 27 Oct (1 day)')).toBeInTheDocument();
+  });
+
+  it('a decision updates the side-menu Approvals count without a reload', async () => {
+    const TASK = { taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Casual leave', summary: [], requester: 'Arjun Kulkarni', raisedBy: null, onBehalfOf: null, step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: NOW };
+    let decided = false;
+    (usePathname as jest.Mock).mockReturnValue('/yx/approvals');
+    route({
+      'GET /auth/mfa': MFA,
+      'GET /rbac/me/permissions': [],
+      get 'GET /workspace/counts'() {
+        return { approvals: decided ? 1 : 2, notifications: 0 };
+      },
+      'GET /workflow/approvals/inbox': [TASK],
+      'GET /workflow/delegations': [],
+      get 'POST /workflow/approvals/tasks/t1/decide'() {
+        decided = true;
+        return {};
+      },
+    });
+    wrap(<ToastProvider><YxAppLayout><YxApprovalsPage /></YxAppLayout></ToastProvider>);
+    const home = screen.getByRole('navigation', { name: 'Home' });
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('1'));
+  });
+});
+
+describe('/yx not found and error screens', () => {
+  it('say YukthiX, never Prudent Hire, and lead back to YukthiX home', async () => {
+    const retry = jest.fn();
+    const { unmount } = render(<YxNotFound />);
+    expect(screen.getByRole('heading', { name: "We couldn't find that page" })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    unmount();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<YxError error={Object.assign(new Error('boom'), { digest: 'abc123' })} retry={retry} />);
+    expect(screen.getByRole('heading', { name: "This page didn't load" })).toBeInTheDocument();
+    expect(screen.getByText('Reference: abc123')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
   });
 });

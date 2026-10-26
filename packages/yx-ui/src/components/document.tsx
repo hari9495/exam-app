@@ -237,7 +237,7 @@ export function PdfPages({ url, label }: { url: string; label: string }) {
     void (async () => {
       try {
         const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc ||= new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+        pdfjs.GlobalWorkerOptions.workerSrc ||= (await import('./pdf-worker')).pdfWorkerSrc();
         const loading = pdfjs.getDocument({ url });
         task = loading;
         const pdf = await loading.promise;

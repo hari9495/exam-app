@@ -43,6 +43,7 @@ function Approvals() {
       timeZone={me.data?.timeZone ?? undefined}
       onDecide={async (t, decision, reason) => {
         await write(`/approvals/tasks/${encodeURIComponent(t.taskId)}/decide`, { decision, ...(reason ? { reason } : {}) });
+        void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] }); // the side-menu Approvals count follows at once
         // A decision is "done": a toast says what happened (founder rule).
         toast({ tone: 'success', title: decision === 'approve' ? `Approved: ${t.title}` : `Not approved: ${t.title}`, ...(t.requester ? { description: `${t.requester} is told by email and in their bell.` } : {}) });
       }}

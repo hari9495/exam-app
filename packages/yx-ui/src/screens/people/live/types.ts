@@ -564,7 +564,15 @@ export interface AbscondingRow {
   id: string;
   employeeId: string;
   name: string;
+  designation: string | null;
+  location: string | null;
   lastPresentOn: string;
+  firstAbsentOn: string;
+  /** The absconding policy that applies, e.g. "Starter template v1 (company-edited)". */
+  policy: string;
+  /** The day payroll put the salary on hold; null when it is not on hold. */
+  salaryHeldSince: string | null;
+  salaryReleased: boolean;
   status: 'running' | 'stopped' | 'abandoned';
   stoppedReason: string | null;
   exitCaseId: string | null;

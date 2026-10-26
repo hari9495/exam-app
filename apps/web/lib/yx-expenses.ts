@@ -29,6 +29,7 @@ export function useWfDecide() {
   const queryClient = useQueryClient();
   return async (taskId: string, decision: 'approve' | 'reject', reason: string) => {
     await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }) }, accessToken ?? undefined);
+    void queryClient.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     await queryClient.invalidateQueries({ queryKey: ['expenses'] });
   };
 }

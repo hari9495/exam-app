@@ -27,7 +27,6 @@ import { showDate } from '../people/employee-import';
 //                 policy says auto-exit, opens the end-of-contract exit; HR extends or converts instead;
 //   retrenchment  (LIFE-5.07, YX-LC-27) the government permission requests (retrenchment, lay-off, closure), a closure's
 //                 bulk exits; VRS schemes.
-// The M03 salary hold of an absconding employee is not built yet: the step says so and HR is told.
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
@@ -174,12 +173,40 @@ export class ExitExtrasService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const rows = await tx.abscondingTimeline.findMany({ where: { organizationId: org }, orderBy: { createdAt: 'desc' }, take: 200 });
+      // The policy is the starter timeline unless the company (or the person's entity) changed the days.
+      const edited = await tx.setting.findMany({ where: { organizationId: org, key: 'absconding.days' }, select: { scopeType: true, scopeId: true } });
       const out = [];
       for (const t of rows) {
         const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: t.employeeId } });
         const own = await ownOf(tx, c, v);
         if (own.employeeId === emp.id || !(await reachesPerson(tx, c, v, 'lifecycle.exit.manage', emp.personId, own))) continue;
-        out.push({ id: t.id, employeeId: t.employeeId, name: displayName(emp), lastPresentOn: iso(t.lastPresentOn), status: t.status, stoppedReason: t.stoppedReason, exitCaseId: t.exitCaseId, version: t.version, steps: (t.steps as unknown as Step[]).map((s) => ({ ...s, label: STEP_LABEL[s.key] })) });
+        const [job] = await tx.$queryRaw<{ legal_entity_id: string; designation: string | null; location: string | null }[]>`
+          SELECT a.legal_entity_id::text, d.name AS designation, l.name AS location FROM employee_assignments a
+          LEFT JOIN designations d ON d.organization_id = a.organization_id AND d.id = a.designation_id
+          LEFT JOIN locations l ON l.organization_id = a.organization_id AND l.id = a.location_id
+          WHERE a.organization_id = ${org}::uuid AND a.employment_id = ${t.employmentId}::uuid AND a.superseded_at IS NULL
+          ORDER BY a.valid_from DESC LIMIT 1`;
+        const absent = await tx.attendanceDay.findFirst({ where: { organizationId: org, employeeId: t.employeeId, workOn: { gt: t.lastPresentOn }, status: 'absent' }, orderBy: { workOn: 'asc' }, select: { workOn: true } });
+        const hold = await withPayScope(tx, [job.legal_entity_id], () => tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: t.employmentId, reasonCode: 'absconding', createdAt: { gte: t.createdAt } }, orderBy: { createdAt: 'desc' }, select: { releasedAt: true } }));
+        const steps = (t.steps as unknown as Step[]).map((s) => ({ ...s, label: STEP_LABEL[s.key] }));
+        out.push({
+          id: t.id,
+          employeeId: t.employeeId,
+          name: displayName(emp),
+          designation: job.designation,
+          location: job.location,
+          lastPresentOn: iso(t.lastPresentOn),
+          firstAbsentOn: absent ? iso(absent.workOn) : addDaysIso(iso(t.lastPresentOn), 1),
+          policy: edited.some((s) => s.scopeType === 'tenant' || s.scopeId === job.legal_entity_id) ? 'Starter template v1 (company-edited)' : 'Starter template v1',
+          // The hold step's day, as its note says (a sweep that ran late does not move the date HR sees).
+          salaryHeldSince: hold && !hold.releasedAt ? (steps.find((s) => s.key === 'hold')?.dueOn ?? null) : null,
+          salaryReleased: Boolean(hold?.releasedAt),
+          status: t.status,
+          stoppedReason: t.stoppedReason,
+          exitCaseId: t.exitCaseId,
+          version: t.version,
+          steps,
+        });
       }
       return { today: todayIst(), rows: out };
     });
