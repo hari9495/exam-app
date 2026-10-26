@@ -14,12 +14,10 @@ import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
-import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { LetterEditor } from './special';
-import type { Choice, EditorParagraph, JoinerForms, JoinerPlaces, Letter, LetterTemplate, LetterTemplates, LoadState, PortalAnswers, PortalMe, SectionKey, Signatory } from './types';
+import type { Choice, JoinerForms, JoinerPlaces, Letter, LoadState, PortalAnswers, PortalMe, SectionKey, Signatory } from './types';
 
 // Lifecycle batch 6b, wired (design §8, §9, §14): HR's joiner panel (forms, BGV, Mark joined, cancel), the
 // pre-boarding portal (T9-01), letter templates and signatories (PPL-29), the letters register (PPL-28), my letters,
@@ -692,197 +690,51 @@ export function MyLettersScreen(p: MyLettersScreenProps) {
   );
 }
 
-// ------------------------------------------------------------------------------------------ settings: templates and signatories
+// ------------------------------------------------------------------------------------------ settings: who signs letters
 
-export interface LetterTemplatesScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: LetterTemplates | null;
+export interface SignatoriesDrawerProps {
+  onClose: () => void;
   signatories: Signatory[];
   entities: Choice[];
   users: Choice[];
-  onStarter: (letterType: string) => Promise<unknown>;
-  onUpload: (input: { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; file: File }) => Promise<unknown>;
-  onPreview: (t: LetterTemplate) => Promise<unknown>;
-  onWord: (t: LetterTemplate) => Promise<unknown>;
-  onStatus: (t: LetterTemplate, status: 'active' | 'retired') => Promise<unknown>;
-  onAddSignatory: (input: { legalEntityId: string; userId: string; title: string; image: File | null }) => Promise<unknown>;
-  onRemoveSignatory: (s: Signatory) => Promise<unknown>;
-  /** 6e editor tab: write a letter in YukthiX, or edit one made here or a starter (a new draft version). */
-  onCompose?: (input: { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] }) => Promise<unknown>;
-  onParagraphs?: (t: LetterTemplate) => Promise<{ letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] }>;
+  onAdd: (input: { legalEntityId: string; userId: string; title: string; image: File | null }) => Promise<unknown>;
+  onRemove: (s: Signatory) => Promise<unknown>;
 }
 
-export function LetterTemplatesScreen(p: LetterTemplatesScreenProps) {
-  const [editing, setEditing] = useState<'new' | { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] } | null>(null);
-  const d = p.data;
-  const [uploading, setUploading] = useState(false);
+/** Settings › Letter templates › Signatories (letter.signatory.manage): who signs each legal entity's letters. */
+export function SignatoriesDrawer(p: SignatoriesDrawerProps) {
   const [adding, setAdding] = useState(false);
   const { busy, error, run } = useRun();
-  const columns: TableColumn<LetterTemplate>[] = [
-    { key: 'name', header: 'Letter', value: (r) => r.name, width: 220, hideable: false },
-    { key: 'version', header: 'Version', value: (r) => r.version, width: 90 },
-    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={r.status === 'active' ? 'success' : 'neutral'}>{r.status === 'active' ? 'In use' : r.status === 'draft' ? 'Draft' : 'Not in use'}</Badge>, width: 110 },
-    { key: 'rules', header: 'Rules', value: (r) => [r.requiresApproval ? 'Approved by the signatory' : 'Issued at once', r.personSigns ? 'The person accepts it' : null].filter(Boolean).join(' · '), width: 260, optional: true },
-  ];
   return (
-    <LivePage
-      title="Letter templates"
-      description="Word letters with placeholders like {{employee_name}}. Start from a YukthiX letter or upload your own. A template is used only after you looked at its sample preview."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="letter templates"
-      grantedBy="your System Admin"
-      actions={
-        <>
-          {p.onCompose && <Button onClick={() => setEditing('new')}>Write a letter</Button>}
-          <Button icon={Upload} onClick={() => setUploading(true)}>
-            Upload a Word letter
-          </Button>
-        </>
-      }
-    >
+    <Drawer open onOpenChange={(o) => !o && p.onClose()} title="Who signs letters" size="md" footer={<Button onClick={p.onClose}>Close</Button>}>
       {error && (
         <InlineAlert tone="danger" title="That didn't work">
           {error}
         </InlineAlert>
       )}
-      {d && d.starters.some((s) => !s.added) && (
-        <Card title="YukthiX letters">
-          <ul className="yx-lif-list">
-            {d.starters
-              .filter((s) => !s.added)
-              .map((s) => (
-                <li key={s.letterType}>
-                  <Text>{s.name}</Text>
-                  <Button size="sm" loading={busy === s.letterType} onClick={() => void run(s.letterType, () => p.onStarter(s.letterType))}>
-                    Add
-                  </Button>
-                </li>
-              ))}
-          </ul>
-        </Card>
-      )}
-      {d && (
-        <DataTable
-          label="Letter templates"
-          columns={columns}
-          rows={d.templates}
-          getRowId={(r) => r.id}
-          rowNoun={['template', 'templates']}
-          cardSummary
-          empty={<EmptyState compact title="No letter templates yet." />}
-          rowButtons={(r) => (
-            <>
-              <Button size="sm" loading={busy === `p-${r.id}`} onClick={() => void run(`p-${r.id}`, () => p.onPreview(r))}>
-                Sample preview
+      {p.signatories.length ? (
+        <ul className="yx-lif-list">
+          {p.signatories.map((s) => (
+            <li key={s.id}>
+              <Text>{`${s.name}, ${s.title}`}</Text> <Text tone="secondary" size="sm">{p.entities.find((e) => e.value === s.legalEntityId)?.label}</Text> {s.hasSignatureImage ? <Badge tone="success">Signature image</Badge> : <Badge tone="neutral">No image</Badge>}
+              <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onRemove(s))}>
+                Remove
               </Button>
-              {p.onParagraphs && r.source !== 'upload' && (
-                <Button size="sm" loading={busy === `e-${r.id}`} onClick={() => void run(`e-${r.id}`, async () => setEditing(await p.onParagraphs!(r)))}>
-                  Edit
-                </Button>
-              )}
-              <Button size="sm" loading={busy === `w-${r.id}`} onClick={() => void run(`w-${r.id}`, () => p.onWord(r))}>
-                Word file
-              </Button>
-              {r.status !== 'active' ? (
-                <Button size="sm" variant="primary" disabled={!r.previewViewed} loading={busy === `a-${r.id}`} onClick={() => void run(`a-${r.id}`, () => p.onStatus(r, 'active'))}>
-                  Use it
-                </Button>
-              ) : (
-                <Button size="sm" loading={busy === `r-${r.id}`} onClick={() => void run(`r-${r.id}`, () => p.onStatus(r, 'retired'))}>
-                  Stop using
-                </Button>
-              )}
-            </>
-          )}
-        />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Text tone="secondary">No one yet. Letters that print who signs need a signatory for the legal entity.</Text>
       )}
-      {editing && p.onCompose && <LetterEditor initial={editing === 'new' ? null : editing} fields={(p.data?.fields ?? []).map((f) => f.key)} onClose={() => setEditing(null)} onSave={p.onCompose} />}
-      <Card title="Who signs letters" actions={<Button onClick={() => setAdding(true)}>Add a signatory</Button>}>
-        {p.signatories.length ? (
-          <ul className="yx-lif-list">
-            {p.signatories.map((s) => (
-              <li key={s.id}>
-                <Text>{`${s.name}, ${s.title}`}</Text> <Text tone="secondary" size="sm">{p.entities.find((e) => e.value === s.legalEntityId)?.label}</Text> {s.hasSignatureImage ? <Badge tone="success">Signature image</Badge> : <Badge tone="neutral">No image</Badge>}
-                <Button size="sm" loading={busy === `s-${s.id}`} onClick={() => void run(`s-${s.id}`, () => p.onRemoveSignatory(s))}>
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Text tone="secondary">No one yet. Letters that print who signs need a signatory for the legal entity.</Text>
-        )}
-      </Card>
-      {d && (
-        <Card title="Placeholders you can use">
-          <ul className="yx-lif-list">
-            {d.fields.map((f) => (
-              <li key={f.key}>
-                <code>{f.flag ? `{{#${f.key}}} … {{/${f.key}}}` : `{{${f.key}}}`}</code> <Text tone="secondary" size="sm">{f.label}{f.personal ? ' (personal data)' : ''}</Text>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-      {uploading && <UploadTemplate onClose={() => setUploading(false)} onUpload={p.onUpload} />}
-      {adding && <AddSignatory entities={p.entities} users={p.users} onClose={() => setAdding(false)} onAdd={p.onAddSignatory} />}
-    </LivePage>
-  );
-}
-
-function UploadTemplate({ onClose, onUpload }: { onClose: () => void; onUpload: LetterTemplatesScreenProps['onUpload'] }) {
-  const [name, setName] = useState('');
-  const [type, setType] = useState('');
-  const [approval, setApproval] = useState<'yes' | 'no'>('yes');
-  const [signs, setSigns] = useState<'yes' | 'no'>('no');
-  const [file, setFile] = useState<File | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const errors = [
-    ...(name.trim() ? [] : [{ fieldId: 'ut-name', message: 'Name the letter.' }]),
-    ...(/^[a-z][a-z0-9_]{1,39}$/.test(type) ? [] : [{ fieldId: 'ut-type', message: 'Use lower-case letters, digits and _ (e.g. offer_revised).' }]),
-    ...(file ? [] : [{ fieldId: 'ut-file', message: 'Choose a Word (.docx) file.' }]),
-  ];
-  const v = useSaveErrors(errors);
-  const save = async () => {
-    if (errors.length) return v.reveal();
-    setSaving(true);
-    setFailed(null);
-    try {
-      await onUpload({ letterType: type, name: name.trim(), requiresApproval: approval === 'yes', personSigns: signs === 'yes', file: file! });
-      onClose();
-    } catch (e) {
-      setFailed(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} title="Upload a Word letter" size="md" dirty={Boolean(name || file)} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>Upload</Button></>}>
-      {v.showErrors && <ErrorSummary errors={v.shownErrors} />}
-      {failed && (
-        <InlineAlert tone="danger" title="Not uploaded">
-          {failed}
-        </InlineAlert>
-      )}
-      <FormField id="ut-name" label="Letter name" required error={v.errorOf('ut-name')}>
-        <TextField value={name} onChange={setName} maxLength={100} />
-      </FormField>
-      <FormField id="ut-type" label="Letter type" required error={v.errorOf('ut-type')} helper="The same type replaces an earlier version, e.g. appointment.">
-        <TextField value={type} onChange={(x) => setType(x.toLowerCase())} maxLength={40} />
-      </FormField>
-      <Segment label="Approval" value={approval} onChange={setApproval} options={[{ value: 'yes', label: 'Signatory approves first' }, { value: 'no', label: 'Issued at once' }]} />
-      <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
-      <FormField id="ut-file" label="Word file (.docx)" required error={v.errorOf('ut-file')} helper="No macros and no linked pictures. Unknown placeholders are refused with a suggestion.">
-        <FileUpload id="ut-file" upload={async (f) => setFile(f)} accept={['.docx']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
-      </FormField>
+      <div>
+        <Button onClick={() => setAdding(true)}>Add a signatory</Button>
+      </div>
+      {adding && <AddSignatory entities={p.entities} users={p.users} onClose={() => setAdding(false)} onAdd={p.onAdd} />}
     </Drawer>
   );
 }
 
-function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[]; users: Choice[]; onClose: () => void; onAdd: LetterTemplatesScreenProps['onAddSignatory'] }) {
+function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[]; users: Choice[]; onClose: () => void; onAdd: SignatoriesDrawerProps['onAdd'] }) {
   const [entity, setEntity] = useState<string | null>(entities.length === 1 ? entities[0].value : null);
   const [user, setUser] = useState<string | null>(null);
   const [title, setTitle] = useState('');

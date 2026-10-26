@@ -14,7 +14,7 @@ import { ownOf, reachesPerson } from '../person-access';
 import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
-import { TemplateProblem, buildDocx, docxBlocks, fillDocx, templateFields } from './docx';
+import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields } from './docx';
 import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest, type LetterFnf, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
@@ -115,8 +115,12 @@ export class LettersService implements OnModuleInit {
       const rows = await tx.letterTemplate.findMany({ where: { organizationId: c.organizationId, status: { not: 'retired' } }, orderBy: [{ letterType: 'asc' }, { version: 'desc' }] });
       return {
         templates: rows.map((t) => this.templateView(t)),
-        starters: STARTER_LETTERS.map((s) => ({ letterType: s.letterType, name: s.name, added: rows.some((r) => r.letterType === s.letterType && r.source === 'starter') })),
-        fields: Object.entries(FIELDS).map(([key, f]) => ({ key, label: f.label, personal: f.cls === 'personal', flag: Boolean(f.flag) })),
+        // update: the company added an older revision of this starter (offered as a new draft version, never swapped in).
+        starters: STARTER_LETTERS.map((s) => {
+          const added = rows.filter((r) => r.letterType === s.letterType && r.source === 'starter');
+          return { letterType: s.letterType, name: s.name, added: added.length > 0, update: added.length > 0 && !added.some((r) => (r.starterRevision ?? 1) >= s.revision) };
+        }),
+        fields: Object.entries(FIELDS).map(([key, f]) => ({ key, label: f.label, cls: f.cls, flag: Boolean(f.flag), optional: Boolean(f.optional) })),
       };
     });
   }
@@ -137,7 +141,7 @@ export class LettersService implements OnModuleInit {
     return fields;
   }
 
-  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; source: 'upload' | 'starter' | 'editor'; fileName: string; buf: Buffer }) {
+  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; source: 'upload' | 'starter' | 'editor'; starterRevision?: number; fileName: string; buf: Buffer }) {
     const v = await this.viewer(user);
     this.requireKey(v, 'letter.template.manage', input.legalEntityId);
     const fields = this.checkTemplate(input.buf);
@@ -145,9 +149,10 @@ export class LettersService implements OnModuleInit {
       const org = c.organizationId;
       if (input.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: org, id: input.legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
       const file = await this.files.storeIn(tx, c, { area: 'letter-templates', name: input.fileName, data: input.buf, allowedMime: [DOCX], maxMb: 20, via: input.source === 'starter' ? 'system' : 'staff' });
-      const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
+      // Several templates per letter type: a template is its name; a new file under the same name is its next version.
+      const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
       const t = await tx.letterTemplate.create({
-        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
+        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
       });
       await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields });
       return { t, fileId: file.id, org };
@@ -156,9 +161,26 @@ export class LettersService implements OnModuleInit {
     return this.templateView(out.t);
   }
 
-  uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean }, file: { originalname: string; buffer: Buffer } | undefined) {
+  uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean; fixes?: string }, file: { originalname: string; buffer: Buffer } | undefined) {
     if (!file) throw new BadRequestException('Choose a Word (.docx) file.');
-    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: Boolean(dto.companyDsc), source: 'upload', fileName: file.originalname, buf: file.buffer });
+    let buf = file.buffer;
+    if (dto.fixes) {
+      let fixes: unknown;
+      try {
+        fixes = JSON.parse(dto.fixes);
+      } catch {
+        fixes = null;
+      }
+      const pairs = fixes && typeof fixes === 'object' && !Array.isArray(fixes) ? Object.entries(fixes) : [];
+      if (!pairs.length || pairs.length > 20 || pairs.some(([from, to]) => !/^[a-z][a-z0-9_]{0,39}$/.test(from) || typeof to !== 'string' || !FIELDS[to])) throw new BadRequestException('Each suggestion must rename a placeholder to a known field.');
+      try {
+        buf = renameFields(buf, Object.fromEntries(pairs) as Record<string, string>);
+      } catch (e) {
+        if (e instanceof TemplateProblem) throw new BadRequestException({ statusCode: 400, code: 'TEMPLATE_REFUSED', message: e.message });
+        throw e;
+      }
+    }
+    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: Boolean(dto.companyDsc), source: 'upload', fileName: file.originalname, buf });
   }
 
   /** PPL-29 editor tab: a template written in YukthiX, saved as a new draft version (.docx, no new library). */
@@ -197,7 +219,7 @@ export class LettersService implements OnModuleInit {
     const s = STARTER_LETTERS.find((x) => x.letterType === letterType);
     const buf = starterDocx(letterType);
     if (!s || !buf) throw new NotFoundException('No such starter letter.');
-    return this.createTemplate(ctx, user, { letterType: s.letterType, name: s.name, legalEntityId: null, requiresApproval: s.requiresApproval, personSigns: s.personSigns, companyDsc: false, source: 'starter', fileName: `${s.letterType}.docx`, buf });
+    return this.createTemplate(ctx, user, { letterType: s.letterType, name: s.name, legalEntityId: null, requiresApproval: s.requiresApproval, personSigns: s.personSigns, companyDsc: false, source: 'starter', starterRevision: s.revision, fileName: `${s.letterType}.docx`, buf });
   }
 
   private async templateRow(tx: Tx, org: string, id: string) {
@@ -215,12 +237,19 @@ export class LettersService implements OnModuleInit {
     return this.converter.toPdf(docx, { pdfA: false });
   }
 
-  /** The sample preview (YX-DOC-15): viewing it is what allows the template to be switched on. */
-  async templatePreview(ctx: TenantContext, user: ScopeUser, id: string) {
+  /**
+   * The test render (YX-DOC-15): viewing it is what allows the template to be switched on. Sample data, or a real
+   * person's (PPL-29 "Sample employee"), with the issuer's checks: letter.issue for them and every field class.
+   */
+  async templatePreview(ctx: TenantContext, user: ScopeUser, id: string, personId?: string) {
     const v = await this.viewer(user);
     this.requireKey(v, 'letter.template.manage');
-    const docx = await inCompany(this.tenantPrisma, ctx, async (tx, c) => this.fileBytes(tx, c.organizationId, (await this.templateRow(tx, c.organizationId, id)).fileId));
-    const pdf = await previewMark(await this.toPdf(fillDocx(docx, sampleData())));
+    const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const t = await this.templateRow(tx, c.organizationId, id);
+      const data = personId ? (await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t })).data : sampleData();
+      return { docx: await this.fileBytes(tx, c.organizationId, t.fileId), data };
+    });
+    const pdf = await previewMark(await this.toPdf(fillDocx(p.docx, p.data)));
     await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await tx.letterTemplate.updateMany({ where: { organizationId: c.organizationId, id, previewViewedAt: null }, data: { previewViewedBy: c.userId ?? null, previewViewedAt: new Date() } });
       await audit(tx, c, 'letter.template.previewed', 'letter_template', id);
@@ -245,7 +274,8 @@ export class LettersService implements OnModuleInit {
       this.requireKey(v, 'letter.template.manage', t.legalEntityId);
       if (status === 'active') {
         if (!t.previewViewedAt) throw new ConflictException('Look at the sample preview before switching this template on.');
-        await tx.letterTemplate.updateMany({ where: { organizationId: c.organizationId, letterType: t.letterType, legalEntityId: t.legalEntityId, language: t.language, status: 'active', id: { not: t.id } }, data: { status: 'retired' } });
+        // The template's earlier version stops; other templates of the same letter type stay in use.
+        await tx.letterTemplate.updateMany({ where: { organizationId: c.organizationId, letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, language: t.language, status: 'active', id: { not: t.id } }, data: { status: 'retired' } });
       }
       await tx.letterTemplate.update({ where: { id: t.id }, data: { status } });
       await audit(tx, c, `letter.template.${status === 'active' ? 'activated' : 'retired'}`, 'letter_template', t.id, { letterType: t.letterType, version: t.version });
@@ -308,9 +338,9 @@ export class LettersService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ issuing (LIFE-2.05)
 
-  /** The active template for a type: the person's entity first, then company-wide. */
+  /** The active template for a type: the person's entity first, then company-wide; of several, the first switched on. */
   private async activeTemplate(tx: Tx, org: string, letterType: string, legalEntityId: string) {
-    const rows = await tx.letterTemplate.findMany({ where: { organizationId: org, letterType, status: 'active', language: 'en', OR: [{ legalEntityId }, { legalEntityId: null }] } });
+    const rows = await tx.letterTemplate.findMany({ where: { organizationId: org, letterType, status: 'active', language: 'en', OR: [{ legalEntityId }, { legalEntityId: null }] }, orderBy: { createdAt: 'asc' } });
     const t = rows.find((r) => r.legalEntityId === legalEntityId) ?? rows[0];
     if (!t) throw new BadRequestException(`There is no active ${letterType.replace(/_/g, ' ')} template yet. Switch one on in Settings › Letter templates.`);
     return t;
@@ -353,11 +383,12 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; template?: Template; pay?: LetterPay; fnf?: LetterFnf }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
-    const t = dto.templateId ? await this.chosenTemplate(tx, c.organizationId, dto.letterType, dto.templateId, base.legalEntityId) : await this.activeTemplate(tx, c.organizationId, dto.letterType, base.legalEntityId);
+    const t = dto.template ?? (dto.templateId ? await this.chosenTemplate(tx, c.organizationId, dto.letterType, dto.templateId, base.legalEntityId) : await this.activeTemplate(tx, c.organizationId, dto.letterType, base.legalEntityId));
+    if (t.legalEntityId && t.legalEntityId !== base.legalEntityId) throw new BadRequestException('This template is for another legal entity. Choose someone who works there.');
     // Null: the system issues it (exit letters, LIFE-4.03; a person's own certificate, LIFE-4.06).
     if (v) await this.mayIssue(tx, c, v, dto.personId, t.fields);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
@@ -477,7 +508,7 @@ export class LettersService implements OnModuleInit {
         return { docx: await this.fileBytes(tx, org, t.fileId), signatory: s ? { image } : null };
       });
       const data = this.open(l.dataEnc);
-      const filled = fillDocx(docx, data);
+      const filled = fillDocx(docx, { ...data, reference_no: l.referenceNo! });
       let pdf = await stampPdf(await this.toPdf(filled), { referenceNo: l.referenceNo!, verifyCode: l.verifyCode!, verifyUrl: verifyLink(l.verifyCode!), signatory: signatory ? { name: String(data.signatory_name ?? ''), title: String(data.signatory_title ?? ''), image: signatory.image } : null });
       const template = await this.tenantPrisma.forTenant(ctx, (tx) => tx.letterTemplate.findFirstOrThrow({ where: { organizationId: org, id: l.templateId }, select: { companyDsc: true } }));
       let signatureRef: string | null = null;

@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Camera, Copy, Download, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
-import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Breadcrumbs, Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
@@ -14,6 +14,7 @@ import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
+import { Segment } from '../../components/segment';
 import { DocumentViewer, PdfPages } from '../../components/document';
 import { RichTextEditor } from '../../components/editor';
 import { LetterDocument, type LetterData } from '../../components/print';
@@ -24,7 +25,7 @@ import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
 import type { FieldClass,  } from './people-logic';
-import type { Letter as LiveLetter, LetterTemplate, QueueDocument } from './live/types';
+import type { EditorParagraph, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
@@ -399,6 +400,8 @@ export interface LiveLetters {
     /** Opened from one person's record or the directory: the sheet starts with them chosen. */
     person?: string;
   };
+  /** letter.template.manage: Settings › Letter templates, from the page header. */
+  templatesHref?: string;
   /** Dialogs the page opens (the bulk issue). */
   children?: ReactNode;
 }
@@ -552,14 +555,23 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
         title="Letters"
         description="Issued letters with reference numbers. Numbers are gap-free per entity and letter type."
         actions={
-          live.issue ? (
+          live.issue || live.templatesHref ? (
             <>
-              <Button icon={FileUp} onClick={live.issue.onBulk}>
-                Bulk issue
-              </Button>
-              <Button variant="primary" icon={Plus} onClick={startIssue}>
-                Issue letter
-              </Button>
+              {live.templatesHref && (
+                <Button asChild>
+                  <a href={live.templatesHref}>Letter templates</a>
+                </Button>
+              )}
+              {live.issue && (
+                <>
+                  <Button icon={FileUp} onClick={live.issue.onBulk}>
+                    Bulk issue
+                  </Button>
+                  <Button variant="primary" icon={Plus} onClick={startIssue}>
+                    Issue letter
+                  </Button>
+                </>
+              )}
             </>
           ) : undefined
         }
@@ -727,7 +739,8 @@ const FIELDS = [
 ];
 
 // PPL-29 · list
-export function LetterTemplatesList({ rows }: { rows: Tpl[] }) {
+export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLetterTemplates }) {
+  if (live) return <LiveTemplatesList live={live} />;
   const cols: TableColumn<Tpl>[] = [
     { key: 'name', header: 'Template', value: (r) => r.name, width: 280 },
     { key: 'type', header: 'Letter type', value: (r) => r.type, groupable: true, width: 180 },
@@ -871,6 +884,519 @@ export function LetterTemplateWorkspace({ tab = 'upload', previewViewed = false 
         </TabsContent>
       </Tabs>
     </PeopleFrame>
+  );
+}
+
+/** A template's settings: a new one (not saved yet) or the next version of one. */
+export interface TemplateSpec {
+  letterType: string;
+  name: string;
+  /** The letterhead: one legal entity's, or each person's own (null). */
+  legalEntityId: string | null;
+  requiresApproval: boolean;
+  personSigns: boolean;
+}
+
+/** The live app's letter templates (design audit step 3; Settings › Letter templates). */
+export interface LiveLetterTemplates {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  data: LetterTemplates | null;
+  entities: { value: string; label: string }[];
+  /** The test render's sample employees: people the user may issue letters to (letter.issue). */
+  people: { value: string; label: string }[];
+  /** A Word file saved as a template (a new one, or the next version); fixes are "Use suggestion" renames. */
+  onUpload: (x: TemplateSpec & { file: File; fixes?: Record<string, string> }) => Promise<LetterTemplate>;
+  /** The editor saved as a template (a new one, or the next version). */
+  onCompose: (x: TemplateSpec & { paragraphs: EditorParagraph[] }) => Promise<LetterTemplate>;
+  onStarter: (letterType: string) => Promise<LetterTemplate>;
+  onParagraphs: (t: LetterTemplate) => Promise<EditorParagraph[]>;
+  onWord: (t: LetterTemplate) => void;
+  /** The template's Word file, to duplicate an uploaded template. */
+  wordFile: (t: LetterTemplate) => Promise<File>;
+  /** The test render as a PDF URL, sample data or a real person; seeing it allows switching the template on. */
+  onTestRender: (t: LetterTemplate, personId: string | null) => Promise<string>;
+  onStatus: (t: LetterTemplate, status: 'active' | 'retired') => Promise<void>;
+  /** letter.signatory.manage: who signs, in a drawer the page renders (children). */
+  onSignatories?: () => void;
+  /** The list's address: the workspace's breadcrumb leads back to it. */
+  listHref: string;
+  children?: ReactNode;
+}
+
+const MADE_WITH: Record<LetterTemplate['source'], string> = { upload: 'Uploaded Word', editor: 'In-app editor', starter: 'Starter template' };
+const FIELD_CLASS: Record<LetterTemplates['fields'][number]['cls'], FieldClass> = { internal: 'Internal', personal: 'Personal', pay: 'Confidential' };
+const typeName = (d: LetterTemplates | null, letterType: string) => d?.starters.find((s) => s.letterType === letterType)?.name ?? letterType[0].toUpperCase() + letterType.slice(1).replace(/_/g, ' ');
+const tagOf = (f: { key: string; flag: boolean }) => (f.flag ? `{{#${f.key}}}` : `{{${f.key}}}`);
+const specOf = (t: LetterTemplate): TemplateSpec => ({ letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, requiresApproval: t.requiresApproval, personSigns: t.personSigns });
+const failText = (e: unknown) => (e instanceof Error ? e.message : 'That did not work. Try again.');
+
+// The editor's HTML and a template's paragraphs: a template made in YukthiX keeps text, bold and headings.
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const toHtml = (ps: EditorParagraph[]) => ps.map((p) => (p.heading ? `<h2>${escHtml(p.text)}</h2>` : p.bold && p.text ? `<p><strong>${escHtml(p.text)}</strong></p>` : `<p>${escHtml(p.text)}</p>`)).join('');
+function fromHtml(html: string): EditorParagraph[] {
+  const blocks = [...new DOMParser().parseFromString(html, 'text/html').body.children].flatMap((el) => (el.tagName === 'UL' || el.tagName === 'OL' ? [...el.children] : [el]));
+  return blocks.map((el) => {
+    const text = el.textContent ?? '';
+    const heading = /^H\d$/.test(el.tagName);
+    return { text, heading, bold: heading || (text.trim() !== '' && [...el.querySelectorAll('strong')].map((s) => s.textContent).join('') === text) };
+  });
+}
+// A new letter starts as a proper one: letterhead, reference, date, addressee, subject, body and who signs.
+const BLANK_LETTER = toHtml(
+  [['{{legal_entity}}', 'h'], [''], ['Ref: {{reference_no}}'], ['Date: {{today}}'], [''], ['{{employee_name}}'], ['{{designation}}'], [''], ['Subject: ', 'b'], [''], ['Dear {{first_name}},'], [''], [''], ['For {{legal_entity}}'], [''], ['{{signatory_name}}', 'b'], ['{{signatory_title}}']].map(([text, k]) => ({ text, heading: k === 'h', bold: k === 'b' })),
+);
+
+type Workspace = { t: LetterTemplate | null; spec: TemplateSpec; tab: TemplateTab };
+
+// PPL-29 · list, live: the designed list with the API's templates; a row opens the designed workspace.
+function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
+  const [ws, setWs] = useState<Workspace | null>(null);
+  const [starting, setStarting] = useState<'new' | 'upload' | null>(null);
+  const { toast } = useToast();
+  const d = live.data;
+  const open = (t: LetterTemplate, tab: TemplateTab = 'upload') => {
+    setStarting(null);
+    setWs({ t, spec: specOf(t), tab });
+  };
+  const act = (title: string, fn: () => Promise<unknown>) =>
+    fn().then(
+      () => toast({ tone: 'success', title }),
+      (e) => toast({ tone: 'error', title: failText(e) }),
+    );
+  const newStarter = async (letterType: string) => {
+    const t = await live.onStarter(letterType);
+    toast({ tone: 'success', title: `${t.name} version ${t.version} added as a draft` });
+    open(t, 'test');
+  };
+  if (ws) return <LiveTemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} />;
+  const cols: TableColumn<LetterTemplate>[] = [
+    { key: 'name', header: 'Template', value: (r) => r.name, width: 280 },
+    { key: 'type', header: 'Letter type', value: (r) => typeName(d, r.letterType), groupable: true, width: 180 },
+    { key: 'source', header: 'Made with', value: (r) => MADE_WITH[r.source], width: 160 },
+    { key: 'languages', header: 'Languages', value: (r) => LANGUAGE.of(r.language) ?? r.language, width: 150 },
+    { key: 'version', header: 'Version', type: 'number', value: (r) => r.version, width: 90 },
+    { key: 'approval', header: 'Before issue', value: (r) => (r.requiresApproval ? 'Approval' : 'Instant'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'active' ? 'Active' : 'Draft'), statusTone: (v) => (v === 'Active' ? 'success' : 'neutral'), width: 110 },
+  ];
+  return (
+    <PeopleFrame active="Documents & letters">
+      <PageHeader
+        title="Letter templates"
+        description="Every template is a Word file: upload your own or build it in the editor. Starter templates are yours to edit; updates never overwrite your copy."
+        actions={
+          <>
+            {live.onSignatories && <Button onClick={live.onSignatories}>Signatories</Button>}
+            <Button icon={Upload} onClick={() => setStarting('upload')}>
+              Upload Word
+            </Button>
+            <Button variant="primary" icon={Plus} onClick={() => setStarting('new')}>
+              New template
+            </Button>
+          </>
+        }
+      />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="letter templates" grantedBy="your System Admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the letter templates" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Letter templates"
+          columns={cols}
+          rows={d?.templates ?? []}
+          getRowId={(r) => r.id}
+          state={live.state === 'loading' ? 'loading' : 'ready'}
+          onRowClick={(r) => open(r)}
+          rowActions={(r) => (
+            <>
+              <MenuItem onSelect={() => open(r)}>Open</MenuItem>
+              <MenuItem icon={Download} onSelect={() => live.onWord(r)}>
+                Download as Word
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  const spec = { ...specOf(r), name: `${r.name} (copy)`.slice(0, 100) };
+                  void act(`${spec.name} saved as a draft`, async () => (r.source === 'upload' ? live.onUpload({ ...spec, file: await live.wordFile(r) }) : live.onCompose({ ...spec, paragraphs: await live.onParagraphs(r) })));
+                }}
+              >
+                Duplicate
+              </MenuItem>
+              {r.status === 'active' && <MenuItem onSelect={() => void act(`${r.name} is no longer used`, () => live.onStatus(r, 'retired'))}>Stop using</MenuItem>}
+              {r.source === 'starter' && d?.starters.some((s) => s.letterType === r.letterType && s.update) && (
+                <MenuItem onSelect={() => void newStarter(r.letterType).catch((e) => toast({ tone: 'error', title: failText(e) }))}>Get the new starter version</MenuItem>
+              )}
+            </>
+          )}
+          empty={<EmptyState title="No templates" description="Start from the starter library or upload a Word letter." action={<Button variant="primary" onClick={() => setStarting('new')}>Open starter library</Button>} />}
+        />
+      )}
+      {starting && d && (
+        <NewTemplateDrawer
+          mode={starting}
+          data={d}
+          entities={live.entities}
+          onClose={() => setStarting(null)}
+          onStarter={newStarter}
+          onSpec={(spec) => {
+            setStarting(null);
+            setWs({ t: null, spec, tab: starting === 'upload' ? 'upload' : 'editor' });
+          }}
+        />
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
+}
+
+// "Upload Word" and "New template" (the starter library): what the template is called and how it is issued.
+function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }: { mode: 'new' | 'upload'; data: LetterTemplates; entities: { value: string; label: string }[]; onClose: () => void; onStarter: (letterType: string) => Promise<void>; onSpec: (spec: TemplateSpec) => void }) {
+  const [from, setFrom] = useState('blank');
+  const [name, setName] = useState('');
+  const [type, setType] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [entity, setEntity] = useState('');
+  const [approval, setApproval] = useState<'instant' | 'approval'>('instant');
+  const [signs, setSigns] = useState<'no' | 'yes'>('no');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const starter = mode === 'new' && from !== 'blank';
+  const known = [...new Set([...data.starters.map((s) => s.letterType), ...data.templates.map((t) => t.letterType), ...(type ? [type] : [])])].map((value) => ({ value, label: typeName(data, value) }));
+  // A new letter type from what was typed: "Transfer letter" becomes transfer_letter.
+  const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^[^a-z]+|_+$/g, '').slice(0, 40);
+  const types = [...known.filter((k) => k.label.toLowerCase().includes(query.toLowerCase())), ...(slug.length >= 2 && !known.some((k) => k.value === slug) ? [{ value: slug, label: `New letter type: ${query.trim()}` }] : [])];
+  const go = async () => {
+    if (!starter) {
+      onSpec({ letterType: type!, name: name.trim(), legalEntityId: entity || null, requiresApproval: approval === 'approval', personSigns: signs === 'yes' });
+      return;
+    }
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onStarter(from);
+    } catch (e) {
+      setFailed(failText(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={mode === 'upload' ? 'Upload a Word template' : 'New template'}
+      notice={failed && <InlineAlert tone="danger" title={failed} />}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!starter && (name.trim().length < 2 || !type)} loading={busy} onClick={() => void go()}>
+            {starter ? 'Add starter' : 'Continue'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__form">
+        {mode === 'new' && (
+          <FormField label="Start from" required>
+            <Select aria-label="Start from" options={[{ value: 'blank', label: 'A blank letter' }, ...data.starters.map((s) => ({ value: s.letterType, label: s.update ? `${s.name} (new version)` : s.name }))]} value={from} onChange={(v) => setFrom(v ?? 'blank')} />
+          </FormField>
+        )}
+        {!starter && (
+          <>
+            <FormField label="Name" required>
+              <TextField value={name} onChange={setName} maxLength={100} />
+            </FormField>
+            <FormField label="Letter type" required helper="A letter type can have several templates. Type a new one to add it.">
+              <Select aria-label="Letter type" options={types} value={type} onChange={setType} searchable onSearchChange={setQuery} />
+            </FormField>
+            {entities.length > 1 && (
+              <FormField label="Letterhead">
+                <Select aria-label="Letterhead" options={[{ value: '', label: "Each person's legal entity" }, ...entities]} value={entity} onChange={(v) => setEntity(v ?? '')} />
+              </FormField>
+            )}
+            <Segment label="Before issue" value={approval} onChange={setApproval} options={[{ value: 'instant', label: 'Instant' }, { value: 'approval', label: 'Approval' }]} />
+            <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
+          </>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+type UploadReport = { file: File; fixes: Record<string, string>; unknown?: Record<string, string>; refused?: string };
+
+// PPL-29 · template workspace, live: the designed workspace for one template (or a new one not saved yet).
+function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplates; ws: Workspace; onChange: (ws: Workspace) => void }) {
+  const { t, spec } = ws;
+  const d = live.data;
+  const { toast } = useToast();
+  const [viewed, setViewed] = useState(t?.previewViewed ?? false);
+  const [activating, setActivating] = useState(false);
+  const [fileName, setFileName] = useState(t ? `${t.letterType}-v${t.version}.docx` : '');
+  const [report, setReport] = useState<UploadReport | null>(null);
+  // The editor: a template made in YukthiX loads its paragraphs; kept here so switching tabs keeps unsaved text.
+  const [html, setHtml] = useState<string | null>(t && t.source !== 'upload' ? null : BLANK_LETTER);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!t || t.source === 'upload') return;
+    live.onParagraphs(t).then(
+      (ps) => setHtml(toHtml(ps)),
+      (e) => setEditorError(failText(e)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per template version (the workspace is keyed by it)
+  }, []);
+  const saved = (n: LetterTemplate) => {
+    toast({ tone: 'success', title: `${n.name} version ${n.version} saved as a draft` });
+    onChange({ t: n, spec: specOf(n), tab: ws.tab });
+  };
+  const send = async (file: File, fixes: Record<string, string>) => {
+    setFileName(file.name);
+    try {
+      saved(await live.onUpload({ ...spec, file, ...(Object.keys(fixes).length ? { fixes } : {}) }));
+      return true;
+    } catch (e) {
+      const err = e as { code?: string; body?: { errors?: Record<string, string> } };
+      setReport({ file, fixes, ...(err.code === 'TEMPLATE_FIELDS' ? { unknown: err.body?.errors ?? {} } : { refused: failText(e) }) });
+      return false;
+    }
+  };
+  const activate = async () => {
+    setActivating(true);
+    try {
+      await live.onStatus(t!, 'active');
+      toast({ tone: 'success', title: `${t!.name} is now in use` });
+      onChange({ ...ws, t: { ...t!, status: 'active' } });
+    } catch (e) {
+      toast({ tone: 'error', title: failText(e) });
+    } finally {
+      setActivating(false);
+    }
+  };
+  const saveEditor = async () => {
+    setSaving(true);
+    setEditorError(null);
+    try {
+      saved(await live.onCompose({ ...spec, paragraphs: fromHtml(html ?? '') }));
+    } catch (e) {
+      setEditorError(failText(e));
+      setSaving(false);
+    }
+  };
+  const used = (d?.fields ?? []).filter((f) => t?.fields.includes(f.key));
+  const madeWith = t ? MADE_WITH[t.source][0].toLowerCase() + MADE_WITH[t.source].slice(1) : null;
+  const draft = t?.status !== 'active';
+  return (
+    <PeopleFrame active="Documents & letters">
+      <ObjectHeader
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Letter templates', href: live.listHref }, { label: spec.name }]} />}
+        name={spec.name}
+        icon={FileUp}
+        secondary={t ? `${typeName(d, spec.letterType)} · ${madeWith} · ${LANGUAGE.of(t.language) ?? t.language} · version ${t.version}` : `${typeName(d, spec.letterType)} · not saved yet`}
+        status={<Badge tone={draft ? 'neutral' : 'success'}>{draft ? 'Draft' : 'Active'}</Badge>}
+        actions={
+          <>
+            <Button icon={Download} disabled={!t} onClick={() => t && live.onWord(t)}>
+              Download as Word
+            </Button>
+            {draft && (
+              <Button variant="primary" disabled={!t || !viewed} loading={activating} onClick={() => void activate()}>
+                Activate
+              </Button>
+            )}
+          </>
+        }
+      />
+      {draft && !viewed && <InlineAlert tone="info">View a test render with a sample employee before you activate this template.</InlineAlert>}
+      <Tabs value={ws.tab} onValueChange={(v) => onChange({ ...ws, tab: v as TemplateTab })}>
+        <TabsList aria-label="Template">
+          <TabsTrigger value="upload">Word upload</TabsTrigger>
+          <TabsTrigger value="editor">Editor</TabsTrigger>
+          <TabsTrigger value="fields">Field cheat-sheet</TabsTrigger>
+          <TabsTrigger value="test">Test render</TabsTrigger>
+        </TabsList>
+        <TabsContent value="upload">
+          <div className="yx-ppl__stack">
+            <FileUpload
+              upload={async (file) => {
+                if (!(await send(file, {}))) throw new Error('Not saved: see the validation report.');
+              }}
+              accept={['.docx']}
+              maxSize={20 * 1024 * 1024}
+              multiple={false}
+            />
+            {(report || t) && (
+              <Card title={`Validation report · ${report?.file.name ?? fileName}`}>
+                <ul className="yx-ppl__successors">
+                  {report?.refused && (
+                    <li>
+                      <span>{report.refused}</span>
+                      <Badge tone="danger">Refused</Badge>
+                    </li>
+                  )}
+                  {report?.unknown &&
+                    Object.entries(report.unknown).map(([k, s]) => (
+                      <li key={k}>
+                        <span>
+                          Unknown placeholder <code className="yx-ppl__code">{`{{${k}}}`}</code>.
+                          {s && (
+                            <>
+                              {' '}
+                              Did you mean <code className="yx-ppl__code">{`{{${s}}}`}</code>?
+                            </>
+                          )}
+                        </span>
+                        {s ? (
+                          <Button size="sm" onClick={() => void send(report.file, { ...report.fixes, [k]: s })}>
+                            Use suggestion
+                          </Button>
+                        ) : (
+                          <Badge tone="danger">Fix in Word</Badge>
+                        )}
+                      </li>
+                    ))}
+                  {!report && t && (
+                    <>
+                      <li>
+                        <span>{`${t.fields.length} ${t.fields.length === 1 ? 'placeholder matches' : 'placeholders match'} the field registry`}</span>
+                        <Badge tone="success">OK</Badge>
+                      </li>
+                      {used
+                        .filter((f) => f.flag)
+                        .map((f) => (
+                          <li key={f.key}>
+                            <span>
+                              Conditional <code className="yx-ppl__code">{tagOf(f)}</code>
+                            </span>
+                            <Badge tone="success">OK</Badge>
+                          </li>
+                        ))}
+                      {used
+                        .filter((f) => f.cls !== 'internal')
+                        .map((f) => (
+                          <li key={f.key}>
+                            <span>
+                              <code className="yx-ppl__code">{tagOf(f)}</code> is {FIELD_CLASS[f.cls]}. Issuers without that class can't generate this letter.
+                            </span>
+                            <Badge tone="warning">Check</Badge>
+                          </li>
+                        ))}
+                    </>
+                  )}
+                </ul>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="editor">
+          {t?.source === 'upload' ? (
+            <InlineAlert tone="info" title="This template is a Word file">
+              Download it, change it in Word and upload it again: it becomes the next version.
+            </InlineAlert>
+          ) : (
+            <div className="yx-ppl__stack">
+              {editorError && <InlineAlert tone="danger" title={editorError} />}
+              <div className="yx-ppl__row">
+                <Select aria-label="Letterhead" size="sm" options={[{ value: '', label: "Letterhead: each person's legal entity" }, ...live.entities.map((e) => ({ value: e.value, label: `Letterhead: ${e.label}` }))]} value={spec.legalEntityId ?? ''} onChange={(v) => onChange({ ...ws, spec: { ...spec, legalEntityId: v || null } })} />
+                <Select aria-label="Language" size="sm" options={[{ value: 'en', label: 'English' }]} value="en" onChange={() => {}} disabled />
+              </div>
+              {html === null ? (
+                <Skeleton height="var(--yx-space-16)" />
+              ) : (
+                <RichTextEditor
+                  aria-label="Letter body"
+                  value={html}
+                  onChange={setHtml}
+                  // A yes / no field goes in as its section: {{#probation}} … {{/probation}}.
+                  mergeFields={(d?.fields ?? []).map((f) => ({ value: f.flag ? `#${f.key}}} … {{/${f.key}` : f.key, label: f.label }))}
+                />
+              )}
+              <div>
+                <Button variant="primary" disabled={html === null} loading={saving} onClick={() => void saveEditor()}>
+                  {t ? 'Save as a new version' : 'Save draft'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+        <TabsContent value="fields">
+          <Card title="Fields you can use">
+            <ul className="yx-ppl__cheats">
+              {(d?.fields ?? []).map((f) => (
+                <li key={f.key}>
+                  <span>
+                    <code className="yx-ppl__code">{tagOf(f)}</code> {f.label}
+                  </span>
+                  <span className="yx-ppl__row">
+                    <ClassBadge cls={FIELD_CLASS[f.cls]} />
+                    <IconButton
+                      icon={Copy}
+                      size="sm"
+                      label={`Copy ${tagOf(f)}`}
+                      onClick={() => void navigator.clipboard?.writeText(f.flag ? `{{#${f.key}}} … {{/${f.key}}}` : tagOf(f)).then(() => toast({ tone: 'success', title: `${tagOf(f)} copied` }))}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </TabsContent>
+        <TabsContent value="test">{t ? <TestRender live={live} t={t} viewed={viewed} onViewed={() => setViewed(true)} /> : <InlineAlert tone="info">Upload a Word file or save the editor first. Then make a test render.</InlineAlert>}</TabsContent>
+      </Tabs>
+    </PeopleFrame>
+  );
+}
+
+// PPL-29 · test render, live: the server's PDF for sample data or a real person; making it counts as viewing it.
+function TestRender({ live, t, viewed, onViewed }: { live: LiveLetterTemplates; t: LetterTemplate; viewed: boolean; onViewed: () => void }) {
+  const [who, setWho] = useState('sample');
+  const [preview, setPreview] = useState<LetterPreview>(null);
+  const [attempt, setAttempt] = useState(0);
+  const person = live.people.find((p) => p.value === who);
+  useEffect(() => {
+    setPreview(null);
+    let gone = false;
+    live.onTestRender(t, person?.value ?? null).then(
+      (url) => {
+        if (gone) return;
+        setPreview({ url });
+        onViewed();
+      },
+      (e: { code?: string; body?: { errors?: Record<string, string> } }) => {
+        if (gone) return;
+        const missing = e?.code === 'LETTER_FIELDS_MISSING' ? e.body?.errors : undefined;
+        setPreview(missing ? { missing } : { failed: failText(e) });
+      },
+    );
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new render when the person changes or on retry
+  }, [who, attempt]);
+  return (
+    <div className="yx-ppl__stack">
+      <FormField label="Sample employee">
+        <Select aria-label="Sample employee" options={[{ value: 'sample', label: 'Sample data (a made-up person)' }, ...live.people]} value={who} onChange={(v) => setWho(v ?? 'sample')} />
+      </FormField>
+      {preview && 'missing' in preview ? (
+        <InlineAlert tone="danger" title="We can't generate this letter yet">
+          {missingText(person?.label.split(' ')[0] ?? 'the person', preview.missing)}
+        </InlineAlert>
+      ) : preview && 'failed' in preview ? (
+        <InlineAlert tone="danger" title="We couldn't make the test render">
+          {preview.failed}
+        </InlineAlert>
+      ) : (
+        <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Test render preview">
+          {preview ? <PdfPages url={preview.url} label={`${t.name}, test render`} /> : <Skeleton height="var(--yx-space-16)" />}
+        </div>
+      )}
+      <div>
+        <Button disabled={viewed || !preview} onClick={() => setAttempt((n) => n + 1)}>
+          {viewed ? 'Preview viewed' : 'Mark preview as viewed'}
+        </Button>
+      </div>
+    </div>
   );
 }
 

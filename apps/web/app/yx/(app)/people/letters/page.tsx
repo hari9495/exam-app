@@ -50,6 +50,7 @@ function Letters() {
         rows: rows.data ?? [],
         verifyUrl,
         onDownload: (l) => void download(l.id, 'letter', `${l.referenceNo ?? 'letter'}.pdf`),
+        ...(perms.has('letter.template.manage') ? { templatesHref: '/yx/settings/letters' } : {}),
         ...(canIssue
           ? {
               issue: {

@@ -41,6 +41,7 @@ export { ReverificationCycles, type ReverifData, type ReverifRow, type ReverifRu
 export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { IssuedLettersRegister, type LiveLetters } from '../people/documents';
+export { LetterTemplatesList, type LiveLetterTemplates, type TemplateSpec } from '../people/documents';
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
 export { EmployeeImportWizard } from '../people/changes';
