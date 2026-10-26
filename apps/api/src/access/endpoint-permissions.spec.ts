@@ -45,6 +45,10 @@ const IMPLICIT: Record<string, string[]> = {
     'probations', // HR in scope, or the manager's team
     'activity', // anyone who may open the record; each kind of entry by its own key (checked by the service)
     'workPhone', // employee.profile.edit in scope (checked by the service)
+    'updateFamily', // employee.profile.edit in scope, never the person themself (checked by the service)
+    'emergencyContacts', // the person, or employee.profile.edit in scope (checked by the service)
+    'customFields', // each field by its class: Public to colleagues, Internal / Personal / Confidential per record (checked by the service)
+    'setCustomFields', // the person their own Personal fields, or employee.profile.edit in scope for what they read (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
   OrgStructureController: ['reference'], // public reference data (states, regions)
@@ -70,7 +74,7 @@ const IMPLICIT: Record<string, string[]> = {
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'checkIn', 'drop', 'cascade'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts'], // PPL-03 counts: the person, the manager chain or perf.review.view in scope
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope).
   PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
