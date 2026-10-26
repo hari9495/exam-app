@@ -164,9 +164,9 @@ export function ProgressRing({ value, label, size = 'md' }: { value: number; lab
   );
 }
 
-/** Deadline countdown in working days (F&F, YX-LC-08). */
-export function DueCountdown({ due, today, holidays = [], label = 'Due' }: { due: Date; today: Date; holidays?: Date[]; label?: string }) {
-  const n = workingDaysUntil(today, due, holidays);
+/** Deadline countdown in working days (F&F, YX-LC-08); `left` when the server counted them on the person's calendar. */
+export function DueCountdown({ due, today, holidays = [], label = 'Due', left }: { due: Date; today: Date; holidays?: Date[]; label?: string; left?: number }) {
+  const n = left ?? workingDaysUntil(today, due, holidays);
   const tone: BadgeTone = n < 0 ? 'danger' : n <= 1 ? 'warning' : 'info';
   const text = n < 0 ? `Overdue by ${-n} working day${n === -1 ? '' : 's'}` : n === 0 ? 'Due today' : `${n} working day${n === 1 ? '' : 's'} left`;
   return (
@@ -254,8 +254,8 @@ export function StatusChecklist({ label, rows, today }: { label: string; rows: C
   );
 }
 
-/** F&F lines with a "How it's calculated" disclosure per line (fixes U57). */
-export function ExplainedLines({ lines, title }: { lines: FnfLine[]; title: string }) {
+/** F&F lines with a "How it's calculated" disclosure per line (fixes U57); live pages add the line's actions there. */
+export function ExplainedLines({ lines, title, action }: { lines: FnfLine[]; title: string; action?: (l: FnfLine) => ReactNode }) {
   if (!lines.length) return null;
   return (
     <section className="yx-ppl__lines" aria-label={title}>
@@ -270,13 +270,16 @@ export function ExplainedLines({ lines, title }: { lines: FnfLine[]; title: stri
                   {l.label}
                   {l.auto && <Badge tone="info">Pulled automatically</Badge>}
                   {l.wage && <Badge tone="neutral">Wage line</Badge>}
-                  {l.held && <Badge tone="warning">Held for open case</Badge>}
+                  {l.held && <Badge tone="warning">{l.heldWhy ? `Held: ${l.heldWhy}` : 'Held for open case'}</Badge>}
+                  {l.byPayroll && <Badge tone="neutral">Added by payroll</Badge>}
+                  {l.kind === 'recovery' && l.amount !== 0 && <Badge tone="neutral">To recover</Badge>}
                 </span>
                 <span className="yx-ppl__line-amount">{l.amount === 0 ? '—' : formatINR(l.amount)}</span>
               </summary>
               <Text size="sm" tone="secondary" as="p">
                 How it's calculated: {l.how}
               </Text>
+              {action?.(l)}
             </details>
           </li>
         ))}

@@ -106,11 +106,24 @@ export function wagesDueBy(lwd: string, holidays: ReadonlySet<string>): string {
   let d = lwd;
   let left = 2;
   while (left > 0) {
-    d = new Date(day(d).getTime() + 86_400_000).toISOString().slice(0, 10);
-    const wd = day(d).getUTCDay();
-    if (wd !== 0 && wd !== 6 && !holidays.has(d)) left--;
+    d = nextDay(d, 1);
+    if (workday(d, holidays)) left--;
   }
   return d;
+}
+
+const nextDay = (d: string, n: number) => new Date(day(d).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+const workday = (d: string, holidays: ReadonlySet<string>) => day(d).getUTCDay() !== 0 && day(d).getUTCDay() !== 6 && !holidays.has(d);
+
+/** Working days (the same days as wagesDueBy) from `today` to `due`: 0 on the day, negative once it has passed. */
+export function workingDaysUntil(today: string, due: string, holidays: ReadonlySet<string>): number {
+  const step = due > today ? 1 : -1;
+  let n = 0;
+  for (let d = today; d !== due; ) {
+    d = nextDay(d, step);
+    if (workday(d, holidays)) n += step;
+  }
+  return n;
 }
 
 /** Where a last working day stands on `today` (both IST days): still ahead, the day itself, or over (exit at T+0). */

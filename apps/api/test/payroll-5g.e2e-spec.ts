@@ -14,6 +14,8 @@ import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file'
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
 import { freezeSettlementIn } from '../src/lifecycle/settlement';
 import { FnfService } from '../src/payroll/fnf.service';
+import { MODULE_COMPONENTS } from '../src/payroll/starter';
+import { serviceYears } from '../src/statutory/evaluator';
 import type { CompanyContext } from '../src/org-structure/org-structure.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
@@ -56,8 +58,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
   const prevFirst = `${prevMonth}-01`;
   const short = () => `P5G-${run}`.toUpperCase();
 
-  /** Waive missing bank details, calculate, submit, and both approvers approve with the phrase. */
-  const approveRun = async (runId: string) => {
+  /** Waive missing bank details and calculate. */
+  const calculate = async (runId: string) => {
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body;
     for (const b of ready.checks.filter((c: { checkKey: string; waived: boolean }) => c.checkKey === 'bank_missing' && !c.waived))
       await api('payAdmin', 'post', `/payroll/runs/${runId}/validations/${b.id}/waive`).send({ reason: 'Bank details come next week' }).expect(200);
@@ -68,6 +70,11 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
       r = (await api('payAdmin', 'get', `/payroll/runs/${runId}`)).body;
     }
     if (r.status !== 'calculated') throw new Error(`run ${runId}: ${JSON.stringify((await api('payAdmin', 'get', `/payroll/runs/${runId}/progress`)).body)}`);
+    return r;
+  };
+  /** Calculate, submit, and both approvers approve with the phrase. */
+  const approveRun = async (runId: string) => {
+    const r = await calculate(runId);
     await api('payAdmin', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(200);
     for (const who of ['approver1', 'approver2'] as const) {
       await stepUp(who);
@@ -412,16 +419,71 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
 
   it('an unserved resignation notice is recovered by the company policy; HR waives it for one person with a reason', async () => {
     const lwd = plus(today, 10);
+    // An approved expense claim queued for payroll and not paid yet (M05): the settlement pays it in its own run.
+    const claimLine = await scoped(async (tx) => {
+      const em = await tx.employment.findFirstOrThrow({ where: { employeeId: ids.emp1 } });
+      await tx.payComponent.createMany({ data: MODULE_COMPONENTS.filter((m) => m.code === 'exp_reimb').map((s) => ({ organizationId: org.A.id, ...s, taxable: s.taxable ?? true, statutory: null, createdBy: null })), skipDuplicates: true });
+      const claim = await tx.expenseClaim.create({ data: { organizationId: org.A.id, employeeId: ids.emp1, employmentId: em.id, legalEntityId: ids.entity, title: 'Travel to Mysuru', currency: 'INR', status: 'approved', paymentStatus: 'in_payroll', route: 'payroll' } });
+      const otp = await tx.oneTimePay.create({
+        data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: ids.emp1, employmentId: em.id, componentCode: 'exp_reimb', amount: '3450.00', periodStart: new Date(`${first}T00:00:00Z`), source: 'm05', sourceRef: `${claim.id}:r`, reason: 'Expense claim: Travel to Mysuru', status: 'approved', createdBy: users.adminA },
+      });
+      await tx.expensePayment.create({ data: { organizationId: org.A.id, claimId: claim.id, legalEntityId: ids.entity, employeeId: ids.emp1, route: 'payroll', payMonth: new Date(`${first}T00:00:00Z`), oneTimePayIds: [otp.id], amount: '3450.00', status: 'queued' } });
+      return otp.id;
+    });
     const id = await exitCase(ids.emp1, 'resignation', lwd, { initiatedBy: 'employee', noticePeriod: '30d', standardLwd: new Date(`${plus(today, 30)}T00:00:00Z`) });
     const f = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
     const line = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_recovery');
     expect(line.label).toMatch(/^Notice not served: 20 days/);
+    // PPL-22: each line is explained and tagged; the claim is pulled into the F&F run.
+    expect(line).toMatchObject({ kind: 'deduction', title: 'Notice period recovery', how: line.label, wage: false, auto: false, claim: false, byPayroll: false, held: null });
+    const claim = f.items.find((i: { id: string }) => i.id === claimLine);
+    expect(claim).toMatchObject({ kind: 'earning', amount: '3450.00', title: 'Pending reimbursement: Travel to Mysuru', auto: true, claim: true, wage: false, inRun: f.runId, byPayroll: false });
+    // Before the run is calculated: only the settlement lines are counted; salary, TDS and net wait for the run.
+    expect(f.salary).toBeNull();
+    const paise = (xs: { amount: string }[]) => xs.reduce((t, x) => t + Math.round(Number(x.amount) * 100), 0);
+    const rupee = (p: number) => (p / 100).toFixed(2);
+    const earned = f.items.filter((i: { kind: string }) => i.kind === 'earning');
+    const wages = f.items.filter((i: { wage: boolean }) => i.wage);
+    expect(wages.every((i: { componentCode: string }) => ['leave_encashment', 'bonus', 'notice_pay'].includes(i.componentCode))).toBe(true);
+    expect(f.totals).toEqual({ earnings: rupee(paise(earned)), wageLines: rupee(paise(wages)), recoveries: line.amount, tds: null, statutory: null, rounding: null, net: null, held: '0.00' });
+    // Joined this month: gratuity needs 5 years; it falls due 30 days after the last day.
+    expect(f.gratuity).toEqual({ eligible: false, years: 0, months: serviceYears(first, lwd).months, counted: 0, minYears: 5, dueBy: plus(lwd, 30) });
+    // Working days to the deadline: weekdays after today up to it, less the company's holidays.
+    const off = new Set((await inA((tx) => tx.holiday.findMany({ where: { organizationId: org.A.id } }))).map((h) => iso(h.holidayOn)));
+    let left = 0;
+    for (let d = today; d < f.deadline; ) {
+      d = plus(d, 1);
+      if (![0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay()) && !off.has(d)) left++;
+    }
+    expect(f.workingDaysLeft).toBe(left);
+    // Calculated: salary to the last day and the statutory lines come from the run's payslip, and the totals add up to it.
+    await calculate(f.runId);
+    const c = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
+    const slip = ((await api('payAdmin', 'get', `/payroll/runs/${f.runId}/payslips`).expect(200)).body as { id: string; employeeId: string; net: string }[]).find((s) => s.employeeId === ids.emp1)!;
+    const slipLines = (await linesOf(slip.id)).body.lines as { code: string; amount: string; kind: string; explanation: string }[];
+    // The payslip's earnings that are not settlement lines: salary to the last day.
+    const salaryEarn = slipLines.filter((l) => l.kind === 'earning' && !earned.some((i: { componentCode: string }) => i.componentCode === l.code));
+    expect(c.salary.filter((l: { group: string }) => l.group === 'earning')).toEqual(salaryEarn.map((l) => expect.objectContaining({ code: l.code, amount: l.amount, how: l.explanation })));
+    expect(Math.round(Number(c.totals.earnings) * 100)).toBe(paise(salaryEarn) + paise(earned));
+    expect(c.totals.wageLines).toBe(rupee(paise(salaryEarn) + paise(wages)));
+    expect(c.totals.recoveries).toBe(line.amount);
+    expect(c.totals.tds).toBe(rupee(paise(slipLines.filter((l) => l.code === 'tds'))));
+    // A deficit the payslip carries forward is what the leaver owes: the settlement shows it as a negative net.
+    const carried = paise(slipLines.filter((l) => l.code === 'negative_net'));
+    expect(Math.round(Number(c.totals.net) * 100)).toBe(Math.round(Number(slip.net) * 100) - carried);
+    expect(Math.round(Number(c.totals.net) * 100)).toBe(Math.round(Number(c.totals.earnings) * 100) - Math.round(Number(c.totals.recoveries) * 100) - Math.round(Number(c.totals.tds) * 100) - Math.round(Number(c.totals.statutory) * 100) + Math.round(Number(c.totals.rounding) * 100));
+    // Another company and the employee never see it.
+    await api('emp1', 'get', '/payroll/fnf').expect(403);
+    expect(((await api('payAdminB', 'get', '/payroll/fnf').expect(200)).body as { id: string }[]).some((x) => x.id === id)).toBe(false);
     // 5j-D2: its own key (HR Admin and Payroll Admin), not the approver's.
     await api('approver1', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(403);
     await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'ok' }).expect(400);
     const waived = (await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(200)).body;
     expect(waived.noticeWaived).toMatchObject({ by: users.payAdmin, reason: 'Leaving to care for a parent' });
     expect(waived.items.some((i: { componentCode: string }) => i.componentCode === 'notice_recovery')).toBe(false);
+    // The payslip still recovers the waived notice: it is no longer current until the run is calculated again.
+    expect(waived.salary).toBeNull();
+    expect(waived.totals).toMatchObject({ earnings: rupee(paise(earned)), recoveries: '0.00', net: null });
     await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(409);
   });
 

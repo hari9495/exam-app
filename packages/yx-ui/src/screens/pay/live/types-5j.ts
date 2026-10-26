@@ -234,13 +234,31 @@ export interface TdsReturnRow {
 export interface FnfItem {
   id: string;
   componentCode: string;
-  /** A deduction (a recovery) is money the leaver owes. */
-  kind?: 'earning' | 'deduction';
+  /** A deduction (a recovery) is money the leaver owes; an employer line is paid by the company (not to the leaver). */
+  kind: 'earning' | 'deduction' | 'employer';
   amount: string;
   label: string | null;
+  /** What the line is, and how it is worked out. */
+  title: string;
+  how: string;
+  /** Due within the 2-working-day deadline (Code on Wages). */
+  wage: boolean;
+  /** Pulled from another module (clearance recoveries, expense advances and claims). */
+  auto: boolean;
+  /** An approved expense claim paid with the settlement (held or changed in Expenses, not here). */
+  claim: boolean;
   held: string | null;
   inRun: string | null;
   byPayroll: boolean;
+}
+
+/** A line of the F&F run's payslip that is not a settlement line: salary to the last day, statutory deductions, TDS, loans. */
+export interface FnfSlipLine {
+  code: string;
+  name: string;
+  group: 'earning' | 'recovery' | 'tds' | 'statutory';
+  amount: string;
+  how: string;
 }
 
 export interface FnfSettlementView {
@@ -255,7 +273,14 @@ export interface FnfSettlementView {
   runStatus: string | null;
   secondRunId: string | null;
   net: string | null;
+  /** Working days to the deadline on the person's holiday calendar (negative once overdue). */
+  workingDaysLeft: number;
   items: FnfItem[];
+  /** null until the run is calculated with the current lines. */
+  salary: FnfSlipLine[] | null;
+  /** tds, statutory, rounding and net are null until the run is calculated with the current lines; held lines are outside the totals. */
+  totals: { earnings: string; wageLines: string; recoveries: string; tds: string | null; statutory: string | null; rounding: string | null; net: string | null; held: string };
+  gratuity: { eligible: boolean; years: number; months: number; counted: number; minYears: number; dueBy: string } | null;
   payees: { kind: string; name: string; relation: string; sharePercent: string; accountLast4: string | null; ifsc: string | null; amount: string | null }[];
   noticeWaived: { by: string; reason: string } | null;
   taxNote?: string;
