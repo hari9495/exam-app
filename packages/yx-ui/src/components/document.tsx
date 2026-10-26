@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Download, Maximize2, Printer, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button, IconButton } from './button';
 import { Badge, PersonLabel, type BadgeTone } from './display';
@@ -221,6 +221,52 @@ function ViewerBody({ fileName, versions, version, defaultVersion, onVersionChan
           </section>
         )}
       </aside>
+    </div>
+  );
+}
+
+/** A PDF drawn as plain pages that fit the box width (PDF.js): no browser viewer frame, toolbar or sideways scroll. */
+export function PdfPages({ url, label }: { url: string; label: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    let gone = false;
+    let task: { destroy: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc ||= new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+        const loading = pdfjs.getDocument({ url });
+        task = loading;
+        const pdf = await loading.promise;
+        const pages: HTMLCanvasElement[] = [];
+        for (let n = 1; n <= pdf.numPages && !gone; n++) {
+          const page = await pdf.getPage(n);
+          const fit = page.getViewport({ scale: el.clientWidth / page.getViewport({ scale: 1 }).width });
+          const ratio = window.devicePixelRatio || 1;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(fit.width * ratio);
+          canvas.height = Math.floor(fit.height * ratio);
+          canvas.className = 'yx-pdfpages__page';
+          await page.render({ canvas, viewport: fit, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise;
+          pages.push(canvas);
+        }
+        if (!gone) el.replaceChildren(...pages);
+      } catch {
+        if (!gone) setFailed(true);
+      }
+    })();
+    return () => {
+      gone = true;
+      void task?.destroy();
+    };
+  }, [url]);
+  if (failed) return <EmptyState title="We couldn't show the preview" description="Download it to read it." />;
+  return (
+    <div ref={box} className="yx-pdfpages" role="img" aria-label={label}>
+      <Skeleton height="var(--yx-space-16)" />
     </div>
   );
 }

@@ -39,7 +39,8 @@ describe('PPL-28 issue a letter, live', () => {
     await pickType('Promotion with pay change (approval required)');
     // Another entity's template is not offered; the company-wide v2 is chosen.
     expect(within(drawer()).getByRole('combobox', { name: 'Template' })).toHaveTextContent('Promotion with pay change · v2 · English');
-    await waitFor(() => expect(within(drawer()).getByRole('region', { name: 'Letter preview' }).querySelector('object')?.getAttribute('data')).toBe('blob:preview#toolbar=0&navpanes=0&view=FitH'));
+    // The preview is the server's PDF, drawn as pages (PDF.js; jsdom has no canvas, so only the region is checked).
+    expect(await within(drawer()).findByRole('region', { name: 'Letter preview' })).toBeTruthy();
     expect(live.issue!.onPreview).toHaveBeenCalledWith('p1', TEMPLATES[0]);
     expect(within(drawer()).getByText('Approval before issue')).toBeTruthy();
     expect(within(drawer()).getByText('Lakshmi Venkatesan')).toBeTruthy();
