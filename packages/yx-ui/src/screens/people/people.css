@@ -162,7 +162,6 @@
 .yx-ppl__letter .yx-print { overflow-x: visible; }
 .yx-ppl__letter:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-focus-width); }
 .yx-ppl__letter { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); padding: var(--yx-space-4); overflow: auto; max-height: calc(var(--yx-space-16) * 8); }
-.yx-ppl__letter-pdf { display: block; width: 100%; height: calc(var(--yx-space-16) * 7); border: 0; }
 
 /* code / placeholder chips */
 .yx-ppl__code { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); padding: 0 var(--yx-space-1); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); }

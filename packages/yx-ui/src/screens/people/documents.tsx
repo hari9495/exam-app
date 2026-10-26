@@ -14,7 +14,7 @@ import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
-import { DocumentViewer } from '../../components/document';
+import { DocumentViewer, PdfPages } from '../../components/document';
 import { RichTextEditor } from '../../components/editor';
 import { LetterDocument, type LetterData } from '../../components/print';
 import { Stepper } from '../../components/stepper';
@@ -510,7 +510,7 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullabl
           who &&
           chosen && (
             <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Letter preview">
-              {preview ? <object className="yx-ppl__letter-pdf" data={`${preview.url}#toolbar=0&navpanes=0&view=FitH`} type="application/pdf" aria-label={`${chosen.name} for ${person?.label ?? 'the person'}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
+              {preview ? <PdfPages url={preview.url} label={`${chosen.name} for ${person?.label ?? 'the person'}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
             </div>
           )
         )}
