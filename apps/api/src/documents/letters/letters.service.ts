@@ -777,12 +777,13 @@ export class LettersService implements OnModuleInit {
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       const l = await tx.letterIssue.findFirst({ where: { verifyCode: code, status: { in: ['issued', 'superseded'] } }, select: { organizationId: true, legalEntityId: true, personId: true, letterType: true, templateId: true, issuedAt: true, status: true } });
       if (!l) return null;
-      const [org, p, t] = await Promise.all([
-        tx.organization.findUnique({ where: { id: l.organizationId }, select: { name: true } }),
+      const [entity, p, t] = await Promise.all([
+        // The legal entity that issued it, as printed on the letter (not the company group's name).
+        tx.legalEntity.findFirst({ where: { organizationId: l.organizationId, id: l.legalEntityId }, select: { name: true } }),
         tx.person.findFirst({ where: { organizationId: l.organizationId, id: l.personId }, select: { givenName: true, familyName: true, preferredName: true } }),
         tx.letterTemplate.findFirst({ where: { organizationId: l.organizationId, id: l.templateId }, select: { name: true } }),
       ]);
-      return { company: org?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : '', issuedOn: localDate(l.issuedAt!, await entityTimeZone(tx, l.organizationId, l.legalEntityId)), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
+      return { company: entity?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : '', issuedOn: localDate(l.issuedAt!, await entityTimeZone(tx, l.organizationId, l.legalEntityId)), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
     });
   }
 }

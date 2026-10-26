@@ -66,9 +66,9 @@ function Letters() {
                   if (shown.current) URL.revokeObjectURL(shown.current);
                   return (shown.current = URL.createObjectURL(blob));
                 },
-                onIssue: async (personId: string, t: LetterTemplate) => {
-                  await write('POST', '/letters/issue', { letterType: t.letterType, personId, templateId: t.id });
-                  toast({ tone: 'success', title: `${t.name} for ${nameOf(personId)} ${t.requiresApproval ? 'sent for approval' : 'issued'}` });
+                onIssue: async (personId: string, t: LetterTemplate, supersedes?: Letter) => {
+                  await write('POST', '/letters/issue', { letterType: t.letterType, personId, templateId: t.id, ...(supersedes ? { supersedesId: supersedes.id } : {}) });
+                  toast({ tone: 'success', title: `${supersedes ? 'Correction of ' : ''}${t.name} for ${nameOf(personId)} ${t.requiresApproval ? 'sent for approval' : 'issued'}` });
                 },
                 onBulk: () => setBulk(true),
                 ...(picked.length === 1 ? { person: picked[0] } : {}),

@@ -11,11 +11,11 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const T = (id: string, letterType: string, name: string, requiresApproval: boolean, legalEntityId: string | null = null, version = 1): LetterTemplate => ({ id, letterType, name, legalEntityId, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, version, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
 const TEMPLATES = [T('t1', 'promotion', 'Promotion with pay change', true, null, 2), T('t1b', 'promotion', 'Promotion with pay change', true, 'other', 3), T('t2', 'experience', 'Experience letter', false)];
 
-function sheet(issue: Partial<NonNullable<LiveLetters['issue']>> = {}) {
+function sheet(issue: Partial<NonNullable<LiveLetters['issue']>> = {}, rows: LiveLetters['rows'] = []) {
   const live: LiveLetters = {
     state: 'ready',
     onRetry: () => {},
-    rows: [],
+    rows,
     verifyUrl: (c) => c,
     onDownload: () => {},
     issue: { templates: TEMPLATES, people: [{ value: 'p1', label: 'Arjun Kulkarni · KF-0142', legalEntityId: 'kf' }], approverFor: () => 'Lakshmi Venkatesan', onPreview: vi.fn(async () => 'blob:preview'), onIssue: vi.fn(async () => {}), onBulk: () => {}, person: 'p1', ...issue },
@@ -45,7 +45,7 @@ describe('PPL-28 issue a letter, live', () => {
     expect(within(drawer()).getByText('Approval before issue')).toBeTruthy();
     expect(within(drawer()).getByText('Lakshmi Venkatesan')).toBeTruthy();
     await ue.click(within(drawer()).getByRole('button', { name: 'Send for approval' }));
-    expect(live.issue!.onIssue).toHaveBeenCalledWith('p1', TEMPLATES[0]);
+    expect(live.issue!.onIssue).toHaveBeenCalledWith('p1', TEMPLATES[0], undefined);
   });
 
   it('a letter without approval says Issue letter', async () => {
@@ -71,5 +71,18 @@ describe('PPL-28 issue a letter, live', () => {
     await pickType('Promotion with pay change (approval required)');
     expect(await within(drawer()).findByText("We can't generate this letter yet")).toBeTruthy();
     expect(within(drawer()).queryByText('Approval before issue')).toBeNull();
+  });
+
+  it('an issued letter is corrected from its row: same person and type, the old one named (as the design)', async () => {
+    const issued = { id: 'l1', title: 'Experience letter: Arjun Kulkarni', letterType: 'experience', personId: 'p1', person: 'Arjun Kulkarni', referenceNo: 'KF/EXPE/2026/000001', verifyCode: 'ABCDEFGHJK', status: 'issued' as const, renderError: null, issuedAt: '2026-10-24T10:00:00Z', personSigns: false, acceptedAt: null, signature: null, supersededById: null };
+    const { live, drawer } = sheet({ person: undefined }, [issued]);
+    await ue.click(screen.getByRole('button', { name: /More actions for KF\/EXPE\/2026\/000001/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Issue a correction' }));
+    expect(within(drawer()).getByText('Issue a correction')).toBeTruthy();
+    expect(within(drawer()).getByText('Replaces KF/EXPE/2026/000001. The old letter then shows as superseded.')).toBeTruthy();
+    expect(within(drawer()).getByRole('combobox', { name: 'Employee' })).toBeDisabled();
+    await waitFor(() => expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeEnabled());
+    await ue.click(within(drawer()).getByRole('button', { name: 'Issue letter' }));
+    expect(live.issue!.onIssue).toHaveBeenCalledWith('p1', TEMPLATES[2], issued);
   });
 });
