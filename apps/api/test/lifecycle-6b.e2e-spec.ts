@@ -249,7 +249,12 @@ describe('Lifecycle batch 6b', () => {
     // A confirmation letter needs an employee code the joiner does not have yet: never a silent blank.
     expect((await api('hr', 'post', '/letters/issue').send({ letterType: 'confirmation', personId: row.personId }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
     await api('mgr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(403);
-    const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, subjectType: 'preboarding', subjectId: ids.joiner }).expect(201)).body;
+    // The template HR picks (PPL-28) must be an active one of this type: another type's template is refused.
+    expect((await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_confirmation }).expect(400)).body.message).toMatch(/not active/);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: 'not-a-uuid' }).expect(400);
+    await api('mgr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment }).expect(403);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment }).expect(200);
+    const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment, subjectType: 'preboarding', subjectId: ids.joiner }).expect(201)).body;
     expect(l.status).toBe('pending_approval');
     await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(409);
     const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { assigneeUserId: users.signer, status: 'open' } }));
@@ -356,5 +361,11 @@ describe('Lifecycle batch 6b', () => {
     const counts = await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, async (tx) => [await tx.letterIssue.count(), await tx.letterTemplate.count(), await tx.consentRecord.count(), await tx.bgvCheck.count(), await tx.preboardingPortalSession.count(), await tx.signatureRequest.count()]);
     expect(counts).toEqual([0, 0, 0, 0, 0, 0]);
     await request(server()).get(`/api/v1/portal/join/${org.B.slug}/me`).set('X-Join-Portal', ids.portal).expect(401);
+    // A's HR cannot pick B's active template for a letter (PPL-28 template choice).
+    const tplB = (await api('adminB', 'post', '/letters/templates/starter').send({ letterType: 'appointment' }).expect(201)).body.id as string;
+    await api('adminB', 'get', `/letters/templates/${tplB}/preview`).expect(200);
+    await api('adminB', 'post', `/letters/templates/${tplB}/activate`).expect(200);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
+    await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
   });
 });

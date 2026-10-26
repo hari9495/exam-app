@@ -1,34 +1,43 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
 import { IssuedLettersRegister } from '@yukthix/ui/frame';
-import { BulkLetterDialog, type Letter, type LetterTemplates } from '@yukthix/ui/lifecycle';
+import { BulkLetterDialog, type Letter, type LetterTemplate, type LetterTemplates, type Signatory } from '@yukthix/ui/lifecycle';
+import { useAuth } from '../../../../../lib/auth-context';
+import { apiFetchBlob } from '../../../../../lib/api-client';
+import { decodeJwtPayload } from '../../../../../lib/jwt';
 import { useYxPermissions, loadState } from '../../../../../lib/yx-org';
-import { useLetterDownload, useLife, useLifeWrite, usePdfPost } from '../../../../../lib/yx-lifecycle';
+import { useLetterDownload, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 import { usePeople } from '../../../../../lib/yx-people';
 import { verifyUrl } from '../../../../../lib/yx-pay';
 
 // People › Documents & letters › Letters (PPL-28, design audit step 3; P05 §4.3): every letter issued to people in
-// scope, with its reference, signature and status; issue one letter or many from the active templates.
+// scope, with its reference, signature and status; issue one letter (type, template, preview with real data) or many.
 function Letters() {
   const { toast } = useToast();
+  const { accessToken } = useAuth();
   const perms = useYxPermissions();
   const rows = useLife<Letter[]>('/letters/issued');
   const download = useLetterDownload();
-  const pdf = usePdfPost();
   const write = useLifeWrite();
   const templates = useLife<LetterTemplates>('/letters/templates');
-  const people = usePeople<{ id: string; personId?: string; name: string; employeeCode?: string | null }[]>('/employees');
-  const types = [...new Map((templates.data?.templates ?? []).filter((t) => t.status === 'active').map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
-  const choices = (people.data ?? []).filter((x) => x.personId).map((x) => ({ value: x.personId!, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }));
-  // Issue letter from the directory: ?people= the employee records chosen there, opened in the bulk issue.
+  const signatories = useLife<Signatory[]>('/letters/signatories');
+  const people = usePeople<{ id: string; personId?: string; name: string; employeeCode?: string | null; legalEntityId: string | null }[]>('/employees');
+  const active = (templates.data?.templates ?? []).filter((t) => t.status === 'active');
+  const types = [...new Map(active.map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
+  const choices = (people.data ?? []).filter((x) => x.personId).map((x) => ({ value: x.personId!, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name, legalEntityId: x.legalEntityId }));
+  // Issue letter from the directory or a record: ?people= the employee records chosen there. One opens the issue
+  // sheet with them chosen; more open the bulk issue.
   const params = useSearchParams();
   const asked = new Set((params?.get('people') ?? '').split(',').filter(Boolean));
   const picked = (people.data ?? []).filter((x) => asked.has(x.id) && x.personId).map((x) => x.personId!);
   const [bulk, setBulk] = useState<boolean | null>(null);
-  const bulkOpen = bulk ?? picked.length > 0;
+  const bulkOpen = bulk ?? picked.length > 1;
+  // The preview PDF's object URL: the last one is let go when the next is made.
+  const shown = useRef<string | null>(null);
+  const me = accessToken ? decodeJwtPayload(accessToken)?.sub : null;
   const nameOf = (personId: string) => choices.find((c) => c.value === personId)?.label.split(' · ')[0] ?? 'the person';
   const typeOf = (letterType: string) => types.find((t) => t.value === letterType)?.label ?? 'Letter';
   const canIssue = perms.has('letter.issue') && types.length > 0 && choices.length > 0;
@@ -44,14 +53,24 @@ function Letters() {
         ...(canIssue
           ? {
               issue: {
-                types,
+                templates: active,
                 people: choices,
-                onPreview: (letterType: string, personId: string) => pdf('/letters/preview', { letterType, personId }, 'preview.pdf'),
-                onIssue: async (letterType: string, personId: string) => {
-                  await write('POST', '/letters/issue', { letterType, personId });
-                  toast({ tone: 'success', title: `${typeOf(letterType)} for ${nameOf(personId)} issued` });
+                // The API's rule: the entity's first signatory approves, unless that is the issuer (then a company admin).
+                approverFor: (legalEntityId: string | null) => {
+                  const s = (signatories.data ?? []).find((x) => x.legalEntityId === legalEntityId);
+                  return s && s.userId !== me ? s.name : null;
+                },
+                onPreview: async (personId: string, t: LetterTemplate) => {
+                  const { blob } = await apiFetchBlob('/letters/preview', { method: 'POST', body: JSON.stringify({ letterType: t.letterType, personId, templateId: t.id }) }, accessToken ?? undefined);
+                  if (shown.current) URL.revokeObjectURL(shown.current);
+                  return (shown.current = URL.createObjectURL(blob));
+                },
+                onIssue: async (personId: string, t: LetterTemplate) => {
+                  await write('POST', '/letters/issue', { letterType: t.letterType, personId, templateId: t.id });
+                  toast({ tone: 'success', title: `${t.name} for ${nameOf(personId)} ${t.requiresApproval ? 'sent for approval' : 'issued'}` });
                 },
                 onBulk: () => setBulk(true),
+                ...(picked.length === 1 ? { person: picked[0] } : {}),
               },
             }
           : {}),

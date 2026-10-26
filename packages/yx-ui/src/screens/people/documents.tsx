@@ -1,7 +1,7 @@
 // PPL-27 Document verification queue · PPL-28 Issue letter + bulk issue + issued letters register · PPL-29 Letter templates
 // PPL-30 My documents & letters · PPL-31 Self-service certificate request (P05 §4.2–4.6, §7, Q7, Q8).
-import { useState, type ReactNode } from 'react';
-import { Camera, Copy, Download, FileText, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Camera, Copy, Download, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
@@ -24,7 +24,7 @@ import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
 import type { FieldClass,  } from './people-logic';
-import type { Letter as LiveLetter, QueueDocument } from './live/types';
+import type { Letter as LiveLetter, LetterTemplate, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
@@ -386,20 +386,158 @@ export interface LiveLetters {
   verifyUrl: (code: string) => string;
   onDownload: (l: LiveLetter) => void;
   /** letter.issue with active templates: issue one letter, or many. */
-  issue?: { types: { value: string; label: string }[]; people: { value: string; label: string }[]; onPreview: (letterType: string, personId: string) => Promise<unknown>; onIssue: (letterType: string, personId: string) => Promise<void>; onBulk: () => void };
+  issue?: {
+    /** The active templates: the sheet offers their letter types, then the chosen type's versions for the person's legal entity. */
+    templates: LetterTemplate[];
+    people: { value: string; label: string; legalEntityId: string | null }[];
+    /** Who approves a letter that needs approval: the legal entity's signatory, when one is named. */
+    approverFor: (legalEntityId: string | null) => string | null;
+    /** The letter filled with the person's real data, as a preview PDF (an object URL). Refused while a field is blank. */
+    onPreview: (personId: string, t: LetterTemplate) => Promise<string>;
+    onIssue: (personId: string, t: LetterTemplate) => Promise<void>;
+    onBulk: () => void;
+    /** Opened from one person's record or the directory: the sheet starts with them chosen. */
+    person?: string;
+  };
   /** Dialogs the page opens (the bulk issue). */
   children?: ReactNode;
 }
 
 const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Rejected', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+const LANGUAGE = new Intl.DisplayNames(['en'], { type: 'language' });
+
+type LetterPreview = { url: string } | { missing: Record<string, string> } | { failed: string } | null;
+
+/** The API's LETTER_FIELDS_MISSING refusal in the design's words: "Fill these on Arjun's record first: …". */
+function missingText(first: string, missing: Record<string, string>) {
+  const keys = Object.keys(missing);
+  const onRecord = keys.filter((k) => !k.startsWith('signatory_')).map((k) => missing[k][0].toLowerCase() + missing[k].slice(1));
+  return [onRecord.length ? `Fill these on ${first}'s record first: ${onRecord.join(', ')}.` : '', keys.length > onRecord.length ? 'Name who signs for their legal entity in Settings › Letter templates.' : '', 'Letters never go out with blanks.'].filter(Boolean).join(' ');
+}
+
+// PPL-28 · issue sheet, live: the designed sheet (IssueLetterSheet) with the API's templates, preview and approval rule.
+function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullable<LiveLetters['issue']>; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [who, setWho] = useState<string | null>(issue.person ?? null);
+  const [type, setType] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<LetterPreview>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const person = issue.people.find((p) => p.value === who);
+  const types = [...new Set(issue.templates.map((t) => t.letterType))].map((value) => {
+    const of = issue.templates.filter((t) => t.letterType === value);
+    return { value, label: of.some((t) => t.requiresApproval) ? `${of[0].name} (approval required)` : of[0].name };
+  });
+  // The person's own legal entity first, then company-wide: the template the API would pick by itself.
+  const versions = issue.templates.filter((t) => t.letterType === type && (!t.legalEntityId || t.legalEntityId === person?.legalEntityId)).sort((a, b) => Number(!a.legalEntityId) - Number(!b.legalEntityId));
+  const chosen = versions.find((t) => t.id === templateId) ?? versions[0] ?? null;
+  useEffect(() => {
+    setPreview(null);
+    if (!who || !chosen) return;
+    let gone = false;
+    issue.onPreview(who, chosen).then(
+      (url) => !gone && setPreview({ url }),
+      (e: { code?: string; body?: { errors?: Record<string, string> } }) => {
+        if (gone) return;
+        const missing = e?.code === 'LETTER_FIELDS_MISSING' ? e.body?.errors : undefined;
+        setPreview(missing ? { missing } : { failed: e instanceof Error ? e.message : 'The preview could not be made. Try again.' });
+      },
+    );
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new preview only when the person or the template changes
+  }, [who, chosen?.id]);
+  const issueIt = async () => {
+    if (!who || !chosen) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await issue.onIssue(who, chosen);
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      size="lg"
+      title="Issue a letter"
+      subtitle="Type, template, preview with real data, approval, issue"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" disabled={!who || !chosen || !preview || 'missing' in preview} loading={busy} onClick={() => void issueIt()}>
+            {chosen?.requiresApproval ? 'Send for approval' : 'Issue letter'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        <div className="yx-ppl__form">
+          <FormField label="Employee" required>
+            <Select aria-label="Employee" options={issue.people} value={who} onChange={setWho} searchable />
+          </FormField>
+          <FormField label="Letter type" required>
+            <Select
+              aria-label="Letter type"
+              options={types}
+              value={type}
+              onChange={(v) => {
+                setType(v);
+                setTemplateId(null);
+              }}
+            />
+          </FormField>
+          <FormField label="Template" required>
+            <Select aria-label="Template" options={versions.map((t) => ({ value: t.id, label: `${t.name} · v${t.version} · ${LANGUAGE.of(t.language) ?? t.language}` }))} value={chosen?.id ?? null} onChange={setTemplateId} disabled={!versions.length} />
+          </FormField>
+        </div>
+        {preview && 'missing' in preview ? (
+          <InlineAlert tone="danger" title="We can't generate this letter yet">
+            {missingText(person?.label.split(' ')[0] ?? 'the person', preview.missing)}
+          </InlineAlert>
+        ) : preview && 'failed' in preview ? (
+          <InlineAlert tone="danger" title="We couldn't make the preview">
+            {preview.failed}
+          </InlineAlert>
+        ) : (
+          who &&
+          chosen && (
+            <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Letter preview">
+              {preview ? <object className="yx-ppl__letter-pdf" data={`${preview.url}#toolbar=0&navpanes=0&view=FitH`} type="application/pdf" aria-label={`${chosen.name} for ${person?.label ?? 'the person'}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
+            </div>
+          )
+        )}
+        {chosen?.requiresApproval && (
+          <Card title="Approval before issue">
+            <ApprovalTimeline steps={[{ id: 'prepared', label: 'Prepared', status: 'done', approver: 'You', at: new Date() }, { id: 'signatory', label: 'Signatory', status: 'current', approver: issue.approverFor(person?.legalEntityId ?? null) ?? 'A company admin' }]} />
+          </Card>
+        )}
+        <Text size="sm" tone="secondary" as="p">Issued letters are final: a reference number, a QR verification code and a sealed PDF. A correction is a new letter that supersedes this one.</Text>
+      </div>
+    </Drawer>
+  );
+}
 
 function LiveLettersRegister({ live }: { live: LiveLetters }) {
   const [issuing, setIssuing] = useState(false);
-  const [type, setType] = useState<string | null>(null);
-  const [who, setWho] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'preview' | 'issue' | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  // A fresh sheet each time it opens: nothing left over from the last letter.
+  const [sheet, setSheet] = useState(0);
   const { toast } = useToast();
+  const startIssue = () => {
+    setSheet((n) => n + 1);
+    setIssuing(true);
+  };
+  const person = live.issue?.person;
+  useEffect(() => {
+    if (person) startIssue();
+  }, [person]);
   const cols: TableColumn<LiveLetter>[] = [
     { key: 'ref', header: 'Reference', type: 'id', value: (r) => r.referenceNo ?? '', width: 250 },
     { key: 'type', header: 'Letter', value: (r) => r.title.split(': ')[0], groupable: true, width: 190 },
@@ -408,22 +546,6 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
     { key: 'esign', header: 'Signature', value: (r) => (!r.personSigns ? 'Not needed' : r.acceptedAt ? `Accepted ${formatDate(new Date(r.acceptedAt))}` : r.signature?.status === 'declined' ? 'Declined' : 'Not yet'), width: 180 },
     { key: 'status', header: 'Status', type: 'status', value: (r) => LETTER_STATE[r.status], statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' ? 'neutral' : v === 'Rejected' ? 'danger' : 'warning'), width: 170 },
   ];
-  const run = async (what: 'preview' | 'issue') => {
-    if (!live.issue || !type || !who) return;
-    setBusy(what);
-    setFailed(null);
-    try {
-      if (what === 'preview') await live.issue.onPreview(type, who);
-      else {
-        await live.issue.onIssue(type, who);
-        setIssuing(false);
-      }
-    } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
-    } finally {
-      setBusy(null);
-    }
-  };
   return (
     <PeopleFrame active="Documents & letters">
       <PageHeader
@@ -435,16 +557,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               <Button icon={FileUp} onClick={live.issue.onBulk}>
                 Bulk issue
               </Button>
-              <Button
-                variant="primary"
-                icon={Plus}
-                onClick={() => {
-                  setType(null);
-                  setWho(null);
-                  setFailed(null);
-                  setIssuing(true);
-                }}
-              >
+              <Button variant="primary" icon={Plus} onClick={startIssue}>
                 Issue letter
               </Button>
             </>
@@ -488,15 +601,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               description="Issue a letter from a template, or in bulk after a change."
               action={
                 live.issue ? (
-                  <Button
-                    icon={Plus}
-                    onClick={() => {
-                      setType(null);
-                      setWho(null);
-                      setFailed(null);
-                      setIssuing(true);
-                    }}
-                  >
+                  <Button icon={Plus} onClick={startIssue}>
                     Issue letter
                   </Button>
                 ) : undefined
@@ -505,41 +610,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           }
         />
       )}
-      {live.issue && (
-        <Drawer
-          open={issuing}
-          onOpenChange={setIssuing}
-          size="lg"
-          title="Issue a letter"
-          subtitle="Letter type and person; download a preview with the person's real data, then issue"
-          footer={
-            <>
-              <Button onClick={() => setIssuing(false)}>Cancel</Button>
-              <Button variant="primary" disabled={!type || !who} loading={busy === 'issue'} onClick={() => void run('issue')}>
-                Issue letter
-              </Button>
-            </>
-          }
-        >
-          <div className="yx-ppl__stack">
-            {failed && <InlineAlert tone="danger" title={failed} />}
-            <div className="yx-ppl__form">
-              <FormField label="Employee" required>
-                <Select aria-label="Employee" options={live.issue.people} value={who} onChange={setWho} searchable />
-              </FormField>
-              <FormField label="Letter type" required>
-                <Select aria-label="Letter type" options={live.issue.types} value={type} onChange={setType} />
-              </FormField>
-            </div>
-            <div>
-              <Button icon={FileText} disabled={!type || !who} loading={busy === 'preview'} onClick={() => void run('preview')}>
-                Download a preview
-              </Button>
-            </div>
-            <Text size="sm" tone="secondary" as="p">Issued letters are final: a reference number, a QR verification code and a sealed PDF. Letters that need approval go to the signatory first. A correction is a new letter that supersedes this one.</Text>
-          </div>
-        </Drawer>
-      )}
+      {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} />}
       {live.children}
     </PeopleFrame>
   );

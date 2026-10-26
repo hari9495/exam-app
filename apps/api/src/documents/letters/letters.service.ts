@@ -259,7 +259,8 @@ export class LettersService implements OnModuleInit {
     const v = await this.viewer(user);
     if (!v.grants.has('letter.signatory.manage') && !v.grants.has('letter.issue')) throw new ForbiddenException('You cannot see signatories.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.signatory.findMany({ where: { organizationId: c.organizationId, active: true } });
+      // Oldest first, as signatoryFor picks: the first of an entity signs (and approves) its letters.
+      const rows = await tx.signatory.findMany({ where: { organizationId: c.organizationId, active: true }, orderBy: { createdAt: 'asc' } });
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
       return rows.map((r) => ({ id: r.id, legalEntityId: r.legalEntityId, userId: r.userId, name: users.find((u) => u.id === r.userId)?.name ?? '', title: r.title, hasSignatureImage: Boolean(r.signatureFileId) }));
     });
@@ -367,7 +368,7 @@ export class LettersService implements OnModuleInit {
   }
 
   /** The issuer's preview with real data (never numbered). */
-  async previewLetter(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null }) {
+  async previewLetter(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string }) {
     const v = await this.viewer(user);
     const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await this.prepare(tx, c, v, dto);
