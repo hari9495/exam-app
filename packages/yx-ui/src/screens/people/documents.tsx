@@ -352,6 +352,8 @@ function IssuedLettersBody({ rows }: { rows: Letter[] }) {
         description="Issued letters with reference numbers. Numbers are gap-free per entity and letter type."
         actions={
           <>
+            {/* Founder 26 Oct 2026: HR goes from the letters to the templates (shown to template managers only). */}
+            <Button>Letter templates</Button>
             <Button icon={FileUp}>Bulk issue</Button>
             <Button variant="primary" icon={Plus}>
               Issue letter
