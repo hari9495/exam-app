@@ -25,16 +25,21 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await hr.waitForURL((url) => !url.pathname.includes('sign-in'));
   await stepUp('hr@demo-org.test');
 
-  // The editor tab: a letter written in YukthiX, saved as a Word draft.
+  // The editor tab (PPL-29): a new template with a new letter type, written in YukthiX and saved as a Word draft.
   await hr.goto('/yx/settings/letters');
-  await hr.getByRole('button', { name: 'Write a letter' }).click();
-  const ed = hr.getByRole('dialog');
-  await ed.getByRole('textbox', { name: /Letter type/ }).fill(`note_${tag}`);
-  await ed.getByRole('textbox', { name: /^Name/ }).fill(`Note ${tag}`);
-  await ed.getByRole('textbox', { name: 'Paragraph 2' }).fill('Dear {{employee_name}}, thank you for your work this year.');
-  await ed.getByRole('button', { name: 'Save as a draft' }).click();
-  await expect(ed).toHaveCount(0);
-  await expect(hr.getByRole('row', { name: new RegExp(`Note ${tag}`) })).toBeVisible();
+  await hr.getByRole('button', { name: 'New template' }).click();
+  const nt = hr.getByRole('dialog');
+  await nt.getByRole('textbox', { name: /^Name/ }).fill(`Note ${tag}`);
+  await nt.getByRole('combobox', { name: 'Letter type' }).click();
+  await hr.getByPlaceholder('Search').fill(`Note ${tag}`);
+  await hr.getByRole('option', { name: /New letter type/ }).click();
+  await nt.getByRole('button', { name: 'Continue' }).click();
+  const body = hr.getByRole('textbox', { name: 'Letter body' });
+  await body.click();
+  await body.press('Control+End');
+  await hr.keyboard.type(' Thank you for your work this year.');
+  await hr.getByRole('button', { name: 'Save draft' }).click();
+  await expect(hr.getByText(`Note ${tag} version 1 saved as a draft`).first()).toBeVisible(); // the toast
 
   // A fresh joiner, then a batch; adding them moves them to the batch day; moving the batch moves them again.
   const first = `Camp${tag}`;

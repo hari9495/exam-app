@@ -324,8 +324,10 @@ export interface LetterTemplate {
 
 export interface LetterTemplates {
   templates: LetterTemplate[];
-  starters: { letterType: string; name: string; added: boolean }[];
-  fields: { key: string; label: string; personal: boolean; flag: boolean }[];
+  /** update: the company added an older revision of this starter; the new one is offered as a draft version. */
+  starters: { letterType: string; name: string; added: boolean; update: boolean }[];
+  /** optional: blank when not recorded (wrapped in {{#field}} … {{/field}}); flag: a yes / no section. */
+  fields: { key: string; label: string; cls: 'internal' | 'personal' | 'pay'; flag: boolean; optional: boolean }[];
 }
 
 export interface Signatory {

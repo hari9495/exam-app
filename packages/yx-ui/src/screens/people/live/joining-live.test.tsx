@@ -1,8 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { JoinerPanel, LetterTemplatesScreen, PortalScreen } from './joining';
-import type { JoinerForms, JoinerPlaces, Letter, LetterTemplates, PortalMe } from './types';
+import { JoinerPanel, PortalScreen } from './joining';
+import type { JoinerForms, JoinerPlaces, Letter, PortalMe } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const PLACES: JoinerPlaces = { entities: [{ value: 'e1', label: 'Kaveri Foods Pvt Ltd' }], locations: [{ value: 'l1', label: 'Hosur plant', entityId: 'e1' }], departments: [], designations: [], employmentTypes: [], managers: [] };
@@ -65,19 +65,3 @@ describe('Joining portal (T9-01)', () => {
   });
 });
 
-describe('Letter templates (PPL-29)', () => {
-  const DATA: LetterTemplates = {
-    templates: [{ id: 't1', letterType: 'appointment', name: 'Appointment letter', legalEntityId: null, language: 'en', source: 'starter', fields: ['employee_name'], requiresApproval: true, personSigns: true, companyDsc: false, version: 1, status: 'draft', previewViewed: false, createdAt: '2026-10-09T05:00:00Z' }],
-    starters: [{ letterType: 'welcome', name: 'Welcome and joining instructions', added: false }],
-    fields: [{ key: 'employee_name', label: 'Full name', personal: false, flag: false }],
-  };
-  it('a draft is used only after its sample preview', async () => {
-    const onPreview = vi.fn(async () => ({}));
-    render(<LetterTemplatesScreen state="ready" data={DATA} signatories={[]} entities={[]} users={[]} onStarter={vi.fn()} onUpload={vi.fn()} onPreview={onPreview} onWord={vi.fn()} onStatus={vi.fn()} onAddSignatory={vi.fn()} onRemoveSignatory={vi.fn()} />);
-    const row = screen.getByRole('row', { name: /Appointment letter/ });
-    expect(within(row).getByRole('button', { name: 'Use it' })).toBeDisabled();
-    await ue.click(within(row).getByRole('button', { name: 'Sample preview' }));
-    expect(onPreview).toHaveBeenCalled();
-    expect(screen.getByText('{{employee_name}}')).toBeInTheDocument();
-  });
-});

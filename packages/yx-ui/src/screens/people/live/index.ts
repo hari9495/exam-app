@@ -15,12 +15,12 @@ export {
   PortalSignIn,
   PortalScreen,
   MyLettersScreen,
-  LetterTemplatesScreen,
+  SignatoriesDrawer,
   type JoinerPanelProps,
   type PortalSignInProps,
   type PortalScreenProps,
   type MyLettersScreenProps,
-  type LetterTemplatesScreenProps,
+  type SignatoriesDrawerProps,
 } from './joining';
 export {
   ResignationScreen,
@@ -47,10 +47,8 @@ export {
   PayeesCard,
   ContractDialog,
   VrsCard,
-  LetterEditor,
   BulkLetterDialog,
   type BatchesScreenProps,
   type UpcomingExitsScreenProps,
   type RetrenchmentScreenProps,
-  type LetterEditorProps,
 } from './special';

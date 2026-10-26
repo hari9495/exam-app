@@ -3,7 +3,6 @@ import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
 import { Badge,  } from '../../../components/display';
-import { Drawer } from '../../../components/drawer';
 import { InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
@@ -14,7 +13,7 @@ import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { dayKey } from '../../../lib/dates';
 import { dateText } from '../../time/live/kit';
-import type { Batch, Choice, EditorParagraph, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, Payees, RehireView, UpcomingExit } from './types';
+import type { Batch, Choice, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, Payees, RehireView, UpcomingExit } from './types';
 
 // Lifecycle batch 6e, wired (design §16.5): the rehire options and the buddy on a joiner (PPL-41), campus batches
 // (PPL-14), the payees of a death in service (PPL-23), absconding timelines (PPL-24), upcoming retirements and contract
@@ -479,94 +478,7 @@ export function VrsCard({ schemes, today, onApply }: { schemes: MyVrsScheme[]; t
   );
 }
 
-// ------------------------------------------------------------------------------------------ letter editor tab (PPL-29) and bulk wizard (PPL-28)
-
-export interface LetterEditorProps {
-  initial: { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] } | null;
-  fields: string[];
-  onClose: () => void;
-  onSave: (input: { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] }) => Promise<unknown>;
-}
-
-/** Writes a letter in YukthiX; saved as a Word file and a new draft version (a sample preview still comes first). */
-export function LetterEditor(p: LetterEditorProps) {
-  const [type, setType] = useState(p.initial?.letterType ?? '');
-  const [name, setName] = useState(p.initial?.name ?? '');
-  const [approval, setApproval] = useState(p.initial?.requiresApproval ?? false);
-  const [signs, setSigns] = useState(p.initial?.personSigns ?? false);
-  const [rows, setRows] = useState<EditorParagraph[]>(p.initial?.paragraphs ?? [{ text: '{{legal_entity}}', bold: true, heading: true }, { text: 'Dear {{employee_name}},', bold: false, heading: false }]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const set = (i: number, patch: Partial<EditorParagraph>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const ready = /^[a-z][a-z0-9_]{1,39}$/.test(type) && name.trim().length >= 2 && rows.some((r) => r.text.trim());
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && p.onClose()}
-      title={p.initial ? `Edit ${p.initial.name}` : 'Write a letter'}
-      size="lg"
-      dirty
-      footer={
-        <>
-          <Button onClick={p.onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!ready}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await p.onSave({ letterType: type, name: name.trim(), requiresApproval: approval, personSigns: signs, paragraphs: rows.filter((r) => r.text.trim()) });
-                p.onClose();
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Save as a draft
-          </Button>
-        </>
-      }
-    >
-      {error && (
-        <InlineAlert tone="danger" title="Not saved">
-          {error}
-        </InlineAlert>
-      )}
-      <div className="yx-lif-grid">
-        <FormField id="ed-type" label="Letter type" required helper="Lower-case letters and _, for example transfer_letter.">
-          <TextField value={type} onChange={setType} maxLength={40} disabled={Boolean(p.initial)} />
-        </FormField>
-        <FormField id="ed-name" label="Name" required>
-          <TextField value={name} onChange={setName} maxLength={100} />
-        </FormField>
-      </div>
-      <Checkbox checked={approval} onChange={setApproval} label="The signatory approves each letter" />
-      <Checkbox checked={signs} onChange={setSigns} label="The person accepts it" />
-      <Text as="p" tone="secondary" size="sm">{`Fields you can use: ${p.fields.map((f) => `{{${f}}}`).join(' ')}`}</Text>
-      {rows.map((r, i) => (
-        <div key={i} className="yx-lif-grid">
-          <FormField id={`ed-p-${i}`} label={`Paragraph ${i + 1}`}>
-            <TextArea value={r.text} onChange={(x) => set(i, { text: x })} rows={2} maxLength={2000} />
-          </FormField>
-          <div>
-            <Checkbox checked={r.heading} onChange={(c) => set(i, { heading: c })} label="Heading" />
-            <Checkbox checked={r.bold} onChange={(c) => set(i, { bold: c })} label="Bold" />
-            <Button size="sm" onClick={() => setRows(rows.filter((_, j) => j !== i))} disabled={rows.length === 1}>
-              Remove
-            </Button>
-          </div>
-        </div>
-      ))}
-      <Button size="sm" onClick={() => setRows([...rows, { text: '', bold: false, heading: false }])}>
-        Add a paragraph
-      </Button>
-    </Drawer>
-  );
-}
+// ------------------------------------------------------------------------------------------ bulk wizard (PPL-28)
 
 export function BulkLetterDialog({ types, people, onClose, onIssue, defaultPicked = [] }: { types: Choice[]; people: Choice[]; onClose: () => void; onIssue: (letterType: string, personIds: string[]) => Promise<unknown>; defaultPicked?: string[] }) {
   const [type, setType] = useState<string | null>(null);
