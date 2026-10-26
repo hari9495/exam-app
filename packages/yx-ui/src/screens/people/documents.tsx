@@ -403,7 +403,7 @@ export interface LiveLetters {
   children?: ReactNode;
 }
 
-const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Rejected', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
 const LANGUAGE = new Intl.DisplayNames(['en'], { type: 'language' });
 
 type LetterPreview = { url: string } | { missing: Record<string, string> } | { failed: string } | null;
@@ -544,7 +544,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
     { key: 'to', header: 'To', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200 },
     { key: 'issued', header: 'Issued', type: 'date', value: (r) => (r.issuedAt ? new Date(r.issuedAt) : null), width: 130 },
     { key: 'esign', header: 'Signature', value: (r) => (!r.personSigns ? 'Not needed' : r.acceptedAt ? `Accepted ${formatDate(new Date(r.acceptedAt))}` : r.signature?.status === 'declined' ? 'Declined' : 'Not yet'), width: 180 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => LETTER_STATE[r.status], statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' ? 'neutral' : v === 'Rejected' ? 'danger' : 'warning'), width: 170 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => LETTER_STATE[r.status], statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' ? 'neutral' : v === 'Not approved' ? 'danger' : 'warning'), width: 170 },
   ];
   return (
     <PeopleFrame active="Documents & letters">

@@ -418,13 +418,16 @@ export class LettersService implements OnModuleInit {
         },
       });
       if (t.requiresApproval) {
-        const approver = signer && signer.row.userId !== c.userId ? [signer.row.userId] : [];
-        const fallback = (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active', id: { not: c.userId ?? undefined } }, select: { id: true }, take: 25 })).map((u) => u.id);
+        // The signatory approves; the company admins do when the signatory asked for it, is not active, or none is named.
+        // That is the letter's own route, not a fallback, so no "no approver" warning goes out.
+        const signs = signer && signer.row.userId !== c.userId && (await tx.user.count({ where: { organizationId: org, id: signer.row.userId, status: 'active' } }));
+        const approvers = signs ? [signer.row.userId] : (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active', id: { not: c.userId ?? undefined } }, select: { id: true }, take: 25 })).map((u) => u.id);
         const sub = await this.approvals.submit(tx, c, {
           type: REQUEST_TYPE,
           subjectType: 'letter_issue',
           subjectId: l.id,
-          title: `${t.name} to approve`,
+          // What the letter is and who it is for: the approver's inbox and the requester's decision notice both read it.
+          title: `${t.name} for ${title.split(': ').slice(1).join(': ')}`,
           summary: [
             { label: 'Letter', value: t.name },
             { label: 'For', value: title.split(': ').slice(1).join(': ') },
@@ -432,10 +435,10 @@ export class LettersService implements OnModuleInit {
           subjectPersonId: dto.personId,
           requesterUserId: c.userId ?? null,
           raisedByUserId: c.userId ?? null,
-          steps: [{ name: 'Signatory', approvers: approver.length ? [{ kind: 'users', userIds: approver }] : [], mode: 'any' }],
+          steps: [{ name: 'Signatory', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any' }],
           payload: {},
           payloadFields: [],
-          fallbackUserIds: fallback,
+          fallbackUserIds: [],
         });
         notices = sub.notices;
         await tx.letterIssue.update({ where: { id: l.id }, data: { wfRequestId: sub.id } });

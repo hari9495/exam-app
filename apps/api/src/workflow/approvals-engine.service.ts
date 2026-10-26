@@ -100,14 +100,15 @@ export interface SubmitInput {
  * step's internal name ("Leave: Manager: …"). `who` is the person the request is from; a title that already starts with
  * their name ("Arjun Kulkarni: Casual leave, 21 Oct (1 day)") is not repeated.
  */
-export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
+export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text' | 'reason'>, who: string | null, toRequester: boolean): string {
   const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
   // A request about the asker themself ("Resignation of Arjun Kulkarni") reads "Resignation from Arjun Kulkarni".
   const about = who && what.endsWith(` of ${who}`) ? `${what.slice(0, -(who.length + 4))} from ${who}` : null;
   const asks = about ?? (who ? `${who} asks for ${what}` : `A request waits for you: ${what}`);
   if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
   if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
-  if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;
+  // To the person who asked: what was decided (and for whom, as the title says), then why it was turned down.
+  if (n.type === 'workflow.approval.decided' && toRequester) return n.text === 'Approved' ? `${what} approved` : `${what} not approved${n.reason ? `: ${n.reason}` : ''}`;
   return `${n.text}: ${n.title}`;
 }
 
@@ -122,6 +123,8 @@ export interface Notice {
   actor?: string | null;
   /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
   toRequester?: string;
+  /** Why it was not approved (the approver's reason, or the timeout), told to the person who asked. */
+  reason?: string | null;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
@@ -403,7 +406,8 @@ export class ApprovalsEngine {
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
     await this.type(req.requestType).onDecided(tx, after, outcome);
-    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId });
+    const why = outcome === 'rejected' ? await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['rejected', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' }, select: { reason: true } }) : null;
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId, reason: why?.reason ?? null });
     return after;
   }
 
