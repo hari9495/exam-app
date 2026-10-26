@@ -104,7 +104,7 @@ export class LettersService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ templates (LIFE-2.04)
 
   private templateView(t: Template) {
-    return { id: t.id, letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, language: t.language, source: t.source, fields: t.fields, requiresApproval: t.requiresApproval, personSigns: t.personSigns, companyDsc: t.companyDsc, version: t.version, status: t.status, previewViewed: Boolean(t.previewViewedAt), createdAt: t.createdAt.toISOString() };
+    return { id: t.id, letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, language: t.language, source: t.source, fields: t.fields, requiresApproval: t.requiresApproval, personSigns: t.personSigns, companyDsc: t.companyDsc, onePerPerson: t.onePerPerson, version: t.version, status: t.status, previewViewed: Boolean(t.previewViewedAt), createdAt: t.createdAt.toISOString() };
   }
 
   private requireKey(v: Viewer, key: string, legalEntityId?: string | null) {
@@ -124,7 +124,7 @@ export class LettersService implements OnModuleInit {
         // update: the company added an older revision of this starter (offered as a new draft version, never swapped in).
         starters: STARTER_LETTERS.map((s) => {
           const added = rows.filter((r) => r.letterType === s.letterType && r.source === 'starter');
-          return { letterType: s.letterType, name: s.name, added: added.length > 0, update: added.length > 0 && !added.some((r) => (r.starterRevision ?? 1) >= s.revision) };
+          return { letterType: s.letterType, name: s.name, onePerPerson: s.onePerPerson, added: added.length > 0, update: added.length > 0 && !added.some((r) => (r.starterRevision ?? 1) >= s.revision) };
         }),
         fields: Object.entries(FIELDS).map(([key, f]) => ({ key, label: f.label, cls: f.cls, flag: Boolean(f.flag), optional: Boolean(f.optional) })),
       };
@@ -147,7 +147,7 @@ export class LettersService implements OnModuleInit {
     return fields;
   }
 
-  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; source: 'upload' | 'starter' | 'editor'; starterRevision?: number; fileName: string; buf: Buffer }) {
+  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; onePerPerson: boolean; source: 'upload' | 'starter' | 'editor'; starterRevision?: number; fileName: string; buf: Buffer }) {
     const v = await this.viewer(user);
     this.requireKey(v, 'letter.template.manage', input.legalEntityId);
     const fields = this.checkTemplate(input.buf);
@@ -158,16 +158,16 @@ export class LettersService implements OnModuleInit {
       // Several templates per letter type: a template is its name; a new file under the same name is its next version.
       const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
       const t = await tx.letterTemplate.create({
-        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
+        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, onePerPerson: input.onePerPerson, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
       });
-      await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields });
+      await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields, onePerPerson: t.onePerPerson });
       return { t, fileId: file.id, org };
     });
     await this.files.scan(out.org, out.fileId);
     return this.templateView(out.t);
   }
 
-  uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean; fixes?: string }, file: { originalname: string; buffer: Buffer } | undefined) {
+  uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean; onePerPerson?: boolean; fixes?: string }, file: { originalname: string; buffer: Buffer } | undefined) {
     if (!file) throw new BadRequestException('Choose a Word (.docx) file.');
     let buf = file.buffer;
     if (dto.fixes) {
@@ -186,14 +186,14 @@ export class LettersService implements OnModuleInit {
         throw e;
       }
     }
-    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: Boolean(dto.companyDsc), source: 'upload', fileName: file.originalname, buf });
+    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: Boolean(dto.companyDsc), onePerPerson: Boolean(dto.onePerPerson), source: 'upload', fileName: file.originalname, buf });
   }
 
   /** PPL-29 editor tab: a template written in YukthiX, saved as a new draft version (.docx, no new library). */
-  compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; paragraphs: { text: string; bold?: boolean; heading?: boolean }[] }) {
+  compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; onePerPerson?: boolean; paragraphs: { text: string; bold?: boolean; heading?: boolean }[] }) {
     if (!dto.paragraphs.length || dto.paragraphs.length > 80) throw new BadRequestException('A letter has 1 to 80 paragraphs.');
     const buf = buildDocx(dto.paragraphs.map((p) => ({ text: p.text.slice(0, 2000), bold: Boolean(p.bold), heading: Boolean(p.heading) })));
-    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: false, source: 'editor', fileName: `${dto.letterType}.docx`, buf });
+    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: false, onePerPerson: Boolean(dto.onePerPerson), source: 'editor', fileName: `${dto.letterType}.docx`, buf });
   }
 
   /** The paragraphs of a template made in YukthiX or a starter, for the editor. */
@@ -209,7 +209,8 @@ export class LettersService implements OnModuleInit {
 
   /**
    * PPL-28 bulk wizard, the preview: each person will get the letter, or why not, through the single issue's own checks
-   * (scope, fields the issuer may see, the template for their entity, no blanks, nothing already on its way).
+   * (scope, fields the issuer may see, the template for their entity, no blanks, nothing already on its way or, for a
+   * "one per person" type, issued).
    * Someone the issuer cannot reach is never named.
    */
   async bulkCheck(ctx: TenantContext, user: ScopeUser, dto: BulkInput) {
@@ -232,7 +233,7 @@ export class LettersService implements OnModuleInit {
         const name = p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : null;
         try {
           await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t });
-          await this.notOnItsWay(tx, c.organizationId, personId, t.letterType);
+          await this.noOtherLetter(tx, c.organizationId, personId, t);
           return { personId, name, ready: true, reason: null };
         } catch (e) {
           if (!(e instanceof HttpException)) throw e;
@@ -282,7 +283,7 @@ export class LettersService implements OnModuleInit {
     const s = STARTER_LETTERS.find((x) => x.letterType === letterType);
     const buf = starterDocx(letterType);
     if (!s || !buf) throw new NotFoundException('No such starter letter.');
-    return this.createTemplate(ctx, user, { letterType: s.letterType, name: s.name, legalEntityId: null, requiresApproval: s.requiresApproval, personSigns: s.personSigns, companyDsc: false, source: 'starter', starterRevision: s.revision, fileName: `${s.letterType}.docx`, buf });
+    return this.createTemplate(ctx, user, { letterType: s.letterType, name: s.name, legalEntityId: null, requiresApproval: s.requiresApproval, personSigns: s.personSigns, companyDsc: false, onePerPerson: s.onePerPerson, source: 'starter', starterRevision: s.revision, fileName: `${s.letterType}.docx`, buf });
   }
 
   private async templateRow(tx: Tx, org: string, id: string) {
@@ -462,8 +463,11 @@ export class LettersService implements OnModuleInit {
     return { t, data, signer, legalEntityId: base.legalEntityId };
   }
 
-  private async notOnItsWay(tx: Tx, org: string, personId: string, letterType: string) {
-    if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
+  /** Nothing else blocks a new letter: none of this type on its way, and for a "one per person" type none issued (a correction replaces it). */
+  private async noOtherLetter(tx: Tx, org: string, personId: string, t: Template, supersedesId?: string | null) {
+    if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
+    const held = t.onePerPerson && !supersedesId && (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { referenceNo: true } }));
+    if (held) throw new ConflictException(`Already issued: ${held.referenceNo}. Use Issue a correction to replace it.`);
   }
 
   /** The issuer's preview with real data (never numbered). */
@@ -494,7 +498,7 @@ export class LettersService implements OnModuleInit {
         const old = await tx.letterIssue.findFirst({ where: { organizationId: org, id: dto.supersedesId } });
         if (!old || old.status !== 'issued' || old.personId !== dto.personId || old.letterType !== dto.letterType) throw new BadRequestException('Only an issued letter of the same type for the same person can be corrected.');
       }
-      await this.notOnItsWay(tx, org, dto.personId, t.letterType);
+      await this.noOtherLetter(tx, org, dto.personId, t, dto.supersedesId);
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: dto.personId } });
       const title = `${t.name}: ${[p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ')}`.slice(0, 150);
       const l = await tx.letterIssue.create({

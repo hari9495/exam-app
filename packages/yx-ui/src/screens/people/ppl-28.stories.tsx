@@ -19,7 +19,7 @@ export const Register: S = { name: 'Issued letters register (superseded, held)',
 export const Empty: S = { name: '· register empty', render: () => <IssuedLettersRegister rows={[]} /> };
 
 /** The live sheet with the API's shapes: two templates, one needing approval; HR opened it from Arjun's record. */
-const T = (id: string, letterType: string, name: string, requiresApproval: boolean): LetterTemplate => ({ id, letterType, name, legalEntityId: null, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, version: 2, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
+const T = (id: string, letterType: string, name: string, requiresApproval: boolean): LetterTemplate => ({ id, letterType, name, legalEntityId: null, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, onePerPerson: false, version: 2, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
 const liveIssue = (onPreview: () => Promise<string>) => ({
   state: 'ready' as const,
   onRetry: () => {},

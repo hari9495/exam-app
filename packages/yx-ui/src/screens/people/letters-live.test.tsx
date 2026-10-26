@@ -8,7 +8,7 @@ import type { LetterTemplate } from './live/types';
 // PPL-28 live: the designed issue sheet with the API's templates, the preview with real data and the approval rule.
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
-const T = (id: string, letterType: string, name: string, requiresApproval: boolean, legalEntityId: string | null = null, version = 1): LetterTemplate => ({ id, letterType, name, legalEntityId, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, version, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
+const T = (id: string, letterType: string, name: string, requiresApproval: boolean, legalEntityId: string | null = null, version = 1): LetterTemplate => ({ id, letterType, name, legalEntityId, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, onePerPerson: false, version, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
 const TEMPLATES = [T('t1', 'promotion', 'Promotion with pay change', true, null, 2), T('t1b', 'promotion', 'Promotion with pay change', true, 'other', 3), T('t2', 'experience', 'Experience letter', false)];
 
 function sheet(issue: Partial<NonNullable<LiveLetters['issue']>> = {}, rows: LiveLetters['rows'] = []) {
@@ -84,6 +84,16 @@ describe('PPL-28 issue a letter, live', () => {
     await waitFor(() => expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeEnabled());
     await ue.click(within(drawer()).getByRole('button', { name: 'Issue letter' }));
     expect(live.issue!.onIssue).toHaveBeenCalledWith('p1', TEMPLATES[2], issued);
+  });
+
+  // Founder 26 Oct 2026: a second letter of a "one per person" type is refused, naming the issued one, like other blocks.
+  it('a second one-per-person letter is refused in the sheet, which stays open with the reason', async () => {
+    const onIssue = vi.fn(() => Promise.reject(new Error('Already issued: KF/EXPE/2026/000001. Use Issue a correction to replace it.')));
+    const { drawer } = sheet({ onIssue });
+    await pickType('Experience letter');
+    await waitFor(() => expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeEnabled());
+    await ue.click(within(drawer()).getByRole('button', { name: 'Issue letter' }));
+    expect(await within(drawer()).findByText('Already issued: KF/EXPE/2026/000001. Use Issue a correction to replace it.')).toBeTruthy();
   });
 });
 

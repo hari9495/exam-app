@@ -316,6 +316,8 @@ export interface LetterTemplate {
   requiresApproval: boolean;
   personSigns: boolean;
   companyDsc: boolean;
+  /** Company policy: a person holds one issued letter of this type; another is refused unless it is a correction. */
+  onePerPerson: boolean;
   version: number;
   status: 'draft' | 'active' | 'retired';
   previewViewed: boolean;
@@ -338,7 +340,7 @@ export interface BulkLetterCheck {
 export interface LetterTemplates {
   templates: LetterTemplate[];
   /** update: the company added an older revision of this starter; the new one is offered as a draft version. */
-  starters: { letterType: string; name: string; added: boolean; update: boolean }[];
+  starters: { letterType: string; name: string; onePerPerson: boolean; added: boolean; update: boolean }[];
   /** optional: blank when not recorded (wrapped in {{#field}} … {{/field}}); flag: a yes / no section. */
   fields: { key: string; label: string; cls: 'internal' | 'personal' | 'pay'; flag: boolean; optional: boolean }[];
 }

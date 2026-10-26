@@ -31,7 +31,7 @@ export default function YxLetterTemplatesPage() {
   const shown = useRef<string | null>(null);
   const t = (x: LetterTemplate) => `/letters/templates/${encodeURIComponent(x.id)}`;
   const entityChoices = (entities.data ?? []).filter((e) => !e.archivedAt).map((e) => ({ value: e.id, label: e.name }));
-  const spec = (x: TemplateSpec) => ({ letterType: x.letterType, name: x.name, ...(x.legalEntityId ? { legalEntityId: x.legalEntityId } : {}), requiresApproval: x.requiresApproval, personSigns: x.personSigns });
+  const spec = (x: TemplateSpec) => ({ letterType: x.letterType, name: x.name, ...(x.legalEntityId ? { legalEntityId: x.legalEntityId } : {}), requiresApproval: x.requiresApproval, personSigns: x.personSigns, onePerPerson: x.onePerPerson });
   return (
     <LetterTemplatesList
       rows={[]}
