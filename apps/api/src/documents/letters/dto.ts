@@ -60,6 +60,11 @@ export class LetterPreviewDto {
   @IsOptional()
   @IsUUID()
   signatoryId?: string | null;
+
+  /** PPL-28: the template version HR picked; the server checks it is active, of this type and for the person's entity. */
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
 }
 
 export class IssueLetterDto extends LetterPreviewDto {
