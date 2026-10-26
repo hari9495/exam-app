@@ -14,12 +14,10 @@ export {
   JoinerPanel,
   PortalSignIn,
   PortalScreen,
-  MyLettersScreen,
   SignatoriesDrawer,
   type JoinerPanelProps,
   type PortalSignInProps,
   type PortalScreenProps,
-  type MyLettersScreenProps,
   type SignatoriesDrawerProps,
 } from './joining';
 export {
@@ -29,9 +27,7 @@ export {
   StartExitDialog,
   AddAssetDrawer,
   AlumniScreen,
-  MyDocumentsScreen,
   type AlumniScreenProps,
-  type MyDocumentsScreenProps,
   type ResignationScreenProps,
   type ExitInterviewScreenProps,
   type MyAssetsScreenProps,

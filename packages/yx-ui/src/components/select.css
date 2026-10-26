@@ -49,6 +49,16 @@
   font-size: var(--yx-text-xs);
 }
 .yx-select__more { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+/* Multi: the box holds the chips and the trigger; the trigger fills the rest and carries the focus. */
+.yx-select--multi { height: auto; min-height: var(--yx-control-md); flex-wrap: wrap; padding-block: var(--yx-space-1); cursor: default; }
+.yx-select--multi:focus-within, .yx-select--multi[data-open] { border-color: var(--yx-color-focus-ring); outline: var(--yx-border-width) solid var(--yx-color-focus-ring); }
+.yx-select--multi[data-disabled] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); color: var(--yx-color-text-disabled); }
+.yx-select__trigger { flex: 1; min-width: var(--yx-space-16); display: flex; align-items: center; gap: var(--yx-space-2); align-self: stretch; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.yx-select__trigger:disabled { cursor: not-allowed; }
+.yx-select__trigger > .yx-icon { color: var(--yx-color-text-muted); margin-left: auto; }
+.yx-select__chip-remove { display: inline-flex; align-items: center; justify-content: center; margin-left: var(--yx-space-1); margin-right: calc(-1 * var(--yx-space-1)); padding: 0; border: 0; border-radius: var(--yx-radius-badge); background: none; color: var(--yx-color-text-muted); cursor: pointer; }
+.yx-select__chip-remove:hover { color: var(--yx-color-text); background: var(--yx-color-border); }
+.yx-select__chip-remove:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
 .yx-select__popover { width: var(--radix-popover-trigger-width); min-width: var(--yx-menu-min); padding: 0; overflow: hidden; }
 
 /* Listbox (cmdk) */

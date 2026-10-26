@@ -5368,6 +5368,27 @@ model ExchangeFileLink {
   @@map("exchange_file_links")
 }
 
+/// PPL-30: an employee's expiring read-only link to one of their own issued letters or pay documents (token hashed).
+model DocumentShare {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  source         String    @db.VarChar(10)
+  sourceId       String    @map("source_id") @db.Uuid
+  employeeId     String?   @map("employee_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  tokenHash      String    @unique(map: "document_shares_token_key") @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  opens          Int       @default(0)
+  lastOpenedAt   DateTime? @map("last_opened_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, userId, expiresAt], map: "document_shares_owner_idx")
+  @@map("document_shares")
+}
+
 model PayDocument {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String    @map("organization_id") @db.Uuid

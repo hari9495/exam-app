@@ -297,7 +297,8 @@ export class PayDocumentsService {
       const me = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: c.userId ?? '00000000-0000-0000-0000-000000000000' }, select: { id: true } });
       // The pay guard opens only the person's own rows here (app_current_employee_ids).
       const rows = await tx.payDocument.findMany({ where: { organizationId: c.organizationId, employeeId: { in: me.map((e) => e.id) }, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 200 });
-      return rows.map((r) => this.summary(r));
+      // PPL-30 shows the size; a DSC-signed copy differs from the issued bytes, so it has none.
+      return rows.map((r) => ({ ...this.summary(r), size: r.signature === 'signed' ? null : r.unsignedBytes }));
     });
   }
 

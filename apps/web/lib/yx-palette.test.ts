@@ -1,12 +1,12 @@
 import { buildPalette, type PaletteInput } from './yx-palette';
 import { MAX_RECENT, addRecent, clearAllRecent, readRecent, recentKey } from './yx-recent';
 import { approvableTask, toBellItem } from './yx-bell';
-import { buildNav, type NavInput } from './yx-nav';
+import { buildNav, withAccount, type NavInput } from './yx-nav';
 import type { NotificationView } from './types';
 
 // Ctrl K and the bell as designed (PLT-20, PLT-01; founder review 19 Oct 2026).
 const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
-const employeeNav = buildNav({ ...base, employee: true });
+const employeeNav = withAccount(buildNav({ ...base, employee: true }), { support: false, employee: true });
 const input = (over: Partial<PaletteInput> = {}): PaletteInput => ({ nav: employeeNav, typed: '', recent: [], self: true, help: true, ...over });
 const headings = (p: ReturnType<typeof buildPalette>) => p.groups.map((g) => g.heading);
 const labels = (p: ReturnType<typeof buildPalette>, heading: string) => p.groups.find((g) => g.heading === heading)?.items.map((i) => i.label) ?? [];
@@ -36,7 +36,7 @@ describe('buildPalette', () => {
     const pages = p.groups.find((g) => g.heading === 'Pages')!;
     expect(pages.prefix).toBe('>');
     expect(pages.items.find((i) => i.label === 'My leave')?.secondary).toBe('Time › My time');
-    expect(pages.items.find((i) => i.label === 'My security')?.secondary).toBe('Me');
+    expect(pages.items.find((i) => i.label === 'My security')?.secondary).toBe('Account');
     const admin = buildPalette(input({ nav: buildNav({ ...base, role: 'org_admin', has: (k) => k === 'org.settings.manage' }), typed: '?company' }));
     const help = admin.groups.find((g) => g.heading === 'Help and settings')!;
     expect(help.prefix).toBe('?');

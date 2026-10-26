@@ -201,6 +201,18 @@ describe('Select', () => {
     await u.click(await screen.findByRole('option', { name: /Earned leave/ }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
   });
+  it('multi-select: the × on a chip removes that choice without opening the list', async () => {
+    const u = userEvent.setup();
+    function M() {
+      const [v, setV] = useState<string[]>(['cl', 'el']);
+      return <MultiSelect aria-label="Types" options={opts} value={v} onChange={setV} />;
+    }
+    render(<M />);
+    await u.click(screen.getByRole('button', { name: /^Remove Earned leave/ }));
+    expect(screen.queryByRole('button', { name: /^Remove Earned leave/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Remove / })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Types' })).toHaveAttribute('aria-expanded', 'false');
+  });
   it('multi-select hands its search to the host when it searches the server', async () => {
     const u = userEvent.setup();
     const onSearchChange = vi.fn();

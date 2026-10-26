@@ -95,3 +95,16 @@ export class ReverificationAskDto {
   @IsUUID()
   employeeId!: string;
 }
+
+export class DocumentShareDto {
+  @IsIn(['letter', 'pay'])
+  source!: 'letter' | 'pay';
+
+  @IsUUID()
+  id!: string;
+
+  /** The employee picks how long the link works (the design offers 1, 7 or 30 days). */
+  @IsInt()
+  @IsIn([1, 7, 30])
+  days!: 1 | 7 | 30;
+}

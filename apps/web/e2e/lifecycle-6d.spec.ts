@@ -5,7 +5,7 @@ import { stepUp } from './fixtures/time-db';
 // Lifecycle batch 6d on the seeded Kaveri Foods demo: Lakshmi (HR) makes a fresh employee (add a joiner who starts
 // today, mark joined), starts an "End of contract" exit with today as the last working day, and sees the clearance and
 // the payroll hand-off (final dues two working days after the last day); Divya gets an instant employment certificate
-// from Me › My documents and finds it in My letters.
+// from Me › Documents and letters and finds it in the same list.
 // T+0 (the employment ends once the last day is over in India), the exit steps and the alumni login need the clock
 // and the emailed code: the API e2e (lifecycle-6d.e2e-spec.ts) covers them.
 
@@ -75,8 +75,10 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   // Divya: an instant employment certificate.
   const divya = await signedIn(browser, 'panel@demo-org.test');
   await divya.goto('/yx/me/documents');
-  await divya.getByRole('button', { name: 'Get an employment certificate' }).click();
-  await expect(divya.getByText('Your certificate is ready')).toBeVisible({ timeout: 30_000 });
+  await divya.getByRole('button', { name: 'Request a certificate' }).click();
+  await expect(divya.getByText('Your employment certificate is ready')).toBeVisible({ timeout: 30_000 });
+  // The old My letters address opens the same page (PPL-30).
   await divya.goto('/yx/me/letters');
-  await expect(divya.getByText(/Employment certificate/).first()).toBeVisible();
+  await expect(divya).toHaveURL(/\/yx\/me\/documents$/);
+  await expect(divya.getByRole('table', { name: 'My documents' }).getByText(/Employment certificate/).first()).toBeVisible();
 });
