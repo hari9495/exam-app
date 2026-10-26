@@ -19,6 +19,8 @@ import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
 import YxApprovalsPage from './(app)/approvals/page';
+import YxNotFound from './not-found';
+import YxError from './error';
 import { ToastProvider } from '@yukthix/ui';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }), useSearchParams: () => new URLSearchParams() }));
@@ -999,5 +1001,24 @@ describe('/yx/approvals', () => {
     await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('2'));
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('1'));
+  });
+});
+
+describe('/yx not found and error screens', () => {
+  it('say YukthiX, never Prudent Hire, and lead back to YukthiX home', async () => {
+    const retry = jest.fn();
+    const { unmount } = render(<YxNotFound />);
+    expect(screen.getByRole('heading', { name: "We couldn't find that page" })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    unmount();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<YxError error={Object.assign(new Error('boom'), { digest: 'abc123' })} retry={retry} />);
+    expect(screen.getByRole('heading', { name: "This page didn't load" })).toBeInTheDocument();
+    expect(screen.getByText('Reference: abc123')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
   });
 });
