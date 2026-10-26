@@ -308,7 +308,7 @@ describe('Lifecycle batch 6b', () => {
     expect(issued.referenceNo).toMatch(new RegExp(`^LB${run.slice(0, 4).toUpperCase()}/APT/\\d{4}/000001$`));
     ids.letter = l.id;
     ids.code = issued.verifyCode!;
-    expect((await request(server()).get(`/api/v1/public/pay/verify/${issued.verifyCode}`).expect(200)).body).toMatchObject({ company: 'Life6B Org A', kind: 'Appointment letter', name: `Kavya ${run}`, status: 'current' });
+    expect((await request(server()).get(`/api/v1/public/pay/verify/${issued.verifyCode}`).expect(200)).body).toMatchObject({ company: 'Life Foods Pvt Ltd', kind: 'Appointment letter', name: `Kavya ${run}`, status: 'current' });
     // An issued letter never changes (database trigger).
     await expect(inA((tx) => tx.letterIssue.update({ where: { id: l.id }, data: { sha256: 'a'.repeat(64) } }))).rejects.toThrow(/never changes/);
     expect(await drain(async () => (await api('hr', 'get', `/lifecycle/journeys/${ids.journey}`).expect(200)).body.tasks.find((t: { key: string }) => t.key === 'appointment_letter').status === 'done')).toBe(true);

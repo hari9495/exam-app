@@ -395,7 +395,8 @@ export interface LiveLetters {
     approverFor: (legalEntityId: string | null) => string | null;
     /** The letter filled with the person's real data, as a preview PDF (an object URL). Refused while a field is blank. */
     onPreview: (personId: string, t: LetterTemplate) => Promise<string>;
-    onIssue: (personId: string, t: LetterTemplate) => Promise<void>;
+    /** `supersedes`: the issued letter this one corrects (it then shows as superseded). */
+    onIssue: (personId: string, t: LetterTemplate, supersedes?: LiveLetter) => Promise<void>;
     onBulk: () => void;
     /** Opened from one person's record or the directory: the sheet starts with them chosen. */
     person?: string;
@@ -419,9 +420,10 @@ function missingText(first: string, missing: Record<string, string>) {
 }
 
 // PPL-28 · issue sheet, live: the designed sheet (IssueLetterSheet) with the API's templates, preview and approval rule.
-function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullable<LiveLetters['issue']>; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [who, setWho] = useState<string | null>(issue.person ?? null);
-  const [type, setType] = useState<string | null>(null);
+function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue: NonNullable<LiveLetters['issue']>; open: boolean; onOpenChange: (open: boolean) => void; correcting?: LiveLetter | null }) {
+  // A correction keeps the person and the letter type of the letter it replaces.
+  const [who, setWho] = useState<string | null>(correcting?.personId ?? issue.person ?? null);
+  const [type, setType] = useState<string | null>(correcting?.letterType ?? null);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [preview, setPreview] = useState<LetterPreview>(null);
   const [busy, setBusy] = useState(false);
@@ -456,7 +458,7 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullabl
     setBusy(true);
     setFailed(null);
     try {
-      await issue.onIssue(who, chosen);
+      await issue.onIssue(who, chosen, correcting ?? undefined);
       onOpenChange(false);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -469,8 +471,8 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullabl
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
-      title="Issue a letter"
-      subtitle="Type, template, preview with real data, approval, issue"
+      title={correcting ? 'Issue a correction' : 'Issue a letter'}
+      subtitle={correcting ? `Replaces ${correcting.referenceNo}. The old letter then shows as superseded.` : 'Type, template, preview with real data, approval, issue'}
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -484,13 +486,14 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullabl
         {failed && <InlineAlert tone="danger" title={failed} />}
         <div className="yx-ppl__form">
           <FormField label="Employee" required>
-            <Select aria-label="Employee" options={issue.people} value={who} onChange={setWho} searchable />
+            <Select aria-label="Employee" options={issue.people} value={who} onChange={setWho} searchable disabled={Boolean(correcting)} />
           </FormField>
           <FormField label="Letter type" required>
             <Select
               aria-label="Letter type"
               options={types}
               value={type}
+              disabled={Boolean(correcting)}
               onChange={(v) => {
                 setType(v);
                 setTemplateId(null);
@@ -532,8 +535,10 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
   const [issuing, setIssuing] = useState(false);
   // A fresh sheet each time it opens: nothing left over from the last letter.
   const [sheet, setSheet] = useState(0);
+  const [correcting, setCorrecting] = useState<LiveLetter | null>(null);
   const { toast } = useToast();
-  const startIssue = () => {
+  const startIssue = (correct: LiveLetter | null = null) => {
+    setCorrecting(correct);
     setSheet((n) => n + 1);
     setIssuing(true);
   };
@@ -567,7 +572,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
                   <Button icon={FileUp} onClick={live.issue.onBulk}>
                     Bulk issue
                   </Button>
-                  <Button variant="primary" icon={Plus} onClick={startIssue}>
+                  <Button variant="primary" icon={Plus} onClick={() => startIssue()}>
                     Issue letter
                   </Button>
                 </>
@@ -603,6 +608,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
                     Copy verification link
                   </MenuItem>
                 )}
+                {r.status === 'issued' && live.issue && <MenuItem onSelect={() => startIssue(r)}>Issue a correction</MenuItem>}
               </>
             ) : null
           }
@@ -613,7 +619,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               description="Issue a letter from a template, or in bulk after a change."
               action={
                 live.issue ? (
-                  <Button icon={Plus} onClick={startIssue}>
+                  <Button icon={Plus} onClick={() => startIssue()}>
                     Issue letter
                   </Button>
                 ) : undefined
@@ -622,7 +628,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           }
         />
       )}
-      {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} />}
+      {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
       {live.children}
     </PeopleFrame>
   );
