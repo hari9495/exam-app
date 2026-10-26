@@ -11,11 +11,12 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplateUploadDto } from './dto';
+import { BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
-//   letter.template.manage      Word templates: upload, starters, sample preview, switch on / off, download
+//   letter.template.manage      Word templates: upload, starters, sample preview, switch on / off, download (a test
+//                               render for a real person also needs letter.issue for them)
 //   letter.issue                preview and issue letters to people in scope; the register; the company's DSC upload
 //   letter.signatory.manage ⚡  who signs for each legal entity, with the signature image
 //   no key (self)               my letters, my acceptance; the file route decides per letter (self, or HR in scope)
@@ -76,8 +77,8 @@ export class LettersController {
 
   @Get('templates/:id/preview')
   @RequirePermissions('letter.template.manage')
-  async templatePreview(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return out(res, await this.letters.templatePreview(ctx, this.user(req), id));
+  async templatePreview(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: TemplatePreviewQueryDto) {
+    return out(res, await this.letters.templatePreview(ctx, this.user(req), id, q.personId));
   }
 
   @Get('templates/:id/docx')

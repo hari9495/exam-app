@@ -13,6 +13,8 @@ export interface FieldDef {
   cls: 'internal' | 'personal' | 'pay';
   /** A yes / no field, used for {{#field}} … {{/field}} sections. */
   flag?: boolean;
+  /** Never missing: blank when not recorded, so templates wrap it in {{#field}} … {{/field}} (the letterhead's CIN). */
+  optional?: boolean;
   sample: string | boolean;
 }
 
@@ -32,7 +34,10 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   probation_months: { label: 'Probation length in months', cls: 'internal', sample: '6' },
   probation: { label: 'On probation (yes / no)', cls: 'internal', flag: true, sample: true },
   legal_entity: { label: 'Legal entity (employer) name', cls: 'internal', sample: 'Kaveri Foods Pvt Ltd' },
+  legal_entity_address: { label: 'Registered address of the legal entity (blank when not recorded)', cls: 'internal', optional: true, sample: '4th Floor, Prestige Meridian, MG Road, Bengaluru 560001' },
+  legal_entity_cin: { label: 'CIN of the legal entity (blank when not recorded)', cls: 'internal', optional: true, sample: 'U15400KA2011PTC058812' },
   company_name: { label: 'Company name', cls: 'internal', sample: 'Kaveri Foods' },
+  reference_no: { label: 'Reference number (given when the letter is issued)', cls: 'internal', sample: 'KF/APT/2026/000042' },
   today: { label: "Today's date", cls: 'internal', sample: '9 October 2026' },
   signatory_name: { label: 'Who signs (name)', cls: 'internal', sample: 'Lakshmi Venkatesan' },
   signatory_title: { label: 'Who signs (title)', cls: 'internal', sample: 'Head of HR' },
@@ -131,7 +136,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     place = { legalEntityId: pb.legalEntityId, locationId: pb.locationId, departmentId: pb.departmentId, designationId: pb.designationId, employmentTypeId: pb.employmentTypeId, managerEmployeeId: pb.managerEmployeeId, joiningOn: pb.joiningOn.toISOString().slice(0, 10), code: null, onProbation: true };
   }
   const [entity, orgRow, loc, dept, desig, type, mgr, personal] = await Promise.all([
-    tx.legalEntity.findFirst({ where: { organizationId: org, id: place.legalEntityId }, select: { name: true } }),
+    tx.legalEntity.findFirst({ where: { organizationId: org, id: place.legalEntityId }, select: { name: true, registeredAddress: true, cin: true } }),
     tx.organization.findUnique({ where: { id: org }, select: { name: true } }),
     place.locationId ? tx.location.findFirst({ where: { organizationId: org, id: place.locationId }, select: { name: true } }) : null,
     place.departmentId ? tx.department.findFirst({ where: { organizationId: org, id: place.departmentId }, select: { name: true } }) : null,
@@ -140,6 +145,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     place.managerEmployeeId ? tx.employee.findFirst({ where: { organizationId: org, id: place.managerEmployeeId } }) : null,
     emp ? tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: emp.id } }) : null,
   ]);
+  const reg = entity?.registeredAddress as { lines?: string[]; city?: string; postalCode?: string | null } | null | undefined;
   const months = await settingFor(tx, c, 'probation.default_months', { legalEntityId: place.legalEntityId, employmentTypeId: place.employmentTypeId });
   const data: Record<string, string | boolean> = {
     employee_name: name(person),
@@ -157,7 +163,11 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     probation_months: months,
     probation: place.onProbation,
     legal_entity: entity?.name ?? '',
+    legal_entity_address: reg ? [...(reg.lines ?? []), [reg.city, reg.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '',
+    legal_entity_cin: entity?.cin ?? '',
     company_name: orgRow?.name ?? '',
+    // The number is taken when the letter is issued (render fills it); previews say so.
+    reference_no: 'Given when issued',
     today: longDate(today),
     signatory_name: extra.signatory?.name ?? '',
     signatory_title: extra.signatory?.title ?? '',
@@ -180,205 +190,180 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
 }
 
 /** Values missing for the fields a template uses (YX-DOC-07: never a silent blank). Yes / no fields are never missing. */
-export const missingFields = (fields: readonly string[], data: Record<string, string | boolean>) => fields.filter((f) => !FIELDS[f]?.flag && (data[f] === undefined || data[f] === ''));
+export const missingFields = (fields: readonly string[], data: Record<string, string | boolean>) => fields.filter((f) => !FIELDS[f]?.flag && !FIELDS[f]?.optional && (data[f] === undefined || data[f] === ''));
 
 // ------------------------------------------------------------------------------------------ YukthiX starter letters
 
-/** Starter letters (APX-F #5, #6, #12), written by YukthiX in plain English; companies download and edit them in Word. */
-export const STARTER_LETTERS: readonly { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: { text: string; bold?: boolean; heading?: boolean }[] }[] = [
+type Para = { text: string; bold?: boolean; heading?: boolean; centre?: boolean };
+// A proper letter from day one: the letterhead (name, registered address and CIN when recorded), reference and date,
+// the addressee, a subject, the body and who signs. The QR code and the check line are stamped on issue (pdf.ts).
+const LETTERHEAD: Para[] = [
+  { text: '{{legal_entity}}', heading: true },
+  { text: '{{#legal_entity_address}}{{legal_entity_address}}{{/legal_entity_address}}{{#legal_entity_cin}} · CIN {{legal_entity_cin}}{{/legal_entity_cin}}', centre: true },
+  { text: '' },
+  { text: 'Ref: {{reference_no}}' },
+  { text: 'Date: {{today}}' },
+  { text: '' },
+];
+const SIGNED: Para[] = [{ text: '' }, { text: 'For {{legal_entity}}' }, { text: '' }, { text: '' }, { text: '{{signatory_name}}', bold: true }, { text: '{{signatory_title}}' }];
+const letter = (to: string[], subject: string, body: string[]): Para[] => [...LETTERHEAD, ...to.map((text) => ({ text })), ...(to.length ? [{ text: '' }] : []), { text: `Subject: ${subject}`, bold: true }, { text: '' }, ...body.map((text) => ({ text })), ...SIGNED];
+
+/**
+ * Starter letters (APX-F #5, #6, #12), written by YukthiX in plain English; companies download and edit them in Word.
+ * `revision` goes up when YukthiX improves a starter: companies that added an older one are offered the new one as a
+ * fresh draft version; the version they use (or changed) stays as it is until they switch the new one on.
+ */
+export const STARTER_LETTERS: readonly { letterType: string; name: string; revision: number; requiresApproval: boolean; personSigns: boolean; paragraphs: Para[] }[] = [
   {
     letterType: 'appointment',
     name: 'Appointment letter',
+    revision: 2,
     requiresApproval: true,
     personSigns: true,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Appointment letter', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}},' },
-      { text: 'We are pleased to appoint you as {{designation}} in our {{department}} team at {{location}}, with {{legal_entity}}, from {{joining_date}}.' },
-      { text: 'Type of employment: {{employment_type}}. You will report to {{manager_name}}.' },
-      { text: '{{#probation}}You will be on probation for {{probation_months}} months from your joining day. Your manager will review your work before it ends.{{/probation}}' },
-      { text: 'Your pay, benefits, working hours, leave and notice period are as set out in your offer and the company policies, which form part of this letter.' },
-      { text: 'Please keep company information confidential during and after your employment.' },
-      { text: 'Please accept this letter in YukthiX to confirm.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}}', '{{designation}}', '{{location}}'], 'Appointment as {{designation}}', [
+      'Dear {{employee_name}},',
+      'We are pleased to appoint you as {{designation}} in our {{department}} team at {{location}}, with {{legal_entity}}, from {{joining_date}}.',
+      'Type of employment: {{employment_type}}. You will report to {{manager_name}}.',
+      '{{#probation}}You will be on probation for {{probation_months}} months from your joining day. Your manager will review your work before it ends.{{/probation}}',
+      'Your pay, benefits, working hours, leave and notice period are as set out in your offer and the company policies, which form part of this letter.',
+      'Please keep company information confidential during and after your employment.',
+      'Please accept this letter in YukthiX to confirm.',
+    ]),
   },
   {
     letterType: 'welcome',
     name: 'Welcome and joining instructions',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: 'Welcome to {{company_name}}', heading: true },
-      { text: 'Dear {{first_name}},' },
-      { text: 'We look forward to seeing you on {{joining_date}} at {{location}}.' },
-      { text: 'On your first day, please bring your original ID proof (PAN card and one photo ID), your education certificates and your last relieving letter, if you have one.' },
-      { text: 'You will meet {{manager_name}}, who will help you settle in.' },
-      { text: 'Before you join, please finish your forms in the YukthiX joining portal.' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}}', '{{location}}'], 'Welcome to {{company_name}}', [
+      'Dear {{first_name}},',
+      'We look forward to seeing you on {{joining_date}} at {{location}}.',
+      'On your first day, please bring your original ID proof (PAN card and one photo ID), your education certificates and your last relieving letter, if you have one.',
+      'You will meet {{manager_name}}, who will help you settle in.',
+      'Before you join, please finish your forms in the YukthiX joining portal.',
+    ]),
   },
   // PPL-06: made once an annual increment batch is approved (never before); HR may switch it on, edit or replace it.
   {
     letterType: 'increment',
     name: 'Increment letter',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Revision of your pay', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
-      { text: 'Following your annual review, your annual CTC is revised from {{old_ctc}} to {{new_ctc}} ({{raise_percent}}), effective {{effective_date}}. All other terms of your employment stay the same.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Revision of your pay', [
+      'Dear {{employee_name}},',
+      'Following your annual review, your annual CTC is revised from {{old_ctc}} to {{new_ctc}} ({{raise_percent}}), effective {{effective_date}}. All other terms of your employment stay the same.',
+    ]),
   },
   {
     letterType: 'confirmation',
     name: 'Confirmation letter',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Confirmation of employment', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
-      { text: 'We are pleased to confirm your employment as {{designation}} after your probation. All other terms of your appointment stay the same.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'Confirmation of employment', [
+      'Dear {{employee_name}},',
+      'We are pleased to confirm your employment as {{designation}} after your probation. All other terms of your appointment stay the same.',
+    ]),
   },
   // Lifecycle 6d: issued by the system on the exit events (no-dues once cleared; relieving and experience at the end of
   // the last working day, unless HR holds them) and the employee's instant employment certificate (P05 Q8).
   {
     letterType: 'no_dues',
     name: 'No-dues certificate',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'No-dues certificate', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'This is to certify that {{employee_name}} ({{employee_code}}), {{designation}}, has completed the exit clearance with every department. Any amount to be recovered is settled in the final settlement.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'No-dues certificate', [
+      'This is to certify that {{employee_name}} ({{employee_code}}), {{designation}}, has completed the exit clearance with every department. Any amount to be recovered is settled in the final settlement.',
+    ]),
   },
   {
     letterType: 'relieving',
     name: 'Relieving letter',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Relieving letter', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
-      { text: 'You have been relieved of your duties as {{designation}} at the close of work on {{last_working_day}}.' },
-      { text: 'We thank you for your work with us and wish you well.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'Relieving letter', [
+      'Dear {{employee_name}},',
+      'You have been relieved of your duties as {{designation}} at the close of work on {{last_working_day}}.',
+      'We thank you for your work with us and wish you well.',
+    ]),
   },
   // PPL-22: issued by the system when an F&F run is approved; a second run's approval issues one that supersedes it.
   {
     letterType: 'fnf_statement',
     name: 'F&F statement',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Full and final settlement statement', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
-      { text: 'This is your full and final settlement after your last working day, {{last_working_day}}, paid in off-cycle run {{fnf_run}}.' },
-      { text: 'Lines: {{fnf_lines}}' },
-      { text: 'Earnings {{fnf_earnings}}. Recoveries {{fnf_recoveries}}. TDS {{fnf_tds}}. PF, ESI, PT and LWF {{fnf_statutory}}.' },
-      { text: '{{fnf_net_label}}: {{fnf_net}}', bold: true },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Full and final settlement statement', [
+      'Dear {{employee_name}},',
+      'This is your full and final settlement after your last working day, {{last_working_day}}, paid in off-cycle run {{fnf_run}}.',
+      'Lines: {{fnf_lines}}',
+      'Earnings {{fnf_earnings}}. Recoveries {{fnf_recoveries}}. TDS {{fnf_tds}}. PF, ESI, PT and LWF {{fnf_statutory}}.',
+      '{{fnf_net_label}}: {{fnf_net}}',
+    ]),
   },
   {
     letterType: 'experience',
     name: 'Experience letter',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'To whom it may concern', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: '{{employee_name}} worked with {{legal_entity}} from {{joining_date}} to {{last_working_day}}. Their last designation was {{designation}} in the {{department}} department at {{location}}.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['To whom it may concern'], 'Experience letter for {{employee_name}}', [
+      'This is to certify that {{employee_name}} worked with {{legal_entity}} from {{joining_date}} to {{last_working_day}}. Their last designation was {{designation}} in the {{department}} department at {{location}}.',
+      'We wish them the very best.',
+    ]),
   },
   // Lifecycle 6e: a campus batch's letter of intent, the absconding notices and the letter to the family.
   {
     letterType: 'letter_of_intent',
     name: 'Letter of intent (campus)',
+    revision: 2,
     requiresApproval: false,
     personSigns: true,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Letter of intent', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}},' },
-      { text: 'We intend to offer you the role of {{designation}} at {{location}}, joining on {{joining_date}}, once you complete your course. Your appointment letter follows before you join.' },
-      { text: 'Please accept this letter in YukthiX to confirm your interest.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}}'], 'Letter of intent', [
+      'Dear {{employee_name}},',
+      'We intend to offer you the role of {{designation}} at {{location}}, joining on {{joining_date}}, once you complete your course. Your appointment letter follows before you join.',
+      'Please accept this letter in YukthiX to confirm your interest.',
+    ]),
   },
   {
     letterType: 'absconding_notice',
     name: 'Notice to return to work',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Notice: absence from work', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
-      { text: 'You have been absent from work without leave or information. Please return to work or write to us with the reason within seven days of this notice.' },
-      { text: 'If we do not hear from you, the company may treat your employment as abandoned under its policy.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Absence from work', [
+      'Dear {{employee_name}},',
+      'You have been absent from work without leave or information. Please return to work or write to us with the reason within seven days of this notice.',
+      'If we do not hear from you, the company may treat your employment as abandoned under its policy.',
+    ]),
   },
   {
     letterType: 'condolence',
     name: 'Letter to the family (death in service)',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'Dear {{next_of_kin_name}},' },
-      { text: 'We are deeply sorry for the loss of {{employee_name}}, who worked with us as {{designation}}.' },
-      { text: 'We will pay the dues to the nominees or legal heirs and help the family with the provident fund, pension, insurance and gratuity claims. Our HR team will contact you.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['{{next_of_kin_name}}'], 'Our condolences', [
+      'Dear {{next_of_kin_name}},',
+      'We are deeply sorry for the loss of {{employee_name}}, who worked with us as {{designation}}.',
+      'We will pay the dues to the nominees or legal heirs and help the family with the provident fund, pension, insurance and gratuity claims. Our HR team will contact you.',
+    ]),
   },
   {
     letterType: 'employment_certificate',
     name: 'Employment certificate',
+    revision: 2,
     requiresApproval: false,
     personSigns: false,
-    paragraphs: [
-      { text: '{{legal_entity}}', heading: true },
-      { text: 'To whom it may concern', heading: true },
-      { text: 'Date: {{today}}' },
-      { text: 'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} in the {{department}} department at {{location}}, since {{joining_date}}.' },
-      { text: 'This certificate is issued at their request.' },
-      { text: 'For {{legal_entity}}' },
-      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
-    ],
+    paragraphs: letter(['To whom it may concern'], 'Employment certificate for {{employee_name}}', [
+      'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} in the {{department}} department at {{location}}, since {{joining_date}}.',
+      'This certificate is issued at their request.',
+    ]),
   },
 ];
 

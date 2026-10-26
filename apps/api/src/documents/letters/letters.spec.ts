@@ -1,6 +1,6 @@
 import PizZip from 'pizzip';
 import { PDFDocument } from 'pdf-lib';
-import { TemplateProblem, buildDocx, docxParagraphs, fillDocx, openDocx, templateFields } from './docx';
+import { TemplateProblem, buildDocx, docxParagraphs, fillDocx, openDocx, renameFields, templateFields } from './docx';
 import { FIELDS, STARTER_LETTERS, missingFields, sampleData, starterDocx, suggest } from './fields';
 import { DevFakeConverter, acceptanceCopy, converterFromEnv, stampPdf } from './pdf';
 
@@ -33,6 +33,24 @@ describe('letter templates (YX-DOC-07 / 15)', () => {
     expect(suggest('emp_nme')).toBe('employee_name');
     expect(suggest('desgnation')).toBe('designation');
     expect(suggest('zzzzzz')).toBeNull();
+  });
+
+  it('every starter is a proper letter: letterhead, reference, date, subject and who signs; the CIN only when known', () => {
+    for (const s of STARTER_LETTERS) {
+      const text = docxParagraphs(starterDocx(s.letterType)!).join('\n');
+      for (const part of ['{{legal_entity}}', 'Ref: {{reference_no}}', 'Date: {{today}}', 'Subject: ', '{{signatory_name}}', '{{signatory_title}}']) expect(text).toContain(part);
+    }
+    const head = docxParagraphs(fillDocx(starterDocx('experience')!, { ...sampleData(), legal_entity_cin: '' })).slice(0, 2);
+    expect(head).toEqual(['Kaveri Foods Pvt Ltd', '4th Floor, Prestige Meridian, MG Road, Bengaluru 560001']);
+    expect(missingFields(['legal_entity_cin', 'legal_entity_address'], { legal_entity_cin: '', legal_entity_address: '' })).toEqual([]);
+  });
+
+  it('"Use suggestion" renames a placeholder, also when Word split it across runs', () => {
+    const z = new PizZip(buildDocx([{ text: 'Dear {{emp_nme}}' }, { text: '{{#on_prob}}x{{/on_prob}}' }]));
+    z.file('word/document.xml', z.file('word/document.xml')!.asText().replace('{{emp_nme}}', '{{emp_</w:t></w:r><w:proofErr w:type="spellStart"/><w:r><w:t xml:space="preserve">nme}}'));
+    const fixed = renameFields(z.generate({ type: 'nodebuffer' }) as Buffer, { emp_nme: 'employee_name', on_prob: 'probation' });
+    expect(templateFields(fixed)).toEqual(['employee_name', 'probation']);
+    expect(docxParagraphs(fillDocx(fixed, { employee_name: 'Sneha', probation: true }))).toEqual(['Dear Sneha', 'x']);
   });
 });
 

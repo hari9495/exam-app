@@ -109,7 +109,7 @@ export function docxParagraphs(buf: Buffer): string[] {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** A minimal Word document from paragraphs (YukthiX starter letters; companies download and edit it in Word). */
-export function buildDocx(paragraphs: { text: string; bold?: boolean; heading?: boolean }[]): Buffer {
+export function buildDocx(paragraphs: { text: string; bold?: boolean; heading?: boolean; centre?: boolean }[]): Buffer {
   const zip = new PizZip();
   zip.file(
     '[Content_Types].xml',
@@ -117,7 +117,8 @@ export function buildDocx(paragraphs: { text: string; bold?: boolean; heading?: 
   );
   zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
   const body = paragraphs
-    .map((p) => `<w:p>${p.heading ? '<w:pPr><w:jc w:val="center"/></w:pPr>' : ''}<w:r>${p.bold || p.heading ? `<w:rPr><w:b/>${p.heading ? '<w:sz w:val="28"/>' : ''}</w:rPr>` : ''}<w:t xml:space="preserve">${esc(p.text)}</w:t></w:r></w:p>`)
+    // A heading is centred, bold and large; a centred line (the letterhead's address) is centred and small.
+    .map((p) => `<w:p>${p.heading || p.centre ? '<w:pPr><w:jc w:val="center"/></w:pPr>' : ''}<w:r>${p.bold || p.heading ? `<w:rPr><w:b/>${p.heading ? '<w:sz w:val="28"/>' : ''}</w:rPr>` : p.centre ? '<w:rPr><w:sz w:val="18"/></w:rPr>' : ''}<w:t xml:space="preserve">${esc(p.text)}</w:t></w:r></w:p>`)
     .join('');
   zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1700" w:left="1440"/></w:sectPr></w:body></w:document>`);
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
@@ -130,5 +131,24 @@ export function buildDocx(paragraphs: { text: string; bold?: boolean; heading?: 
 export function docxBlocks(buf: Buffer): { text: string; bold: boolean; heading: boolean }[] {
   const xml = new PizZip(buf).file('word/document.xml')?.asText() ?? '';
   const texts = docxParagraphs(buf);
-  return (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p, i) => ({ text: texts[i] ?? '', bold: p.includes('<w:b/>'), heading: p.includes('<w:jc w:val="center"/>') }));
+  return (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p, i) => ({ text: texts[i] ?? '', bold: p.includes('<w:b/>'), heading: p.includes('<w:jc w:val="center"/>') && p.includes('<w:b/>') }));
+}
+
+/**
+ * PPL-29 "Use suggestion": renames placeholders ({{from}}, {{#from}}, {{/from}}) in the document, headers and footers,
+ * also when Word split the tag across runs (spell-check marks do): the text moves into the first run, the XML tags in
+ * between stay in order, so the document stays well-formed. The result is checked again like any upload.
+ */
+export function renameFields(buf: Buffer, renames: Record<string, string>): Buffer {
+  const zip = openDocx(buf);
+  const gap = '(?:<[^>]*>)*';
+  for (const part of Object.keys(zip.files).filter((n) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(n))) {
+    let xml = zip.file(part)!.asText();
+    for (const [from, to] of Object.entries(renames)) {
+      const re = new RegExp(['\\{', '\\{', '([#/^]?)', ...from].join(gap) + gap + '\\}' + gap + '\\}', 'g');
+      xml = xml.replace(re, (m: string, mark: string) => `{{${mark}${to}}}${(m.match(/<[^>]*>/g) ?? []).join('')}`);
+    }
+    zip.file(part, xml);
+  }
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
 }

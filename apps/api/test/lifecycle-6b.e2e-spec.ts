@@ -175,6 +175,50 @@ describe('Lifecycle batch 6b', () => {
     await api('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.signer).field('title', 'Head of HR').expect(201);
   });
 
+  it('PPL-29: a suggestion fixes a typo; several templates per letter type; a test render for a real person; starters offer a new revision', async () => {
+    const up = (name: string, buf: Buffer, fixes?: string) => {
+      const r = api('adminA', 'post', '/letters/templates').field('letterType', 'custom_note').field('name', name).field('requiresApproval', 'false').field('personSigns', 'false');
+      return (fixes ? r.field('fixes', fixes) : r).attach('file', buf, 'note.docx');
+    };
+    // "Use suggestion": the server renames the placeholder in the file, then checks it like any upload.
+    const typo = buildDocx([{ text: 'Dear {{emp_nme}}, from {{legal_entity}}' }]);
+    expect((await up('Short note', typo).expect(400)).body.errors).toEqual({ emp_nme: 'employee_name' });
+    await up('Short note', typo, JSON.stringify({ emp_nme: 'pan_number' })).expect(400);
+    await up('Short note', typo, 'not json').expect(400);
+    const a = (await up('Short note', typo, JSON.stringify({ emp_nme: 'employee_name' })).expect(201)).body;
+    expect(a.fields).toEqual(['employee_name', 'legal_entity']);
+    // Two templates of one letter type are in use together; a new version replaces only its own template.
+    const b = (await up('Long note', buildDocx([{ text: 'Dear {{employee_name}}, with thanks from {{legal_entity}}' }])).expect(201)).body;
+    const a2 = (await up('Short note', buildDocx([{ text: 'Hello {{employee_name}}' }])).expect(201)).body;
+    expect([a.version, b.version, a2.version]).toEqual([1, 1, 2]);
+    for (const t of [a, b, a2]) {
+      await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+      await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    }
+    const notes = (await api('adminA', 'get', '/letters/templates').expect(200)).body.templates.filter((t: { letterType: string }) => t.letterType === 'custom_note');
+    expect(notes.map((t: { name: string; version: number; status: string }) => `${t.name} v${t.version} ${t.status}`).sort()).toEqual(['Long note v1 active', 'Short note v2 active']);
+    // The test render with a real person: the issuer's checks and the no-blanks rule apply; viewing it allows switching on.
+    const divya = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }));
+    const c2 = (await up('Third note', buildDocx([{ text: 'Dear {{employee_name}} ({{employee_code}}), {{designation}}' }])).expect(201)).body;
+    await api('mgr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(403);
+    const pdf = await api('hr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    await api('adminA', 'post', `/letters/templates/${c2.id}/activate`).expect(200);
+    const blank = (await api('hr', 'get', `/letters/templates/${ids.tpl_appointment}/preview?personId=${divya.personId}`).expect(400)).body;
+    expect(blank.code).toBe('LETTER_FIELDS_MISSING');
+    expect(blank.errors).toHaveProperty('manager_name');
+    // A company that added an older starter is offered the new one as a draft; the one in use stays in use.
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_confirmation }, data: { starterRevision: 1 } }));
+    const starter = (k: string) => api('adminA', 'get', '/letters/templates').then((r) => r.body.starters.find((s: { letterType: string }) => s.letterType === k));
+    expect(await starter('confirmation')).toMatchObject({ added: true, update: true });
+    expect(await starter('appointment')).toMatchObject({ added: true, update: false });
+    const fresh = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'confirmation' }).expect(201)).body;
+    expect(fresh).toMatchObject({ version: 2, status: 'draft' });
+    expect(fresh.fields).toEqual(expect.arrayContaining(['reference_no', 'legal_entity_address', 'legal_entity_cin']));
+    expect((await api('adminA', 'get', '/letters/templates').expect(200)).body.templates.find((t: { id: string }) => t.id === ids.tpl_confirmation).status).toBe('active');
+    expect(await starter('confirmation')).toMatchObject({ update: false });
+  });
+
   // ------------------------------------------------------------------------------------------ portal (LIFE-2.01 / 2.02)
 
   it('the joiner is invited; the portal signs in by code, seals answers, masks them, and asks a fresh code for PAN and bank', async () => {

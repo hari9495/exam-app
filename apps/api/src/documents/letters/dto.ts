@@ -30,6 +30,19 @@ export class TemplateUploadDto {
   @bool()
   @IsBoolean()
   companyDsc?: boolean;
+
+  /** PPL-29 "Use suggestion": JSON {"unknown": "known field"}; the server renames them in the file, then checks it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  fixes?: string;
+}
+
+/** PPL-29 test render: a real person instead of the sample data (the issuer's own checks apply). */
+export class TemplatePreviewQueryDto {
+  @IsOptional()
+  @IsUUID()
+  personId?: string;
 }
 
 export class StarterLetterDto {

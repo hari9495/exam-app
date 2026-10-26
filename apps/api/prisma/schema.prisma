@@ -6071,6 +6071,8 @@ model LetterTemplate {
   requiresApproval Boolean   @map("requires_approval")
   personSigns      Boolean   @map("person_signs")
   companyDsc       Boolean   @default(false) @map("company_dsc")
+  /// The YukthiX starter revision it was made from (starters only): an older one is offered the new revision.
+  starterRevision  Int?      @map("starter_revision") @db.SmallInt
   version          Int       @default(1)
   status           String    @db.VarChar(10)
   previewViewedBy  String?   @map("preview_viewed_by") @db.Uuid
