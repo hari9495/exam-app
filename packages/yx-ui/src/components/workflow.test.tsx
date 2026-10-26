@@ -154,6 +154,17 @@ describe('Stepper', () => {
     render(<Stepper title="Exit" finishLabel="Finish" steps={[{ id: 'a', title: 'Approval', content: 'A' }, { id: 'b', title: 'Clearance', status: 'open', statusNote: '4 of 6 signed off', content: 'B' }, { id: 'c', title: 'Interview', content: 'C' }]} defaultCurrent="c" />);
     expect(screen.getByText(/Open · 4 of 6 signed off/)).toBeInTheDocument();
   });
+  // Founder 26 Oct 2026 (PPL-28 bulk issue): back on a step, the later one you only looked at is not Done.
+  it('a step is Done only once passed, not because it was visited', async () => {
+    const user = userEvent.setup();
+    render(<Wizard />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(current()).toHaveTextContent('Bank details');
+    expect(screen.getByRole('button', { name: /Personal details/ })).toHaveTextContent('Done');
+    expect(screen.getByRole('button', { name: /^Review/ })).toHaveTextContent('Not started');
+  });
   it('Back keeps typed data', async () => {
     const user = userEvent.setup();
     render(<Wizard />);
