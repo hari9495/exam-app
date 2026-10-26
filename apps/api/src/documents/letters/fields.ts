@@ -246,13 +246,14 @@ const letter = (to: string[], subject: string, body: string[]): Para[] => [...LE
  * `revision` goes up when YukthiX improves a starter: companies that added an older one are offered the new one as a
  * fresh draft version; the version they use (or changed) stays as it is until they switch the new one on.
  */
-export const STARTER_LETTERS: readonly { letterType: string; name: string; revision: number; requiresApproval: boolean; personSigns: boolean; paragraphs: Para[] }[] = [
+export const STARTER_LETTERS: readonly { letterType: string; name: string; revision: number; requiresApproval: boolean; personSigns: boolean; onePerPerson: boolean; paragraphs: Para[] }[] = [
   {
     letterType: 'appointment',
     name: 'Appointment letter',
     revision: 2,
     requiresApproval: true,
     personSigns: true,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}}', '{{designation}}', '{{location}}'], 'Appointment as {{designation}}', [
       'Dear {{employee_name}},',
       'We are pleased to appoint you as {{designation}} in our {{department}} team at {{location}}, with {{legal_entity}}, from {{joining_date}}.',
@@ -269,6 +270,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter(['{{employee_name}}', '{{location}}'], 'Welcome to {{company_name}}', [
       'Dear {{first_name}},',
       'We look forward to seeing you on {{joining_date}} at {{location}}.',
@@ -284,6 +286,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Revision of your pay', [
       'Dear {{employee_name}},',
       'Following your annual review, your annual CTC is revised from {{old_ctc}} to {{new_ctc}} ({{raise_percent}}), effective {{effective_date}}. All other terms of your employment stay the same.',
@@ -295,6 +298,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'Confirmation of employment', [
       'Dear {{employee_name}},',
       'We are pleased to confirm your employment as {{designation}} after your probation. All other terms of your appointment stay the same.',
@@ -308,6 +312,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'No-dues certificate', [
       'This is to certify that {{employee_name}} ({{employee_code}}), {{designation}}, has completed the exit clearance with every department. Any amount to be recovered is settled in the final settlement.',
     ]),
@@ -318,6 +323,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})', '{{designation}}'], 'Relieving letter', [
       'Dear {{employee_name}},',
       'You have been relieved of your duties as {{designation}} at the close of work on {{last_working_day}}.',
@@ -331,6 +337,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Full and final settlement statement', [
       'Dear {{employee_name}},',
       'This is your full and final settlement after your last working day, {{last_working_day}}, paid in off-cycle run {{fnf_run}}.',
@@ -345,6 +352,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: true,
     paragraphs: letter(['To whom it may concern'], 'Experience letter for {{employee_name}}', [
       'This is to certify that {{employee_name}} worked with {{legal_entity}} from {{joining_date}} to {{last_working_day}}. Their last designation was {{designation}} in the {{department}} department at {{location}}.',
       'We wish them the very best.',
@@ -357,6 +365,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: true,
+    onePerPerson: true,
     paragraphs: letter(['{{employee_name}}'], 'Letter of intent', [
       'Dear {{employee_name}},',
       'We intend to offer you the role of {{designation}} at {{location}}, joining on {{joining_date}}, once you complete your course. Your appointment letter follows before you join.',
@@ -369,6 +378,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter(['{{employee_name}} ({{employee_code}})'], 'Absence from work', [
       'Dear {{employee_name}},',
       'You have been absent from work without leave or information. Please return to work or write to us with the reason within seven days of this notice.',
@@ -381,6 +391,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 2,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter(['{{next_of_kin_name}}'], 'Our condolences', [
       'Dear {{next_of_kin_name}},',
       'We are deeply sorry for the loss of {{employee_name}}, who worked with us as {{designation}}.',
@@ -394,6 +405,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 1,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter([ADDRESSEE], 'Salary certificate for {{employee_name}}', [
       'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}. Their gross monthly salary is {{monthly_gross}}.',
       AT_REQUEST,
@@ -405,6 +417,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 1,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter([ADDRESSEE], 'Address proof for {{employee_name}}', [
       'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}. Their home address in our records is {{address}}.',
       AT_REQUEST,
@@ -416,6 +429,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 3,
     requiresApproval: false,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter([ADDRESSEE], 'Employment certificate for {{employee_name}}', [
       'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} in the {{department}} department at {{location}}, since {{joining_date}}.',
       AT_REQUEST,
@@ -427,6 +441,7 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
     revision: 1,
     requiresApproval: true,
     personSigns: false,
+    onePerPerson: false,
     paragraphs: letter([ADDRESSEE], 'No objection certificate for {{employee_name}}', [
       'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} since {{joining_date}}.',
       '{{legal_entity}} has no objection to this request.{{#certificate_purpose}} Purpose: {{certificate_purpose}}.{{/certificate_purpose}}',

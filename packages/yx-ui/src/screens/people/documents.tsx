@@ -1119,6 +1119,8 @@ export interface TemplateSpec {
   legalEntityId: string | null;
   requiresApproval: boolean;
   personSigns: boolean;
+  /** One issued letter of this type per person; another is refused unless it is a correction. */
+  onePerPerson: boolean;
 }
 
 /** The live app's letter templates (design audit step 3; Settings › Letter templates). */
@@ -1152,7 +1154,9 @@ const MADE_WITH: Record<LetterTemplate['source'], string> = { upload: 'Uploaded 
 const FIELD_CLASS: Record<LetterTemplates['fields'][number]['cls'], FieldClass> = { internal: 'Internal', personal: 'Personal', pay: 'Confidential' };
 const typeName = (d: LetterTemplates | null, letterType: string) => d?.starters.find((s) => s.letterType === letterType)?.name ?? letterType[0].toUpperCase() + letterType.slice(1).replace(/_/g, ' ');
 const tagOf = (f: { key: string; flag: boolean }) => (f.flag ? `{{#${f.key}}}` : `{{${f.key}}}`);
-const specOf = (t: LetterTemplate): TemplateSpec => ({ letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, requiresApproval: t.requiresApproval, personSigns: t.personSigns });
+const ONE_PER_PERSON = 'One only: while a person has an issued letter of this type, another is refused. Issue a correction replaces it.';
+const PER_PERSON = [{ value: 'one' as const, label: 'One only' }, { value: 'many' as const, label: 'Can repeat' }];
+const specOf = (t: LetterTemplate): TemplateSpec => ({ letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, requiresApproval: t.requiresApproval, personSigns: t.personSigns, onePerPerson: t.onePerPerson });
 const failText = (e: unknown) => (e instanceof Error ? e.message : 'That did not work. Try again.');
 
 // The editor's HTML and a template's paragraphs: a template made in YukthiX keeps text, bold and headings.
@@ -1281,6 +1285,7 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
   const [entity, setEntity] = useState('');
   const [approval, setApproval] = useState<'instant' | 'approval'>('instant');
   const [signs, setSigns] = useState<'no' | 'yes'>('no');
+  const [once, setOnce] = useState<'one' | 'many'>('many');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const starter = mode === 'new' && from !== 'blank';
@@ -1290,7 +1295,7 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
   const types = [...known.filter((k) => k.label.toLowerCase().includes(query.toLowerCase())), ...(slug.length >= 2 && !known.some((k) => k.value === slug) ? [{ value: slug, label: `New letter type: ${query.trim()}` }] : [])];
   const go = async () => {
     if (!starter) {
-      onSpec({ letterType: type!, name: name.trim(), legalEntityId: entity || null, requiresApproval: approval === 'approval', personSigns: signs === 'yes' });
+      onSpec({ letterType: type!, name: name.trim(), legalEntityId: entity || null, requiresApproval: approval === 'approval', personSigns: signs === 'yes', onePerPerson: once === 'one' });
       return;
     }
     setBusy(true);
@@ -1330,7 +1335,18 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
               <TextField value={name} onChange={setName} maxLength={100} />
             </FormField>
             <FormField label="Letter type" required helper="A letter type can have several templates. Type a new one to add it.">
-              <Select aria-label="Letter type" options={types} value={type} onChange={setType} searchable onSearchChange={setQuery} />
+              <Select
+                aria-label="Letter type"
+                options={types}
+                value={type}
+                onChange={(v) => {
+                  setType(v);
+                  // The starter's default: one appointment, confirmation or relieving letter per person; certificates repeat.
+                  setOnce(data.starters.find((s) => s.letterType === v)?.onePerPerson ? 'one' : 'many');
+                }}
+                searchable
+                onSearchChange={setQuery}
+              />
             </FormField>
             {entities.length > 1 && (
               <FormField label="Letterhead">
@@ -1342,6 +1358,9 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
             </FormField>
             <FormField label="The person">
               <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
+            </FormField>
+            <FormField label="Per person" helper={ONE_PER_PERSON}>
+              <Segment label="Per person" value={once} onChange={setOnce} options={PER_PERSON} />
             </FormField>
           </>
         )}
@@ -1410,6 +1429,12 @@ function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplat
       setSaving(false);
     }
   };
+  // The company's policy, saved with the next version (as the letterhead is).
+  const perPerson = (
+    <FormField label="Per person" helper={`${ONE_PER_PERSON}${t ? ' Saved with the next version.' : ''}`}>
+      <Segment label="Per person" value={spec.onePerPerson ? 'one' : 'many'} onChange={(v) => onChange({ ...ws, spec: { ...spec, onePerPerson: v === 'one' } })} options={PER_PERSON} />
+    </FormField>
+  );
   const used = (d?.fields ?? []).filter((f) => t?.fields.includes(f.key));
   const madeWith = t ? MADE_WITH[t.source][0].toLowerCase() + MADE_WITH[t.source].slice(1) : null;
   const draft = t?.status !== 'active';
@@ -1444,6 +1469,7 @@ function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplat
         </TabsList>
         <TabsContent value="upload">
           <div className="yx-ppl__stack">
+            {perPerson}
             <FileUpload
               upload={async (file) => {
                 if (!(await send(file, {}))) throw new Error('Not saved: see the validation report.');
@@ -1523,6 +1549,7 @@ function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplat
           ) : (
             <div className="yx-ppl__stack">
               {editorError && <InlineAlert tone="danger" title={editorError} />}
+              {perPerson}
               <div className="yx-ppl__row">
                 <Select aria-label="Letterhead" size="sm" options={[{ value: '', label: "Letterhead: each person's legal entity" }, ...live.entities.map((e) => ({ value: e.value, label: `Letterhead: ${e.label}` }))]} value={spec.legalEntityId ?? ''} onChange={(v) => onChange({ ...ws, spec: { ...spec, legalEntityId: v || null } })} />
                 <Select aria-label="Language" size="sm" options={[{ value: 'en', label: 'English' }]} value="en" onChange={() => {}} disabled />

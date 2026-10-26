@@ -104,7 +104,7 @@ export async function seedLifecycleLetters(tx: Tx, organizationId: string): Prom
     const id = randomUUID();
     const ref = await store.put(`org/${organizationId}/letter-templates/${id}`, buf);
     await tx.file.create({ data: { id, ...org, area: 'letter-templates', storageRef: ref, fileName: `${l.letterType}.docx`, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: buf.length, sha256: sha256(buf), scanStatus: 'clean', scanDetail: 'YukthiX starter', scannedAt: new Date(), uploadedBy: hr.id, uploadedVia: 'system' } });
-    await tx.letterTemplate.create({ data: { ...org, letterType: l.letterType, name: l.name, source: 'starter', starterRevision: l.revision, fileId: id, fields: templateFields(buf), requiresApproval: l.requiresApproval, personSigns: l.personSigns, version: 1, status: 'active', previewViewedBy: hr.id, previewViewedAt: new Date(), createdBy: hr.id } });
+    await tx.letterTemplate.create({ data: { ...org, letterType: l.letterType, name: l.name, source: 'starter', starterRevision: l.revision, fileId: id, fields: templateFields(buf), requiresApproval: l.requiresApproval, personSigns: l.personSigns, onePerPerson: l.onePerPerson, version: 1, status: 'active', previewViewedBy: hr.id, previewViewedAt: new Date(), createdBy: hr.id } });
   }
   if (!first) return;
   for (const e of await tx.legalEntity.findMany({ where: org, select: { id: true } })) {

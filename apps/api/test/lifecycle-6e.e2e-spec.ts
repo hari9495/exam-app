@@ -117,7 +117,7 @@ describe('Lifecycle batch 6e', () => {
     emp.buddy = await hire('Bala', 'SF-002', { userId: users.buddy });
     await api('adminA', 'post', '/lifecycle/journey-templates/from-starter').send({ starterKey: 'onboarding_standard' }).expect(201);
     await api('adminA', 'post', '/lifecycle/journey-templates/from-starter').send({ starterKey: 'offboarding_standard' }).expect(201);
-    for (const letterType of ['letter_of_intent', 'condolence', 'absconding_notice', 'relieving', 'experience', 'employment_certificate']) {
+    for (const letterType of ['letter_of_intent', 'condolence', 'absconding_notice', 'relieving', 'experience', 'employment_certificate', 'appointment']) {
       const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
       await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
       await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
@@ -142,6 +142,13 @@ describe('Lifecycle batch 6e', () => {
   it('rehire (Priya): the same record and code, no probation after a short break, one option overridden with a reason', async () => {
     emp.priya = await hire('Priya', 'SF-010');
     const old = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.priya } }));
+    // PPL-28: an appointment letter is "one per person" for each employment. Instant and not e-signed here, to keep it short.
+    await inA((tx) => tx.letterTemplate.updateMany({ where: { letterType: 'appointment' }, data: { requiresApproval: false, personSigns: false } }));
+    const priyaPerson = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.priya } }))).personId;
+    const appoint = () => api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: priyaPerson });
+    const first = (await appoint().expect(201)).body;
+    expect(first).toMatchObject({ status: 'issued' });
+    expect((await appoint().expect(409)).body.message).toBe(`Already issued: ${first.referenceNo}. Use Issue a correction to replace it.`);
     // She left (absconding is recorded at once with a past day; rehire is off until HR says otherwise).
     const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.priya, exitType: 'absconding', lwd: addDays(today, -10), reasonText: 'Stopped coming' }).expect(201)).body;
     await lastDay.sweepCase(org.A.id, k.id, new Date());
@@ -159,6 +166,12 @@ describe('Lifecycle batch 6e', () => {
     expect(joined).toMatchObject({ employeeId: emp.priya, employeeCode: 'SF-010' });
     const fresh = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.priya, exitedOn: null } }));
     expect(fresh.rehireOf).toBe(old.id);
+    // The new job gets its own appointment letter without a correction; a second one for it is still refused.
+    const second = (await appoint().expect(201)).body;
+    expect(second).toMatchObject({ status: 'issued' });
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: second.id } }))).employmentId).toBe(fresh.id);
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: first.id } }))).status).toBe('issued');
+    expect((await appoint().expect(409)).body.message).toBe(`Already issued: ${second.referenceNo}. Use Issue a correction to replace it.`);
     const st = await inA((tx) => tx.employmentStatusPeriod.findFirstOrThrow({ where: { employmentId: fresh.id, supersededAt: null } }));
     expect(st.status).toBe('confirmed');
     expect(await inA((tx) => tx.probation.count({ where: { employmentId: fresh.id } }))).toBe(0);

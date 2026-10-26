@@ -9,10 +9,10 @@ import type { LetterTemplate, LetterTemplates } from './live/types';
 // test render that must be seen before a template is switched on.
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
-const T = (id: string, name: string, x: Partial<LetterTemplate> = {}): LetterTemplate => ({ id, letterType: 'relieving', name, legalEntityId: null, language: 'en', source: 'upload', fields: ['employee_name', 'probation', 'address'], requiresApproval: true, personSigns: false, companyDsc: false, version: 1, status: 'draft', previewViewed: false, createdAt: '2026-10-01T00:00:00Z', ...x });
+const T = (id: string, name: string, x: Partial<LetterTemplate> = {}): LetterTemplate => ({ id, letterType: 'relieving', name, legalEntityId: null, language: 'en', source: 'upload', fields: ['employee_name', 'probation', 'address'], requiresApproval: true, personSigns: false, companyDsc: false, onePerPerson: true, version: 1, status: 'draft', previewViewed: false, createdAt: '2026-10-01T00:00:00Z', ...x });
 const DATA: LetterTemplates = {
   templates: [T('t1', 'Relieving and experience'), T('t2', 'Relieving, short', { source: 'starter', status: 'active', previewViewed: true })],
-  starters: [{ letterType: 'relieving', name: 'Relieving letter', added: true, update: true }],
+  starters: [{ letterType: 'relieving', name: 'Relieving letter', onePerPerson: true, added: true, update: true }],
   fields: [
     { key: 'employee_name', label: 'Full name', cls: 'internal', flag: false, optional: false },
     { key: 'probation', label: 'On probation (yes / no)', cls: 'internal', flag: true, optional: false },
@@ -97,5 +97,17 @@ describe('PPL-29 letter templates, live', () => {
     expect(await screen.findByRole('button', { name: 'Insert field' })).toBeTruthy();
     await ue.click(screen.getByRole('button', { name: 'Save as a new version' }));
     expect(live.onCompose).toHaveBeenCalledWith(expect.objectContaining({ name: 'Relieving, short', paragraphs: [{ text: '{{legal_entity}}', heading: true, bold: true }, { text: 'Dear {{employee_name}},', heading: false, bold: false }] }));
+  });
+
+  // Founder 26 Oct 2026 (PPL-28): "one per person" is the company's policy on the template, saved with the next version.
+  it('HR changes "Per person" on a template; the next version carries it', async () => {
+    const live = page();
+    await ue.click(screen.getByRole('row', { name: /Relieving, short/ }));
+    const per = screen.getByRole('radiogroup', { name: 'Per person' });
+    expect(within(per).getByRole('radio', { name: 'One only' })).toHaveAttribute('aria-checked', 'true');
+    await ue.click(within(per).getByRole('radio', { name: 'Can repeat' }));
+    await ue.click(screen.getByRole('tab', { name: 'Editor' }));
+    await ue.click(await screen.findByRole('button', { name: 'Save as a new version' }));
+    expect(live.onCompose).toHaveBeenCalledWith(expect.objectContaining({ name: 'Relieving, short', onePerPerson: false }));
   });
 });

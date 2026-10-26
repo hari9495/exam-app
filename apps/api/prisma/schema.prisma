@@ -6094,6 +6094,8 @@ model LetterTemplate {
   requiresApproval Boolean   @map("requires_approval")
   personSigns      Boolean   @map("person_signs")
   companyDsc       Boolean   @default(false) @map("company_dsc")
+  /// A person holds one issued letter of this type: another is refused unless it is a correction (company policy).
+  onePerPerson     Boolean   @default(false) @map("one_per_person")
   /// The YukthiX starter revision it was made from (starters only): an older one is offered the new revision.
   starterRevision  Int?      @map("starter_revision") @db.SmallInt
   version          Int       @default(1)
@@ -6126,6 +6128,8 @@ model LetterIssue {
   letterType       String    @map("letter_type") @db.VarChar(40)
   title            String    @db.VarChar(150)
   personId         String    @map("person_id") @db.Uuid
+  /// The employment the letter is for ("one per person" counts per employment); null while the person is still joining.
+  employmentId     String?   @map("employment_id") @db.Uuid
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
   subjectType      String?   @map("subject_type") @db.VarChar(12)
   subjectId        String?   @map("subject_id") @db.Uuid

@@ -31,6 +31,12 @@ export class TemplateUploadDto {
   @IsBoolean()
   companyDsc?: boolean;
 
+  /** A person holds one issued letter of this type; another is refused unless it is a correction. */
+  @IsOptional()
+  @bool()
+  @IsBoolean()
+  onePerPerson?: boolean;
+
   /** PPL-29 "Use suggestion": JSON {"unknown": "known field"}; the server renames them in the file, then checks it. */
   @IsOptional()
   @IsString()
@@ -165,6 +171,10 @@ export class ComposeTemplateDto {
 
   @IsBoolean()
   personSigns!: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  onePerPerson?: boolean;
 
   @IsArray()
   @ArrayMaxSize(80)

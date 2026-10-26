@@ -29,7 +29,7 @@ export interface StepperStep {
   title: string;
   /** One short line under the title in the step list. */
   description?: string;
-  /** Force a status. Otherwise steps before the current one are done and later ones are to do. */
+  /** Force a status. Otherwise a step is done once passed (a later step was reached), and to do until then. */
   /** "open": visited but not finished ("Open · 4 of 6 signed off"), never shown as Done. */
   status?: 'error' | 'locked' | 'done' | 'open';
   /** Why the step is locked or what to fix: "Add company details first". */
@@ -119,7 +119,7 @@ export function Stepper({
   }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusOf = (s: StepperStep, i: number): StepStatus =>
-    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : i < index || i <= furthest ? 'done' : 'todo');
+    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : i < Math.max(index, furthest) ? 'done' : 'todo');
   const canOpen = (s: StepperStep, i: number) => s.status !== 'locked' && i <= Math.max(furthest, index);
   // A locked step can't be opened from the list, from Continue or from Back (B7).
   const go = (i: number) => {

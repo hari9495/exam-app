@@ -187,6 +187,10 @@ describe('Lifecycle batch 6b', () => {
     await up('Short note', typo, 'not json').expect(400);
     const a = (await up('Short note', typo, JSON.stringify({ emp_nme: 'employee_name' })).expect(201)).body;
     expect(a.fields).toEqual(['employee_name', 'legal_entity']);
+    // "One per person" is the company's policy on each template: off unless HR sets it; the starters come with it set where it fits.
+    expect(a.onePerPerson).toBe(false);
+    const once = api('adminA', 'post', '/letters/templates').field('letterType', 'transfer').field('name', 'Transfer letter').field('requiresApproval', 'false').field('personSigns', 'false').field('onePerPerson', 'true');
+    expect((await once.attach('file', buildDocx([{ text: 'Dear {{employee_name}}' }]), 'note.docx').expect(201)).body).toMatchObject({ onePerPerson: true, status: 'draft' });
     // Two templates of one letter type are in use together; a new version replaces only its own template.
     const b = (await up('Long note', buildDocx([{ text: 'Dear {{employee_name}}, with thanks from {{legal_entity}}' }])).expect(201)).body;
     const a2 = (await up('Short note', buildDocx([{ text: 'Hello {{employee_name}}' }])).expect(201)).body;
@@ -211,9 +215,10 @@ describe('Lifecycle batch 6b', () => {
     await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_confirmation }, data: { starterRevision: 1 } }));
     const starter = (k: string) => api('adminA', 'get', '/letters/templates').then((r) => r.body.starters.find((s: { letterType: string }) => s.letterType === k));
     expect(await starter('confirmation')).toMatchObject({ added: true, update: true });
-    expect(await starter('appointment')).toMatchObject({ added: true, update: false });
+    expect(await starter('appointment')).toMatchObject({ added: true, update: false, onePerPerson: true });
+    expect(await starter('employment_certificate')).toMatchObject({ onePerPerson: false });
     const fresh = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'confirmation' }).expect(201)).body;
-    expect(fresh).toMatchObject({ version: 2, status: 'draft' });
+    expect(fresh).toMatchObject({ version: 2, status: 'draft', onePerPerson: true });
     expect(fresh.fields).toEqual(expect.arrayContaining(['reference_no', 'legal_entity_address', 'legal_entity_cin']));
     expect((await api('adminA', 'get', '/letters/templates').expect(200)).body.templates.find((t: { id: string }) => t.id === ids.tpl_confirmation).status).toBe('active');
     expect(await starter('confirmation')).toMatchObject({ update: false });
@@ -332,6 +337,8 @@ describe('Lifecycle batch 6b', () => {
     await addJoiner('Ravi', `ravi-${run}@mail.test`);
     const other = await signIn(`ravi-${run}@mail.test`);
     await portal('get', `/letters/${ids.letter}/file`, other).expect(404);
+    // One appointment letter per person (PPL-28): another is refused, naming the one issued; a correction replaces it.
+    expect((await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(409)).body.message).toBe(`Already issued: ${l.referenceNo}. Use Issue a correction to replace it.`);
     // A correction: a new number, the old one superseded on the public page.
     const fix = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, supersedesId: ids.letter }).expect(201)).body;
     const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { assigneeUserId: users.signer, status: 'open' } }));
@@ -345,7 +352,8 @@ describe('Lifecycle batch 6b', () => {
     // Founder test 26 Oct 2026 (PPL-28): HR is the entity's signatory and issues the letter herself.
     await inA((tx) => tx.signatory.updateMany({ where: { legalEntityId: ids.entity }, data: { userId: users.hr } }));
     try {
-      const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(201)).body;
+      const held = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: row.personId, letterType: 'appointment', status: 'issued' } }));
+      const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, supersedesId: held.id }).expect(201)).body;
       const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: l.id } }));
       expect((req.steps as { approverIds: string[] }[])[0].approverIds).toEqual([users.adminA]);
       expect(await inA((tx) => tx.userNotification.count({ where: { type: 'workflow.approval.no_approver', entityId: req.id } }))).toBe(0);
@@ -368,7 +376,9 @@ describe('Lifecycle batch 6b', () => {
     const check = (await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body;
     expect(check.letterType).toBe('appointment');
     expect(check.rows).toHaveLength(3);
-    expect(check.rows[0]).toMatchObject({ personId: row.personId, name: `Kavya ${run}`, ready: true });
+    // Founder test 26 Oct 2026: Kavya already holds an issued appointment letter, so she is listed as a failure.
+    const held = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: row.personId, letterType: 'appointment', status: 'issued' } }));
+    expect(check.rows[0]).toEqual({ personId: row.personId, name: `Kavya ${run}`, ready: false, reason: `Already issued: ${held.referenceNo}. Use Issue a correction to replace it.` });
     expect(check.rows[1]).toMatchObject({ personId: divya, ready: false });
     expect(check.rows[1].reason).toMatch(/Missing: .*manager/);
     // Another company's person is refused and never named.
@@ -377,6 +387,9 @@ describe('Lifecycle batch 6b', () => {
     const golive = (await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_appointment, source: 'no_appointment' }).expect(200)).body;
     expect(golive.rows.map((r: { personId: string }) => r.personId)).toEqual([divya]);
     await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_confirmation, source: 'no_appointment' }).expect(400);
+    // A company that lets appointment letters repeat (its template's policy): Kavya can get another.
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_appointment }, data: { onePerPerson: false } }));
+    expect((await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body.rows[0]).toMatchObject({ personId: row.personId, ready: true });
     // No typed confirmation, or the wrong count: nothing is issued.
     await api('hr', 'post', '/letters/bulk').send(body).expect(400);
     expect((await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 3 LETTERS' }).expect(400)).body.code).toBe('BULK_CONFIRM');
@@ -387,6 +400,7 @@ describe('Lifecycle batch 6b', () => {
     // A replay of the same request is checked again: Kavya's letter is now on its way, so no one passes.
     expect((await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body.rows[0]).toMatchObject({ ready: false, reason: expect.stringMatching(/already on its way/) });
     await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 1 LETTER' }).expect(400);
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_appointment }, data: { onePerPerson: true } }));
   });
 
   // ------------------------------------------------------------------------------------------ joining and cancelling (LIFE-2.08)
@@ -468,6 +482,8 @@ describe('Lifecycle batch 6b', () => {
     const row = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: l.id } }));
     expect(row.dataEnc).not.toContain('Canara');
     expect((await api('mgr', 'get', '/letters/me').expect(200)).body.letters.some((x: { id: string }) => x.id === l.id)).toBe(true);
+    // A certificate can be asked for again (not "one per person"): the next number.
+    expect((await cert({ letterType: 'employment_certificate', purpose: 'Visa application' }).expect(201)).body).toMatchObject({ status: 'issued', referenceNo: expect.stringMatching(/\/0{5}2$/) });
     // Blank fields block it (no home address recorded); limits and plain text on the person's words; nothing else accepted.
     expect((await cert({ letterType: 'address_proof', purpose: 'Rental agreement' }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
     await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'x'.repeat(161) }).expect(400);
