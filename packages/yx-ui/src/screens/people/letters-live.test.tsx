@@ -63,4 +63,12 @@ describe('PPL-28 issue a letter, live', () => {
     expect(within(drawer()).queryByRole('region', { name: 'Letter preview' })).toBeNull();
     expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeDisabled();
   });
+
+  it('missing fields on a letter needing approval show no approval card (as the design)', async () => {
+    const onPreview = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'LETTER_FIELDS_MISSING', body: { errors: { new_ctc: 'Annual CTC after the raise' } } })));
+    const { drawer } = sheet({ onPreview });
+    await pickType('Promotion with pay change (approval required)');
+    expect(await within(drawer()).findByText("We can't generate this letter yet")).toBeTruthy();
+    expect(within(drawer()).queryByText('Approval before issue')).toBeNull();
+  });
 });

@@ -514,7 +514,7 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange }: { issue: NonNullabl
             </div>
           )
         )}
-        {chosen?.requiresApproval && (
+        {chosen?.requiresApproval && !(preview && 'missing' in preview) && (
           <Card title="Approval before issue">
             <ApprovalTimeline steps={[{ id: 'prepared', label: 'Prepared', status: 'done', approver: 'You', at: new Date() }, { id: 'signatory', label: 'Signatory', status: 'current', approver: issue.approverFor(person?.legalEntityId ?? null) ?? 'A company admin' }]} />
           </Card>
