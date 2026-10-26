@@ -153,12 +153,24 @@ export class ComposeTemplateDto {
   paragraphs!: ComposeParagraphDto[];
 }
 
-export class BulkLetterDto {
-  @Matches(LETTER_TYPE)
-  letterType!: string;
+/** PPL-28 bulk issue: who gets the letter. "no_appointment": current employees with no appointment letter in YukthiX. */
+export class BulkLetterCheckDto {
+  @IsUUID()
+  templateId!: string;
 
+  @IsIn(['people', 'no_appointment'])
+  source!: 'people' | 'no_appointment';
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
   @IsUUID('all', { each: true })
-  personIds!: string[];
+  personIds?: string[];
+}
+
+export class BulkLetterDto extends BulkLetterCheckDto {
+  /** The typed confirmation, "ISSUE 38 LETTERS": the server counts the 38 again. */
+  @IsString()
+  @MaxLength(40)
+  confirm!: string;
 }

@@ -322,6 +322,19 @@ export interface LetterTemplate {
   createdAt: string;
 }
 
+/** PPL-28 bulk issue: who gets the letter ("no_appointment": current employees with no appointment letter in YukthiX). */
+export interface BulkLetterQuery {
+  templateId: string;
+  source: 'people' | 'no_appointment';
+  personIds?: string[];
+}
+
+/** The API's bulk preview: each person will get the letter, or why not. A null name is someone the issuer cannot reach. */
+export interface BulkLetterCheck {
+  letterType: string;
+  rows: { personId: string; name: string | null; ready: boolean; reason: string | null }[];
+}
+
 export interface LetterTemplates {
   templates: LetterTemplate[];
   /** update: the company added an older revision of this starter; the new one is offered as a draft version. */

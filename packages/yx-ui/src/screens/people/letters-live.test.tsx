@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { IssuedLettersRegister, type LiveLetters } from './documents';
+import { BulkLetterWizard, IssuedLettersRegister, type LiveBulkLetters, type LiveLetters } from './documents';
 import type { LetterTemplate } from './live/types';
 
 // PPL-28 live: the designed issue sheet with the API's templates, the preview with real data and the approval rule.
@@ -84,5 +84,67 @@ describe('PPL-28 issue a letter, live', () => {
     await waitFor(() => expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeEnabled());
     await ue.click(within(drawer()).getByRole('button', { name: 'Issue letter' }));
     expect(live.issue!.onIssue).toHaveBeenCalledWith('p1', TEMPLATES[2], issued);
+  });
+});
+
+describe('PPL-28 bulk issue, live', () => {
+  const check = { letterType: 'experience', rows: [{ personId: 'p1', name: 'Arjun Kulkarni', ready: true, reason: null }, { personId: 'p2', name: 'Thomas George', ready: true, reason: null }, { personId: 'p3', name: 'Aisha Khan', ready: false, reason: 'A letter of this type for this person is already on its way.' }, { personId: 'p4', name: null, ready: false, reason: 'You cannot issue letters to this person.' }] };
+  function wizard(over: Partial<LiveBulkLetters> = {}) {
+    const live: LiveBulkLetters = { state: 'ready', onRetry: () => {}, templates: TEMPLATES, people: [{ value: 'p1', label: 'Arjun Kulkarni' }, { value: 'p2', label: 'Thomas George' }], picked: ['p1', 'p2', 'p3', 'p4'], letterType: 'experience', onCheck: vi.fn(async () => check), onPreview: vi.fn(async () => 'blob:preview'), onIssue: vi.fn(async () => {}), ...over };
+    render(
+      <ToastProvider>
+        <BulkLetterWizard live={live} />
+      </ToastProvider>,
+    );
+    return live;
+  }
+  const next = () => ue.click(screen.getByRole('button', { name: 'Continue' }));
+
+  it('previews each letter with the API, lists failures with reasons, opens anyone’s letter, and issues behind the typed count', async () => {
+    const live = wizard();
+    await next();
+    expect(screen.getByRole('combobox', { name: 'Template' })).toHaveTextContent('Experience letter v1');
+    await next();
+    expect(await screen.findByText("2 letters can't be generated")).toBeTruthy();
+    expect(live.onCheck).toHaveBeenCalledWith({ templateId: 't2', source: 'people', personIds: ['p1', 'p2', 'p3', 'p4'] });
+    expect(screen.getByText('Fix these and retry, or issue the other 2 now.')).toBeTruthy();
+    expect(screen.getByText('A letter of this type for this person is already on its way.')).toBeTruthy();
+    // Someone the issuer cannot reach is never named.
+    expect(screen.getByText('Someone you cannot issue letters to')).toBeTruthy();
+    await waitFor(() => expect(live.onPreview).toHaveBeenCalledWith('p1', TEMPLATES[2]));
+    await ue.click(screen.getByRole('combobox', { name: 'Preview the letter for' }));
+    await ue.click(await screen.findByRole('option', { name: 'Thomas George' }));
+    await waitFor(() => expect(live.onPreview).toHaveBeenCalledWith('p2', TEMPLATES[2]));
+    await ue.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => expect(live.onCheck).toHaveBeenCalledTimes(2));
+    await next();
+    await ue.click(await screen.findByRole('button', { name: 'Issue 2 letters' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Issue 2 experience letters?')).toBeTruthy();
+    const go = within(dialog).getByRole('button', { name: 'Issue letters' });
+    expect(go).toBeDisabled();
+    await ue.type(within(dialog).getByRole('textbox'), 'ISSUE 2 LETTERS');
+    await ue.click(go);
+    expect(live.onIssue).toHaveBeenCalledWith({ templateId: 't2', source: 'people', personIds: ['p1', 'p2', 'p3', 'p4'] }, 'ISSUE 2 LETTERS', TEMPLATES[2]);
+  });
+
+  it('the go-live source offers only appointment templates; a refused issue stays open with the reason', async () => {
+    const appointment = T('ta', 'appointment', 'Appointment letter', true);
+    const live = wizard({ templates: [...TEMPLATES, appointment], picked: [], letterType: undefined, onCheck: vi.fn(async () => ({ letterType: 'appointment', rows: [{ personId: 'p1', name: 'Arjun Kulkarni', ready: true, reason: null }] })), onIssue: vi.fn(() => Promise.reject(new Error('Type ISSUE 2 LETTERS to confirm.'))) });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await ue.click(screen.getByRole('radio', { name: 'Employees with no appointment letter on file (go-live)' }));
+    await next();
+    await ue.click(screen.getByRole('combobox', { name: 'Template' }));
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Appointment letter v1']);
+    await ue.click(screen.getByRole('option', { name: 'Appointment letter v1' }));
+    await next();
+    await waitFor(() => expect(live.onCheck).toHaveBeenCalledWith({ templateId: 'ta', source: 'no_appointment' }));
+    await next();
+    expect(screen.getByText(/each letter waits for the signatory first/)).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Issue 1 letter' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'ISSUE 1 LETTER');
+    await ue.click(within(dialog).getByRole('button', { name: 'Issue letters' }));
+    expect(await within(dialog).findByText('Type ISSUE 2 LETTERS to confirm.')).toBeTruthy();
   });
 });

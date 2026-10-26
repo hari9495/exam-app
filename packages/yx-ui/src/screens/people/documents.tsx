@@ -11,7 +11,7 @@ import { BottomSheet, Dialog, TypeToConfirmDialog } from '../../components/overl
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { Select } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { Segment } from '../../components/segment';
@@ -25,7 +25,7 @@ import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
 import type { FieldClass,  } from './people-logic';
-import type { EditorParagraph, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
+import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
@@ -405,8 +405,6 @@ export interface LiveLetters {
   };
   /** letter.template.manage: Settings › Letter templates, from the page header. */
   templatesHref?: string;
-  /** Dialogs the page opens (the bulk issue). */
-  children?: ReactNode;
 }
 
 const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
@@ -631,7 +629,6 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
         />
       )}
       {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
-      {live.children}
     </PeopleFrame>
   );
 }
@@ -646,8 +643,224 @@ export function IssuedLettersRegister({ rows, live }: { rows: Letter[]; live?: L
   );
 }
 
+/** The live bulk issue (PPL-28): the API's preview per person, any one person's letter, and the typed confirmation. */
+export interface LiveBulkLetters {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  /** The active templates. */
+  templates: LetterTemplate[];
+  /** People the issuer may pick (the API checks each one again). */
+  people: { value: string; label: string }[];
+  /** Chosen in the directory, a record or a restructure (?people=): the list starts with them. */
+  picked: string[];
+  /** ?type=: the letter type to start with. */
+  letterType?: string;
+  onCheck: (q: BulkLetterQuery) => Promise<BulkLetterCheck>;
+  /** One person's letter with their real data, as a preview PDF (an object URL). */
+  onPreview: (personId: string, t: LetterTemplate) => Promise<string>;
+  /** `confirm` is the typed phrase: the API counts the people again and refuses another number. */
+  onIssue: (q: BulkLetterQuery, confirm: string, t: LetterTemplate) => Promise<void>;
+}
+
+const lettersPhrase = (n: number) => `ISSUE ${n} ${n === 1 ? 'LETTER' : 'LETTERS'}`;
+const plural = (n: number) => `${n} ${n === 1 ? 'letter' : 'letters'}`;
+
+// PPL-28 · bulk issue, live: the designed wizard (BulkLetterWizard) with the API's checks per person.
+function LiveBulkLetterWizard({ live }: { live: LiveBulkLetters }) {
+  const [step, setStep] = useState('source');
+  const [source, setSource] = useState<BulkLetterQuery['source']>('people');
+  const [chosen, setChosen] = useState<string[]>(live.picked);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [check, setCheck] = useState<{ key: string; n: number; result: BulkLetterCheck | 'loading' | { failed: string } } | null>(null);
+  const [again, setAgain] = useState(0);
+  const [who, setWho] = useState<string | null>(null);
+  const [preview, setPreview] = useState<LetterPreview>(null);
+  const [confirm, setConfirm] = useState(false);
+  const offered = live.templates.filter((x) => source === 'people' || x.letterType === 'appointment');
+  const t = offered.find((x) => x.id === templateId) ?? offered.find((x) => x.letterType === live.letterType) ?? null;
+  const query: BulkLetterQuery | null = t ? { templateId: t.id, source, ...(source === 'people' ? { personIds: chosen } : {}) } : null;
+  const key = JSON.stringify(query);
+  const result = check?.key === key ? check.result : null;
+  const done = result && typeof result === 'object' && 'rows' in result ? result : null;
+  const ready = done?.rows.filter((r) => r.ready) ?? [];
+  const fails = done?.rows.filter((r) => !r.ready) ?? [];
+  const shown = ready.find((r) => r.personId === who) ?? ready[0] ?? null;
+  // Checked by the API when the preview opens, again whenever the list or the template changed, and on "Check again".
+  useEffect(() => {
+    if ((step !== 'preview' && step !== 'delivery') || !query || (check?.key === key && check.n === again)) return;
+    let gone = false;
+    setCheck({ key, n: again, result: 'loading' });
+    live.onCheck(query).then(
+      (r) => !gone && setCheck({ key, n: again, result: r }),
+      (e) => !gone && setCheck({ key, n: again, result: { failed: failText(e) } }),
+    );
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the query is the key
+  }, [step, key, again]);
+  useEffect(() => {
+    setPreview(null);
+    if (!shown || !t) return;
+    let gone = false;
+    live.onPreview(shown.personId, t).then(
+      (url) => !gone && setPreview({ url }),
+      (e) => !gone && setPreview({ failed: failText(e) }),
+    );
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new preview only when the person or the template changes
+  }, [shown?.personId, t?.id]);
+  const nameOf = (r: BulkLetterCheck['rows'][number]) => r.name ?? 'Someone you cannot issue letters to';
+  const language = t ? (LANGUAGE.of(t.language) ?? t.language) : '';
+  const checkAgain = (label: string) => (
+    <Button size="sm" onClick={() => setAgain((n) => n + 1)}>
+      {label}
+    </Button>
+  );
+  return (
+    <PeopleFrame active="Documents & letters">
+      <PageHeader title="Bulk issue letters" description="For example, increment letters for everyone in the October revision. Each person's letter is previewed; failures are listed for retry." />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="bulk issue" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the letter templates" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' ? (
+        <Skeleton height="var(--yx-space-16)" />
+      ) : (
+        <Stepper
+          title="Bulk issue"
+          onCurrentChange={setStep}
+          continueBlocked={step === 'source' && source === 'people' && !chosen.length ? 'Choose at least one person.' : step === 'template' && !t ? 'Choose a template first.' : undefined}
+          finishLabel={`Issue ${plural(ready.length)}`}
+          onFinish={() => setConfirm(true)}
+          finishBlocked={!done ? 'Checking the letters…' : !ready.length ? 'No one can get this letter yet: see the preview.' : undefined}
+          steps={[
+            {
+              id: 'source',
+              title: 'Who gets a letter',
+              summary: source === 'people' ? `People you chose · ${chosen.length}` : 'Employees with no appointment letter on file',
+              content: (
+                <div className="yx-ppl__form">
+                  <FormField label="Source" required>
+                    <RadioGroup
+                      value={source}
+                      onChange={(v) => setSource(v as BulkLetterQuery['source'])}
+                      options={[
+                        { value: 'people', label: `People you choose${chosen.length ? ` (${chosen.length})` : ''}` },
+                        { value: 'no_appointment', label: 'Employees with no appointment letter on file (go-live)' },
+                      ]}
+                    />
+                  </FormField>
+                  {source === 'people' && (
+                    <FormField label="People" required>
+                      <MultiSelect aria-label="People" options={live.people} value={chosen} onChange={setChosen} searchable />
+                    </FormField>
+                  )}
+                </div>
+              ),
+            },
+            {
+              id: 'template',
+              title: 'Template',
+              summary: t ? `${t.name} v${t.version} · ${language}` : 'Not chosen',
+              content: (
+                <div className="yx-ppl__form">
+                  <FormField label="Template" required>
+                    <Select aria-label="Template" options={offered.map((x) => ({ value: x.id, label: `${x.name} v${x.version}` }))} value={t?.id ?? null} onChange={setTemplateId} />
+                  </FormField>
+                  <FormField label="Language" helper="Letter templates are in English for now.">
+                    <Select aria-label="Language" options={t ? [{ value: t.language, label: language }] : []} value={t?.language ?? null} onChange={() => {}} disabled />
+                  </FormField>
+                </div>
+              ),
+            },
+            {
+              id: 'preview',
+              title: 'Preview',
+              ...(fails.length ? { status: 'error' as const, statusNote: `${plural(fails.length)} can’t be generated` } : {}),
+              summary: done ? `${ready.length} ready · ${fails.length} failed` : 'Not checked yet',
+              content:
+                !result || result === 'loading' ? (
+                  <Skeleton height="var(--yx-space-16)" />
+                ) : 'failed' in result ? (
+                  <InlineAlert tone="danger" title="We couldn't check the letters" actions={checkAgain('Try again')}>
+                    {result.failed}
+                  </InlineAlert>
+                ) : (
+                  <div className="yx-ppl__stack">
+                    {fails.length > 0 && (
+                      <>
+                        <InlineAlert tone="warning" title={`${plural(fails.length)} can't be generated`} actions={checkAgain('Check again')}>
+                          {ready.length ? `Fix these and retry, or issue the other ${ready.length} now.` : 'Fix these and retry.'}
+                        </InlineAlert>
+                        <ul className="yx-ppl__successors">
+                          {fails.map((f) => (
+                            <li key={f.personId}>
+                              <span>{nameOf(f)}</span>
+                              <Text size="sm" tone="danger">
+                                {f.reason}
+                              </Text>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                    {shown && t && (
+                      <>
+                        <FormField label="Preview the letter for">
+                          <Select aria-label="Preview the letter for" options={ready.map((r) => ({ value: r.personId, label: nameOf(r) }))} value={shown.personId} onChange={setWho} searchable />
+                        </FormField>
+                        {preview && 'failed' in preview ? (
+                          <InlineAlert tone="danger" title="We couldn't make the preview">
+                            {preview.failed}
+                          </InlineAlert>
+                        ) : (
+                          <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Letter preview">
+                            {preview && 'url' in preview ? <PdfPages url={preview.url} label={`${t.name} for ${nameOf(shown)}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ),
+            },
+            {
+              id: 'delivery',
+              title: 'Delivery',
+              summary: "To each person's documents with a notification",
+              content: (
+                <Text as="p">
+                  Each letter goes to the person&apos;s documents, with a notification.{t?.requiresApproval ? ' This template needs approval, so each letter waits for the signatory first.' : ''}
+                </Text>
+              ),
+            },
+          ]}
+        />
+      )}
+      {query && t && (
+        <TypeToConfirmDialog
+          open={confirm}
+          onOpenChange={setConfirm}
+          title={`Issue ${ready.length} ${t.letterType.replace(/_/g, ' ')} ${ready.length === 1 ? 'letter' : 'letters'}?`}
+          consequence="Issued letters can't be edited. Corrections are new letters that supersede these."
+          confirmLabel="Issue letters"
+          objectName={lettersPhrase(ready.length)}
+          onConfirm={() => live.onIssue(query, lettersPhrase(ready.length), t)}
+        />
+      )}
+    </PeopleFrame>
+  );
+}
+
 // PPL-28 · bulk issue
-export function BulkLetterWizard({ current = 'source', confirmOpen = false }: { current?: string; confirmOpen?: boolean }) {
+export function BulkLetterWizard({ live, ...sample }: { current?: string; confirmOpen?: boolean; live?: LiveBulkLetters }) {
+  if (live) return <LiveBulkLetterWizard live={live} />;
+  return <SampleBulkLetterWizard {...sample} />;
+}
+
+function SampleBulkLetterWizard({ current = 'source', confirmOpen = false }: { current?: string; confirmOpen?: boolean }) {
   const [confirm, setConfirm] = useState(confirmOpen);
   const fails = [
     { name: 'Thomas George', why: 'Missing field: new grade (compensation not saved)' },
@@ -1052,7 +1265,6 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
           }}
         />
       )}
-      {live.children}
     </PeopleFrame>
   );
 }

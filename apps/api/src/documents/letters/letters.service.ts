@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../../org-structure/org-structure.service';
@@ -31,6 +31,7 @@ import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
 /** Letters an employee may get for themselves at once (P05 Q8). */
 export const SELF_CERTIFICATES = ['employment_certificate'];
+type BulkInput = { templateId: string; source: 'people' | 'no_appointment'; personIds?: string[] };
 type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -201,15 +202,72 @@ export class LettersService implements OnModuleInit {
     });
   }
 
-  /** PPL-28 bulk wizard: one letter type to many people, each through the ordinary issue (checks and approvals). */
-  async bulk(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personIds: string[] }) {
-    const out = { issued: 0, failed: [] as { personId: string; message: string }[] };
-    for (const personId of [...new Set(dto.personIds)]) {
+  /**
+   * PPL-28 bulk wizard, the preview: each person will get the letter, or why not, through the single issue's own checks
+   * (scope, fields the issuer may see, the template for their entity, no blanks, nothing already on its way).
+   * Someone the issuer cannot reach is never named.
+   */
+  async bulkCheck(ctx: TenantContext, user: ScopeUser, dto: BulkInput) {
+    return this.bulkRows(ctx, await this.viewer(user), dto);
+  }
+
+  private async bulkRows(ctx: TenantContext, v: Viewer, dto: BulkInput) {
+    const { t, ids } = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const t = await tx.letterTemplate.findFirst({ where: { organizationId: c.organizationId, id: dto.templateId, status: 'active' } });
+      if (!t) throw new BadRequestException('That letter template is not active. Choose another in Settings › Letter templates.');
+      if (dto.source === 'no_appointment' && t.letterType !== 'appointment') throw new BadRequestException('Choose an appointment letter template for people with no appointment letter.');
+      return { t, ids: dto.source === 'no_appointment' ? await this.withoutAppointment(tx, c) : [...new Set(dto.personIds ?? [])] };
+    });
+    const rows: { personId: string; name: string | null; ready: boolean; reason: string | null }[] = [];
+    // One short transaction per person (5 s each), as the issue itself runs.
+    for (const personId of ids) {
+      const row = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+        if (!(await reachesPerson(tx, c, v, 'letter.issue', personId, await ownOf(tx, c, v)))) return dto.source === 'people' ? { personId, name: null, ready: false, reason: 'You cannot issue letters to this person.' } : null;
+        const p = await tx.person.findFirst({ where: { organizationId: c.organizationId, id: personId }, select: { givenName: true, preferredName: true, familyName: true } });
+        const name = p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : null;
+        try {
+          await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t });
+          await this.notOnItsWay(tx, c.organizationId, personId, t.letterType);
+          return { personId, name, ready: true, reason: null };
+        } catch (e) {
+          if (!(e instanceof HttpException)) throw e;
+          return { personId, name, ready: false, reason: e.message };
+        }
+      });
+      if (row) rows.push(row);
+    }
+    return { letterType: t.letterType, rows };
+  }
+
+  /** Current employees with no appointment letter in YukthiX (issued, or on its way): the go-live catch-up. */
+  private async withoutAppointment(tx: Tx, c: CompanyContext) {
+    const org = c.organizationId;
+    const current = await tx.employment.findMany({ where: { organizationId: org, OR: [{ exitedOn: null }, { exitedOn: { gte: new Date(`${todayIst()}T00:00:00Z`) } }] }, select: { employeeId: true } });
+    const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: current.map((e) => e.employeeId) } }, select: { personId: true }, orderBy: { givenName: 'asc' } });
+    const have = new Set((await tx.letterIssue.findMany({ where: { organizationId: org, letterType: 'appointment', status: { in: ['issued', 'superseded', 'pending_approval', 'rendering', 'awaiting_signature'] } }, select: { personId: true } })).map((l) => l.personId));
+    // shortcut: the first 500 by name, as the issue takes at most 500; page through when a company has more to catch up.
+    return [...new Set(people.map((p) => p.personId))].filter((id) => !have.has(id)).slice(0, 500);
+  }
+
+  /**
+   * PPL-28 bulk issue: everything is checked again here (never the browser's preview), and the typed confirmation must
+   * name the count that passes now. Each letter then goes through the ordinary issue (its checks and approvals).
+   */
+  async bulk(ctx: TenantContext, user: ScopeUser, dto: BulkInput & { confirm: string }) {
+    const v = await this.viewer(user);
+    const { letterType, rows } = await this.bulkRows(ctx, v, dto);
+    const ready = rows.filter((r) => r.ready);
+    if (!ready.length) throw new BadRequestException('No one on this list can get the letter now. Check the preview again.');
+    const phrase = `ISSUE ${ready.length} ${ready.length === 1 ? 'LETTER' : 'LETTERS'}`;
+    if (dto.confirm !== phrase) throw new BadRequestException({ statusCode: 400, code: 'BULK_CONFIRM', message: `Type ${phrase} to confirm. If you typed another number, the list changed since the preview: go back and check it again.` });
+    const out = { issued: 0, failed: [] as { personId: string; name: string | null; message: string }[] };
+    for (const r of ready) {
       try {
-        await this.issue(ctx, user, { letterType: dto.letterType, personId });
+        await this.issueAs(ctx, v, { letterType, personId: r.personId, templateId: dto.templateId });
         out.issued++;
       } catch (e) {
-        out.failed.push({ personId, message: (e as Error).message });
+        if (!(e instanceof HttpException)) this.logger.warn(`Bulk letter for ${r.personId} not issued: ${(e as Error).message}`);
+        out.failed.push({ personId: r.personId, name: r.name, message: e instanceof HttpException ? e.message : 'The letter could not be made.' });
       }
     }
     return out;
@@ -398,6 +456,10 @@ export class LettersService implements OnModuleInit {
     return { t, data, signer, legalEntityId: base.legalEntityId };
   }
 
+  private async notOnItsWay(tx: Tx, org: string, personId: string, letterType: string) {
+    if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
+  }
+
   /** The issuer's preview with real data (never numbered). */
   async previewLetter(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string }) {
     const v = await this.viewer(user);
@@ -426,7 +488,7 @@ export class LettersService implements OnModuleInit {
         const old = await tx.letterIssue.findFirst({ where: { organizationId: org, id: dto.supersedesId } });
         if (!old || old.status !== 'issued' || old.personId !== dto.personId || old.letterType !== dto.letterType) throw new BadRequestException('Only an issued letter of the same type for the same person can be corrected.');
       }
-      if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId: dto.personId, letterType: t.letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
+      await this.notOnItsWay(tx, org, dto.personId, t.letterType);
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: dto.personId } });
       const title = `${t.name}: ${[p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ')}`.slice(0, 150);
       const l = await tx.letterIssue.create({
