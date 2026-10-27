@@ -1077,16 +1077,16 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
                 <thead>
                   <tr>
                     <th scope="col">Task</th>
-                    <th scope="col">Was due</th>
-                    <th scope="col">Now due</th>
+                    <th scope="col" data-date>Was due</th>
+                    <th scope="col" data-date>Now due</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tasks.map((t) => (
                     <tr key={t.id}>
                       <td>{t.title}</td>
-                      <td>{formatDate(t.dueOn)}</td>
-                      <td data-changed={(!t.done && Boolean(date)) || undefined}>{t.done ? 'Done' : date ? formatDate(addDays(t.dueOn, shift)) : '—'}</td>
+                      <td data-date>{formatDate(t.dueOn)}</td>
+                      <td data-date data-changed={(!t.done && Boolean(date)) || undefined}>{t.done ? 'Done' : date ? formatDate(addDays(t.dueOn, shift)) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

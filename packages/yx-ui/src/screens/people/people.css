@@ -153,6 +153,8 @@
 /* Plain tables wrap long values instead of scrolling sideways; headings and badges wrap only between words, never inside one. */
 .yx-ppl__impact th, .yx-ppl__impact td { overflow-wrap: anywhere; }
 .yx-ppl__impact thead th, .yx-ppl__impact .yx-badge { overflow-wrap: normal; }
+/* A date reads as one unit: "14 Nov 2026" never breaks across lines; the text column wraps instead. */
+.yx-ppl__impact [data-date] { white-space: nowrap; }
 .yx-ppl__impact .yx-number-field, .yx-ppl__impact input { min-width: 0; }
 .yx-ppl__impact td[data-changed] { font-weight: var(--yx-weight-medium); }
 .yx-ppl__impact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
