@@ -647,7 +647,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
           const isEditing = editing?.id === id && editing.key === c.key;
           const primary = c.key === firstKey;
           return (
-            <td key={c.key} data-label={c.header} data-type={c.type} data-align={alignOf(c)} data-frozen={primary || undefined} style={stickyStyle(c)}>
+            <td key={c.key} data-col={c.key} data-label={c.header} data-type={c.type} data-align={alignOf(c)} data-frozen={primary || undefined} style={stickyStyle(c)}>
               {cards && primary && selectable && !blocked && <span className="yx-table__card-select" data-no-row-click>{select}</span>}
               {isEditing ? (
                 <EditCell
@@ -853,7 +853,25 @@ export function DataTable<R>(props: DataTableProps<R>) {
     }
     return out;
   }, [columns, rows]);
-  const minW = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, figureW[c.key] ?? 0);
+  // Badges and dates never break onto a second line either: a column keeps at least its widest badge or date, measured
+  // as drawn (spacing audit 27 Oct 2026). A width the person dragged still wins.
+  const [keepW, setKeepW] = useState<Record<string, number>>({});
+  useLayoutEffect(() => {
+    if (!tableRef.current || cards || resized) return;
+    const out: Record<string, number> = {};
+    const text = document.createRange();
+    tableRef.current.querySelectorAll<HTMLElement>('tbody td[data-col]').forEach((td) => {
+      const pad = parseFloat(getComputedStyle(td).paddingLeft) * 2;
+      // The text's own width, not the cell's: the cell's would hold the column at whatever width it has now.
+      if (td.dataset.type === 'date') text.selectNodeContents(td);
+      let w = td.dataset.type === 'date' ? text.getBoundingClientRect().width + pad : 0;
+      td.querySelectorAll<HTMLElement>('.yx-badge').forEach((b) => (w = Math.max(w, b.getBoundingClientRect().width + pad)));
+      if (w) out[td.dataset.col!] = Math.max(out[td.dataset.col!] ?? 0, Math.ceil(w));
+    });
+    if (JSON.stringify(out) !== JSON.stringify(keepW)) setKeepW(out);
+  });
+  const floorW = (c: TableColumn<R>) => Math.max(figureW[c.key] ?? 0, keepW[c.key] ?? 0);
+  const minW = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, floorW(c));
   // Still too wide after shrinking? Hide optional columns from the right until it fits; a table scrolls only when nothing optional is left.
   useLayoutEffect(() => {
     const want: string[] = [];
@@ -861,7 +879,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     if (cards) for (const c of shownByUser) if (c.optional && c.key !== firstKey) want.push(c.key);
     if (!resized && boxW && !cards) {
       // The narrowest a column can go: a fifth off its width, but never below its widest figure.
-      const least = (c: TableColumn<R>) => Math.max((Number(colState.widths[c.key]) || minW(c)) * MIN_FIT, figureW[c.key] ?? 0);
+      const least = (c: TableColumn<R>) => Math.max((Number(colState.widths[c.key]) || minW(c)) * MIN_FIT, floorW(c));
       let total = shownByUser.reduce((t, c) => t + least(c), 0);
       // First columns marked optional, then any plain text column from the right. Never the first column, a status, a number,
       // an amount, a total or an editable one: those carry the facts people decide on (Time review, Oct 2026).
@@ -883,11 +901,11 @@ export function DataTable<R>(props: DataTableProps<R>) {
   // Shrink to fit; columns that would drop below their widest figure stay at it and the others share what is left.
   let fit = resized || !boxW || cards ? 1 : Math.min(1, Math.max(MIN_FIT, (boxW - fixedW) / dataW));
   if (fit < 1 && !resized) {
-    const locked = visible.filter((c) => widthOf(c) * fit < (figureW[c.key] ?? 0));
+    const locked = visible.filter((c) => widthOf(c) * fit < floorW(c));
     const rest = dataW - locked.reduce((t, c) => t + widthOf(c), 0);
-    if (locked.length && rest > 0) fit = Math.min(1, Math.max(MIN_FIT, (boxW - fixedW - locked.reduce((t, c) => t + figureW[c.key], 0)) / rest));
+    if (locked.length && rest > 0) fit = Math.min(1, Math.max(MIN_FIT, (boxW - fixedW - locked.reduce((t, c) => t + floorW(c), 0)) / rest));
   }
-  const fitW = (c: TableColumn<R>) => Math.max(Math.floor(widthOf(c) * fit), resized ? 0 : figureW[c.key] ?? 0);
+  const fitW = (c: TableColumn<R>) => Math.max(Math.floor(widthOf(c) * fit), resized ? 0 : floorW(c));
   const colW = (key: string) => (colState.widths[key] ? fitW(byKey.get(key)!) : undefined);
 
   return (
@@ -897,6 +915,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       data-layout={cards ? 'cards' : undefined}
       data-card-summary={(cards && cardSummary) || undefined}
       data-actions-wrap={actionsCapped || undefined}
+      data-resized={resized || undefined}
       ref={tableRef}
       style={btnW ? ({ '--yx-row-btn-w': `${btnW}px` } as CSSProperties) : undefined}
     >
