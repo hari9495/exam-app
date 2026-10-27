@@ -684,7 +684,12 @@ export class RestructureService {
     if (!userId) return null;
     const e = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId }, select: { givenName: true, familyName: true, preferredName: true } });
     if (e) return displayName(e);
-    return (await tx.user.findFirst({ where: { id: userId }, select: { email: true } }))?.email ?? null;
+    // A login without an employee record: its name, else the person behind the login, as other records show them.
+    const u = await tx.user.findFirst({ where: { id: userId }, select: { name: true, email: true } });
+    if (u?.name?.trim()) return u.name.trim();
+    const role = await tx.personRole.findFirst({ where: { organizationId: c.organizationId, roleType: 'login', sourceTable: 'users', sourceId: userId }, select: { personId: true } });
+    const p = role ? await tx.person.findFirst({ where: { organizationId: c.organizationId, id: role.personId }, select: { givenName: true, familyName: true, preferredName: true } }) : null;
+    return p ? displayName(p) : (u?.email ?? null);
   }
 
   private async view(tx: Tx, c: CompanyContext, v: Viewer, r: Prisma.RestructureGetPayload<object>) {

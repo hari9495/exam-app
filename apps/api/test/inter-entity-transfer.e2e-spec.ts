@@ -229,6 +229,14 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
     expect(a).toMatchObject({ legalEntityId: ids.leTN, employmentTypeId: ids.type });
   });
 
+  it('the record names who sent and decided it, never their login email', async () => {
+    await inA((tx) => tx.user.update({ where: { id: users.hr }, data: { name: 'Lakshmi Venkatesan' } }));
+    await inA((tx) => tx.user.update({ where: { id: users.approver }, data: { name: 'Divya Raghunathan' } }));
+    const list = (await api('approver', 'get', '/people/restructures').expect(200)).body as { requestedBy: string | null }[];
+    expect(list.map((r) => r.requestedBy)).toContain('Lakshmi Venkatesan');
+    expect(JSON.stringify(list)).not.toContain('@move.test');
+  });
+
   it('a kept code that is someone else’s in the new series cannot move, with the reason', async () => {
     await inA(async (tx) => {
       const e = await tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.selvi } });
