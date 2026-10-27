@@ -122,10 +122,12 @@ export interface ConfirmDialogProps extends OpenProps {
   destructive?: boolean;
   /** Confirm button colour. 'approve' is solid green for Approve / Award / Agree (R7). Defaults to 'danger' when destructive, else 'primary'. */
   confirmVariant?: 'primary' | 'approve' | 'danger';
-  /** May be async. The dialog shows a loading button, closes on success and shows the error inline on failure. */
-  onConfirm: () => void | Promise<void>;
+  /** May be async. The dialog shows a loading button, closes on success and shows the error inline on failure.
+   *  Return `false` to stay open with no error: the caller shows its own field error (enabled + explain on click, §16). */
+  onConfirm: () => void | boolean | Promise<void | boolean>;
   children?: ReactNode;
-  /** Keeps the confirm button disabled (used by TypeToConfirmDialog). */
+  /** Keeps the confirm button disabled. Only when unavoidable (type-to-confirm, a request already running); for a
+   *  missing or invalid field keep it enabled, show the field error on click and return `false` from onConfirm. */
   confirmDisabled?: boolean;
   size?: 'sm' | 'md';
 }
@@ -146,9 +148,9 @@ export function ConfirmDialog({ open, defaultOpen = false, onOpenChange, trigger
     setError(null);
     setPending(true);
     try {
-      await onConfirm();
+      const ok = await onConfirm();
       setPending(false);
-      change(false);
+      if (ok !== false) change(false);
     } catch (err) {
       setPending(false);
       setError(errorText(err));

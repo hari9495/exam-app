@@ -3,6 +3,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { Button } from './button';
 import { ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from './overlay';
+import { useState } from 'react';
+import { FormField } from './field';
+import { TextArea } from './inputs';
 import {
   ApprovalInbox,
   AssistantPanel,
@@ -128,6 +131,44 @@ describe('Dialogs', () => {
     await u.click(screen.getByRole('button', { name: 'Publish' }));
     expect(onConfirm).toHaveBeenCalled();
     // It closes once the promise settles, a tick after the click.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('returning false keeps it open: the button stays enabled and the field explains what to do', async () => {
+    const u = userEvent.setup();
+    const onUnmerge = vi.fn();
+    function Unmerge() {
+      const [note, setNote] = useState('');
+      const [tried, setTried] = useState(false);
+      return (
+        <ConfirmDialog
+          defaultOpen
+          destructive
+          title="Unmerge Suresh K Nair?"
+          confirmLabel="Unmerge"
+          onConfirm={() => {
+            setTried(true);
+            if (!note.trim()) return false;
+            onUnmerge(note.trim());
+          }}
+        >
+          <FormField label="Audit note" required error={tried && !note.trim() ? 'Enter a reason for the audit log.' : null}>
+            <TextArea value={note} onChange={setNote} />
+          </FormField>
+        </ConfirmDialog>
+      );
+    }
+    render(<Unmerge />);
+    const btn = screen.getByRole('button', { name: 'Unmerge' });
+    expect(btn).toBeEnabled();
+    await u.click(btn);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Enter a reason for the audit log.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(onUnmerge).not.toHaveBeenCalled();
+    await u.type(screen.getByLabelText(/Audit note/), 'Different people');
+    await u.click(btn);
+    expect(onUnmerge).toHaveBeenCalledWith('Different people');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
