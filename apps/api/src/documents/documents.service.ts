@@ -6,7 +6,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from './files.service';
-import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
+import { CLASS_KEY, ownOf, reachesDocument, reachesPerson } from './person-access';
 import { covers, implicitPeriods } from '../access/scope';
 
 // LIFE-1.03 person documents (P05 §4.2; YX-DOC-04/05/06/17): typed documents of a person (an employee or a joiner:
@@ -17,7 +17,9 @@ import { covers, implicitPeriods } from '../access/scope';
 //   - a re-upload is a new version and goes back to the queue (YX-DOC-05);
 //   - expiring types remind the person at the type's days and turn "expired" on the day (P04 scheduler).
 
-const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view'] as const;
+const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view', 'employee.disability.view'] as const;
+/** PPL-38 (founder 27 Oct 2026): the HR diversity role keeps disability certificates with its own Special key. */
+const DISABILITY_CERT = 'disability_certificate';
 type DocType = Prisma.DocumentTypeGetPayload<object>;
 type Doc = Prisma.DocumentGetPayload<object>;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -79,6 +81,7 @@ export class DocumentsService {
   private async may(tx: Tx, c: CompanyContext, v: Viewer, action: 'view' | 'manage', t: DocType, personId: string) {
     const own = await ownOf(tx, c, v);
     if (action === 'view' && own.personId === personId) return { self: true, own };
+    if (t.key === DISABILITY_CERT && !v.actingForOther && (await reachesPerson(tx, c, v, 'employee.disability.view', personId, own))) return { self: false, own };
     if (!(await reachesDocument(tx, c, v, action === 'view' ? 'document.view' : 'document.manage', t.sensitivity, personId, own))) {
       // Managing implies viewing (a verifier must open the file).
       if (action === 'view' && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own))) return { self: false, own };
@@ -308,9 +311,11 @@ export class DocumentsService {
       await audit(tx, c, dto.decision === 'verify' ? 'document.verified' : 'document.rejected', 'document', id, { typeKey: d.typeKey });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: dto.decision === 'verify' ? 'document.verified' : 'document.rejected', payload: { documentId: id, personId: d.personId, typeKey: d.typeKey } } });
       const owner = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId, userId: { not: null } }, select: { userId: true } });
-      return { owner: owner?.userId ?? null, typeName: t.name };
+      return { owner: owner?.userId ?? null, typeName: t.name, typeKey: t.key };
     });
-    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: '/yx/me/documents' }).catch(() => undefined);
+    // A disability certificate is uploaded again from the person's declaration (PPL-38).
+    const link = res.typeKey === DISABILITY_CERT ? '/yx/me/declarations' : '/yx/me/documents';
+    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: link }).catch(() => undefined);
     return { ok: true };
   }
 
@@ -328,7 +333,11 @@ export class DocumentsService {
       // Earlier versions are for HR only (YX-DOC-05).
       if (r.self && ver.id !== d.currentVersionId) throw new ForbiddenException('Earlier versions are kept for HR.');
       const f = await tx.file.findFirstOrThrow({ where: { organizationId: org, id: ver.fileId } });
-      if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
+      if (!r.self && t.key === DISABILITY_CERT) {
+        // Recorded as the declarations list records a look, so the person sees it in "Who accessed my data".
+        const e = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId }, select: { id: true } });
+        if (e) await audit(tx, c, 'employee.disability.viewed', 'employee', e.id, { what: 'certificate' });
+      } else if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
       return f;
     });
     return { file: await this.files.bytes(row), name: row.fileName, contentType: row.mime };

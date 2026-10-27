@@ -62,6 +62,16 @@ describe('PPL-38 disability declaration, live', () => {
     await waitFor(() => expect(live.onWithdraw).toHaveBeenCalled());
   });
 
+  it('a rejected certificate shows HR’s reason and is uploaded again from here', async () => {
+    const onUploadAgain = vi.fn(async () => undefined);
+    page(mine({ onUploadAgain, declaration: { answer: 'yes', category: 'Low vision', percent: 60, adjustments: null, consentAt: day('2026-02-03'), certificate: { status: 'rejected', validUntil: null, rejectReason: 'The scan is unreadable' } } }));
+    expect(screen.getByText('Rejected')).toBeInTheDocument();
+    expect(screen.getByText('The scan is unreadable')).toBeInTheDocument();
+    const file = new File(['%PDF-1.4'], 'udid.pdf', { type: 'application/pdf' });
+    await ue.upload(screen.getByLabelText(/Upload the certificate again/), file);
+    await waitFor(() => expect(onUploadAgain).toHaveBeenCalledWith(file));
+  });
+
   it('a failed save says so and keeps the form', async () => {
     const live = mine({ onSave: vi.fn(async () => Promise.reject(new Error('That certificate is not your disability certificate.'))) });
     page(live);
@@ -74,11 +84,12 @@ describe('PPL-38 disability declaration, live', () => {
 
 describe('PPL-38 HR diversity role list, live', () => {
   const list = (o: Partial<LiveDisabilityList> = {}): LiveDisabilityList => ({
-    state: 'ready', onRetry: vi.fn(),
+    state: 'ready', onRetry: vi.fn(), onOpen: vi.fn(), onVerify: vi.fn(async () => undefined), onReject: vi.fn(async () => undefined),
     rows: [
-      { employeeId: 'e1', name: 'Divya Raghunathan', category: 'Locomotor disability', percent: 45, validUntil: day('2031-03-14'), verified: true, expiringSoon: false },
-      { employeeId: 'e2', name: 'Joseph Mathew', category: 'Hard of hearing', percent: 50, validUntil: day('2026-11-02'), verified: true, expiringSoon: true },
-      { employeeId: 'e3', name: 'Ravi Kumar', category: 'Low vision', percent: 40, validUntil: null, verified: false, expiringSoon: false },
+      { employeeId: 'e1', name: 'Divya Raghunathan', category: 'Locomotor disability', percent: 45, validUntil: day('2031-03-14'), verified: true, expiringSoon: false, certificate: { status: 'verified' } },
+      { employeeId: 'e2', name: 'Joseph Mathew', category: 'Hard of hearing', percent: 50, validUntil: day('2026-11-02'), verified: true, expiringSoon: true, certificate: { status: 'verified' } },
+      { employeeId: 'e3', name: 'Ravi Kumar', category: 'Low vision', percent: 40, validUntil: null, verified: false, expiringSoon: false, certificate: { status: 'uploaded' } },
+      { employeeId: 'e4', name: 'Selvi Arun', category: 'Hard of hearing', percent: 45, validUntil: null, verified: false, expiringSoon: false, certificate: { status: 'rejected' } },
     ],
     ...o,
   });
@@ -88,6 +99,30 @@ describe('PPL-38 HR diversity role list, live', () => {
     expect(screen.getByRole('row', { name: /Divya Raghunathan Locomotor disability · 45% 14 Mar 2031 Verified/ })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Joseph Mathew .* Expiring/ })).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Ravi Kumar Low vision · 40% No end date To verify/ })).toBeInTheDocument();
+  });
+
+  it('opens a certificate; verifies or rejects one waiting, a rejection only with a reason', async () => {
+    const l = list();
+    render(<DisabilityDeclaration persona="hr" liveList={l} />);
+    expect(screen.getByRole('row', { name: /Selvi Arun .* Rejected/ })).toBeInTheDocument();
+    // A verified certificate only opens.
+    await ue.click(screen.getByRole('button', { name: /More actions for Divya Raghunathan/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Verify' })).toBeNull();
+    await ue.click(screen.getByRole('menuitem', { name: 'Open certificate' }));
+    expect(l.onOpen).toHaveBeenCalledWith('e1');
+    await ue.click(screen.getByRole('button', { name: /More actions for Ravi Kumar/ }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Verify' }));
+    await waitFor(() => expect(l.onVerify).toHaveBeenCalledWith('e3'));
+    await ue.click(screen.getByRole('button', { name: /More actions for Ravi Kumar/ }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Reject' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Reject certificate' }));
+    expect(within(dialog).getByText('Say why, so the person can upload the right certificate.')).toBeInTheDocument();
+    expect(l.onReject).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox'), 'The scan is unreadable');
+    await ue.click(within(dialog).getByRole('button', { name: 'Reject certificate' }));
+    await waitFor(() => expect(l.onReject).toHaveBeenCalledWith('e3', 'The scan is unreadable'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('empty, and a failed load can be retried', async () => {

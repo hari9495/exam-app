@@ -58,17 +58,28 @@ const IMPACT: Record<string, ImpactRow[]> = {
     { fact: 'Geofence', now: 'MG Road, 150 m', next: 'Taramani, 200 m' },
     { fact: 'Payroll proration', now: 'October', next: 'Segments: 1–4 Oct Bengaluru, 5–31 Oct Chennai' },
   ],
+  // As the live dry run reports a one-person move (founder 27 Oct 2026: every job fact that changes).
   'Inter-entity transfer': [
     { fact: 'Legal entity', now: 'Kaveri Foods Pvt Ltd', next: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },
     { fact: 'Employee code', now: 'KF-0088', next: 'KF-0088 (kept)' },
+    { fact: 'Location', now: 'Bengaluru head office', next: 'Chennai office' },
+    { fact: 'Employment type', now: 'Fixed-term (plant)', next: 'Permanent' },
     { fact: 'PF', now: 'Same UAN', next: 'Same UAN · transfer tracked on the checklist' },
-    { fact: 'Tax', now: 'YTD ₹4,12,000', next: 'Form 12B carried into the new entity' },
+    { fact: 'Tax', now: 'Pay and tax so far this year', next: 'Form 12B carried into the new entity' },
     { fact: 'Leave balance', now: '11.5 days PL', next: 'Carried over' },
+    { fact: 'Continuous service', now: '—', next: 'Continues from 14 Jul 2019' },
+    { fact: 'Salary structure', now: '—', next: 'Kept' },
   ],
 };
 
 function approvalSteps(kind: string, persona: Persona): ApprovalStep[] {
   const raiser = persona === 'mgr' ? 'Divya Raghunathan' : 'Lakshmi Venkatesan';
+  // A move to another entity is a one-person restructure: another HR person approves it in People › Restructure.
+  if (kind === 'Inter-entity transfer')
+    return [
+      { id: 'c0', label: 'Raised', status: 'done', approver: raiser, at: new Date(2026, 8, 29, 9, 40) },
+      { id: 'c1', label: 'HR, in People › Restructure', status: 'current', approver: 'Priya Nair' },
+    ];
   if (kind === 'Promotion')
     return [
       { id: 'a0', label: 'Raised', status: 'done', approver: raiser, at: new Date(2026, 8, 29, 9, 40) },
@@ -228,7 +239,7 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
   const [effective, setEffective] = useState<Date | null>(effectiveProp);
   const [ctc, setCtc] = useState<number | null>(780000);
   const [reason, setReason] = useState(REASON[kindProp] ?? '');
-  const [options, setOptions] = useState({ leave: 'carry', service: 'continue', code: 'keep', fnf: 'none', salary: 'keep' });
+  const [options, setOptions] = useState({ leave: 'carry', service: 'continue', code: 'keep', salary: 'keep' });
   const narrow = useNarrow();
   const showPay = persona === 'hr' || payGrant;
   const retro = effective && daysBetween(effective, today) > 0;
@@ -340,13 +351,32 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
               </FormField>
             )}
             {kind === 'Inter-entity transfer' && (
+              <>
+                <FormField label="New legal entity" required>
+                  <Select options={[{ value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="tn" onChange={() => {}} />
+                </FormField>
+                <FormField label="New location" required>
+                  <Select options={[{ value: 'maa', label: 'Chennai office' }]} value="maa" onChange={() => {}} />
+                </FormField>
+                <FormField label="New department" optional>
+                  <Select options={[{ value: 'sales', label: 'Sales' }]} value={null} onChange={() => {}} placeholder="No change" clearable />
+                </FormField>
+                <FormField label="New designation" optional>
+                  <Select options={[{ value: 'ae', label: 'Account Executive' }]} value={null} onChange={() => {}} placeholder="No change" clearable />
+                </FormField>
+                <FormField label="New employment type" required helper="Fixed-term (plant) is only for Kaveri Foods Pvt Ltd: choose one for the new entity.">
+                  <Select options={[{ value: 'perm', label: 'Permanent' }]} value="perm" onChange={() => {}} />
+                </FormField>
+              </>
+            )}
+            {kind === 'Inter-entity transfer' && (
               <Card title="Transfer options">
                 <div className="yx-ppl__stack">
                   <Text size="sm" tone="secondary" as="p">
                     Company defaults are selected. Change them for this transfer only.
                   </Text>
                   <FormField label="Leave balance">
-                    <RadioGroup value={options.leave} onChange={(v) => setOptions({ ...options, leave: v })} options={[{ value: 'carry', label: 'Carry over' }, { value: 'encash', label: 'Encash at old entity' }, { value: 'lapse', label: 'Lapse' }]} orientation="horizontal" />
+                    <RadioGroup value={options.leave} onChange={(v) => setOptions({ ...options, leave: v })} options={[{ value: 'carry', label: 'Carry over' }, { value: 'lapse', label: 'Lapse' }]} orientation="horizontal" />
                   </FormField>
                   <FormField label="Service continuity (gratuity, seniority, notice)">
                     <RadioGroup value={options.service} onChange={(v) => setOptions({ ...options, service: v })} options={[{ value: 'continue', label: 'Continue from 14 Jul 2019' }, { value: 'restart', label: 'Restart' }]} orientation="horizontal" />
@@ -354,14 +384,11 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
                   <FormField label="Employee code">
                     <RadioGroup value={options.code} onChange={(v) => setOptions({ ...options, code: v })} options={[{ value: 'keep', label: 'Keep KF-0088' }, { value: 'new', label: 'New code in the target series' }]} orientation="horizontal" />
                   </FormField>
-                  <FormField label="Settlement at the old entity">
-                    <RadioGroup value={options.fnf} onChange={(v) => setOptions({ ...options, fnf: v })} options={[{ value: 'none', label: 'None (amounts move over)' }, { value: 'full', label: 'Full and final settlement' }]} orientation="horizontal" />
-                  </FormField>
                   <FormField label="Salary structure">
                     <RadioGroup value={options.salary} onChange={(v) => setOptions({ ...options, salary: v })} options={[{ value: 'keep', label: 'Keep' }, { value: 'new', label: 'Assign new' }]} orientation="horizontal" />
                   </FormField>
                   <Text size="sm" tone="secondary" as="p">
-                    A continuity checklist opens on this change: UAN transfer, ESI IP, Form 12B, declarations, loans, leave ledger and gratuity.
+                    There is no settlement at the old entity. HR approves the move in People › Restructure. A continuity checklist opens on it: UAN transfer, ESI IP, Form 12B, declarations, loans, leave and gratuity.
                   </Text>
                 </div>
               </Card>
