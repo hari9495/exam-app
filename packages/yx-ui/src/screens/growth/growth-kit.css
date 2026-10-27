@@ -179,7 +179,7 @@
 .yx-bias__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--yx-space-half); font-size: var(--yx-text-sm); }
 .yx-bias__kind { font-weight: var(--yx-weight-medium); color: var(--yx-color-ai-text); }
 .yx-bias__match { background: var(--yx-color-warning-bg); color: var(--yx-color-text); padding: 0 var(--yx-space-half); border-radius: var(--yx-radius-badge); }
-.yx-bias__actions { display: flex; gap: var(--yx-space-1); flex: none; }
+.yx-bias__actions { display: flex; gap: var(--yx-space-2); flex: none; }
 
 /* ---------- Split layout */
 .yx-growth-split { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 5); gap: var(--yx-space-6); align-items: start; }
