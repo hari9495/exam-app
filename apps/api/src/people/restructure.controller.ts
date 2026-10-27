@@ -74,6 +74,8 @@ export class DraftStateDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @Matches(DATE) effectiveDate?: string | null;
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) locationIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) departmentIds?: string[];
+  /** "Pick people": only these people move (an empty list while none is picked yet). */
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) employeeIds?: string[];
   @IsOptional() @IsObject() locationMap?: Record<string, string>;
   @IsOptional() @IsObject() masterMap?: Record<string, string>;
   @IsOptional() @ValidateNested() @Type(() => TargetDto) target?: TargetDto;

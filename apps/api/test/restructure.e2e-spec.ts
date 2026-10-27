@@ -191,6 +191,23 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     expect(await asSuper((tx) => tx.restructure.count({ where: { organizationId: org.A.id } }))).toBe(0);
   });
 
+  it('pick people: only the picked people move (part of an entity, or inside it); none picked is refused in plain words', async () => {
+    const part = merge({ kind: 'demerge', employeeIds: [ids.divya], overrides: [] });
+    const out = (await api('hrA', 'post', '/people/restructures/preview').send(part).expect(200)).body;
+    expect(out.people.map((p: { name: string }) => p.name)).toEqual(['Divya']);
+    const inside = { kind: 'within', fromEntityId: ids.leTN, employeeIds: [ids.arjun, ids.imran], target: { departmentId: ids.labs }, effectiveDate: today, defaults: { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' }, reason: 'Two join Labs' };
+    const moved = (await api('hrA', 'post', '/people/restructures/preview').send(inside).expect(200)).body;
+    expect(moved.people.map((p: { name: string }) => p.name).sort()).toEqual(['Arjun', 'Imran']);
+    expect((await api('hrA', 'post', '/people/restructures/preview').send({ ...inside, employeeIds: [] }).expect(400)).body.message).toBe('Choose the locations, departments or people who move.');
+    expect((await api('hrA', 'post', '/people/restructures/preview').send({ ...part, employeeIds: [] }).expect(400)).body.message).toBe('Choose the locations or the people who move.');
+    await api('hrA', 'post', '/people/restructures/preview').send({ ...part, employeeIds: ['not-a-uuid'] }).expect(400);
+    // A saved draft keeps the picked people (an empty list: "Pick people" chosen, no one picked yet).
+    const d = (await api('hrA', 'post', '/people/restructures/drafts').send({ title: 'Move Divya', state: { kind: 'demerge', employeeIds: [ids.divya] } }).expect(201)).body;
+    expect((await api('hrA', 'get', `/people/restructures/drafts/${d.id}`).expect(200)).body.state).toMatchObject({ employeeIds: [ids.divya] });
+    await api('hrA', 'delete', `/people/restructures/drafts/${d.id}`).expect(204);
+    expect(await asSuper((tx) => tx.restructure.count({ where: { organizationId: org.A.id } }))).toBe(0);
+  });
+
   it('drafts ("Save and exit"): only the person who saved one sees or changes it; checks list what moves with the people', async () => {
     const state = { kind: 'merge', fromEntityId: ids.leTN, intoEntityId: ids.leKF, effectiveDate: null, locationMap: { [ids.locTN]: ids.locKF }, overrides: [], reason: '', letterType: 'transfer', step: 'options' };
     await api('empA', 'post', '/people/restructures/drafts').send({ title: 'Merge', state }).expect(403);
