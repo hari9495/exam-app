@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AsOfView, ChangeInput, ChangeOptions, ChoiceOption, Impact, MoveHandlers, MoveInput, PersonOption, TransferOptions } from '@yukthix/ui/history';
+import type { AsOfView, ChangeInput, ChangeOptions, ChoiceOption, Impact, MoveHandlers, MoveInput, PersonOption, PromotionRule, TransferOptions } from '@yukthix/ui/history';
 import type { RestructurePreview } from '@yukthix/ui/frame';
 import type { MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
@@ -69,6 +69,7 @@ export function useChangeOptions(people: PersonOption[], canPay: boolean, enable
   const types = useOrg<MasterRecord[]>('/masters/employment-types', enabled);
   const costCentres = useOrg<MasterRecord[]>('/masters/cost-centres', enabled);
   const locations = useOrg<OrgLocation[]>('/locations', enabled);
+  const rules = usePeople<{ promotionMustChange: Record<string, PromotionRule> }>(enabled ? '/changes/rules' : null);
   const today = todayIst();
   return {
     people,
@@ -81,6 +82,7 @@ export function useChangeOptions(people: PersonOption[], canPay: boolean, enable
     canPay,
     retroLimit: fyStart(today),
     today,
+    promotionMustChange: rules.data?.promotionMustChange,
   };
 }
 

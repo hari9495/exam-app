@@ -223,7 +223,12 @@ export interface ChangeOptions {
   types?: Exclude<ChangeType, 'join'>[];
   /** Who can be chosen as manager or dotted-line manager. Default: `people`. */
   managers?: PersonOption[];
+  /** Per legal entity: what a promotion must change (Settings › Job changes). Default: either. */
+  promotionMustChange?: Record<string, PromotionRule>;
 }
+
+/** The company's rule for a promotion: a new designation or grade, both, or only one of them. */
+export type PromotionRule = 'either' | 'both' | 'grade' | 'designation';
 
 /** G1 (gap pass C3): the three named service dates. */
 export interface ServiceDates {

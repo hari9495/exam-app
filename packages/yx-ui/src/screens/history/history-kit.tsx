@@ -15,7 +15,7 @@ import { dayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { dateLabel, daysBetweenIso, errorText, useRun } from '../org/org-kit';
 import '../people/people.css';
-import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine, MoveHandlers, MoveInput, TransferOptions } from './types';
+import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine, MoveHandlers, MoveInput, PromotionRule, TransferOptions } from './types';
 
 // Pieces shared by the job-history screens.
 
@@ -197,7 +197,10 @@ const FIELDS: Record<Raisable, Field[]> = {
   exit: [],
 };
 /** The fields a type cannot be sent without (the API refuses a transfer without a new location, a promotion without a new job). */
-const REQUIRED: Partial<Record<Raisable, Field[]>> = { promotion: ['designationId', 'gradeId'], transfer: ['locationId'], entity_transfer: ['locationId'], redesignation: ['designationId'], manager_change: ['managerEmployeeId'] };
+const REQUIRED: Partial<Record<Raisable, Field[]>> = { transfer: ['locationId'], entity_transfer: ['locationId'], redesignation: ['designationId'], manager_change: ['managerEmployeeId'] };
+/** A promotion's required fields follow the company's rule; 'either' needs one of the two (checked in changeInput). */
+const PROMOTION_REQUIRED: Record<PromotionRule, Field[]> = { either: [], both: ['designationId', 'gradeId'], grade: ['gradeId'], designation: ['designationId'] };
+const requiredFor = (type: Raisable, rule: PromotionRule): Field[] => (type === 'promotion' ? PROMOTION_REQUIRED[rule] : (REQUIRED[type] ?? []));
 const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
 /** G1 (gap pass C1): contracted hours change with the employment type, or by a correction. */
 const HOURS_TYPES = new Set(['employment_type_change', 'correction']);
@@ -268,7 +271,7 @@ export function moveInput(d: ChangeDraft, o: Pick<ChangeOptions, 'retroLimit'>, 
 }
 
 /** The request body, or what to fix. The API checks everything again. */
-export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'retroLimit'>): { input: ChangeInput | null; errors: FormErrorItem[] } {
+export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'retroLimit'>, rule: PromotionRule = 'either'): { input: ChangeInput | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (!d.employeeId) errors.push({ fieldId: 'ch-person', message: 'Choose the person' });
   if (!d.changeType) errors.push({ fieldId: 'ch-type', message: 'Choose the kind of change' });
@@ -276,8 +279,9 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
   const type = d.changeType;
   const payload: ChangePayload = {};
   if (type && type !== MOVE) {
-    const missing = (REQUIRED[type] ?? []).filter((f) => !d.values[f]);
+    const missing = requiredFor(type, rule).filter((f) => !d.values[f]);
     for (const f of missing) errors.push({ fieldId: `ch-${f}`, message: `Choose the new ${FIELD_LABEL[f].toLowerCase()}` });
+    if (type === 'promotion' && rule === 'either' && !d.values.designationId && !d.values.gradeId) missing.push('designationId'), errors.push({ fieldId: 'ch-designationId', message: 'Choose the new designation or grade' });
     const assignment: NonNullable<ChangePayload['assignment']> = {};
     for (const f of FIELDS[type]) {
       const v = d.values[f];
@@ -368,7 +372,8 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
   const [defaults, setDefaults] = useState<Awaited<ReturnType<MoveHandlers['onDefaults']>> | null>(null);
   // Required where the person's current one is only for the old entity; optional (it stays) otherwise.
   const needs = moving ? moveNeeds(defaults?.current ?? null, options, draft.entityId ?? null) : [];
-  const built = moving ? moveInput(draft, options, person?.legalEntityId ?? null, needs) : changeInput(draft, options);
+  const rule: PromotionRule = (person?.legalEntityId && options.promotionMustChange?.[person.legalEntityId]) || 'either';
+  const built = moving ? moveInput(draft, options, person?.legalEntityId ?? null, needs) : changeInput(draft, options, rule);
   const { input, errors } = built;
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
@@ -510,9 +515,10 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
           {draft.changeType &&
             (!moving || draft.entityId) &&
             FIELDS[draft.changeType].map((f) => {
-              const required = Boolean(REQUIRED[draft.changeType!]?.includes(f)) || (needs as string[]).includes(f);
+              const required = requiredFor(draft.changeType!, rule).includes(f) || (needs as string[]).includes(f);
+              const oneOf = draft.changeType === 'promotion' && rule === 'either';
               return (
-                <FormField key={f} id={`ch-${f}`} label={label(f)} required={required} optional={!required} error={errorOf(`ch-${f}`)}>
+                <FormField key={f} id={`ch-${f}`} label={label(f)} required={required} optional={!required && !oneOf} helper={oneOf && f === 'designationId' ? 'Choose a new designation, a new grade, or both.' : undefined} error={errorOf(`ch-${f}`)}>
                   <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable={!required} placeholder={required ? 'Choose' : 'No change'} aria-label={label(f)} />
                 </FormField>
               );

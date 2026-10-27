@@ -629,6 +629,22 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { dottedLineManagerIds: [] } } })).expect(400);
     });
 
+    it("the company's promotion rule (promotion.must_change) per entity: the form reads it, the server enforces it", async () => {
+      const rules = () => api('hrA', 'get', '/people/changes/rules').expect(200).then((r) => r.body.promotionMustChange[ids.kf]);
+      expect(await rules()).toBe('either');
+      const set = (await api('adminA', 'put', '/org/settings').send({ key: 'promotion.must_change', scopeType: 'legal_entity', scopeId: ids.kf, value: 'both' }).expect(200)).body;
+      try {
+        expect(await rules()).toBe('both');
+        const promo = (assignment: Record<string, string>) => change({ changeType: 'promotion', payload: { assignment } });
+        expect((await api('hrA', 'post', '/people/changes').send(promo({ designationId: ids.lead })).expect(400)).body.message).toMatch(/rule: a promotion needs a new grade \(both change\)/);
+        expect((await api('hrA', 'post', '/people/changes/preview').send(promo({ gradeId: ids.g3 })).expect(400)).body.message).toMatch(/needs a new designation/);
+        await api('hrA', 'post', '/people/changes/preview').send(promo({ designationId: ids.lead, gradeId: ids.g3 })).expect(201);
+        await api('outsiderA', 'get', '/people/changes/rules').expect(403);
+      } finally {
+        await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
+      }
+    });
+
     it('the transfer impact lists what the new location carries: holidays, PT state with its slab, LWF, geofence', async () => {
       const { impact } = (await api('hrA', 'post', '/people/changes/preview').send(change({})).expect(201)).body;
       expect(impact.facts).toEqual(

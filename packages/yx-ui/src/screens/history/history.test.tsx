@@ -56,7 +56,8 @@ describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
   it('asks for what is missing, and an override reason before the retro limit', () => {
     const { errors } = changeInput(draft({ employeeId: null, changeType: null, effectiveDate: null, reason: '' }), OPTIONS);
     expect(errors.map((e) => e.fieldId)).toEqual(['ch-person', 'ch-type', 'ch-date', 'ch-reason']);
-    expect(changeInput(draft({ values: {} }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-designationId', 'ch-gradeId']);
+    expect(changeInput(draft({ values: {} }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-designationId']);
+    expect(changeInput(draft({ values: {} }), OPTIONS, 'both').errors.map((e) => e.fieldId)).toEqual(['ch-designationId', 'ch-gradeId']);
     expect(changeInput(draft({ changeType: 'confirmation' as never, values: {} }), OPTIONS).errors).toEqual([]);
     expect(changeInput(draft({ values: { designationId: 'x', gradeId: 'g' }, pay: '12abc' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-pay']);
     const early = draft({ values: { designationId: 'x', gradeId: 'g' }, effectiveDate: new Date(2026, 2, 31) });
@@ -307,12 +308,28 @@ describe('PPL-04 change drawer: fields per type, the route line, drafts', () => 
     expect((await screen.findAllByText('Choose the new location')).length).toBeGreaterThan(0);
   });
 
-  it('a promotion needs the new designation and grade; a manager change the new manager, with dotted lines', async () => {
+  it("a promotion follows the company's rule (designation or grade by default); a manager change needs the new manager, with dotted lines", async () => {
     open({ changeType: 'promotion' });
     expect(fields()).toEqual(expect.arrayContaining(['New designation', 'New grade']));
     expect(fields()).not.toContain('New skill class');
-    expect(changeInput(draft({ values: { designationId: 'des-sr' } }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-gradeId']);
+    expect(screen.getByText('Choose a new designation, a new grade, or both.')).toBeTruthy();
+    const errs = (values: Record<string, string>, rule?: 'either' | 'both' | 'grade' | 'designation') => changeInput(draft({ values, pay: '' }), OPTIONS, rule).errors.map((e) => e.fieldId);
+    expect(errs({ designationId: 'des-sr' })).toEqual([]);
+    expect(errs({ gradeId: 'g-g3' })).toEqual([]);
+    expect(errs({})).toEqual(['ch-designationId']);
+    expect(errs({ designationId: 'des-sr' }, 'both')).toEqual(['ch-gradeId']);
+    expect(errs({ designationId: 'des-sr' }, 'grade')).toEqual(['ch-gradeId']);
+    expect(errs({ gradeId: 'g-g3' }, 'designation')).toEqual(['ch-designationId']);
     expect(changeInput(draft({ changeType: 'manager_change', values: {}, dotted: ['p-x'] }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-managerEmployeeId']);
+  });
+
+  it("marks what the person's entity requires: both, when the company's rule says so", async () => {
+    const entity = PEOPLE.find((p) => p.id === 'p-arjun')!.legalEntityId!;
+    const props = { onPreview: vi.fn().mockReturnValue(new Promise(() => undefined)), onSubmit: ok(), onClose: vi.fn() };
+    render(<ChangeDrawer options={{ ...OPTIONS, promotionMustChange: { [entity]: 'both' } }} employeeId="p-arjun" initial={draft({ effectiveDate: null, reason: '', changeType: 'promotion', values: { designationId: 'des-sr' } })} {...props} />);
+    expect(screen.queryByText('Choose a new designation, a new grade, or both.')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Choose the new grade')).length).toBeGreaterThan(0);
   });
 
   it('starts with the route: who decides, recomputed when pay goes on the change', async () => {

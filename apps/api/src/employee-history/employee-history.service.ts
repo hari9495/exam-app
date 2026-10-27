@@ -33,6 +33,7 @@ import {
   localToday,
   payloadProblem,
   unchangedProblem,
+  promotionRuleProblem,
   reach,
   Reach,
   Segment,
@@ -1050,6 +1051,12 @@ export class EmployeeHistoryService {
     if (!covers(periods, today)) throw new NotFoundException('No open employment for that employee');
   }
 
+  /** The company's rule for what a promotion must move (promotion.must_change, per legal entity). */
+  private async checkPromotionRule(tx: Tx, c: CompanyContext, e: Employment, payload: ChangePayload, now: { designationId: string; gradeId: string | null } | null) {
+    const problem = promotionRuleProblem(await settingFor(tx, c, 'promotion.must_change', { legalEntityId: e.legalEntityId }), payload, now);
+    if (problem) throw new BadRequestException(problem);
+  }
+
   /** Validate and store a requested change (pending). */
   async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto) {
     const payload = toPayload(dto.payload);
@@ -1071,6 +1078,7 @@ export class EmployeeHistoryService {
     });
     const unchanged = unchangedProblem(dto.changeType, payload, now);
     if (unchanged) throw new BadRequestException(unchanged);
+    if (dto.changeType === 'promotion') await this.checkPromotionRule(tx, c, e, payload, now);
     const ch = await tx.employeeChange.create({
       data: {
         organizationId: c.organizationId,
@@ -1272,6 +1280,16 @@ export class EmployeeHistoryService {
     });
   }
 
+  /** PPL-04: per legal entity, what a promotion must change (promotion.must_change), so the form marks what is required. */
+  changeRules(ctx: TenantContext) {
+    return this.run(ctx, async (tx, c) => {
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      const promotionMustChange: Record<string, string> = {};
+      for (const x of entities) promotionMustChange[x.id] = await settingFor(tx, c, 'promotion.must_change', { legalEntityId: x.id });
+      return { promotionMustChange };
+    });
+  }
+
   // ---- PPL-04 drafts: the raiser's own half-filled changes (forced RLS; only the raiser reads or writes them) ----
 
   private async draftView(tx: Tx, c: CompanyContext, d: Prisma.EmployeeChangeDraftGetPayload<object>) {
@@ -1420,6 +1438,14 @@ export class EmployeeHistoryService {
         if (date < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
         await this.checkReach(tx, c, v, e, date, dto.overrideReason ?? fresh.overrideReason);
         await this.checkRefs(tx, c, e, payload);
+        if (fresh.changeType === 'promotion') {
+          const day = asDate(date);
+          const now = await tx.employeeAssignment.findFirst({
+            where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, changeId: { not: fresh.id }, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
+            select: { designationId: true, gradeId: true },
+          });
+          await this.checkPromotionRule(tx, c, e, payload, now);
+        }
       }
       const updated = await tx.employeeChange.update({
         where: { id },

@@ -90,6 +90,13 @@ export class EmployeeHistoryController {
     return this.history.changeRoute(ctx, await this.viewer(req), q);
   }
 
+  /** PPL-04: the company's change-form rules per legal entity (what a promotion must change). */
+  @Get('changes/rules')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
+  async rules(@CurrentTenant() ctx: TenantContext) {
+    return this.history.changeRules(ctx);
+  }
+
   /** PPL-04: the caller's own saved drafts. */
   @Get('changes/drafts')
   @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
