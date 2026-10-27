@@ -222,6 +222,9 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
   it('an employment type only for the old entity must be chosen anew; then the person moves with it', async () => {
     const body = move('anbu', today, { defaults: { ...DEFAULTS, salary: 'new' } });
     expect((await api('hr', 'post', '/people/restructures/preview').send(body).expect(400)).body.message).toBe('Choose what Fixed-term (plant) becomes in Entity TN.');
+    // What changes names every job fact that moves, so the approver sees it.
+    const ready = await preview({ ...body, target: { locationId: ids.locTN, employmentTypeId: ids.type } });
+    expect(ready.people[0]).toMatchObject({ from: { employmentType: 'Fixed-term (plant)', designation: 'Account Executive' }, to: { employmentType: 'Permanent', designation: 'Account Executive' } });
     const { view } = await send({ ...body, target: { locationId: ids.locTN, employmentTypeId: ids.type } });
     expect(view).toMatchObject({ status: 'done', moved: 1 });
     const [, next] = await employments(ids.anbu);

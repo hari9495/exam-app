@@ -97,8 +97,9 @@ export interface PersonResult {
   code: string;
   status: 'ready' | 'moved' | 'failed' | 'left_out';
   reason: string | null;
-  from: { entity: string; code: string; location: string; department: string; manager: string | null };
-  to: { entity: string; code: string | null; location: string; department: string; manager: string | null } | null;
+  /** designation, employmentType: for a move between entities, so its approver sees every job fact that changes. */
+  from: { entity: string; code: string; location: string; department: string; manager: string | null; designation?: string; employmentType?: string };
+  to: { entity: string; code: string | null; location: string; department: string; manager: string | null; designation?: string; employmentType?: string } | null;
   service: { from: string; kept: boolean } | null;
   leave: { name: string; days: number; action: 'carried' | 'lapsed' }[];
   pay: 'kept' | 'set_later' | 'none' | null;
@@ -351,13 +352,15 @@ export class RestructureService {
 
   private async nameMaps(tx: Tx, c: CompanyContext) {
     const org = c.organizationId;
-    const [ents, locs, depts] = await Promise.all([
+    const [ents, locs, depts, desigs, types] = await Promise.all([
       tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true, name: true } }),
       tx.location.findMany({ where: { organizationId: org }, select: { id: true, name: true } }),
       tx.department.findMany({ where: { organizationId: org }, select: { id: true, name: true } }),
+      tx.designation.findMany({ where: { organizationId: org }, select: { id: true, name: true } }),
+      tx.employmentType.findMany({ where: { organizationId: org }, select: { id: true, name: true } }),
     ]);
     const m = (rows: { id: string; name: string }[]) => new Map(rows.map((r) => [r.id, r.name]));
-    return { ent: m(ents), loc: m(locs), dept: m(depts) };
+    return { ent: m(ents), loc: m(locs), dept: m(depts), des: m(desigs), type: m(types) };
   }
 
   private async personName(tx: Tx, c: CompanyContext, id: string | null) {
@@ -391,7 +394,7 @@ export class RestructureService {
     const lockedFrom = await this.lockedOn(tx, c, from, eff);
     if (lockedFrom) throw new Stop(`${lockedFrom}.`);
     const { a, status, dotted } = await this.factsOn(tx, c, e.id, eff);
-    const fromView = { entity: from.name, code: e.employeeCode, location: names.loc.get(a.locationId) ?? '', department: names.dept.get(a.departmentId) ?? '', manager: await this.personName(tx, c, a.managerEmployeeId) };
+    const fromView = { entity: from.name, code: e.employeeCode, location: names.loc.get(a.locationId) ?? '', department: names.dept.get(a.departmentId) ?? '', manager: await this.personName(tx, c, a.managerEmployeeId), designation: names.des.get(a.designationId) ?? '', employmentType: names.type.get(a.employmentTypeId) ?? '' };
 
     if (!across) {
       const t = h.plan.target;
@@ -516,7 +519,7 @@ export class RestructureService {
       name: who.name,
       code: e.employeeCode,
       from: fromView,
-      to: { entity: into.name, code: made.employeeCode, location: newLoc?.name ?? '', department: names.dept.get(t.departmentId ?? h.plan.masterMap[a.departmentId] ?? a.departmentId) ?? '', manager: fromView.manager },
+      to: { entity: into.name, code: made.employeeCode, location: newLoc?.name ?? '', department: names.dept.get(dto.assignment!.departmentId!) ?? '', manager: fromView.manager, designation: names.des.get(dto.assignment!.designationId!) ?? '', employmentType: names.type.get(dto.assignment!.employmentTypeId!) ?? '' },
       service: { from: keep ? service.continuousServiceFrom : eff, kept: keep },
       leave: balances.map((b) => ({ name: b.name, days: b.days, action: opts.leave === 'lapse' ? ('lapsed' as const) : ('carried' as const) })),
       pay: payState,
