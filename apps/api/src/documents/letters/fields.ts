@@ -20,18 +20,18 @@ export interface FieldDef {
 }
 
 export const FIELDS: Readonly<Record<string, FieldDef>> = {
-  employee_name: { label: 'Full name', cls: 'internal', sample: 'Sneha Pillai' },
-  first_name: { label: 'First name', cls: 'internal', sample: 'Sneha' },
-  last_name: { label: 'Last name', cls: 'internal', sample: 'Pillai' },
+  employee_name: { label: 'Full name', cls: 'internal', sample: 'Asha Sample' },
+  first_name: { label: 'First name', cls: 'internal', sample: 'Asha' },
+  last_name: { label: 'Last name', cls: 'internal', sample: 'Sample' },
   employee_code: { label: 'Employee code (after joining)', cls: 'internal', sample: 'KFT-0042' },
   designation: { label: 'Designation', cls: 'internal', sample: 'Production Supervisor' },
   department: { label: 'Department', cls: 'internal', sample: 'Production' },
   location: { label: 'Work location', cls: 'internal', sample: 'Hosur plant' },
   employment_type: { label: 'Employment type', cls: 'internal', sample: 'Permanent' },
-  manager_name: { label: "Manager's name", cls: 'internal', sample: 'Divya Raghunathan' },
+  manager_name: { label: "Manager's name", cls: 'internal', sample: 'Ravi Sample' },
   joining_date: { label: 'Joining day', cls: 'internal', sample: '19 October 2026' },
   last_working_day: { label: 'Last working day (when leaving)', cls: 'internal', sample: '30 October 2026' },
-  next_of_kin_name: { label: 'Next of kin (death in service)', cls: 'personal', sample: 'Meera Kumar' },
+  next_of_kin_name: { label: 'Next of kin (death in service)', cls: 'personal', sample: 'Kiran Sample' },
   probation_months: { label: 'Probation length in months', cls: 'internal', sample: '6' },
   probation: { label: 'On probation (yes / no)', cls: 'internal', flag: true, sample: true },
   legal_entity: { label: 'Legal entity (employer) name', cls: 'internal', sample: 'Kaveri Foods Pvt Ltd' },
@@ -40,10 +40,10 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   company_name: { label: 'Company name', cls: 'internal', sample: 'Kaveri Foods' },
   reference_no: { label: 'Reference number (given when the letter is issued)', cls: 'internal', sample: 'KF/APT/2026/000042' },
   today: { label: "Today's date", cls: 'internal', sample: '9 October 2026' },
-  signatory_name: { label: 'Who signs (name)', cls: 'internal', sample: 'Lakshmi Venkatesan' },
+  signatory_name: { label: 'Who signs (name)', cls: 'internal', sample: 'Priya Sample' },
   signatory_title: { label: 'Who signs (title)', cls: 'internal', sample: 'Head of HR' },
   address: { label: 'Home address', cls: 'personal', sample: '14, 3rd Cross, Jayanagar, Bengaluru 560011' },
-  personal_email: { label: 'Personal email', cls: 'personal', sample: 'sneha.p@mail.test' },
+  personal_email: { label: 'Personal email', cls: 'personal', sample: 'asha.sample@mail.test' },
   // PPL-06 increment letters (founder 20 Oct 2026): pay fields, filled only from an approved salary revision; issuing
   // or previewing them by hand needs the salary grant for the person (R1).
   old_ctc: { label: 'Annual CTC before the raise', cls: 'pay', sample: '₹5,40,000' },
