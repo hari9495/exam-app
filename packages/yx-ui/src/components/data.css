@@ -230,7 +230,7 @@
 /* IDs and masked account numbers never break mid-digits. */
 .yx-table td .yx-mono { white-space: nowrap; }
 /* Badges and dates in any table stay on one line: content-sized tables widen the column, DataTable keeps it wide enough
-   (table.tsx keepW). They wrap when a person dragged the widths, when keeping them would scroll the table, or in a cell
+   (table.tsx keepW). They wrap when a person dragged the widths, when the table has to shrink to fit, or in a cell
    marked data-wrap (a narrow side card). */
 td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-table[data-wrap] td .yx-badge, .yx-table[data-wrap] td[data-type="date"], td[data-wrap] .yx-badge { white-space: normal; }

@@ -1215,7 +1215,7 @@ export function IdentityPanel({ state = 'consented', onClose, live, name }: { st
             )}
             {checks.map((c, i) => (
               <tr key={`${c.point}-${i}`}>
-                <td data-date>{formatDate(c.at)}</td>
+                <td>{formatDate(c.at)}</td>
                 <td>
                   {c.point}
                   {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
