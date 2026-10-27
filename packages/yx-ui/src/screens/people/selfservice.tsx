@@ -1083,7 +1083,7 @@ export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
         status={<Badge tone="warning">Confidential</Badge>}
         actions={
           <>
-            {live && <Button icon={Plus} onClick={() => (setPerson(null), setTried(false), setDesignating(true))}>Add designated person</Button>}
+            <Button icon={Plus} onClick={live ? () => (setPerson(null), setTried(false), setDesignating(true)) : undefined}>Add designated person</Button>
             <Button icon={FileText} onClick={live?.onExport}>Export register</Button>
           </>
         }
@@ -1111,7 +1111,11 @@ export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
               <Button size="sm" loading={busy === `remind-${r.id}`} onClick={live ? () => void run(`remind-${r.id}`, () => live.onRemind(r.id)) : undefined}>Remind</Button>
             )
           }
-          rowActions={live ? (r) => <MenuItem onSelect={() => void run(`undesignate-${r.id}`, () => live.onUndesignate(r.id))}>No longer a designated person</MenuItem> : undefined}
+          rowActions={(r) => (
+            <MenuItem destructive onSelect={live ? () => void run(`undesignate-${r.id}`, () => live.onUndesignate(r.id)) : undefined}>
+              Remove
+            </MenuItem>
+          )}
           empty={<EmptyState title="No designated persons" description="Add the people who must declare their holdings and ask before they trade." />}
         />
       )}
@@ -1321,7 +1325,7 @@ export function TradingPreclearance({ view = 'request', today, live }: { view?: 
   const validUntil = addDays(approvedOn, 6);
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 }, false)} />
+      <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 }, false)} actions={view === 'approved' || view === 'expired' || view === 'report' ? <Button>New request</Button> : undefined} />
       {view === 'blocked' && <InlineAlert tone="danger" title="Trading window closed until 16 Oct 2026">Quarterly results are due. You can't request or use a pre-clearance until the window reopens.</InlineAlert>}
       {view === 'request' || view === 'blocked' ? (
         <PreclearanceForm disabled={view === 'blocked'} />
