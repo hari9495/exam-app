@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useViewInUrl } from '../../lib/view-in-url';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
@@ -291,8 +292,14 @@ export interface EmailSettingsScreenProps {
 export function EmailSettingsScreen(props: EmailSettingsScreenProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const row = props.overview?.emails.find((e) => e.type === editing);
+  const ready = props.state === 'ready' && Boolean(props.overview);
+  const back = useViewInUrl('email', row ? row.type : null, ready, (id) => {
+    const ok = Boolean(id && props.overview?.emails.some((e) => e.type === id));
+    setEditing(ok ? id : null);
+    return ok;
+  });
   if (props.state === 'ready' && props.overview && row) {
-    return <EmailEditor key={row.type} row={row} overview={props.overview} onBack={() => setEditing(null)} onSave={props.onSaveWording} onReset={props.onResetWording} onPreview={props.onPreview} onTest={props.onTest} />;
+    return <EmailEditor key={row.type} row={row} overview={props.overview} onBack={back} onSave={props.onSaveWording} onReset={props.onResetWording} onPreview={props.onPreview} onTest={props.onTest} />;
   }
   return (
     <div className="yx-auth__page">
