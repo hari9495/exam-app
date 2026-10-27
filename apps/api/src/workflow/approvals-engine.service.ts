@@ -91,6 +91,11 @@ export interface SubmitInput {
   payloadFields: FieldDef[];
   /** Who approves a step nobody else can (e.g. the desk's leads). The company's HR Admins are told when it happens. */
   fallbackUserIds: string[];
+  /**
+   * How the HR Admins' notice names those people and what to check, per module. Default (HR fallbacks: leave, time,
+   * performance, exits): "HR" and the person's manager.
+   */
+  fallbackWording?: { who: string; check: string };
   /** 'high' for this request only (e.g. a costly order): it then never auto-approves or auto-rejects on timeout. */
   risk?: 'high';
 }
@@ -128,6 +133,8 @@ export interface Notice {
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
+/** The no-approver notice for modules whose fallback approvers are HR. */
+export const DEFAULT_FALLBACK = { who: 'HR', check: "Check the person's manager on their record" };
 const hours = (h: number) => h * 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -389,7 +396,7 @@ export class ApprovalsEngine {
     await AuditService.recordIn(tx, ctx, { actorUserId: input.raisedByUserId ?? input.requesterUserId, action: 'workflow.request.submitted', entityType: 'wf_request', entityId: req.id, metadata: { type: type.key, subjectType: input.subjectType, subjectId: input.subjectId, steps: steps.map((s) => ({ name: s.name, approvers: s.approverIds, state: s.state })) } });
     const notices: Notice[] = [];
     // Founder decision 9 Oct 2026: the leads approve it, and HR Admins hear about it so they can fix the data behind it.
-    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so the desk's team leads got it. Check the manager or cost-centre owner` });
+    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so ${(input.fallbackWording ?? DEFAULT_FALLBACK).who} got it. ${(input.fallbackWording ?? DEFAULT_FALLBACK).check}` });
     const after = await this.advance(tx, ctx, req.id, notices);
     return { id: req.id, status: after.status, notices };
   }

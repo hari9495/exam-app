@@ -776,6 +776,7 @@ export class ExpenseClaimsService implements OnModuleInit {
         payload: { claimed_total: Number(fresh.claimedTotal), cost_centre_id: (await this.costCentreOf(tx, org, claim.employeeId)) ?? '' },
         payloadFields: [],
         fallbackUserIds: fallback,
+        fallbackWording: { who: 'HR', check: "Check the person's manager or the cost-centre owner" },
         ...(risk === 'high' ? { risk: 'high' as const } : {}),
       });
       await tx.expenseClaim.update({ where: { id }, data: { status: 'submitted', risk, wfRequestId: sub.id, submittedAt: new Date(), decidedAt: null, decisionNote: null, sendBackPending: false, version: { increment: 1 } } });

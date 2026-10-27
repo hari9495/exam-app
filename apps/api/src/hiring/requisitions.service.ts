@@ -203,6 +203,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         payload: {},
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [userId]),
+        fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });
       notices = sub.notices;
       await tx.headcountPlan.update({ where: { id }, data: { status: 'submitted', wfRequestId: sub.id, version: { increment: 1 } } });
@@ -278,6 +279,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         payload: {},
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [userId]),
+        fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });
       notices = sub.notices;
       await tx.job.update({ where: { id: job.id }, data: { status: 'pending_approval', wfRequestId: sub.id } });

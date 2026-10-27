@@ -312,6 +312,14 @@ describe('Time and leave batch 1', () => {
   });
 
   describe('delegation while the approver is away (P03 Q3) and the Service Desk seam', () => {
+    it("no manager to approve: HR gets the leave, and the HR Admins' notice names HR (not a desk's team leads)", async () => {
+      const res = (await api('boss', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(40), to: d(40), reason: 'Personal' }).expect(201)).body;
+      const notice = await inA((tx) => tx.userNotification.findFirst({ where: { recipientUserId: users.hrAdmin, type: 'workflow.approval.no_approver' }, orderBy: { createdAt: 'desc' } }));
+      expect(notice?.contextText).toMatch(/so HR got it\. Check the person's manager on their record/);
+      expect(notice?.contextText).not.toMatch(/team leads|cost-centre/);
+      expect(res).toBeTruthy();
+    });
+
     it('approved leave of the manager hands their approvals to their own manager, and the desk sees them on leave', async () => {
       const pending = (await inbox('mgr')).length;
       expect(pending).toBeGreaterThan(0);
