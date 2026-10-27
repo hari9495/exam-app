@@ -68,9 +68,12 @@ describe('Read, watch and survey steps', () => {
     const dlg = screen.getByRole('dialog');
     expect(within(dlg).getByText('HR sees your answers. Your manager sees only that you answered.')).toBeInTheDocument();
     const send = within(dlg).getByRole('button', { name: 'Send answers' });
-    expect(send).toBeDisabled();
+    await ue.click(send);
+    expect(within(dlg).getAllByText('Choose a rating.')).toHaveLength(2);
     await ue.click(within(within(dlg).getByRole('radiogroup', { name: 'I have what I need.' })).getByRole('radio', { name: '4' }));
-    expect(send).toBeDisabled();
+    await ue.click(send);
+    expect(within(dlg).getAllByText('Choose a rating.')).toHaveLength(1);
+    expect(onComplete).not.toHaveBeenCalled();
     await ue.click(within(within(dlg).getByRole('radiogroup', { name: 'My team made me welcome.' })).getByRole('radio', { name: '2' }));
     await ue.type(within(dlg).getByRole('textbox'), 'Seat not ready');
     await ue.click(send);

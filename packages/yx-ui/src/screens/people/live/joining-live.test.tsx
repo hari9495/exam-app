@@ -22,7 +22,9 @@ describe('Joiner panel (6b)', () => {
     rerender(<JoinerPanel {...base} onJoin={onJoin} today="2026-10-19" joiningOn="2026-10-19" />);
     await ue.click(screen.getByRole('button', { name: 'Mark joined' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Mark joined' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark joined' }));
+    expect(within(dialog).getByText("Tick that you checked the joiner's original ID today.")).toBeInTheDocument();
+    expect(onJoin).not.toHaveBeenCalled();
     await ue.click(within(dialog).getByRole('checkbox', { name: /original ID/ }));
     await ue.click(within(dialog).getByRole('button', { name: 'Mark joined' }));
     expect(onJoin).toHaveBeenCalledWith({ identityAttested: true, status: 'probation' });
@@ -55,7 +57,10 @@ describe('Joining portal (T9-01)', () => {
     render(<PortalScreen {...p} />);
     await ue.click(screen.getByRole('button', { name: 'Read and accept' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Accept' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Accept' }));
+    expect(within(dialog).getByText('Tick that you agree to accept letters electronically.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Send yourself a code, then enter it.')).toBeInTheDocument();
+    expect(p.onSign).not.toHaveBeenCalled();
     await ue.click(within(dialog).getByRole('checkbox', { name: /electronically/ }));
     await ue.click(within(dialog).getByRole('checkbox', { name: /I accept it/ }));
     await ue.click(within(dialog).getByRole('button', { name: 'Send me a code' }));

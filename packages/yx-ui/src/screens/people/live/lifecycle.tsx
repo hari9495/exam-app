@@ -371,6 +371,7 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
     onClose();
   };
   const ready = ask.kind === 'skip' ? text.trim().length >= 3 : ask.kind === 'upload' ? Boolean(file) : ask.kind === 'survey' ? ratings.every(Boolean) : true;
+  const [tried, setTried] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   return (
@@ -393,11 +394,14 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
                   : 'The task is marked done with your name and the time.'
       }
       confirmLabel={ask.kind === 'skip' ? 'Skip task' : ask.kind === 'upload' ? 'Upload' : ask.kind === 'done' ? 'Mark done' : (CONTENT_ASK[t.kind]?.confirm ?? 'Mark done')}
-      confirmDisabled={!ready}
-      onConfirm={confirm}
+      onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
+        await confirm();
+      }}
     >
       {ask.kind === 'skip' && (
-        <FormField id="tk-reason" label="Why skip it" required helper="Kept on the checklist.">
+        <FormField id="tk-reason" label="Why skip it" required helper="Kept on the checklist." error={tried && text.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
           <TextArea value={text} onChange={setText} rows={2} maxLength={300} />
         </FormField>
       )}
@@ -432,7 +436,7 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
         </FormField>
       )}
       {ask.kind === 'upload' && (
-        <FormField id="tk-file" label="File" required>
+        <FormField id="tk-file" label="File" required error={tried && !file ? 'Choose a file to upload.' : null}>
           <FileUpload id="tk-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
         </FormField>
       )}
@@ -441,7 +445,7 @@ export function TaskDialog({ ask, actions, onClose }: { ask: TaskAsk; actions: T
       {ask.kind === 'survey' && (
         <>
           {questions.map((q, i) => (
-            <FormField key={q} id={`sv-${i}`} label={q} required helper="1 = not at all, 5 = fully">
+            <FormField key={q} id={`sv-${i}`} label={q} required helper="1 = not at all, 5 = fully" error={tried && !ratings[i] ? 'Choose a rating.' : null}>
               <Segment label={q} value={ratings[i]} onChange={(x) => setRatings(ratings.map((r, j) => (j === i ? x : r)))} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))} />
             </FormField>
           ))}
