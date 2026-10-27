@@ -825,6 +825,7 @@ export function ContinuityChecklistDrawer({ open, onOpenChange, title, subtitle,
 export function RestructureRecord({ state, onRetry, data: d, today, onApprove, onReject, onCancel, onItems, onItem, onLetters, defaultChecklistFor }: RestructureRecordProps) {
   const [ask, setAsk] = useState<'approve' | 'reject' | 'cancel' | null>(null);
   const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
   const [listFor, setListFor] = useState<string | null>(defaultChecklistFor ?? null);
   const [items, setItems] = useState<ContinuityItemData[] | null>(null);
   useEffect(() => {
@@ -862,6 +863,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
     else if (ask === 'cancel') await onCancel?.(why.trim());
     setAsk(null);
     setWhy('');
+    setTried(false);
   };
   const count = d.count;
   return (
@@ -914,8 +916,8 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
       {ask === 'approve' ? (
         <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={`Approve “${d.title}”?`} consequence={`${count} ${count === 1 ? 'person moves' : 'people move'} on ${formatDate(day(d.effectiveDate))}. Each person moves on their own; anyone who can't move stays where they are, with the reason.`} confirmLabel={`Approve and move ${persons(count)}`} confirmVariant="approve" onConfirm={decide} />
       ) : ask ? (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={ask === 'reject' ? `Reject “${d.title}”?` : `Cancel “${d.title}”?`} consequence="No one moves." confirmLabel={ask === 'reject' ? 'Reject' : 'Cancel restructure'} cancelLabel="Keep it" destructive confirmDisabled={why.trim().length < 3} onConfirm={decide}>
-          <FormField label="Reason" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && (setAsk(null), setTried(false))} title={ask === 'reject' ? `Reject “${d.title}”?` : `Cancel “${d.title}”?`} consequence="No one moves." confirmLabel={ask === 'reject' ? 'Reject' : 'Cancel restructure'} cancelLabel="Keep it" destructive onConfirm={() => (setTried(true), why.trim().length < 3 ? false : decide())}>
+          <FormField label="Reason" required error={tried && why.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
             <TextArea rows={2} value={why} onChange={setWhy} maxLength={500} />
           </FormField>
         </ConfirmDialog>

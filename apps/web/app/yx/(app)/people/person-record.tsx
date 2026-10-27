@@ -469,18 +469,29 @@ function DocDialog({ dialog, name, askable, onClose, onRequest, onReject }: { di
   const [type, setType] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
   const [message, setMessage] = useState('');
+  const [tried, setTried] = useState(false);
   if (dialog.kind === 'request')
     return (
-      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" confirmDisabled={!type} onConfirm={async () => (await onRequest(type!, askable.find((x) => x.key === type)?.name ?? 'document'), onClose())}>
-        <FormField id="rq-type" label="Document" required>
+      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" onConfirm={async () => {
+        setTried(true);
+        if (!type) return false;
+        await onRequest(type, askable.find((x) => x.key === type)?.name ?? 'document');
+        onClose();
+      }}>
+        <FormField id="rq-type" label="Document" required error={tried && !type ? 'Choose the document to ask for.' : null}>
           <Select aria-label="Document" value={type} onChange={setType} options={askable.map((x) => ({ value: x.key, label: x.name }))} />
         </FormField>
       </ConfirmDialog>
     );
   const d = dialog.doc!;
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive confirmDisabled={!reason} onConfirm={async () => (await onReject(d, [reason, message.trim()].filter(Boolean).join('. ')), onClose())}>
-      <FormField id="rj-reason" label="Reason" required>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive onConfirm={async () => {
+      setTried(true);
+      if (!reason) return false;
+      await onReject(d, [reason, message.trim()].filter(Boolean).join('. '));
+      onClose();
+    }}>
+      <FormField id="rj-reason" label="Reason" required error={tried && !reason ? 'Choose a reason.' : null}>
         <Select aria-label="Reason" value={reason} onChange={setReason} options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} />
       </FormField>
       <FormField id="rj-msg" label={`Message to ${name}`} optional helper="Say what to upload instead.">
