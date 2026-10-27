@@ -690,28 +690,30 @@ export function SignatoriesDrawer(p: SignatoriesDrawerProps) {
   const { busy, error, run } = useRun();
   return (
     <Drawer open onOpenChange={(o) => !o && p.onClose()} title="Who signs letters" size="lg" footer={<Button onClick={p.onClose}>Close</Button>}>
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      <div>
-        <Button onClick={() => setAdding(true)}>Add signatory</Button>
+      <div className="yx-ppl__stack">
+        {error && (
+          <InlineAlert tone="danger" title="That didn't work">
+            {error}
+          </InlineAlert>
+        )}
+        <div>
+          <Button onClick={() => setAdding(true)}>Add signatory</Button>
+        </div>
+        {/* The columns of the design's Authorised signatories table (Settings 5.3). */}
+        <DataTable
+          label="Authorised signatories"
+          columns={[
+            { key: 'name', header: 'Name', value: (s) => s.name },
+            { key: 'title', header: 'Designation', value: (s) => s.title },
+            { key: 'entity', header: 'Legal entity', value: (s) => p.entities.find((e) => e.value === s.legalEntityId)?.label ?? '' },
+            { key: 'image', header: 'Signature image', type: 'status', value: (s) => (s.hasSignatureImage ? 'Uploaded' : 'No image'), statusTone: (v) => (v === 'Uploaded' ? 'success' : 'neutral') },
+          ]}
+          rows={p.signatories}
+          getRowId={(s) => s.id}
+          rowActions={(s) => <MenuItem disabled={busy === s.id} onSelect={() => void run(s.id, () => p.onRemove(s))}>Remove</MenuItem>}
+          empty={<EmptyState title="No one yet" description="Letters that print who signs need a signatory for the legal entity." />}
+        />
       </div>
-      {/* The columns of the design's Authorised signatories table (Settings 5.3). */}
-      <DataTable
-        label="Authorised signatories"
-        columns={[
-          { key: 'name', header: 'Name', value: (s) => s.name },
-          { key: 'title', header: 'Designation', value: (s) => s.title },
-          { key: 'entity', header: 'Legal entity', value: (s) => p.entities.find((e) => e.value === s.legalEntityId)?.label ?? '' },
-          { key: 'image', header: 'Signature image', type: 'status', value: (s) => (s.hasSignatureImage ? 'Uploaded' : 'No image'), statusTone: (v) => (v === 'Uploaded' ? 'success' : 'neutral') },
-        ]}
-        rows={p.signatories}
-        getRowId={(s) => s.id}
-        rowActions={(s) => <MenuItem disabled={busy === s.id} onSelect={() => void run(s.id, () => p.onRemove(s))}>Remove</MenuItem>}
-        empty={<EmptyState title="No one yet" description="Letters that print who signs need a signatory for the legal entity." />}
-      />
       {adding && <AddSignatory entities={p.entities} users={p.users} onClose={() => setAdding(false)} onAdd={p.onAdd} />}
     </Drawer>
   );
