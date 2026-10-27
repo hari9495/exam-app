@@ -121,6 +121,9 @@ describe('MfaService', () => {
   beforeAll(() => {
     process.env.ORG_SECRETS_ENCRYPTION_KEY ??= 'a'.repeat(64);
     process.env.FRONTEND_URL = 'http://localhost:3000';
+    // The fake device signs for localhost; a shell or .env with these set (they win over FRONTEND_URL) would fail every passkey test.
+    process.env.WEBAUTHN_RP_ID = 'localhost';
+    process.env.WEBAUTHN_ORIGINS = 'http://localhost:3000';
   });
 
   beforeEach(() => {
