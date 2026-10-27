@@ -135,6 +135,12 @@ export class RevealDto {
   field!: (typeof REVEAL_FIELDS)[number];
 }
 
+/** PPL-33: my data as JSON (default) or PDF. */
+export class MyDataDto {
+  @IsOptional() @IsIn(['json', 'pdf'])
+  format?: string;
+}
+
 export class ProfileRequestListDto {
   @IsOptional() @IsIn(['pending', 'approved', 'rejected', 'cancelled'])
   status?: string;

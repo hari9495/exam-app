@@ -685,9 +685,27 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       expect(log.enabled).toBe(true);
       expect(log.entries.map((e: { what: string; who: string }) => [e.what, e.who])).toEqual(expect.arrayContaining([['PAN', 'payrollTn'], ['Aadhaar', 'payrollTn'], ['Pay', 'payrollTn']]));
       expect(log.entries.some((e: { who: string }) => e.who === 'imranU')).toBe(false);
+      // PPL-33: each look says where it happened; the page names the company.
+      expect(log.company).toEqual(expect.any(String));
+      expect(log.entries.find((e: { what: string }) => e.what === 'PAN')).toMatchObject({ context: 'Shown in full on your record' });
+      expect(log.entries.find((e: { what: string }) => e.what === 'Pay')).toMatchObject({ context: expect.any(String), role: 'Analyst' });
+      // My data as a file: JSON or PDF, identifiers masked as on the record, recorded; only one's own.
+      const json = await api('imranU', 'get', '/people/me/data').expect(200);
+      expect(json.headers['content-disposition']).toContain('my-data.json');
+      expect(json.body).toMatchObject({ company: log.company, name: expect.any(String), personal: expect.any(Object), identity: expect.any(Object), viewedBy: expect.any(Array), documents: expect.any(Array) });
+      expect(json.text).not.toContain('ABCPE1234F');
+      const pdf = await api('imranU', 'get', '/people/me/data?format=pdf').buffer(true).parse((res, cb) => {
+        const parts: Buffer[] = [];
+        res.on('data', (c: Buffer) => parts.push(c));
+        res.on('end', () => cb(null, Buffer.concat(parts)));
+      }).expect(200);
+      expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+      await api('imranU', 'get', '/people/me/data?format=doc').expect(400);
+      expect((await auditRows('employee.data.exported')).length).toBe(2);
+      await api('outsider', 'get', '/people/me/data').expect(404);
       await up('adminA');
       await api('adminA', 'put', '/org/settings').send({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' }).expect(200);
-      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, entries: [] });
+      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, company: log.company, entries: [] });
       await api('outsider', 'get', '/people/me/access-log').expect(404);
     });
 

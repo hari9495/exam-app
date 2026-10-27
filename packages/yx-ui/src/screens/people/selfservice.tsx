@@ -23,7 +23,7 @@ import { ACCESS_LOG } from './people-data';
 import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
 import { useRun } from '../org/org-kit';
 import { KIND_FIELDS } from '../access/profile';
-import type { ChangeForm, ProfileRequest, ProfileRequestInput, RequestKind } from '../access/types';
+import type { AccessLog, ChangeForm, ProfileRequest, ProfileRequestInput, RequestKind } from '../access/types';
 
 /* ================================================================== PPL-32 profile change request */
 
@@ -324,8 +324,102 @@ const HELD = [
 ];
 type Access = (typeof ACCESS_LOG)[number];
 
+/** The live Privacy page (PPL-33): what the company holds about me, my data as a file, who viewed my sensitive data. */
+export interface LiveMyData {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  log: AccessLog | null;
+  onDownload: (format: 'pdf' | 'json') => Promise<unknown>;
+}
+type LiveAccess = AccessLog['entries'][number];
+
+// What the record holds (P02 classes). The design's Special row named a health check-up, which YukthiX does not hold.
+const LIVE_HELD = HELD.map((h) => (h.cls === 'Special' ? { ...h, what: 'Aadhaar (masked), background check reports', why: 'Identity check, background check' } : h));
+
+function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'access' }) {
+  const [t, setT] = useState(tab);
+  const { busy, error, run } = useRun();
+  const log = live.log;
+  const cols: TableColumn<LiveAccess>[] = [
+    { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role ?? undefined }), width: 240 },
+    { key: 'what', header: 'What they viewed', value: (r) => r.what, width: 200 },
+    { key: 'why', header: 'Context', value: (r) => r.context, width: 280 },
+    { key: 'at', header: 'When', value: (r) => r.at, render: (r) => `${formatDate(new Date(r.at))}, ${new Date(r.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}`, width: 200 },
+  ];
+  return (
+    <MeFrame active="Privacy">
+      <PageHeader title="Privacy" description={`What ${log?.company ?? 'your company'} holds about you, and who viewed your Confidential or Special data.`} />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load your privacy page" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' || !log ? (
+        <ListSkeleton label="Loading your privacy page" />
+      ) : (
+        <Tabs value={t} onValueChange={(v) => setT(v as 'data' | 'access')}>
+          <TabsList aria-label="Privacy">
+            <TabsTrigger value="data">My data</TabsTrigger>
+            <TabsTrigger value="access" count={log.enabled ? log.entries.length : undefined}>
+              Who accessed my data
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="data">
+            <div className="yx-ppl__stack">
+              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                <table className="yx-ppl__impact">
+                  <thead>
+                    <tr>
+                      <th scope="col">What we hold</th>
+                      <th scope="col">Class</th>
+                      <th scope="col">Why</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {LIVE_HELD.map((h) => (
+                      <tr key={h.what}>
+                        <td>{h.what}</td>
+                        <td><ClassBadge cls={h.cls} /></td>
+                        <td>{h.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {error && (
+                <InlineAlert tone="danger" title="That didn't work">
+                  {error}
+                </InlineAlert>
+              )}
+              <div className="yx-ppl__row">
+                <Button icon={Download} loading={busy === 'pdf'} onClick={() => void run('pdf', () => live.onDownload('pdf'))}>
+                  Download my data (PDF)
+                </Button>
+                <Button icon={Download} loading={busy === 'json'} onClick={() => void run('json', () => live.onDownload('json'))}>
+                  Download my data (JSON)
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="access">
+            {!log.enabled ? (
+              <InlineAlert tone="info" title="Your company has turned this view off">Every view of your Confidential and Special data is still recorded. If the view is turned back on, you'll see the full history.</InlineAlert>
+            ) : (
+              <div className="yx-ppl__stack">
+                <Text as="p">People who viewed your Confidential or Special data. Automatic payroll processing isn't listed.</Text>
+                <DataTable label="Who accessed my data" columns={cols} rows={log.entries} getRowId={(r) => r.id} cardSummary empty={<EmptyState title="No one has viewed your sensitive data" description="Views by HR, payroll or your manager appear here." />} />
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
+    </MeFrame>
+  );
+}
+
 // PPL-33
-export function MyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 'access'; viewOff?: boolean }) {
+export function MyDataScreen(props: { tab?: 'data' | 'access'; viewOff?: boolean; live?: LiveMyData }) {
+  return props.live ? <LiveMyDataScreen live={props.live} tab={props.tab ?? 'data'} /> : <SampleMyDataScreen {...props} />;
+}
+
+function SampleMyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 'access'; viewOff?: boolean }) {
   const [t, setT] = useState(tab);
   const cols: TableColumn<Access>[] = [
     { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role }), width: 240 },

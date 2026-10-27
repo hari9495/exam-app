@@ -1,5 +1,5 @@
 // Fictional Kaveri Foods sample data for the stories and tests (review rule R3).
-import type { AccessLog, AccessRole, AccessUser, EffectiveAccess, Grant, ProfileRequest, ProfileView, RoleTemplate, ScopeChoices } from './types';
+import type { AccessRole, AccessUser, EffectiveAccess, Grant, ProfileRequest, ProfileView, RoleTemplate, ScopeChoices } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -164,11 +164,3 @@ export const REQUESTS: ProfileRequest[] = [
     usableFrom: null,
   },
 ];
-
-export const ACCESS_LOG: AccessLog = {
-  enabled: true,
-  entries: [
-    { id: 'a-1', at: '2026-09-28T10:12:00Z', who: 'Suresh Pillai', what: 'Pay', className: 'confidential' },
-    { id: 'a-2', at: '2026-09-20T15:40:00Z', who: 'Suresh Pillai', what: 'Salary bank account', className: 'confidential' },
-  ],
-};

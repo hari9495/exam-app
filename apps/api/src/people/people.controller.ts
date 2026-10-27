@@ -27,7 +27,8 @@ import {
 } from './dto';
 import { PeopleService } from './people.service';
 import { ProfileService } from './profile.service';
-import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { MyDataDto, PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { myDataPdf } from './my-data-pdf';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
 //   implicit grants (YX-SEC-04)   directory and org chart for employees of the company (Public fields, P02 Q4);
@@ -114,6 +115,15 @@ export class PeopleController {
   }
 
   /** Who viewed my Confidential and Special data (P02 §7, P08). */
+  /** PPL-33: my data as a JSON or PDF file (my own record only; recorded). */
+  @Get('me/data')
+  async myData(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: MyDataDto) {
+    const data = await this.profiles.myData(ctx, await this.viewer(req));
+    const pdf = q.format === 'pdf';
+    res.set({ 'Content-Type': pdf ? 'application/pdf' : 'application/json', 'Content-Disposition': `attachment; filename="my-data.${pdf ? 'pdf' : 'json'}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(pdf ? await myDataPdf(data) : Buffer.from(JSON.stringify(data, null, 2)));
+  }
+
   // PPL-32: my Change identity or bank details page (my own record only).
   @Get('me/change-form')
   async myChangeForm(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {

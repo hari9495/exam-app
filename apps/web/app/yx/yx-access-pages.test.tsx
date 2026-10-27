@@ -171,9 +171,12 @@ describe('/yx/people/profile-requests', () => {
 
 describe('/yx/me/privacy', () => {
   it('lists who looked at my sensitive data', async () => {
-    route({ 'GET /people/me/access-log': { enabled: true, entries: [{ id: 'a-1', at: '2026-10-06T10:12:00Z', who: 'Suresh Pillai', what: 'Pay', className: 'confidential' }] } });
+    route({ 'GET /people/me/access-log': { enabled: true, company: 'Kaveri Foods', entries: [{ id: 'a-1', at: '2026-10-06T10:12:00Z', who: 'Suresh Pillai', role: 'Payroll Manager', what: 'Pay', context: 'Your pay history', className: 'confidential' }] } });
     wrap(<YxPrivacyPage />);
+    expect(await screen.findByText(/What Kaveri Foods holds about you/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /Who accessed my data/ }));
     expect((await screen.findAllByText('Suresh Pillai')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Your pay history').length).toBeGreaterThan(0);
   });
 });
 
