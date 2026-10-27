@@ -1,3 +1,4 @@
+process.env.SD_SCANNER = 'dev-fake'; // uploaded files pass the (fake) virus check before HR opens or verifies them
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -311,10 +312,36 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       expect((await api('hrTn', 'get', '/people/disability-declarations').expect(200)).body.rows).toEqual([]); // Arjun is outside the plant
       await tenantPrisma.forTenant(ctx('A'), (tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.hrPlain, permissionProfileId: ids.plant, scopeType: 'tenant', validFrom: new Date(`${addDays(todayIst(), -1)}T00:00:00Z`), status: 'active', reason: 'Diversity role' } }));
       const rows = (await api('hrPlain', 'get', '/people/disability-declarations').expect(200)).body.rows;
-      expect(rows).toEqual([{ employeeId: ids.arjun, name: 'Arjun', category: 'Low vision', percent: 60, validUntil: null, verified: false, expiringSoon: false }]);
+      expect(rows).toEqual([{ employeeId: ids.arjun, name: 'Arjun', category: 'Low vision', percent: 60, validUntil: null, verified: false, expiringSoon: false, certificate: expect.objectContaining({ status: 'uploaded', rejectReason: null }) }]);
       expect((await audits('employee.disability.viewed')).map((x) => x.entityId)).toEqual([ids.arjun]);
       const log = (await api('arjunU', 'get', '/people/me/access-log').expect(200)).body.entries;
       expect(log).toEqual(expect.arrayContaining([expect.objectContaining({ what: 'Disability declaration', className: 'special' })]));
+    });
+
+    it('the diversity role opens the certificate (recorded), rejects it with a reason the person sees, then verifies the new upload', async () => {
+      const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+      const personId = await tenantPrisma.forTenant(SUPER, async (tx) => (await tx.employee.findFirstOrThrow({ where: { id: ids.arjun } })).personId!);
+      const row = async () => (await api('hrPlain', 'get', '/people/disability-declarations').expect(200)).body.rows[0];
+      const cert = (await row()).certificate;
+      // HR without the diversity role, and the person, neither open nor decide it.
+      await api('hrA', 'get', `/documents/${cert.id}/file`).expect(403);
+      await api('hrA', 'post', `/documents/${cert.id}/decision`).send({ decision: 'verify', version: cert.version }).expect(403);
+      await api('arjunU', 'post', `/documents/${cert.id}/decision`).send({ decision: 'verify', version: cert.version }).expect(403);
+      const looks = (await audits('employee.disability.viewed')).length;
+      await api('hrPlain', 'get', `/documents/${cert.id}/file`).expect(200);
+      expect((await audits('employee.disability.viewed')).length).toBe(looks + 1);
+      await api('hrPlain', 'post', `/documents/${cert.id}/decision`).send({ decision: 'reject', version: cert.version }).expect(400);
+      await api('hrPlain', 'post', `/documents/${cert.id}/decision`).send({ decision: 'reject', reason: 'The scan is unreadable', version: cert.version }).expect(200);
+      expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration.certificate).toMatchObject({ status: 'rejected', rejectReason: 'The scan is unreadable' });
+      for (let i = 0; i < 20 && !(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, recipientUserId: users.arjunU, type: 'document.rejected' } }))); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findFirst({ where: { organizationId: org.A.id, recipientUserId: users.arjunU, type: 'document.rejected' } }))).toMatchObject({ linkPath: '/yx/me/declarations' });
+      // The person uploads again; it waits for HR, who verifies it.
+      await api('arjunU', 'post', `/documents/people/${personId}/disability_certificate`).attach('file', PNG, 'udid-2.png').expect(201);
+      const again = (await row()).certificate;
+      expect(again).toMatchObject({ id: cert.id, status: 'uploaded', rejectReason: null });
+      await api('hrPlain', 'post', `/documents/${cert.id}/decision`).send({ decision: 'verify', version: cert.version }).expect(409); // stale
+      await api('hrPlain', 'post', `/documents/${cert.id}/decision`).send({ decision: 'verify', version: again.version }).expect(200);
+      expect(await row()).toMatchObject({ verified: true, certificate: { status: 'verified' } });
     });
 
     it('withdrawing clears what was declared; nothing is left to list', async () => {

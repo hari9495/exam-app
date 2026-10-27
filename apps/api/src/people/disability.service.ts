@@ -39,8 +39,8 @@ export class DisabilityService {
   }
 
   private async certificate(tx: Tx, org: string, id: string | null) {
-    const d = id ? await tx.document.findFirst({ where: { organizationId: org, id }, select: { status: true, expiresOn: true } }) : null;
-    return d ? { status: d.status, validUntil: d.expiresOn ? isoDate(d.expiresOn) : null } : null;
+    const d = id ? await tx.document.findFirst({ where: { organizationId: org, id }, select: { id: true, status: true, expiresOn: true, rejectReason: true, version: true } }) : null;
+    return d ? { id: d.id, status: d.status, validUntil: d.expiresOn ? isoDate(d.expiresOn) : null, rejectReason: d.status === 'rejected' ? d.rejectReason : null, version: d.version } : null;
   }
 
   /** My declaration, if any (the person only). */
@@ -107,7 +107,7 @@ export class DisabilityService {
         const d = this.open(c, r.employeeId, r.detailsEnc!);
         const cert = await this.certificate(tx, org, r.certificateDocumentId);
         await audit(tx, c, 'employee.disability.viewed', 'employee', r.employeeId);
-        out.push({ employeeId: r.employeeId, name: displayName(people.find((p) => p.id === r.employeeId)!), category: d.category, percent: d.percent, validUntil: cert?.validUntil ?? null, verified: cert?.status === 'verified', expiringSoon: Boolean(cert?.validUntil && cert.validUntil <= addDays(todayIst(), 90)) });
+        out.push({ employeeId: r.employeeId, name: displayName(people.find((p) => p.id === r.employeeId)!), category: d.category, percent: d.percent, validUntil: cert?.validUntil ?? null, verified: cert?.status === 'verified', expiringSoon: Boolean(cert?.validUntil && cert.validUntil <= addDays(todayIst(), 90)), certificate: cert });
       }
       return { rows: out.sort((a, b) => a.name.localeCompare(b.name)) };
     });

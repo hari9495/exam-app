@@ -92,9 +92,10 @@ export class DocumentsController {
     return this.documents.queue(ctx, this.user(req));
   }
 
+  /** Verify or reject; the HR diversity role does so for disability certificates (PPL-38; the service checks the type). */
   @Post(':id/decision')
   @HttpCode(200)
-  @RequirePermissions('document.manage')
+  @RequireAnyPermission('document.manage', 'employee.disability.view')
   decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DocumentDecisionDto) {
     return this.documents.verify(ctx, this.user(req), id, dto);
   }
