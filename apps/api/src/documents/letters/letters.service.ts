@@ -47,6 +47,23 @@ const LETTER_JOINERS = ['invited', 'cancelled'];
 const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF', fnf_statement: 'FNF', offer_withdrawal: 'OWD' };
 const typeCode = (t: string) => TYPE_CODE[t] ?? t.slice(0, 4).toUpperCase();
 
+/** A joiner's planned job, filled in on their checklist's Pre-boarding forms card (PPL-15). */
+const JOINER_JOB = new Set(['designation', 'department', 'employment_type', 'manager_name']);
+/** Why a letter cannot be made yet, and where HR fixes it, in plain words. */
+export function missingMessage(missing: string[], joiner: boolean): string {
+  const word = (m: string) => FIELDS[m as keyof typeof FIELDS].label.toLowerCase();
+  const list = (ms: string[]) => (ms.length > 1 ? `${ms.slice(0, -1).map(word).join(', ')} and ${word(ms[ms.length - 1])}` : word(ms[0]));
+  const job = joiner ? missing.filter((m) => JOINER_JOB.has(m)) : [];
+  const signer = missing.filter((m) => m.startsWith('signatory'));
+  const rest = missing.filter((m) => !job.includes(m) && !signer.includes(m));
+  return [
+    'This letter cannot be made yet.',
+    job.length ? `Add the ${list(job)} first: Pre-boarding forms › Add job details.` : '',
+    signer.length ? 'Name who signs for their legal entity first: Settings › Letter templates.' : '',
+    rest.length ? `Missing: ${rest.map(word).join(', ')}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
 /** A failed render in plain words for HR (the technical reason stays in the server log). */
 export function plainRenderError(e: string): string {
   if (/ENOENT|no such file|NoSuchKey|BlobNotFound|not found in storage/i.test(e)) return 'The letter template file is missing from storage. Upload the template again in Settings › Letter templates, then try again.';
@@ -474,9 +491,9 @@ export class LettersService implements OnModuleInit {
     if (v) await this.mayIssue(tx, c, v, dto.personId, t);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
     const gross = t.fields.includes('monthly_gross') ? await monthlyGross(tx, c, dto.personId, base.legalEntityId) : null;
-    const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null, request: dto.request ?? null, gross, withdrawalReason: dto.withdrawalReason ?? null });
+    const { data, joiner } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null, request: dto.request ?? null, gross, withdrawalReason: dto.withdrawalReason ?? null, letterType: t.letterType });
     const missing = missingFields(t.fields, data);
-    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: `This letter cannot be made yet. Missing: ${missing.map((m) => FIELDS[m].label.toLowerCase()).join(', ')}${missing.some((m) => m.startsWith('signatory')) ? ' (name a signatory for the legal entity in Settings › Letter templates)' : ''}.`, errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: missingMessage(missing, joiner), errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
     return { t, data, signer, legalEntityId: base.legalEntityId };
   }
 

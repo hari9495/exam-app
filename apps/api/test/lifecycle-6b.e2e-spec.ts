@@ -574,6 +574,20 @@ describe('Lifecycle batch 6b', () => {
     // A direct joiner (no offer) has no requisition.
     const direct = await addJoiner('Omana', `omana-${run}@mail.test`);
     expect((await api('hr', 'get', `/lifecycle/joiners/${direct.id}`).expect(200)).body.requisition).toBeNull();
+
+    // Started from Hiring without a designation: the withdrawal letter names the offered job; the joiner stays as it is.
+    const k = await hired('Kiran', 'open');
+    const jk = (await api('hr', 'post', `/lifecycle/ready-to-onboard/${k.offer}`).send({ givenName: 'Kiran', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    const pbK = (await api('hr', 'get', `/lifecycle/joiners/${jk}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${jk}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: pbK.version }).expect(200);
+    const letterK = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pbK.personId, letterType: 'offer_withdrawal' } }));
+    await api('hr', 'post', `/letters/${letterK.id}/preview`).expect(200);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: jk } }))).toMatchObject({ designationId: null });
+    // A direct joiner without a designation: the refusal says what to add and where.
+    const bare = (await api('hr', 'post', '/lifecycle/joiners').send({ givenName: 'Velu', familyName: run, email: `velu-${run}@mail.test`, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.dept, employmentTypeId: ids.perm }).expect(201)).body as { id: string };
+    const pbV = (await api('hr', 'get', `/lifecycle/joiners/${bare.id}`).expect(200)).body;
+    const refused = await api('hr', 'post', `/lifecycle/joiners/${bare.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: pbV.version }).expect(400);
+    expect(refused.body.message).toBe('This letter cannot be made yet. Add the designation first: Pre-boarding forms › Add job details.');
   });
 
   it('PPL-31 my certificate: instant with number and code, or HR approves first (approve and reject reach the bell); only my own, only switched-on kinds', async () => {

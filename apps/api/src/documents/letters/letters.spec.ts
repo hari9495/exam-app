@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { plainRenderError } from './letters.service';
+import { missingMessage, plainRenderError } from './letters.service';
 import PizZip from 'pizzip';
 import { PDFDocument } from 'pdf-lib';
 import { plainToInstance } from 'class-transformer';
@@ -139,5 +139,15 @@ describe('plainRenderError', () => {
     expect(plainRenderError('connect ECONNREFUSED 127.0.0.1:3000')).toMatch(/^The service that makes PDFs did not answer/);
     expect(plainRenderError('Unsupported state or unable to authenticate data')).toMatch(/could not be opened/);
     expect(plainRenderError('TypeError: x is undefined')).toBe('Something went wrong while making the letter. Try again; if it fails again, ask your admin.');
+  });
+});
+
+// PPL-15: a letter that cannot be made yet says what to add and where, in plain words.
+describe('missingMessage', () => {
+  it('sends HR to the joiner’s job details, the signatory setting, or names the rest', () => {
+    expect(missingMessage(['designation'], true)).toBe('This letter cannot be made yet. Add the designation first: Pre-boarding forms › Add job details.');
+    expect(missingMessage(['designation', 'department'], true)).toBe('This letter cannot be made yet. Add the designation and department first: Pre-boarding forms › Add job details.');
+    expect(missingMessage(['signatory_name', 'new_ctc'], false)).toBe('This letter cannot be made yet. Name who signs for their legal entity first: Settings › Letter templates. Missing: annual ctc after the raise.');
+    expect(missingMessage(['designation'], false)).toBe('This letter cannot be made yet. Missing: designation.');
   });
 });
