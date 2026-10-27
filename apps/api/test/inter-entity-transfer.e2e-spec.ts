@@ -92,6 +92,8 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
       ids.type = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'P', category: 'permanent' } })).id;
       // A designation only the old entity uses: choosing it for the new entity is refused.
       ids.desKf = (await tx.designation.create({ data: { ...o, name: 'Plant Lead', code: 'PL', ownerLegalEntityId: ids.leKF } })).id;
+      // An employment type only the old entity uses: a move must choose another (founder walkthrough 27 Oct 2026).
+      ids.typeKf = (await tx.employmentType.create({ data: { ...o, name: 'Fixed-term (plant)', code: 'FTP', category: 'fixed_term', ownerLegalEntityId: ids.leKF } })).id;
     });
 
     const profile = (keys: string[], name: string) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } })).then((p) => p.id);
@@ -117,10 +119,10 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
     for (const [name, k] of roster.map((r) => [r[0], r[1]] as const)) {
       token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
     }
-    const hire = async (givenName: string, code: string) => {
+    const hire = async (givenName: string, code: string, employmentTypeId = ids.type) => {
       const out = (
         await api('hr', 'post', '/people/employees')
-          .send({ legalEntityId: ids.leKF, employeeCode: code, givenName, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids.locKF, departmentId: ids.dept, designationId: ids.des, employmentTypeId: ids.type, managerEmployeeId: null }, compensation: { annualCtc: '690000' } })
+          .send({ legalEntityId: ids.leKF, employeeCode: code, givenName, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids.locKF, departmentId: ids.dept, designationId: ids.des, employmentTypeId, managerEmployeeId: null }, compensation: { annualCtc: '690000' } })
           .expect(201)
       ).body;
       await approveChange(out.payChangeId).then((r) => expect([r.status, r.body.message]).toEqual([201, undefined]));
@@ -129,6 +131,7 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
     ids.rahul = await hire('Rahul', 'KF0088');
     ids.imran = await hire('Imran', 'KF0089');
     ids.selvi = await hire('Selvi', 'KF0090');
+    ids.anbu = await hire('Anbu', 'KF0103', ids.typeKf);
   }, 240_000);
 
   afterAll(async () => {
@@ -214,6 +217,16 @@ describe('Inter-entity transfer of one person (PPL-04 on the PPL-09 engine, PPL-
     expect(await payOn(next.id)).toEqual([]);
     const status = Object.fromEntries((await items(id, 'imran')).map((i) => [i.key, i.status]));
     expect(status).toMatchObject({ gratuity: 'open', pay: 'open' });
+  });
+
+  it('an employment type only for the old entity must be chosen anew; then the person moves with it', async () => {
+    const body = move('anbu', today, { defaults: { ...DEFAULTS, salary: 'new' } });
+    expect((await api('hr', 'post', '/people/restructures/preview').send(body).expect(400)).body.message).toBe('Choose what Fixed-term (plant) becomes in Entity TN.');
+    const { view } = await send({ ...body, target: { locationId: ids.locTN, employmentTypeId: ids.type } });
+    expect(view).toMatchObject({ status: 'done', moved: 1 });
+    const [, next] = await employments(ids.anbu);
+    const a = await inA((tx) => tx.employeeAssignment.findFirstOrThrow({ where: { organizationId: org.A.id, employmentId: next.id, supersededAt: null } }));
+    expect(a).toMatchObject({ legalEntityId: ids.leTN, employmentTypeId: ids.type });
   });
 
   it('a kept code that is someone else’s in the new series cannot move, with the reason', async () => {

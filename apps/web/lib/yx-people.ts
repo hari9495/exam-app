@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, MoveHandlers, MoveInput, PersonOption, TransferOptions } from '@yukthix/ui/history';
+import type { AsOfView, ChangeInput, ChangeOptions, ChoiceOption, Impact, MoveHandlers, MoveInput, PersonOption, TransferOptions } from '@yukthix/ui/history';
 import type { RestructurePreview } from '@yukthix/ui/frame';
 import type { MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
@@ -136,7 +136,7 @@ export function useMove(people: PersonOption[], enabled: boolean): MoveHandlers 
     intoEntityId: m.intoEntityId,
     effectiveDate: m.effectiveDate,
     employeeIds: [m.employeeId],
-    target: { locationId: m.locationId, ...(m.departmentId ? { departmentId: m.departmentId } : {}), ...(m.designationId ? { designationId: m.designationId } : {}) },
+    target: { locationId: m.locationId, ...(m.departmentId ? { departmentId: m.departmentId } : {}), ...(m.designationId ? { designationId: m.designationId } : {}), ...(m.employmentTypeId ? { employmentTypeId: m.employmentTypeId } : {}) },
     defaults: m.options,
     reason: m.reason,
     ...(m.overrideReason ? { overrideReason: m.overrideReason } : {}),
@@ -146,7 +146,9 @@ export function useMove(people: PersonOption[], enabled: boolean): MoveHandlers 
     onDefaults: async (employeeId) => {
       const s = setup.data ?? (await read<{ defaults: TransferOptions }>('/restructures/setup'));
       const dates = await read<{ continuousServiceFrom: string }>(`/employees/${encodeURIComponent(employeeId)}/service-dates`);
-      return { options: s.defaults, employeeCode: people.find((p) => p.id === employeeId)?.employeeCode ?? '', serviceFrom: dates.continuousServiceFrom };
+      const now = (await read<AsOfView>(`/employees/${encodeURIComponent(employeeId)}/as-of`)).assignment;
+      const current = { departmentId: now?.department?.id ?? null, designationId: now?.designation?.id ?? null, employmentTypeId: now?.employmentType?.id ?? null };
+      return { options: s.defaults, employeeCode: people.find((p) => p.id === employeeId)?.employeeCode ?? '', serviceFrom: dates.continuousServiceFrom, current };
     },
     onPreview: async (m) => moveImpact(await write<RestructurePreview>('POST', '/restructures/preview', body(m)), m.effectiveDate),
     onSubmit: async (m) => void (await write('POST', '/restructures', body(m))),

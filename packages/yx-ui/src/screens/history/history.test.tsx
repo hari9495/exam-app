@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { ChangeDrawer, changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, orList, routeLine, type ChangeDraft } from './history-kit';
+import { ChangeDrawer, changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
 import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
@@ -74,9 +74,21 @@ describe('inter-entity transfer (PPL-04, a one-person restructure)', () => {
     expect(moveInput(moveDraft({ values: {} }), OPTIONS, 'le-kf').errors.map((e) => e.fieldId)).toEqual(['ch-entity', 'ch-locationId']);
   });
 
+  it('a department, designation or employment type only for the old entity is required (never labelled optional)', () => {
+    const plant = { value: 'et-plant', label: 'Fixed-term (plant)', entities: ['le-tn'] };
+    const shared = { value: 'et-perm', label: 'Permanent', entities: [] };
+    const o = { ...OPTIONS, employmentTypes: [plant, shared] };
+    expect(moveNeeds({ departmentId: null, designationId: null, employmentTypeId: 'et-plant' }, o, 'le-kf')).toEqual(['employmentTypeId']);
+    expect(moveNeeds({ employmentTypeId: 'et-perm' }, o, 'le-kf')).toEqual([]);
+    expect(moveNeeds({ employmentTypeId: 'et-plant' }, o, null)).toEqual([]);
+    const d = moveDraft({ entityId: 'le-kf', values: { locationId: 'loc-blr' }, transfer: options });
+    expect(moveInput(d, OPTIONS, 'le-tn', ['employmentTypeId']).errors).toEqual([{ fieldId: 'ch-employmentTypeId', message: 'Choose the new employment type' }]);
+    expect(moveInput({ ...d, values: { locationId: 'loc-blr', employmentTypeId: 'et-perm' } }, OPTIONS, 'le-tn', ['employmentTypeId']).input).toMatchObject({ employmentTypeId: 'et-perm' });
+  });
+
   it('the options start on the company defaults, named for the person (code, service start)', async () => {
     const legalEntities = [{ value: 'le-kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'le-tn', label: 'Kaveri Foods (Tamil Nadu)' }];
-    const onDefaults = vi.fn().mockResolvedValue({ options, employeeCode: 'KF-0142', serviceFrom: '2019-07-14' });
+    const onDefaults = vi.fn().mockResolvedValue({ options, employeeCode: 'KF-0142', serviceFrom: '2019-07-14', current: { departmentId: null, designationId: null, employmentTypeId: null } });
     const move = { entities: legalEntities, onDefaults, onPreview: vi.fn().mockResolvedValue(IMPACT), onSubmit: ok() };
     render(<ChangeDrawer options={OPTIONS} employeeId="p-arjun" initial={moveDraft({})} onPreview={vi.fn()} onSubmit={ok()} onClose={vi.fn()} move={move} />);
     expect(await screen.findByText('Transfer options')).toBeTruthy();

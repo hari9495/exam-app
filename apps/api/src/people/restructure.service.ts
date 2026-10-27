@@ -46,7 +46,7 @@ export interface Plan {
   masterMap: Record<string, string>;
   /** within: the new place (each one optional). One person moving between entities (PPL-04): their new location, and
    *  a new department or designation when chosen (the maps then stay empty). */
-  target: { departmentId?: string; locationId?: string; managerEmployeeId?: string | null; costCentreId?: string; designationId?: string };
+  target: { departmentId?: string; locationId?: string; managerEmployeeId?: string | null; costCentreId?: string; designationId?: string; employmentTypeId?: string };
   /** PPL-04 Change action: the one person who moves (a demerge of one), instead of everyone at the locations. */
   employeeIds?: string[];
   defaults: MoveOptions;
@@ -264,8 +264,8 @@ export class RestructureService {
       const names = await tx.location.findMany({ where: { organizationId: org, id: { in: noPlace } }, select: { name: true } });
       throw new BadRequestException(`Choose the location in ${into.name} for ${names.map((l) => l.name).join(', ')}.`);
     }
-    // A department or designation chosen for one person replaces theirs (the hire path checks it is open to the new entity).
-    const used = new Set(moving.flatMap((w) => [...(p.target.departmentId ? [] : [w.departmentId]), ...(p.target.designationId ? [] : [w.designationId]), w.employmentTypeId, ...(w.gradeId ? [w.gradeId] : [])]));
+    // A department, designation or employment type chosen for one person replaces theirs (the hire path checks it is open to the new entity).
+    const used = new Set(moving.flatMap((w) => [...(p.target.departmentId ? [] : [w.departmentId]), ...(p.target.designationId ? [] : [w.designationId]), ...(p.target.employmentTypeId ? [] : [w.employmentTypeId]), ...(w.gradeId ? [w.gradeId] : [])]));
     const ids = [...new Set([...used, ...Object.values(p.masterMap)])];
     const where = { organizationId: org, id: { in: ids } };
     const select = { id: true, name: true, ownerLegalEntityId: true, appliesToEntities: true, archivedAt: true } as const;
@@ -464,7 +464,7 @@ export class RestructureService {
         locationId,
         departmentId: t.departmentId ?? h.plan.masterMap[a.departmentId] ?? a.departmentId,
         designationId: t.designationId ?? h.plan.masterMap[a.designationId] ?? a.designationId,
-        employmentTypeId: h.plan.masterMap[a.employmentTypeId] ?? a.employmentTypeId,
+        employmentTypeId: t.employmentTypeId ?? h.plan.masterMap[a.employmentTypeId] ?? a.employmentTypeId,
         managerEmployeeId: a.managerEmployeeId,
         ...(a.gradeId ? { gradeId: h.plan.masterMap[a.gradeId] ?? a.gradeId } : {}),
         ...(a.skillClass ? { skillClass: a.skillClass } : {}),

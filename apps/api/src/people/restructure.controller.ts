@@ -39,6 +39,7 @@ export class TargetDto {
   @IsOptional() @IsUUID() costCentreId?: string;
   /** One person moving between entities (PPL-04): a new designation in the new entity. */
   @IsOptional() @IsUUID() designationId?: string;
+  @IsOptional() @IsUUID() employmentTypeId?: string;
 }
 
 export class RestructureDto {
