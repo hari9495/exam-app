@@ -868,8 +868,10 @@ export function DataTable<R>(props: DataTableProps<R>) {
     tableRef.current.querySelectorAll<HTMLElement>('tbody td[data-col]').forEach((td) => {
       const pad = parseFloat(getComputedStyle(td).paddingLeft) * 2;
       // The text's own width, not the cell's: the cell's would hold the column at whatever width it has now.
-      if (td.dataset.type === 'date') text.selectNodeContents(td);
-      let w = td.dataset.type === 'date' ? text.getBoundingClientRect().width + pad : 0;
+      // Test DOMs (jsdom) cannot measure text; there the column simply keeps its set width.
+      const date = td.dataset.type === 'date' && typeof text.getBoundingClientRect === 'function';
+      if (date) text.selectNodeContents(td);
+      let w = date ? text.getBoundingClientRect().width + pad : 0;
       td.querySelectorAll<HTMLElement>('.yx-badge').forEach((b) => (w = Math.max(w, b.getBoundingClientRect().width + pad)));
       if (w) out[td.dataset.col!] = Math.max(out[td.dataset.col!] ?? 0, Math.ceil(w));
     });
