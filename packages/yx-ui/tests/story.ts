@@ -28,16 +28,34 @@ export async function openStory(page: Page, id: string, theme: 'light' | 'dark')
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   }, id);
   // The rewrite can still land after that (a dark-theme focus ring once missed): wait until every forced state on the
-  // page (an element with class pseudo-focus-visible, ...) has a rewritten rule to draw it.
+  // page (an element with class pseudo-focus-visible, ...) has a rewritten rule that matches that element. Any rule
+  // with the class is not enough: other components' sheets were rewritten first while the story's own sheet (the
+  // stepper's, loaded with the story) was not yet, so the focus story was shot without its ring now and then.
   await page.waitForFunction(() => {
-    const wanted = new Set([...document.querySelectorAll('[class*="pseudo-"]')].flatMap((e) => [...e.classList].filter((c) => c.startsWith('pseudo-'))));
-    const rules = [...document.styleSheets].flatMap((sh) => {
-      try {
-        return [...sh.cssRules].map((r) => r.cssText);
-      } catch {
-        return [];
+    const selectors: string[] = [];
+    const walk = (rules: CSSRuleList) => {
+      for (const r of rules) {
+        if (r instanceof CSSStyleRule && r.selectorText.includes('.pseudo-')) selectors.push(r.selectorText);
+        if ('cssRules' in r && (r as CSSGroupingRule).cssRules) walk((r as CSSGroupingRule).cssRules);
       }
-    });
-    return [...wanted].every((c) => rules.some((t) => t.includes(`.${c}`)));
+    };
+    for (const sh of document.styleSheets) {
+      try {
+        walk(sh.cssRules);
+      } catch {
+        // a cross-origin sheet cannot be read; it has no story styles
+      }
+    }
+    // The rule draws the element itself or something inside it (".yx-btn.pseudo-hover .icon").
+    const matches = (e: Element, sel: string) => {
+      try {
+        return e.matches(sel) || e.querySelector(sel) !== null;
+      } catch {
+        return false;
+      }
+    };
+    return [...document.querySelectorAll('[class*="pseudo-"]')].every((e) =>
+      [...e.classList].filter((c) => c.startsWith('pseudo-')).every((c) => selectors.some((sel) => sel.includes(`.${c}`) && matches(e, sel))),
+    );
   });
 }
