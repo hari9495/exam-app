@@ -129,7 +129,8 @@
 .yx-growth-code { font-family: var(--yx-font-mono); font-size: var(--yx-text-xl); padding: var(--yx-space-3) var(--yx-space-4); border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-control); text-align: center; letter-spacing: 0.08em; }
 
 /* Notes side by side (1:1 shared / private) */
-.yx-growth-note { padding: var(--yx-space-3); border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); display: flex; flex-direction: column; gap: var(--yx-space-2); }
+/* margin 0: a <blockquote> brought the browser's 14px / 40px margins (30px gaps, indented box) */
+.yx-growth-note { margin: 0; padding: var(--yx-space-3); border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-growth-note[data-private] { background: var(--yx-color-bg-subtle); border-style: dashed; }
 
 /* Builder canvas: question library + questions + preview */
