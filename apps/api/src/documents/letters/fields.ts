@@ -66,7 +66,7 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   monthly_gross: { label: 'Gross monthly salary (current)', cls: 'pay', sample: '₹1,12,400' },
 };
 
-const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+export const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 /** Edit distance, for "did you mean" (YX-DOC-15). */
 export function suggest(name: string): string | null {
