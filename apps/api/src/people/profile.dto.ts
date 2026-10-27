@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
@@ -102,8 +102,17 @@ export class ProfileRequestDto {
   @Type(() => ProposedValueDto)
   value!: ProposedValueDto;
 
-  @IsString() @MinLength(1) @MaxLength(500)
-  reason!: string;
+  // PPL-32: the proof says why; a reason is optional.
+  @IsOptional() @IsString() @MaxLength(500)
+  reason?: string;
+
+  /** The proof, uploaded to the person's own documents first (PPL-32). */
+  @IsOptional() @IsUUID()
+  proofDocumentId?: string;
+
+  /** A legal name: the day it took effect (the gazette or marriage date). */
+  @IsOptional() @IsDateString({ strict: true }) @Matches(DATE, { message: 'effectiveOn is a date (YYYY-MM-DD)' })
+  effectiveOn?: string;
 }
 
 export class ProfileDecisionDto {

@@ -114,6 +114,12 @@ export class PeopleController {
   }
 
   /** Who viewed my Confidential and Special data (P02 §7, P08). */
+  // PPL-32: my Change identity or bank details page (my own record only).
+  @Get('me/change-form')
+  async myChangeForm(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.profiles.myChangeForm(ctx, await this.viewer(req));
+  }
+
   @Get('me/access-log')
   async accessLog(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.profiles.accessLog(ctx, await this.viewer(req));

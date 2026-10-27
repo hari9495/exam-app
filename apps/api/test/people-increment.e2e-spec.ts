@@ -311,7 +311,9 @@ describe('People annual increment (PPL-06)', () => {
   });
 
   it('bank and identity changes are approved by HR only; payroll reads the approved details (founder 21 Oct 2026)', async () => {
-    const bank = { kind: 'bank_salary', value: { holderName: 'Kiran', accountNumber: '123456789012', ifsc: 'HDFC0001234' }, reason: 'New salary account' };
+    const personId = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.kiran } }))).personId!;
+    const proof = (await inA((tx) => tx.document.create({ data: { organizationId: org.A.id, personId, typeKey: 'bank_proof', status: 'uploaded' } }))).id;
+    const bank = { kind: 'bank_salary', value: { holderName: 'Kiran', accountNumber: '123456789012', ifsc: 'HDFC0001234' }, proofDocumentId: proof };
     await markSteppedUp(tenantPrisma, token.kiran);
     const req = (await request(server()).post(`/api/v1/people/employees/${emp.kiran}/profile-requests`).set('Authorization', `Bearer ${token.kiran}`).send(bank).expect(201)).body.id as string;
     for (const who of ['payrollTpl', 'payrollDemo'] as Who[]) {

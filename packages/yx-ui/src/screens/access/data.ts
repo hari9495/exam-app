@@ -138,6 +138,9 @@ export const REQUESTS: ProfileRequest[] = [
     decidedAt: null,
     decisionNote: null,
     overrideReason: null,
+    proofDocumentId: null,
+    effectiveOn: null,
+    usableFrom: null,
   },
   {
     id: 'pr-2',
@@ -156,6 +159,9 @@ export const REQUESTS: ProfileRequest[] = [
     decidedAt: '2026-09-21T09:00:00Z',
     decisionNote: null,
     overrideReason: null,
+    proofDocumentId: null,
+    effectiveOn: null,
+    usableFrom: null,
   },
 ];
 

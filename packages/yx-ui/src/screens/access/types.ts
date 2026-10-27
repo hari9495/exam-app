@@ -139,7 +139,22 @@ export interface ProfileView {
 export interface ProfileRequestInput {
   kind: RequestKind;
   value: Partial<Record<'pan' | 'aadhaar' | 'uan' | 'esic' | 'legalName' | 'holderName' | 'accountNumber' | 'ifsc' | 'passport' | 'passportExpiresOn', string>>;
-  reason: string;
+  reason?: string;
+  /** PPL-32: the proof on the person's record, and the day a new legal name took effect. */
+  proofDocumentId?: string;
+  effectiveOn?: string;
+}
+
+/** PPL-32: my Change identity or bank details page (GET /people/me/change-form). */
+export interface ChangeForm {
+  employeeId: string;
+  personId: string;
+  proofRequired: boolean;
+  /** The document type that proves each kind (none for UAN and ESIC). */
+  proofTypes: Partial<Record<RequestKind, string>>;
+  coolingHours: number;
+  /** What is on file now, masked; null when nothing is. */
+  current: Record<RequestKind, Record<string, string | null> | null>;
 }
 
 export interface ProfileRequest {
@@ -150,7 +165,7 @@ export interface ProfileRequest {
   label: string;
   proposed: Record<string, string | null>;
   current: Record<string, string | null> | null;
-  reason: string;
+  reason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requestedBy: string | null;
   requestedAt: string;
@@ -159,6 +174,10 @@ export interface ProfileRequest {
   decidedAt: string | null;
   decisionNote: string | null;
   overrideReason: string | null;
+  proofDocumentId: string | null;
+  effectiveOn: string | null;
+  /** An approved bank account: when pay starts going to it (after the cooling period). */
+  usableFrom: string | null;
 }
 
 export interface AccessLog {

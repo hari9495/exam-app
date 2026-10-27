@@ -214,7 +214,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ...(r.mine || self ? { onWithdraw: () => setWithdrawing(r) } : {}),
     })),
     ...(prof?.can.editPersonal && prof.personal ? { onEditPersonal: () => setEditing(true) } : {}),
-    ...(prof?.can.requestChange ? { onRequestChange: () => setChanging(true) } : {}),
+    // PPL-32: one's own change is the Me › Change requests page (with proof); HR raising one for someone keeps the dialog.
+    ...(prof?.can.requestChange ? { onRequestChange: () => (prof.self ? router.push('/yx/me/change-requests') : setChanging(true)) } : {}),
     job: v ? jobRows(v) : null,
     scheduled: h ? scheduledNotes(h) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,

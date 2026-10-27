@@ -26,6 +26,8 @@ type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport';
 const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic', 'passport'];
 const BANK: Record<string, 'salary' | 'reimbursement'> = { bank_salary: 'salary', bank_reimbursement: 'reimbursement' };
 const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport' };
+/** PPL-32: the document type that proves each kind of change (UAN and ESIC have none). */
+export const PROOF_TYPE: Partial<Record<Kind, string>> = { bank_salary: 'bank_proof', bank_reimbursement: 'bank_proof', pan: 'pan_card', aadhaar: 'aadhaar', legal_name: 'name_change_proof', passport: 'passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
 /** Views of someone's Confidential / Special data, shown to them in "Who accessed my data" (P02 §7, P08). */
 export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed'] as const;
@@ -344,6 +346,8 @@ export class ProfileService {
       const a = await this.history.access(tx, c, v, employeeId);
       if (!a.self && !(await this.can(tx, c, v, 'employee.identity.manage', employeeId))) throw new ForbiddenException('Raising an identity or bank change for someone else needs employee.identity.manage.');
       if (await this.sameAsOnFile(tx, c, employeeId, dto.kind, p)) throw new BadRequestException('That is already the value on file.');
+      await this.checkProof(tx, c, employeeId, a.self, dto);
+      if (dto.effectiveOn && (dto.kind !== 'legal_name' || dto.effectiveOn > todayIst())) throw new BadRequestException('The effective date is for a legal name, on or before today.');
       let row: RequestRow;
       try {
         row = await tx.employeeProfileRequest.create({
@@ -354,7 +358,9 @@ export class ProfileService {
             proposedEnc: this.seal(c, employeeId, JSON.stringify(p)),
             proposedDisplay: this.display(dto.kind, p),
             currentDisplay: (await this.currentDisplay(tx, c, employeeId, dto.kind)) ?? Prisma.DbNull,
-            reason: dto.reason.trim(),
+            reason: dto.reason?.trim() || null,
+            proofDocumentId: dto.proofDocumentId ?? null,
+            effectiveOn: dto.effectiveOn ? new Date(`${dto.effectiveOn}T00:00:00Z`) : null,
             requestedBy: c.userId!,
             // YX-SEC-13: the "previous contact" is the one on file now, before anything else changes.
             notifyContacts: await this.contactsOnFile(tx, c, employeeId),
@@ -364,8 +370,47 @@ export class ProfileService {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(`A ${LABEL[dto.kind]} change is already waiting for approval.`);
         throw e;
       }
-      await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind: dto.kind, by: a.self ? 'self' : 'hr' });
-      return this.requestView(row, new Map(), new Map(), v);
+      await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind: dto.kind, by: a.self ? 'self' : 'hr', proof: Boolean(dto.proofDocumentId) });
+      return this.requestView(row, new Map(), new Map(), v, new Map());
+    });
+  }
+
+  /**
+   * PPL-32: the proof must be the person's own document of the kind's type; the company decides whether the person must
+   * add one (employee.profile_change.proof). HR raising a change for someone has seen the proof and may attach it.
+   */
+  private async checkProof(tx: Tx, c: CompanyContext, employeeId: string, self: boolean, dto: ProfileRequestDto) {
+    const type = PROOF_TYPE[dto.kind];
+    if (!dto.proofDocumentId) {
+      if (!self || !type) return;
+      const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'desc' } });
+      if ((await settingFor(tx, c, 'employee.profile_change.proof', { legalEntityId: employment?.legalEntityId ?? '' })) === 'required') throw new BadRequestException(`Add the proof for the ${LABEL[dto.kind].toLowerCase()} change.`);
+      return;
+    }
+    const e = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employeeId }, select: { personId: true } });
+    const doc = type && e.personId ? await tx.document.findFirst({ where: { organizationId: c.organizationId, id: dto.proofDocumentId, personId: e.personId, typeKey: type } }) : null;
+    if (!doc) throw new BadRequestException('That proof is not a document of this kind on the person\'s record.');
+  }
+
+  /** PPL-32: my own page: what is on file now (masked), whether proof is required, how long a new bank account waits. */
+  myChangeForm(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.history.ownEmployeeId(tx, c, v);
+      if (!own || v.actingForOther) throw new NotFoundException('You have no employee record in this company.');
+      const e = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: own }, select: { personId: true } });
+      const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own }, orderBy: { joinedOn: 'desc' } });
+      const scope = { legalEntityId: employment?.legalEntityId ?? '' };
+      const kinds = Object.keys(LABEL) as Kind[];
+      const current: Record<string, Awaited<ReturnType<ProfileService["currentDisplay"]>>> = {};
+      for (const k of kinds) current[k] = await this.currentDisplay(tx, c, own, k);
+      return {
+        employeeId: own,
+        personId: e.personId,
+        proofRequired: (await settingFor(tx, c, 'employee.profile_change.proof', scope)) === 'required',
+        proofTypes: PROOF_TYPE,
+        coolingHours: Number(await settingFor(tx, c, 'employee.bank_change.cooling_hours', scope)),
+        current,
+      };
     });
   }
 
@@ -420,6 +465,8 @@ export class ProfileService {
       const rows = await tx.employeeProfileRequest.findMany({ where: { organizationId: c.organizationId, id: { in: ids.map((r) => r.id) } }, orderBy: { createdAt: 'desc' } });
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } } });
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: rows.flatMap((r) => [r.requestedBy, r.decidedBy].filter((x): x is string => Boolean(x))) } }, select: { id: true, name: true, email: true } });
+      // A new bank account's first pay day after the cooling period (PPL-32 timeline).
+      const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } });
       return {
         rows: rows.map((r) =>
           this.requestView(
@@ -427,13 +474,14 @@ export class ProfileService {
             new Map(people.map((p) => [p.id, displayName(p)])),
             new Map(users.map((u) => [u.id, u.name || u.email])),
             v,
+            new Map(banks.map((b) => [b.requestId!, b.usableFrom])),
           ),
         ),
       };
     });
   }
 
-  private requestView(r: RequestRow, names: Map<string, string>, users: Map<string, string>, v: Viewer) {
+  private requestView(r: RequestRow, names: Map<string, string>, users: Map<string, string>, v: Viewer, usable: Map<string, Date>) {
     return {
       id: r.id,
       employeeId: r.employeeId,
@@ -451,6 +499,9 @@ export class ProfileService {
       decidedAt: r.decidedAt,
       decisionNote: r.decisionNote,
       overrideReason: r.overrideReason,
+      proofDocumentId: r.proofDocumentId,
+      effectiveOn: r.effectiveOn ? isoDate(r.effectiveOn) : null,
+      usableFrom: usable.get(r.id) ?? null,
     };
   }
 

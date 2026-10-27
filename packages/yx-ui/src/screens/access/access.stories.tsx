@@ -31,6 +31,6 @@ const roles = (meId = 'u-admin') => (
 export const RolesAccess: S = { name: 'Roles & access · people, waiting, roles', render: () => roles() };
 export const RolesAccessOther: S = { name: 'Roles & access · another admin decides', render: () => roles('u-other') };
 
-export const Requests: S = { name: 'Identity and bank changes · payroll queue', render: () => <ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={() => wait()} onReject={() => wait()} onOpenProfile={() => {}} /> };
+export const Requests: S = { name: 'Identity and bank changes · payroll queue', render: () => <ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={() => wait()} onReject={() => wait()} onOpenProfile={() => {}} onProof={() => wait()} /> };
 export const AccessLog: S = { name: 'Who accessed my data', render: () => <AccessLogScreen state="ready" log={ACCESS_LOG} /> };
 export const AccessLogOff: S = { name: 'Who accessed my data · turned off', render: () => <AccessLogScreen state="ready" log={{ enabled: false, entries: [] }} /> };

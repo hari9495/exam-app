@@ -108,7 +108,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
-    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'Privacy', 'My exit']);
+    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'Change requests', 'Privacy', 'My exit']);
     expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
@@ -154,7 +154,7 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
-    expect(n.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'Privacy', 'My exit']);
+    expect(n.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'Change requests', 'Privacy', 'My exit']);
     expect(activeLink(n, '/yx/me/letters')).toBeNull();
     expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Language', 'My security']);
     expect(accountLinks({ support: true, employee: false }).map((l) => l.label)).toEqual(['My security']);

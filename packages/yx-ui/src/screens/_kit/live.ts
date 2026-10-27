@@ -30,6 +30,7 @@ export type { IncrementInput, IncrementResult, LiveIncrement } from '../people/i
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
 export { DeathInServiceFlow, type LiveDeath } from '../people/exits';
+export { ProfileChangeRequest, type LiveProfileChange } from '../people/selfservice';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
 // PPL-22 F&F calculator with the live settlements (Payroll › Full and final).
