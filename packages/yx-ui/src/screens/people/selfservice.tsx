@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Drawer } from '../../components/drawer';
 import { MenuItem } from '../../components/menu';
 import { Select } from '../../components/select';
@@ -532,9 +532,11 @@ export interface LiveDisability {
   state: 'loading' | 'error' | 'ready';
   onRetry: () => void;
   company: string;
-  declaration: { answer: DisabilityAnswer; category?: string; percent?: number; adjustments?: string | null; consentAt: Date; certificate: { status: string; validUntil: Date | null } | null } | null;
+  declaration: { answer: DisabilityAnswer; category?: string; percent?: number; adjustments?: string | null; consentAt: Date; certificate: { status: string; validUntil: Date | null; rejectReason?: string | null } | null } | null;
   /** Stores the certificate in my documents; resolves to its id. */
   onUpload: (file: File, validUntil: string | null) => Promise<string>;
+  /** A rejected certificate uploaded again (it goes back to HR); the page shows the toast. */
+  onUploadAgain?: (file: File) => Promise<void>;
   /** The page shows the success toast. */
   onSave: (input: DisabilityInput) => Promise<void>;
   onWithdraw: () => Promise<void>;
@@ -544,8 +546,16 @@ export interface LiveDisability {
 export interface LiveDisabilityList {
   state: 'loading' | 'error' | 'ready';
   onRetry: () => void;
-  rows: { employeeId: string; name: string; category: string; percent: number; validUntil: Date | null; verified: boolean; expiringSoon: boolean }[];
+  rows: { employeeId: string; name: string; category: string; percent: number; validUntil: Date | null; verified: boolean; expiringSoon: boolean; certificate: { status: string } | null }[];
+  /** Opens the certificate (each look is recorded). */
+  onOpen: (employeeId: string) => void;
+  /** The page shows the toasts. */
+  onVerify: (employeeId: string) => Promise<void>;
+  onReject: (employeeId: string, reason: string) => Promise<void>;
 }
+
+/** What the HR list says about a certificate. */
+const certStatus = (status: string | undefined, expiringSoon: boolean) => (status === 'verified' ? (expiringSoon ? 'Expiring' : 'Verified') : status === 'rejected' ? 'Rejected' : 'To verify');
 
 const ANSWER_LABEL: Record<DisabilityAnswer, string> = { yes: 'Yes', no: 'No', skip: 'Prefer not to say' };
 
@@ -618,13 +628,25 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
       : [];
   const sv = useSaveErrors(errors);
   const { run, busy, error } = useRun();
+  // PPL-38 HR: the certificate being rejected, and why (the person sees the reason).
+  const [rejecting, setRejecting] = useState<{ id: string; n: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectTried, setRejectTried] = useState(false);
   if (persona === 'hr') {
     const rows = liveList
-      ? liveList.rows.map((r) => ({ id: r.employeeId, n: r.name, c: `${r.category} · ${r.percent}%`, v: r.validUntil ? formatDate(r.validUntil) : 'No end date', s: r.verified ? (r.expiringSoon ? 'Expiring' : 'Verified') : 'To verify' }))
+      ? liveList.rows.map((r) => ({ id: r.employeeId, n: r.name, c: `${r.category} · ${r.percent}%`, v: r.validUntil ? formatDate(r.validUntil) : 'No end date', s: certStatus(r.certificate?.status, r.expiringSoon), cert: Boolean(r.certificate) }))
       : [
-          { id: '1', n: 'Divya Raghunathan', c: 'Locomotor disability · 45%', v: '14 Mar 2031', s: 'Verified' },
-          { id: '2', n: 'Joseph Mathew', c: 'Hard of hearing · 50%', v: '2 Nov 2026', s: 'Expiring' },
+          { id: '1', n: 'Divya Raghunathan', c: 'Locomotor disability · 45%', v: '14 Mar 2031', s: 'Verified', cert: true },
+          { id: '2', n: 'Joseph Mathew', c: 'Hard of hearing · 50%', v: '2 Nov 2026', s: 'Expiring', cert: true },
+          { id: '3', n: 'Meena Iyer', c: 'Low vision · 40%', v: 'No end date', s: 'To verify', cert: true },
         ];
+    const reasonError = rejectTried && !rejectReason.trim() ? 'Say why, so the person can upload the right certificate.' : undefined;
+    const reject = () => {
+      setRejectTried(true);
+      if (!rejectReason.trim() || !rejecting) return;
+      if (!liveList) return setRejecting(null);
+      void run('reject', () => liveList.onReject(rejecting.id, rejectReason.trim())).then((ok) => ok && setRejecting(null));
+    };
     return (
       <PeopleFrame active="Declarations">
         <PageHeader title="Disability declarations" description="Special class. Visible to the HR diversity role; payroll sees only the ESI flag. Managers never see this." status={<Badge tone="danger">Special</Badge>} />
@@ -640,13 +662,58 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
               { key: 'n', header: 'Employee', type: 'person', value: (r: { n: string }) => r.n, person: (r: { n: string }) => ({ name: r.n }), width: 220 },
               { key: 'c', header: 'Category', value: (r: { c: string }) => r.c, width: 220 },
               { key: 'v', header: 'Certificate valid to', value: (r: { v: string }) => r.v, width: 180 },
-              { key: 's', header: 'Status', type: 'status', value: (r: { s: string }) => r.s, statusTone: (v) => (v === 'Verified' ? 'success' : 'warning'), width: 140 },
+              { key: 's', header: 'Status', type: 'status', value: (r: { s: string }) => r.s, statusTone: (v) => (v === 'Verified' ? 'success' : v === 'Rejected' ? 'danger' : 'warning'), width: 140 },
             ]}
             rows={rows}
             getRowId={(r) => r.id}
+            rowActions={(r) =>
+              r.cert ? (
+                <>
+                  <MenuItem icon={FileText} onSelect={() => liveList?.onOpen(r.id)}>
+                    Open certificate
+                  </MenuItem>
+                  {r.s === 'To verify' && (
+                    <MenuItem icon={ShieldCheck} onSelect={() => liveList && void run('verify', () => liveList.onVerify(r.id))}>
+                      Verify
+                    </MenuItem>
+                  )}
+                  {r.s === 'To verify' && (
+                    <MenuItem destructive onSelect={() => (setRejecting(r), setRejectReason(''), setRejectTried(false))}>
+                      Reject
+                    </MenuItem>
+                  )}
+                </>
+              ) : null
+            }
             empty={<EmptyState title="No declarations" description="People declare a disability themselves, in Me › Declarations. It is voluntary." />}
           />
         )}
+        <Dialog
+          open={rejecting !== null}
+          onOpenChange={(o) => !o && setRejecting(null)}
+          title={`Reject ${rejecting?.n ?? ''}'s certificate?`}
+          size="md"
+          footer={
+            <>
+              <Button onClick={() => setRejecting(null)}>Cancel</Button>
+              <Button variant="danger" loading={busy === 'reject'} onClick={reject}>
+                Reject certificate
+              </Button>
+            </>
+          }
+        >
+          <div className="yx-ppl__stack">
+            <Text as="p">They are told to upload it again, with your reason. It shows on their declaration.</Text>
+            <FormField id="ds-reject" label="Reason" required error={reasonError}>
+              <TextArea rows={3} value={rejectReason} onChange={setRejectReason} maxLength={500} />
+            </FormField>
+            {error && busy === null && rejecting && (
+              <InlineAlert tone="danger" title="Not rejected">
+                {error}
+              </InlineAlert>
+            )}
+          </div>
+        </Dialog>
       </PeopleFrame>
     );
   }
@@ -655,28 +722,41 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
   const d = live?.declaration;
   const isDeclared = live ? Boolean(d) : declared;
   const verified = live ? d?.certificate?.status === 'verified' : true;
+  const rejected = live ? d?.certificate?.status === 'rejected' : false;
   const save = () => {
     if (errors.length) return sv.reveal();
     void run('save', () => live!.onSave({ consent: true, answer: form.answer, ...(form.answer === 'yes' ? { category: form.category!, percent: form.percent!, certificateDocumentId: form.certificateId!, ...(form.adjustments.trim() ? { adjustments: form.adjustments.trim() } : {}) } : {}) }));
   };
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Disability declaration" status={isDeclared && (!d || d.answer === 'yes') ? <StatusBadge status={verified ? 'Verified' : 'Waiting'} /> : undefined} />
+      <PageHeader title="Disability declaration" status={isDeclared && (!d || d.answer === 'yes') ? <StatusBadge status={verified ? 'Verified' : rejected ? 'Rejected' : 'Waiting'} /> : undefined} />
       {isDeclared ? (
         <Card title="Your declaration" actions={<Button variant="danger" onClick={live ? () => setWithdrawing(true) : undefined}>Withdraw consent</Button>}>
+          <div className="yx-ppl__stack">
           <dl className="yx-ppl__rail-facts">
             {d && d.answer !== 'yes' ? (
               <div><dt>Answer</dt><dd>{ANSWER_LABEL[d.answer]}</dd></div>
             ) : (
               <>
                 <div><dt>Category</dt><dd>{d ? `${d.category} · ${d.percent}%` : 'Locomotor disability · 45%'}</dd></div>
-                <div><dt>Certificate</dt><dd>{d ? [d.certificate?.validUntil ? `Valid until ${formatDate(d.certificate.validUntil)}` : 'No end date', verified ? 'verified by HR' : 'waiting for HR to verify'].join(' · ') : 'UDID · valid until 14 Mar 2031 · verified by HR'}</dd></div>
+                <div><dt>Certificate</dt><dd>{d ? [d.certificate?.validUntil ? `Valid until ${formatDate(d.certificate.validUntil)}` : 'No end date', verified ? 'verified by HR' : rejected ? 'rejected by HR' : 'waiting for HR to verify'].join(' · ') : 'UDID · valid until 14 Mar 2031 · verified by HR'}</dd></div>
                 <div><dt>Adjustments</dt><dd>{d ? d.adjustments || 'None asked for' : 'Ground-floor workstation (done) · flexible start (approved)'}</dd></div>
               </>
             )}
             <div><dt>Consent</dt><dd>Given on {d ? formatDate(d.consentAt) : '3 Feb 2026'}</dd></div>
           </dl>
+          {rejected && (
+            <div className="yx-ppl__stack">
+              <InlineAlert tone="danger" title="HR could not accept your certificate">
+                {d?.certificate?.rejectReason ?? 'Upload it again.'}
+              </InlineAlert>
+              <FormField id="ds-again" label="Upload the certificate again" required>
+                <FileUpload multiple={false} upload={async (file) => live?.onUploadAgain?.(file)} accept={['.pdf', '.jpg', '.png']} maxSize={5 * 1024 * 1024} />
+              </FormField>
+            </div>
+          )}
           <Text size="sm" tone="secondary" as="p">Withdrawing hides this from everyone except the audit trail.</Text>
+          </div>
         </Card>
       ) : (
         <>
