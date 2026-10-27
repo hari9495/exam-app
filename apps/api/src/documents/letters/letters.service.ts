@@ -46,6 +46,14 @@ export const ESIGN_NOTICE = 'G-19 v1';
 const LETTER_JOINERS = ['invited', 'cancelled'];
 const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF', fnf_statement: 'FNF', offer_withdrawal: 'OWD' };
 const typeCode = (t: string) => TYPE_CODE[t] ?? t.slice(0, 4).toUpperCase();
+
+/** A failed render in plain words for HR (the technical reason stays in the server log). */
+export function plainRenderError(e: string): string {
+  if (/ENOENT|no such file|NoSuchKey|BlobNotFound|not found in storage/i.test(e)) return 'The letter template file is missing from storage. Upload the template again in Settings › Letter templates, then try again.';
+  if (/ECONNREFUSED|ETIMEDOUT|ECONNRESET|socket|fetch failed|converter|gotenberg|soffice/i.test(e)) return 'The service that makes PDFs did not answer. Try again in a few minutes.';
+  if (/decrypt|cipher|auth tag|unsupported state/i.test(e)) return 'A stored file could not be opened. Ask your admin to upload the template again.';
+  return 'Something went wrong while making the letter. Try again; if it fails again, ask your admin.';
+}
 type Template = Prisma.LetterTemplateGetPayload<object>;
 type Letter = Prisma.LetterIssueGetPayload<object>;
 export interface SignEvidence {
@@ -496,11 +504,11 @@ export class LettersService implements OnModuleInit {
     if (held) throw new ConflictException(`Already issued: ${held.referenceNo}. Use Issue a correction to replace it.`);
   }
 
-  /** The issuer's preview with real data (never numbered). */
-  async previewLetter(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string }) {
+  /** The issuer's preview with real data (never numbered); `draftId`: a drafted letter as it would be issued (PPL-15). */
+  async previewLetter(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string } | { draftId: string }) {
     const v = await this.viewer(user);
     const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const r = await this.prepare(tx, c, v, dto);
+      const r = 'draftId' in dto ? await this.draftPrepared(tx, c, v, dto.draftId) : await this.prepare(tx, c, v, dto);
       return { ...r, docx: await this.fileBytes(tx, c.organizationId, r.t.fileId) };
     });
     return { file: await previewMark(await this.toPdf(fillDocx(p.docx, p.data))), name: 'preview.pdf', contentType: 'application/pdf' };
@@ -624,16 +632,21 @@ export class LettersService implements OnModuleInit {
     return l.id;
   }
 
-  /** HR issues a drafted letter: filled again with today's data (the draft's own words kept), then as any letter. */
+  /** A draft filled again with today's data, its own words kept (the withdrawal reason): for the review and the issue. */
+  private async draftPrepared(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const d = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id, status: 'draft' } });
+    if (!d) throw new NotFoundException('There is no draft letter here.');
+    const t = await this.templateRow(tx, c.organizationId, d.templateId);
+    const kept = this.open(d.dataEnc);
+    return { d, ...(await this.prepare(tx, c, v, { letterType: d.letterType, personId: d.personId, template: t, withdrawalReason: String(kept.withdrawal_reason ?? '') || null })) };
+  }
+
+  /** HR issues a drafted letter after reviewing it: then as any letter. */
   async issueDraft(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
     let notices: Notice[] = [];
     const org = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const d = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id, status: 'draft' } });
-      if (!d) throw new NotFoundException('There is no draft letter to issue.');
-      const t = await this.templateRow(tx, c.organizationId, d.templateId);
-      const kept = this.open(d.dataEnc);
-      const { data, signer } = await this.prepare(tx, c, v, { letterType: d.letterType, personId: d.personId, template: t, withdrawalReason: String(kept.withdrawal_reason ?? '') || null });
+      const { d, t, data, signer } = await this.draftPrepared(tx, c, v, id);
       await this.noOtherLetter(tx, c.organizationId, d.personId, t, d.employmentId);
       const l = await tx.letterIssue.update({ where: { id }, data: { dataEnc: this.seal(data), signatoryId: signer?.row.id ?? null, status: t.requiresApproval ? 'pending_approval' : 'rendering' } });
       if (t.requiresApproval) notices = await this.requestApproval(tx, c, l, t, signer);
@@ -641,6 +654,37 @@ export class LettersService implements OnModuleInit {
       return c.organizationId;
     });
     return this.afterRequest(ctx, org, id, notices);
+  }
+
+  /** PPL-15: HR discards a draft it will not send, with the reason; the row is kept for the audit, never deleted. */
+  async discardDraft(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
+    const v = await this.viewer(user);
+    this.requireKey(v, 'letter.issue');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const d = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id, status: 'draft' } });
+      if (!d) throw new NotFoundException('There is no draft letter here.');
+      await this.mayIssue(tx, c, v, d.personId, await this.templateRow(tx, c.organizationId, d.templateId));
+      const n = await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, id, status: 'draft' }, data: { status: 'discarded', discardReason: reason.trim().slice(0, 500) } });
+      if (!n.count) throw new ConflictException('This draft changed meanwhile. Reload the letters.');
+      await audit(tx, c, 'letter.discarded', 'letter_issue', id, { letterType: d.letterType, personId: d.personId, reason: reason.trim().slice(0, 500) });
+      return this.letterView(await tx.letterIssue.findFirstOrThrow({ where: { organizationId: c.organizationId, id } }));
+    });
+  }
+
+  /** A letter that could not be made is made again: the same reference (numbers stay gap-free). */
+  async retryRender(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    this.requireKey(v, 'letter.issue');
+    const org = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!l) throw new NotFoundException('No such letter.');
+      await this.mayIssue(tx, c, v, l.personId, await this.templateRow(tx, c.organizationId, l.templateId));
+      if (l.status !== 'rendering') throw new ConflictException('This letter is not waiting to be made.');
+      await audit(tx, c, 'letter.render_retried', 'letter_issue', id, { referenceNo: l.referenceNo });
+      return c.organizationId;
+    });
+    await this.render(org, id);
+    return this.letterView(await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, (tx) => tx.letterIssue.findFirstOrThrow({ where: { organizationId: org, id } })));
   }
 
   /** Number → fill → PDF → stamp → (DSC) → issued. Safe to run twice; failures stay "rendering" for the retry. */
@@ -774,7 +818,8 @@ export class LettersService implements OnModuleInit {
       referenceNo: l.referenceNo,
       verifyCode: l.status === 'issued' || l.status === 'superseded' ? l.verifyCode : null,
       status: l.status,
-      renderError: l.status === 'rendering' ? l.renderError : null,
+      // A letter that could not be made says why in plain words (PPL-28); never the system's own message.
+      renderError: l.status === 'rendering' && l.renderError ? plainRenderError(l.renderError) : null,
       issuedAt: l.issuedAt?.toISOString() ?? null,
       personSigns: l.personSigns,
       acceptedAt: l.acceptedAt?.toISOString() ?? null,

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { BLOCK_KINDS, FONT_SIZES, HIGHLIGHTS, SAFE_LINK, TEXT_COLOURS, type Block } from './docx';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -250,4 +250,12 @@ export class BulkLetterDto extends BulkLetterCheckDto {
   @IsString()
   @MaxLength(40)
   confirm!: string;
+}
+
+/** PPL-15: why HR discards a drafted letter (kept for the audit). */
+export class DiscardLetterDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
 }

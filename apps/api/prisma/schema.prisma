@@ -6284,6 +6284,8 @@ model LetterIssue {
   acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(3)
   acceptanceFileId String?   @map("acceptance_file_id") @db.Uuid
   renderError      String?   @map("render_error") @db.VarChar(300)
+  /// PPL-15: why HR discarded a drafted letter (the row is kept for the audit).
+  discardReason    String?   @map("discard_reason") @db.VarChar(500)
   requestedBy      String?   @map("requested_by") @db.Uuid
   issuedBy         String?   @map("issued_by") @db.Uuid
   issuedAt         DateTime? @map("issued_at") @db.Timestamptz(3)

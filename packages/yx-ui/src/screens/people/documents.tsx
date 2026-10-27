@@ -409,11 +409,19 @@ export interface LiveLetters {
   };
   /** letter.template.manage: Settings › Letter templates, from the page header. */
   templatesHref?: string;
-  /** PPL-15: issue a letter an event drafted (an offer withdrawn), once HR reviewed it; the page shows the toast. */
-  onIssueDraft?: (l: LiveLetter) => Promise<void>;
+  /** PPL-15: a letter an event drafted (an offer withdrawn): reviewed in the issue preview, then issued or discarded. The page shows the toasts. */
+  draft?: {
+    /** The draft as it would be issued, with its own words (the withdrawal reason), as a preview PDF (an object URL). */
+    onPreview: (l: LiveLetter) => Promise<string>;
+    onIssue: (l: LiveLetter) => Promise<void>;
+    /** Kept for the audit with the reason, never deleted. */
+    onDiscard: (l: LiveLetter, reason: string) => Promise<void>;
+  };
+  /** A letter that could not be made, made again (same reference); the page shows the toast. */
+  onRetryRender?: (l: LiveLetter) => Promise<void>;
 }
 
-const LETTER_STATE: Record<LiveLetter['status'], string> = { draft: 'Draft', pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+const LETTER_STATE: Record<LiveLetter['status'], string> = { draft: 'Draft', discarded: 'Discarded', pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
 const LANGUAGE = new Intl.DisplayNames(['en'], { type: 'language' });
 
 type LetterPreview = { url: string } | { missing: Record<string, string> } | { failed: string } | null;
@@ -426,27 +434,33 @@ function missingText(first: string, missing: Record<string, string>) {
 }
 
 // PPL-28 · issue sheet, live: the designed sheet (IssueLetterSheet) with the API's templates, preview and approval rule.
-function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue: NonNullable<LiveLetters['issue']>; open: boolean; onOpenChange: (open: boolean) => void; correcting?: LiveLetter | null }) {
-  // A correction keeps the person and the letter type of the letter it replaces.
-  const [who, setWho] = useState<string | null>(correcting?.personId ?? issue.person ?? null);
-  const [type, setType] = useState<string | null>(correcting?.letterType ?? null);
+// `reviewing` (PPL-15): a drafted letter, the person, type and wording fixed, reviewed in the same preview, then issued.
+function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: { issue?: LiveLetters['issue']; open: boolean; onOpenChange: (open: boolean) => void; correcting?: LiveLetter | null; reviewing?: { letter: LiveLetter; onPreview: (l: LiveLetter) => Promise<string>; onIssue: (l: LiveLetter) => Promise<void> } }) {
+  const draft = reviewing?.letter;
+  // A correction keeps the person and the letter type of the letter it replaces; a draft keeps all of it.
+  const [who, setWho] = useState<string | null>(draft?.personId ?? correcting?.personId ?? issue?.person ?? null);
+  const [type, setType] = useState<string | null>(draft?.letterType ?? correcting?.letterType ?? null);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [preview, setPreview] = useState<LetterPreview>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const person = issue.people.find((p) => p.value === who);
-  const types = [...new Set(issue.templates.map((t) => t.letterType))].map((value) => {
-    const of = issue.templates.filter((t) => t.letterType === value);
-    return { value, label: of.some((t) => t.requiresApproval) ? `${of[0].name} (approval required)` : of[0].name };
-  });
+  const people = draft ? [{ value: draft.personId, label: draft.person ?? 'The person', legalEntityId: null }] : (issue?.people ?? []);
+  const templates = issue && !draft ? issue.templates : [];
+  const person = people.find((p) => p.value === who);
+  const types = draft
+    ? [{ value: draft.letterType, label: draft.title.split(': ')[0] }]
+    : [...new Set(templates.map((t) => t.letterType))].map((value) => {
+        const of = templates.filter((t) => t.letterType === value);
+        return { value, label: of.some((t) => t.requiresApproval) ? `${of[0].name} (approval required)` : of[0].name };
+      });
   // The person's own legal entity first, then company-wide: the template the API would pick by itself.
-  const versions = issue.templates.filter((t) => t.letterType === type && (!t.legalEntityId || t.legalEntityId === person?.legalEntityId)).sort((a, b) => Number(!a.legalEntityId) - Number(!b.legalEntityId));
+  const versions = templates.filter((t) => t.letterType === type && (!t.legalEntityId || t.legalEntityId === person?.legalEntityId)).sort((a, b) => Number(!a.legalEntityId) - Number(!b.legalEntityId));
   const chosen = versions.find((t) => t.id === templateId) ?? versions[0] ?? null;
   useEffect(() => {
     setPreview(null);
-    if (!who || !chosen) return;
+    if (!who || (!chosen && !draft)) return;
     let gone = false;
-    issue.onPreview(who, chosen).then(
+    (draft ? reviewing!.onPreview(draft) : issue!.onPreview(who, chosen!)).then(
       (url) => !gone && setPreview({ url }),
       (e: { code?: string; body?: { errors?: Record<string, string> } }) => {
         if (gone) return;
@@ -460,11 +474,11 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new preview only when the person or the template changes
   }, [who, chosen?.id]);
   const issueIt = async () => {
-    if (!who || !chosen) return;
+    if (!who || (!chosen && !draft)) return;
     setBusy(true);
     setFailed(null);
     try {
-      await issue.onIssue(who, chosen, correcting ?? undefined);
+      await (draft ? reviewing!.onIssue(draft) : issue!.onIssue(who, chosen!, correcting ?? undefined));
       onOpenChange(false);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -477,12 +491,12 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
-      title={correcting ? 'Issue a correction' : 'Issue a letter'}
-      subtitle={correcting ? `Replaces ${correcting.referenceNo}. The old letter then shows as superseded.` : 'Type, template, preview with real data, approval, issue'}
+      title={draft ? 'Review and issue' : correcting ? 'Issue a correction' : 'Issue a letter'}
+      subtitle={draft ? 'Drafted for your review when the offer was withdrawn, with the reason given. Check it, then issue it.' : correcting ? `Replaces ${correcting.referenceNo}. The old letter then shows as superseded.` : 'Type, template, preview with real data, approval, issue'}
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!who || !chosen || !preview || 'missing' in preview} loading={busy} onClick={() => void issueIt()}>
+          <Button variant="primary" disabled={!who || (!chosen && !draft) || !preview || 'missing' in preview} loading={busy} onClick={() => void issueIt()}>
             {chosen?.requiresApproval ? 'Send for approval' : 'Issue letter'}
           </Button>
         </>
@@ -492,14 +506,14 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue
         {failed && <InlineAlert tone="danger" title={failed} />}
         <div className="yx-ppl__form">
           <FormField label="Employee" required>
-            <Select aria-label="Employee" options={issue.people} value={who} onChange={setWho} searchable disabled={Boolean(correcting)} />
+            <Select aria-label="Employee" options={people} value={who} onChange={setWho} searchable disabled={Boolean(correcting || draft)} />
           </FormField>
           <FormField label="Letter type" required>
             <Select
               aria-label="Letter type"
               options={types}
               value={type}
-              disabled={Boolean(correcting)}
+              disabled={Boolean(correcting || draft)}
               onChange={(v) => {
                 setType(v);
                 setTemplateId(null);
@@ -507,7 +521,11 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue
             />
           </FormField>
           <FormField label="Template" required>
-            <Select aria-label="Template" options={versions.map((t) => ({ value: t.id, label: `${t.name} · v${t.version} · ${LANGUAGE.of(t.language) ?? t.language}` }))} value={chosen?.id ?? null} onChange={setTemplateId} disabled={!versions.length} />
+            {draft ? (
+              <Select aria-label="Template" options={[{ value: 'drafted', label: 'As drafted' }]} value="drafted" onChange={() => undefined} disabled />
+            ) : (
+              <Select aria-label="Template" options={versions.map((t) => ({ value: t.id, label: `${t.name} · v${t.version} · ${LANGUAGE.of(t.language) ?? t.language}` }))} value={chosen?.id ?? null} onChange={setTemplateId} disabled={!versions.length} />
+            )}
           </FormField>
         </div>
         {preview && 'missing' in preview ? (
@@ -520,15 +538,15 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting }: { issue
           </InlineAlert>
         ) : (
           who &&
-          chosen && (
+          (chosen || draft) && (
             <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Letter preview">
-              {preview ? <PdfPages url={preview.url} label={`${chosen.name} for ${person?.label ?? 'the person'}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
+              {preview ? <PdfPages url={preview.url} label={`${chosen?.name ?? types[0]?.label ?? 'Letter'} for ${person?.label ?? 'the person'}, preview`} /> : <Skeleton height="var(--yx-space-16)" />}
             </div>
           )
         )}
         {chosen?.requiresApproval && !(preview && 'missing' in preview) && (
           <Card title="Approval before issue">
-            <ApprovalTimeline steps={[{ id: 'prepared', label: 'Prepared', status: 'done', approver: 'You', at: new Date() }, { id: 'signatory', label: 'Signatory', status: 'current', approver: issue.approverFor(person?.legalEntityId ?? null) ?? 'A company admin' }]} />
+            <ApprovalTimeline steps={[{ id: 'prepared', label: 'Prepared', status: 'done', approver: 'You', at: new Date() }, { id: 'signatory', label: 'Signatory', status: 'current', approver: issue?.approverFor(person?.legalEntityId ?? null) ?? 'A company admin' }]} />
           </Card>
         )}
         <Text size="sm" tone="secondary" as="p">Issued letters are final: a reference number, a QR verification code and a sealed PDF. A correction is a new letter that supersedes this one.</Text>
@@ -542,6 +560,28 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
   // A fresh sheet each time it opens: nothing left over from the last letter.
   const [sheet, setSheet] = useState(0);
   const [correcting, setCorrecting] = useState<LiveLetter | null>(null);
+  // PPL-15: the draft under review, and the one being discarded (with why).
+  const [reviewing, setReviewing] = useState<LiveLetter | null>(null);
+  const [discarding, setDiscarding] = useState<LiveLetter | null>(null);
+  const [discardReason, setDiscardReason] = useState('');
+  const [discardTried, setDiscardTried] = useState(false);
+  const [discardBusy, setDiscardBusy] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState<string | null>(null);
+  const failedRows = live.rows.filter((r) => r.status === 'rendering' && r.renderError);
+  const discard = async () => {
+    setDiscardTried(true);
+    if (!discarding || discardReason.trim().length < 3 || !live.draft) return;
+    setDiscardBusy(true);
+    setDiscardFailed(null);
+    try {
+      await live.draft.onDiscard(discarding, discardReason.trim());
+      setDiscarding(null);
+    } catch (e) {
+      setDiscardFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
+    } finally {
+      setDiscardBusy(false);
+    }
+  };
   const { toast } = useToast();
   const startIssue = (correct: LiveLetter | null = null) => {
     setCorrecting(correct);
@@ -558,7 +598,7 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
     { key: 'to', header: 'To', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200 },
     { key: 'issued', header: 'Issued', type: 'date', value: (r) => (r.issuedAt ? new Date(r.issuedAt) : null), width: 130 },
     { key: 'esign', header: 'Signature', value: (r) => (!r.personSigns ? 'Not needed' : r.acceptedAt ? `Accepted ${formatDate(new Date(r.acceptedAt))}` : r.signature?.status === 'declined' ? 'Declined' : 'Not yet'), width: 180 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => LETTER_STATE[r.status], statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' ? 'neutral' : v === 'Not approved' ? 'danger' : 'warning'), width: 170 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'rendering' && r.renderError ? "Couldn't be made" : LETTER_STATE[r.status]), statusTone: (v) => (v === 'Issued' ? 'success' : v === 'Superseded' || v === 'Withdrawn' || v === 'Discarded' ? 'neutral' : v === 'Not approved' || v === "Couldn't be made" ? 'danger' : 'warning'), width: 170 },
   ];
   return (
     <PeopleFrame active="Documents & letters">
@@ -592,6 +632,12 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
       ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load the letters" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
+        <div className="yx-ppl__stack">
+        {failedRows.length > 0 && (
+          <InlineAlert tone="danger" title={`${failedRows.length === 1 ? 'A letter' : `${failedRows.length} letters`} couldn't be made`}>
+            {failedRows.map((r) => `${r.referenceNo ?? r.title} for ${r.person ?? 'the person'}: ${r.renderError}`).join(' ')} Use Try again in the letter's menu once it is fixed.
+          </InlineAlert>
+        )}
         <DataTable
           label="Issued letters"
           columns={cols}
@@ -616,10 +662,17 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
                 )}
                 {r.status === 'issued' && live.issue && <MenuItem onSelect={() => startIssue(r)}>Issue a correction</MenuItem>}
               </>
-            ) : r.status === 'draft' && live.onIssueDraft ? (
-              <MenuItem icon={FileUp} onSelect={() => void live.onIssueDraft!(r)}>
-                Issue letter
-              </MenuItem>
+            ) : r.status === 'draft' && live.draft ? (
+              <>
+                <MenuItem icon={FileUp} onSelect={() => setReviewing(r)}>
+                  Review and issue
+                </MenuItem>
+                <MenuItem destructive onSelect={() => (setDiscarding(r), setDiscardReason(''), setDiscardTried(false), setDiscardFailed(null))}>
+                  Discard draft
+                </MenuItem>
+              </>
+            ) : r.status === 'rendering' && r.renderError && live.onRetryRender ? (
+              <MenuItem onSelect={() => void live.onRetryRender!(r)}>Try again</MenuItem>
             ) : null
           }
           defaultSort={{ key: 'issued', dir: 'desc' }}
@@ -637,8 +690,32 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
             />
           }
         />
+        </div>
       )}
       {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
+      {live.draft && reviewing && <LiveIssueLetterSheet key={reviewing.id} issue={live.issue} open onOpenChange={(o) => !o && setReviewing(null)} reviewing={{ letter: reviewing, onPreview: live.draft.onPreview, onIssue: live.draft.onIssue }} />}
+      <Dialog
+        open={discarding !== null}
+        onOpenChange={(o) => !o && setDiscarding(null)}
+        title="Discard this draft?"
+        size="md"
+        footer={
+          <>
+            <Button onClick={() => setDiscarding(null)}>Cancel</Button>
+            <Button variant="danger" loading={discardBusy} onClick={() => void discard()}>
+              Discard draft
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ppl__stack">
+          <Text as="p">{`${discarding?.title ?? 'The letter'} is not sent. It stays in the register as discarded, with your reason, for the audit.`}</Text>
+          <FormField id="letter-discard" label="Reason" required error={discardTried && discardReason.trim().length < 3 ? 'Say why it is not sent (3 characters or more).' : undefined}>
+            <TextArea rows={3} value={discardReason} onChange={setDiscardReason} maxLength={500} />
+          </FormField>
+          {discardFailed && <InlineAlert tone="danger" title="Not discarded">{discardFailed}</InlineAlert>}
+        </div>
+      </Dialog>
     </PeopleFrame>
   );
 }

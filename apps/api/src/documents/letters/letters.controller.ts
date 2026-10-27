@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, MyCertificateDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
+import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, DiscardLetterDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, MyCertificateDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
@@ -155,6 +155,30 @@ export class LettersController {
   @RequirePermissions('letter.issue')
   issueDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.letters.issueDraft(ctx, this.user(req), id);
+  }
+
+  /** PPL-15: the drafted letter as it would be issued (the issue preview, with its own words), for HR's review. */
+  @Post(':id/preview')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  async previewDraft(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return out(res, await this.letters.previewLetter(ctx, this.user(req), { draftId: id }));
+  }
+
+  /** PPL-15: a draft HR will not send, with the reason (kept for the audit). */
+  @Post(':id/discard')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  discard(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DiscardLetterDto) {
+    return this.letters.discardDraft(ctx, this.user(req), id, dto.reason);
+  }
+
+  /** A letter that could not be made, made again with its reference. */
+  @Post(':id/render')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  retryRender(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.retryRender(ctx, this.user(req), id);
   }
 
   @Get('issued')

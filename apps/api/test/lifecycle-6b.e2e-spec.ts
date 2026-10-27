@@ -464,11 +464,45 @@ describe('Lifecycle batch 6b', () => {
     const draft = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pb.personId, letterType: 'offer_withdrawal' } }));
     expect(draft).toMatchObject({ status: 'draft', referenceNo: null, fileId: null });
     expect((await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === draft.id)).toMatchObject({ status: 'draft', referenceNo: null });
+    // HR reviews it first: the issue preview with the draft's own words (PPL-15), never numbered.
+    const review = await api('hr', 'post', `/letters/${draft.id}/preview`).expect(200);
+    expect(review.headers['content-type']).toMatch(/application\/pdf/);
+    expect((await api('adminB', 'post', `/letters/${draft.id}/preview`)).status).toBeGreaterThanOrEqual(400);
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: draft.id } }))).referenceNo).toBeNull();
     // Only someone who issues letters, once.
     await api('adminB', 'post', `/letters/${draft.id}/issue`).expect(403);
     const issued = (await api('hr', 'post', `/letters/${draft.id}/issue`).expect(201)).body;
     expect(issued).toMatchObject({ id: draft.id, status: 'issued', referenceNo: expect.stringMatching(/\/OWD\//) });
     await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+  });
+
+  it('PPL-15 HR discards a drafted letter with a reason (kept for the audit); a letter that could not be made says why and is made again', async () => {
+    const j = await addJoiner('Ilango', `ilango-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Headcount frozen', version: pb.version }).expect(200);
+    const draft = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pb.personId, letterType: 'offer_withdrawal' } }));
+    await api('hr', 'post', `/letters/${draft.id}/discard`).send({}).expect(400);
+    await api('adminB', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Not needed' }).expect(403);
+    expect((await api('hr', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Told the candidate by phone' }).expect(200)).body).toMatchObject({ status: 'discarded', referenceNo: null });
+    expect(await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: draft.id } }))).toMatchObject({ status: 'discarded', discardReason: 'Told the candidate by phone' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'letter.discarded', entityId: draft.id } }))).toBe(1);
+    await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+    await api('hr', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Again' }).expect(404);
+
+    // A letter stuck "being made" with the system's error: HR reads it in plain words and tries again.
+    const k = await addJoiner('Malar', `malar-${run}@mail.test`);
+    const kpb = (await api('hr', 'get', `/lifecycle/joiners/${k.id}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${k.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: kpb.version }).expect(200);
+    const stuck = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: kpb.personId, letterType: 'offer_withdrawal' } }));
+    await inA((tx) => tx.letterIssue.update({ where: { id: stuck.id }, data: { status: 'rendering', renderError: "ENOENT: no such file or directory, open '/srv/app/.pay-files/org/t'" } }));
+    const listed = (await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === stuck.id);
+    expect(listed).toMatchObject({ status: 'rendering', renderError: expect.stringMatching(/^The letter template file is missing from storage/) });
+    expect(listed.renderError).not.toMatch(/ENOENT|pay-files/);
+    await api('adminB', 'post', `/letters/${stuck.id}/render`).expect(403);
+    const made = (await api('hr', 'post', `/letters/${stuck.id}/render`).expect(200)).body;
+    expect(made).toMatchObject({ status: 'issued', renderError: null, referenceNo: expect.stringMatching(/\/OWD\//) });
+    await api('hr', 'post', `/letters/${stuck.id}/render`).expect(409);
   });
 
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
