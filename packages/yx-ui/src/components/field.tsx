@@ -68,7 +68,8 @@ export function FormField({ label, children, required = false, optional, helper,
   // No error under a field while the person is typing in it (founder review 8 Oct 2026): it shows again when they
   // leave the field or press Save. One rule for every field, whatever set the error.
   const [typing, setTyping] = useState(false);
-  const shownError = typing ? null : error ?? internalError;
+  // The control's own message is about what was typed ("Choose a date on or after …"), so it beats the form's generic one.
+  const shownError = typing ? null : internalError ?? error;
   const helperId = helper ? `${fieldId}-helper` : undefined;
   const errorId = shownError ? `${fieldId}-error` : undefined;
 

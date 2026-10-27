@@ -281,6 +281,22 @@ describe('DatePicker', () => {
     await u.click(screen.getByText('elsewhere'));
     expect(screen.getByText('Choose a date on or after 1 Sep 2026')).toBeInTheDocument();
   });
+
+  it("says why a typed date is refused, over the form's own required message", async () => {
+    const u = userEvent.setup();
+    render(
+      <>
+        <FormField label="New joining date" required error="Pick the new joining date.">
+          <DatePicker value={null} onChange={() => {}} min={new Date(2026, 10, 11)} />
+        </FormField>
+        <button>elsewhere</button>
+      </>,
+    );
+    await u.type(screen.getByLabelText(/New joining date/), '03 Nov 2026');
+    await u.click(screen.getByText('elsewhere'));
+    expect(screen.getByText('Choose a date on or after 11 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Pick the new joining date.')).toBeNull();
+  });
 });
 
 describe('FileUpload', () => {
