@@ -193,12 +193,16 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
 
     it('reminds the person once per reminder day, the latest reached, and the company may switch it off', async () => {
       const service = app.get(WorkAuthService);
-      expect(await service.remind()).toBe(1); // 50 days left: the 60-day reminder
+      expect(await service.remind()).toBe(3); // 50 days left: the 60-day reminder, to Arjun and the two HR who can record a renewal
       expect(await service.remind()).toBe(0);
-      expect(await service.remind(addDays(todayIst(), 25))).toBe(1); // 25 days left: the 30-day reminder
+      expect(await service.remind(addDays(todayIst(), 25))).toBe(3); // 25 days left: the 30-day reminder
       const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.workAuthorisation.findFirstOrThrow({ where: { organizationId: org.A.id } }));
       expect(row.remindedDays).toEqual([60, 30]);
       const told = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, recipientUserId: users.arjunU, type: 'document.expiring' } }));
+      // HR is told too (founder 27 Oct 2026), with a link to the record; the plant HR without identity.manage is not.
+      const hr = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, type: 'work_auth.expiring' } }));
+      expect(hr.map((n) => n.recipientUserId).sort()).toEqual([users.hrA, users.hrA, users.hrPlain, users.hrPlain].sort());
+      expect(hr[0]).toMatchObject({ linkPath: `/yx/people/directory/${ids.arjun}`, contextText: expect.stringMatching(/^Arjun's employment visa expires on .*Record the renewal/) });
       expect(told).toBe(2);
       await tenantPrisma.forTenant(ctx('A'), (tx) => tx.setting.create({ data: { organizationId: org.A.id, key: 'work_auth.reminder_days', scopeType: 'tenant', scopeId: org.A.id, value: 'off' } }));
       expect((await api('hrA', 'get', path('arjun')).expect(200)).body.reminderDays).toEqual([]);

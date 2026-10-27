@@ -51,6 +51,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'document.requested', group: 'reminders', label: 'HR asked you to upload a document' },
   { type: 'document.rejected', group: 'reminders', label: 'A document you uploaded was not accepted' },
   { type: 'document.expiring', group: 'reminders', label: 'A document of yours expires soon' },
+  { type: 'work_auth.expiring', group: 'reminders', label: 'A work permit or visa of someone you look after expires soon (HR)' },
   { type: 'letter.ready', group: 'assignments', label: 'A letter for you is ready' },
   { type: 'payroll.fnf.due', group: 'reminders', label: 'A full and final settlement is due' },
   { type: 'payroll.overpayment.consent', group: 'approvals', label: 'Payroll asks you to agree to a repayment plan' },
