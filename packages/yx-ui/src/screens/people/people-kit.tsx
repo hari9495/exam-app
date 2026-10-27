@@ -228,7 +228,7 @@ export interface ChecklistRow {
 /** Status list with owner, due date and one action per row (clearance, continuity, deprovisioning, forms). */
 export function StatusChecklist({ label, rows, today }: { label: string; rows: ChecklistRow[]; today?: Date }) {
   return (
-    <ul className="yx-ppl__checklist" data-cols aria-label={label}>
+    <ul className="yx-ppl__checklist" aria-label={label}>
       {rows.map((r) => {
         const late = today && r.due && r.status !== 'Done' && daysBetween(r.due, today) > 0;
         return (
@@ -249,7 +249,7 @@ export function StatusChecklist({ label, rows, today }: { label: string; rows: C
             </div>
             <div className="yx-ppl__check-side">
               <StatusBadge status={r.status} />
-              <div className="yx-ppl__check-action">{r.action}</div>
+              {r.action && <div className="yx-ppl__check-action">{r.action}</div>}
             </div>
           </li>
         );
