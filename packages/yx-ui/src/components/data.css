@@ -229,8 +229,11 @@
 .yx-table th[data-align="end"] .yx-table__sort > span { text-align: right; }
 /* IDs and masked account numbers never break mid-digits. */
 .yx-table td .yx-mono { white-space: nowrap; }
-/* Badges and dates stay on one line; the table keeps their column wide enough (table.tsx keepW). Dragged widths may wrap them. */
-.yx-table:not([data-resized]) td .yx-badge, .yx-table:not([data-resized]) td[data-type="date"] { white-space: nowrap; }
+/* Badges and dates in any table stay on one line: content-sized tables widen the column, DataTable keeps it wide enough
+   (table.tsx keepW). They wrap when a person dragged the widths, when keeping them would scroll the table, or in a cell
+   marked data-wrap (a narrow side card). */
+td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
+.yx-table[data-wrap] td .yx-badge, .yx-table[data-wrap] td[data-type="date"], td[data-wrap] .yx-badge { white-space: normal; }
 .yx-table td {
   height: var(--yx-row-height);
   /* Vertical padding keeps a two-line cell (name over a code or date) inside its row instead of touching the divider. */
