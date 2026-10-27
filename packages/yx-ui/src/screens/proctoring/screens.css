@@ -36,6 +36,8 @@
 .yx-prc-facet h3 { margin: 0; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
 .yx-prc-facet ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
 .yx-prc-facet li { display: flex; justify-content: space-between; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
+/* A skill group (heading + its skills) sits clear of the row above: 4px row gap + 8px = 12px, not 4px. */
+.yx-prc-facet li.yx-prc-stack { padding-top: var(--yx-space-2); }
 
 /* Tables built by hand (grids, matrices, calendars) */
 .yx-prc-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
