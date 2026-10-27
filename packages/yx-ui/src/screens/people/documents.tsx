@@ -988,7 +988,7 @@ export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLe
           </>
         }
       />
-      <DataTable label="Letter templates" columns={cols} rows={rows} getRowId={(r) => r.id} rowActions={() => (<><MenuItem>Open</MenuItem><MenuItem icon={Download}>Download as Word</MenuItem><MenuItem>Duplicate</MenuItem></>)} empty={<EmptyState title="No templates" description="Start from the starter library or upload a Word letter." action={<Button variant="primary">Open starter library</Button>} />} />
+      <DataTable label="Letter templates" columns={cols} rows={rows} getRowId={(r) => r.id} rowActions={(r) => (<><MenuItem>Open</MenuItem><MenuItem icon={Download}>Download as Word</MenuItem><MenuItem>Duplicate</MenuItem>{r.status === 'Active' && <MenuItem>Stop using</MenuItem>}{r.source === 'Starter template' && <MenuItem>Get the new starter version</MenuItem>}</>)} empty={<EmptyState title="No templates" description="Start from the starter library or upload a Word letter." action={<Button variant="primary">Open starter library</Button>} />} />
     </PeopleFrame>
   );
 }
@@ -1025,6 +1025,9 @@ export function LetterTemplateWorkspace({ tab = 'upload', previewViewed = false 
         </TabsList>
         <TabsContent value="upload">
           <div className="yx-ppl__stack">
+            <FormField label="Per person" helper={ONE_PER_PERSON}>
+              <Segment label="Per person" value="one" onChange={() => {}} options={PER_PERSON} />
+            </FormField>
             <FileUpload upload={async () => {}} accept={['.docx']} maxSize={5 * 1024 * 1024} />
             <Card title="Validation report · relieving-experience.docx">
               <ul className="yx-ppl__successors">
@@ -1049,6 +1052,9 @@ export function LetterTemplateWorkspace({ tab = 'upload', previewViewed = false 
         </TabsContent>
         <TabsContent value="editor">
           <div className="yx-ppl__stack">
+            <FormField label="Per person" helper={ONE_PER_PERSON}>
+              <Segment label="Per person" value="one" onChange={() => {}} options={PER_PERSON} />
+            </FormField>
             <div className="yx-ppl__row">
               <Select aria-label="Letterhead" size="sm" options={[{ value: 'ka', label: 'Letterhead: Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Letterhead: Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="ka" onChange={() => {}} />
               <Select aria-label="Language" size="sm" options={[{ value: 'en', label: 'English' }, { value: 'ta', label: 'Tamil' }]} value="en" onChange={() => {}} />
