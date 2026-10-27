@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
 import { IssuedLettersRegister } from '@yukthix/ui/frame';
@@ -37,8 +37,6 @@ function Letters() {
   useEffect(() => {
     if (many) router.replace(`/yx/people/letters/bulk?${params}`);
   }, [many, params, router]);
-  // The preview PDF's object URL: the last one is let go when the next is made.
-  const shown = useRef<string | null>(null);
   const me = accessToken ? decodeJwtPayload(accessToken)?.sub : null;
   const nameOf = (personId: string) => choices.find((c) => c.value === personId)?.label.split(' · ')[0] ?? 'the person';
   const canIssue = perms.has('letter.issue') && active.length > 0 && choices.length > 0;
@@ -58,8 +56,7 @@ function Letters() {
               draft: {
                 onPreview: async (l: Letter) => {
                   const { blob } = await apiFetchBlob(`/letters/${encodeURIComponent(l.id)}/preview`, { method: 'POST' }, accessToken ?? undefined);
-                  if (shown.current) URL.revokeObjectURL(shown.current);
-                  return (shown.current = URL.createObjectURL(blob));
+                  return URL.createObjectURL(blob); // the issue sheet lets it go when it stops showing it
                 },
                 onIssue: async (l: Letter) => {
                   await write('POST', `/letters/${encodeURIComponent(l.id)}/issue`);
@@ -93,8 +90,7 @@ function Letters() {
                 },
                 onPreview: async (personId: string, t: LetterTemplate) => {
                   const { blob } = await apiFetchBlob('/letters/preview', { method: 'POST', body: JSON.stringify({ letterType: t.letterType, personId, templateId: t.id }) }, accessToken ?? undefined);
-                  if (shown.current) URL.revokeObjectURL(shown.current);
-                  return (shown.current = URL.createObjectURL(blob));
+                  return URL.createObjectURL(blob); // the issue sheet lets it go when it stops showing it
                 },
                 onIssue: async (personId: string, t: LetterTemplate, supersedes?: Letter) => {
                   await write('POST', '/letters/issue', { letterType: t.letterType, personId, templateId: t.id, ...(supersedes ? { supersedesId: supersedes.id } : {}) });

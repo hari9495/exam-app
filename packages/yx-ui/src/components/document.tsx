@@ -263,7 +263,20 @@ export function PdfPages({ url, label }: { url: string; label: string }) {
       void task?.destroy();
     };
   }, [url]);
-  if (failed) return <EmptyState title="We couldn't show the preview" description="Download it to read it." />;
+  if (failed)
+    return (
+      <EmptyState
+        title="We couldn't show the preview"
+        description="Download it to read it."
+        action={
+          <Button asChild icon={Download}>
+            <a href={url} download={`${label}.pdf`}>
+              Download
+            </a>
+          </Button>
+        }
+      />
+    );
   return (
     <div ref={box} className="yx-pdfpages" role="img" aria-label={label}>
       <Skeleton height="var(--yx-space-16)" />

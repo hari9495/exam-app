@@ -461,7 +461,8 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing
     if (!who || (!chosen && !draft)) return;
     let gone = false;
     (draft ? reviewing!.onPreview(draft) : issue!.onPreview(who, chosen!)).then(
-      (url) => !gone && setPreview({ url }),
+      // A preview that came back after a newer one was asked for is let go at once, never shown.
+      (url) => (gone ? URL.revokeObjectURL(url) : setPreview({ url })),
       (e: { code?: string; body?: { errors?: Record<string, string> } }) => {
         if (gone) return;
         const missing = e?.code === 'LETTER_FIELDS_MISSING' ? e.body?.errors : undefined;
@@ -473,6 +474,9 @@ function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a new preview only when the person or the template changes
   }, [who, chosen?.id]);
+  // The sheet owns the preview's object URL: let go when another replaces it or the sheet closes.
+  const shownUrl = preview && 'url' in preview ? preview.url : null;
+  useEffect(() => () => void (shownUrl && URL.revokeObjectURL(shownUrl)), [shownUrl]);
   const issueIt = async () => {
     if (!who || (!chosen && !draft)) return;
     setBusy(true);
