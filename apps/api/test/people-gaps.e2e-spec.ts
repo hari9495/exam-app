@@ -276,8 +276,15 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
     const certificate = (employee: string, typeKey = 'disability_certificate') =>
       tenantPrisma.forTenant(ctx('A'), async (tx) => {
         const personId = (await tx.employee.findFirstOrThrow({ where: { id: ids[employee] } })).personId!;
-        return (await tx.document.create({ data: { organizationId: org.A.id, personId, typeKey, status: 'uploaded' } })).id;
+        const had = await tx.document.findFirst({ where: { organizationId: org.A.id, personId, typeKey } });
+        return (had ?? (await tx.document.create({ data: { organizationId: org.A.id, personId, typeKey, status: 'uploaded' } }))).id;
       });
+
+    it('the person uploads a certificate with no end date (a permanent one)', async () => {
+      const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+      const personId = await tenantPrisma.forTenant(SUPER, async (tx) => (await tx.employee.findFirstOrThrow({ where: { id: ids.arjun } })).personId!);
+      await api('arjunU', 'post', `/documents/people/${personId}/disability_certificate`).attach('file', PNG, 'udid.png').expect(201);
+    });
 
     it('the person declares with consent; a "Yes" needs its details and their own certificate', async () => {
       const yes = { consent: true, answer: 'yes', category: 'Low vision', percent: 60, certificateDocumentId: await certificate('arjun'), adjustments: 'Screen reader' };
