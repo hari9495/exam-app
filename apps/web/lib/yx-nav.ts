@@ -124,7 +124,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
       ...sec('More', [
-        ...when(!support && Boolean(n.samePerson), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
+        ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
         ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
         ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
       ]),

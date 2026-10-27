@@ -9,7 +9,8 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { EmployeeHistoryService, RequestUser } from '../employee-history/employee-history.service';
 import { IdentityChecksService } from './identity-checks.service';
-import { AttestDto, DisabilityDto, ReverifyDto, WorkAuthDto } from './person-panels.dto';
+import { AttestDto, DisabilityDto, MergeDto, PersonPairDto, ReverifyDto, UnmergeDto, WorkAuthDto } from './person-panels.dto';
+import { SamePersonService } from './same-person.service';
 import { DisabilityService } from './disability.service';
 import { WorkAuthService } from './work-auth.service';
 
@@ -18,6 +19,7 @@ import { WorkAuthService } from './work-auth.service';
 //   employee.identity.manage  with it: attest an identity check, ask for a fresh ID
 //   employee.identity.view    work authorisations, numbers masked (PPL-45); employee.identity.manage adds one
 //   employee.disability.view  disability declarations, the HR diversity role (PPL-38); the person keeps their own
+//   employee.change.manage    possible same person, merge and unmerge (PPL-36/37), company-wide only (the service checks)
 @Controller('people')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PersonPanelsController {
@@ -26,6 +28,7 @@ export class PersonPanelsController {
     private readonly identity: IdentityChecksService,
     private readonly workAuth: WorkAuthService,
     private readonly disability: DisabilityService,
+    private readonly samePerson: SamePersonService,
   ) {}
 
   private viewer(req: Request) {
@@ -92,5 +95,42 @@ export class PersonPanelsController {
   async disabilityDeclarations(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     ownSession(req);
     return this.disability.list(ctx, await this.viewer(req));
+  }
+
+  @Get('same-person')
+  @RequirePermissions('employee.change.manage')
+  async samePersonList(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.samePerson.list(ctx, await this.viewer(req));
+  }
+
+  @Post('same-person/not-same')
+  @RequirePermissions('employee.change.manage')
+  async notSamePerson(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PersonPairDto) {
+    ownSession(req);
+    return this.samePerson.notSame(ctx, await this.viewer(req), dto.personId, dto.intoPersonId, dto.note);
+  }
+
+  @Post('same-person/merge')
+  @RequirePermissions('employee.change.manage')
+  @RequireStepUp()
+  async mergePersons(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: MergeDto) {
+    ownSession(req);
+    return this.samePerson.merge(ctx, await this.viewer(req), dto);
+  }
+
+  @Get('persons/:id/merge')
+  @RequirePermissions('employee.change.manage')
+  async personMerge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    return this.samePerson.merged(ctx, await this.viewer(req), id);
+  }
+
+  @Post('persons/:id/unmerge')
+  @RequirePermissions('employee.change.manage')
+  @RequireStepUp()
+  async unmergePerson(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UnmergeDto) {
+    ownSession(req);
+    return this.samePerson.unmerge(ctx, await this.viewer(req), id, dto.note);
   }
 }

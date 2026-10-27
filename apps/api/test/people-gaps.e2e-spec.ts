@@ -12,9 +12,10 @@ import { markSteppedUp } from './fixtures/step-up';
 import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.service';
 
 // The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
-// authorisations (PPL-45), international bank details (PPL-46), disability declarations (PPL-38). Each with its key,
+// authorisations (PPL-45), international bank details (PPL-46), disability declarations (PPL-38), possible same person, merge and
+// unmerge (PPL-36/37). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, PPL-36, PPL-37)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -34,6 +35,12 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38)'
   const ids: Record<string, string> = {};
   const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
   const email = (who: string) => `${who}-${runId}@gaps.test`;
+  const hire = async (tag: string, givenName: string, code: string, extra: Record<string, unknown> = {}) =>
+    (
+      await api('hrA', 'post', '/people/employees')
+        .send({ legalEntityId: ids[`le${tag}`], employeeCode: code, givenName, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids[`loc${tag}`], departmentId: ids[`dept${tag}`], designationId: ids[`des${tag}`], employmentTypeId: ids[`type${tag}`], managerEmployeeId: null }, ...extra })
+        .expect(201)
+    ).body.id as string;
   const audits = (action: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action } }));
 
   beforeAll(async () => {
@@ -89,12 +96,6 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38)'
     for (const [name, k] of roster.map((r) => [r[0], r[1]] as const)) {
       token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
     }
-    const hire = async (tag: string, givenName: string, code: string, extra: Record<string, unknown> = {}) =>
-      (
-        await api('hrA', 'post', '/people/employees')
-          .send({ legalEntityId: ids[`le${tag}`], employeeCode: code, givenName, status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before go-live', joinedOn: joined, assignment: { locationId: ids[`loc${tag}`], departmentId: ids[`dept${tag}`], designationId: ids[`des${tag}`], employmentTypeId: ids[`type${tag}`], managerEmployeeId: null }, ...extra })
-          .expect(201)
-      ).body.id as string;
     ids.arjun = await hire('KF', 'Arjun', 'KF0142', { workEmail: email('arjunU'), userId: users.arjunU });
     ids.imran = await hire('TN', 'Imran', 'TN0001');
   }, 180_000);
@@ -313,6 +314,86 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38)'
       expect((await api('hrPlain', 'get', '/people/disability-declarations').expect(200)).body.rows).toEqual([]);
       await api('arjunU', 'put', '/people/me/disability').send({ consent: true, answer: 'skip' }).expect(200);
       expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration).toMatchObject({ answer: 'skip' });
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ same person (PPL-36/37)
+
+  describe('possible same person, merge and unmerge (PPL-36, PPL-37)', () => {
+    // A login that raised a desk ticket before it was linked got a person of its own (no email, no employee record).
+    const loose = async (tag: string) => {
+      const userId = (await tenantPrisma.forTenant(ctx('A'), (tx) => tx.user.create({ data: { organizationId: org.A.id, email: email(tag), passwordHash: 'x', role: 'panel' } }))).id;
+      users[tag] = userId;
+      return tenantPrisma.forTenant(ctx('A'), async (tx) => {
+        const p = await tx.person.create({ data: { organizationId: org.A.id, givenName: `${tag} desk` } });
+        await tx.personRole.create({ data: { organizationId: org.A.id, personId: p.id, roleType: 'login', sourceTable: 'users', sourceId: userId, startOn: new Date(`${todayIst()}T00:00:00Z`) } });
+        return p.id;
+      });
+    };
+    const personOf = (employee: string) => tenantPrisma.forTenant(SUPER, async (tx) => (await tx.employee.findFirstOrThrow({ where: { id: ids[employee] } })).personId!);
+
+    beforeAll(async () => {
+      ids.meena = await hire('KF', 'Meena', 'KF0300', { workEmail: email('meenaU') });
+      ids.ravi = await hire('KF', 'Ravi', 'KF0301', { workEmail: email('raviU') });
+      ids.meenaLoose = await loose('meenaU');
+      ids.raviLoose = await loose('raviU');
+      ids.nobody = await loose('nobodyU');
+      ids.meenaP = await personOf('meena');
+      ids.raviP = await personOf('ravi');
+    });
+
+    it('lists a login whose email is another person’s work email, for HR company-wide only', async () => {
+      await api('hrTn', 'get', '/people/same-person').expect(403);
+      await api('arjunU', 'get', '/people/same-person').expect(403);
+      const rows = (await api('hrA', 'get', '/people/same-person').expect(200)).body.rows;
+      expect(rows.map((r: { a: { personId: string }; b: { personId: string } }) => [r.a.personId, r.b.personId]).sort()).toEqual([[ids.meenaLoose, ids.meenaP], [ids.raviLoose, ids.raviP]].sort());
+      const meena = rows.find((r: { a: { personId: string } }) => r.a.personId === ids.meenaLoose);
+      expect(meena).toMatchObject({ basis: ['login email'], a: { name: 'meenaU desk', email: email('meenaU'), role: 'Login' }, b: { name: 'Meena', email: email('meenaU'), role: 'Employee · KF0300' } });
+    });
+
+    it('not the same person: logged and never proposed again', async () => {
+      await api('hrA', 'post', '/people/same-person/not-same').send({ personId: ids.meenaLoose, intoPersonId: ids.raviP }).expect(404); // not a proposal
+      await api('hrA', 'post', '/people/same-person/not-same').send({ personId: ids.meenaLoose, intoPersonId: ids.meenaP, note: 'A namesake' }).expect(201);
+      const rows = (await api('hrA', 'get', '/people/same-person').expect(200)).body.rows;
+      expect(rows.map((r: { a: { personId: string } }) => r.a.personId)).toEqual([ids.raviLoose]);
+      await up('hrA');
+      await api('hrA', 'post', '/people/same-person/merge').send({ personId: ids.meenaLoose, intoPersonId: ids.meenaP, keep: { name: 'b', email: 'b', phone: 'b' }, note: 'x' }).expect(404);
+    });
+
+    it('merge keeps the chosen fields, moves the roles and links the login to the employee record; unmerge puts it all back', async () => {
+      const merge = { personId: ids.raviLoose, intoPersonId: ids.raviP, keep: { name: 'a', email: 'a', phone: 'b' } };
+      await api('hrA', 'post', '/people/same-person/merge').send({ ...merge, note: '' }).expect(400);
+      await api('hrA', 'post', '/people/same-person/merge').send({ ...merge, keep: { name: 'c', email: 'a', phone: 'b' }, note: 'x' }).expect(400);
+      await api('hrA', 'post', '/people/same-person/merge').send({ ...merge, note: 'Same work email; confirmed by phone' }).expect(201);
+      const after = await tenantPrisma.forTenant(SUPER, async (tx) => ({
+        a: await tx.person.findFirstOrThrow({ where: { id: ids.raviLoose } }),
+        b: await tx.person.findFirstOrThrow({ where: { id: ids.raviP } }),
+        roles: await tx.personRole.findMany({ where: { personId: ids.raviP } }),
+        emp: await tx.employee.findFirstOrThrow({ where: { id: ids.ravi } }),
+      }));
+      expect(after.a).toMatchObject({ status: 'merged', mergedInto: ids.raviP });
+      expect(after.b).toMatchObject({ givenName: 'raviU desk', primaryEmail: email('raviU') });
+      expect(after.roles.map((r) => r.roleType).sort()).toEqual(['employee', 'login']);
+      expect(after.emp.userId).toBe(users.raviU);
+      expect((await api('hrA', 'get', '/people/same-person').expect(200)).body.rows).toEqual([]);
+      const merged = (await api('hrA', 'get', `/people/persons/${ids.raviLoose}/merge`).expect(200)).body;
+      expect(merged).toMatchObject({ name: 'raviU desk', intoName: 'raviU desk', note: 'Same work email; confirmed by phone', moved: ['Login'], employeeLinked: true });
+
+      await api('hrA', 'post', `/people/persons/${ids.raviLoose}/unmerge`).send({ note: '' }).expect(400);
+      await api('hrA', 'post', `/people/persons/${ids.raviLoose}/unmerge`).send({ note: 'Different people after all' }).expect(201);
+      await api('hrA', 'post', `/people/persons/${ids.raviLoose}/unmerge`).send({ note: 'Again' }).expect(404);
+      const back = await tenantPrisma.forTenant(SUPER, async (tx) => ({
+        a: await tx.person.findFirstOrThrow({ where: { id: ids.raviLoose } }),
+        b: await tx.person.findFirstOrThrow({ where: { id: ids.raviP } }),
+        login: await tx.personRole.findFirstOrThrow({ where: { personId: ids.raviLoose } }),
+        emp: await tx.employee.findFirstOrThrow({ where: { id: ids.ravi } }),
+        log: await tx.personLinkLog.findMany({ where: { organizationId: org.A.id, personId: ids.raviLoose }, orderBy: { createdAt: 'asc' } }),
+      }));
+      expect(back.a).toMatchObject({ status: 'active', mergedInto: null });
+      expect(back.b).toMatchObject({ givenName: 'Ravi', primaryEmail: email('raviU') });
+      expect(back.login.roleType).toBe('login');
+      expect(back.emp.userId).toBeNull();
+      expect(back.log.map((l) => l.action)).toEqual(['merge', 'unmerge']);
     });
   });
 });

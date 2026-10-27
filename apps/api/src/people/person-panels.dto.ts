@@ -1,8 +1,9 @@
-import { Equals, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Equals, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ID_TYPES } from './identity-checks.service';
 
 // Bodies for the person record's panels (PPL-34 identity checks, PPL-45 work authorisations) and the person's own
-// disability declaration (PPL-38).
+// disability declaration (PPL-38); possible same person and merges (PPL-36, PPL-37).
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
@@ -61,4 +62,45 @@ export class DisabilityDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   adjustments?: string;
+}
+
+export class PersonPairDto {
+  @IsUUID()
+  personId!: string;
+
+  @IsUUID()
+  intoPersonId!: string;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  note?: string;
+}
+
+class MergeKeepDto {
+  @IsIn(['a', 'b'])
+  name!: 'a' | 'b';
+
+  @IsIn(['a', 'b'])
+  email!: 'a' | 'b';
+
+  @IsIn(['a', 'b'])
+  phone!: 'a' | 'b';
+}
+
+export class MergeDto {
+  @IsUUID()
+  personId!: string;
+
+  @IsUUID()
+  intoPersonId!: string;
+
+  @ValidateNested() @Type(() => MergeKeepDto)
+  keep!: MergeKeepDto;
+
+  @IsString() @MinLength(1, { message: 'Enter why you are merging. It goes to the link log.' }) @MaxLength(1000)
+  note!: string;
+}
+
+export class UnmergeDto {
+  @IsString() @MinLength(1, { message: 'Enter a reason for the audit log.' }) @MaxLength(1000)
+  note!: string;
 }
