@@ -15,7 +15,7 @@ import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields } from './docx';
-import { FIELDS, STARTER_LETTERS, letterData, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay } from './fields';
+import { FIELDS, STARTER_LETTERS, letterData, longDate, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
@@ -314,7 +314,7 @@ export class LettersService implements OnModuleInit {
     this.requireKey(v, 'letter.template.manage');
     const p = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const t = await this.templateRow(tx, c.organizationId, id);
-      const data = personId ? (await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t })).data : { ...sampleData(), reference_no: `KF/${typeCode(t.letterType)}/2026/000042` };
+      const data = personId ? (await this.prepare(tx, c, v, { letterType: t.letterType, personId, template: t })).data : { ...sampleData(), today: longDate(todayIst()), reference_no: `KF/${typeCode(t.letterType)}/${todayIst().slice(0, 4)}/000042` };
       return { docx: await this.fileBytes(tx, c.organizationId, t.fileId), data };
     });
     const pdf = await previewMark(await this.toPdf(fillDocx(p.docx, p.data)));
