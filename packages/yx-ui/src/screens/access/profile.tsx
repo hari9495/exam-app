@@ -9,6 +9,7 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
+import { ifscBank } from '../people/people-logic';
 import { GENDER_LABEL, KIND_LABEL, MARITAL_LABEL } from './access-kit';
 import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
 
@@ -166,7 +167,7 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
         />
       </FormField>
       {fields.map((f, i) => (
-        <FormField key={f.key} id={`cr-${f.key}`} label={f.label} required error={touched ? problems[i] : null}>
+        <FormField key={f.key} id={`cr-${f.key}`} label={f.label} required error={touched ? problems[i] : null} helper={f.key === 'ifsc' ? (ifscBank(value.ifsc ?? '') ?? undefined) : undefined}>
           {f.date ? (
             <DatePicker value={value[f.key] ? new Date(`${value[f.key]}T00:00:00`) : null} onChange={(v) => setValue((x) => ({ ...x, [f.key]: v ? dayKey(v) : '' }))} min={new Date()} />
           ) : (

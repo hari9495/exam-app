@@ -11,6 +11,7 @@ import {
   fnfTotals,
   gratuity,
   isIban,
+  ifscBank,
   isIfsc,
   isPan,
   matchPersons,
@@ -131,6 +132,13 @@ describe('identity and bank checks', () => {
     expect(isIban('AE07 0331 2345 6789 0123 456')).toBe(true);
     expect(isIban('AE07 0331 2345 6789 0123 457')).toBe(false);
     expect(isIban('GB82 WEST 1234 5698 7654 32')).toBe(true);
+  });
+  it('names the bank from the IFSC, offline; nothing for a bad IFSC or a bank not on the list', () => {
+    expect(ifscBank('SBIN0012765')).toBe('State Bank of India');
+    expect(ifscBank(' hdfc0001234 ')).toBe('HDFC Bank');
+    expect(ifscBank('SBIN1012765')).toBeNull(); // the fifth character is not zero
+    expect(ifscBank('SBIN')).toBeNull();
+    expect(ifscBank('ZZZZ0001234')).toBeNull();
   });
   it('splits net pay: fixed, then percent, remainder; max 3 accounts', () => {
     const r = splitNetPay(49812, SPLITS);

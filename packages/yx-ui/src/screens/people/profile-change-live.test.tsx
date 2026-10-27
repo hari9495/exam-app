@@ -45,8 +45,10 @@ describe('PPL-32 profile change request, live', () => {
     await ue.type(field(/IFSC/), 'sbin1012765');
     await ue.tab();
     expect(screen.getByText('Enter an 11-character IFSC like CNRB0001234. The fifth character is zero.')).toBeInTheDocument();
+    expect(screen.queryByText('State Bank of India')).toBeNull(); // no bank named for a bad IFSC
     await ue.clear(field(/IFSC/));
     await ue.type(field(/IFSC/), 'sbin0012765');
+    expect(screen.getByText('State Bank of India')).toBeInTheDocument(); // the bank, from the bundled list
     expect(screen.getByRole('cell', { name: '389011224410 · SBIN0012765' })).toBeInTheDocument();
     await ue.upload(view.container.querySelector('input[type="file"]') as HTMLInputElement, new File(['%PDF'], 'cheque.pdf', { type: 'application/pdf' }));
     await waitFor(() => expect(live.onProof).toHaveBeenCalledWith('bank_salary', expect.any(File)));
