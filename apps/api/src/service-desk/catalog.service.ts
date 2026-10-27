@@ -644,6 +644,7 @@ export class CatalogService implements OnModuleInit {
             payload: { ...(l.values as RecordValues), quantity: l.quantity, total_cost: cost },
             payloadFields: [...formSchema(l.form), ...EXTRA_FIELDS],
             fallbackUserIds: leads,
+            fallbackWording: { who: "the desk's team leads", check: 'Check the manager or cost-centre owner' },
             ...(highRisk ? { risk: 'high' as const } : {}),
           });
           notices.push(...sub.notices);

@@ -396,6 +396,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       const bell = await system((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.hrAdmin, type: 'workflow.approval.no_approver', entityId: req.id } }));
       expect(bell).toHaveLength(1);
       expect(bell[0].contextText).toContain('Cost-centre owner');
+      expect(bell[0].contextText).toMatch(/so the desk's team leads got it\. Check the manager or cost-centre owner/);
       expect(send.mock.calls.some(([m]) => m.to === `hrAdmin@esm-${run}.test`)).toBe(true);
       await api('emp', 'post', `/desk/my/requests/${out.requests[0].ticketId}/cancel`).send({ reason: 'Test done' }).expect(200);
     });
