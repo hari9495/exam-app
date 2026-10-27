@@ -687,6 +687,7 @@ function GstTab({ gst, entities, today, onAdd, onEnd }: { gst: GstRegistration[]
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<GstRegistration | null>(null);
   const [endOn, setEndOn] = useState<Date | null>(fromKey(today));
+  const [tried, setTried] = useState(false);
   const entity = (id: string) => entities.find((e) => e.value === id)?.label ?? '';
   const columns: TableColumn<GstRegistration>[] = [
     { key: 'entity', header: 'Legal entity', value: (r) => entity(r.legalEntityId), width: 240, hideable: false },
@@ -710,18 +711,19 @@ function GstTab({ gst, entities, today, onAdd, onEnd }: { gst: GstRegistration[]
       {ending && (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setEnding(null)}
+          onOpenChange={(o) => !o && (setEnding(null), setTried(false))}
           size="md"
           title={`End ${ending.gstin}?`}
           consequence="Bills dated after this day are not matched to this registration."
           confirmLabel="End registration"
-          confirmDisabled={!endOn}
           onConfirm={async () => {
+            setTried(true);
+            if (!endOn) return false;
             await onEnd(ending.id, dayKey(endOn!));
             setEnding(null);
           }}
         >
-          <FormField id="gst-end" label="Last day" required>
+          <FormField id="gst-end" label="Last day" required error={tried && !endOn ? 'Choose the last day.' : null}>
             <DatePicker value={endOn} onChange={setEndOn} aria-label="Last day" />
           </FormField>
         </ConfirmDialog>
@@ -795,14 +797,16 @@ function FxTab({ rows, payCurrency, today, onAdd }: { rows: FxRateRow[]; payCurr
   const [base, setBase] = useState('');
   const [on, setOn] = useState<Date | null>(fromKey(today));
   const [rate, setRate] = useState('');
-  const ok = /^[A-Z]{3}$/.test(base) && base !== payCurrency && on !== null && /^\d{1,10}(\.\d{1,8})?$/.test(rate) && Number(rate) > 0;
+  const okRate = /^\d{1,10}(\.\d{1,8})?$/.test(rate) && Number(rate) > 0;
+  const ok = /^[A-Z]{3}$/.test(base) && base !== payCurrency && on !== null && okRate;
+  const [tried, setTried] = useState(false);
   const columns: TableColumn<FxRateRow>[] = [
     { key: 'pair', header: 'Currency', value: (r) => `1 ${r.base} = ${r.quote}`, width: 160, hideable: false },
     { key: 'rate', header: 'Rate', value: (r) => Number(r.rate).toLocaleString('en-IN', { maximumFractionDigits: 6 }), width: 140 },
     { key: 'date', header: 'From', value: (r) => dateText(r.rateDate), width: 140 },
   ];
   return (
-    <Card title="Exchange rates" actions={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add a rate</Button>}>
+    <Card title="Exchange rates" actions={<Button size="sm" icon={Plus} onClick={() => (setTried(false), setAdding(true))}>Add a rate</Button>}>
       <Text as="p" tone="secondary" size="sm">
         {`Bills in another currency are converted to ${payCurrency} at the last rate on or before the bill's date. Official rate feeds are switched on once their terms of reuse are confirmed.`}
       </Text>
@@ -815,21 +819,22 @@ function FxTab({ rows, payCurrency, today, onAdd }: { rows: FxRateRow[]; payCurr
           title="Add an exchange rate"
           consequence="A rate for the same currency and date replaces the one there."
           confirmLabel="Add rate"
-          confirmDisabled={!ok}
           onConfirm={async () => {
+            setTried(true);
+            if (!ok) return false;
             await onAdd({ base, quote: payCurrency, rateDate: dayKey(on!), rate });
             setAdding(false);
             setBase('');
             setRate('');
           }}
         >
-          <FormField id="fx-base" label="Currency" required helper="A 3-letter code, e.g. USD.">
+          <FormField id="fx-base" label="Currency" required error={!tried ? null : !/^[A-Z]{3}$/.test(base) ? 'Enter a 3-letter code, e.g. USD.' : base === payCurrency ? `Enter a currency other than ${payCurrency}.` : null} helper="A 3-letter code, e.g. USD.">
             <TextField value={base} onChange={(x) => setBase(x.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3))} maxLength={3} />
           </FormField>
-          <FormField id="fx-rate" label={`${payCurrency} for 1 unit`} required>
+          <FormField id="fx-rate" label={`${payCurrency} for 1 unit`} required error={tried && !okRate ? 'Enter a rate above 0, e.g. 83.25.' : null}>
             <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
           </FormField>
-          <FormField id="fx-on" label="From" required>
+          <FormField id="fx-on" label="From" required error={tried && !on ? 'Choose the date.' : null}>
             <DatePicker value={on} onChange={setOn} aria-label="Rate from" />
           </FormField>
         </ConfirmDialog>

@@ -53,7 +53,9 @@ describe('Review cycles and reviews (PM4)', () => {
     expect(screen.getByText('Joined after the cut-off')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Include' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Include' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Include' }));
+    expect(within(d).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(p.onOverride).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Joined from the sister company');
     await ue.click(within(d).getByRole('button', { name: 'Include' }));
     expect(p.onOverride).toHaveBeenCalledWith('x2', true, 'Joined from the sister company');
@@ -81,7 +83,9 @@ describe('Review cycles and reviews (PM4)', () => {
     render(<ReviewScreen {...rp({ onSkip, review: review({ role: 'viewer', can: { self: false, manager: false, skip: true }, finalScore: 4 }) })} />);
     await ue.click(screen.getByRole('button', { name: 'Send back' }));
     let d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Send back' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Send back' }));
+    expect(within(d).getByText('Enter at least 3 characters.')).toBeInTheDocument();
+    expect(onSkip).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Goals rating looks low');
     await ue.click(within(d).getByRole('button', { name: 'Send back' }));
     expect(onSkip).toHaveBeenCalledWith(false, 'Goals rating looks low');

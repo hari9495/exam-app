@@ -637,6 +637,8 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
   const [parentId, setParentId] = useState<string | null>(null);
   const [merging, setMerging] = useState<Skill | null>(null);
   const [intoId, setIntoId] = useState<string | null>(null);
+  const [triedAdd, setTriedAdd] = useState(false);
+  const [triedMerge, setTriedMerge] = useState(false);
   const [retiring, setRetiring] = useState<Skill | null>(null);
   const byId = new Map(p.skills.map((s) => [s.id, s]));
   const path = (s: Skill): string => (s.parentId && byId.get(s.parentId) ? `${path(byId.get(s.parentId)!)} › ${s.name}` : s.name);
@@ -648,7 +650,7 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
     { key: 'status', header: 'Status', value: (s) => s.status, render: (s) => <><Badge tone={STATUS_TONE[s.status]}>{s.status === 'merged' ? `Merged into ${byId.get(s.mergedIntoId ?? '')?.name ?? ''}` : STATUS_LABEL[s.status]}</Badge> {s.competency && <Badge tone="info">Competency</Badge>}</>, width: 260 },
   ];
   return (
-    <Card title="Skills library" actions={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add a skill</Button>}>
+    <Card title="Skills library" actions={<Button size="sm" icon={Plus} onClick={() => (setTriedAdd(false), setAdding(true))}>Add a skill</Button>}>
       <Text as="p" tone="secondary" size="sm">
         One library for the company: domains, skills and sub-skills. A skill in use is never deleted: retire it, or merge it into another and everything that used it follows.
       </Text>
@@ -667,7 +669,7 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
         rowButtons={(s) =>
           s.status === 'active' ? (
             <>
-              <Button size="sm" onClick={() => { setMerging(s); setIntoId(null); }}>
+              <Button size="sm" onClick={() => { setMerging(s); setIntoId(null); setTriedMerge(false); }}>
                 Merge into…
               </Button>
               <Button size="sm" variant="danger" onClick={() => setRetiring(s)}>
@@ -684,8 +686,9 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
           size="md"
           title="Add a skill"
           confirmLabel="Add skill"
-          confirmDisabled={name.trim().length < 2 || (kind !== 'domain' && !parentId)}
           onConfirm={async () => {
+            setTriedAdd(true);
+            if (name.trim().length < 2 || (kind !== 'domain' && !parentId)) return false;
             await p.onSaveSkill(null, { name: name.trim(), kind, parentId: kind === 'domain' ? null : parentId });
             setAdding(false);
             setName('');
@@ -694,11 +697,11 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
           <FormField id="sk-kind" label="Level">
             <Segment label="Level in the library" value={kind} onChange={(k) => { setKind(k); setParentId(null); }} options={(Object.keys(SKILL_KIND) as Skill['kind'][]).map((k) => ({ value: k, label: SKILL_KIND[k] }))} />
           </FormField>
-          <FormField id="sk-name" label="Name" required>
+          <FormField id="sk-name" label="Name" required error={triedAdd && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
             <TextField value={name} onChange={setName} maxLength={120} />
           </FormField>
           {kind !== 'domain' && (
-            <FormField id="sk-parent" label={kind === 'skill' ? 'Domain' : 'Skill'} required>
+            <FormField id="sk-parent" label={kind === 'skill' ? 'Domain' : 'Skill'} required error={triedAdd && !parentId ? (kind === 'skill' ? 'Choose the domain.' : 'Choose the skill.') : null}>
               <Select aria-label={kind === 'skill' ? 'Domain' : 'Skill'} value={parentId} onChange={setParentId} options={parents.map((s) => ({ value: s.id, label: path(s) }))} searchable />
             </FormField>
           )}
@@ -712,13 +715,14 @@ function SkillsTab(p: PerformanceSetupScreenProps) {
           title={`Merge ${merging.name} into another skill?`}
           consequence="The skill is kept as merged. A competency on it moves to the skill you keep."
           confirmLabel="Merge"
-          confirmDisabled={!intoId}
           onConfirm={async () => {
+            setTriedMerge(true);
+            if (!intoId) return false;
             await p.onMergeSkill(merging.id, intoId!);
             setMerging(null);
           }}
         >
-          <FormField id="sk-into" label="Keep this skill" required>
+          <FormField id="sk-into" label="Keep this skill" required error={triedMerge && !intoId ? 'Choose the skill to keep.' : null}>
             <Select aria-label="Skill to keep" value={intoId} onChange={setIntoId} options={live.filter((s) => s.kind === merging.kind && s.id !== merging.id).map((s) => ({ value: s.id, label: path(s) }))} searchable />
           </FormField>
         </ConfirmDialog>

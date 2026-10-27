@@ -563,6 +563,7 @@ export function AdvancesScreen(p: AdvancesScreenProps) {
   const [requesting, setRequesting] = useState(false);
   const [purpose, setPurpose] = useState('');
   const [amount, setAmount] = useState('');
+  const [tried, setTried] = useState(false);
   const rows = (tab === 'mine' ? p.mine : tab === 'approvals' ? p.approvals : p.payout) ?? [];
   const tabs = [{ value: 'mine' as const, label: 'My advances' }, ...(p.approvals?.length ? [{ value: 'approvals' as const, label: `Waiting for me (${p.approvals.length})` }] : []), ...(p.payout ? [{ value: 'payout' as const, label: `Finance (${p.payout.length})` }] : [])];
   const columns: TableColumn<AdvanceSummary>[] = [
@@ -580,7 +581,7 @@ export function AdvancesScreen(p: AdvancesScreenProps) {
       onRetry={p.onRetry}
       what="your advances"
       actions={
-        <Button variant="primary" icon={Plus} onClick={() => setRequesting(true)}>
+        <Button variant="primary" icon={Plus} onClick={() => (setTried(false), setRequesting(true))}>
           Request an advance
         </Button>
       }
@@ -608,16 +609,17 @@ export function AdvancesScreen(p: AdvancesScreenProps) {
           title="Request a standing advance"
           consequence="For regular spend at a site. Your manager and finance approve it. For a trip, ask on the trip request instead."
           confirmLabel="Send for approval"
-          confirmDisabled={purpose.trim().length < 3 || !MONEY.test(amount.trim()) || Number(amount) <= 0}
           onConfirm={async () => {
+            setTried(true);
+            if (purpose.trim().length < 3 || !MONEY.test(amount.trim()) || Number(amount) <= 0) return false;
             await p.onRequest(purpose.trim(), amount.trim());
             setRequesting(false);
           }}
         >
-          <FormField id="ad-amount" label="Amount" required>
+          <FormField id="ad-amount" label="Amount" required error={tried && (!MONEY.test(amount.trim()) || Number(amount) <= 0) ? 'Enter an amount above 0, e.g. 10000.' : null}>
             <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
           </FormField>
-          <FormField id="ad-purpose" label="What it is for" required>
+          <FormField id="ad-purpose" label="What it is for" required error={tried && purpose.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
             <TextArea value={purpose} onChange={setPurpose} rows={2} maxLength={300} />
           </FormField>
         </ConfirmDialog>
@@ -654,7 +656,9 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
   const [rate, setRate] = useState('');
   const forex = Boolean(a && p.payCurrency && a.currency !== p.payCurrency);
   const okRate = rate === '' || /^\d{1,10}(\.\d{1,8})?$/.test(rate);
+  const [tried, setTried] = useState(false);
   const open = (d: 'amount' | 'pay' | 'return') => {
+    setTried(false);
     setAmount(d === 'return' ? String(Number(a?.balance ?? 0)) : String(Number(a?.amount ?? a?.requested ?? 0)));
     setReason('');
     setRef('');
@@ -663,6 +667,9 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
     setDialog(d);
   };
   const okDate = on !== null && dayKey(on) <= p.today;
+  const dateError = !tried || okDate ? null : on === null ? 'Choose the date.' : 'Choose a date on or before today.';
+  const refError = tried && ref.trim().length < 2 ? 'Enter the bank reference.' : null;
+  const rateError = tried && !okRate ? 'Enter the rate as a number, e.g. 83.25.' : null;
   return (
     <LivePage title={a ? a.purpose : 'Advance'} description={a ? `${a.person} · ${a.kind === 'trip' ? 'For a trip' : 'Standing advance'}` : undefined} state={p.state} onRetry={p.onRetry} what="this advance" actions={<Button onClick={p.onBack}>Back</Button>}>
       {a && (
@@ -751,16 +758,17 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               title="Approve a lower amount?"
               consequence={`Asked for ${money(a.currency, a.requested)}. The employee sees the amount you approve and your reason. Then approve the request.`}
               confirmLabel="Save amount"
-              confirmDisabled={!MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.requested) || (Number(amount) < Number(a.requested) && reason.trim().length < 3)}
               onConfirm={async () => {
+                setTried(true);
+                if (!MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.requested) || (Number(amount) < Number(a.requested) && reason.trim().length < 3)) return false;
                 await p.onChangeAmount(Number(amount).toFixed(2), reason.trim());
                 setDialog(null);
               }}
             >
-              <FormField id="ad-new" label={`Approve (${a.currency})`} required>
+              <FormField id="ad-new" label={`Approve (${a.currency})`} required error={!tried ? null : !MONEY.test(amount) || Number(amount) <= 0 ? 'Enter an amount above 0.' : Number(amount) > Number(a.requested) ? `Enter at most ${money(a.currency, a.requested)}.` : null}>
                 <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
               </FormField>
-              <FormField id="ad-why" label="Reason" required helper="For example: two weeks of site spend is enough">
+              <FormField id="ad-why" label="Reason" required error={tried && Number(amount) < Number(a.requested) && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null} helper="For example: two weeks of site spend is enough">
                 <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
               </FormField>
             </ConfirmDialog>
@@ -773,20 +781,21 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               title={`Record payment of ${money(a.currency, a.amount)}?`}
               consequence={a.kind === 'trip' ? 'The employee is told and the settle-by date starts from the trip end.' : 'The employee is told.'}
               confirmLabel="Record payment"
-              confirmDisabled={!okDate || ref.trim().length < 2 || !okRate}
               onConfirm={async () => {
+                setTried(true);
+                if (!okDate || ref.trim().length < 2 || !okRate) return false;
                 await p.onPay(dayKey(on!), ref.trim(), forex && rate ? rate : undefined);
                 setDialog(null);
               }}
             >
-              <FormField id="ad-paid-on" label="Paid on" required>
+              <FormField id="ad-paid-on" label="Paid on" required error={dateError}>
                 <DatePicker value={on} onChange={setOn} max={fromKey(p.today)} aria-label="Paid on" />
               </FormField>
-              <FormField id="ad-ref" label="Bank reference" required helper="The UTR or transfer reference.">
+              <FormField id="ad-ref" label="Bank reference" required error={refError} helper="The UTR or transfer reference.">
                 <TextField value={ref} onChange={setRef} maxLength={80} />
               </FormField>
               {forex && (
-                <FormField id="ad-rate" label={`Loading rate (${p.payCurrency} per ${a.currency})`} optional helper="Leave it empty to use the company rate for that day.">
+                <FormField id="ad-rate" label={`Loading rate (${p.payCurrency} per ${a.currency})`} optional error={rateError} helper="Leave it empty to use the company rate for that day.">
                   <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
                 </FormField>
               )}
@@ -800,23 +809,24 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               title="Record money returned by the employee?"
               consequence={`Open balance ${money(a.currency, a.balance)}. When it reaches nil the advance is settled.`}
               confirmLabel="Record return"
-              confirmDisabled={!okDate || ref.trim().length < 2 || !okRate || !MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.balance)}
               onConfirm={async () => {
+                setTried(true);
+                if (!okDate || ref.trim().length < 2 || !okRate || !MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.balance)) return false;
                 await p.onReturn(Number(amount).toFixed(2), dayKey(on!), ref.trim(), forex && rate ? rate : undefined);
                 setDialog(null);
               }}
             >
-              <FormField id="ad-ret" label={`Amount returned (${a.currency})`} required>
+              <FormField id="ad-ret" label={`Amount returned (${a.currency})`} required error={!tried ? null : !MONEY.test(amount) || Number(amount) <= 0 ? 'Enter an amount above 0.' : Number(amount) > Number(a.balance) ? `Enter at most the open balance, ${money(a.currency, a.balance)}.` : null}>
                 <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
               </FormField>
-              <FormField id="ad-ret-on" label="Received on" required>
+              <FormField id="ad-ret-on" label="Received on" required error={dateError}>
                 <DatePicker value={on} onChange={setOn} max={fromKey(p.today)} aria-label="Received on" />
               </FormField>
-              <FormField id="ad-ret-ref" label="Bank reference" required>
+              <FormField id="ad-ret-ref" label="Bank reference" required error={refError}>
                 <TextField value={ref} onChange={setRef} maxLength={80} />
               </FormField>
               {forex && (
-                <FormField id="ad-ret-rate" label={`Rate it came back at (${p.payCurrency} per ${a.currency})`} optional helper="Leave it empty to use the company rate for that day. The gap to the loading rate is shown as an exchange difference.">
+                <FormField id="ad-ret-rate" label={`Rate it came back at (${p.payCurrency} per ${a.currency})`} optional error={rateError} helper="Leave it empty to use the company rate for that day. The gap to the loading rate is shown as an exchange difference.">
                   <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
                 </FormField>
               )}
