@@ -37,8 +37,9 @@ body:has(.yx-phone) .yx-sheet { max-width: calc(var(--yx-space-16) * 6 + var(--y
 }
 .yx-portal__tenant { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-lg); }
 .yx-portal__name { color: var(--yx-color-text-secondary); padding-left: var(--yx-space-3); border-left: var(--yx-border-width) solid var(--yx-color-border); }
-.yx-portal__nav { display: flex; flex-wrap: wrap; gap: var(--yx-space-1) var(--yx-space-4); flex: 1; min-width: 0; }
-.yx-portal__nav a { color: var(--yx-color-text-secondary); text-decoration: none; padding: var(--yx-space-1) 0; }
+/* Basis max-content: a menu that can't fit beside the name drops to its own row instead of squeezing into a one-word column. */
+.yx-portal__nav { display: flex; flex-wrap: wrap; gap: var(--yx-space-1) var(--yx-space-4); flex: 1 1 max-content; min-width: 0; }
+.yx-portal__nav a { color: var(--yx-color-text-secondary); text-decoration: none; padding: var(--yx-space-1) 0; white-space: nowrap; }
 .yx-portal__nav a[aria-current="page"] { color: var(--yx-color-text); font-weight: var(--yx-weight-medium); box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-action-primary); }
 .yx-portal__user { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 .yx-portal__body { flex: 1; width: 100%; max-width: var(--yx-page-max); margin: 0 auto; padding: var(--yx-space-6); display: flex; flex-direction: column; gap: var(--yx-space-6); box-sizing: border-box; }
