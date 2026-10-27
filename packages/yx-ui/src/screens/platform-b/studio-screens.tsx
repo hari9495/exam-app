@@ -447,7 +447,7 @@ export function RunLogScreen({ runs, workflows, allPaused, state = 'ready', defa
     { key: 'id', header: 'Run', type: 'id', value: (r) => r.id },
     { key: 'wf', header: 'Workflow', value: (r) => `${r.workflow} · ${r.version}` },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => RUN_TONE[v as RunStatus] },
-    { key: 'started', header: 'Started', value: (r) => r.started, render: (r) => when(r.started) },
+    { key: 'started', header: 'Started', type: 'date', value: (r) => r.started, render: (r) => when(r.started) },
     { key: 'by', header: 'Started by', value: (r) => r.startedBy },
     { key: 'records', header: 'Records', type: 'number', value: (r) => r.records },
     { key: 'err', header: 'Failed step and error', value: (r) => r.error ?? '', render: (r) => (r.error ? `${r.failedStep}: ${r.error}` : '') },

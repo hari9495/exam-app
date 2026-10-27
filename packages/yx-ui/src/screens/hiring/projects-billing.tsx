@@ -278,7 +278,7 @@ export function BenchRequestsScreen({ people, requests, today, persona, matchFor
     { key: 'project', header: 'Project', type: 'id', value: (r) => r.project },
     { key: 'skill', header: 'Skill · level', value: (r) => `${r.skill} · ${r.level}` },
     { key: 'pct', header: 'Allocation', type: 'number', value: (r) => r.pct, render: (r) => `${r.pct}%` },
-    { key: 'dates', header: 'Dates', value: (r) => `${formatDate(r.from)} – ${formatDate(r.to)}` },
+    { key: 'dates', header: 'Dates', type: 'date', value: (r) => `${formatDate(r.from)} – ${formatDate(r.to)}` },
     { key: 'by', header: 'Requested by', type: 'person', value: (r) => r.requestedBy, person: (r) => ({ name: r.requestedBy }) },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Confirmed' ? 'success' : v === 'Matched' ? 'info' : 'warning') },
     { key: 'person', header: 'Person', value: (r) => r.person ?? '—' },

@@ -53,7 +53,7 @@ const INV_COLS: TableColumn<InvitationRow>[] = [
   { key: 'id', header: 'Invitation', type: 'id', value: (r) => r.id, width: 110 },
   { key: 'test', header: 'Test', value: (r) => r.test, width: 220 },
   { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => INV_TONE[v as InvitationRow['status']], groupable: true, width: 130 },
-  { key: 'slot', header: 'Slot (candidate time)', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
+  { key: 'slot', header: 'Slot (candidate time)', type: 'date', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
   { key: 'acc', header: 'Accommodation', value: (r) => r.accommodation ?? '', width: 170 },
   { key: 'reminders', header: 'Reminders sent', type: 'number', value: (r) => r.reminders, width: 120 },
 ];
