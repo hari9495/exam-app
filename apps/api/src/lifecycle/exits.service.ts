@@ -907,6 +907,7 @@ export class ExitsService implements OnModuleInit {
     const v = await this.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Reviews are made by the manager, signed in as themselves.');
     let notices: Notice[] = [];
+    let confirmation: Parameters<EmployeeHistoryService['tellApprovers']>[1] | null = null;
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const own = await ownOf(tx, c, v);
@@ -934,6 +935,7 @@ export class ExitsService implements OnModuleInit {
         const ch = await tx.employeeChange.create({ data: { organizationId: org, employeeId, employmentId: e.id, changeType: 'confirmation', effectiveDate: asDate(from < today ? today : from), status: 'pending', payload: { status: 'confirmed' }, reason: `Probation review: ${dto.comments.trim()}`.slice(0, 1000), requestedBy: c.userId ?? null } });
         await audit(tx, c, 'employee.change.requested', 'employee', employeeId, { changeId: ch.id, changeType: 'confirmation', effectiveDate: from, via: 'probation_review' });
         changeId = ch.id;
+        confirmation = ch;
       } else if (dto.outcome === 'extend') {
         if (!dto.months) throw new BadRequestException('Say by how many months.');
         await this.people.extendIn(tx, c, e, p, dto.months, dto.comments);
@@ -949,6 +951,8 @@ export class ExitsService implements OnModuleInit {
       return { org, employeeId, name: displayName(emp), outcome: dto.outcome, hr: await this.hrDeciders(tx, org, employeeId, [c.userId]) };
     });
     if (notices.length) await this.approvals.send(ctx, notices);
+    // The confirmation waits for whoever approves job changes: their bell says so (and their Approvals inbox lists it).
+    if (confirmation) await this.history.tellApprovers(ctx, confirmation);
     const words = { confirm: 'recommended confirming', extend: 'extended', terminate: 'recommended ending' }[res.outcome];
     await this.notifications
       .notifySystem({ organizationId: res.org, isSuperAdmin: false }, res.hr, 'probation.review.done', { entityType: 'employee', entityId: res.employeeId, contextText: `A probation was reviewed: ${words}`, linkPath: '/yx/people/probation' }, { subject: 'A probation review was made', html: '<p>A manager reviewed a probation. See it in YukthiX.</p>' })

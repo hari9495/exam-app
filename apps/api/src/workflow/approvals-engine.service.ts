@@ -213,10 +213,35 @@ export function verdict(s: Pick<FrozenStep, 'need' | 'rejectOn'>, n: number, app
   return 'open';
 }
 
+/** One row of "what waits for me" (GET /workflow/approvals/inbox). */
+export interface InboxItem {
+  taskId: string;
+  requestId: string;
+  type: string;
+  title: string;
+  /** Label / value pairs, as a request stores them. */
+  summary: Prisma.JsonValue;
+  requester: string;
+  raisedBy: string | null;
+  onBehalfOf: string | null;
+  person: string;
+  step: { index: number; of: number; name: string; need: number; approvers: number };
+  dueAt: Date | null;
+  submittedAt: Date;
+  decideAt: string | null;
+}
+
+/**
+ * Approvals a module decides in its own flow rather than as a workflow request (e.g. job changes, P06), that still wait
+ * for this person. Their rows join the inbox and its counts, and always link to the module's page to decide (decideAt).
+ */
+export type InboxSource = (tx: Tx, ctx: CompanyContext, userId: string) => Promise<InboxItem[]>;
+
 @Injectable()
 export class ApprovalsEngine {
   private readonly logger = new Logger(ApprovalsEngine.name);
   private readonly types = new Map<string, RequestType>();
+  private readonly sources: InboxSource[] = [];
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
@@ -233,6 +258,16 @@ export class ApprovalsEngine {
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
     this.types.set(t.key, t);
+  }
+
+  /** A module adds what waits in its own approval flow to everyone's inbox (once, at start-up). */
+  registerInboxSource(source: InboxSource) {
+    this.sources.push(source);
+  }
+
+  /** The rows the registered sources hold for this person (the inbox and the side-menu count both use it). */
+  async sourceItems(tx: Tx, ctx: CompanyContext, userId: string): Promise<InboxItem[]> {
+    return (await Promise.all(this.sources.map((s) => s(tx, ctx, userId)))).flat();
   }
 
   /** The person-facing name of a request type ("Leave", "Expense claim"), for search results. */
@@ -651,7 +686,7 @@ export class ApprovalsEngine {
       const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.map((t) => t.onBehalfOfUserId)));
       const personIds = [...new Set([...reqs.values()].map((r) => r.subjectPersonId).filter((x): x is string => Boolean(x)))];
       const persons = new Map((personIds.length ? await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : []).map((p) => [p.id, p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ')]));
-      return tasks
+      const items: InboxItem[] = tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
           const r = reqs.get(t.requestId)!;
@@ -674,6 +709,7 @@ export class ApprovalsEngine {
             decideAt: this.types.get(r.requestType)?.decideOnlyVia ?? null,
           };
         });
+      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
     });
   }
 
