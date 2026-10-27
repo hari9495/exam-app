@@ -79,8 +79,8 @@
 .yx-ppl__check-meta { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); }
 .yx-ppl__check-action { display: flex; gap: var(--yx-space-2); }
 .yx-ppl__check-side { display: flex; align-items: center; gap: var(--yx-space-3); flex: none; }
-/* StatusChecklist: status and action are columns shared by every row (both have a minimum width, so separate lists on a page line up too). */
-.yx-ppl__checklist[data-cols] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(calc(var(--yx-space-16) * 1.5), auto) minmax(calc(var(--yx-space-16) * 2.25), auto); }
+/* StatusChecklist: status and action are columns shared by every row (the action column has one minimum width, so separate lists on a page line up too). */
+.yx-ppl__checklist[data-cols] { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(calc(var(--yx-space-16) * 2.25), auto); }
 .yx-ppl__checklist[data-cols] > .yx-ppl__check-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 .yx-ppl__checklist[data-cols] .yx-ppl__check-side { display: contents; }
 .yx-ppl__checklist[data-cols] .yx-ppl__check-side > .yx-badge { justify-self: start; }
