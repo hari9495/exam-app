@@ -39,6 +39,8 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
     tan: 'BLRK01234E',
     gstin: '29AABCK1234M1Z5',
     cin: 'U15400KA2014PTC012345',
+    // YX-ORG-16: each entity's own code series, so the two entities never both have an E0001 (founder queue 28 Oct 2026).
+    employeeCodePrefix: 'KF-',
   };
   let kfpl = await tx.legalEntity.findFirst({ where: { ...org, shortName: 'KFPL' } });
   if (!kfpl) {
@@ -60,9 +62,13 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
           pan: 'AABCK5678N',
           tan: 'CHEK05678F',
           gstin: '33AABCK5678N1Z2',
+          employeeCodePrefix: 'KFT-',
         },
       }),
   );
+  // A company seeded before the prefixes: set them where none was chosen yet. Existing codes stay as they are (no renumbering).
+  await tx.legalEntity.updateMany({ where: { ...org, id: kfpl.id, employeeCodePrefix: null }, data: { employeeCodePrefix: 'KF-' } });
+  await tx.legalEntity.updateMany({ where: { ...org, id: tn.id, employeeCodePrefix: null }, data: { employeeCodePrefix: 'KFT-' } });
 
   // ---- locations (YX-ORG-02) ----
   const location = (legalEntityId: string, name: string, code: string, city: string, state: string, postalCode: string, line: string, geo: [number, number, number] | null, ipRanges: string[]) =>
