@@ -429,6 +429,17 @@ describe('/yx/sign-in (email first, no company code)', () => {
       expect(login).toHaveBeenCalledWith('', expect.any(String));
     });
 
+    it('a browser that refuses without showing a prompt says so', async () => {
+      route({ 'GET /auth/remembered-company': { company: null }, 'GET /auth/sign-in-options': { ...WAYS, passkey: true }, 'POST /auth/passkey/options': { challenge: 'chal-1' } });
+      const refused = () => Object.assign(new Error('not allowed'), { name: 'NotAllowedError' });
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      start.mockRejectedValueOnce(refused());
+      render(<YxSignInPage />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }));
+      expect(await screen.findByText("This browser can't open a passkey here. Use your work email instead.")).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
     it('a passkey the site no longer knows: the browser is asked to forget it, and the page says so', async () => {
       const signalUnknownCredential = jest.fn().mockResolvedValue(undefined);
       Object.defineProperty(window, 'PublicKeyCredential', { value: { signalUnknownCredential }, configurable: true });
@@ -481,11 +492,13 @@ describe('/yx/sign-in (email first, no company code)', () => {
         'POST /auth/passkey/options': { challenge: 'chal-3' },
         'POST /auth/passkey/verify': new Error(PASSKEY_FAILED),
       });
-      start.mockRejectedValueOnce(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' }));
+      // The person closes the prompt after a moment (an instant refusal means no prompt was shown).
+      start.mockImplementationOnce(() => new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' })), 1100)));
       render(<YxSignInPage />);
       const button = await screen.findByRole('button', { name: 'Sign in with a passkey' });
       await userEvent.click(button);
       await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      await new Promise((r) => setTimeout(r, 1200));
       expect(screen.queryByRole('alert')).toBeNull();
       start.mockResolvedValue(CREDENTIAL);
       await userEvent.click(button);
