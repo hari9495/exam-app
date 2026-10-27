@@ -198,6 +198,7 @@ export class LettersService implements OnModuleInit {
   /** PPL-29 editor tab: a template written in YukthiX, saved as a new draft version (.docx, no new library). */
   compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; onePerPerson?: boolean; paragraphs: Block[] }) {
     if (!dto.paragraphs.length || dto.paragraphs.length > 80) throw new BadRequestException('A letter has 1 to 80 paragraphs.');
+    if (!dto.paragraphs.some((p) => p.runs.some((r) => r.text.trim()))) throw new BadRequestException('The letter is empty. Write the letter before you save it.');
     if (dto.paragraphs.some((p) => p.runs.reduce((n, r) => n + r.text.length, 0) > 2000)) throw new BadRequestException('A paragraph has at most 2000 characters.');
     const buf = buildDocx(dto.paragraphs);
     return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: false, onePerPerson: Boolean(dto.onePerPerson), source: 'editor', fileName: `${dto.letterType}.docx`, buf });

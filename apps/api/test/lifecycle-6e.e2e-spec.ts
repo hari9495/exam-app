@@ -382,6 +382,8 @@ describe('Lifecycle batch 6e', () => {
     const back = (await api('adminA', 'get', `/letters/templates/${t.id}/paragraphs`).expect(200)).body;
     expect(back.paragraphs).toEqual(paragraphs);
     await compose('bad_one', [{ runs: [{ text: 'Dear {{emp_nme}}' }] }]).expect(400);
+    // An emptied editor still sends one blank paragraph (founder test 27 Oct 2026): refused, no new version.
+    expect((await compose('notice_board', [{ kind: 'normal', runs: [] }, { kind: 'normal', runs: [{ text: '  ' }] }]).expect(400)).body.message).toMatch(/empty/);
     for (const [run, why] of [[{ color: '#123456' }, /Text colour/], [{ size: 72 }, /Font size/], [{ link: 'http://kaveri.example' }, /https/], [{ font: 'Comic Sans' }, /font should not exist/]] as const) {
       expect(JSON.stringify((await compose('bad_one', [{ runs: [{ text: 'x', ...run }] }]).expect(400)).body.message)).toMatch(why);
     }
