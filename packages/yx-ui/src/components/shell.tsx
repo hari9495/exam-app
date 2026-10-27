@@ -920,6 +920,8 @@ export function useCommandPaletteShortcut(onToggle: () => void) {
 export interface Crumb {
   label: string;
   href?: string;
+  /** For a page held in screen state rather than its own address: the link runs this instead of navigating. */
+  onClick?: () => void;
 }
 
 /** Deep pages only (object → sub-object, §12). Last item is the current page. More than 4 collapses the middle into "…". */
@@ -931,7 +933,7 @@ export function Breadcrumbs({ items, max = 4 }: { items: Crumb[]; max?: number }
   const current = items[items.length - 1];
   const link = (c: Crumb) => (
     <li key={`${c.label}-${c.href}`} className="yx-crumbs__item">
-      <a className="yx-crumbs__link" href={c.href}>
+      <a className="yx-crumbs__link" href={c.href} onClick={c.onClick && ((e) => (e.preventDefault(), c.onClick!()))}>
         {c.label}
       </a>
       <Icon icon={ChevronRight} className="yx-crumbs__sep" />
