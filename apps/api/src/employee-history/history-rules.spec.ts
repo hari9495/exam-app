@@ -31,8 +31,9 @@ describe('change types (M01 §3.3)', () => {
     expect(payloadProblem('transfer', { assignment: {} })).toMatch(/sets nothing/);
   });
 
-  it('PPL-04: a transfer moves the location, a promotion the designation or grade, to a value not already in force', () => {
-    expect(payloadProblem('transfer', { assignment: { departmentId: 'd2' } })).toBe('A transfer needs a new location.');
+  it('PPL-04 / PPL-09: a transfer moves the location or department, a promotion the designation or grade, to a value not already in force', () => {
+    expect(payloadProblem('transfer', { assignment: { dottedLineManagerIds: [] } })).toBe('A transfer needs a new location or department.');
+    expect(payloadProblem('transfer', { assignment: { departmentId: 'd2' } })).toBeNull();
     expect(payloadProblem('promotion', { assignment: { skillClass: 'skilled' } })).toBe('A promotion needs a new designation or grade.');
     expect(payloadProblem('promotion', { assignment: { gradeId: 'g2' } })).toBeNull();
     expect(unchangedProblem('transfer', { assignment: { locationId: 'loc' } }, A)).toMatch(/needs a new location: that is the one in force/);

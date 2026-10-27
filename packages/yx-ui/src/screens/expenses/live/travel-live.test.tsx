@@ -118,7 +118,9 @@ describe('Advances (EXP-05)', () => {
     const amount = within(dialog).getByRole('textbox', { name: /Approve/ });
     await ue.clear(amount);
     await ue.type(amount, '4000');
-    expect((within(dialog).getByRole('button', { name: 'Save amount' }) as HTMLButtonElement).disabled).toBe(true);
+    await ue.click(within(dialog).getByRole('button', { name: 'Save amount' }));
+    expect(within(dialog).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(p.onChangeAmount).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Two weeks is enough');
     await ue.click(within(dialog).getByRole('button', { name: 'Save amount' }));
     expect(p.onChangeAmount).toHaveBeenCalledWith('4000.00', 'Two weeks is enough');
@@ -133,7 +135,9 @@ describe('Advances (EXP-05)', () => {
     await ue.clear(amount);
     await ue.type(amount, '3500');
     await ue.type(within(dialog).getByRole('textbox', { name: /Bank reference/ }), 'UTR-9');
-    expect((within(dialog).getByRole('button', { name: 'Record return' }) as HTMLButtonElement).disabled).toBe(true);
+    await ue.click(within(dialog).getByRole('button', { name: 'Record return' }));
+    expect(within(dialog).getByText(/^Enter at most the open balance/)).toBeInTheDocument();
+    expect(p.onReturn).not.toHaveBeenCalled();
     await ue.clear(amount);
     await ue.type(amount, '3000');
     await ue.click(within(dialog).getByRole('button', { name: 'Record return' }));
@@ -147,7 +151,9 @@ describe('Closing trips and forex advances (E5)', () => {
     render(<TripScreen {...tripProps(trip({ budget: null, advance: null, can: { edit: false, submit: false, cancel: false, book: true, partner: false, decide: null, claim: false, close: true } }), { onClose })} />);
     await ue.click(screen.getByRole('button', { name: 'Close the trip' }));
     const dialog = screen.getByRole('dialog');
-    expect((within(dialog).getByRole('button', { name: 'Close the trip' }) as HTMLButtonElement).disabled).toBe(true);
+    await ue.click(within(dialog).getByRole('button', { name: 'Close the trip' }));
+    expect(within(dialog).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'No claims expected');
     await ue.click(within(dialog).getByRole('button', { name: 'Close the trip' }));
     expect(onClose).toHaveBeenCalledWith('No claims expected');

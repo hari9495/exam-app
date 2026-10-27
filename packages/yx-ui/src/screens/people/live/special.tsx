@@ -18,7 +18,7 @@ import type { Batch, Choice, IrOverview, IrPermission, LoadState, MyVrsScheme, P
 // Lifecycle batch 6e, wired (design §16.5): the rehire options and the buddy on a joiner (PPL-41), campus batches
 // (PPL-14), the payees of a death in service (PPL-23), absconding timelines (PPL-24), upcoming retirements and contract
 // ends, retrenchment permissions and VRS schemes (PPL-40), VRS for the employee, the letter editor tab (PPL-29) and the
-// bulk letter wizard (PPL-28). Single choices are Segments; buttons stay off until a form is complete.
+// bulk letter wizard (PPL-28). Single choices are Segments; a form explains what is missing when saved.
 
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
@@ -28,6 +28,7 @@ const choiceLabel = (c: string) => c.replace(/_/g, ' ').replace(/^./, (x) => x.t
 
 export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overrides: Record<string, { value: string; reason: string | null }>, version: number) => Promise<unknown> }) {
   const [edit, setEdit] = useState(false);
+  const [tried, setTried] = useState(false);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(data.options.map((o) => [o.key, o.value])));
   const [reasons, setReasons] = useState<Record<string, string>>(() => Object.fromEntries(data.options.map((o) => [o.key, o.reason ?? ''])));
   const p = data.previous;
@@ -37,7 +38,7 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
     <Card
       title="Rehire"
       actions={
-        <Button size="sm" onClick={() => setEdit(true)}>
+        <Button size="sm" onClick={() => { setTried(false); setEdit(true); }}>
           Change choices
         </Button>
       }
@@ -61,8 +62,9 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
           title="Rehire choices"
           consequence="Each choice starts from the company policy. A different choice needs a reason, kept on the record."
           confirmLabel="Save choices"
-          confirmDisabled={!ready}
           onConfirm={async () => {
+            setTried(true);
+            if (!ready) return false;
             await onSave(Object.fromEntries(data.options.map((o) => [o.key, { value: values[o.key], reason: values[o.key] !== o.policy ? reasons[o.key].trim() : null }])), data.version);
             setEdit(false);
           }}
@@ -73,7 +75,7 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
                 <Select aria-label={o.label} value={values[o.key]} onChange={(x) => setValues({ ...values, [o.key]: x ?? o.policy })} options={o.choices.map((c) => ({ value: c, label: choiceLabel(c) }))} />
               </FormField>
               {values[o.key] !== o.policy && (
-                <FormField id={`rh-${o.key}-why`} label="Why for this rehire" required>
+                <FormField id={`rh-${o.key}-why`} label="Why for this rehire" required error={tried && (reasons[o.key] ?? '').trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
                   <TextField value={reasons[o.key] ?? ''} onChange={(x) => setReasons({ ...reasons, [o.key]: x })} maxLength={300} />
                 </FormField>
               )}
@@ -156,6 +158,7 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
     .map((l) => ({ on: l.slice(0, 10), title: l.slice(11).trim() }));
   const touchOk = touchpoints.every((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.on) && t.title.length >= 2);
   const ready = name.trim().length >= 2 && Boolean(entity && on) && touchOk && (!moved || reason.trim().length >= 3);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -164,26 +167,27 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
       title={batch ? 'Change the batch' : 'New batch'}
       consequence={moved ? 'Every member waiting to join moves to the new day, with their checklist.' : undefined}
       confirmLabel="Save batch"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onSave(batch?.id ?? null, { name: name.trim(), legalEntityId: entity!, joiningOn: dayKey(on!), touchpoints, ...(moved ? { reason: reason.trim() } : {}), ...(batch ? { version: batch.version } : {}) });
         onClose();
       }}
     >
-      <FormField id="bt-name" label="Name" required>
+      <FormField id="bt-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
         <TextField value={name} onChange={setName} maxLength={120} />
       </FormField>
-      <FormField id="bt-entity" label="Legal entity" required>
+      <FormField id="bt-entity" label="Legal entity" required error={tried && !entity ? 'Choose the legal entity.' : null}>
         <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={entities} disabled={Boolean(batch)} />
       </FormField>
-      <FormField id="bt-on" label="Joining day" required>
+      <FormField id="bt-on" label="Joining day" required error={tried && !on ? 'Choose the joining day.' : null}>
         <DatePicker value={on} onChange={setOn} min={fromKey(today)} aria-label="Joining day" />
       </FormField>
-      <FormField id="bt-touch" label="Touchpoints" optional helper="One per line: yyyy-mm-dd and what happens, for example 2026-11-02 Welcome call.">
+      <FormField id="bt-touch" label="Touchpoints" optional helper="One per line: yyyy-mm-dd and what happens, for example 2026-11-02 Welcome call." error={tried && !touchOk ? 'Write each line as yyyy-mm-dd and what happens.' : null}>
         <TextArea value={touch} onChange={setTouch} rows={3} maxLength={2000} />
       </FormField>
       {moved && (
-        <FormField id="bt-why" label="Why the day moves" required>
+        <FormField id="bt-why" label="Why the day moves" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
           <TextField value={reason} onChange={setReason} maxLength={300} />
         </FormField>
       )}
@@ -193,10 +197,14 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
 
 export function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Batch; joiners: Choice[]; onClose: () => void; onAdd: BatchesScreenProps['onAdd'] }) {
   const [picked, setPicked] = useState<string[]>([]);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" confirmDisabled={!picked.length} onConfirm={async () => { await onAdd(batch, picked); onClose(); }}>
+    // confirmDisabled kept only when nobody is waiting: nothing in this dialog can fix that.
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" confirmDisabled={!joiners.length} onConfirm={async () => { setTried(true); if (!picked.length) return false; await onAdd(batch, picked); onClose(); }}>
       {joiners.length ? (
-        joiners.map((j) => <Checkbox key={j.value} checked={picked.includes(j.value)} onChange={(c) => setPicked(c ? [...picked, j.value] : picked.filter((x) => x !== j.value))} label={j.label} />)
+        <FormField id="am-joiners" label="Joiners" required error={tried && !picked.length ? 'Choose at least one joiner.' : null}>
+          {joiners.map((j) => <Checkbox key={j.value} checked={picked.includes(j.value)} onChange={(c) => setPicked(c ? [...picked, j.value] : picked.filter((x) => x !== j.value))} label={j.label} />)}
+        </FormField>
       ) : (
         <Text as="p">No joiners of this legal entity are waiting outside a batch.</Text>
       )}
@@ -212,28 +220,30 @@ export function PayeesDialog({ current, documents, onClose, onSave }: { current:
   const [rows, setRows] = useState<Payee[]>(current.length ? current.map((x) => ({ ...x, sharePercent: String(Number(x.sharePercent)) })) : [blank]);
   const set = (i: number, patch: Partial<Payee>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const total = rows.reduce((s, r) => s + (SHARE.test(r.sharePercent) ? Number(r.sharePercent) : 0), 0);
-  const ready = rows.every((r) => r.name.trim().length >= 2 && r.relation.trim().length >= 2 && SHARE.test(r.sharePercent) && (r.kind === 'nominee' || r.documentId)) && Math.abs(total - 100) < 0.005;
+  const totalOk = Math.abs(total - 100) < 0.005;
+  const ready = rows.every((r) => r.name.trim().length >= 2 && r.relation.trim().length >= 2 && SHARE.test(r.sharePercent) && (r.kind === 'nominee' || r.documentId)) && totalOk;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Payees" consequence={`Shares now make ${total.toFixed(2)} %. They must make 100 %.`} confirmLabel="Save payees" confirmDisabled={!ready} onConfirm={async () => { await onSave(rows.map((r) => ({ ...r, email: r.email?.trim() || null }))); onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Payees" consequence={`Shares now make ${total.toFixed(2)} %. They must make 100 %.`} confirmLabel="Save payees" onConfirm={async () => { setTried(true); if (!ready) return false; await onSave(rows.map((r) => ({ ...r, email: r.email?.trim() || null }))); onClose(); }}>
       {rows.map((r, i) => (
         <div key={i} className="yx-lif-grid">
           <FormField id={`py-kind-${i}`} label="Who">
             <Segment label="Who" value={r.kind} onChange={(k) => set(i, { kind: k })} options={[{ value: 'nominee', label: 'Nominee' }, { value: 'legal_heir', label: 'Legal heir' }]} />
           </FormField>
-          <FormField id={`py-name-${i}`} label="Name" required>
+          <FormField id={`py-name-${i}`} label="Name" required error={tried && r.name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
             <TextField value={r.name} onChange={(x) => set(i, { name: x })} maxLength={100} />
           </FormField>
-          <FormField id={`py-rel-${i}`} label="Relation" required>
+          <FormField id={`py-rel-${i}`} label="Relation" required error={tried && r.relation.trim().length < 2 ? 'Enter a relation of at least 2 characters.' : null}>
             <TextField value={r.relation} onChange={(x) => set(i, { relation: x })} maxLength={40} />
           </FormField>
-          <FormField id={`py-share-${i}`} label="Share (%)" required>
+          <FormField id={`py-share-${i}`} label="Share (%)" required error={!tried ? null : !SHARE.test(r.sharePercent) ? 'Enter a share like 50 or 33.33.' : !totalOk ? 'Make the shares add up to 100 %.' : null}>
             <TextField value={r.sharePercent} onChange={(x) => set(i, { sharePercent: x })} inputMode="decimal" maxLength={6} />
           </FormField>
           <FormField id={`py-mail-${i}`} label="Email for their login" optional>
             <TextField type="email" value={r.email ?? ''} onChange={(x) => set(i, { email: x })} maxLength={254} />
           </FormField>
           {r.kind === 'legal_heir' && (
-            <FormField id={`py-doc-${i}`} label="Succession certificate" required helper="Upload it to the person's documents first.">
+            <FormField id={`py-doc-${i}`} label="Succession certificate" required helper="Upload it to the person's documents first." error={tried && !r.documentId ? 'Choose the succession certificate.' : null}>
               <Select aria-label="Succession certificate" value={r.documentId} onChange={(x) => set(i, { documentId: x })} options={documents} />
             </FormField>
           )}
@@ -270,6 +280,7 @@ export function ContractDialog({ ask, people, types, today, onClose, onSave }: {
   const [type, setType] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const ready = Boolean(who) && reason.trim().length >= 3 && (ask.action === 'convert' ? Boolean(type) : Boolean(end));
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -278,27 +289,28 @@ export function ContractDialog({ ask, people, types, today, onClose, onSave }: {
       title={ask.action === 'set' ? 'Set a contract end' : ask.action === 'extend' ? 'Extend the contract' : 'Make permanent'}
       consequence={ask.action === 'convert' ? 'This sends an employment-type change for approval and removes the contract end.' : 'HR and the manager are reminded 30 and 7 days before.'}
       confirmLabel="Save"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onSave(who!, { action: ask.action, ...(end ? { contractEndOn: dayKey(end) } : {}), ...(type ? { employmentTypeId: type } : {}), reason: reason.trim() });
         onClose();
       }}
     >
       {!ask.employeeId && (
-        <FormField id="ct-who" label="Person" required>
+        <FormField id="ct-who" label="Person" required error={tried && !who ? 'Choose the person.' : null}>
           <Select aria-label="Person" value={who} onChange={setWho} options={people} searchable />
         </FormField>
       )}
       {ask.action === 'convert' ? (
-        <FormField id="ct-type" label="New employment type" required>
+        <FormField id="ct-type" label="New employment type" required error={tried && !type ? 'Choose the new employment type.' : null}>
           <Select aria-label="New employment type" value={type} onChange={setType} options={types} />
         </FormField>
       ) : (
-        <FormField id="ct-end" label="Contract ends on" required>
+        <FormField id="ct-end" label="Contract ends on" required error={tried && !end ? 'Choose the day the contract ends.' : null}>
           <DatePicker value={end} onChange={setEnd} min={fromKey(today)} aria-label="Contract ends on" />
         </FormField>
       )}
-      <FormField id="ct-why" label="Reason" required>
+      <FormField id="ct-why" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextField value={reason} onChange={setReason} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -326,25 +338,27 @@ export function ApplyDialog({ entities, today, onClose, onApply }: { entities: C
   const [reasons, setReasons] = useState('');
   const [on, setOn] = useState<Date | null>(fromKey(today));
   const [authority, setAuthority] = useState('');
-  const ready = Boolean(entity && on) && /^\d{1,6}$/.test(workers) && Number(workers) > 0 && reasons.trim().length >= 3 && authority.trim().length >= 2;
+  const workersOk = /^\d{1,6}$/.test(workers) && Number(workers) > 0;
+  const ready = Boolean(entity && on) && workersOk && reasons.trim().length >= 3 && authority.trim().length >= 2;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Record a permission request" confirmLabel="Save request" confirmDisabled={!ready} onConfirm={async () => { await onApply({ legalEntityId: entity!, kind, workersAffected: Number(workers), reasons: reasons.trim(), appliedOn: dayKey(on!), authority: authority.trim() }); onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Record a permission request" confirmLabel="Save request" onConfirm={async () => { setTried(true); if (!ready) return false; await onApply({ legalEntityId: entity!, kind, workersAffected: Number(workers), reasons: reasons.trim(), appliedOn: dayKey(on!), authority: authority.trim() }); onClose(); }}>
       <Segment label="For" value={kind} onChange={setKind} options={[{ value: 'retrenchment', label: 'Retrenchment' }, { value: 'layoff', label: 'Lay-off' }, { value: 'closure', label: 'Closure' }]} />
       <div className="yx-lif-grid">
-        <FormField id="ir-entity" label="Legal entity" required>
+        <FormField id="ir-entity" label="Legal entity" required error={tried && !entity ? 'Choose the legal entity.' : null}>
           <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={entities} />
         </FormField>
-        <FormField id="ir-workers" label="Workers affected" required>
+        <FormField id="ir-workers" label="Workers affected" required error={tried && !workersOk ? 'Enter a whole number above 0.' : null}>
           <TextField value={workers} onChange={setWorkers} inputMode="numeric" maxLength={6} />
         </FormField>
-        <FormField id="ir-on" label="Applied on" required>
+        <FormField id="ir-on" label="Applied on" required error={tried && !on ? 'Choose the day you applied.' : null}>
           <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Applied on" />
         </FormField>
-        <FormField id="ir-auth" label="Authority" required>
+        <FormField id="ir-auth" label="Authority" required error={tried && authority.trim().length < 2 ? 'Enter the authority, at least 2 characters.' : null}>
           <TextField value={authority} onChange={setAuthority} maxLength={200} />
         </FormField>
       </div>
-      <FormField id="ir-why" label="Reasons" required>
+      <FormField id="ir-why" label="Reasons" required error={tried && reasons.trim().length < 3 ? 'Enter reasons of at least 3 characters.' : null}>
         <TextArea value={reasons} onChange={setReasons} rows={3} maxLength={2000} />
       </FormField>
     </ConfirmDialog>
@@ -354,10 +368,11 @@ export function ApplyDialog({ entities, today, onClose, onApply }: { entities: C
 export function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission; today: string; onClose: () => void; onDecide: RetrenchmentScreenProps['onDecide'] }) {
   const [status, setStatus] = useState<'granted' | 'deemed' | 'refused'>('granted');
   const [on, setOn] = useState<Date | null>(fromKey(today));
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="The government's decision" consequence={status === 'refused' ? 'Retrenchments waiting on this permission are cancelled.' : 'Retrenchments waiting on it can now be approved.'} confirmLabel="Save decision" confirmDisabled={!on} destructive={status === 'refused'} onConfirm={async () => { await onDecide(r, { status, decidedOn: dayKey(on!) }); onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="The government's decision" consequence={status === 'refused' ? 'Retrenchments waiting on this permission are cancelled.' : 'Retrenchments waiting on it can now be approved.'} confirmLabel="Save decision" destructive={status === 'refused'} onConfirm={async () => { setTried(true); if (!on) return false; await onDecide(r, { status, decidedOn: dayKey(on!) }); onClose(); }}>
       <Segment label="Decision" value={status} onChange={setStatus} options={[{ value: 'granted', label: 'Granted' }, { value: 'deemed', label: 'Deemed granted' }, { value: 'refused', label: 'Refused' }]} />
-      <FormField id="ir-dec-on" label="Decided on" required>
+      <FormField id="ir-dec-on" label="Decided on" required error={tried && !on ? 'Choose the day of the decision.' : null}>
         <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Decided on" />
       </FormField>
     </ConfirmDialog>
@@ -367,12 +382,13 @@ export function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission;
 export function ClosureDialog({ r, today, onClose, onClosure }: { r: IrPermission; today: string; onClose: () => void; onClosure: (r: IrPermission, input: { lwd: string; reason: string }) => Promise<unknown> }) {
   const [lwd, setLwd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Start the closure exits?" consequence="A retrenchment exit starts for everyone still working in this legal entity, with this last working day." confirmLabel="Start exits" destructive confirmDisabled={!lwd || reason.trim().length < 3} onConfirm={async () => { await onClosure(r, { lwd: dayKey(lwd!), reason: reason.trim() }); onClose(); }}>
-      <FormField id="cl-lwd" label="Last working day" required>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Start the closure exits?" consequence="A retrenchment exit starts for everyone still working in this legal entity, with this last working day." confirmLabel="Start exits" destructive onConfirm={async () => { setTried(true); if (!lwd || reason.trim().length < 3) return false; await onClosure(r, { lwd: dayKey(lwd!), reason: reason.trim() }); onClose(); }}>
+      <FormField id="cl-lwd" label="Last working day" required error={tried && !lwd ? 'Choose the last working day.' : null}>
         <DatePicker value={lwd} onChange={setLwd} min={fromKey(today)} aria-label="Last working day" />
       </FormField>
-      <FormField id="cl-why" label="Reason" required>
+      <FormField id="cl-why" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextField value={reason} onChange={setReason} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -387,25 +403,26 @@ export function SchemeDialog({ entities, today, onClose, onScheme }: { entities:
   const [age, setAge] = useState('40');
   const [service, setService] = useState('10');
   const ready = name.trim().length >= 2 && Boolean(from && to) && /^\d{2}$/.test(age) && /^\d{1,2}$/.test(service);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="New VRS scheme" confirmLabel="Open scheme" confirmDisabled={!ready} onConfirm={async () => { await onScheme({ name: name.trim(), legalEntityId: entity, opensOn: dayKey(from!), closesOn: dayKey(to!), minAge: Number(age), minServiceYears: Number(service) }); onClose(); }}>
-      <FormField id="vs-name" label="Name" required>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="New VRS scheme" confirmLabel="Open scheme" onConfirm={async () => { setTried(true); if (!ready) return false; await onScheme({ name: name.trim(), legalEntityId: entity, opensOn: dayKey(from!), closesOn: dayKey(to!), minAge: Number(age), minServiceYears: Number(service) }); onClose(); }}>
+      <FormField id="vs-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
         <TextField value={name} onChange={setName} maxLength={120} />
       </FormField>
       <div className="yx-lif-grid">
         <FormField id="vs-entity" label="Legal entity" optional helper="Blank: the whole company.">
           <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={entities} clearable />
         </FormField>
-        <FormField id="vs-from" label="Opens on" required>
+        <FormField id="vs-from" label="Opens on" required error={tried && !from ? 'Choose the day it opens.' : null}>
           <DatePicker value={from} onChange={setFrom} aria-label="Opens on" />
         </FormField>
-        <FormField id="vs-to" label="Closes on" required>
+        <FormField id="vs-to" label="Closes on" required error={tried && !to ? 'Choose the day it closes.' : null}>
           <DatePicker value={to} onChange={setTo} aria-label="Closes on" />
         </FormField>
-        <FormField id="vs-age" label="Minimum age" required>
+        <FormField id="vs-age" label="Minimum age" required error={tried && !/^\d{2}$/.test(age) ? 'Enter an age of 2 digits.' : null}>
           <TextField value={age} onChange={setAge} inputMode="numeric" maxLength={2} />
         </FormField>
-        <FormField id="vs-service" label="Minimum years of service" required>
+        <FormField id="vs-service" label="Minimum years of service" required error={tried && !/^\d{1,2}$/.test(service) ? 'Enter the years as a number up to 99.' : null}>
           <TextField value={service} onChange={setService} inputMode="numeric" maxLength={2} />
         </FormField>
       </div>
@@ -418,6 +435,7 @@ export function VrsCard({ schemes, today, onApply }: { schemes: MyVrsScheme[]; t
   const [open, setOpen] = useState<MyVrsScheme | null>(null);
   const [lwd, setLwd] = useState<Date | null>(null);
   const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
   if (!schemes.length) return null;
   return (
     <Card title="Voluntary retirement">
@@ -426,7 +444,7 @@ export function VrsCard({ schemes, today, onApply }: { schemes: MyVrsScheme[]; t
           <li key={s.id}>
             <Text>{`${s.name}: open until ${dateText(s.closesOn)}`}</Text>
             {s.eligible ? (
-              <Button size="sm" onClick={() => setOpen(s)}>
+              <Button size="sm" onClick={() => { setTried(false); setOpen(s); }}>
                 Apply
               </Button>
             ) : (
@@ -436,8 +454,8 @@ export function VrsCard({ schemes, today, onApply }: { schemes: MyVrsScheme[]; t
         ))}
       </ul>
       {open && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setOpen(null)} size="md" title={`Apply for ${open.name}?`} consequence="HR decides. You can talk to HR before you apply." confirmLabel="Apply" confirmDisabled={!lwd} onConfirm={async () => { await onApply(open, { requestedLwd: dayKey(lwd!), reasonText: why.trim() || null }); setOpen(null); }}>
-          <FormField id="vr-lwd" label="Last working day you would like" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && setOpen(null)} size="md" title={`Apply for ${open.name}?`} consequence="HR decides. You can talk to HR before you apply." confirmLabel="Apply" onConfirm={async () => { setTried(true); if (!lwd) return false; await onApply(open, { requestedLwd: dayKey(lwd!), reasonText: why.trim() || null }); setOpen(null); }}>
+          <FormField id="vr-lwd" label="Last working day you would like" required error={tried && !lwd ? 'Choose the last working day you would like.' : null}>
             <DatePicker value={lwd} onChange={setLwd} min={fromKey(today)} aria-label="Last working day you would like" />
           </FormField>
           <FormField id="vr-why" label="Anything HR should know" optional>

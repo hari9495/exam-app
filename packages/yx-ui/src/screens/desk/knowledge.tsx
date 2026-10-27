@@ -624,6 +624,7 @@ function VersionsCard({ article: a }: { article: KbArticle }) {
 function ActionsCard(props: KnowledgeScreenProps & { article: KbArticle }) {
   const a = props.article;
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const { busy, error, run } = useRun();
   return (
     <Card title="Actions">
@@ -649,11 +650,15 @@ function ActionsCard(props: KnowledgeScreenProps & { article: KbArticle }) {
               title="Mark this article out of date?"
               consequence="Its owner and followers see the reason. Publishing a new version clears the mark."
               confirmLabel="Mark out of date"
-              confirmDisabled={reason.trim().length < 3}
-              onConfirm={async () => { await props.onFlag(a.id, reason.trim()); setReason(''); }}
+              onOpenChange={(o) => !o && setTried(false)}
+              onConfirm={async () => {
+                setTried(true);
+                if (reason.trim().length < 3) return false;
+                await props.onFlag(a.id, reason.trim()); setReason('');
+              }}
               trigger={<Button size="sm">Mark out of date</Button>}
             >
-              <FormField label="What is wrong" required>
+              <FormField label="What is wrong" required error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
                 <TextField value={reason} onChange={setReason} maxLength={300} />
               </FormField>
             </ConfirmDialog>

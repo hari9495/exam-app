@@ -619,14 +619,14 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
     });
     const change = (extra: Record<string, unknown>) => ({ employeeId: ids.nisha, changeType: 'transfer', effectiveDate: in20, payload: { assignment: { locationId: ids.maa } }, reason: 'Chennai accounts', ...extra });
 
-    it('a transfer needs a new location, a promotion a new designation or grade (not the ones already in force)', async () => {
+    it('a transfer needs a new location or department, a promotion a new designation or grade (not the ones already in force)', async () => {
       const no = async (body: Record<string, unknown>, msg: RegExp) => expect((await api('hrA', 'post', '/people/changes').send(change(body)).expect(400)).body.message).toMatch(msg);
-      await no({ payload: { assignment: { departmentId: ids.ppl } } }, /transfer needs a new location/);
+      await no({ payload: { assignment: { dottedLineManagerIds: [] } } }, /transfer needs a new location or department/);
       await no({ payload: { assignment: { locationId: ids.blr } } }, /needs a new location: that is the one in force/);
       await no({ changeType: 'promotion', payload: { assignment: { skillClass: 'skilled' } } }, /promotion needs a new designation or grade/);
       await no({ changeType: 'promotion', payload: { assignment: { designationId: ids.analyst, gradeId: ids.g2 } } }, /new designation or grade: that is the one in force/);
       // The preview checks the same.
-      await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { departmentId: ids.ppl } } })).expect(400);
+      await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { dottedLineManagerIds: [] } } })).expect(400);
     });
 
     it('the transfer impact lists what the new location carries: holidays, PT state with its slab, LWF, geofence', async () => {

@@ -46,6 +46,7 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
   const [deleting, setDeleting] = useState<JobBoardRow | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [addingCost, setAddingCost] = useState(false);
+  const [tried, setTried] = useState(false);
   const cols: TableColumn<JobBoardRow>[] = [
     { key: 'name', header: 'Board', value: (b) => b.name },
     { key: 'provider', header: 'Posts through', value: (b) => providerLabel(b.provider) },
@@ -85,7 +86,7 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
       onRetry={p.onRetry}
       what="job boards"
       grantedBy="your admin"
-      actions={<Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>Add a board</Button>}
+      actions={<Button variant="primary" icon={Plus} onClick={() => { setTried(false); setCreating(true); }}>Add a board</Button>}
     >
       <DataTable label="Job boards" columns={cols} rows={p.boards} getRowId={(b) => b.id} empty={<Text tone="secondary">No boards yet. Add one, then choose it on a job.</Text>} />
       <Card title="Posting costs">
@@ -96,8 +97,8 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
         <DataTable label="Posting costs" columns={costCols} rows={p.costs} getRowId={(c) => c.id} empty={<Text tone="secondary">No costs recorded yet.</Text>} />
       </Card>
       {creating && (
-        <ConfirmDialog open onOpenChange={(o) => { if (!o) { setCreating(false); setName(''); } }} title="Add a job board" confirmLabel="Add board" confirmDisabled={!name.trim()} onConfirm={async () => { await p.onCreate(name.trim()); setCreating(false); setName(''); }}>
-          <FormField id="jb-name" label="Board name" required helper="For example Naukri or your college placement cell.">
+        <ConfirmDialog open onOpenChange={(o) => { if (!o) { setCreating(false); setName(''); } }} title="Add a job board" confirmLabel="Add board" onConfirm={async () => { setTried(true); if (!name.trim()) return false; await p.onCreate(name.trim()); setCreating(false); setName(''); }}>
+          <FormField id="jb-name" label="Board name" required helper="For example Naukri or your college placement cell." error={tried && !name.trim() ? 'Enter the board name.' : null}>
             <TextField value={name} onChange={setName} maxLength={100} />
           </FormField>
         </ConfirmDialog>
@@ -117,14 +118,18 @@ function BoardDialog(p: JobBoardsScreenProps & { board: JobBoardRow; onClose: ()
   const [values, setValues] = useState<Record<string, string>>({});
   const fields = provider === 'xml_feed' ? [] : (p.providers.find((x) => x.id === provider)?.configFields ?? []);
   const keepSecrets = p.board.provider === provider && p.board.configured;
-  const missing = fields.some((f) => f.required && !values[f.key]?.trim() && !(f.secret && keepSecrets));
+  const needs = (f: (typeof fields)[number]) => f.required && !values[f.key]?.trim() && !(f.secret && keepSecrets);
+  const missing = fields.some(needs);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Set up ${p.board.name}`} confirmLabel="Save board" confirmDisabled={!name.trim() || missing} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Set up ${p.board.name}`} confirmLabel="Save board" onConfirm={async () => {
+      setTried(true);
+      if (!name.trim() || missing) return false;
       const config = provider === 'xml_feed' ? undefined : Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ''));
       await p.onSave(p.board, { name: name.trim(), provider, config });
       p.onClose();
     }}>
-      <FormField id="jb-edit-name" label="Board name" required>
+      <FormField id="jb-edit-name" label="Board name" required error={tried && !name.trim() ? 'Enter the board name.' : null}>
         <TextField value={name} onChange={setName} maxLength={100} />
       </FormField>
       <FormField id="jb-provider" label="Posts through">
@@ -134,7 +139,7 @@ function BoardDialog(p: JobBoardsScreenProps & { board: JobBoardRow; onClose: ()
         {provider === 'xml_feed' ? 'The board reads your jobs from a feed link. Give the board the link from this page.' : 'Jobs are sent to the board with your company’s own account when they open, and taken down when they close.'}
       </Text>
       {fields.map((f) => (
-        <FormField key={f.key} id={`jb-f-${f.key}`} label={f.label} required={f.required && !(f.secret && keepSecrets)} optional={!f.required} helper={f.secret && keepSecrets ? 'Leave blank to keep the saved value.' : undefined}>
+        <FormField key={f.key} id={`jb-f-${f.key}`} label={f.label} required={f.required && !(f.secret && keepSecrets)} optional={!f.required} helper={f.secret && keepSecrets ? 'Leave blank to keep the saved value.' : undefined} error={tried && needs(f) ? `Enter the ${f.label}.` : null}>
           {f.secret ? (
             <PasswordField value={values[f.key] ?? ''} onChange={(v) => setValues((x) => ({ ...x, [f.key]: v }))} autoComplete="off" />
           ) : (
@@ -153,18 +158,21 @@ function CostDialog(p: JobBoardsScreenProps & { onClose: () => void }) {
   const [currency, setCurrency] = useState('INR');
   const [note, setNote] = useState('');
   const curBad = !/^[A-Z]{3}$/.test(currency);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Record a posting cost" confirmLabel="Record cost" confirmDisabled={!board || amount == null || amount < 0 || curBad} onConfirm={async () => {
-      await p.onAddCost({ jobBoardId: board!, jobId: job, amount: amount!, currency, note: note.trim() || null });
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Record a posting cost" confirmLabel="Record cost" onConfirm={async () => {
+      setTried(true);
+      if (!board || amount == null || amount < 0 || curBad) return false;
+      await p.onAddCost({ jobBoardId: board, jobId: job, amount, currency, note: note.trim() || null });
       p.onClose();
     }}>
-      <FormField id="rc-board" label="Board" required>
+      <FormField id="rc-board" label="Board" required error={tried && !board ? 'Choose the board.' : null}>
         <Select aria-label="Board" value={board} onChange={setBoard} options={p.boards.map((b) => ({ value: b.id, label: b.name }))} />
       </FormField>
       <FormField id="rc-job" label="Job" optional>
         <Select aria-label="Job" value={job} onChange={setJob} options={p.jobs} searchable clearable />
       </FormField>
-      <FormField id="rc-amount" label="Amount" required>
+      <FormField id="rc-amount" label="Amount" required error={tried && (amount == null || amount < 0) ? 'Enter an amount of 0 or more.' : null}>
         <NumberField value={amount} onChange={setAmount} min={0} />
       </FormField>
       <FormField id="rc-cur" label="Currency" required error={curBad ? 'Three capital letters, for example INR.' : undefined}>

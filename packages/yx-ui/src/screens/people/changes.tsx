@@ -521,6 +521,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
   const start = live ? live.onStart : () => {};
   const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={start ? <Button variant="primary" onClick={start}>Start change</Button> : undefined} />;
   const [cancelling, setCancelling] = useState(false);
+  const [tried, setTried] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   return (
     <PeopleFrame active="Scheduled">
@@ -585,7 +586,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
             <>
               <MenuItem onSelect={live ? () => live.onOpen(r.id) : undefined}>{live ? 'Open record' : 'Open change'}</MenuItem>
               {(!live || live.onCancel) && (
-                <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
+                <MenuItem icon={XCircle} destructive onSelect={() => (setTried(false), setCancelId(r.id))}>
                   Cancel change
                 </MenuItem>
               )}
@@ -605,8 +606,11 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
         confirmLabel="Cancel change"
         cancelLabel="Keep change"
         destructive
-        confirmDisabled={reason.trim().length < 5 || cancelling}
+        // Only while the cancel request runs; the reason is checked on click.
+        confirmDisabled={cancelling}
         onConfirm={async () => {
+          setTried(true);
+          if (reason.trim().length < 5) return false;
           if (live?.onCancel && cancelRow) {
             setCancelling(true);
             setCancelError(null);
@@ -623,7 +627,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           setCancelId(null);
         }}
       >
-        <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers.">
+        <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers." error={tried && reason.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={2} />
         </FormField>
         {cancelError && <InlineAlert tone="danger" title={cancelError} />}

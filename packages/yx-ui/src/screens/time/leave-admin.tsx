@@ -283,6 +283,8 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
   const [nextPublished, setNextPublished] = useState<Partial<Record<LocKey, boolean>>>({});
   const [year, setYear] = useState<2026 | 2027>(2026);
   const [confirming, setConfirming] = useState<{ orig: Holiday; date: Date | null } | null>(null);
+  const [triedDate, setTriedDate] = useState(false);
+  const [triedHol, setTriedHol] = useState(false);
   const cur = CAL_LOCS.find((l) => l.key === tab)!;
   const nextRows = next[tab];
   const toConfirm = nextRows?.filter((h) => h.moves).length ?? 0;
@@ -300,7 +302,8 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
     setDraft((d) => ({ ...d, [k]: true }));
   };
   const saveHoliday = () => {
-    if (!hol?.date) return;
+    setTriedHol(true);
+    if (!hol?.name.trim() || !hol?.date) return false;
     const next: Holiday = { ...hol.orig, name: hol.name.trim(), date: hol.date, optional: hol.optional || undefined };
     changeRows(tab, (rs) => (hol.orig ? rs.map((h) => (h === hol.orig ? next : h)) : [...rs, next]));
     setHol(null);
@@ -341,7 +344,7 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
             rows={nextRows}
             getRowId={(r) => `${r.name}-${r.date.getTime()}`}
             defaultSort={{ key: 'date', dir: 'asc' }}
-            rowButtons={(r) => (r.moves && !nextPublished[tab] ? <Button size="sm" onClick={() => setConfirming({ orig: r, date: r.date })}>Confirm date</Button> : null)}
+            rowButtons={(r) => (r.moves && !nextPublished[tab] ? <Button size="sm" onClick={() => (setTriedDate(false), setConfirming({ orig: r, date: r.date }))}>Confirm date</Button> : null)}
           />
           {!nextPublished[tab] && (
             <div className="yx-tim-row">
@@ -373,8 +376,8 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
               draft={draft[l.key]}
               published={published[l.key]}
               onPublish={() => { setPublished((p) => ({ ...p, [l.key]: TODAY })); setDraft((d) => ({ ...d, [l.key]: false })); }}
-              onAdd={() => setHol({ name: '', date: null, optional: false })}
-              onEdit={(h) => setHol({ orig: h, name: h.name, date: h.date, optional: !!h.optional })}
+              onAdd={() => (setTriedHol(false), setHol({ name: '', date: null, optional: false }))}
+              onEdit={(h) => (setTriedHol(false), setHol({ orig: h, name: h.name, date: h.date, optional: !!h.optional }))}
               onRemove={setRemoving}
               onTemplate={() => setDlg('template')}
             />
@@ -397,16 +400,16 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
         title={`Confirm the 2027 date of ${confirming?.orig.name ?? ''}`}
         consequence="Check the date in the state's 2027 holiday notification. The draft copied the 2026 day and month."
         confirmLabel="Confirm date"
-        confirmDisabled={!confirming?.date}
         onConfirm={() => {
-          if (!confirming?.date) return;
+          setTriedDate(true);
+          if (!confirming?.date) return false;
           const d = confirming.date;
           setNext((n) => ({ ...n, [tab]: n[tab]!.map((h) => (h === confirming.orig ? { ...h, date: d, moves: undefined } : h)) }));
           setConfirming(null);
         }}
       >
         {confirming && (
-          <FormField label="Date" required>
+          <FormField label="Date" required error={triedDate && !confirming.date ? 'Choose the 2027 date.' : null}>
             <DatePicker value={confirming.date} onChange={(v) => setConfirming({ ...confirming, date: v })} min={new Date(2027, 0, 1)} max={new Date(2027, 11, 31)} />
           </FormField>
         )}
@@ -431,13 +434,12 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
         title={hol?.orig ? `Change the date of ${hol.orig.name}?` : `Add a holiday to ${cur.name}`}
         consequence={`${hol?.orig ? `${weekday(hol.orig.date)} ${day(hol.orig.date)} becomes a working day. ` : ''}People with leave on ${hol?.date ? `${weekday(hol.date)} ${day(hol.date)}` : 'the new date'} get that day back when you publish.`}
         confirmLabel={hol?.orig ? 'Change date' : 'Add holiday'}
-        confirmDisabled={!hol?.name.trim() || !hol?.date}
         onConfirm={saveHoliday}
       >
         {hol && (
           <div className="yx-tim-form">
-            <FormField label="Name" required><TextField value={hol.name} onChange={(v) => setHol({ ...hol, name: v })} /></FormField>
-            <FormField label="Date" required helper="Only today or later: earlier days are already in attendance records.">
+            <FormField label="Name" required error={triedHol && !hol.name.trim() ? 'Enter the holiday name.' : null}><TextField value={hol.name} onChange={(v) => setHol({ ...hol, name: v })} /></FormField>
+            <FormField label="Date" required helper="Only today or later: earlier days are already in attendance records." error={triedHol && !hol.date ? 'Choose the date.' : null}>
               <DatePicker value={hol.date} onChange={(v) => setHol({ ...hol, date: v })} min={TODAY} max={new Date(2026, 11, 31)} />
             </FormField>
             <Checkbox label="Optional holiday (each person chooses)" checked={hol.optional} onChange={(v) => setHol({ ...hol, optional: v })} />
@@ -579,6 +581,8 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
   const [payPct, setPayPct] = useState<number | null>(50);
   const [blocked, setBlocked] = useState<BlockedDates[]>([{ id: 'b1', from: new Date(2027, 2, 25), to: new Date(2027, 2, 31), reason: 'Year-end audit' }]);
   const [addingDates, setAddingDates] = useState<{ from: Date | null; to: Date | null; reason: string } | null>(null);
+  const [triedFrom, setTriedFrom] = useState(false);
+  const [triedDates, setTriedDates] = useState(false);
   const [sec, setSec] = useState(section === 'notice' ? 'absence' : section);
   const narrow = useNarrow();
   const [creditBy, setCreditBy] = useState<Record<string, CreditHow>>(() => Object.fromEntries(EL_POLICIES.map((p) => [p.id, creditDefault(p)])));
@@ -618,7 +622,7 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
           ) : (
             <div className="yx-tim-row">
               {!dirty ? <span className="yx-tim-muted">No changes yet</span> : saveBlocked && <span className="yx-tim-muted">{saveBlocked}</span>}
-              <Button variant="primary" disabled={!dirty || !!saveBlocked} onClick={() => setSaveOpen(true)}>Save as version 5</Button>
+              <Button variant="primary" disabled={!dirty || !!saveBlocked} onClick={() => (setTriedFrom(false), setSaveOpen(true))}>Save as version 5</Button>
             </div>
           )
         }
@@ -721,7 +725,7 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
                           ))}
                         </ul>
                       )}
-                      <span><Button icon={Plus} onClick={() => setAddingDates({ from: null, to: null, reason: '' })}>Add dates</Button></span>
+                      <span><Button icon={Plus} onClick={() => (setTriedDates(false), setAddingDates({ from: null, to: null, reason: '' }))}>Add dates</Button></span>
                     </div>
                   </FormField>
                 </FormSection>
@@ -771,19 +775,23 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
         title={`Save ${name.toLowerCase()} as version 5?`}
         consequence={from ? `${EL_PEOPLE} people get the new rules. Leave days before ${day(from)} follow version 4; leave on or after it follows version 5.` : 'Choose the date the new rules start.'}
         confirmLabel="Save version 5"
-        confirmDisabled={!from}
-        onConfirm={() => { setSaveOpen(false); setDirty(false); }}
+        onConfirm={() => {
+          setTriedFrom(true);
+          if (!from) return false;
+          setSaveOpen(false);
+          setDirty(false);
+        }}
       >
-        <FormField label="Applies from" required><DatePicker value={from} onChange={setFrom} min={TODAY} /></FormField>
+        <FormField label="Applies from" required error={triedFrom && !from ? 'Choose the date the new rules start.' : null}><DatePicker value={from} onChange={setFrom} min={TODAY} /></FormField>
       </ConfirmDialog>
       <ConfirmDialog
         open={!!addingDates}
         onOpenChange={(o) => !o && setAddingDates(null)}
         title="Add dates when no one can take it"
         confirmLabel="Add dates"
-        confirmDisabled={!addingDates?.from || !addingDates.to || !addingDates.reason.trim()}
         onConfirm={() => {
-          if (!addingDates?.from || !addingDates.to) return;
+          setTriedDates(true);
+          if (!addingDates?.from || !addingDates.to || !addingDates.reason.trim()) return false;
           setBlocked((bs) => [...bs, { id: `b${Date.now()}`, from: addingDates.from!, to: addingDates.to!, reason: addingDates.reason.trim() }]);
           setAddingDates(null);
           touch();
@@ -792,10 +800,10 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
         {addingDates && (
           <div className="yx-tim-form">
             <FieldRow>
-              <FormField label="From" required><DatePicker value={addingDates.from} onChange={(v) => setAddingDates({ ...addingDates, from: v })} min={TODAY} /></FormField>
-              <FormField label="To" required><DatePicker value={addingDates.to} onChange={(v) => setAddingDates({ ...addingDates, to: v })} min={addingDates.from ?? TODAY} /></FormField>
+              <FormField label="From" required error={triedDates && !addingDates.from ? 'Choose the first date.' : null}><DatePicker value={addingDates.from} onChange={(v) => setAddingDates({ ...addingDates, from: v })} min={TODAY} /></FormField>
+              <FormField label="To" required error={triedDates && !addingDates.to ? 'Choose the last date.' : null}><DatePicker value={addingDates.to} onChange={(v) => setAddingDates({ ...addingDates, to: v })} min={addingDates.from ?? TODAY} /></FormField>
             </FieldRow>
-            <FormField label="Reason" required helper="People see this when they pick a blocked date"><TextField value={addingDates.reason} onChange={(v) => setAddingDates({ ...addingDates, reason: v })} /></FormField>
+            <FormField label="Reason" required helper="People see this when they pick a blocked date" error={triedDates && !addingDates.reason.trim() ? 'Enter a reason.' : null}><TextField value={addingDates.reason} onChange={(v) => setAddingDates({ ...addingDates, reason: v })} /></FormField>
           </div>
         )}
       </ConfirmDialog>
@@ -837,6 +845,8 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
   const blankOverride = { personId: null as string | null, from: TODAY as Date | null, to: null as Date | null, note: '' };
   const [ov, setOv] = useState<typeof blankOverride | null>(null);
   const [ending, setEnding] = useState<{ o: Override; on: Date | null } | null>(null);
+  const [triedOv, setTriedOv] = useState(false);
+  const [triedEnd, setTriedEnd] = useState(false);
   const shortName = shortPolicy(p.name);
   /** Not over yet: in force now or starting later. */
   const current = (o: Override) => !o.to || o.to >= TODAY;
@@ -904,14 +914,14 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
                   {o.ended && o.to ? (
                     <Badge tone="neutral">{o.to < TODAY ? 'Ended' : 'Ends'} {dayShort(o.to)}</Badge>
                   ) : (
-                    <Button size="sm" onClick={() => setEnding({ o, on: o.from > TODAY ? o.from : TODAY })}>End</Button>
+                    <Button size="sm" onClick={() => (setTriedEnd(false), setEnding({ o, on: o.from > TODAY ? o.from : TODAY }))}>End</Button>
                   )}
                 </span>
               </li>
             ))}
           </ul>
         )}
-        <span><Button icon={Plus} onClick={() => setOv(blankOverride)}>Add override</Button></span>
+        <span><Button icon={Plus} onClick={() => (setTriedOv(false), setOv(blankOverride))}>Add override</Button></span>
       </FormSection>
       <ConfirmDialog
         open={!!ov}
@@ -919,9 +929,9 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
         title={`Add an override to ${p.name || 'this policy'}`}
         consequence="This person gets this policy instead of the one their rule gives them."
         confirmLabel="Add override"
-        confirmDisabled={!picked || !ov?.from}
         onConfirm={() => {
-          if (!ov?.from || !picked) return;
+          setTriedOv(true);
+          if (!ov?.from || !picked) return false;
           // Counts follow from the dates (peopleToday), so a future start changes nothing today.
           onChange({ overrides: [...p.overrides, { name: picked.name, change: `${policyByRule(picked.location)} → ${shortName || 'this policy'}`, from: ov.from, to: ov.to ?? undefined, note: ov.note.trim() || undefined }] });
           setOv(null);
@@ -929,9 +939,9 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
       >
         {ov && (
           <div className="yx-tim-form">
-            <FormField label="Person" required helper="Only people not already on this policy"><PersonPicker aria-label="Person" people={candidates} value={ov.personId} onChange={(v) => setOv({ ...ov, personId: v })} /></FormField>
+            <FormField label="Person" required helper="Only people not already on this policy" error={triedOv && !picked ? 'Choose the person.' : null}><PersonPicker aria-label="Person" people={candidates} value={ov.personId} onChange={(v) => setOv({ ...ov, personId: v })} /></FormField>
             <FieldRow>
-              <FormField label="From" required><DatePicker value={ov.from} onChange={(v) => setOv({ ...ov, from: v })} min={TODAY} /></FormField>
+              <FormField label="From" required error={triedOv && !ov.from ? 'Choose the start date.' : null}><DatePicker value={ov.from} onChange={(v) => setOv({ ...ov, from: v })} min={TODAY} /></FormField>
               <FormField label="Until" optional><DatePicker value={ov.to} onChange={(v) => setOv({ ...ov, to: v })} min={ov.from ?? undefined} /></FormField>
             </FieldRow>
             <FormField label="Reason" optional><TextField value={ov.note} onChange={(v) => setOv({ ...ov, note: v })} /></FormField>
@@ -944,16 +954,16 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
         title={`End ${ending?.o.name ?? ''}'s override?`}
         consequence={`From the day after, they get the policy their rule gives them. Months before stay on ${p.name || 'this policy'}.`}
         confirmLabel="End override"
-        confirmDisabled={!ending?.on}
         onConfirm={() => {
-          if (!ending?.on) return;
+          setTriedEnd(true);
+          if (!ending?.on) return false;
           const on = ending.on;
           onChange({ overrides: p.overrides.map((x) => (x === ending.o ? { ...x, to: on, ended: true } : x)) });
           setEnding(null);
         }}
       >
         {ending && (
-          <FormField label="Ends on" required>
+          <FormField label="Ends on" required error={triedEnd && !ending.on ? 'Choose the end date.' : null}>
             <DatePicker value={ending.on} onChange={(v) => setEnding({ ...ending, on: v })} min={ending.o.from > TODAY ? ending.o.from : TODAY} max={ending.o.to} />
           </FormField>
         )}
@@ -972,6 +982,7 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
   // The arrows change a draft order; it applies only after "Save order" with a date.
   const [order, setOrder] = useState<string[] | null>(null);
   const [orderSave, setOrderSave] = useState(false);
+  const [triedOrder, setTriedOrder] = useState(false);
   const [orderFrom, setOrderFrom] = useState<Date | null>(new Date(2026, 9, 1));
   const shown = order ? [...order.map((id) => rows.find((r) => r.id === id)!), ...rows.filter((r) => !order.includes(r.id))] : rows;
   const move = (id: string, by: -1 | 1) => {
@@ -1097,7 +1108,7 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
         <div className="yx-tim-row">
           <span className="yx-tim-muted">Order changed, not saved yet</span>
           <Button onClick={() => setOrder(null)}>Cancel</Button>
-          <Button variant="primary" onClick={() => setOrderSave(true)}>Save order</Button>
+          <Button variant="primary" onClick={() => (setTriedOrder(false), setOrderSave(true))}>Save order</Button>
         </div>
       )}
       {pendingOrder && !order && (
@@ -1112,9 +1123,9 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
         title="Save the new policy order?"
         consequence={`${orderMoves.length > 0 ? orderMoves.join(' ') : 'No one changes policy: the policies you moved share no people.'} Earlier months stay as they were.`}
         confirmLabel={orderFrom ? `Save from ${day(orderFrom)}` : 'Save order'}
-        confirmDisabled={!orderFrom}
         onConfirm={() => {
-          if (!orderFrom) return;
+          setTriedOrder(true);
+          if (!orderFrom) return false;
           // A later start keeps today's order in the table until that date.
           if (orderFrom > TODAY) setPendingOrder({ ids: shown.map((r) => r.id), from: orderFrom });
           else { setRows(shown); setPendingOrder(null); }
@@ -1122,7 +1133,7 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
           setOrderSave(false);
         }}
       >
-        <FormField label="Applies from" required><DatePicker value={orderFrom} onChange={setOrderFrom} min={TODAY} /></FormField>
+        <FormField label="Applies from" required error={triedOrder && !orderFrom ? 'Choose the date the new order starts.' : null}><DatePicker value={orderFrom} onChange={setOrderFrom} min={TODAY} /></FormField>
       </ConfirmDialog>
       <Drawer
         open={!!draft}
@@ -1627,6 +1638,7 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
   const [offAsk, setOffAsk] = useState(false);
   const [removing, setRemoving] = useState<Feed | null>(null);
   const [adding, setAdding] = useState<{ state: string | null; locs: string[] } | null>(null);
+  const [tried, setTried] = useState(false);
   // Removed feeds by state, so adding one back keeps its last-checked date.
   const [gone, setGone] = useState<Record<string, Feed>>({});
   const waiting = TN_FEED_CHANGES.filter((c) => waitingIds.includes(c.id));
@@ -1655,6 +1667,7 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
   };
   const openAdd = () => {
     const free = FEED_STATES.find((s) => !subscribed.includes(s)) ?? null;
+    setTried(false);
     setAdding({ state: free, locs: locsIn(free) });
   };
 
@@ -1792,9 +1805,9 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
         onOpenChange={(o) => !o && setAdding(null)}
         title="Add a holiday feed"
         confirmLabel="Add feed"
-        confirmDisabled={!adding?.state || subscribed.includes(adding.state)}
         onConfirm={() => {
-          if (!adding?.state) return;
+          setTried(true);
+          if (!adding?.state || subscribed.includes(adding.state)) return false;
           const st = adding.state;
           // A state subscribed before comes back as it was (same id, sites and waiting changes).
           const known = gone[st] ?? FEEDS.find((f) => f.state === st);
@@ -1805,7 +1818,7 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
         {adding && (
           <div className="yx-tim-form">
             <FormField label="Country"><Sel initial="in" options={[{ value: 'in', label: 'India' }]} /></FormField>
-            <FormField label="State">
+            <FormField label="State" error={tried && !adding.state ? 'Choose the state.' : tried && subscribed.includes(adding.state!) ? 'Choose a state not already subscribed.' : null}>
               <Select
                 value={adding.state}
                 onChange={(v) => setAdding({ state: v, locs: locsIn(v) })}

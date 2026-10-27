@@ -20,22 +20,28 @@ describe('Batch 6e screens', () => {
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('combobox', { name: 'gratuity service' }));
     await ue.click(screen.getByRole('option', { name: 'Add prior' }));
-    expect(within(dialog).getByRole('button', { name: 'Save choices' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save choices' }));
+    expect(within(dialog).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Why for this rehire/ }), 'Not paid out');
     await ue.click(within(dialog).getByRole('button', { name: 'Save choices' }));
     expect(onSave).toHaveBeenCalledWith({ gratuity: { value: 'add_prior', reason: 'Not paid out' } }, 2);
   });
 
   it('payees: shares must make 100 % before saving', async () => {
-    render(<PayeesDialog current={[]} documents={[]} onClose={vi.fn()} onSave={vi.fn()} />);
+    const onSave = vi.fn(async () => ({}));
+    render(<PayeesDialog current={[]} documents={[]} onClose={vi.fn()} onSave={onSave} />);
     const dialog = screen.getByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox', { name: /Name/ }), 'Meera');
     await ue.type(within(dialog).getByRole('textbox', { name: /Relation/ }), 'Wife');
     await ue.type(within(dialog).getByRole('textbox', { name: /Share/ }), '60');
-    expect(within(dialog).getByRole('button', { name: 'Save payees' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save payees' }));
+    expect(within(dialog).getByText('Make the shares add up to 100 %.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
     await ue.clear(within(dialog).getByRole('textbox', { name: /Share/ }));
     await ue.type(within(dialog).getByRole('textbox', { name: /Share/ }), '100');
-    expect(within(dialog).getByRole('button', { name: 'Save payees' })).toBeEnabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save payees' }));
+    expect(onSave).toHaveBeenCalledWith([{ kind: 'nominee', name: 'Meera', relation: 'Wife', sharePercent: '100', email: null, documentId: null }]);
   });
 
   it('VRS: only an eligible scheme offers Apply', () => {

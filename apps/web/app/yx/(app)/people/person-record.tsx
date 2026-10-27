@@ -8,7 +8,7 @@ import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type P
 import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
-import { useChangeOptions, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { useChangeOptions, useMove, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
@@ -103,6 +103,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const people = usePeople<PersonOption[]>(canChange ? '/employees' : null);
   const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canChange);
   const raise = useRaiseChange();
+  const move = useMove(people.data ?? [], canChange);
   const write = usePeopleWrite();
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
@@ -442,12 +443,21 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           employeeId={personId}
           onPreview={raise.onPreview}
           onRoute={raise.onRoute}
+          move={
+            move && {
+              ...move,
+              onSubmit: async (m) => {
+                await move.onSubmit(m);
+                done(`Inter-entity transfer for ${first} sent for approval in People › Restructure`);
+              },
+            }
+          }
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             done(`Change for ${first} sent`);
           }}
           onSaveDraft={async (d) => {
-            await write('POST', '/changes/drafts', { employeeId: personId, ...(d.changeType ? { changeType: d.changeType } : {}), form: draftForm(d) });
+            await write('POST', '/changes/drafts', { employeeId: personId, ...(d.changeType && d.changeType !== 'entity_transfer' ? { changeType: d.changeType } : {}), form: draftForm(d) });
             done('Draft saved. Find it under People › Change action.');
           }}
           onClose={() => setStarting(false)}
@@ -469,18 +479,29 @@ function DocDialog({ dialog, name, askable, onClose, onRequest, onReject }: { di
   const [type, setType] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
   const [message, setMessage] = useState('');
+  const [tried, setTried] = useState(false);
   if (dialog.kind === 'request')
     return (
-      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" confirmDisabled={!type} onConfirm={async () => (await onRequest(type!, askable.find((x) => x.key === type)?.name ?? 'document'), onClose())}>
-        <FormField id="rq-type" label="Document" required>
+      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" onConfirm={async () => {
+        setTried(true);
+        if (!type) return false;
+        await onRequest(type, askable.find((x) => x.key === type)?.name ?? 'document');
+        onClose();
+      }}>
+        <FormField id="rq-type" label="Document" required error={tried && !type ? 'Choose the document to ask for.' : null}>
           <Select aria-label="Document" value={type} onChange={setType} options={askable.map((x) => ({ value: x.key, label: x.name }))} />
         </FormField>
       </ConfirmDialog>
     );
   const d = dialog.doc!;
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive confirmDisabled={!reason} onConfirm={async () => (await onReject(d, [reason, message.trim()].filter(Boolean).join('. ')), onClose())}>
-      <FormField id="rj-reason" label="Reason" required>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive onConfirm={async () => {
+      setTried(true);
+      if (!reason) return false;
+      await onReject(d, [reason, message.trim()].filter(Boolean).join('. '));
+      onClose();
+    }}>
+      <FormField id="rj-reason" label="Reason" required error={tried && !reason ? 'Choose a reason.' : null}>
         <Select aria-label="Reason" value={reason} onChange={setReason} options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} />
       </FormField>
       <FormField id="rj-msg" label={`Message to ${name}`} optional helper="Say what to upload instead.">

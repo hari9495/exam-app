@@ -210,6 +210,7 @@ export function PreboardingPortalScreen({ tenant, accent, joiner, items, today, 
 function DeclineOffer() {
   const [reason, setReason] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   return (
     <Card title="Changed your mind?">
       <p className="yx-ps-muted">If you no longer plan to join, tell us here. The hiring team is told straight away.</p>
@@ -219,10 +220,14 @@ function DeclineOffer() {
         consequence="Your pre-joining access ends and the hiring team is told. You can't undo this from here."
         confirmLabel="Decline offer"
         destructive
-        confirmDisabled={!reason}
-        onConfirm={() => undefined}
+        onOpenChange={(o) => !o && setTried(false)}
+        onConfirm={() => {
+          setTried(true);
+          if (!reason) return false;
+          return undefined;
+        }}
       >
-        <FormField label="Reason" required>
+        <FormField label="Reason" required error={tried && !reason ? 'Choose a reason.' : null}>
           <Select
             value={reason}
             onChange={setReason}

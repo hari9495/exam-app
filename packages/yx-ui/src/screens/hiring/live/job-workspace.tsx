@@ -221,13 +221,16 @@ export function RejectDialog(p: { count: number; templates: EmailTemplateChoice[
     if (t) { setSubject(t.subject); setBody(t.body); }
   };
   const ok = reason.trim().length > 0 && (!tell || (subject.trim() && body.trim()));
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open destructive size="md" onOpenChange={(o) => !o && p.onClose()} title={p.count === 1 ? 'Reject this candidate?' : `Reject ${p.count} candidates?`} consequence={tell && delay === '24' ? 'The message waits 24 hours, so you can undo the rejection until then.' : 'They are rejected now.'} confirmLabel="Reject" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open destructive size="md" onOpenChange={(o) => !o && p.onClose()} title={p.count === 1 ? 'Reject this candidate?' : `Reject ${p.count} candidates?`} consequence={tell && delay === '24' ? 'The message waits 24 hours, so you can undo the rejection until then.' : 'They are rejected now.'} confirmLabel="Reject" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       const t = p.templates.find((x) => x.value === template);
       await p.onReject({ reason: reason.trim(), delayHours: delay === '24' ? 24 : 0, message: tell ? { templateId: t && !t.value.startsWith('default-') ? t.value : null, subject: subject.trim(), body } : null });
       p.onClose();
     }}>
-      <FormField id="rj-reason" label="Reason" required helper="For your team; the candidate does not see it.">
+      <FormField id="rj-reason" label="Reason" required helper="For your team; the candidate does not see it." error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextField value={reason} onChange={setReason} maxLength={500} />
       </FormField>
       <Checkbox label="Email the candidate" checked={tell} onChange={setTell} />
@@ -236,10 +239,10 @@ export function RejectDialog(p: { count: number; templates: EmailTemplateChoice[
           <FormField id="rj-tpl" label="Template" optional>
             <Select aria-label="Template" value={template} onChange={pick} options={p.templates.map((t) => ({ value: t.value, label: t.label }))} clearable />
           </FormField>
-          <FormField id="rj-subj" label="Subject" required>
+          <FormField id="rj-subj" label="Subject" required error={tried && !subject.trim() ? 'Enter a subject.' : null}>
             <TextField value={subject} onChange={setSubject} maxLength={300} />
           </FormField>
-          <FormField id="rj-body" label="Message" required>
+          <FormField id="rj-body" label="Message" required error={tried && !body.trim() ? 'Enter a message.' : null}>
             <TextArea value={body} onChange={setBody} rows={6} maxLength={20000} />
           </FormField>
           <FormField id="rj-when" label="Send the message">
@@ -253,9 +256,10 @@ export function RejectDialog(p: { count: number; templates: EmailTemplateChoice[
 
 function PickDialog(p: { title: string; label: string; options: Choice[]; confirm: string; onClose: () => void; onConfirm: (v: string) => Promise<void> }) {
   const [v, setV] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.title} confirmLabel={p.confirm} confirmDisabled={!v} onConfirm={async () => { await p.onConfirm(v!); p.onClose(); }}>
-      <FormField id="jw-pick" label={p.label} required>
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.title} confirmLabel={p.confirm} onConfirm={async () => { setTried(true); if (!v) return false; await p.onConfirm(v); p.onClose(); }}>
+      <FormField id="jw-pick" label={p.label} required error={tried && !v ? 'Choose one from the list.' : null}>
         <Select aria-label={p.label} value={v} onChange={setV} options={p.options} searchable />
       </FormField>
     </ConfirmDialog>
@@ -270,23 +274,26 @@ function AddDialog(p: JobWorkspaceScreenProps & { onClose: () => void; onAdded: 
   const [phone, setPhone] = useState('');
   const emailBad = email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const ok = mode === 'existing' ? Boolean(existing) : name.trim() && email.trim() && !emailBad;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Add a candidate to this job" confirmLabel="Add" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Add a candidate to this job" confirmLabel="Add" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onAdd(mode === 'existing' ? { candidateId: existing! } : { newCandidate: { name: name.trim(), email: email.trim(), ...(phone.trim() ? { phone: phone.trim() } : {}) } });
       p.onAdded(mode === 'existing' ? (p.candidateChoices.find((c) => c.value === existing)?.label ?? 'The candidate') : name.trim());
       p.onClose();
     }}>
       <Segment label="Who" value={mode} onChange={setMode} options={[{ value: 'existing', label: 'Existing candidate' }, { value: 'new', label: 'New candidate' }]} />
       {mode === 'existing' ? (
-        <FormField id="ad-existing" label="Candidate" required>
+        <FormField id="ad-existing" label="Candidate" required error={tried && !existing ? 'Choose the candidate.' : null}>
           <Select aria-label="Candidate" value={existing} onChange={setExisting} options={p.candidateChoices} searchable onSearchChange={p.onCandidateSearch} />
         </FormField>
       ) : (
         <>
-          <FormField id="ad-name" label="Name" required>
+          <FormField id="ad-name" label="Name" required error={tried && !name.trim() ? 'Enter the name.' : null}>
             <TextField value={name} onChange={setName} maxLength={200} />
           </FormField>
-          <FormField id="ad-email" label="Email" required error={emailBad ? 'Enter a valid email address.' : undefined}>
+          <FormField id="ad-email" label="Email" required error={emailBad ? 'Enter a valid email address.' : tried && !email.trim() ? 'Enter the email address.' : undefined}>
             <TextField type="email" value={email} onChange={setEmail} maxLength={254} />
           </FormField>
           <FormField id="ad-phone" label="Phone" optional>

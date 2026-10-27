@@ -6,7 +6,7 @@ import { ChangeActionSheet } from '@yukthix/ui/frame';
 import { ChangeDrawer, ChangeReview, ReasonDialog, draftForm, draftFromForm, orList, type ChangeDraft, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
 import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
-import { chartPeople, useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
+import { chartPeople, useChangeOptions, useMove, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
 import { CHANGE_LABEL } from '../../../../../lib/yx-changes';
 
 const id = encodeURIComponent;
@@ -32,6 +32,7 @@ export default function YxChangeActionPage() {
   const subjects: PersonOption[] = canManage ? (employees.data ?? []) : everyone.filter((p) => (team.data?.members ?? []).some((m) => m.id === p.id && m.relation !== 'dotted'));
   const options = useChangeOptions(subjects, perms.has('employee.salary.manage'), canManage || onBehalf);
   const raise = useRaiseChange();
+  const move = useMove(subjects, canManage);
   const write = usePeopleWrite();
   const [starting, setStarting] = useState<string | null>(null);
   // PPL-04 "Save draft": the viewer's own drafts; one opened carries on where it was left.
@@ -77,12 +78,22 @@ export default function YxChangeActionPage() {
                 initial={draft?.form}
                 onPreview={raise.onPreview}
                 onRoute={raise.onRoute}
+                move={
+                  move && {
+                    ...move,
+                    onSubmit: async (m) => {
+                      await move.onSubmit(m);
+                      toast({ tone: 'success', title: `Inter-entity transfer for ${subjects.find((s) => s.id === m.employeeId)?.name ?? 'the employee'} sent for approval`, description: 'HR approves it in People › Restructure.' });
+                    },
+                  }
+                }
                 onSubmit={async (input) => {
                   await raise.onSubmit(input, draft?.id);
                   toast({ tone: 'success', title: `${CHANGE_LABEL[input.changeType]} for ${subjects.find((s) => s.id === input.employeeId)?.name ?? 'the employee'} sent for approval` });
                 }}
                 onSaveDraft={async (d) => {
-                  const body = { employeeId: starting, ...(d.changeType ? { changeType: d.changeType } : {}), form: draftForm(d) };
+                  // A move is no job change type: the form keeps it, the draft's type stays empty.
+                  const body = { employeeId: starting, ...(d.changeType && d.changeType !== 'entity_transfer' ? { changeType: d.changeType } : {}), form: draftForm(d) };
                   await (draft ? write('PUT', `/changes/drafts/${id(draft.id)}`, body) : write('POST', '/changes/drafts', body));
                   toast({ tone: 'success', title: `Draft saved for ${subjects.find((s) => s.id === starting)?.name ?? 'the employee'}` });
                 }}

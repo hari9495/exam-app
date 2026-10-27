@@ -229,18 +229,21 @@ function TemplateDialog(p: ScorecardTemplatesScreenProps & { template: Scorecard
   const [fromLib, setFromLib] = useState<string | null>(null);
   const barBad = bar == null || scale == null || bar < 1 || bar > scale;
   const ok = name.trim() && !barBad && items.length > 0 && items.every((i) => i.label.trim() && i.weight >= 1 && i.weight <= 10);
+  const [tried, setTried] = useState(false);
   const set = (k: number, patch: Partial<(typeof items)[number]>) => setItems((x) => x.map((y, i) => (i === k ? { ...y, ...patch } : y)));
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={p.template ? (copy ? `Copy ${p.template.name}` : `Edit ${p.template.name}`) : 'New scorecard'} confirmLabel="Save scorecard" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={p.template ? (copy ? `Copy ${p.template.name}` : `Edit ${p.template.name}`) : 'New scorecard'} confirmLabel="Save scorecard" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onSave(copy ? null : (p.template?.id ?? null), { name: name.trim(), scaleMax: scale!, passBar: bar!, items: items.map((i) => ({ label: i.label.trim(), guidance: i.guidance.trim() || null, weight: i.weight, competencyId: i.competencyId })) });
       p.onClose();
     }}>
       {copy && <Text as="p" tone="secondary">This scorecard has been used, so changes are saved as a new copy.</Text>}
-      <FormField id="st-name" label="Name" required>
+      <FormField id="st-name" label="Name" required error={tried && !name.trim() ? 'Enter the name.' : null}>
         <TextField value={name} onChange={setName} maxLength={120} />
       </FormField>
       <div className="yx-tim-row">
-        <FormField id="st-scale" label="Rating scale (1 to …)" required>
+        <FormField id="st-scale" label="Rating scale (1 to …)" required error={tried && scale == null ? 'Enter the top of the scale.' : null}>
           <NumberField value={scale} onChange={setScale} min={3} max={10} />
         </FormField>
         <FormField id="st-bar" label="Pass bar" required error={barBad ? 'Between 1 and the top of the scale.' : undefined} helper="The weighted average a candidate must reach.">
@@ -249,10 +252,10 @@ function TemplateDialog(p: ScorecardTemplatesScreenProps & { template: Scorecard
       </div>
       {items.map((it, k) => (
         <div key={k} className="yx-tim-row">
-          <FormField id={`st-l${k}`} label={`Item ${k + 1}`} required>
+          <FormField id={`st-l${k}`} label={`Item ${k + 1}`} required error={tried && !it.label.trim() ? 'Enter what the panel rates.' : null}>
             <TextField value={it.label} onChange={(v) => set(k, { label: v })} maxLength={200} />
           </FormField>
-          <FormField id={`st-w${k}`} label={`Weight ${k + 1}`}>
+          <FormField id={`st-w${k}`} label={`Weight ${k + 1}`} error={tried && !(it.weight >= 1 && it.weight <= 10) ? 'Enter a weight from 1 to 10.' : null}>
             <NumberField value={it.weight} onChange={(v) => set(k, { weight: v ?? 1 })} min={1} max={10} />
           </FormField>
           <FormField id={`st-g${k}`} label={`What good looks like ${k + 1}`} optional>

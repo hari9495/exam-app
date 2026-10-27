@@ -124,6 +124,8 @@ export interface RestructureSetup {
   masters: SetupMaster[];
   costCentres: { id: string; code: string; name: string; legalEntityId: string }[];
   open: RestructureSummary[];
+  /** The company's transfer options (Settings › Inter-entity transfer defaults). */
+  defaults?: MoveOptions;
 }
 export interface LiveRestructure {
   state: 'loading' | 'ready' | 'error';
@@ -240,7 +242,11 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [map, setMap] = useState<Record<string, string>>(d0.locationMap ?? {});
   const [masterMap, setMasterMap] = useState<Record<string, string>>(d0.masterMap ?? {});
   const [target, setTarget] = useState<RestructureInput['target']>(d0.target ?? {});
-  const [defaults, setDefaults] = useState<MoveOptions>(d0.defaults ?? DEFAULTS);
+  const [defaults, setDefaults] = useState<MoveOptions>(d0.defaults ?? s?.defaults ?? DEFAULTS);
+  // The company's defaults arrive with the set-up; a continued draft keeps its own.
+  useEffect(() => {
+    if (!d0.defaults && s?.defaults) setDefaults(s.defaults);
+  }, [s?.defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [overrides, setOverrides] = useState<RestructureOverride[]>(d0.overrides ?? []);
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
   const [reason, setReason] = useState(d0.reason ?? '');
@@ -825,6 +831,7 @@ export function ContinuityChecklistDrawer({ open, onOpenChange, title, subtitle,
 export function RestructureRecord({ state, onRetry, data: d, today, onApprove, onReject, onCancel, onItems, onItem, onLetters, defaultChecklistFor }: RestructureRecordProps) {
   const [ask, setAsk] = useState<'approve' | 'reject' | 'cancel' | null>(null);
   const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
   const [listFor, setListFor] = useState<string | null>(defaultChecklistFor ?? null);
   const [items, setItems] = useState<ContinuityItemData[] | null>(null);
   useEffect(() => {
@@ -862,6 +869,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
     else if (ask === 'cancel') await onCancel?.(why.trim());
     setAsk(null);
     setWhy('');
+    setTried(false);
   };
   const count = d.count;
   return (
@@ -914,8 +922,8 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
       {ask === 'approve' ? (
         <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={`Approve “${d.title}”?`} consequence={`${count} ${count === 1 ? 'person moves' : 'people move'} on ${formatDate(day(d.effectiveDate))}. Each person moves on their own; anyone who can't move stays where they are, with the reason.`} confirmLabel={`Approve and move ${persons(count)}`} confirmVariant="approve" onConfirm={decide} />
       ) : ask ? (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} title={ask === 'reject' ? `Reject “${d.title}”?` : `Cancel “${d.title}”?`} consequence="No one moves." confirmLabel={ask === 'reject' ? 'Reject' : 'Cancel restructure'} cancelLabel="Keep it" destructive confirmDisabled={why.trim().length < 3} onConfirm={decide}>
-          <FormField label="Reason" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && (setAsk(null), setTried(false))} title={ask === 'reject' ? `Reject “${d.title}”?` : `Cancel “${d.title}”?`} consequence="No one moves." confirmLabel={ask === 'reject' ? 'Reject' : 'Cancel restructure'} cancelLabel="Keep it" destructive onConfirm={() => (setTried(true), why.trim().length < 3 ? false : decide())}>
+          <FormField label="Reason" required error={tried && why.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
             <TextArea rows={2} value={why} onChange={setWhy} maxLength={500} />
           </FormField>
         </ConfirmDialog>

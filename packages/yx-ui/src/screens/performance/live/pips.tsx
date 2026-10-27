@@ -112,30 +112,33 @@ function ProposeDialog(p: PipsScreenProps & { onClose: () => void }) {
   const filled = goals.filter((g) => g.text.trim().length >= 3 && g.measure.trim().length >= 3);
   const ok = who && reason.trim().length >= 10 && expectations.trim().length >= 10 && support.trim().length >= 3 && filled.length === goals.length && on;
   const setGoal = (i: number, k: 'text' | 'measure', val: string) => setGoals((gs) => gs.map((g, j) => (j === i ? { ...g, [k]: val } : g)));
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Propose an improvement plan" confirmLabel="Send to HR" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Propose an improvement plan" confirmLabel="Send to HR" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onPropose({ employeeId: who!, reason: reason.trim(), expectations: expectations.trim(), support: support.trim(), goals: goals.map((g) => ({ text: g.text.trim(), measure: g.measure.trim() })), lengthDays: length, checkinEveryDays: every, startsOn: dayKey(on!) });
       p.onClose();
     }}>
       <Text as="p" tone="secondary">HR approves the plan before the person sees it.</Text>
-      <FormField id="pip-who" label="Employee" required>
+      <FormField id="pip-who" label="Employee" required error={tried && !who ? 'Choose the employee.' : null}>
         <PersonPicker aria-label="Employee" value={who} onChange={setWho} people={p.team} />
       </FormField>
-      <FormField id="pip-reason" label="Why a plan is needed" required helper="Facts about the work, not the person.">
+      <FormField id="pip-reason" label="Why a plan is needed" required error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null} helper="Facts about the work, not the person.">
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={2000} />
       </FormField>
-      <FormField id="pip-exp" label="What good looks like" required>
+      <FormField id="pip-exp" label="What good looks like" required error={tried && expectations.trim().length < 10 ? 'Enter at least 10 characters.' : null}>
         <TextArea value={expectations} onChange={setExpectations} rows={3} maxLength={4000} />
       </FormField>
-      <FormField id="pip-support" label="Support you will give" required>
+      <FormField id="pip-support" label="Support you will give" required error={tried && support.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
         <TextArea value={support} onChange={setSupport} rows={2} maxLength={2000} />
       </FormField>
       {goals.map((g, i) => (
         <div key={i}>
-          <FormField id={`pip-g${i}`} label={`Goal ${i + 1}`} required>
+          <FormField id={`pip-g${i}`} label={`Goal ${i + 1}`} required error={tried && g.text.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
             <TextField value={g.text} onChange={(x) => setGoal(i, 'text', x)} maxLength={500} />
           </FormField>
-          <FormField id={`pip-m${i}`} label={`How goal ${i + 1} is measured`} required>
+          <FormField id={`pip-m${i}`} label={`How goal ${i + 1} is measured`} required error={tried && g.measure.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
             <TextField value={g.measure} onChange={(x) => setGoal(i, 'measure', x)} maxLength={500} />
           </FormField>
         </div>
@@ -151,7 +154,7 @@ function ProposeDialog(p: PipsScreenProps & { onClose: () => void }) {
       <FormField id="pip-every" label="Check in every">
         <Segment label="Check in every" value={every} onChange={setEvery} options={[7, 14, 30].filter((n) => n < length).map((n) => ({ value: n, label: n === 7 ? 'Week' : n === 14 ? 'Two weeks' : 'Month' }))} />
       </FormField>
-      <FormField id="pip-on" label="Starts on" required>
+      <FormField id="pip-on" label="Starts on" required error={tried && !on ? 'Choose the start date.' : null}>
         <DatePicker value={on} onChange={setOn} aria-label="Starts on" />
       </FormField>
     </ConfirmDialog>
@@ -296,12 +299,15 @@ export function PipScreen(p: PipScreenProps) {
 
 function NoteDialog(p: { title: string; label: string; confirm: string; optional?: boolean; onClose: () => void; onSave: (text: string) => Promise<unknown> }) {
   const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title={p.title} confirmLabel={p.confirm} confirmDisabled={!p.optional && text.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title={p.title} confirmLabel={p.confirm} onConfirm={async () => {
+      setTried(true);
+      if (!p.optional && text.trim().length < 3) return false;
       await p.onSave(text.trim());
       p.onClose();
     }}>
-      <FormField id="pip-note" label={p.label} required={!p.optional} optional={p.optional}>
+      <FormField id="pip-note" label={p.label} required={!p.optional} optional={p.optional} error={tried && !p.optional && text.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
         <TextArea value={text} onChange={setText} rows={3} maxLength={2000} />
       </FormField>
     </ConfirmDialog>
@@ -313,8 +319,11 @@ function OutcomeDialog(p: { canExtend: boolean; endsOn: string; onClose: () => v
   const [note, setNote] = useState('');
   const [to, setTo] = useState<Date | null>(null);
   const ok = note.trim().length >= 3 && (outcome !== 'extended' || to);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Record the outcome" confirmLabel="Save" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Record the outcome" confirmLabel="Save" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onSave({ outcome, note: note.trim(), extendTo: outcome === 'extended' && to ? dayKey(to) : null });
       p.onClose();
     }}>
@@ -323,11 +332,11 @@ function OutcomeDialog(p: { canExtend: boolean; endsOn: string; onClose: () => v
         <Segment label="Outcome" value={outcome} onChange={setOutcome} options={[{ value: 'met', label: 'Met' }, ...(p.canExtend ? [{ value: 'extended' as const, label: 'Extend once' }] : []), { value: 'not_met', label: 'Not met' }]} />
       </FormField>
       {outcome === 'extended' && (
-        <FormField id="pip-to" label="New end date" required helper={`Now ends on ${dateText(p.endsOn)}. At most 90 days more.`}>
+        <FormField id="pip-to" label="New end date" required error={tried && !to ? 'Choose the new end date.' : null} helper={`Now ends on ${dateText(p.endsOn)}. At most 90 days more.`}>
           <DatePicker value={to} onChange={setTo} aria-label="New end date" />
         </FormField>
       )}
-      <FormField id="pip-onote" label={outcome === 'extended' ? 'Why extend' : 'Summary'} required>
+      <FormField id="pip-onote" label={outcome === 'extended' ? 'Why extend' : 'Summary'} required error={tried && note.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
         <TextArea value={note} onChange={setNote} rows={3} maxLength={1000} />
       </FormField>
     </ConfirmDialog>
@@ -337,16 +346,19 @@ function OutcomeDialog(p: { canExtend: boolean; endsOn: string; onClose: () => v
 function ExitDialog(p: { onClose: () => void; onSave: PipScreenProps['onStartExit'] }) {
   const [lwd, setLwd] = useState<Date | null>(null);
   const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Start an exit case" confirmLabel="Start the exit case" destructive confirmDisabled={!lwd || why.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Start an exit case" confirmLabel="Start the exit case" destructive onConfirm={async () => {
+      setTried(true);
+      if (!lwd || why.trim().length < 3) return false;
       await p.onSave({ lwd: dayKey(lwd!), reasonText: why.trim() });
       p.onClose();
     }}>
       <Text as="p" tone="secondary">Opens a company-initiated exit in Exits, linked to this plan. It goes through the usual exit approval.</Text>
-      <FormField id="pip-lwd" label="Last working day" required>
+      <FormField id="pip-lwd" label="Last working day" required error={tried && !lwd ? 'Choose the last working day.' : null}>
         <DatePicker value={lwd} onChange={setLwd} aria-label="Last working day" />
       </FormField>
-      <FormField id="pip-why" label="Reason" required>
+      <FormField id="pip-why" label="Reason" required error={tried && why.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={why} onChange={setWhy} rows={2} maxLength={1000} />
       </FormField>
     </ConfirmDialog>

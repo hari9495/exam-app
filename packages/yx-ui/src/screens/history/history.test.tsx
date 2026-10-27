@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { ChangeDrawer, changeInput, draftForm, draftFromForm, ImpactPanel, orList, routeLine, type ChangeDraft } from './history-kit';
+import { ChangeDrawer, changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, orList, routeLine, type ChangeDraft } from './history-kit';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
 import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
@@ -62,6 +62,27 @@ describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
     const early = draft({ values: { designationId: 'x', gradeId: 'g' }, effectiveDate: new Date(2026, 2, 31) });
     expect(changeInput(early, OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-override']);
     expect(changeInput({ ...early, overrideReason: 'Board approved backdating' }, OPTIONS).input?.overrideReason).toBe('Board approved backdating');
+  });
+});
+
+describe('inter-entity transfer (PPL-04, a one-person restructure)', () => {
+  const moveDraft = (over: Partial<ChangeDraft>) => draft({ changeType: 'entity_transfer', reason: 'Chennai sales now sit under the TN entity', ...over });
+  const options = { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' } as const;
+
+  it('sends the new entity, location and options; asks for the entity and location first', () => {
+    expect(moveInput(moveDraft({ entityId: 'le-tn', values: { locationId: 'loc-hsr' }, transfer: { ...options, leave: 'lapse' } }), OPTIONS, 'le-kf').input).toEqual({ employeeId: 'p-arjun', fromEntityId: 'le-kf', intoEntityId: 'le-tn', effectiveDate: '2026-11-01', locationId: 'loc-hsr', options: { ...options, leave: 'lapse' }, reason: 'Chennai sales now sit under the TN entity' });
+    expect(moveInput(moveDraft({ values: {} }), OPTIONS, 'le-kf').errors.map((e) => e.fieldId)).toEqual(['ch-entity', 'ch-locationId']);
+  });
+
+  it('the options start on the company defaults, named for the person (code, service start)', async () => {
+    const legalEntities = [{ value: 'le-kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'le-tn', label: 'Kaveri Foods (Tamil Nadu)' }];
+    const onDefaults = vi.fn().mockResolvedValue({ options, employeeCode: 'KF-0142', serviceFrom: '2019-07-14' });
+    const move = { entities: legalEntities, onDefaults, onPreview: vi.fn().mockResolvedValue(IMPACT), onSubmit: ok() };
+    render(<ChangeDrawer options={OPTIONS} employeeId="p-arjun" initial={moveDraft({})} onPreview={vi.fn()} onSubmit={ok()} onClose={vi.fn()} move={move} />);
+    expect(await screen.findByText('Transfer options')).toBeTruthy();
+    expect(await screen.findByRole('radio', { name: 'Keep KF-0142' })).toHaveProperty('ariaChecked', 'true');
+    expect(screen.getByRole('radio', { name: 'Continue from 14 Jul 2019' })).toBeTruthy();
+    expect(onDefaults).toHaveBeenCalledWith('p-arjun');
   });
 });
 

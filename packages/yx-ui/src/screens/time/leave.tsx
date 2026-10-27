@@ -254,10 +254,12 @@ export function LeaveRequestView({
   const past = day0(r.to) < TODAY0;
   const [dlg, setDlg] = useState<ReqAction | undefined>(action === 'cancel' && past ? 'report' : action);
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const close = () => {
     setDlg(undefined);
     setNote('');
+    setTried(false);
   };
   const finish = (msg: string, a: ReqAction) => {
     setDone(msg);
@@ -333,23 +335,23 @@ export function LeaveRequestView({
   else if (r.status === 'Approved' && past) footer = <DrawerFoot hint="Leave already taken" main={<Button onClick={() => setDlg('report')}>Report an error</Button>} />;
   else if (r.status === 'Approved') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />;
 
-  const noteField = (label: string, placeholder: string) => (
-    <FormField label={label} required><TextArea rows={2} value={note} placeholder={placeholder} onChange={setNote} /></FormField>
+  const noteField = (label: string, placeholder: string, error: string) => (
+    <FormField label={label} required error={tried && !note.trim() ? error : null}><TextArea rows={2} value={note} placeholder={placeholder} onChange={setNote} /></FormField>
   );
   const dialogs = (
     <>
       <ConfirmDialog open={dlg === 'withdraw'} onOpenChange={(o) => !o && close()} title="Withdraw this request?" consequence={`It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`} confirmLabel="Withdraw request" cancelLabel="Keep request" destructive onConfirm={() => { close(); finish('Request withdrawn', 'withdraw'); }} />
       <ConfirmDialog open={dlg === 'cancel'} onOpenChange={(o) => !o && close()} title="Ask to cancel approved leave?" consequence={locked ? `${monthName(r.from)} payroll is locked, so this becomes a late correction: any loss of pay is reversed in the next payroll.` : `${r.approver} needs to approve the cancellation. Once approved, the ${plural(r.days, 'day')} ${r.days === 1 ? 'goes' : 'go'} back to your balance.`} confirmLabel="Send cancellation" cancelLabel="Keep leave" destructive onConfirm={() => { close(); finish(`Cancellation sent to ${r.approver}`, 'cancel'); }} />
-      <ConfirmDialog open={dlg === 'report'} onOpenChange={(o) => !o && close()} title="Report an error in this leave?" consequence={`This leave was already taken, so it goes to HR as an attendance correction. ${locked ? `${monthName(r.from)} payroll is locked: the change lands in the next payroll.` : `Fixed before ${monthName(r.from)} locks, the change lands in ${monthName(r.from)} pay; after that, in ${monthName(nextMonth)} pay.`}`} confirmLabel="Send to HR" confirmDisabled={!note.trim()} onConfirm={() => { close(); finish('Sent to HR as an attendance correction', 'report'); }}>
+      <ConfirmDialog open={dlg === 'report'} onOpenChange={(o) => !o && close()} title="Report an error in this leave?" consequence={`This leave was already taken, so it goes to HR as an attendance correction. ${locked ? `${monthName(r.from)} payroll is locked: the change lands in the next payroll.` : `Fixed before ${monthName(r.from)} locks, the change lands in ${monthName(r.from)} pay; after that, in ${monthName(nextMonth)} pay.`}`} confirmLabel="Send to HR" onConfirm={() => { setTried(true); if (!note.trim()) return false; close(); finish('Sent to HR as an attendance correction', 'report'); }}>
         {!locked && <div className="yx-tim-row"><span className="yx-tim-muted">{monthName(r.from)} locks {dm(lockDay)}</span><DueBadge date={lockDay} /></div>}
-        {noteField("What's wrong", 'For example: I worked on 17 Sep, only 16 Sep was leave')}
+        {noteField("What's wrong", 'For example: I worked on 17 Sep, only 16 Sep was leave', "Enter what's wrong.")}
       </ConfirmDialog>
       <ConfirmDialog open={dlg === 'approve'} onOpenChange={(o) => !o && close()} title={`Approve ${r.person}'s ${r.type.toLowerCase()}?`} consequence={`${plural(r.days, 'day')}, ${dates}. ${othersLine(overlap)}.`} confirmLabel="Approve" confirmVariant="approve" onConfirm={() => { close(); finish(`Approved · ${r.person}, ${dates}`, 'approve'); }} />
-      <ConfirmDialog open={dlg === 'sendback'} onOpenChange={(o) => !o && close()} title={`Send back to ${first(r.person)}?`} consequence={`${first(r.person)} gets your note and can change the request and send it again.`} confirmLabel="Send back" confirmDisabled={!note.trim()} onConfirm={() => { close(); finish(`Sent back to ${r.person}`, 'sendback'); }}>
-        {noteField('What to change', r.cert ? 'For example: attach the certificate' : 'For example: move it by a week')}
+      <ConfirmDialog open={dlg === 'sendback'} onOpenChange={(o) => !o && close()} title={`Send back to ${first(r.person)}?`} consequence={`${first(r.person)} gets your note and can change the request and send it again.`} confirmLabel="Send back" onConfirm={() => { setTried(true); if (!note.trim()) return false; close(); finish(`Sent back to ${r.person}`, 'sendback'); }}>
+        {noteField('What to change', r.cert ? 'For example: attach the certificate' : 'For example: move it by a week', 'Enter what to change.')}
       </ConfirmDialog>
-      <ConfirmDialog open={dlg === 'reject'} onOpenChange={(o) => !o && close()} title={`Reject ${r.person}'s ${r.type.toLowerCase()}?`} consequence={`The ${plural(r.days, 'pending day')} ${r.days === 1 ? 'goes' : 'go'} back to ${who} balance. ${first(r.person)} sees your reason.`} confirmLabel="Reject" destructive confirmDisabled={!note.trim()} onConfirm={() => { close(); finish(`Rejected · ${r.person}, ${dates}`, 'reject'); }}>
-        {noteField('Reason', 'For example: audit week, the team is short')}
+      <ConfirmDialog open={dlg === 'reject'} onOpenChange={(o) => !o && close()} title={`Reject ${r.person}'s ${r.type.toLowerCase()}?`} consequence={`The ${plural(r.days, 'pending day')} ${r.days === 1 ? 'goes' : 'go'} back to ${who} balance. ${first(r.person)} sees your reason.`} confirmLabel="Reject" destructive onConfirm={() => { setTried(true); if (!note.trim()) return false; close(); finish(`Rejected · ${r.person}, ${dates}`, 'reject'); }}>
+        {noteField('Reason', 'For example: audit week, the team is short', 'Enter a reason.')}
       </ConfirmDialog>
     </>
   );
@@ -1797,6 +1799,7 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
   const [dlg, setDlg] = useState<'change' | 'extend' | 'early' | null>(null);
   const [date, setDate] = useState<Date | null>(null);
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   // HR's Extend / Early return change the last day, so the meter, return date and pay effect recompute.
@@ -1824,6 +1827,7 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
     setDlg(null);
     setDate(null);
     setNote('');
+    setTried(false);
   };
   const her = first(info.who);
   const dlgCfg = {
@@ -1863,9 +1867,9 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
           title={cfg.title}
           consequence={date ? cfg.effect(date) : 'Pick a date to see the effect.'}
           confirmLabel={cfg.confirm}
-          confirmDisabled={!date || !note.trim()}
           onConfirm={() => {
-            if (!date) return;
+            setTried(true);
+            if (!date || !note.trim()) return false;
             setMsg(cfg.done(date));
             if (dlg === 'extend') setEnd(date);
             else if (dlg === 'early') setEnd(addDays(workingDay(date), -1));
@@ -1874,8 +1878,8 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
           }}
         >
           <div className="yx-tim-stack">
-            <FormField label={cfg.label} required><DatePicker value={date} onChange={setDate} min={dlg === 'extend' ? addDays(end, 1) : TODAY0} max={dlg === 'early' ? end : undefined} /></FormField>
-            <FormField label="Reason" required><TextArea rows={2} value={note} onChange={setNote} /></FormField>
+            <FormField label={cfg.label} required error={tried && !date ? 'Choose the date.' : null}><DatePicker value={date} onChange={setDate} min={dlg === 'extend' ? addDays(end, 1) : TODAY0} max={dlg === 'early' ? end : undefined} /></FormField>
+            <FormField label="Reason" required error={tried && !note.trim() ? 'Enter a reason.' : null}><TextArea rows={2} value={note} onChange={setNote} /></FormField>
           </div>
         </ConfirmDialog>
       )}

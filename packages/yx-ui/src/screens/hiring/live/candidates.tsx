@@ -208,24 +208,27 @@ function CandidateDialog(p: HiringCandidatesScreenProps & { candidate: Candidate
   const [custom, setCustom] = useState<CustomValues>(c?.customFields ?? {});
   const emailBad = email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const ok = name.trim() && email.trim() && !emailBad && !missingRequired(p.customFields, custom).length;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={c ? `Edit ${c.name}` : 'Add candidate'} confirmLabel={c ? 'Save' : 'Add candidate'} confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={c ? `Edit ${c.name}` : 'Add candidate'} confirmLabel={c ? 'Save' : 'Add candidate'} onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       const input = { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, customFields: Object.keys(custom).length ? custom : undefined };
       if (c) await p.onUpdate(c.id, input);
       else await p.onCreate(input);
       p.onClose();
       p.onSaved(c ? `${input.name} saved.` : `${input.name} added.`);
     }}>
-      <FormField id="hc-name" label="Name" required>
+      <FormField id="hc-name" label="Name" required error={tried && !name.trim() ? 'Enter the name.' : null}>
         <TextField value={name} onChange={setName} maxLength={200} />
       </FormField>
-      <FormField id="hc-email" label="Email" required error={emailBad ? 'Enter a valid email address.' : undefined}>
+      <FormField id="hc-email" label="Email" required error={emailBad ? 'Enter a valid email address.' : tried && !email.trim() ? 'Enter the email address.' : undefined}>
         <TextField type="email" value={email} onChange={setEmail} maxLength={254} />
       </FormField>
       <FormField id="hc-phone" label="Phone" optional>
         <TextField type="tel" value={phone} onChange={setPhone} maxLength={30} />
       </FormField>
-      <CustomFieldInputs fields={p.customFields} values={custom} onChange={setCustom} idPrefix="hc" />
+      <CustomFieldInputs fields={p.customFields} values={custom} onChange={setCustom} idPrefix="hc" tried={tried} />
     </ConfirmDialog>
   );
 }
@@ -256,13 +259,16 @@ function UploadInviteDialog(p: HiringCandidatesScreenProps & { onClose: () => vo
 
 function PickDialog(p: { title: string; label: string; options: Choice[]; confirm: string; note?: string; onClose: () => void; onConfirm: (value: string) => Promise<void> }) {
   const [value, setValue] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.title} confirmLabel={p.confirm} confirmDisabled={!value} onConfirm={async () => {
-      await p.onConfirm(value!);
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.title} confirmLabel={p.confirm} onConfirm={async () => {
+      setTried(true);
+      if (!value) return false;
+      await p.onConfirm(value);
       p.onClose();
     }}>
       {p.note && <Text as="p" tone="secondary">{p.note}</Text>}
-      <FormField id="hc-pick" label={p.label} required>
+      <FormField id="hc-pick" label={p.label} required error={tried && !value ? `Choose the ${p.label.toLowerCase()}.` : null}>
         <Select aria-label={p.label} value={value} onChange={setValue} options={p.options} searchable />
       </FormField>
     </ConfirmDialog>
@@ -275,13 +281,16 @@ export function EmailDialog(p: { count: number; templates: EmailTemplateChoice[]
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sender, setSender] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const pick = (v: string | null) => {
     setTemplate(v);
     const t = p.templates.find((x) => x.value === v);
     if (t) { setSubject(t.subject); setBody(t.body); }
   };
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={p.count === 1 ? 'Email the candidate' : `Email ${p.count} candidates`} confirmLabel="Send" confirmDisabled={!subject.trim() || !body.trim()} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={p.count === 1 ? 'Email the candidate' : `Email ${p.count} candidates`} confirmLabel="Send" onConfirm={async () => {
+      setTried(true);
+      if (!subject.trim() || !body.trim()) return false;
       const t = p.templates.find((x) => x.value === template);
       await p.onSend({ templateId: t && !t.value.startsWith('default-') ? t.value : null, subject: subject.trim(), body, ...(sender ? { senderAddressId: sender } : {}) });
       p.onClose();
@@ -294,10 +303,10 @@ export function EmailDialog(p: { count: number; templates: EmailTemplateChoice[]
           <Select aria-label="From" value={sender} onChange={setSender} options={p.senders} clearable />
         </FormField>
       )}
-      <FormField id="hc-subj" label="Subject" required>
+      <FormField id="hc-subj" label="Subject" required error={tried && !subject.trim() ? 'Enter a subject.' : null}>
         <TextField value={subject} onChange={setSubject} maxLength={300} />
       </FormField>
-      <FormField id="hc-body" label="Message" required helper="{{candidateName}}, {{jobTitle}}, {{orgName}} and {{statusLink}} are filled in for each candidate.">
+      <FormField id="hc-body" label="Message" required helper="{{candidateName}}, {{jobTitle}}, {{orgName}} and {{statusLink}} are filled in for each candidate." error={tried && !body.trim() ? 'Enter a message.' : null}>
         <TextArea value={body} onChange={setBody} rows={8} maxLength={20000} />
       </FormField>
     </ConfirmDialog>

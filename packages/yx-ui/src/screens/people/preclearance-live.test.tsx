@@ -72,7 +72,9 @@ describe('PPL-44 compliance officer queue, live', () => {
     await waitFor(() => expect(live.onDecide).toHaveBeenCalledWith('p1', true));
     await ue.click(screen.getByRole('button', { name: 'Reject' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Reject' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Reject' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(live.onDecide).not.toHaveBeenCalledWith('p1', false, expect.anything());
     await ue.type(within(dialog).getByRole('textbox'), 'Results week');
     await ue.click(within(dialog).getByRole('button', { name: 'Reject' }));
     await waitFor(() => expect(live.onDecide).toHaveBeenCalledWith('p1', false, 'Results week'));

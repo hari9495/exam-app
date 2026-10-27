@@ -250,7 +250,9 @@ function RuleDialog({ data, today, onClose, onAdd }: { data: ReverifData; today:
   const [from, setFrom] = useState<Date | null>(day(today));
   const months = Number(every);
   const roles = depts.length + desigs.length > 0;
-  const ready = Boolean(type && from && /^\d{1,3}$/.test(every) && months >= 1 && months <= 120 && (data.canManageCompany || entity));
+  const everyOk = /^\d{1,3}$/.test(every) && months >= 1 && months <= 120;
+  const ready = Boolean(type && from && everyOk && (data.canManageCompany || entity));
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -258,23 +260,24 @@ function RuleDialog({ data, today, onClose, onAdd }: { data: ReverifData; today:
       size="md"
       title="Add a re-verification rule"
       confirmLabel="Add rule"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onAdd?.({ typeKey: type!, everyMonths: months, legalEntityId: entity, departmentIds: depts, designationIds: desigs, onRoleChange: roles && onMove, validFrom: dayKey(from!) });
         onClose();
       }}
     >
       <div className="yx-lif-grid">
-        <FormField id="rv-type" label="Document" required>
+        <FormField id="rv-type" label="Document" required error={tried && !type ? 'Choose the document.' : null}>
           <Select aria-label="Document" value={type} onChange={setType} options={data.types} />
         </FormField>
-        <FormField id="rv-every" label="Every (months)" required helper="1 to 120.">
+        <FormField id="rv-every" label="Every (months)" required helper="1 to 120." error={tried && !everyOk ? 'Enter a number from 1 to 120.' : null}>
           <TextField value={every} onChange={setEvery} inputMode="numeric" maxLength={3} />
         </FormField>
-        <FormField id="rv-entity" label="Legal entity" required={!data.canManageCompany} optional={data.canManageCompany} helper={data.canManageCompany ? 'Blank: the whole company.' : undefined}>
+        <FormField id="rv-entity" label="Legal entity" required={!data.canManageCompany} optional={data.canManageCompany} helper={data.canManageCompany ? 'Blank: the whole company.' : undefined} error={tried && !data.canManageCompany && !entity ? 'Choose the legal entity.' : null}>
           <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={data.entities} clearable={data.canManageCompany} />
         </FormField>
-        <FormField id="rv-from" label="From" required>
+        <FormField id="rv-from" label="From" required error={tried && !from ? 'Choose the start date.' : null}>
           <DatePicker value={from} onChange={setFrom} aria-label="From" />
         </FormField>
         <FormField id="rv-depts" label="Departments" optional helper="Blank: all.">

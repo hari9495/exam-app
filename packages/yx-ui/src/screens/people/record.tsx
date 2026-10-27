@@ -1143,6 +1143,7 @@ export function PersonRolesPanel({ onClose, roles, company }: { onClose?: () => 
 export function IdentityPanel({ state = 'consented', onClose, live, name }: { state?: 'consented' | 'refused' | 'mismatch'; onClose?: () => void; live?: LiveIdentity; name?: string }) {
   const [dialog, setDialog] = useState<'reverify' | 'attest' | null>(null);
   const [idType, setIdType] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const [note, setNote] = useState('');
   // Live: the checks HR made (no face match runs in the app yet, so the attestation is always on offer).
   const checks = live
@@ -1240,7 +1241,7 @@ export function IdentityPanel({ state = 'consented', onClose, live, name }: { st
         ) : (
           (live.onReverify || live.onAttest) && (
             <div className="yx-ppl__row">
-              {live.onReverify && <Button icon={IdCard} onClick={() => (setIdType(null), setDialog('reverify'))}>Request re-verification</Button>}
+              {live.onReverify && <Button icon={IdCard} onClick={() => (setIdType(null), setTried(false), setDialog('reverify'))}>Request re-verification</Button>}
               {live.onAttest && <Button onClick={() => (setNote(''), setDialog('attest'))}>Record HR attestation</Button>}
             </div>
           )
@@ -1253,10 +1254,13 @@ export function IdentityPanel({ state = 'consented', onClose, live, name }: { st
           title={`Ask ${name} for a fresh ID?`}
           consequence={`${name} is told in the app and by email to upload a fresh copy in My documents. You verify it in the documents queue.`}
           confirmLabel="Send request"
-          confirmDisabled={!idType}
-          onConfirm={() => live.onReverify!(idType!)}
+          onConfirm={async () => {
+            setTried(true);
+            if (!idType) return false;
+            await live.onReverify!(idType);
+          }}
         >
-          <FormField label="ID to upload" required>
+          <FormField label="ID to upload" required error={tried && !idType ? 'Choose the ID to upload.' : null}>
             <Select aria-label="ID to upload" value={idType} onChange={setIdType} options={live.idTypes.map((t) => ({ value: t.key, label: t.name }))} />
           </FormField>
         </ConfirmDialog>

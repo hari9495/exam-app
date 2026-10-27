@@ -111,6 +111,12 @@ export function JoinerPanel(p: JoinerPanelProps) {
   const [resStatus, setResStatus] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
+  const [triedResult, setTriedResult] = useState(false);
+  const closeAsk = () => {
+    setAsk(null);
+    setTried(false);
+  };
   const { busy, error, run } = useRun();
   const missingPlan = !p.plan.departmentId || !p.plan.designationId || !p.plan.employmentTypeId;
   const dayReached = p.joiningOn <= p.today;
@@ -191,38 +197,42 @@ export function JoinerPanel(p: JoinerPanelProps) {
         </Card>
       )}
       {ask === 'join' && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} size="md" title="Mark as joined?" consequence="The employee record is made today with the planned job. PAN, Aadhaar and bank details go to someone else for approval. The joining portal closes." confirmLabel="Mark joined" confirmDisabled={!attested} onConfirm={async () => void (await p.onJoin({ identityAttested: attested, status }))}>
+        <ConfirmDialog open onOpenChange={(o) => !o && closeAsk()} size="md" title="Mark as joined?" consequence="The employee record is made today with the planned job. PAN, Aadhaar and bank details go to someone else for approval. The joining portal closes." confirmLabel="Mark joined" onConfirm={async () => { setTried(true); if (!attested) return false; await p.onJoin({ identityAttested: attested, status }); }}>
           <Segment label="Starts on" value={status} onChange={setStatus} options={[{ value: 'probation', label: 'Probation' }, { value: 'confirmed', label: 'Confirmed' }]} />
-          <Checkbox checked={attested} onChange={setAttested} label="I checked the joiner's original ID today" description="Required. YukthiX records who checked and when." />
+          <FormField id="jn-id" label="Identity check" hideLabel required error={tried && !attested ? "Tick that you checked the joiner's original ID today." : null}>
+            <Checkbox checked={attested} onChange={setAttested} label="I checked the joiner's original ID today" description="Required. YukthiX records who checked and when." />
+          </FormField>
         </ConfirmDialog>
       )}
       {ask === 'plan' && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} size="md" title="Job details" confirmLabel="Save" confirmDisabled={!dept || !desig || !type} onConfirm={async () => void (await p.onPlan({ departmentId: dept!, designationId: desig!, employmentTypeId: type! }))}>
-          <FormField id="pl-dept" label="Department" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && closeAsk()} size="md" title="Job details" confirmLabel="Save" onConfirm={async () => { setTried(true); if (!dept || !desig || !type) return false; await p.onPlan({ departmentId: dept, designationId: desig, employmentTypeId: type }); }}>
+          <FormField id="pl-dept" label="Department" required error={tried && !dept ? 'Choose the department.' : null}>
             <Select aria-label="Department" value={dept} onChange={setDept} options={p.places.departments} searchable />
           </FormField>
-          <FormField id="pl-desig" label="Designation" required>
+          <FormField id="pl-desig" label="Designation" required error={tried && !desig ? 'Choose the designation.' : null}>
             <Select aria-label="Designation" value={desig} onChange={setDesig} options={p.places.designations} searchable />
           </FormField>
-          <FormField id="pl-type" label="Employment type" required>
+          <FormField id="pl-type" label="Employment type" required error={tried && !type ? 'Choose the employment type.' : null}>
             <Select aria-label="Employment type" value={type} onChange={setType} options={p.places.employmentTypes} />
           </FormField>
         </ConfirmDialog>
       )}
       {ask === 'check' && p.bgv && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} size="md" title="Add a background check" confirmLabel="Add check" confirmDisabled={!checkType} onConfirm={async () => void (await p.bgv!.onAdd(checkType!, gate))}>
-          <FormField id="bg-type" label="What to check" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && closeAsk()} size="md" title="Add a background check" confirmLabel="Add check" onConfirm={async () => { setTried(true); if (!checkType) return false; await p.bgv!.onAdd(checkType, gate); }}>
+          <FormField id="bg-type" label="What to check" required error={tried && !checkType ? 'Choose what to check.' : null}>
             <Select aria-label="What to check" value={checkType} onChange={setCheckType} options={CHECKS} />
           </FormField>
           <Segment label="Joining" value={gate} onChange={setGate} options={[{ value: 'none', label: 'Can join before the result' }, { value: 'before_joining', label: 'Must be clear first' }]} />
         </ConfirmDialog>
       )}
       {result && p.bgv && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setResult(null)} size="md" title="Record the result" confirmLabel="Save" confirmDisabled={!resStatus} onConfirm={async () => {
+        <ConfirmDialog open onOpenChange={(o) => { if (!o) { setResult(null); setTriedResult(false); } }} size="md" title="Record the result" confirmLabel="Save" onConfirm={async () => {
+          setTriedResult(true);
+          if (!resStatus) return false;
           await p.bgv!.onUpdate(result.id, result.version, { status: resStatus!, note: note.trim(), file });
           setResult(null);
         }}>
-          <FormField id="bg-status" label="Result" required>
+          <FormField id="bg-status" label="Result" required error={triedResult && !resStatus ? 'Choose the result.' : null}>
             <Select aria-label="Result" value={resStatus} onChange={setResStatus} options={[{ value: 'in_progress', label: 'In progress' }, { value: 'clear', label: 'Clear' }, { value: 'discrepancy', label: 'Discrepancy found' }, { value: 'unable', label: 'Could not be checked' }]} />
           </FormField>
           <FormField id="bg-note" label="Note" optional>
@@ -593,6 +603,7 @@ export function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -601,43 +612,50 @@ export function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign
       title={`Accept: ${letter.title.split(': ')[0]}`}
       consequence="Download and read the letter first. Your acceptance is recorded with the time, your device and the code, and you get a sealed copy."
       confirmLabel="Accept"
-      confirmDisabled={!disclosure || !accept || code.length !== 6}
       onConfirm={async () => {
+        setTried(true);
+        if (!disclosure || !accept || code.length !== 6) return false;
         await onSign({ code, accept, disclosureAccepted: disclosure });
         onClose();
       }}
     >
       {disclosureNeeded && (
-        <Checkbox
-          checked={disclosure}
-          onChange={setDisclosure}
-          label="I agree to accept letters electronically"
-          description="An electronic acceptance with a one-time code counts as your acceptance, like signing on paper. You can always download your copy. Ask HR for a paper copy if you need one."
-        />
+        <FormField id="ac-disclosure" label="Electronic acceptance" hideLabel required error={tried && !disclosure ? 'Tick that you agree to accept letters electronically.' : null}>
+          <Checkbox
+            checked={disclosure}
+            onChange={setDisclosure}
+            label="I agree to accept letters electronically"
+            description="An electronic acceptance with a one-time code counts as your acceptance, like signing on paper. You can always download your copy. Ask HR for a paper copy if you need one."
+          />
+        </FormField>
       )}
-      <Checkbox checked={accept} onChange={setAccept} label="I have read the letter and I accept it" />
+      <FormField id="ac-accept" label="Acceptance" hideLabel required error={tried && !accept ? 'Tick that you have read the letter and accept it.' : null}>
+        <Checkbox checked={accept} onChange={setAccept} label="I have read the letter and I accept it" />
+      </FormField>
       {sendError && (
         <InlineAlert tone="danger" title="No code sent">
           {sendError}
         </InlineAlert>
       )}
       {sent ? (
-        <FormField id="ac-code" label="Code from your email" required>
+        <FormField id="ac-code" label="Code from your email" required error={tried && code.length !== 6 ? 'Enter the 6-digit code from your email.' : null}>
           <CodeField value={code} onChange={setCode} />
         </FormField>
       ) : (
-        <Button
-          onClick={async () => {
-            try {
-              await onCode();
-              setSent(true);
-            } catch (e) {
-              setSendError(errorText(e));
-            }
-          }}
-        >
-          Send me a code
-        </Button>
+        <FormField id="ac-code" label="Code from your email" hideLabel={!tried} required error={tried ? 'Send yourself a code, then enter it.' : null}>
+          <Button
+            onClick={async () => {
+              try {
+                await onCode();
+                setSent(true);
+              } catch (e) {
+                setSendError(errorText(e));
+              }
+            }}
+          >
+            Send me a code
+          </Button>
+        </FormField>
       )}
     </ConfirmDialog>
   );
@@ -694,18 +712,21 @@ function AddSignatory({ entities, users, onClose, onAdd }: { entities: Choice[];
   const [user, setUser] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [image, setImage] = useState<File | null>(null);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Add a signatory" consequence="Their name, title and signature image appear on letters of this legal entity, and they approve letters that need it. This asks for your second sign-in step." confirmLabel="Add" confirmDisabled={!entity || !user || title.trim().length < 2} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Add a signatory" consequence="Their name, title and signature image appear on letters of this legal entity, and they approve letters that need it. This asks for your second sign-in step." confirmLabel="Add" onConfirm={async () => {
+      setTried(true);
+      if (!entity || !user || title.trim().length < 2) return false;
       await onAdd({ legalEntityId: entity!, userId: user!, title: title.trim(), image });
       onClose();
     }}>
-      <FormField id="sg-entity" label="Legal entity" required>
+      <FormField id="sg-entity" label="Legal entity" required error={tried && !entity ? 'Choose the legal entity.' : null}>
         <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={entities} />
       </FormField>
-      <FormField id="sg-user" label="Person" required>
+      <FormField id="sg-user" label="Person" required error={tried && !user ? 'Choose the person.' : null}>
         <Select aria-label="Person" value={user} onChange={setUser} options={users} searchable />
       </FormField>
-      <FormField id="sg-title" label="Title on letters" required>
+      <FormField id="sg-title" label="Title on letters" required error={tried && title.trim().length < 2 ? 'Enter a title of at least 2 characters.' : null}>
         <TextField value={title} onChange={setTitle} maxLength={100} />
       </FormField>
       <FormField id="sg-image" label="Signature image" optional>

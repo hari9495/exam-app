@@ -50,6 +50,10 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'bfsi.declaration_due': { '04-30': '30 April', '06-30': '30 June', '09-30': '30 September', '10-15': '15 October', '12-31': '31 December' },
   'bfsi.preclearance_threshold': { '500000': '₹5,00,000', '1000000': '₹10,00,000', '2500000': '₹25,00,000' },
   'work_auth.reminder_days': { '90,60,30': '90, 60 and 30 days before', '60,30': '60 and 30 days before', '30': '30 days before', off: 'No reminders' },
+  'transfer.leave': { carry: 'Carry over', lapse: 'Lapse' },
+  'transfer.service': { keep: 'Continue from original joining date', restart: 'Restart' },
+  'transfer.code': { keep: 'Keep', new: 'New in target series' },
+  'transfer.salary': { keep: 'Keep', new: 'Assign new' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
@@ -67,6 +71,7 @@ export interface SettingsSection {
 export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection[]> = {
   organisation: [
     { title: 'Job changes', description: 'How far back HR may date a change without a System Admin.', keys: ['employee_change.retro_limit'] },
+    { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
     { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },

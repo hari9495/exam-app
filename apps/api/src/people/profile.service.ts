@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { OrgSecretsCryptoService, TenantContext, maskTail } from '@exam-platform/shared';
+import { OrgSecretsCryptoService, TenantContext, maskShaped, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
 import { covers, has } from '../access/scope';
@@ -164,7 +164,7 @@ export class ProfileService {
       passportExpiresOn: ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null,
       bankAccounts: banks.map((b) => ({ purpose: b.purpose, holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4), usableFrom: b.usableFrom })),
       // PPL-46: the salary account abroad, the IBAN masked like any account number.
-      internationalAccount: abroad ? { country: abroad.country, iban: maskTail(abroad.ibanLast4), bic: abroad.bic, currency: abroad.currency, usableFrom: abroad.usableFrom } : null,
+      internationalAccount: abroad ? { country: abroad.country, iban: maskShaped('account', abroad.ibanLast4), bic: abroad.bic, currency: abroad.currency, usableFrom: abroad.usableFrom } : null,
       pending: pending.map((p) => ({ requestId: p.id, kind: p.kind })),
     };
   }
@@ -414,7 +414,7 @@ export class ProfileService {
     if (kind === 'legal_name') return { legalName: p.legalName ?? null };
     if (BANK[kind]) return { holderName: p.holderName ?? null, ifsc: p.ifsc ?? null, account: maskTail(last4(p.accountNumber ?? '')) };
     if (kind === 'passport') return { value: maskTail(last4(p.passport ?? '')), expiresOn: p.passportExpiresOn ?? null };
-    if (kind === INTL) return { country: p.country ?? null, iban: maskTail(last4(p.iban ?? '')), bic: p.bic ?? null, currency: p.currency ?? null };
+    if (kind === INTL) return { country: p.country ?? null, iban: maskShaped('account', last4(p.iban ?? '')), bic: p.bic ?? null, currency: p.currency ?? null };
     return { value: maskTail(last4(p[kind as Identifier] ?? '')) };
   }
 
@@ -425,7 +425,7 @@ export class ProfileService {
     }
     if (kind === INTL) {
       const b = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
-      return b ? { country: b.country, iban: maskTail(b.ibanLast4), bic: b.bic, currency: b.currency } : null;
+      return b ? { country: b.country, iban: maskShaped('account', b.ibanLast4), bic: b.bic, currency: b.currency } : null;
     }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (!ids) return null;

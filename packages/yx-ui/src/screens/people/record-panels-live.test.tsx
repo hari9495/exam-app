@@ -69,7 +69,9 @@ describe('Identity panel (PPL-34), live', () => {
     await open(id);
     await ue.click(screen.getByRole('button', { name: 'Request re-verification' }));
     let dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    expect(within(dialog).getByText('Choose the ID to upload.')).toBeInTheDocument();
+    expect(id.onReverify).not.toHaveBeenCalled();
     await ue.click(within(dialog).getByRole('combobox', { name: 'ID to upload' }));
     await ue.click(await screen.findByRole('option', { name: 'Passport' }));
     await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));

@@ -38,7 +38,9 @@ describe('Calibration (PM6)', () => {
     fireEvent.dragOver(target, { dataTransfer: data });
     fireEvent.drop(target, { dataTransfer: data });
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Move' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Move' }));
+    expect(within(d).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Compared with peers');
     await ue.click(within(d).getByRole('button', { name: 'Move' }));
     expect(onChange).toHaveBeenCalledWith({ reviewId: 'r1', toBand: 'Meets', reason: 'Compared with peers' });
@@ -63,7 +65,9 @@ describe('Calibration (PM6)', () => {
     await ue.click(screen.getByRole('option', { name: 'Lakshmi' }));
     await ue.click(within(d).getByRole('radio', { name: 'Use a guide' }));
     await ue.type(within(d).getByRole('textbox', { name: /^Below/ }), '30');
-    expect(within(d).getByRole('button', { name: 'Open' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Open' }));
+    expect(within(d).getByText('Make the shares add up to 100 (now 30).')).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /^Above/ }), '70');
     await ue.click(within(d).getByRole('button', { name: 'Open' }));
     expect(onCreate).toHaveBeenCalledWith({ name: 'Sales', facilitatorUserId: 'u1', departmentIds: [], guide: { bands: [{ label: 'Below', share: 30 }, { label: 'Above', share: 70 }], tolerance: 10 } });

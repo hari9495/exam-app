@@ -240,7 +240,9 @@ describe('batch 5j payroll screens', () => {
     await ue.click(screen.getByRole('option', { name: 'Settlement recovery' }));
     await ue.type(within(dialog).getByRole('textbox', { name: /Amount/ }), '1200.50');
     await ue.type(within(dialog).getByRole('textbox', { name: /What it is/ }), 'Canteen dues');
-    expect(within(dialog).getByRole('button', { name: 'Add line' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Add line' }));
+    expect(within(dialog).getByText('Enter a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Canteen dues at exit');
     await ue.click(within(dialog).getByRole('button', { name: 'Add line' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledWith(gratuity, { componentCode: 'fnf_recovery', amount: '1200.50', label: 'Canteen dues' }, 'Canteen dues at exit'));

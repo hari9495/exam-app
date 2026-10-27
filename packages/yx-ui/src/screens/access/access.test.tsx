@@ -87,7 +87,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('Location: Hosur plant')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Revoke' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Revoke' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onRevoke).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), 'Moved to Chennai');
     await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     expect(p.onRevoke).toHaveBeenCalledWith('g-1', 'Moved to Chennai');
@@ -98,7 +100,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('System Admins now: Ramesh Iyer.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Make System Admin' }));
     const dialog = await screen.findByRole('dialog', { name: 'Make Anitha Rao a System Admin?' });
-    expect(within(dialog).getByRole('button', { name: 'Make System Admin' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onSystemAdmin).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Runs HR and access');
     await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
     expect(p.onSystemAdmin).toHaveBeenCalledWith('u-anitha', true, 'Runs HR and access');

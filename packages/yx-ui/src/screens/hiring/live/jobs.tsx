@@ -161,9 +161,12 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
   const rangeBad = salaryMin !== null && salaryMax !== null && salaryMin > salaryMax;
   const reqBad = (reason === 'replacement' && !replaces) || (outside && outsideWhy.trim().length < 3);
   const ok = title.trim().length > 0 && !missing.length && !rangeBad && !reqBad;
+  const [tried, setTried] = useState(false);
   const opt = <T,>(v: T | null | '') => (v === null || v === '' ? undefined : v);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="New job" confirmLabel="Create" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="New job" confirmLabel="Create" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onCreate({
         title: title.trim(),
         description: opt(description.trim()),
@@ -195,7 +198,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
           {error}
         </InlineAlert>
       )}
-      <FormField id="hj-title" label="Job title" required>
+      <FormField id="hj-title" label="Job title" required error={tried && !title.trim() ? 'Enter the job title.' : null}>
         <TextField value={title} onChange={setTitle} maxLength={200} />
       </FormField>
       <FormField id="hj-dept" label="Department" optional>
@@ -232,7 +235,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
         <Segment label="Why this hire" value={reason} onChange={setReason} options={[{ value: 'new', label: 'New position' }, { value: 'replacement', label: 'Replacement' }]} />
       </FormField>
       {reason === 'replacement' ? (
-        <FormField id="hj-rep" label="Replaces" required helper="A replacement does not use the headcount plan.">
+        <FormField id="hj-rep" label="Replaces" required helper="A replacement does not use the headcount plan." error={tried && !replaces ? 'Choose who this hire replaces.' : null}>
           <Select aria-label="Replaces" value={replaces} onChange={setReplaces} options={p.employees ?? []} searchable />
         </FormField>
       ) : (
@@ -244,7 +247,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
           )}
           <Checkbox label="Outside the headcount plan" description="Adds a finance approval." checked={outside} onChange={setOutside} />
           {outside && (
-            <FormField id="hj-out" label="Why outside the plan" required>
+            <FormField id="hj-out" label="Why outside the plan" required error={tried && outsideWhy.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
               <TextArea value={outsideWhy} onChange={setOutsideWhy} rows={2} maxLength={1000} />
             </FormField>
           )}
@@ -264,7 +267,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
           Draft the description
         </Button>
       )}
-      <CustomFieldInputs fields={p.customFields} values={custom} onChange={setCustom} idPrefix="hj" />
+      <CustomFieldInputs fields={p.customFields} values={custom} onChange={setCustom} idPrefix="hj" tried={tried} />
     </ConfirmDialog>
   );
 }

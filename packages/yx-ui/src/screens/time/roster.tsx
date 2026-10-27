@@ -394,6 +394,7 @@ export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state 
         title="Copy week of 28 Sep into this week?"
         consequence={`${copy.filled ? `Fills ${copy.filled} empty ${copy.filled === 1 ? 'cell' : 'cells'}; cells you already set stay.` : 'Every cell is already set, so nothing would change.'}${copy.leaveKept.length ? ` ${copy.leaveKept.join(' and ')}'s leave ${copy.leaveKept.length === 1 ? 'day stays' : 'days stay'} empty.` : ''}`}
         confirmLabel="Copy week"
+        // Nothing to fix in this dialog: every cell is already set (the text says so).
         confirmDisabled={copy.filled === 0}
         onConfirm={() => { change(copy.next); setSt('ready'); setDlg(undefined); }}
       />

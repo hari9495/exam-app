@@ -38,7 +38,9 @@ describe('Improvement plans (PM8)', () => {
     const d = screen.getByRole('dialog');
     await ue.click(within(d).getByRole('radio', { name: 'Extend once' }));
     await ue.type(within(d).getByRole('textbox', { name: /Why extend/ }), 'Leave');
-    expect(within(d).getByRole('button', { name: 'Save' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Save' }));
+    expect(within(d).getByText('Choose the new end date.')).toBeInTheDocument();
+    expect(p.onOutcome).not.toHaveBeenCalled();
     await ue.click(within(d).getByRole('radio', { name: 'Not met' }));
     expect(within(d).getByText(/does not start an exit/)).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Save' }));

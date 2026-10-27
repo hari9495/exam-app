@@ -36,12 +36,15 @@ const DISAGREEMENT: Record<Disagreement['status'], { label: string; tone: BadgeT
 /** A short text asked for before an action (a reason, a comment); `optional` lets it be empty. */
 function TextDialog({ title, label, confirmLabel, optional, helper, onClose, onSave }: { title: string; label: string; confirmLabel: string; optional?: boolean; helper?: string; onClose: () => void; onSave: (text: string) => Promise<unknown> }) {
   const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={title} confirmLabel={confirmLabel} confirmDisabled={!optional && text.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={title} confirmLabel={confirmLabel} onConfirm={async () => {
+      setTried(true);
+      if (!optional && text.trim().length < 3) return false;
       await onSave(text.trim());
       onClose();
     }}>
-      <FormField id="td-text" label={label} required={!optional} optional={optional} helper={helper}>
+      <FormField id="td-text" label={label} required={!optional} optional={optional} helper={helper} error={tried && !optional && text.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
         <TextArea value={text} onChange={setText} rows={3} maxLength={2000} />
       </FormField>
     </ConfirmDialog>
@@ -409,8 +412,11 @@ export function CycleScreen(p: CycleScreenProps) {
 function DecideDialog({ item, onClose, onSave }: { item: Disagreement; onClose: () => void; onSave: (status: 'answered' | 'upheld' | 'not_upheld', note: string) => Promise<unknown> }) {
   const [status, setStatus] = useState<'answered' | 'upheld' | 'not_upheld'>('answered');
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Answer ${item.employee}`} confirmLabel="Send answer" confirmDisabled={note.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Answer ${item.employee}`} confirmLabel="Send answer" onConfirm={async () => {
+      setTried(true);
+      if (note.trim().length < 3) return false;
       await onSave(status, note.trim());
       onClose();
     }}>
@@ -418,7 +424,7 @@ function DecideDialog({ item, onClose, onSave }: { item: Disagreement; onClose: 
       <FormField id="dd-status" label="Outcome">
         <Segment label="Outcome" value={status} onChange={setStatus} options={[{ value: 'answered', label: 'Answered' }, { value: 'upheld', label: 'Upheld' }, { value: 'not_upheld', label: 'Not upheld' }]} />
       </FormField>
-      <FormField id="dd-note" label="Note to the employee" required helper="If upheld, reopen the review so the manager can change the rating.">
+      <FormField id="dd-note" label="Note to the employee" required error={tried && note.trim().length < 3 ? 'Enter a note of at least 3 characters.' : null} helper="If upheld, reopen the review so the manager can change the rating.">
         <TextArea value={note} onChange={setNote} rows={3} maxLength={2000} />
       </FormField>
     </ConfirmDialog>
@@ -427,12 +433,15 @@ function DecideDialog({ item, onClose, onSave }: { item: Disagreement; onClose: 
 
 function OverrideDialog({ row, onClose, onSave }: { row: EligibilityRow; onClose: () => void; onSave: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={row.reviewed ? `Leave ${row.name} out of this cycle` : `Review ${row.name} in this cycle`} confirmLabel={row.reviewed ? 'Leave out' : 'Include'} confirmDisabled={reason.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={row.reviewed ? `Leave ${row.name} out of this cycle` : `Review ${row.name} in this cycle`} confirmLabel={row.reviewed ? 'Leave out' : 'Include'} onConfirm={async () => {
+      setTried(true);
+      if (reason.trim().length < 3) return false;
       await onSave(reason.trim());
       onClose();
     }}>
-      <FormField id="ov-reason" label="Reason" required helper="Recorded with your name.">
+      <FormField id="ov-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null} helper="Recorded with your name.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -533,6 +542,7 @@ export function ReviewScreen(p: ReviewScreenProps) {
 function ReviewBody({ r, onSave, onAddOther, onSkip, onAcknowledge, onDisagree, onReopen }: ReviewScreenProps & { r: ReviewDetail }) {
   const [adding, setAdding] = useState(false);
   const [former, setFormer] = useState<string | null>(null);
+  const [triedFormer, setTriedFormer] = useState(false);
   const [asking, setAsking] = useState<'send_back' | 'agree' | 'acknowledge' | 'disagree' | 'reopen' | null>(null);
   const stage: 'self' | 'manager' | 'other' | null = r.can.self ? 'self' : r.can.manager ? 'manager' : r.can.other ? 'other' : null;
   const mine = stage === 'self' ? r.self : stage === 'manager' ? r.managerEntry : stage === 'other' ? (r.otherEntry ?? null) : null;
@@ -645,15 +655,17 @@ function ReviewBody({ r, onSave, onAddOther, onSkip, onAcknowledge, onDisagree, 
       ))}
       {r.can.addOther && onAddOther && (r.formerManagers ?? []).length > 0 && (
         <div className="yx-lif-row">
-          <Button onClick={() => setAdding(true)}>Ask a former manager for input</Button>
+          <Button onClick={() => (setTriedFormer(false), setAdding(true))}>Ask a former manager for input</Button>
         </div>
       )}
       {adding && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Ask a former manager for input" confirmLabel="Ask" confirmDisabled={!former} onConfirm={async () => {
+        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Ask a former manager for input" confirmLabel="Ask" onConfirm={async () => {
+          setTriedFormer(true);
+          if (!former) return false;
           await onAddOther!(former!);
           setAdding(false);
         }}>
-          <FormField id="ao-who" label="Former manager" required helper="They see only the questions and their own input, never the self review or the rating.">
+          <FormField id="ao-who" label="Former manager" required error={triedFormer && !former ? 'Choose the former manager.' : null} helper="They see only the questions and their own input, never the self review or the rating.">
             <Select aria-label="Former manager" value={former} onChange={setFormer} options={r.formerManagers ?? []} />
           </FormField>
         </ConfirmDialog>

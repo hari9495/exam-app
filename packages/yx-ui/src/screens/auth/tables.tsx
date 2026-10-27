@@ -36,17 +36,22 @@ const lockedTheAccount = (r: LoginEventRow) => Boolean(r.reason?.includes('locko
 
 function UnlockDialog({ row, onUnlock }: { row: LoginEventRow; onUnlock: (row: LoginEventRow, reason: string) => Promise<void> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const short = reason.trim().length < UNLOCK_REASON_MIN;
   return (
     <ConfirmDialog
       trigger={<Button size="sm" aria-label={`Unlock ${row.identifier}`}>Unlock</Button>}
       title={`Unlock ${row.identifier}?`}
       consequence="They can try to sign in again straight away. Their password and second step don't change, and a blocked network stays blocked. They're emailed, and this is recorded in the audit log."
       confirmLabel="Unlock account"
-      confirmDisabled={reason.trim().length < UNLOCK_REASON_MIN}
-      onConfirm={() => onUnlock(row, reason.trim())}
-      onOpenChange={(open) => !open && setReason('')}
+      onConfirm={async () => {
+        setTried(true);
+        if (short) return false;
+        await onUnlock(row, reason.trim());
+      }}
+      onOpenChange={(open) => !open && (setReason(''), setTried(false))}
     >
-      <FormField label="Reason" required helper={`At least ${UNLOCK_REASON_MIN} characters, for example how you checked it's them.`}>
+      <FormField label="Reason" required helper={`At least ${UNLOCK_REASON_MIN} characters, for example how you checked it's them.`} error={tried && short ? `Enter a reason of at least ${UNLOCK_REASON_MIN} characters.` : null}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>

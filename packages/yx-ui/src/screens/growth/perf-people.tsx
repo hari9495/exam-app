@@ -458,6 +458,7 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
   const [comment, setComment] = useState('');
   const [outcome, setOutcome] = useState<string>('');
   const [showOutcome, setShowOutcome] = useState(!!outcomeOpen);
+  const [triedOutcome, setTriedOutcome] = useState(false);
   const facts = [
     { label: 'Plan', value: `${pip.days} days` },
     { label: 'Dates', value: `${formatDate(pip.start)} – ${formatDate(sched.end)}` },
@@ -554,7 +555,7 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         <Text tone="secondary">The outcome is recorded after the final check-in on {formatDate(sched.end)}.</Text>
       )}
       {persona !== 'emp' && !pip.status.startsWith('Closed') && (
-        <Button onClick={() => setShowOutcome(true)}>
+        <Button onClick={() => { setTriedOutcome(false); setShowOutcome(true); }}>
           Record outcome
         </Button>
       )}
@@ -593,19 +594,24 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
       title={`Record the outcome of ${pip.employee}’s PIP?`}
       consequence="The outcome is final and visible to the employee, their manager chain and HR. A “not met” outcome does not start any exit step by itself."
       confirmLabel="Record outcome"
-      confirmDisabled={!outcome}
-      onConfirm={() => setShowOutcome(false)}
+      onConfirm={() => {
+        setTriedOutcome(true);
+        if (!outcome) return false;
+        setShowOutcome(false);
+      }}
     >
-      <RadioGroup
-        aria-label="Outcome"
-        value={outcome}
-        onChange={setOutcome}
-        options={[
-          { value: 'met', label: 'Met', description: 'All goals met. The plan closes.' },
-          { value: 'extended', label: 'Extend by 30 days', description: 'Some progress; new end date and check-ins are added.' },
-          { value: 'not-met', label: 'Not met', description: 'HR decides the next step with the manager.' },
-        ]}
-      />
+      <FormField label="Outcome" hideLabel required error={triedOutcome && !outcome ? 'Choose an outcome.' : null}>
+        <RadioGroup
+          aria-label="Outcome"
+          value={outcome}
+          onChange={setOutcome}
+          options={[
+            { value: 'met', label: 'Met', description: 'All goals met. The plan closes.' },
+            { value: 'extended', label: 'Extend by 30 days', description: 'Some progress; new end date and check-ins are added.' },
+            { value: 'not-met', label: 'Not met', description: 'HR decides the next step with the manager.' },
+          ]}
+        />
+      </FormField>
     </ConfirmDialog>
   );
 

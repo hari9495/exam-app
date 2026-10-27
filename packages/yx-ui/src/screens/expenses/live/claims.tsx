@@ -103,6 +103,7 @@ export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
     if (p.startNew) setCreating(true);
   }, [p.startNew]);
   const [title, setTitle] = useState('');
+  const [tried, setTried] = useState(false);
   const h = p.home;
   const rows = tab === 'mine' ? (h?.claims ?? []) : tab === 'approvals' ? (p.approvals ?? []) : (p.review ?? []);
   const columns: TableColumn<ClaimSummary>[] = [
@@ -152,18 +153,19 @@ export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
       {creating && (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setCreating(false)}
+          onOpenChange={(o) => !o && (setCreating(false), setTried(false))}
           size="md"
           title="New claim"
           consequence="Add your bills to it, then send it for approval."
           confirmLabel="Start claim"
-          confirmDisabled={title.trim().length < 2}
           onConfirm={async () => {
+            setTried(true);
+            if (title.trim().length < 2) return false;
             await p.onNew(title.trim());
             setCreating(false);
           }}
         >
-          <FormField id="nc-title" label="What is it for" required helper="For example: Mumbai client visit, October">
+          <FormField id="nc-title" label="What is it for" required error={tried && title.trim().length < 2 ? 'Enter at least 2 characters.' : null} helper="For example: Mumbai client visit, October">
             <TextField value={title} onChange={setTitle} maxLength={150} />
           </FormField>
         </ConfirmDialog>
@@ -623,6 +625,7 @@ function LowerDialog({ line, currency, onClose, onSave }: { line: ClaimLine; cur
   const [amount, setAmount] = useState(String(Number(line.approved ?? line.claimed)));
   const [reason, setReason] = useState('');
   const ok = /^\d{1,12}(\.\d{1,2})?$/.test(amount) && Number(amount) <= Number(line.claimed) && (Number(amount) === Number(line.claimed) || reason.trim().length >= 3);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -631,16 +634,17 @@ function LowerDialog({ line, currency, onClose, onSave }: { line: ClaimLine; cur
       title={`Approve less for bill ${line.lineNo}?`}
       consequence={`Claimed ${money(currency, line.claimed)}. The employee sees "approved X of Y" with your reason.`}
       confirmLabel="Save amount"
-      confirmDisabled={!ok}
       onConfirm={async () => {
+        setTried(true);
+        if (!ok) return false;
         await onSave(Number(amount).toFixed(2), reason.trim());
         onClose();
       }}
     >
-      <FormField id="lw-amount" label={`Approve (${currency})`} required>
+      <FormField id="lw-amount" label={`Approve (${currency})`} required error={!tried ? null : !/^\d{1,12}(\.\d{1,2})?$/.test(amount) ? 'Enter an amount, e.g. 2500.' : Number(amount) > Number(line.claimed) ? `Enter at most ${money(currency, line.claimed)}.` : null}>
         <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
       </FormField>
-      <FormField id="lw-reason" label="Reason" required helper="For example: hotel cap Tier 2">
+      <FormField id="lw-reason" label="Reason" required error={tried && Number(amount) !== Number(line.claimed) && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null} helper="For example: hotel cap Tier 2">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
       </FormField>
     </ConfirmDialog>
@@ -649,6 +653,7 @@ function LowerDialog({ line, currency, onClose, onSave }: { line: ClaimLine; cur
 
 export function ReasonDialog({ title, consequence, label, confirm, onClose, onConfirm }: { title: string; consequence: string; label: string; confirm: string; onClose: () => void; onConfirm: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -657,13 +662,14 @@ export function ReasonDialog({ title, consequence, label, confirm, onClose, onCo
       title={title}
       consequence={consequence}
       confirmLabel={confirm}
-      confirmDisabled={reason.trim().length < 3}
       onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) return false;
         await onConfirm(reason.trim());
         onClose();
       }}
     >
-      <FormField id="rs-reason" label={label} required>
+      <FormField id="rs-reason" label={label} required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>

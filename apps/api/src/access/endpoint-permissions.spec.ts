@@ -39,6 +39,10 @@ const IMPLICIT: Record<string, string[]> = {
     'team', // the manager's own team
     'reports', // HR in scope, the person, managers above
     'person', // HR in scope or the person
+    'emergencyContacts', // the person, or HR with employee.profile.edit
+    'customFields', // each value only where its class lets the viewer see it
+    'setCustomFields', // the service checks each field's class and the editing grant
+    'updateFamily', // HR with employee.profile.edit in scope (the service checks)
     'me', // one's own record
     'accessLog', // who looked at one's own data
     'myChangeForm', // one's own identity and bank change page (PPL-32)
@@ -83,7 +87,8 @@ const IMPLICIT: Record<string, string[]> = {
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'checkIn', 'drop', 'cascade'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
+  // counts: the record's Performance tab, counts only; the service checks who may ask.
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts'],
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope).
   PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).

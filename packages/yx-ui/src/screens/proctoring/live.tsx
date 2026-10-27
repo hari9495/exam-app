@@ -356,13 +356,19 @@ export function LiveConsoleScreen({ tiles: initial, defaultOpenId = null, defaul
       )}
       <ConfirmDialog
         open={dialog != null}
-        onOpenChange={(o) => !o && setDialog(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDialog(null);
+            setTouched(false);
+          }
+        }}
         title={dialog === 'terminate' ? `End ${open?.name ?? 'this candidate'}'s attempt?` : `Pause ${open?.name ?? 'this candidate'}?`}
         consequence={dialog === 'terminate' ? 'The candidate can no longer answer. Answers and evidence are kept for review and appeal; this is not a fail.' : 'The timer stops and the candidate sees your message until you resume.'}
         confirmLabel={dialog === 'terminate' ? 'End attempt' : 'Pause test'}
         destructive={dialog === 'terminate'}
-        confirmDisabled={!!proctorActionError(reason)}
         onConfirm={() => {
+          setTouched(true);
+          if (proctorActionError(reason)) return false;
           act(dialog === 'terminate' ? 'terminate' : 'pause');
           setDialog(null);
           setReason('');

@@ -274,6 +274,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
   const [signing, setSigning] = useState<ClearanceItem | null>(null);
   const [manual, setManual] = useState<ExitStep | null>(null);
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
   if (p.state !== 'ready' || !d)
     return (
@@ -329,6 +330,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
               size="sm"
               onClick={() => {
                 setNote('');
+                setTried(false);
                 setManual(s);
               }}
             >
@@ -507,13 +509,14 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           title={`${manual.label}: done by hand?`}
           consequence="Say what you did. It is kept on the record."
           confirmLabel="Mark done"
-          confirmDisabled={note.trim().length < 3}
           onConfirm={async () => {
+            setTried(true);
+            if (note.trim().length < 3) return false;
             await p.onStepDone!(manual, note.trim());
             setManual(null);
           }}
         >
-          <FormField id="xs-note" label="What you did" required>
+          <FormField id="xs-note" label="What you did" required error={tried && note.trim().length < 3 ? 'Enter what you did, at least 3 characters.' : null}>
             <TextArea value={note} onChange={setNote} rows={2} maxLength={500} />
           </FormField>
         </ConfirmDialog>
@@ -912,6 +915,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
   const [pick, setPick] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ kind: 'hold'; itemId: string } | { kind: 'waive' } | { kind: 'add' } | null>(null);
   const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
   const [line, setLine] = useState<{ componentCode: string | null; amount: string; label: string }>({ componentCode: null, amount: '', label: '' });
   const { busy, error, run } = useRun();
   const s = live.settlements.find((x) => x.id === pick) ?? live.settlements[0];
@@ -958,6 +962,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         size="sm"
         onClick={() => {
           setWhy('');
+          setTried(false);
           setDialog({ kind: 'hold', itemId: i.id });
         }}
       >
@@ -978,6 +983,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         key="add"
         onSelect={() => {
           setWhy('');
+          setTried(false);
           setLine({ componentCode: null, amount: '', label: '' });
           setDialog({ kind: 'add' });
         }}
@@ -990,6 +996,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         key="waive"
         onSelect={() => {
           setWhy('');
+          setTried(false);
           setDialog({ kind: 'waive' });
         }}
       >
@@ -1125,10 +1132,13 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
           title={`Hold "${item(dialog.itemId)?.title ?? 'this line'}"?`}
           consequence="It is left out of the F&F run and paid in a second run once released."
           confirmLabel="Hold"
-          confirmDisabled={why.trim().length < 5}
-          onConfirm={async () => void (await live.onHold(s, dialog.itemId, why.trim(), why.trim()))}
+          onConfirm={async () => {
+            setTried(true);
+            if (why.trim().length < 5) return false;
+            await live.onHold(s, dialog.itemId, why.trim(), why.trim());
+          }}
         >
-          <FormField id="fnf-why" label="Why" required>
+          <FormField id="fnf-why" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
             <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
           </FormField>
         </ConfirmDialog>
@@ -1140,10 +1150,13 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
           title={`Waive the notice recovery for ${who}?`}
           consequence="The notice recovery line goes and is not recovered in this settlement."
           confirmLabel="Waive"
-          confirmDisabled={why.trim().length < 5}
-          onConfirm={async () => void (await live.onWaiveNotice(s, why.trim()))}
+          onConfirm={async () => {
+            setTried(true);
+            if (why.trim().length < 5) return false;
+            await live.onWaiveNotice(s, why.trim());
+          }}
         >
-          <FormField id="fnf-waive" label="Why" required>
+          <FormField id="fnf-waive" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
             <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
           </FormField>
         </ConfirmDialog>
@@ -1156,19 +1169,22 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
           title={`Add a line to ${first}'s settlement`}
           consequence={firstDone ? 'The F&F run is approved: the line is paid in a second run.' : 'The line goes in the F&F run. Recalculate the run to update the totals.'}
           confirmLabel="Add line"
-          confirmDisabled={!lineOk}
-          onConfirm={async () => void (await live.onAdd(s, { componentCode: line.componentCode!, amount: line.amount, label: line.label.trim() }, why.trim()))}
+          onConfirm={async () => {
+            setTried(true);
+            if (!lineOk) return false;
+            await live.onAdd(s, { componentCode: line.componentCode!, amount: line.amount, label: line.label.trim() }, why.trim());
+          }}
         >
-          <FormField id="fnf-code" label="Line" required>
+          <FormField id="fnf-code" label="Line" required error={tried && !line.componentCode ? 'Choose the line.' : null}>
             <Select aria-label="Line" value={line.componentCode} onChange={(v) => setLine({ ...line, componentCode: v })} options={ADDABLE} />
           </FormField>
-          <FormField id="fnf-amount" label="Amount" required helper="Rupees, up to 2 decimals.">
+          <FormField id="fnf-amount" label="Amount" required helper="Rupees, up to 2 decimals." error={tried && !(MONEY.test(line.amount) && Number(line.amount) > 0) ? 'Enter an amount above 0, up to 2 decimals.' : null}>
             <TextField value={line.amount} onChange={(v) => setLine({ ...line, amount: v.trim() })} prefix="₹" inputMode="decimal" maxLength={13} />
           </FormField>
-          <FormField id="fnf-label" label="What it is" required>
+          <FormField id="fnf-label" label="What it is" required error={tried && line.label.trim().length < 3 ? 'Enter what it is, at least 3 characters.' : null}>
             <TextField value={line.label} onChange={(v) => setLine({ ...line, label: v })} maxLength={200} />
           </FormField>
-          <FormField id="fnf-reason" label="Why" required>
+          <FormField id="fnf-reason" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
             <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
           </FormField>
         </ConfirmDialog>

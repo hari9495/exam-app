@@ -210,7 +210,7 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
           person
           secondary={u ? `Merged into ${u.intoName} on ${formatDate(u.mergedAt)}${u.mergedBy ? ` by ${u.mergedBy}` : ''} · basis: same email, confirmed by HR` : 'Merged on 26 Sep 2026 by Lakshmi Venkatesan · basis: name + date of birth, confirmed by HR'}
           status={<Badge tone="info">Merged record</Badge>}
-          actions={<Button icon={Split} variant="danger" onClick={() => (setNote(''), setConfirm(true))}>Unmerge</Button>}
+          actions={<Button icon={Split} variant="danger" onClick={() => (setNote(''), setTried(false), setConfirm(true))}>Unmerge</Button>}
         />
         <Card title="What unmerge restores">
           <div className="yx-ppl__stack">
@@ -240,10 +240,14 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
           consequence="Each role, document and history row goes back to the person it came from. The link log keeps both actions."
           confirmLabel="Unmerge"
           destructive
-          confirmDisabled={Boolean(u) && !note.trim()}
-          onConfirm={async () => (u ? u.onUnmerge(note.trim()) : setConfirm(false))}
+          onConfirm={async () => {
+            if (!u) return setConfirm(false);
+            setTried(true);
+            if (!note.trim()) return false;
+            await u.onUnmerge(note.trim());
+          }}
         >
-          <FormField label="Audit note" required error={!u && noteError ? 'Enter a reason for the audit log.' : null}>
+          <FormField label="Audit note" required error={(u ? tried && !note.trim() : noteError) ? 'Enter a reason for the audit log.' : null}>
             <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} />
           </FormField>
         </ConfirmDialog>

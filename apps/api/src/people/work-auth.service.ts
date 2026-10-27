@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { maskShaped, OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { asDate, isCountry, isoDate, todayIst } from '../org-structure/org-validation';
 import { EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
@@ -50,7 +50,7 @@ export class WorkAuthService {
         reminderDays: reminders,
         rows: [
           ...rows.map((r) => ({ id: r.id, kind: r.kind, country: r.country, number: `XXXX-${r.numberLast4}`, sponsor: r.sponsor, occupation: r.occupation, issuedOn: r.issuedOn ? isoDate(r.issuedOn) : null, expiresOn: isoDate(r.expiresOn), remindedDays: r.remindedDays })),
-          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: `XXXX${passport.passportLast4}`, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
+          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: maskShaped('passport', passport.passportLast4)!, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
         ],
       };
     });

@@ -136,6 +136,7 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
   const [key, setKey] = useState<string | null>(null);
   const [name, setName] = useState('');
   const t = templates.find((x) => x.key === key);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -144,13 +145,14 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
       title="New role from a template"
       consequence="The template stays as it is; you can change the new role's permissions afterwards."
       confirmLabel="Create role"
-      confirmDisabled={!key || !name.trim()}
       onConfirm={async () => {
-        await onFromTemplate(key!, name.trim());
+        setTried(true);
+        if (!key || !name.trim()) return false;
+        await onFromTemplate(key, name.trim());
         onClose();
       }}
     >
-      <FormField id="rt-template" label="Template" required>
+      <FormField id="rt-template" label="Template" required error={tried && !key ? 'Choose a template.' : null}>
         <Select aria-label="Template" value={key} onChange={(v) => (setKey(v), setName(templates.find((x) => x.key === v)?.name ?? ''))} options={templates.map((x) => ({ value: x.key, label: x.name }))} />
       </FormField>
       {t && (
@@ -158,7 +160,7 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
           {`${t.summary} Not included: ${t.cannot}`}
         </Text>
       )}
-      <FormField id="rt-name" label="Role name" required>
+      <FormField id="rt-name" label="Role name" required error={tried && !name.trim() ? 'Enter the role name.' : null}>
         <TextField value={name} onChange={setName} maxLength={200} />
       </FormField>
     </ConfirmDialog>
@@ -170,6 +172,7 @@ type Ask = { kind: 'revoke' | 'reject'; grant: Grant };
 function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose: () => void; onRevoke: RolesAccessScreenProps['onRevoke']; onReject: RolesAccessScreenProps['onReject'] }) {
   const [reason, setReason] = useState('');
   const g = ask.grant;
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -178,13 +181,14 @@ function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose:
       consequence={ask.kind === 'revoke' ? 'The access ends now. The grant stays on the record.' : 'The grant never starts. It stays on the record.'}
       confirmLabel={ask.kind === 'revoke' ? 'Revoke' : 'Reject'}
       destructive
-      confirmDisabled={!reason.trim()}
       onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
         await (ask.kind === 'revoke' ? onRevoke(g.id, reason.trim()) : onReject(g.id, reason.trim()));
         onClose();
       }}
     >
-      <FormField id="gr-reason" label="Reason" required>
+      <FormField id="gr-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -195,6 +199,7 @@ function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser;
   const [reason, setReason] = useState('');
   const remove = isSystemAdmin(user);
   const name = user.name ?? user.email;
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -207,13 +212,14 @@ function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser;
       }
       confirmLabel={remove ? 'Remove System Admin' : 'Make System Admin'}
       destructive={remove}
-      confirmDisabled={!reason.trim()}
       onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
         await onSystemAdmin(user.id, !remove, reason.trim());
         onClose();
       }}
     >
-      <FormField id="sa-reason" label="Reason" required helper="Kept on the record.">
+      <FormField id="sa-reason" label="Reason" required helper="Kept on the record." error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>

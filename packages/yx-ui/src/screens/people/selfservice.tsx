@@ -750,12 +750,23 @@ function HoldingDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddHolding']; on
   const [security, setSecurity] = useState('');
   const [quantity, setQuantity] = useState<number | null>(null);
   const [how, setHow] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="Add holding" confirmLabel="Add holding" confirmDisabled={!security.trim() || !quantity || quantity < 1} onConfirm={() => onAdd({ security: security.trim(), quantity: quantity!, ...(how.trim() ? { how: how.trim() } : {}) })}>
-      <FormField label="Security" required>
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Add holding"
+      confirmLabel="Add holding"
+      onConfirm={async () => {
+        setTried(true);
+        if (!security.trim() || !quantity || quantity < 1) return false;
+        await onAdd({ security: security.trim(), quantity, ...(how.trim() ? { how: how.trim() } : {}) });
+      }}
+    >
+      <FormField label="Security" required error={tried && !security.trim() ? 'Enter the security.' : null}>
         <TextField value={security} onChange={setSecurity} maxLength={200} />
       </FormField>
-      <FormField label="Quantity" required>
+      <FormField label="Quantity" required error={tried && (!quantity || quantity < 1) ? 'Enter a quantity of 1 or more.' : null}>
         <NumberField value={quantity} onChange={setQuantity} />
       </FormField>
       <FormField label="How held" optional helper="For example Demat · NSDL, or an ESOP grant.">
@@ -771,12 +782,23 @@ function RelatedDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddRelated']; on
   const [pan, setPan] = useState('');
   const [holdings, setHoldings] = useState('');
   const panBad = pan.trim() !== '' && !isPan(pan.trim().toUpperCase());
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="Add related person" confirmLabel="Add related person" confirmDisabled={!name.trim() || !relation || panBad} onConfirm={() => onAdd({ name: name.trim(), relation: relation!, ...(pan.trim() ? { pan: pan.trim().toUpperCase() } : {}), ...(holdings.trim() ? { holdings: holdings.trim() } : {}) })}>
-      <FormField label="Name" required>
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Add related person"
+      confirmLabel="Add related person"
+      onConfirm={async () => {
+        setTried(true);
+        if (!name.trim() || !relation || panBad) return false;
+        await onAdd({ name: name.trim(), relation, ...(pan.trim() ? { pan: pan.trim().toUpperCase() } : {}), ...(holdings.trim() ? { holdings: holdings.trim() } : {}) });
+      }}
+    >
+      <FormField label="Name" required error={tried && !name.trim() ? 'Enter the name.' : null}>
         <TextField value={name} onChange={setName} maxLength={200} />
       </FormField>
-      <FormField label="Relation" required>
+      <FormField label="Relation" required error={tried && !relation ? 'Choose the relation.' : null}>
         <Select aria-label="Relation" value={relation} onChange={setRelation} options={RELATIONS.map((r) => ({ value: r, label: r }))} />
       </FormField>
       <FormField label="PAN" optional error={panBad ? 'Enter a 10-character PAN like ABCDE1234F.' : null} helper="Only the last four are shown again.">
@@ -963,6 +985,7 @@ export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
   const [review, setReview] = useState<{ name: string; data: Awaited<ReturnType<LiveBfsiRegister['onReview']>> } | null>(null);
   const [designating, setDesignating] = useState(false);
   const [person, setPerson] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const { run, busy, error } = useRun();
   const rows = live
     ? live.rows.map((r) => ({ id: r.employeeId, name: r.name, type: 'Holdings and relatives (annual)', due: r.due, status: r.status as string }))
@@ -980,7 +1003,7 @@ export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
         status={<Badge tone="warning">Confidential</Badge>}
         actions={
           <>
-            {live && <Button icon={Plus} onClick={() => (setPerson(null), setDesignating(true))}>Add designated person</Button>}
+            {live && <Button icon={Plus} onClick={() => (setPerson(null), setTried(false), setDesignating(true))}>Add designated person</Button>}
             <Button icon={FileText} onClick={live?.onExport}>Export register</Button>
           </>
         }
@@ -1014,8 +1037,12 @@ export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
       )}
       {review && <BfsiReview name={review.name} data={review.data} onClose={() => setReview(null)} />}
       {live && (
-        <ConfirmDialog open={designating} onOpenChange={setDesignating} title="Add a designated person" consequence="They are asked for this year's declarations and need pre-clearance before they trade." confirmLabel="Add designated person" confirmDisabled={!person} onConfirm={() => live.onDesignate(person!)}>
-          <FormField label="Person" required>
+        <ConfirmDialog open={designating} onOpenChange={setDesignating} title="Add a designated person" consequence="They are asked for this year's declarations and need pre-clearance before they trade." confirmLabel="Add designated person" onConfirm={async () => {
+            setTried(true);
+            if (!person) return false;
+            await live.onDesignate(person);
+          }}>
+          <FormField label="Person" required error={tried && !person ? 'Choose the person.' : null}>
             <Select aria-label="Person" value={person} onChange={setPerson} options={live.people} searchable />
           </FormField>
         </ConfirmDialog>
@@ -1263,6 +1290,7 @@ export interface LivePreclearanceQueue {
 export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
   const [rejecting, setRejecting] = useState<PreclearanceItem | null>(null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const { run, busy, error } = useRun();
   const rows = live
     ? live.rows.map((r) => ({ id: r.id, name: r.name ?? '', trade: tradeTitle(r), value: r.value, requested: r.requestedAt, status: r.status as string }))
@@ -1295,7 +1323,7 @@ export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
           rowButtons={(x) =>
             x.status === 'Pending' ? (
               <>
-                <Button size="sm" onClick={live ? () => (setReason(''), setRejecting(live.rows.find((y) => y.id === x.id)!)) : undefined}>Reject</Button>
+                <Button size="sm" onClick={live ? () => (setReason(''), setTried(false), setRejecting(live.rows.find((y) => y.id === x.id)!)) : undefined}>Reject</Button>
                 <Button variant="approve" size="sm" loading={busy === x.id} onClick={live ? () => void run(x.id, () => live.onDecide(x.id, true)) : undefined}>Approve</Button>
               </>
             ) : null
@@ -1304,8 +1332,12 @@ export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
         />
       )}
       {live && rejecting && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setRejecting(null)} title={`Reject ${tradeTitle(rejecting)}?`} consequence={`${rejecting.name ?? 'The person'} sees your reason and may not trade on it.`} confirmLabel="Reject" destructive confirmDisabled={!reason.trim()} onConfirm={() => live.onDecide(rejecting.id, false, reason.trim())}>
-          <FormField label="Reason" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && setRejecting(null)} title={`Reject ${tradeTitle(rejecting)}?`} consequence={`${rejecting.name ?? 'The person'} sees your reason and may not trade on it.`} confirmLabel="Reject" destructive onConfirm={async () => {
+          setTried(true);
+          if (!reason.trim()) return false;
+          await live.onDecide(rejecting.id, false, reason.trim());
+        }}>
+          <FormField label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
           </FormField>
         </ConfirmDialog>

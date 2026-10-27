@@ -110,12 +110,15 @@ function PlanDialog(p: HeadcountPlansScreenProps & { plan: HeadcountPlan | null;
   const [rows, setRows] = useState<Row[]>(p.plan ? p.plan.lines.map((l) => ({ designationId: l.designationId, gradeId: l.gradeId, locationId: l.locationId, count: l.count, budget: l.budget })) : [{ designationId: null, gradeId: null, locationId: null, count: 1, budget: null }]);
   const set = (i: number, patch: Partial<Row>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const ok = dept && rows.length > 0 && rows.every((r) => r.designationId && r.count && r.count > 0);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title={p.plan ? 'Edit plan' : 'New plan'} confirmLabel="Save" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title={p.plan ? 'Edit plan' : 'New plan'} confirmLabel="Save" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onSave(p.plan?.id ?? null, { departmentId: dept!, legalEntityId: p.plan?.legalEntityId ?? null, fyStart: fy, note: note.trim() || null, lines: rows.map((r) => ({ designationId: r.designationId!, gradeId: r.gradeId, locationId: r.locationId, count: r.count!, budget: r.budget })), version: p.plan?.version });
       p.onClose();
     }}>
-      <FormField id="hp-dept" label="Department" required>
+      <FormField id="hp-dept" label="Department" required error={tried && !dept ? 'Choose the department.' : null}>
         <Select aria-label="Department" value={dept} onChange={setDept} options={p.departments} searchable />
       </FormField>
       <FormField id="hp-year" label="Financial year" required>
@@ -123,7 +126,7 @@ function PlanDialog(p: HeadcountPlansScreenProps & { plan: HeadcountPlan | null;
       </FormField>
       {rows.map((r, i) => (
         <div key={i} className="yx-tim-stack">
-          <FormField id={`hp-d${i}`} label={`Line ${i + 1}: designation`} required>
+          <FormField id={`hp-d${i}`} label={`Line ${i + 1}: designation`} required error={tried && !r.designationId ? 'Choose the designation.' : null}>
             <Select aria-label={`Line ${i + 1}: designation`} value={r.designationId} onChange={(v) => set(i, { designationId: v })} options={p.designations} searchable />
           </FormField>
           <FormField id={`hp-g${i}`} label={`Line ${i + 1}: grade`} optional>
@@ -132,7 +135,7 @@ function PlanDialog(p: HeadcountPlansScreenProps & { plan: HeadcountPlan | null;
           <FormField id={`hp-l${i}`} label={`Line ${i + 1}: location`} optional>
             <Select aria-label={`Line ${i + 1}: location`} value={r.locationId} onChange={(v) => set(i, { locationId: v })} options={p.locations} clearable />
           </FormField>
-          <FormField id={`hp-c${i}`} label={`Line ${i + 1}: positions`} required>
+          <FormField id={`hp-c${i}`} label={`Line ${i + 1}: positions`} required error={tried && !(r.count && r.count > 0) ? 'Enter at least 1 position.' : null}>
             <NumberField value={r.count} onChange={(v) => set(i, { count: v })} min={1} max={10000} />
           </FormField>
           <FormField id={`hp-b${i}`} label={`Line ${i + 1}: budget (₹ a year)`} optional>

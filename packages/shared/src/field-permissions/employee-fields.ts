@@ -90,3 +90,9 @@ export const isGrantOnlyKey = (key: string) => /^(employee\.|pay\.|org\.entity\.
 export function maskTail(last4: string | null | undefined): string | null {
   return last4 ? `•••• ${last4}` : null;
 }
+
+/** The People designs' masks (PPL-03 record, PPL-36/37, PPL-43, PPL-46): the hidden part as X in the identifier's shape. */
+const SHAPE = { pan: 'XXXXXX', uan: 'XXXXXXXX', passport: 'XXXX', account: 'XXXX XXXX ' } as const;
+export function maskShaped(kind: keyof typeof SHAPE, last4: string | null | undefined): string | null {
+  return last4 ? `${SHAPE[kind]}${last4}` : null;
+}

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { maskTail, OrgSecretsCryptoService, TenantContext } from '@exam-platform/shared';
+import { maskShaped, OrgSecretsCryptoService, TenantContext } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { asDate, isoDate, todayIst } from '../org-structure/org-validation';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
@@ -76,7 +76,7 @@ export class BfsiService {
   private view(c: CompanyContext, employeeId: string, row: { holdingsEnc: string | null; relatedEnc: string | null; coi: string | null; coiEnc: string | null }) {
     return {
       holdings: this.open<Holding[]>(c, employeeId, row.holdingsEnc, []),
-      related: this.open<Related[]>(c, employeeId, row.relatedEnc, []).map((r) => ({ ...r, pan: maskTail(r.pan?.slice(-4)) })),
+      related: this.open<Related[]>(c, employeeId, row.relatedEnc, []).map((r) => ({ ...r, pan: maskShaped('pan', r.pan?.slice(-4)) })),
       coi: row.coi ? { answer: row.coi, details: this.open<string | null>(c, employeeId, row.coiEnc, null) } : null,
     };
   }

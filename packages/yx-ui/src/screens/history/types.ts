@@ -173,6 +173,36 @@ export interface ChoiceOption {
   entities: string[];
 }
 
+/** PPL-04 inter-entity transfer options: as the restructure engine takes them (PPL-09), company defaults in Settings. */
+export interface TransferOptions {
+  leave: 'carry' | 'lapse';
+  service: 'keep' | 'restart';
+  code: 'keep' | 'new';
+  salary: 'keep' | 'new';
+}
+
+/** PPL-04: one person's move to another legal entity, sent as a one-person restructure. */
+export interface MoveInput {
+  employeeId: string;
+  fromEntityId: string;
+  intoEntityId: string;
+  effectiveDate: string;
+  locationId: string;
+  departmentId?: string;
+  designationId?: string;
+  options: TransferOptions;
+  reason: string;
+  overrideReason?: string;
+}
+
+/** The Change action's inter-entity transfer (HR only): the entities, the defaults, and the restructure calls. */
+export interface MoveHandlers {
+  entities: { value: string; label: string }[];
+  onDefaults: (employeeId: string) => Promise<{ options: TransferOptions; employeeCode: string; serviceFrom: string }>;
+  onPreview: (input: MoveInput) => Promise<Impact>;
+  onSubmit: (input: MoveInput) => Promise<void>;
+}
+
 /** What the change form can offer, already limited to live records. */
 export interface ChangeOptions {
   people: PersonOption[];

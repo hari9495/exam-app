@@ -27,7 +27,10 @@ describe('Job workspace (AT5)', () => {
     await ue.click(screen.getByRole('checkbox', { name: /Arun Kumar/ }));
     await ue.click(screen.getByRole('button', { name: 'Reject' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Reject' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Reject' }));
+    expect(within(d).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(within(d).getByText('Enter a subject.')).toBeInTheDocument();
+    expect(onReject).not.toHaveBeenCalled();
     await ue.type(within(d).getByLabelText(/^Reason/), 'Needs night-shift experience');
     await ue.click(within(d).getByRole('combobox', { name: 'Template' }));
     await ue.click(screen.getByRole('option', { name: 'Regret' }));
@@ -57,7 +60,10 @@ describe('Application panel (AT5)', () => {
     await ue.click(screen.getByRole('option', { name: 'Kavya' }));
     await ue.keyboard('{Escape}');
     await ue.type(within(d).getByLabelText(/^Where/), 'Video call');
-    expect(within(d).getByRole('button', { name: 'Schedule' })).toBeDisabled(); // no booking window yet
+    await ue.click(within(d).getByRole('button', { name: 'Schedule' })); // no booking window yet
+    expect(within(d).getByText('Choose the first bookable date.')).toBeInTheDocument();
+    expect(within(d).getByText('Choose the last bookable date.')).toBeInTheDocument();
+    expect(onSchedule).not.toHaveBeenCalled();
   });
 
   it('offers go for approval when the company asks for it', async () => {

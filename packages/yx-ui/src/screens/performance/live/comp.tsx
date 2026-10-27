@@ -106,24 +106,27 @@ function CompCycleDialog(p: CompCyclesScreenProps & { onClose: () => void }) {
   const bands = [...new Set(p.matrices.find((m) => m.id === matrix)?.cells.map((c) => c.band) ?? [])];
   const [mult, setMult] = useState<Record<string, number | null>>({});
   const ok = name.trim().length >= 2 && entity && matrix && on && (withBonus === 'no' || (month && target !== null));
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="New comp cycle" confirmLabel="Create" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="New comp cycle" confirmLabel="Create" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onCreate({ name: name.trim(), legalEntityId: entity!, currency: 'INR', effectiveOn: dayKey(on!), matrixId: matrix!, reviewCycleId: review, bonus: withBonus === 'yes' ? { month: dayKey(month!).slice(0, 7), targetPct: target!, multipliers: Object.fromEntries(bands.map((b) => [b, mult[b] ?? 0])) } : null });
       p.onClose();
     }}>
-      <FormField id="cc-name" label="Name" required>
+      <FormField id="cc-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
         <TextField value={name} onChange={setName} maxLength={100} />
       </FormField>
-      <FormField id="cc-entity" label="Legal entity" required>
+      <FormField id="cc-entity" label="Legal entity" required error={tried && !entity ? 'Choose the legal entity.' : null}>
         <Select aria-label="Legal entity" value={entity} onChange={setEntity} options={p.entities} />
       </FormField>
       <FormField id="cc-review" label="Ratings from" optional helper="A released review cycle. Without one, everyone in the entity is listed with no rating.">
         <Select aria-label="Review cycle" value={review} onChange={setReview} options={p.reviewCycles} clearable />
       </FormField>
-      <FormField id="cc-matrix" label="Merit matrix" required>
+      <FormField id="cc-matrix" label="Merit matrix" required error={tried && !matrix ? 'Choose the merit matrix.' : null}>
         <Select aria-label="Merit matrix" value={matrix} onChange={setMatrix} options={p.matrices.map((m) => ({ value: m.id, label: m.name }))} />
       </FormField>
-      <FormField id="cc-on" label="Effective from" required helper="A date in a month payroll has already run is paid as arrears in the next run.">
+      <FormField id="cc-on" label="Effective from" required error={tried && !on ? 'Choose the effective date.' : null} helper="A date in a month payroll has already run is paid as arrears in the next run.">
         <DatePicker value={on} onChange={setOn} aria-label="Effective from" />
       </FormField>
       <FormField id="cc-bonus" label="Performance bonus">
@@ -131,10 +134,10 @@ function CompCycleDialog(p: CompCyclesScreenProps & { onClose: () => void }) {
       </FormField>
       {withBonus === 'yes' && (
         <>
-          <FormField id="cc-month" label="Paid in the month of" required>
+          <FormField id="cc-month" label="Paid in the month of" required error={tried && !month ? 'Choose the bonus pay month.' : null}>
             <DatePicker value={month} onChange={setMonth} aria-label="Bonus pay month" />
           </FormField>
-          <FormField id="cc-target" label="Target bonus (% of annual pay)" required>
+          <FormField id="cc-target" label="Target bonus (% of annual pay)" required error={tried && target === null ? 'Enter the target bonus.' : null}>
             <NumberField value={target} onChange={setTarget} min={0} max={100} decimals />
           </FormField>
           {bands.map((b) => (
@@ -349,15 +352,18 @@ function BudgetsDialog({ departments, current, onClose, onSave }: { departments:
   const [merit, setMerit] = useState<number | null>(null);
   const [bonus, setBonus] = useState<number | null>(null);
   const cur = (k: 'merit' | 'bonus') => current.find((b) => b.departmentId === dept && b.kind === k)?.amount ?? null;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Budgets" confirmLabel="Save" confirmDisabled={!dept || (merit === null && bonus === null)} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Budgets" confirmLabel="Save" onConfirm={async () => {
+      setTried(true);
+      if (!dept || (merit === null && bonus === null)) return false;
       await onSave([...(merit !== null ? [{ departmentId: dept!, kind: 'merit' as const, amount: merit }] : []), ...(bonus !== null ? [{ departmentId: dept!, kind: 'bonus' as const, amount: bonus }] : [])]);
       onClose();
     }}>
-      <FormField id="bd-dept" label="Department" required>
+      <FormField id="bd-dept" label="Department" required error={tried && !dept ? 'Choose the department.' : null}>
         <Select aria-label="Department" value={dept} onChange={setDept} options={departments} searchable />
       </FormField>
-      <FormField id="bd-merit" label="Merit and promotions (₹ a year)" helper={cur('merit') !== null ? `Now ${inr(cur('merit'))}` : undefined}>
+      <FormField id="bd-merit" label="Merit and promotions (₹ a year)" error={tried && merit === null && bonus === null ? 'Enter a merit budget or a bonus pool.' : null} helper={cur('merit') !== null ? `Now ${inr(cur('merit'))}` : undefined}>
         <NumberField value={merit} onChange={setMerit} min={0} decimals />
       </FormField>
       <FormField id="bd-bonus" label="Bonus pool (₹)" helper={cur('bonus') !== null ? `Now ${inr(cur('bonus'))}` : undefined}>

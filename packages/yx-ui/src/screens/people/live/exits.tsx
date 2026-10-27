@@ -22,8 +22,8 @@ import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, Ex
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
 // acknowledge), HR's exit cases and the exit workspace (PPL-19, with "Start exit"), clearance sign-offs (PPL-20) and the
-// asset list (PPL-25). Plain words; single choices are Segments; buttons stay off until a form is complete, so no
-// error shows while typing; the server's answer shows after the action.
+// asset list (PPL-25). Plain words; single choices are Segments; a dialog's button explains what is missing when
+// pressed, and no error shows while typing; the server's answer shows after the action.
 
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
@@ -196,6 +196,7 @@ function ResignForm({ data, onResign }: { data: MyResignation; onResign: Resigna
 
 function WithdrawDialog({ accepted, onClose, onWithdraw }: { accepted: boolean; onClose: () => void; onWithdraw: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -203,13 +204,14 @@ function WithdrawDialog({ accepted, onClose, onWithdraw }: { accepted: boolean; 
       title="Withdraw your resignation?"
       consequence={accepted ? 'It is already accepted, so your manager and HR decide. You keep serving notice until they agree.' : 'It is not accepted yet, so it is withdrawn at once.'}
       confirmLabel={accepted ? 'Ask to withdraw' : 'Withdraw resignation'}
-      confirmDisabled={reason.trim().length < 3}
       onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) return false;
         await onWithdraw(reason.trim());
         onClose();
       }}
     >
-      <FormField id="wd-reason" label="Why" required>
+      <FormField id="wd-reason" label="Why" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -349,6 +351,7 @@ export function StartExitDialog({ people, permissions, today, onClose, onStart }
   const [reason, setReason] = useState('');
   const past = type === 'death' || type === 'absconding';
   const ready = Boolean(who && type && lwd) && reason.trim().length >= 3 && (type !== 'retrenchment' || basis.trim().length >= 3);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -357,21 +360,22 @@ export function StartExitDialog({ people, permissions, today, onClose, onStart }
       title="Start an exit"
       consequence={type === 'termination' || type === 'probation_termination' ? 'Another HR person approves this before it starts. It is refused while the person is on maternity leave.' : 'The exit starts at once: the offboarding checklist and clearance open.'}
       confirmLabel="Start exit"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onStart({ employeeId: who!, exitType: type!, lwd: dayKey(lwd!), reasonText: reason.trim(), ...(type === 'retrenchment' ? { selectionBasis: basis.trim(), noticeMode: mode, ...(permission ? { irPermissionId: permission } : {}) } : {}) });
         onClose();
       }}
     >
-      <FormField id="se-who" label="Person" required>
+      <FormField id="se-who" label="Person" required error={tried && !who ? 'Choose the person.' : null}>
         <Select aria-label="Person" value={who} onChange={setWho} options={people} searchable />
       </FormField>
-      <FormField id="se-type" label="Kind of exit" required>
+      <FormField id="se-type" label="Kind of exit" required error={tried && !type ? 'Choose the kind of exit.' : null}>
         <Select aria-label="Kind of exit" value={type} onChange={(x) => { setType(x as Exclude<ExitType, 'resignation' | 'vrs'>); setLwd(null); }} options={COMPANY_TYPES} />
       </FormField>
       {type === 'retrenchment' && (
         <>
-          <FormField id="se-basis" label="How the worker was chosen" required helper="For example: last come, first go in the operator category.">
+          <FormField id="se-basis" label="How the worker was chosen" required helper="For example: last come, first go in the operator category." error={tried && basis.trim().length < 3 ? 'Enter how the worker was chosen, at least 3 characters.' : null}>
             <TextField value={basis} onChange={setBasis} maxLength={500} />
           </FormField>
           <FormField id="se-mode" label="Notice">
@@ -382,10 +386,10 @@ export function StartExitDialog({ people, permissions, today, onClose, onStart }
           </FormField>
         </>
       )}
-      <FormField id="se-lwd" label={type === 'death' ? 'Date of death' : type === 'absconding' ? 'Last day present' : 'Last working day'} required>
+      <FormField id="se-lwd" label={type === 'death' ? 'Date of death' : type === 'absconding' ? 'Last day present' : 'Last working day'} required error={tried && !lwd ? 'Choose the day.' : null}>
         <DatePicker value={lwd} onChange={setLwd} {...(past ? { max: fromKey(today) } : { min: fromKey(today) })} aria-label="Last working day" />
       </FormField>
-      <FormField id="se-reason" label="Reason" required helper="Kept on the record. The person does not see it here.">
+      <FormField id="se-reason" label="Reason" required helper="Kept on the record. The person does not see it here." error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={1000} />
       </FormField>
     </ConfirmDialog>
@@ -422,7 +426,9 @@ export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace
   const [days, setDays] = useState('');
   const [reason, setReason] = useState('');
   const day = lwd ? dayKey(lwd) : null;
-  const ready = Boolean(day) && day !== d.lastDay && (kind !== 'early_release' || (day ?? '') < d.lastDay) && (kind !== 'buyout' || /^\d{1,3}$/.test(days)) && reason.trim().length >= 3;
+  const dayError = !day ? 'Choose the new last working day.' : day === d.lastDay ? 'Choose a day other than the current last working day.' : kind === 'early_release' && day >= d.lastDay ? 'Choose a day before the current last working day.' : null;
+  const ready = !dayError && (kind !== 'buyout' || /^\d{1,3}$/.test(days)) && reason.trim().length >= 3;
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -431,14 +437,15 @@ export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace
       title="Change the last working day?"
       consequence="Another HR person approves it. The offboarding checklist then moves with the new day."
       confirmLabel="Send for approval"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onNotice({ kind, lwd: day!, buyoutBy: kind === 'buyout' ? by : null, buyoutDays: kind === 'buyout' ? Number(days) : null, reason: reason.trim(), version: d.version });
         onClose();
       }}
     >
       <Segment label="Kind of change" value={kind} onChange={setKind} options={[{ value: 'early_release', label: 'Early release' }, { value: 'buyout', label: 'Notice buy-out' }, { value: 'lwd_change', label: 'Another day' }]} />
-      <FormField id="nc-lwd" label="New last working day" required helper={`Now ${dateText(d.lastDay)}.`}>
+      <FormField id="nc-lwd" label="New last working day" required helper={`Now ${dateText(d.lastDay)}.`} error={tried ? dayError : null}>
         <DatePicker value={lwd} onChange={setLwd} min={fromKey(today)} aria-label="New last working day" />
       </FormField>
       {kind === 'buyout' && (
@@ -446,12 +453,12 @@ export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace
           <FormField id="nc-by" label="Paid by" required>
             <Segment label="Paid by" value={by} onChange={setBy} options={[{ value: 'employee', label: 'The employee' }, { value: 'company', label: 'The company' }]} />
           </FormField>
-          <FormField id="nc-days" label="Notice days bought out" required>
+          <FormField id="nc-days" label="Notice days bought out" required error={tried && !/^\d{1,3}$/.test(days) ? 'Enter the number of days, up to 3 digits.' : null}>
             <TextField value={days} onChange={setDays} inputMode="numeric" maxLength={3} />
           </FormField>
         </div>
       )}
-      <FormField id="nc-reason" label="Reason" required>
+      <FormField id="nc-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -470,6 +477,7 @@ export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClos
   const [holdReason, setHoldReason] = useState(h.holdReason ?? '');
   const [review, setReview] = useState<Date | null>(h.holdReviewOn ? fromKey(h.holdReviewOn) : null);
   const ready = !hold || holdReason.trim().length >= 3;
+  const [tried, setTried] = useState(false);
   const choices = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }, { value: 'open', label: 'Not decided' }];
   return (
     <ConfirmDialog
@@ -479,8 +487,9 @@ export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClos
       title="HR-only facts"
       consequence="Only people with the confidential exit key see these. The leaver sees only that their letters are on hold."
       confirmLabel="Save"
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onSave({ rehireEligible: fromTri(rehire), rehireReason: rehireReason.trim() || null, regretted: fromTri(regretted), backfillRequested: backfill, hold, holdReason: hold ? holdReason.trim() : null, holdReviewOn: hold && review ? dayKey(review) : null, version: d.version });
         onClose();
       }}
@@ -500,7 +509,7 @@ export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClos
       <Checkbox checked={hold} onChange={setHold} label="Hold the relieving and experience letters" />
       {hold && (
         <div className="yx-lif-grid">
-          <FormField id="hr-hold" label="Why (HR only)" required>
+          <FormField id="hr-hold" label="Why (HR only)" required error={tried && holdReason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
             <TextField value={holdReason} onChange={setHoldReason} maxLength={500} />
           </FormField>
           <FormField id="hr-review" label="Review on" optional>
@@ -532,6 +541,7 @@ export function InterviewDialog({ onClose, load, onNotes }: { onClose: () => voi
     return f?.options?.find((o) => o.value === v)?.label ?? (v === undefined || v === null ? '' : String(v));
   };
   return (
+    // confirmDisabled kept: the answers are still loading (or failed to load); nothing in this dialog can fix that.
     <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Exit interview (HR only)" confirmLabel="Save notes" confirmDisabled={!data} onConfirm={async () => { await onNotes(notes); onClose(); }}>
       {error && (
         <InlineAlert tone="danger" title="Not loaded">
@@ -554,7 +564,9 @@ export function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceIte
   const [recovery, setRecovery] = useState(false);
   const [amount, setAmount] = useState('');
   const [why, setWhy] = useState('');
-  const ready = (action === 'clear' ? !recovery || (MONEY.test(amount) && Number(amount) > 0 && why.trim().length >= 3) : note.trim().length >= 3);
+  const amountOk = MONEY.test(amount) && Number(amount) > 0;
+  const ready = (action === 'clear' ? !recovery || (amountOk && why.trim().length >= 3) : note.trim().length >= 3);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -563,8 +575,9 @@ export function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceIte
       title={item.title}
       consequence="A recovery goes to payroll for the final settlement. Open items never stop the exit."
       confirmLabel={action === 'clear' ? 'Sign off' : 'Waive'}
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await onSignOff(item, { action, note: note.trim() || null, recoveryAmount: action === 'clear' && recovery ? amount : null, recoveryReason: action === 'clear' && recovery ? why.trim() : null });
         onClose();
       }}
@@ -573,15 +586,15 @@ export function SignOffDialog({ item, onClose, onSignOff }: { item: ClearanceIte
       {action === 'clear' && <Checkbox checked={recovery} onChange={setRecovery} label="Something is owed (a recovery)" />}
       {action === 'clear' && recovery && (
         <div className="yx-lif-grid">
-          <FormField id="so-amount" label="Amount (₹)" required>
+          <FormField id="so-amount" label="Amount (₹)" required error={tried && !amountOk ? 'Enter an amount above 0.' : null}>
             <TextField value={amount} onChange={setAmount} inputMode="decimal" maxLength={15} />
           </FormField>
-          <FormField id="so-why" label="For" required>
+          <FormField id="so-why" label="For" required error={tried && why.trim().length < 3 ? 'Enter what it is for, at least 3 characters.' : null}>
             <TextField value={why} onChange={setWhy} maxLength={300} />
           </FormField>
         </div>
       )}
-      <FormField id="so-note" label="Note" required={action === 'waive'} optional={action === 'clear'}>
+      <FormField id="so-note" label="Note" required={action === 'waive'} optional={action === 'clear'} error={tried && action === 'waive' && note.trim().length < 3 ? 'Enter a note of at least 3 characters.' : null}>
         <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
       </FormField>
     </ConfirmDialog>
@@ -685,13 +698,14 @@ export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string
   const [settling, setSettling] = useState(false);
   const [on, setOn] = useState<Date | null>(fromKey(today));
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const c = h.current;
   return (
     <Card
       title="Payroll hand-off"
       actions={
         h.canSettle && !h.settledOutside && onSettled ? (
-          <Button size="sm" onClick={() => setSettling(true)}>
+          <Button size="sm" onClick={() => { setTried(false); setSettling(true); }}>
             Settled outside YukthiX
           </Button>
         ) : undefined
@@ -730,16 +744,17 @@ export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string
           title="Settled outside YukthiX?"
           consequence="The exit closes. Use this until payroll's final settlement is in YukthiX."
           confirmLabel="Close the exit"
-          confirmDisabled={!on || reason.trim().length < 3}
           onConfirm={async () => {
+            setTried(true);
+            if (!on || reason.trim().length < 3) return false;
             await onSettled({ settledOn: dayKey(on!), reason: reason.trim() });
             setSettling(false);
           }}
         >
-          <FormField id="so-on" label="Settled on" required>
+          <FormField id="so-on" label="Settled on" required error={tried && !on ? 'Choose the day it was settled.' : null}>
             <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Settled on" />
           </FormField>
-          <FormField id="so-reason" label="How" required helper="For example: paid by bank transfer.">
+          <FormField id="so-reason" label="How" required helper="For example: paid by bank transfer." error={tried && reason.trim().length < 3 ? 'Enter how it was settled, at least 3 characters.' : null}>
             <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
           </FormField>
         </ConfirmDialog>
