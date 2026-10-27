@@ -6,6 +6,7 @@ import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { ProfileService } from '../people/profile.service';
 import { DocumentsService } from '../documents/documents.service';
+import { LettersService } from '../documents/letters/letters.service';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService } from './portal.service';
@@ -34,6 +35,7 @@ export class JoiningService {
     private readonly portal: PreboardingPortalService,
     private readonly desk: DeskJourneysService,
     private readonly extras: OnboardingExtrasService,
+    private readonly letters: LettersService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -162,6 +164,8 @@ export class JoiningService {
       const pb = await this.joiner(tx, c, v, id, 'lifecycle.onboarding.manage');
       if (pb.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (dto.outcome === 'did_not_join' && iso(pb.joiningOn) > todayIst()) throw new BadRequestException('"Did not join" is for on or after the joining day. Before it, use reneged or offer withdrawn.');
+      // PPL-15 (founder 27 Oct 2026): a withdrawal comes with its letter, drafted (from the joiner's planned job, so before it is cancelled) for HR to review and issue in People › Letters.
+      const letter = dto.outcome === 'withdrawn' ? await this.letters.draftIn(tx, c, pb.personId, 'offer_withdrawal', dto.reason?.trim() || null) : null;
       const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
       const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
@@ -179,7 +183,7 @@ export class JoiningService {
       await tx.letterIssue.updateMany({ where: { organizationId: org, id: { in: pending.map((l) => l.id) } }, data: { status: 'withdrawn' } });
       await tx.signatureRequest.updateMany({ where: { organizationId: org, personId: pb.personId, status: 'open' }, data: { status: 'cancelled' } });
       if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: dto.outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
-      await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length });
+      await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome: dto.outcome } } });
       return { tickets, org };
     });

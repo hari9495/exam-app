@@ -39,6 +39,19 @@ describe('letter templates (YX-DOC-07 / 15)', () => {
     expect(suggest('zzzzzz')).toBeNull();
   });
 
+  it('PPL-15 offer withdrawal: the role, the start date and the reason when HR gave one; no blank line when not; never signed by the person', () => {
+    const s = STARTER_LETTERS.find((x) => x.letterType === 'offer_withdrawal')!;
+    expect(s).toMatchObject({ name: 'Offer withdrawal letter', requiresApproval: false, personSigns: false, onePerPerson: true });
+    const f = templateFields(starterDocx('offer_withdrawal')!);
+    expect(f).toEqual(expect.arrayContaining(['employee_name', 'designation', 'joining_date', 'legal_entity', 'today', 'reference_no', 'signatory_name', 'signatory_title', 'withdrawal_reason']));
+    const data = { ...sampleData(), withdrawal_reason: 'The role was closed' };
+    const text = docxParagraphs(fillDocx(starterDocx('offer_withdrawal')!, data)).join('\n');
+    expect(text).toContain('Kaveri Foods Pvt Ltd withdraws its offer for the role of Production Supervisor, which was to start on 19 October 2026.');
+    expect(text).toContain('The reason: The role was closed.');
+    expect(missingFields(f, { ...data, withdrawal_reason: '' })).toEqual([]);
+    expect(docxParagraphs(fillDocx(starterDocx('offer_withdrawal')!, { ...data, withdrawal_reason: '' })).join('\n')).not.toContain('The reason');
+  });
+
   it('every starter is a proper letter: letterhead, reference, date, subject and who signs; the CIN only when known', () => {
     for (const s of STARTER_LETTERS) {
       const text = docxParagraphs(starterDocx(s.letterType)!).join('\n');

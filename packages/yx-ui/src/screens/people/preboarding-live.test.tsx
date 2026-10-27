@@ -69,10 +69,11 @@ describe('PPL-15 pre-boarding actions, live', () => {
     const p = page({ rehire: { first: 'Sneha', code: 'KF-0077' } });
     await ue.click(screen.getByRole('button', { name: 'Change status' }));
     await ue.click(within(drawer()).getByRole('radio', { name: /Withdraw offer/ }));
-    expect(within(drawer()).getByText(/The candidate's offer is marked withdrawn in Hiring/)).toBeInTheDocument();
+    expect(within(drawer()).getByText(/The candidate's offer is marked withdrawn in Hiring\. The withdrawal letter is drafted for your review\./)).toBeInTheDocument();
+    expect(within(drawer()).getByText('The company withdraws. A reason and a withdrawal letter are required.')).toBeInTheDocument();
     expect(within(drawer()).getByText(/code KF-0077 and UAN stay as they were/)).toBeInTheDocument();
     await ue.click(within(drawer()).getByRole('button', { name: 'Withdraw offer' }));
-    expect(within(drawer()).getByText('Enter a reason. It is kept on the record and the audit log.')).toBeInTheDocument();
+    expect(within(drawer()).getByText('Enter a reason. It goes on the withdrawal letter and the audit log.')).toBeInTheDocument();
     expect(p.onCancel).not.toHaveBeenCalled();
     await ue.click(within(drawer()).getByRole('radio', { name: /Reneged/ }));
     await ue.click(within(drawer()).getByRole('button', { name: 'Record reneged' }));

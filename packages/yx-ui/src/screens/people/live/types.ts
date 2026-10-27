@@ -262,7 +262,7 @@ export interface Letter {
   person?: string;
   referenceNo: string | null;
   verifyCode: string | null;
-  status: 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  status: 'draft' | 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
   renderError: string | null;
   issuedAt: string | null;
   personSigns: boolean;

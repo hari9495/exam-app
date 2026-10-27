@@ -449,6 +449,27 @@ describe('Lifecycle batch 6b', () => {
     await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: now.version + 1 }).expect(409);
   });
 
+  it('PPL-15 withdrawing an offer drafts the withdrawal letter (the template must be on); HR issues it from Letters', async () => {
+    const j = await addJoiner('Nila', `nila-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    const off = await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'The role was closed', version: pb.version }).expect(400);
+    expect(off.body.message).toMatch(/no active offer withdrawal template/);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }))).toMatchObject({ status: 'invited' });
+    const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'offer_withdrawal' }).expect(201)).body;
+    await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+    await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'The role was closed', version: pb.version }).expect(200);
+    const draft = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pb.personId, letterType: 'offer_withdrawal' } }));
+    expect(draft).toMatchObject({ status: 'draft', referenceNo: null, fileId: null });
+    expect((await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === draft.id)).toMatchObject({ status: 'draft', referenceNo: null });
+    // Only someone who issues letters, once.
+    await api('adminB', 'post', `/letters/${draft.id}/issue`).expect(403);
+    const issued = (await api('hr', 'post', `/letters/${draft.id}/issue`).expect(201)).body;
+    expect(issued).toMatchObject({ id: draft.id, status: 'issued', referenceNo: expect.stringMatching(/\/OWD\//) });
+    await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+  });
+
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
     const offers = await inA(async (tx) => {
       const o = { organizationId: org.A.id };

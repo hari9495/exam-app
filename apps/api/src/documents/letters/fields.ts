@@ -64,6 +64,8 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   certificate_purpose: { label: 'Purpose (written by the employee who asked; blank when HR issues it)', cls: 'internal', optional: true, sample: 'Home loan' },
   addressed_to: { label: 'Addressed to (written by the employee who asked; blank when not given)', cls: 'internal', optional: true, sample: 'The Branch Manager, Canara Bank, Hosur' },
   monthly_gross: { label: 'Gross monthly salary (current)', cls: 'pay', sample: '₹1,12,400' },
+  // PPL-15: the reason HR gave when withdrawing an offer (blank when they gave none).
+  withdrawal_reason: { label: 'Why the offer is withdrawn (written by HR; blank when not given)', cls: 'internal', optional: true, sample: 'The role was closed after a restructure' },
 };
 
 export const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -138,7 +140,7 @@ export async function monthlyGross(tx: Tx, c: CompanyContext, personId: string, 
   });
 }
 
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null; withdrawalReason?: string | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -157,7 +159,8 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     if (kase) nextOfKin = (await tx.exitPayee.findFirst({ where: { organizationId: org, exitCaseId: kase.id, removedAt: null }, orderBy: { sharePercent: 'desc' } }))?.name ?? '';
     place = { legalEntityId: e.legalEntityId, locationId: a?.locationId ?? null, departmentId: a?.departmentId ?? null, designationId: a?.designationId ?? null, employmentTypeId: a?.employmentTypeId ?? null, managerEmployeeId: a?.managerEmployeeId ?? null, joiningOn: e.joinedOn.toISOString().slice(0, 10), code: e.employeeCode, onProbation: st?.status === 'probation' };
   } else {
-    const pb = await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } });
+    // A joiner's planned job; a cancelled one still names the job its offer withdrawal letter is about (PPL-15).
+    const pb = (await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })) ?? (await tx.preboarding.findFirst({ where: { organizationId: org, personId }, orderBy: { createdAt: 'desc' } }));
     if (!pb) throw new Error('This person has no job record or joiner record.');
     place = { legalEntityId: pb.legalEntityId, locationId: pb.locationId, departmentId: pb.departmentId, designationId: pb.designationId, employmentTypeId: pb.employmentTypeId, managerEmployeeId: pb.managerEmployeeId, joiningOn: pb.joiningOn.toISOString().slice(0, 10), code: null, onProbation: true };
   }
@@ -214,6 +217,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     certificate_purpose: extra.request?.purpose ?? '',
     addressed_to: extra.request?.addressedTo ?? '',
     monthly_gross: extra.gross ? inr(extra.gross) : '',
+    withdrawal_reason: extra.withdrawalReason ?? '',
   };
   return { data, legalEntityId: place.legalEntityId };
 }
@@ -344,6 +348,21 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
       'Lines: {{fnf_lines}}',
       'Earnings {{fnf_earnings}}. Recoveries {{fnf_recoveries}}. TDS {{fnf_tds}}. PF, ESI, PT and LWF {{fnf_statutory}}.',
       '{{fnf_net_label}}: {{fnf_net}}',
+    ]),
+  },
+  // PPL-15: drafted when HR withdraws an offer in pre-boarding; HR reviews and issues it from People › Letters.
+  {
+    letterType: 'offer_withdrawal',
+    name: 'Offer withdrawal letter',
+    revision: 1,
+    requiresApproval: false,
+    personSigns: false,
+    onePerPerson: true,
+    paragraphs: letter(['{{employee_name}}'], 'Withdrawal of our offer', [
+      'Dear {{employee_name}},',
+      'We are sorry to tell you that {{legal_entity}} withdraws its offer for the role of {{designation}}, which was to start on {{joining_date}}.',
+      '{{#withdrawal_reason}}The reason: {{withdrawal_reason}}.{{/withdrawal_reason}}',
+      'We thank you for the time you gave us and wish you well. If you have questions, please write to us.',
     ]),
   },
   {
