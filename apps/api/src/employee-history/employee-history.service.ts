@@ -1067,7 +1067,7 @@ export class EmployeeHistoryService {
     const day = asDate(dto.effectiveDate);
     const now = await tx.employeeAssignment.findFirst({
       where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
-      select: { locationId: true, designationId: true, gradeId: true },
+      select: { locationId: true, departmentId: true, designationId: true, gradeId: true },
     });
     const unchanged = unchangedProblem(dto.changeType, payload, now);
     if (unchanged) throw new BadRequestException(unchanged);

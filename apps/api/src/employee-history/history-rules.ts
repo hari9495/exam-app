@@ -73,9 +73,10 @@ interface TypeRule {
 // M01 §3.3: one change action with types; each type declares the facts it can change.
 export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
-  // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the location.
+  // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the
+  // location or the department (a reorganisation inside one entity, PPL-09).
   promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
-  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'], changes: ['locationId'] },
+  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'], changes: ['locationId', 'departmentId'] },
   redesignation: { assignment: ['designationId', 'skillClass'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
