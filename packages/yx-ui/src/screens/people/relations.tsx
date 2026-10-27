@@ -190,6 +190,9 @@ function liveFields(r: SamePersonRow) {
   ];
 }
 
+// The header names the kind of record only, as designed ("Record B · employee"); the code stays in the rows.
+const kindOf = (role: string) => role.split(' · ')[0].toLowerCase();
+
 // PPL-37
 export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmerge }: { mode?: 'merge' | 'unmerge'; noteError?: boolean; live?: LiveMerge; liveUnmerge?: LiveUnmerge }) {
   const fields = live ? liveFields(live.row) : MERGE_FIELDS;
@@ -210,6 +213,7 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
           actions={<Button icon={Split} variant="danger" onClick={() => (setNote(''), setConfirm(true))}>Unmerge</Button>}
         />
         <Card title="What unmerge restores">
+          <div className="yx-ppl__stack">
           {u ? (
             <ul className="yx-ppl__successors">
               {u.moved.map((r, i) => (
@@ -227,6 +231,7 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
             </ul>
           )}
           {u?.note && <Text size="sm" tone="secondary" as="p">Merge note: {u.note}</Text>}
+          </div>
         </Card>
         <ConfirmDialog
           open={confirm || (!u && noteError)}
@@ -260,8 +265,8 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
         <thead>
           <tr>
             <th scope="col">Field</th>
-            <th scope="col">{r ? `Record A · ${r.a.role.toLowerCase()}` : 'Record A · candidate'}</th>
-            <th scope="col">{r ? `Record B · ${r.b.role.toLowerCase()}` : 'Record B · alumnus'}</th>
+            <th scope="col">{r ? `Record A · ${kindOf(r.a.role)}` : 'Record A · candidate'}</th>
+            <th scope="col">{r ? `Record B · ${kindOf(r.b.role)}` : 'Record B · alumnus'}</th>
             <th scope="col">Keep</th>
           </tr>
         </thead>
