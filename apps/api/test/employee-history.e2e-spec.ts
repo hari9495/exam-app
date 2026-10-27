@@ -706,6 +706,18 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       expect(await inbox('approverA')).toBeUndefined();
     });
 
+    it("new people get codes in their entity's own series (YX-ORG-16): the prefix, else E; a bad prefix is refused", async () => {
+      const entity = (prefix: string | null) => api('adminA', 'put', `/org/legal-entities/${ids.kf}`).send({ name: 'Kaveri Foods', shortName: 'KFPL', employeeCodePrefix: prefix });
+      await entity('kf').expect(400);
+      await entity('KF-').expect(200);
+      try {
+        expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Prefix', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toBe('KF-0001');
+      } finally {
+        await entity(null).expect(200);
+      }
+      expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Plain', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toMatch(/^E\d{4}$/);
+    });
+
     it('drafts: only the raiser sees and edits theirs; another company gets 404; sending removes the draft', async () => {
       const form = { changeType: 'transfer', values: { locationId: ids.maa }, reason: 'Half done' };
       const saved = (await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, changeType: 'transfer', form }).expect(201)).body;
