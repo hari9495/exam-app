@@ -989,7 +989,7 @@ export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLe
           </>
         }
       />
-      <DataTable label="Letter templates" columns={cols} rows={rows} getRowId={(r) => r.id} rowActions={(r) => (<><MenuItem>Open</MenuItem><MenuItem icon={Download}>Download as Word</MenuItem><MenuItem>Duplicate</MenuItem>{r.status === 'Active' && <MenuItem>Stop using</MenuItem>}{r.source === 'Starter template' && <MenuItem>Get the new starter version</MenuItem>}</>)} empty={<EmptyState title="No templates" description="Start from the starter library or upload a Word letter." action={<Button variant="primary">Open starter library</Button>} />} />
+      <DataTable label="Letter templates" columns={cols} rows={rows} getRowId={(r) => r.id} rowActions={(r) => (<><MenuItem>Open</MenuItem><MenuItem icon={Download}>Download as Word</MenuItem><MenuItem>Duplicate</MenuItem>{r.status === 'Active' && <MenuItem>Stop using</MenuItem>}{r.status === 'Not in use' && <MenuItem>Use again</MenuItem>}{r.source === 'Starter template' && <MenuItem>Get the new starter version</MenuItem>}</>)} empty={<EmptyState title="No templates" description="Start from the starter library or upload a Word letter." action={<Button variant="primary">Open starter library</Button>} />} />
     </PeopleFrame>
   );
 }
@@ -1157,6 +1157,7 @@ export interface LiveLetterTemplates {
   children?: ReactNode;
 }
 
+const TEMPLATE_STATE: Record<LetterTemplate['status'], string> = { draft: 'Draft', active: 'Active', retired: 'Not in use' };
 const MADE_WITH: Record<LetterTemplate['source'], string> = { upload: 'Uploaded Word', editor: 'In-app editor', starter: 'Starter template' };
 const FIELD_CLASS: Record<LetterTemplates['fields'][number]['cls'], FieldClass> = { internal: 'Internal', personal: 'Personal', pay: 'Confidential' };
 const typeName = (d: LetterTemplates | null, letterType: string) => d?.starters.find((s) => s.letterType === letterType)?.name ?? letterType[0].toUpperCase() + letterType.slice(1).replace(/_/g, ' ');
@@ -1212,7 +1213,7 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
     { key: 'languages', header: 'Languages', value: (r) => LANGUAGE.of(r.language) ?? r.language, width: 150 },
     { key: 'version', header: 'Version', type: 'number', value: (r) => r.version, width: 90 },
     { key: 'approval', header: 'Before issue', value: (r) => (r.requiresApproval ? 'Approval' : 'Instant'), width: 120 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'active' ? 'Active' : 'Draft'), statusTone: (v) => (v === 'Active' ? 'success' : 'neutral'), width: 110 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => TEMPLATE_STATE[r.status], statusTone: (v) => (v === 'Active' ? 'success' : 'neutral'), width: 110 },
   ];
   return (
     <PeopleFrame active="Documents & letters">
@@ -1258,6 +1259,7 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
                 Duplicate
               </MenuItem>
               {r.status === 'active' && <MenuItem onSelect={() => void act(`${r.name} is no longer used`, () => live.onStatus(r, 'retired'))}>Stop using</MenuItem>}
+              {r.status === 'retired' && <MenuItem onSelect={() => void act(`${r.name} is in use again`, () => live.onStatus(r, 'active'))}>Use again</MenuItem>}
               {r.source === 'starter' && d?.starters.some((s) => s.letterType === r.letterType && s.update) && (
                 <MenuItem onSelect={() => void newStarter(r.letterType).catch((e) => toast({ tone: 'error', title: failText(e) }))}>Get the new starter version</MenuItem>
               )}

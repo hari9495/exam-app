@@ -118,7 +118,11 @@ export class LettersService implements OnModuleInit {
     const v = await this.viewer(user);
     if (!v.grants.has('letter.template.manage') && !v.grants.has('letter.issue')) throw new ForbiddenException('You cannot see letter templates.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.letterTemplate.findMany({ where: { organizationId: c.organizationId, status: { not: 'retired' } }, orderBy: [{ letterType: 'asc' }, { version: 'desc' }] });
+      const all = await tx.letterTemplate.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ letterType: 'asc' }, { version: 'desc' }] });
+      // A template someone stopped stays listed (to use again); versions a newer one replaced stay hidden.
+      const key = (t: (typeof all)[number]) => [t.letterType, t.name, t.legalEntityId, t.language].join('|');
+      const listed = new Set(all.filter((t) => t.status !== 'retired').map(key));
+      const rows = all.filter((t) => t.status !== 'retired' || (!listed.has(key(t)) && Boolean(listed.add(key(t)))));
       return {
         templates: rows.map((t) => this.templateView(t)),
         // update: the company added an older revision of this starter (offered as a new draft version, never swapped in).

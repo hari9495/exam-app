@@ -511,6 +511,7 @@ export const TEMPLATES = [
   { id: 'tp3', type: 'Salary certificate', name: 'Salary certificate (instant)', source: 'In-app editor', languages: 'English, Hindi', version: 3, status: 'Active', approval: false },
   { id: 'tp4', type: 'Relieving', name: 'Relieving and experience', source: 'Uploaded Word', languages: 'English', version: 1, status: 'Draft', approval: true },
   { id: 'tp5', type: 'Absconding notice 1', name: 'Absconding notice 1 (starter)', source: 'Starter template', languages: 'English, Tamil', version: 1, status: 'Active', approval: false },
+  { id: 'tp6', type: 'Offer', name: 'Offer letter, old format', source: 'Uploaded Word', languages: 'English', version: 2, status: 'Not in use', approval: true },
 ];
 
 export const MY_DOCS = [
