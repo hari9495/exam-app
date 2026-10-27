@@ -16,7 +16,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { Segment } from '../../components/segment';
 import { DocumentViewer, PdfPages } from '../../components/document';
-import { RichTextEditor } from '../../components/editor';
+import { FONT_SIZES, HIGHLIGHT_COLOURS, RichTextEditor, TEXT_COLOURS } from '../../components/editor';
 import { LetterDocument, type LetterData } from '../../components/print';
 import { Stepper } from '../../components/stepper';
 import { DatePicker } from '../../components/date';
@@ -27,7 +27,7 @@ import { MenuItem } from '../../components/menu';
 import { Icon, Text } from '../../components/foundations';
 import { formatBytes, formatDate } from '../../lib/format';
 import type { FieldClass,  } from './people-logic';
-import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
+import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, EditorRun, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
 import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
@@ -1062,6 +1062,7 @@ export function LetterTemplateWorkspace({ tab = 'upload', previewViewed = false 
             </div>
             <RichTextEditor
               aria-label="Letter body"
+              hide={['code']}
               defaultValue="<p>Dear {{employee_name}},</p><p>This is to certify that {{employee_name}} worked with {{company.name}} as {{designation}} from {{joining_date}} to {{last_working_day}}.</p><p>We wish you the very best.</p>"
               mergeFields={[
                 { value: 'employee_name', label: 'Employee name' },
@@ -1167,20 +1168,96 @@ const PER_PERSON = [{ value: 'one' as const, label: 'One only' }, { value: 'many
 const specOf = (t: LetterTemplate): TemplateSpec => ({ letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, requiresApproval: t.requiresApproval, personSigns: t.personSigns, onePerPerson: t.onePerPerson });
 const failText = (e: unknown) => (e instanceof Error ? e.message : 'That did not work. Try again.');
 
-// The editor's HTML and a template's paragraphs: a template made in YukthiX keeps text, bold and headings.
-const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const toHtml = (ps: EditorParagraph[]) => ps.map((p) => (p.heading ? `<h2>${escHtml(p.text)}</h2>` : p.bold && p.text ? `<p><strong>${escHtml(p.text)}</strong></p>` : `<p>${escHtml(p.text)}</p>`)).join('');
-function fromHtml(html: string): EditorParagraph[] {
-  const blocks = [...new DOMParser().parseFromString(html, 'text/html').body.children].flatMap((el) => (el.tagName === 'UL' || el.tagName === 'OL' ? [...el.children] : [el]));
-  return blocks.map((el) => {
-    const text = el.textContent ?? '';
-    const heading = /^H\d$/.test(el.tagName);
-    return { text, heading, bold: heading || (text.trim() !== '' && [...el.querySelectorAll('strong')].map((s) => s.textContent).join('') === text) };
+// The editor's HTML and a template's paragraphs: every style the letter editor offers (it hides Code) round-trips.
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function runHtml(r: EditorRun) {
+  let h = escHtml(r.text).replace(/\n/g, '<br>');
+  if (r.bold) h = `<strong>${h}</strong>`;
+  if (r.italic) h = `<em>${h}</em>`;
+  if (r.underline) h = `<u>${h}</u>`;
+  if (r.strike) h = `<s>${h}</s>`;
+  const style = [r.color && `color: ${r.color}`, r.size && `font-size: ${r.size}pt`].filter(Boolean).join('; ');
+  if (style) h = `<span style="${escHtml(style)}">${h}</span>`;
+  if (r.highlight) h = `<mark data-color="${escHtml(r.highlight)}" style="background-color: ${escHtml(r.highlight)}; color: inherit">${h}</mark>`;
+  return r.link ? `<a href="${escHtml(r.link)}">${h}</a>` : h;
+}
+export function toHtml(ps: EditorParagraph[]) {
+  let out = '';
+  const open: string[] = []; // the lists around the current item, each with its <li> still open
+  const close = (n: number) => {
+    while (open.length > n) out += `</li></${open.pop()}>`;
+  };
+  ps.forEach((p, i) => {
+    const inner = p.runs.map(runHtml).join('');
+    if (p.kind === 'bullet' || p.kind === 'numbered') {
+      const tag = p.kind === 'bullet' ? 'ul' : 'ol';
+      const level = Math.min(p.level ?? 0, open.length);
+      close(level + 1);
+      if (open.length === level + 1 && open[level] !== tag) close(level);
+      if (open.length === level + 1) out += '</li><li>';
+      else {
+        out += `<${tag}><li>`;
+        open.push(tag);
+      }
+      out += `<p>${inner}</p>`;
+      return;
+    }
+    close(0);
+    if (p.kind === 'quote') out += `${ps[i - 1]?.kind === 'quote' ? '' : '<blockquote>'}<p>${inner}</p>${ps[i + 1]?.kind === 'quote' ? '' : '</blockquote>'}`;
+    else out += p.kind === 'heading' ? `<h2>${inner}</h2>` : p.kind === 'subheading' ? `<h3>${inner}</h3>` : `<p>${inner}</p>`;
   });
+  close(0);
+  return out;
+}
+const FLAGS: Record<string, 'bold' | 'italic' | 'underline' | 'strike'> = { STRONG: 'bold', B: 'bold', EM: 'italic', I: 'italic', U: 'underline', S: 'strike', DEL: 'strike', STRIKE: 'strike' };
+const hex = (c: string) => (c.match(/^rgb\((\d+), ?(\d+), ?(\d+)\)$/)?.slice(1).reduce((h, n) => h + Number(n).toString(16).padStart(2, '0'), '#') ?? c).toUpperCase();
+// Pasted text can bring any colour or size: only the editor's presets are kept (the server takes nothing else).
+const COLOURS = TEXT_COLOURS.map((c) => c.value);
+const HIGHLIGHTS = HIGHLIGHT_COLOURS.map((c) => c.value);
+const SIZES = FONT_SIZES.map((f) => f.value).filter(Boolean);
+function runsOf(node: Node, marks: Omit<EditorRun, 'text'>): EditorRun[] {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ? [{ ...marks, text: node.textContent }] : [];
+  if (!(node instanceof HTMLElement)) return [];
+  if (node.tagName === 'BR') return [{ ...marks, text: '\n' }];
+  const m = { ...marks };
+  if (FLAGS[node.tagName]) m[FLAGS[node.tagName]] = true;
+  if (node.tagName === 'A' && node.getAttribute('href')) m.link = node.getAttribute('href')!;
+  const highlight = node.tagName === 'MARK' && hex(node.dataset.color || node.style.backgroundColor);
+  const color = node.tagName !== 'MARK' && node.style.color && hex(node.style.color);
+  if (highlight && HIGHLIGHTS.includes(highlight)) m.highlight = highlight;
+  if (color && COLOURS.includes(color)) m.color = color;
+  if (SIZES.includes(node.style.fontSize)) m.size = parseFloat(node.style.fontSize);
+  return [...node.childNodes].flatMap((c) => runsOf(c, m));
+}
+const marksKey = ({ text: _, ...m }: EditorRun) => JSON.stringify(m, Object.keys(m).sort());
+const blockRuns = (el: Element) =>
+  [...el.childNodes]
+    .flatMap((n) => runsOf(n, {}))
+    .reduce<EditorRun[]>((all, r) => {
+      const last = all[all.length - 1];
+      if (last && marksKey(last) === marksKey(r)) last.text += r.text;
+      else all.push(r);
+      return all;
+    }, []);
+export function fromHtml(html: string): EditorParagraph[] {
+  const out: EditorParagraph[] = [];
+  const list = (el: Element, level: number) => {
+    for (const li of el.children)
+      for (const part of li.children) {
+        if (part.tagName === 'UL' || part.tagName === 'OL') list(part, level + 1);
+        else out.push({ kind: el.tagName === 'UL' ? 'bullet' : 'numbered', level: Math.min(level, 3), runs: blockRuns(part) });
+      }
+  };
+  for (const el of new DOMParser().parseFromString(html, 'text/html').body.children) {
+    if (el.tagName === 'UL' || el.tagName === 'OL') list(el, 0);
+    else if (el.tagName === 'BLOCKQUOTE') for (const p of el.children) out.push({ kind: 'quote', runs: blockRuns(p) });
+    else out.push({ kind: el.tagName === 'H2' ? 'heading' : el.tagName === 'H3' ? 'subheading' : 'normal', runs: blockRuns(el) });
+  }
+  return out;
 }
 // A new letter starts as a proper one: letterhead, reference, date, addressee, subject, body and who signs.
 const BLANK_LETTER = toHtml(
-  [['{{legal_entity}}', 'h'], [''], ['Ref: {{reference_no}}'], ['Date: {{today}}'], [''], ['{{employee_name}}'], ['{{designation}}'], [''], ['Subject: ', 'b'], [''], ['Dear {{first_name}},'], [''], [''], ['For {{legal_entity}}'], [''], ['{{signatory_name}}', 'b'], ['{{signatory_title}}']].map(([text, k]) => ({ text, heading: k === 'h', bold: k === 'b' })),
+  [['{{legal_entity}}', 'h'], [''], ['Ref: {{reference_no}}'], ['Date: {{today}}'], [''], ['{{employee_name}}'], ['{{designation}}'], [''], ['Subject: ', 'b'], [''], ['Dear {{first_name}},'], [''], [''], ['For {{legal_entity}}'], [''], ['{{signatory_name}}', 'b'], ['{{signatory_title}}']].map(([text, k]) => ({ kind: k === 'h' ? 'heading' : 'normal', runs: text ? [k === 'b' ? { text, bold: true } : { text }] : [] })),
 );
 
 type Workspace = { t: LetterTemplate | null; spec: TemplateSpec; tab: TemplateTab };
@@ -1569,6 +1646,7 @@ function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplat
               ) : (
                 <RichTextEditor
                   aria-label="Letter body"
+                  hide={['code']}
                   value={html}
                   onChange={setHtml}
                   // A yes / no field goes in as its section: {{#probation}} … {{/probation}}.

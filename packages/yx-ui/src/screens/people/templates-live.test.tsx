@@ -2,13 +2,27 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { LetterTemplatesList, type LiveLetterTemplates } from './documents';
-import type { LetterTemplate, LetterTemplates } from './live/types';
+import { RichTextEditor } from '../../components/editor';
+import { LetterTemplatesList, fromHtml, toHtml, type LiveLetterTemplates } from './documents';
+import type { EditorParagraph, LetterTemplate, LetterTemplates } from './live/types';
 
 // PPL-29 live: the designed list and workspace with the API's templates, the validation report, the editor and the
 // test render that must be seen before a template is switched on.
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
+// Every style the letter editor offers.
+const PARAS: EditorParagraph[] = [
+  { kind: 'heading', runs: [{ text: '{{legal_entity}}' }] },
+  { kind: 'subheading', runs: [{ text: 'Pay' }] },
+  { kind: 'normal', runs: [{ text: 'Bold', bold: true }, { text: ' italic', italic: true }, { text: ' under', underline: true }, { text: ' struck', strike: true }, { text: ' red', color: '#C00000' }, { text: ' marked', highlight: '#FFFF00' }, { text: ' big', size: 18 }, { text: ' policies', link: 'https://kaveri.example/policies' }, { text: ' all', bold: true, italic: true, color: '#2F5496', size: 9 }] },
+  { kind: 'bullet', level: 0, runs: [{ text: 'One' }] },
+  { kind: 'bullet', level: 1, runs: [{ text: 'Inside' }] },
+  { kind: 'numbered', level: 0, runs: [{ text: 'First {{designation}}' }] },
+  { kind: 'quote', runs: [{ text: 'Quoted' }] },
+  { kind: 'quote', runs: [{ text: 'Two' }] },
+  { kind: 'normal', runs: [{ text: '{{#probation}}Line\ntwo{{/probation}}' }] },
+  { kind: 'normal', runs: [] },
+];
 const T = (id: string, name: string, x: Partial<LetterTemplate> = {}): LetterTemplate => ({ id, letterType: 'relieving', name, legalEntityId: null, language: 'en', source: 'upload', fields: ['employee_name', 'probation', 'address'], requiresApproval: true, personSigns: false, companyDsc: false, onePerPerson: true, version: 1, status: 'draft', previewViewed: false, createdAt: '2026-10-01T00:00:00Z', ...x });
 const DATA: LetterTemplates = {
   templates: [T('t1', 'Relieving and experience'), T('t2', 'Relieving, short', { source: 'starter', status: 'active', previewViewed: true })],
@@ -30,7 +44,7 @@ function page(over: Partial<LiveLetterTemplates> = {}) {
     onUpload: vi.fn(async (x) => T('t3', x.name, { version: 2 })),
     onCompose: vi.fn(async (x) => T('t4', x.name, { source: 'editor', version: 2 })),
     onStarter: vi.fn(async () => T('t5', 'Relieving letter', { source: 'starter', version: 2 })),
-    onParagraphs: vi.fn(async () => [{ text: '{{legal_entity}}', heading: true, bold: true }, { text: 'Dear {{employee_name}},', heading: false, bold: false }]),
+    onParagraphs: vi.fn(async () => PARAS),
     onWord: vi.fn(),
     wordFile: vi.fn(async () => new File(['x'], 'a.docx')),
     onTestRender: vi.fn(async () => 'blob:render'),
@@ -101,8 +115,9 @@ describe('PPL-29 letter templates, live', () => {
     await ue.click(await screen.findByRole('menuitem', { name: 'Open' }));
     await ue.click(screen.getByRole('tab', { name: 'Editor' }));
     expect(await screen.findByRole('button', { name: 'Insert field' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
     await ue.click(screen.getByRole('button', { name: 'Save as a new version' }));
-    expect(live.onCompose).toHaveBeenCalledWith(expect.objectContaining({ name: 'Relieving, short', paragraphs: [{ text: '{{legal_entity}}', heading: true, bold: true }, { text: 'Dear {{employee_name}},', heading: false, bold: false }] }));
+    expect(live.onCompose).toHaveBeenCalledWith(expect.objectContaining({ name: 'Relieving, short', paragraphs: PARAS }));
   });
 
   // Founder 26 Oct 2026 (PPL-28): "one per person" is the company's policy on the template, saved with the next version.
@@ -115,5 +130,22 @@ describe('PPL-29 letter templates, live', () => {
     await ue.click(screen.getByRole('tab', { name: 'Editor' }));
     await ue.click(await screen.findByRole('button', { name: 'Save as a new version' }));
     expect(live.onCompose).toHaveBeenCalledWith(expect.objectContaining({ name: 'Relieving, short', onePerPerson: false }));
+  });
+});
+
+describe('letter editor paragraphs (PPL-29)', () => {
+  it('keeps every style through the editor: paragraphs, HTML, the editor, HTML, paragraphs', async () => {
+    const onChange = vi.fn();
+    render(<RichTextEditor aria-label="Letter body" hide={['code']} defaultValue={toHtml(PARAS)} onChange={onChange} mergeFields={[{ value: 'today', label: 'Today' }]} />);
+    // Any edit makes the editor hand back its HTML: insert a field at the start.
+    await ue.click(await screen.findByRole('button', { name: 'Insert field' }));
+    await ue.click(await screen.findByRole('menuitem', { name: /Today/ }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const back = fromHtml(onChange.mock.calls.at(-1)![0]);
+    expect(back).toEqual([{ kind: 'heading', runs: [{ text: '{{today}}{{legal_entity}}' }] }, ...PARAS.slice(1)]);
+  });
+
+  it('drops colours and sizes that are not the editor presets (pasted text)', () => {
+    expect(fromHtml('<p><span style="color: rgb(192, 0, 0); font-size: 30px">a</span><span style="color: #123456">b</span><mark data-color="#FF0000">c</mark></p>')).toEqual([{ kind: 'normal', runs: [{ text: 'a', color: '#C00000' }, { text: 'bc' }] }]);
   });
 });

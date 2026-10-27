@@ -142,17 +142,17 @@ describe('Lifecycle batch 6b', () => {
   // ------------------------------------------------------------------------------------------ templates (LIFE-2.04)
 
   it('Word templates: unsafe or unknown placeholders are refused; a template goes live only after its preview', async () => {
-    const macro = new PizZip(buildDocx([{ text: 'Hi {{employee_name}}' }]));
+    const macro = new PizZip(buildDocx([{ runs: [{ text: 'Hi {{employee_name}}' }] }]));
     macro.file('[Content_Types].xml', macro.file('[Content_Types].xml')!.asText().replace('wordprocessingml.document.main+xml', 'wordprocessingml.document.main+xml"/><Override PartName="/word/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject'));
     macro.file('word/vbaProject.bin', 'x');
     const up = (buf: Buffer) => api('hr', 'post', '/letters/templates').field('letterType', 'custom_note').field('name', 'Note').field('requiresApproval', 'false').field('personSigns', 'false').attach('file', buf, 'note.docx');
     expect((await up(macro.generate({ type: 'nodebuffer' }) as Buffer).expect(400)).body.code).toBe('TEMPLATE_REFUSED');
-    const linked = new PizZip(buildDocx([{ text: 'Hi' }]));
+    const linked = new PizZip(buildDocx([{ runs: [{ text: 'Hi' }] }]));
     linked.file('word/_rels/document.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="http://evil.test/x.png" TargetMode="External"/></Relationships>');
     expect((await up(linked.generate({ type: 'nodebuffer' }) as Buffer).expect(400)).body.message).toMatch(/outside the file/);
-    const typo = await up(buildDocx([{ text: 'Dear {{emp_nme}}' }])).expect(400);
+    const typo = await up(buildDocx([{ runs: [{ text: 'Dear {{emp_nme}}' }] }])).expect(400);
     expect(typo.body.message).toMatch(/did you mean \{\{employee_name\}\}/);
-    expect((await up(buildDocx([{ text: 'Dear {{employee.name}}' }])).expect(400)).body.message).toMatch(/not a field name/);
+    expect((await up(buildDocx([{ runs: [{ text: 'Dear {{employee.name}}' }] }])).expect(400)).body.message).toMatch(/not a field name/);
     // The starters: a draft until its sample preview was seen.
     for (const letterType of ['appointment', 'confirmation', 'welcome']) {
       const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
@@ -181,7 +181,7 @@ describe('Lifecycle batch 6b', () => {
       return (fixes ? r.field('fixes', fixes) : r).attach('file', buf, 'note.docx');
     };
     // "Use suggestion": the server renames the placeholder in the file, then checks it like any upload.
-    const typo = buildDocx([{ text: 'Dear {{emp_nme}}, from {{legal_entity}}' }]);
+    const typo = buildDocx([{ runs: [{ text: 'Dear {{emp_nme}}, from {{legal_entity}}' }] }]);
     expect((await up('Short note', typo).expect(400)).body.errors).toEqual({ emp_nme: 'employee_name' });
     await up('Short note', typo, JSON.stringify({ emp_nme: 'pan_number' })).expect(400);
     await up('Short note', typo, 'not json').expect(400);
@@ -190,10 +190,10 @@ describe('Lifecycle batch 6b', () => {
     // "One per person" is the company's policy on each template: off unless HR sets it; the starters come with it set where it fits.
     expect(a.onePerPerson).toBe(false);
     const once = api('adminA', 'post', '/letters/templates').field('letterType', 'transfer').field('name', 'Transfer letter').field('requiresApproval', 'false').field('personSigns', 'false').field('onePerPerson', 'true');
-    expect((await once.attach('file', buildDocx([{ text: 'Dear {{employee_name}}' }]), 'note.docx').expect(201)).body).toMatchObject({ onePerPerson: true, status: 'draft' });
+    expect((await once.attach('file', buildDocx([{ runs: [{ text: 'Dear {{employee_name}}' }] }]), 'note.docx').expect(201)).body).toMatchObject({ onePerPerson: true, status: 'draft' });
     // Two templates of one letter type are in use together; a new version replaces only its own template.
-    const b = (await up('Long note', buildDocx([{ text: 'Dear {{employee_name}}, with thanks from {{legal_entity}}' }])).expect(201)).body;
-    const a2 = (await up('Short note', buildDocx([{ text: 'Hello {{employee_name}}' }])).expect(201)).body;
+    const b = (await up('Long note', buildDocx([{ runs: [{ text: 'Dear {{employee_name}}, with thanks from {{legal_entity}}' }] }])).expect(201)).body;
+    const a2 = (await up('Short note', buildDocx([{ runs: [{ text: 'Hello {{employee_name}}' }] }])).expect(201)).body;
     expect([a.version, b.version, a2.version]).toEqual([1, 1, 2]);
     for (const t of [a, b, a2]) {
       await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
@@ -203,7 +203,7 @@ describe('Lifecycle batch 6b', () => {
     expect(notes.map((t: { name: string; version: number; status: string }) => `${t.name} v${t.version} ${t.status}`).sort()).toEqual(['Long note v1 active', 'Short note v2 active']);
     // The test render with a real person: the issuer's checks and the no-blanks rule apply; viewing it allows switching on.
     const divya = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }));
-    const c2 = (await up('Third note', buildDocx([{ text: 'Dear {{employee_name}} ({{employee_code}}), {{designation}}' }])).expect(201)).body;
+    const c2 = (await up('Third note', buildDocx([{ runs: [{ text: 'Dear {{employee_name}} ({{employee_code}}), {{designation}}' }] }])).expect(201)).body;
     await api('mgr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(403);
     const pdf = await api('hr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(200);
     expect(pdf.headers['content-type']).toBe('application/pdf');

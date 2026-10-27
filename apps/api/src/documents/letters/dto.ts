@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { BLOCK_KINDS, FONT_SIZES, HIGHLIGHTS, SAFE_LINK, TEXT_COLOURS, type Block } from './docx';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const bool = () => Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value));
@@ -140,7 +141,8 @@ export class SignLetterDto {
 
 // ---- Lifecycle batch 6e: the editor tab (PPL-29) and the bulk wizard (PPL-28) ----
 
-export class ComposeParagraphDto {
+/** A run of the letter editor: marks, colours and sizes from the editor's presets only, links https or mailto only. */
+export class ComposeRunDto {
   @IsString()
   @MaxLength(2000)
   text!: string;
@@ -151,7 +153,52 @@ export class ComposeParagraphDto {
 
   @IsOptional()
   @IsBoolean()
-  heading?: boolean;
+  italic?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  underline?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  strike?: boolean;
+
+  @IsOptional()
+  @IsIn(TEXT_COLOURS, { message: `Text colour must be one of the editor's colours: ${TEXT_COLOURS.join(', ')}.` })
+  color?: string;
+
+  @IsOptional()
+  @IsIn(Object.keys(HIGHLIGHTS), { message: `Highlight must be one of the editor's highlights: ${Object.keys(HIGHLIGHTS).join(', ')}.` })
+  highlight?: string;
+
+  @IsOptional()
+  @IsIn(FONT_SIZES, { message: `Font size must be one of ${FONT_SIZES.join(', ')} points.` })
+  size?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @Matches(SAFE_LINK, { message: 'A link must start with https:// or mailto:.' })
+  link?: string;
+}
+
+export class ComposeParagraphDto {
+  @IsOptional()
+  @IsIn(BLOCK_KINDS, { message: `A paragraph is one of: ${BLOCK_KINDS.join(', ')}.` })
+  kind?: Block['kind'];
+
+  /** List items only: 0 to 3. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  level?: number;
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ComposeRunDto)
+  runs!: ComposeRunDto[];
 }
 
 export class ComposeTemplateDto {
