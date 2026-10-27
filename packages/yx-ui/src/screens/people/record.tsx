@@ -8,17 +8,18 @@ import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigg
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { MenuItem } from '../../components/menu';
+import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
 import { FormField } from '../../components/field';
-import { TextField, NumberField } from '../../components/inputs';
+import { TextArea, TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
-import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { ClassBadge, FactRail, FieldList, ListSkeleton, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
 export type RecordPanel = 'activity' | 'identity' | 'roles';
@@ -74,6 +75,20 @@ export interface RecordPerformance {
   onOpenGoals?: () => void;
 }
 
+/** PPL-34 Identity panel, live: HR's identity checks on the person (Special class; opening it is recorded). */
+export interface LiveIdentity {
+  state: 'idle' | 'loading' | 'error' | 'ready';
+  /** Opening the panel loads it (each load is a recorded view). */
+  onOpen: () => void;
+  onRetry: () => void;
+  checks: { kind: 'day1' | 'attested' | 'requested'; at: Date; by: string | null; note: string | null }[];
+  /** The photo IDs HR may ask a fresh copy of. */
+  idTypes: { key: string; name: string }[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onReverify?: (typeKey: string) => Promise<void>;
+  onAttest?: (note: string) => Promise<void>;
+}
+
 /** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
 export interface LiveRecord {
   directoryHref: string;
@@ -114,6 +129,8 @@ export interface LiveRecord {
   onEditWorkPhone?: () => void;
   /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
   activity?: ActivityEntry[] | null;
+  /** HR menu "Identity panel" (only for HR holding the Special key for the person). */
+  identityPanel?: LiveIdentity;
   /** Performance tab (only for viewers who may see this person's goals or reviews). */
   performance?: RecordPerformance | null;
   onIssueLetter?: () => void;
@@ -286,6 +303,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 View as on a date
               </MenuItem>
             )}
+            {live.identityPanel && (
+              <MenuItem icon={IdCard} onSelect={() => (live.identityPanel!.onOpen(), setSide('identity'))}>
+                Identity panel
+              </MenuItem>
+            )}
             {live.history && (
               <MenuItem icon={ShieldCheck} onSelect={() => setSide('roles')}>
                 All roles of this person
@@ -344,6 +366,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
           {live.activity.length ? <ActivityFeed entries={live.activity} today={today} /> : <Text size="sm" tone="secondary" as="p">Nothing yet.</Text>}
         </Card>
       )}
+      {side === 'identity' && live.identityPanel && <IdentityPanel live={live.identityPanel} name={first} onClose={() => setSide(live.activity ? 'activity' : 'roles')} />}
       {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} company={live.history.company} onClose={live.activity ? () => setSide('activity') : undefined} />}
     </div>
   ) : (
@@ -1070,15 +1093,27 @@ export function PersonRolesPanel({ onClose, roles, company }: { onClose?: () => 
 /* ================================================================== PPL-34 identity panel */
 
 // PPL-34
-export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refused' | 'mismatch'; onClose?: () => void }) {
-  const checks =
-    state === 'refused'
+export function IdentityPanel({ state = 'consented', onClose, live, name }: { state?: 'consented' | 'refused' | 'mismatch'; onClose?: () => void; live?: LiveIdentity; name?: string }) {
+  const [dialog, setDialog] = useState<'reverify' | 'attest' | null>(null);
+  const [idType, setIdType] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  // Live: the checks HR made (no face match runs in the app yet, so the attestation is always on offer).
+  const checks = live
+    ? live.checks.map((c) => ({ at: c.at, point: LIVE_CHECK[c.kind][0], result: LIVE_CHECK[c.kind][1], by: [c.by ? `HR: ${c.by}` : null, c.note].filter(Boolean).join(' · ') }))
+    : state === 'refused'
       ? IDENTITY.checks.map((c) => ({ ...c, result: c.point === 'Application verification' ? 'ID check only (face consent refused)' : 'Attested', by: c.by === 'System' ? 'Proctor: Kavitha Rao' : c.by }))
       : state === 'mismatch'
         ? [...IDENTITY.checks.slice(0, 3), { at: new Date(2021, 2, 12), point: 'Day-1 identity check', result: 'Mismatch: HR review', by: 'System' }]
         : IDENTITY.checks;
+  const close = onClose && <Button size="sm" onClick={onClose}>Close</Button>;
+  if (live && live.state !== 'ready')
+    return (
+      <Card title="Identity" actions={close}>
+        {live.state === 'error' ? <ErrorState title="We couldn't load the identity checks" description="Retry in a moment." onRetry={live.onRetry} /> : <ListSkeleton rows={4} label="Loading the identity checks" />}
+      </Card>
+    );
   return (
-    <Card title="Identity" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
+    <Card title="Identity" actions={close}>
       <div className="yx-ppl__stack">
         <Text size="sm" tone="secondary" as="p">
           Special class. No face image is shown here. Views are recorded.
@@ -1094,17 +1129,23 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {IDENTITY.consent.map((c) => (
-              <tr key={c.jurisdiction}>
-                <td>{c.jurisdiction}</td>
-                <td>
-                  <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
-                </td>
-                <td>
-                  {c.point}, {formatDate(c.on)}
-                </td>
+            {live ? (
+              <tr>
+                <td colSpan={3}>No face-match consent on file. Identity is checked against the original ID.</td>
               </tr>
-            ))}
+            ) : (
+              IDENTITY.consent.map((c) => (
+                <tr key={c.jurisdiction}>
+                  <td>{c.jurisdiction}</td>
+                  <td>
+                    <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
+                  </td>
+                  <td>
+                    {c.point}, {formatDate(c.on)}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         </div>
@@ -1119,12 +1160,17 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {checks.map((c) => (
-              <tr key={c.point}>
+            {checks.length === 0 && (
+              <tr>
+                <td colSpan={3}>No identity checks recorded yet.</td>
+              </tr>
+            )}
+            {checks.map((c, i) => (
+              <tr key={`${c.point}-${i}`}>
                 <td>{formatDate(c.at)}</td>
                 <td>
                   {c.point}
-                  <Text size="sm" tone="secondary" as="div">{c.by}</Text>
+                  {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
                 </td>
                 <td>
                   <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge>
@@ -1134,19 +1180,63 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
           </tbody>
         </table>
         </div>
-        {state === 'mismatch' && (
+        {state === 'mismatch' && !live && (
           <InlineAlert tone="warning" title="Identity flag for HR review">
             A mismatch never blocks joining. Ask for a fresh ID and selfie, or attest against the original ID.
           </InlineAlert>
         )}
-        <div className="yx-ppl__row">
-          <Button icon={IdCard}>Request re-verification</Button>
-          {state !== 'consented' && <Button>Record HR attestation</Button>}
-        </div>
+        {!live ? (
+          <div className="yx-ppl__row">
+            <Button icon={IdCard}>Request re-verification</Button>
+            {state !== 'consented' && <Button>Record HR attestation</Button>}
+          </div>
+        ) : (
+          (live.onReverify || live.onAttest) && (
+            <div className="yx-ppl__row">
+              {live.onReverify && <Button icon={IdCard} onClick={() => (setIdType(null), setDialog('reverify'))}>Request re-verification</Button>}
+              {live.onAttest && <Button onClick={() => (setNote(''), setDialog('attest'))}>Record HR attestation</Button>}
+            </div>
+          )
+        )}
       </div>
+      {live?.onReverify && (
+        <ConfirmDialog
+          open={dialog === 'reverify'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Ask ${name} for a fresh ID?`}
+          consequence={`${name} is told in the app and by email to upload a fresh copy in My documents. You verify it in the documents queue.`}
+          confirmLabel="Send request"
+          confirmDisabled={!idType}
+          onConfirm={() => live.onReverify!(idType!)}
+        >
+          <FormField label="ID to upload" required>
+            <Select aria-label="ID to upload" value={idType} onChange={setIdType} options={live.idTypes.map((t) => ({ value: t.key, label: t.name }))} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {live?.onAttest && (
+        <ConfirmDialog
+          open={dialog === 'attest'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Record HR attestation for ${name}?`}
+          consequence={`Confirm you checked ${name}'s original ID against them in person. It is recorded with your name.`}
+          confirmLabel="Record attestation"
+          onConfirm={() => live.onAttest!(note.trim())}
+        >
+          <FormField label="Note" optional helper="Which ID you checked, for example the passport.">
+            <TextArea value={note} onChange={setNote} rows={3} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </Card>
   );
 }
+
+const LIVE_CHECK: Record<LiveIdentity['checks'][number]['kind'], [string, string]> = {
+  day1: ['Day-1 identity check', 'Attested'],
+  attested: ['HR attestation', 'Attested'],
+  requested: ['Re-verification', 'Fresh ID asked for'],
+};
 
 /* ================================================================== PPL-45 work authorisations */
 

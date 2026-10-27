@@ -2654,6 +2654,21 @@ model PersonRole {
   @@map("person_roles")
 }
 
+/// PPL-34: HR's identity checks on a person after joining (attested against the original ID, or a fresh ID asked for).
+/// Special class; append-only. The day-1 check at joining stays on the pre-boarding.
+model PersonIdentityCheck {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  result         String   @db.VarChar(10)
+  note           String?  @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+
+  @@index([organizationId, personId, checkedAt], map: "person_identity_checks_person_idx")
+  @@map("person_identity_checks")
+}
+
 /// Append-only (the app role cannot update or delete it): YX-ORG-27.
 model PersonLinkLog {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

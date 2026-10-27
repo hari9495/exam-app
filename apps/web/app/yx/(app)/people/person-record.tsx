@@ -8,7 +8,7 @@ import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type P
 import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
-import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { useChangeOptions, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
@@ -41,6 +41,11 @@ interface Compensation {
   lines: { name: string; kind: 'earning' | 'deduction' | 'employer'; monthly: string }[];
   lastNetPay?: { month: string; net: string; paid: boolean } | null;
   taxRegime?: { regime: string; taxYear: string } | null;
+}
+interface IdentityChecks {
+  checks: { kind: 'day1' | 'attested' | 'requested'; at: string; by: string | null; note: string | null }[];
+  idTypes: { key: string; name: string }[];
+  canManage: boolean;
 }
 interface PersonDocs {
   personId: string;
@@ -116,6 +121,17 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [uploading, setUploading] = useState<string | null | false>(false);
   const [phone, setPhone] = useState('');
+  // PPL-34: loaded each time HR opens the identity panel (every load is a recorded view of Special data).
+  const [ids, setIds] = useState<{ state: 'idle' | 'loading' | 'error' | 'ready'; data: IdentityChecks | null }>({ state: 'idle', data: null });
+  const read = usePeopleRead();
+  const loadIds = async () => {
+    setIds((x) => ({ state: 'loading', data: x.data }));
+    try {
+      setIds({ state: 'ready', data: await read<IdentityChecks>(`/employees/${p}/identity-checks`) });
+    } catch {
+      setIds({ state: 'error', data: null });
+    }
+  };
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
@@ -259,6 +275,31 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       perfAllowed && (goals.data || reviews.data) && personId
         ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
         : null,
+    ...(hr && !self && perms.has('employee.aadhaar.view')
+      ? {
+          identityPanel: {
+            state: ids.state,
+            onOpen: () => void loadIds(),
+            onRetry: () => void loadIds(),
+            checks: (ids.data?.checks ?? []).map((c) => ({ ...c, at: new Date(c.at) })),
+            idTypes: ids.data?.idTypes ?? [],
+            ...(ids.data?.canManage
+              ? {
+                  onReverify: async (typeKey: string) => {
+                    await write('POST', `/employees/${p}/identity-checks/reverify`, { typeKey });
+                    done(`${first} asked for a fresh ${ids.data!.idTypes.find((t) => t.key === typeKey)?.name ?? 'ID'}`);
+                    void loadIds();
+                  },
+                  onAttest: async (note: string) => {
+                    await write('POST', `/employees/${p}/identity-checks/attest`, note ? { note } : {});
+                    done('HR attestation recorded');
+                    void loadIds();
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };

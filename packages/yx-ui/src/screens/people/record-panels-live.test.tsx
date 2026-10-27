@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { PersonWorkspace, type LiveRecord } from './record';
+import { PersonWorkspace, type LiveIdentity, type LiveRecord } from './record';
 
-// The person record's panels and tabs with the live app's data: Person roles (PPL-35).
+// The person record's panels and tabs with the live app's data: Identity (PPL-34), Person roles (PPL-35).
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -37,5 +37,67 @@ describe('Person roles panel (PPL-35), live', () => {
     wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-10-20')} live={live({ history: { rows: [], roles, company: 'Kaveri Foods' }, activity: [] })} />);
     expect(screen.queryByRole('button', { name: /More actions|Actions/ })).toBeNull();
     expect(screen.queryByText(/links every role/)).toBeNull();
+  });
+});
+
+describe('Identity panel (PPL-34), live', () => {
+  const identity = (o: Partial<LiveIdentity> = {}): LiveIdentity => ({
+    state: 'ready', onOpen: vi.fn(), onRetry: vi.fn(),
+    checks: [{ kind: 'day1', at: day('2021-03-12'), by: 'Lakshmi Venkatesan', note: null }, { kind: 'requested', at: day('2026-10-01'), by: 'Lakshmi Venkatesan', note: 'Passport' }],
+    idTypes: [{ key: 'passport', name: 'Passport' }, { key: 'pan_card', name: 'PAN card' }],
+    onReverify: vi.fn(async () => undefined), onAttest: vi.fn(async () => undefined), ...o,
+  });
+  const open = async (id: LiveIdentity) => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ activity: [], identityPanel: id })} />);
+    await ue.click(screen.getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Identity panel' }));
+  };
+
+  it('opens from the menu (a recorded load) and lists the checks; no face image, no consent on file', async () => {
+    const id = identity();
+    await open(id);
+    expect(id.onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Special class. No face image is shown here. Views are recorded.')).toBeInTheDocument();
+    expect(screen.getByText('No face-match consent on file. Identity is checked against the original ID.')).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /12 Mar 2021 Day-1 identity check HR: Lakshmi Venkatesan Attested/ })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /1 Oct 2026 Re-verification HR: Lakshmi Venkatesan · Passport Fresh ID asked for/ })).toBeInTheDocument();
+  });
+
+  it('asks for a fresh ID only once one is chosen, and records an attestation with its note', async () => {
+    const id = identity();
+    await open(id);
+    await ue.click(screen.getByRole('button', { name: 'Request re-verification' }));
+    let dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Send request' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('combobox', { name: 'ID to upload' }));
+    await ue.click(await screen.findByRole('option', { name: 'Passport' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(id.onReverify).toHaveBeenCalledWith('passport'));
+    await ue.click(screen.getByRole('button', { name: 'Record HR attestation' }));
+    dialog = screen.getByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'Original passport seen');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record attestation' }));
+    await waitFor(() => expect(id.onAttest).toHaveBeenCalledWith('Original passport seen'));
+  });
+
+  it('without the right to change identity details there are no actions', async () => {
+    const id = identity({ onReverify: undefined, onAttest: undefined, checks: [] });
+    await open(id);
+    expect(screen.getByText('No identity checks recorded yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request re-verification' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Record HR attestation' })).toBeNull();
+  });
+
+  it('a failed load offers a retry', async () => {
+    const id = identity({ state: 'error' });
+    await open(id);
+    await ue.click(screen.getByRole('button', { name: /Retry|Try again/ }));
+    expect(id.onRetry).toHaveBeenCalled();
+  });
+
+  it('is not on the menu without the Special key', async () => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ activity: [], history: { rows: [], roles: [], company: 'K' } })} />);
+    await ue.click(screen.getByRole('button', { name: /More actions|Actions/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Identity panel' })).toBeNull();
   });
 });

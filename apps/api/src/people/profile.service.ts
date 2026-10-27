@@ -30,7 +30,7 @@ const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN'
 export const PROOF_TYPE: Partial<Record<Kind, string>> = { bank_salary: 'bank_proof', bank_reimbursement: 'bank_proof', pan: 'pan_card', aadhaar: 'aadhaar', legal_name: 'name_change_proof', passport: 'passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
 /** Views of someone's Confidential / Special data, shown to them in "Who accessed my data" (P02 §7, P08). */
-export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed'] as const;
+export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed', 'employee.identity_checks.viewed'] as const;
 /** PPL-33 Context: where the look happened, from what each view records. */
 const PAY_CONTEXT: Record<string, string> = { as_of: 'Your record, as on a date', history: 'Your job history', segments: 'Your pay history', change: 'A change to your job or pay', batch: 'A bulk change', impact: 'Checking a change before it was made' };
 
@@ -736,9 +736,9 @@ export class ProfileService {
             at: r.createdAt,
             who: r.actorName || r.actorEmail || 'YukthiX system',
             role: roleOf(r.actorUserId),
-            what: doc ? docType.get(r.entityId!)! : r.action === 'employee.pay.viewed' ? 'Pay' : r.action === 'employee.aadhaar.viewed' ? 'Aadhaar' : (FIELD_LABEL[String(meta.field)] ?? 'Identity details'),
-            context: doc ? 'Your documents' : r.action === 'employee.pay.viewed' ? (PAY_CONTEXT[String(meta.what)] ?? 'Your record') : 'Shown in full on your record',
-            className: r.action === 'employee.aadhaar.viewed' ? 'special' : 'confidential',
+            what: doc ? docType.get(r.entityId!)! : r.action === 'employee.pay.viewed' ? 'Pay' : r.action === 'employee.aadhaar.viewed' ? 'Aadhaar' : r.action === 'employee.identity_checks.viewed' ? 'Identity checks' : (FIELD_LABEL[String(meta.field)] ?? 'Identity details'),
+            context: doc ? 'Your documents' : r.action === 'employee.pay.viewed' ? (PAY_CONTEXT[String(meta.what)] ?? 'Your record') : r.action === 'employee.identity_checks.viewed' ? 'The identity panel on your record' : 'Shown in full on your record',
+            className: r.action === 'employee.aadhaar.viewed' || r.action === 'employee.identity_checks.viewed' ? 'special' : 'confidential',
           };
         }),
       };

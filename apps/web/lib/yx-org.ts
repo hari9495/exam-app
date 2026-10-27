@@ -22,6 +22,8 @@ export const YX_KEYS = [
   'access.role.manage',
   'employee.identity.manage',
   'employee.identity.approve',
+  // PPL-34: the Identity panel is Special class.
+  'employee.aadhaar.view',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
