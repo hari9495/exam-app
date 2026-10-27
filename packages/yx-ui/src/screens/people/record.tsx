@@ -1215,12 +1215,12 @@ export function IdentityPanel({ state = 'consented', onClose, live, name }: { st
             )}
             {checks.map((c, i) => (
               <tr key={`${c.point}-${i}`}>
-                <td>{formatDate(c.at)}</td>
+                <td data-date>{formatDate(c.at)}</td>
                 <td>
                   {c.point}
                   {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
                 </td>
-                <td>
+                <td data-wrap>
                   <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge>
                 </td>
               </tr>

@@ -854,10 +854,15 @@ export function DataTable<R>(props: DataTableProps<R>) {
     return out;
   }, [columns, rows]);
   // Badges and dates never break onto a second line either: a column keeps at least its widest badge or date, measured
-  // as drawn (spacing audit 27 Oct 2026). A width the person dragged still wins.
+  // as drawn (spacing audit 27 Oct 2026). A width the person dragged still wins, and when keeping them would make the
+  // table scroll sideways they wrap instead.
   const [keepW, setKeepW] = useState<Record<string, number>>({});
+  const baseMin = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, figureW[c.key] ?? 0);
+  const keepOn =
+    !boxW || fixedW + visible.reduce((t, c) => t + Math.max((Number(colState.widths[c.key]) || baseMin(c)) * MIN_FIT, keepW[c.key] ?? 0), 0) <= boxW;
   useLayoutEffect(() => {
-    if (!tableRef.current || cards || resized) return;
+    // Not measured while wrapping: a wrapped badge would measure narrow and the table would flip back and forth.
+    if (!tableRef.current || cards || resized || !keepOn) return;
     const out: Record<string, number> = {};
     const text = document.createRange();
     tableRef.current.querySelectorAll<HTMLElement>('tbody td[data-col]').forEach((td) => {
@@ -870,8 +875,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
     });
     if (JSON.stringify(out) !== JSON.stringify(keepW)) setKeepW(out);
   });
-  const floorW = (c: TableColumn<R>) => Math.max(figureW[c.key] ?? 0, keepW[c.key] ?? 0);
-  const minW = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, floorW(c));
+  const floorW = (c: TableColumn<R>) => Math.max(figureW[c.key] ?? 0, keepOn ? keepW[c.key] ?? 0 : 0);
+  const minW = (c: TableColumn<R>) => Math.max(baseMin(c), floorW(c));
   // Still too wide after shrinking? Hide optional columns from the right until it fits; a table scrolls only when nothing optional is left.
   useLayoutEffect(() => {
     const want: string[] = [];
@@ -915,7 +920,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       data-layout={cards ? 'cards' : undefined}
       data-card-summary={(cards && cardSummary) || undefined}
       data-actions-wrap={actionsCapped || undefined}
-      data-resized={resized || undefined}
+      data-wrap={resized || !keepOn || undefined}
       ref={tableRef}
       style={btnW ? ({ '--yx-row-btn-w': `${btnW}px` } as CSSProperties) : undefined}
     >
