@@ -854,12 +854,12 @@ export function DataTable<R>(props: DataTableProps<R>) {
     return out;
   }, [columns, rows]);
   // Badges and dates never break onto a second line either: a column keeps at least its widest badge or date, measured
-  // as drawn (spacing audit 27 Oct 2026). A width the person dragged still wins, and when keeping them would make the
-  // table scroll sideways they wrap instead.
+  // as drawn (spacing audit 27 Oct 2026). Only while the table fits without shrinking: their room would otherwise come
+  // out of a text column and break its words (28 Oct). A width the person dragged still wins.
   const [keepW, setKeepW] = useState<Record<string, number>>({});
   const baseMin = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, figureW[c.key] ?? 0);
   const keepOn =
-    !boxW || fixedW + visible.reduce((t, c) => t + Math.max((Number(colState.widths[c.key]) || baseMin(c)) * MIN_FIT, keepW[c.key] ?? 0), 0) <= boxW;
+    !boxW || fixedW + visible.reduce((t, c) => t + Math.max(Number(colState.widths[c.key]) || baseMin(c), keepW[c.key] ?? 0), 0) <= boxW;
   useLayoutEffect(() => {
     // Not measured while wrapping: a wrapped badge would measure narrow and the table would flip back and forth.
     if (!tableRef.current || cards || resized || !keepOn) return;
