@@ -87,7 +87,6 @@ export interface JoinerPanelProps {
   canJoin: boolean;
   onPlan: (patch: { departmentId?: string; designationId?: string; employmentTypeId?: string }) => Promise<unknown>;
   onJoin: (input: { identityAttested: boolean; status: 'probation' | 'confirmed' }) => Promise<unknown>;
-  onCancel: (input: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason: string }) => Promise<unknown>;
   bgv?: {
     onAsk: () => Promise<unknown>;
     onAdd: (checkType: string, gate: string) => Promise<unknown>;
@@ -99,11 +98,9 @@ const CHECKS: Choice[] = ['identity', 'address', 'education', 'employment', 'cri
 
 export function JoinerPanel(p: JoinerPanelProps) {
   const f = p.forms;
-  const [ask, setAsk] = useState<null | 'join' | 'cancel' | 'plan' | 'check'>(null);
+  const [ask, setAsk] = useState<null | 'join' | 'plan' | 'check'>(null);
   const [status, setStatus] = useState<'probation' | 'confirmed'>('probation');
   const [attested, setAttested] = useState(false);
-  const [outcome, setOutcome] = useState<'did_not_join' | 'reneged' | 'withdrawn'>('reneged');
-  const [reason, setReason] = useState('');
   const [dept, setDept] = useState<string | null>(p.plan.departmentId);
   const [desig, setDesig] = useState<string | null>(p.plan.designationId);
   const [type, setType] = useState<string | null>(p.plan.employmentTypeId);
@@ -139,7 +136,6 @@ export function JoinerPanel(p: JoinerPanelProps) {
               <Button variant="primary" disabled={!dayReached || missingPlan} onClick={() => setAsk('join')}>
                 Mark joined
               </Button>
-              <Button onClick={() => setAsk('cancel')}>Not joining</Button>
             </>
           ) : undefined
         }
@@ -197,33 +193,6 @@ export function JoinerPanel(p: JoinerPanelProps) {
         <ConfirmDialog open onOpenChange={(o) => !o && setAsk(null)} size="md" title="Mark as joined?" consequence="The employee record is made today with the planned job. PAN, Aadhaar and bank details go to someone else for approval. The joining portal closes." confirmLabel="Mark joined" confirmDisabled={!attested} onConfirm={async () => void (await p.onJoin({ identityAttested: attested, status }))}>
           <Segment label="Starts on" value={status} onChange={setStatus} options={[{ value: 'probation', label: 'Probation' }, { value: 'confirmed', label: 'Confirmed' }]} />
           <Checkbox checked={attested} onChange={setAttested} label="I checked the joiner's original ID today" description="Required. YukthiX records who checked and when." />
-        </ConfirmDialog>
-      )}
-      {ask === 'cancel' && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setAsk(null)}
-          size="md"
-          title="The joiner is not joining?"
-          consequence="Their checklist and desk requests stop and their portal closes. Nothing is deleted; the record stays as cancelled."
-          confirmLabel="Confirm"
-          destructive
-          confirmDisabled={reason.trim().length < 3}
-          onConfirm={async () => void (await p.onCancel({ outcome, reason: reason.trim() }))}
-        >
-          <Segment
-            label="What happened"
-            value={outcome}
-            onChange={setOutcome}
-            options={[
-              { value: 'reneged', label: 'Declined' },
-              { value: 'withdrawn', label: 'Offer withdrawn' },
-              ...(dayReached ? [{ value: 'did_not_join' as const, label: 'Did not come' }] : []),
-            ]}
-          />
-          <FormField id="cj-reason" label="Reason" required helper="Kept on the record.">
-            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
-          </FormField>
         </ConfirmDialog>
       )}
       {ask === 'plan' && (

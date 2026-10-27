@@ -435,6 +435,20 @@ describe('Lifecycle batch 6b', () => {
     await portal('get', '/me', t).expect(401);
   });
 
+  it('PPL-15 Change status: the new date alone postpones; only withdrawing the offer must give a reason', async () => {
+    const j = await addJoiner('Arun', `arun-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/postpone`).send({ joiningOn: addDays(joining, 7), reason: 'x', version: pb.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/postpone`).send({ joiningOn: addDays(joining, 7), version: pb.version }).expect(200);
+    const now = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', version: now.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: '  ', version: now.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'reneged', version: now.version }).expect(200);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }))).toMatchObject({ status: 'cancelled', outcome: 'reneged', outcomeReason: null });
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: now.version + 1 }).expect(409);
+  });
+
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
     const offers = await inA(async (tx) => {
       const o = { organizationId: org.A.id };

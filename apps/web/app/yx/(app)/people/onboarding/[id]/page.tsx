@@ -43,18 +43,38 @@ export default function YxJourneyPage() {
     ...(perms.has('letter.issue') ? { onPreviewLetter: actions.onPreviewLetter, onIssueLetter: said(actions.onIssueLetter, (t) => `${t.title}: letter issued to ${who}`) } : {}),
   };
   const today = todayIst();
+  const day = (iso: string) => new Date(`${iso}T00:00:00`);
   return (
     <JourneyRecord
       tasks={[]}
-      joining={new Date(`${today}T00:00:00`)}
-      today={new Date(`${(j?.today ?? today)}T00:00:00`)}
+      joining={day(today)}
+      today={day(j?.today ?? today)}
       live={{
         state: journey.isError ? (err?.status === 403 || err?.status === 404 ? 'not-found' : 'error') : j ? 'ready' : 'loading',
         onRetry: () => void journey.refetch(),
         journey: j ?? null,
         joiner: pb ? { role: pb.designation, location: pb.location, manager: pb.manager, buddy: places.managers.find((m) => m.value === pb.buddyEmployeeId)?.label.split(',')[0] ?? null } : null,
         actions: withToasts,
-        ...(hrJoiner && joiner.data ? { onPostpone: (joiningOn: string, reason: string) => write('POST', `${base}/postpone`, { joiningOn, reason, version: joiner.data!.version }) } : {}),
+        // PPL-15 Change status: move the joining day or unwind pre-boarding, while the joiner is still to join.
+        ...(hrJoiner && pb && pb.status === 'invited'
+          ? {
+              preboard: {
+                joiningOn: day(pb.joiningOn),
+                today: day(j!.today),
+                tasks: j!.tasks.filter((t) => t.status !== 'cancelled').map((t) => ({ id: t.id, title: t.title, dueOn: day(t.dueOn), done: t.status === 'done' || t.status === 'skipped' })),
+                fromOffer: pb.source === 'offer',
+                rehire: rehire.data ? { first: pb.name.split(' ')[0], code: rehire.data.previous.employeeCode } : null,
+                onPostpone: async (joiningOn: string) => {
+                  await write('POST', `${base}/postpone`, { joiningOn, version: pb.version });
+                  toast({ tone: 'success', title: `${who} now joins on ${day(joiningOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` });
+                },
+                onCancel: async (outcome: 'did_not_join' | 'reneged' | 'withdrawn', reason: string) => {
+                  await write('POST', `${base}/cancel`, { outcome, ...(reason ? { reason } : {}), version: pb.version });
+                  toast({ tone: 'success', title: `Pre-boarding for ${who} is cancelled` });
+                },
+              },
+            }
+          : {}),
         children: (
           <>
       {hrJoiner && forms.data && pb && (
@@ -67,7 +87,6 @@ export default function YxJourneyPage() {
           canJoin={perms.has('lifecycle.onboarding.manage') && perms.has('employee.change.manage')}
           onPlan={(patch) => write('PUT', `${base}/plan`, { ...patch, version: pb.version })}
           onJoin={(x) => write('POST', `${base}/join`, { ...x, version: pb.version })}
-          onCancel={(x) => write('POST', `${base}/cancel`, { ...x, version: pb.version })}
           bgv={
             perms.has('lifecycle.bgv.manage')
               ? {

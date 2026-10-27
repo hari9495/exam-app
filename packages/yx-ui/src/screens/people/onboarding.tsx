@@ -24,8 +24,9 @@ import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
 import { addDays, daysBetween, extensionAllowed, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
 import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData } from './live/types';
-import { PostponeDialog, TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
+import { TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
 import { taskButtons, taskRow } from './checklists';
+import { useRun } from '../org/org-kit';
 import { BATCHES, BUDDIES, d, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
 import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
@@ -545,7 +546,8 @@ export interface LiveJourney {
   /** The joiner's role, place and people, when the journey is an onboarding HR runs. */
   joiner?: { role: string | null; location: string; manager: string | null; buddy: string | null } | null;
   actions: TaskActions;
-  onPostpone?: (joiningOn: string, reason: string) => Promise<unknown>;
+  /** HR on a joiner still waiting to join: Change status (PPL-15). */
+  preboard?: LivePreboardAction;
   /** Joiner details and actions (forms, checks, joined, rehire options, buddy), shown under the tasks. */
   children?: ReactNode;
 }
@@ -569,7 +571,7 @@ const liveWhen = (offset: number, kind: LiveJourneyData['kind']) => {
 function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) {
   const j = live.journey;
   const [ask, setAsk] = useState<TaskAsk | null>(null);
-  const [moving, setMoving] = useState(false);
+  const [changing, setChanging] = useState(false);
   const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
   if (live.state !== 'ready' || !j)
     return (
@@ -616,7 +618,7 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
           { label: 'Tasks done', value: `${doneCount} of ${tasks.length}` },
         ]}
         // Add task: no way to add a one-off task to a running checklist yet (left out).
-        actions={j.canManage && j.status === 'active' && live.onPostpone ? <Button icon={CalendarClock} onClick={() => setMoving(true)}>Change joining day</Button> : undefined}
+        actions={j.canManage && j.status === 'active' && live.preboard ? <Button onClick={() => setChanging(true)}>Change status</Button> : undefined}
       />
       {j.status !== 'active' && <InlineAlert tone={j.status === 'done' ? 'success' : 'info'}>{j.status === 'done' ? 'This checklist is complete.' : 'This checklist was cancelled.'}</InlineAlert>}
       {letterLate && j.canManage && (
@@ -655,7 +657,7 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
       </div>
       {live.children}
       {ask && <TaskDialog ask={ask} actions={live.actions} onClose={() => setAsk(null)} />}
-      {moving && live.onPostpone && <PostponeDialog current={j.anchorOn} today={j.today} onClose={() => setMoving(false)} onPostpone={live.onPostpone} />}
+      {changing && live.preboard && <PreboardingActionDrawer who={j.person} join={live.preboard.joiningOn} tasks={live.preboard.tasks} initial="postpone" initialDate={null} rehire={live.preboard.rehire} open onClose={() => setChanging(false)} live={live.preboard} />}
     </PeopleFrame>
   );
 }
@@ -986,50 +988,87 @@ function OffersCell({ row, suffix = '' }: { row: Batch; suffix?: string }) {
 /* ================================================================== PPL-15 pre-boarding actions */
 
 export type PreboardAction = 'postpone' | 'did-not-join' | 'reneged' | 'withdraw';
+type PreboardOutcome = 'did_not_join' | 'reneged' | 'withdrawn';
+const OUTCOME: Record<Exclude<PreboardAction, 'postpone'>, PreboardOutcome> = { 'did-not-join': 'did_not_join', reneged: 'reneged', withdraw: 'withdrawn' };
 
-// PPL-15
-export function PreboardingActionSheet({ action: initial, rehire = false, reasonError = false }: { action: PreboardAction; rehire?: boolean; reasonError?: boolean }) {
+/** One checklist task as the postpone preview shows it. */
+export interface PreboardTask {
+  id: string;
+  title: string;
+  dueOn: Date;
+  done: boolean;
+}
+
+/** The live journey record's Change status (PPL-15): HR moves the joining day or unwinds pre-boarding. */
+export interface LivePreboardAction {
+  joiningOn: Date;
+  today: Date;
+  tasks: PreboardTask[];
+  /** The joiner came from an accepted offer in Hiring. */
+  fromOffer: boolean;
+  /** A rehire: the first name and the old employee code the unwind leaves alone. */
+  rehire: { first: string; code: string } | null;
+  onPostpone: (joiningOn: string) => Promise<unknown>;
+  onCancel: (outcome: PreboardOutcome, reason: string) => Promise<unknown>;
+}
+
+const PREBOARD_LABEL: Record<PreboardAction, string> = { postpone: 'Postpone joining', 'did-not-join': 'Mark did not join', reneged: 'Record reneged', withdraw: 'Withdraw offer' };
+
+/** The Change status drawer; the sample (story) and the live journey record share it. */
+function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initialReason = '', reasonError = false, rehire, open, onClose, live }: { who: string; join: Date; tasks: PreboardTask[]; initial: PreboardAction; initialDate: Date | null; initialReason?: string; reasonError?: boolean; rehire: { first: string; code: string } | null; open: boolean; onClose: () => void; live?: LivePreboardAction }) {
   const [action, setAction] = useState<PreboardAction>(initial);
-  const [open, setOpen] = useState(true);
-  const [date, setDate] = useState<Date | null>(new Date(2026, 9, 19));
-  const who = rehire ? 'Suresh Nair' : 'Kavya Reddy';
-  const join = rehire ? new Date(2026, 9, 12) : KAVYA_JOIN;
+  const [date, setDate] = useState<Date | null>(initialDate);
+  const [reason, setReason] = useState(initialReason);
+  const [tried, setTried] = useState(reasonError);
+  const { busy, error, run } = useRun();
   const unwind = action !== 'postpone';
-  const moves = date ? reanchor(ONBOARDING_TASKS, join, date) : {};
-  const label: Record<PreboardAction, string> = { postpone: 'Postpone joining', 'did-not-join': 'Mark did not join', reneged: 'Record reneged', withdraw: 'Withdraw offer' };
+  const shift = date ? daysBetween(join, date) : 0;
+  const reasonMissing = action === 'withdraw' && !reason.trim();
+  const earliest = live && live.today > join ? live.today : addDays(join, 1);
+  const submit = async () => {
+    setTried(true);
+    if (!live || (action === 'postpone' ? !date : reasonMissing)) return;
+    const ok = await run('go', () => (action === 'postpone' ? live.onPostpone(dayKeyOf(date!)) : live.onCancel(OUTCOME[action], reason.trim())));
+    if (ok) onClose();
+  };
   return (
-    <PeopleFrame active="Onboarding board">
-      <ObjectHeader name={`${who} · pre-boarding`} person secondary={`${rehire ? 'Maintenance Technician (rehire)' : 'Quality Inspector'} · joins ${formatDate(join)}`} status={<Badge tone="info">Pre-boarding</Badge>} actions={<Button onClick={() => setOpen(true)}>Change status</Button>} />
-      <Drawer
-        open={open}
-        onOpenChange={setOpen}
-        title={`Change pre-boarding for ${who}`}
-        footer={
+    <Drawer
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      title={`Change pre-boarding for ${who}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant={unwind ? 'danger' : 'primary'} loading={busy === 'go'} onClick={() => void submit()}>
+            {PREBOARD_LABEL[action]}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        {error && (
+          <InlineAlert tone="danger" title="That didn't work">
+            {error}
+          </InlineAlert>
+        )}
+        <FormField label="What happened" required>
+          <RadioGroup
+            value={action}
+            onChange={(v) => setAction(v as PreboardAction)}
+            options={[
+              { value: 'postpone', label: 'Postpone joining', description: 'The candidate or company moved the date. Nothing is cancelled.' },
+              { value: 'did-not-join', label: 'Did not join', description: 'On or after the joining date, the person did not turn up.' },
+              { value: 'reneged', label: 'Reneged', description: 'The candidate declined after accepting.' },
+              { value: 'withdraw', label: 'Withdraw offer', description: live ? 'The company withdraws. A reason is required.' : 'The company withdraws. A reason and a withdrawal letter are required.' },
+            ]}
+          />
+        </FormField>
+        {action === 'postpone' && (
           <>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant={unwind ? 'danger' : 'primary'}>{label[action]}</Button>
-          </>
-        }
-      >
-        <div className="yx-ppl__stack">
-          <FormField label="What happened" required>
-            <RadioGroup
-              value={action}
-              onChange={(v) => setAction(v as PreboardAction)}
-              options={[
-                { value: 'postpone', label: 'Postpone joining', description: 'The candidate or company moved the date. Nothing is cancelled.' },
-                { value: 'did-not-join', label: 'Did not join', description: 'On or after the joining date, the person did not turn up.' },
-                { value: 'reneged', label: 'Reneged', description: 'The candidate declined after accepting.' },
-                { value: 'withdraw', label: 'Withdraw offer', description: 'The company withdraws. A reason and a withdrawal letter are required.' },
-              ]}
-            />
-          </FormField>
-          {action === 'postpone' && (
-            <>
-              <FormField label="New joining date" required>
-                <DatePicker value={date} onChange={setDate} min={addDays(join, 1)} />
-              </FormField>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Open tasks re-anchor; done tasks stay, scrolls sideways on small screens">
+            <FormField label="New joining date" required error={tried && !date ? 'Pick the new joining date.' : null}>
+              <DatePicker value={date} onChange={setDate} min={earliest} />
+            </FormField>
+            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Open tasks re-anchor; done tasks stay, scrolls sideways on small screens">
               <table className="yx-ppl__impact">
                 <caption className="yx-ppl__sub">Open tasks re-anchor; done tasks stay</caption>
                 <thead>
@@ -1040,36 +1079,62 @@ export function PreboardingActionSheet({ action: initial, rehire = false, reason
                   </tr>
                 </thead>
                 <tbody>
-                  {ONBOARDING_TASKS.slice(0, 6).map((t) => (
+                  {tasks.map((t) => (
                     <tr key={t.id}>
                       <td>{t.title}</td>
-                      <td>{formatDate(moves[t.id]?.from)}</td>
-                      <td data-changed={t.status !== 'done' || undefined}>{t.status === 'done' ? 'Done' : formatDate(moves[t.id]?.to)}</td>
+                      <td>{formatDate(t.dueOn)}</td>
+                      <td data-changed={(!t.done && Boolean(date)) || undefined}>{t.done ? 'Done' : date ? formatDate(addDays(t.dueOn, shift)) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              </div>
-            </>
-          )}
-          {unwind && (
-            <>
-              <InlineAlert tone="warning" title="This unwinds pre-boarding in one audited step">
-                The employee, employment, draft compensation and pre-boarding login are cancelled (kept, not deleted). The headcount-plan slot is released and requisition REQ-2026-0288 reopens. The candidate is marked {action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.
-              </InlineAlert>
-              <FormField label="Reason" required={action === 'withdraw'} optional={action !== 'withdraw'} error={reasonError ? 'Enter a reason. It goes on the withdrawal letter and the audit log.' : null}>
-                <TextArea rows={3} defaultValue={reasonError ? '' : action === 'reneged' ? 'Accepted a counter-offer from the current employer.' : ''} />
-              </FormField>
-              {action === 'withdraw' && <Text size="sm" tone="secondary" as="p">A withdrawal letter (starter template) is created for your review. BGV discrepancies never withdraw an offer automatically.</Text>}
-            </>
-          )}
-          {rehire && (
-            <InlineAlert tone="info" title="Rehire: what the unwind reverses">
-              The new employment on Suresh's existing record is cancelled. His old employment, code KF-0077 and UAN stay as they were; the rehire options you chose are discarded.
+            </div>
+          </>
+        )}
+        {unwind && (
+          <>
+            <InlineAlert tone="warning" title="This unwinds pre-boarding in one audited step">
+              {live
+                ? `The checklist, desk requests, background checks, unsigned letters and the pre-boarding login are cancelled (kept, not deleted).${live.fromOffer ? ` The candidate's offer is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.` : ''}`
+                : `The employee, employment, draft compensation and pre-boarding login are cancelled (kept, not deleted). The headcount-plan slot is released and requisition REQ-2026-0288 reopens. The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.`}
             </InlineAlert>
-          )}
-        </div>
-      </Drawer>
+            <FormField label="Reason" required={action === 'withdraw'} optional={action !== 'withdraw'} error={tried && reasonMissing ? (live ? 'Enter a reason. It is kept on the record and the audit log.' : 'Enter a reason. It goes on the withdrawal letter and the audit log.') : null}>
+              <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+            </FormField>
+            {action === 'withdraw' && <Text size="sm" tone="secondary" as="p">{live ? 'BGV discrepancies never withdraw an offer automatically.' : 'A withdrawal letter (starter template) is created for your review. BGV discrepancies never withdraw an offer automatically.'}</Text>}
+          </>
+        )}
+        {rehire && (
+          <InlineAlert tone="info" title="Rehire: what the unwind reverses">
+            {live ? `${rehire.first}'s old employment, code ${rehire.code} and UAN stay as they were; the rehire options you chose are discarded.` : `The new employment on ${rehire.first}'s existing record is cancelled. His old employment, code ${rehire.code} and UAN stay as they were; the rehire options you chose are discarded.`}
+          </InlineAlert>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+// PPL-15
+export function PreboardingActionSheet({ action, rehire = false, reasonError = false }: { action: PreboardAction; rehire?: boolean; reasonError?: boolean }) {
+  const [open, setOpen] = useState(true);
+  const who = rehire ? 'Suresh Nair' : 'Kavya Reddy';
+  const join = rehire ? new Date(2026, 9, 12) : KAVYA_JOIN;
+  const tasks = ONBOARDING_TASKS.slice(0, 6).map((t) => ({ id: t.id, title: t.title, dueOn: taskDue(join, t), done: t.status === 'done' }));
+  return (
+    <PeopleFrame active="Onboarding board">
+      <ObjectHeader name={`${who} · pre-boarding`} person secondary={`${rehire ? 'Maintenance Technician (rehire)' : 'Quality Inspector'} · joins ${formatDate(join)}`} status={<Badge tone="info">Pre-boarding</Badge>} actions={<Button onClick={() => setOpen(true)}>Change status</Button>} />
+      <PreboardingActionDrawer
+        who={who}
+        join={join}
+        tasks={tasks}
+        initial={action}
+        initialDate={new Date(2026, 9, 19)}
+        initialReason={!reasonError && action === 'reneged' ? 'Accepted a counter-offer from the current employer.' : ''}
+        reasonError={reasonError}
+        rehire={rehire ? { first: 'Suresh', code: 'KF-0077' } : null}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
     </PeopleFrame>
   );
 }

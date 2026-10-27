@@ -155,14 +155,14 @@ export class JoiningService {
   }
 
   /** YX-LC-12: did not join / reneged / offer withdrawn, in one audited action; nothing is deleted. */
-  async cancel(ctx: TenantContext, user: ScopeUser, id: string, dto: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason: string; version: number }) {
+  async cancel(ctx: TenantContext, user: ScopeUser, id: string, dto: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason?: string; version: number }) {
     const v = await this.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const pb = await this.joiner(tx, c, v, id, 'lifecycle.onboarding.manage');
       if (pb.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (dto.outcome === 'did_not_join' && iso(pb.joiningOn) > todayIst()) throw new BadRequestException('"Did not join" is for on or after the joining day. Before it, use reneged or offer withdrawn.');
-      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason.trim().slice(0, 500), version: { increment: 1 } } });
+      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
       const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
       const tickets: string[] = [];

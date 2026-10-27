@@ -332,7 +332,7 @@ export class JoinersService {
   }
 
   /** YX-LC-13 postpone: a new joining day moves the checklist's unfinished tasks by the same days. */
-  async postpone(ctx: TenantContext, user: ScopeUser, id: string, dto: { joiningOn: string; reason: string; version: number }) {
+  async postpone(ctx: TenantContext, user: ScopeUser, id: string, dto: { joiningOn: string; reason?: string; version: number }) {
     const v = await this.journeys.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id } });
@@ -351,13 +351,13 @@ export class JoinersService {
   }
 
   /** YX-LC-13: a new joining day; every unfinished checklist task moves by the same days (also for a whole batch, 6e). */
-  async moveIn(tx: Tx, c: CompanyContext, r: Prisma.PreboardingGetPayload<object>, joiningOn: string, reason: string) {
+  async moveIn(tx: Tx, c: CompanyContext, r: Prisma.PreboardingGetPayload<object>, joiningOn: string, reason?: string) {
     const id = r.id;
     const n = await tx.preboarding.updateMany({ where: { organizationId: c.organizationId, id, version: r.version, status: 'invited' }, data: { joiningOn: asDate(joiningOn), version: { increment: 1 } } });
     if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
     const j = await tx.journey.findFirst({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: id, kind: 'onboarding' } });
     const moved = j ? await this.journeys.reanchorIn(tx, c, j.id, joiningOn) : 0;
-    await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: joiningOn, reason: reason.trim().slice(0, 300) });
+    await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: joiningOn, reason: reason?.trim().slice(0, 300) ?? null });
     await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'preboarding.joining_date.changed', payload: { preboardingId: id, from: iso(r.joiningOn), to: joiningOn } } });
     return moved;
   }

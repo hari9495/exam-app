@@ -12,7 +12,7 @@ const LETTER: Letter = { id: 'l1', title: 'Appointment letter: Sneha Pillai', le
 
 describe('Joiner panel (6b)', () => {
   const forms: JoinerForms = { id: 'pb1', status: 'invited', outcome: null, completion: 40, sections: { ...SECTIONS }, answers: ANSWERS, identityAttested: false, bgv: { requested: false, consent: null, checks: [] }, version: 3 };
-  const base = { forms, places: PLACES, plan: { departmentId: 'd', designationId: 'g', employmentTypeId: 't' }, canJoin: true, onPlan: vi.fn(), onCancel: vi.fn(), bgv: { onAsk: vi.fn(), onAdd: vi.fn(), onUpdate: vi.fn() } };
+  const base = { forms, places: PLACES, plan: { departmentId: 'd', designationId: 'g', employmentTypeId: 't' }, canJoin: true, onPlan: vi.fn(), bgv: { onAsk: vi.fn(), onAdd: vi.fn(), onUpdate: vi.fn() } };
 
   it('Mark joined waits for the joining day and needs the identity check', async () => {
     const onJoin = vi.fn(async () => ({}));
