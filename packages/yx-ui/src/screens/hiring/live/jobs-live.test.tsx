@@ -53,7 +53,9 @@ describe('Hiring jobs (AT1)', () => {
     await ue.click(within(d).getByRole('combobox', { name: 'Department' }));
     await ue.click(screen.getByRole('option', { name: 'Finance' }));
     await ue.type(within(d).getByRole('textbox', { name: /^Location/ }), 'Madurai');
-    expect(within(d).getByRole('button', { name: 'Create' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(within(d).getByText('Enter the Cost centre.')).toBeInTheDocument();
+    expect(p.onCreate).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /Cost centre/ }), 'CC-12');
     await ue.click(within(d).getByRole('button', { name: 'Create' }));
     expect(p.onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: 'Accountant', departmentId: 'd1', location: 'Madurai', pipelineId: 'p1', customFields: { cf1: 'CC-12' } }));

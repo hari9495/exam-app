@@ -298,12 +298,13 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
 function SurveyButton(p: { surveys: Choice[]; onSend: (id: string) => Promise<unknown> }) {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>Send a survey</Button>
+      <Button size="sm" onClick={() => { setTried(false); setOpen(true); }}>Send a survey</Button>
       {open && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setOpen(false)} title="Send a survey" confirmLabel="Send survey" confirmDisabled={!v} onConfirm={async () => { await p.onSend(v!); setOpen(false); }}>
-          <FormField id="ap-survey" label="Survey" required>
+        <ConfirmDialog open onOpenChange={(o) => !o && setOpen(false)} title="Send a survey" confirmLabel="Send survey" onConfirm={async () => { setTried(true); if (!v) return false; await p.onSend(v); setOpen(false); }}>
+          <FormField id="ap-survey" label="Survey" required error={tried && !v ? 'Choose a survey.' : null}>
             <Select aria-label="Survey" value={v} onChange={setV} options={p.surveys} />
           </FormField>
         </ConfirmDialog>
@@ -315,12 +316,13 @@ function SurveyButton(p: { surveys: Choice[]; onSend: (id: string) => Promise<un
 function TextDialog(p: { channel: 'sms' | 'whatsapp'; templates: EmailTemplateChoice[]; onClose: () => void; onSend: (body: string, templateId: string | null) => Promise<unknown> }) {
   const [tpl, setTpl] = useState<string | null>(null);
   const [body, setBody] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.channel === 'sms' ? 'Send an SMS' : 'Send a WhatsApp message'} confirmLabel="Send" confirmDisabled={!body.trim()} onConfirm={async () => { await p.onSend(body.trim(), tpl && !tpl.startsWith('default-') ? tpl : null); p.onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.channel === 'sms' ? 'Send an SMS' : 'Send a WhatsApp message'} confirmLabel="Send" onConfirm={async () => { setTried(true); if (!body.trim()) return false; await p.onSend(body.trim(), tpl && !tpl.startsWith('default-') ? tpl : null); p.onClose(); }}>
       <FormField id="tx-tpl" label="Template" optional>
         <Select aria-label="Template" value={tpl} onChange={(v) => { setTpl(v); const t = p.templates.find((x) => x.value === v); if (t) setBody(t.body); }} options={p.templates.map((t) => ({ value: t.value, label: t.label }))} clearable />
       </FormField>
-      <FormField id="tx-body" label="Message" required>
+      <FormField id="tx-body" label="Message" required error={tried && !body.trim() ? 'Enter a message.' : null}>
         <TextArea value={body} onChange={setBody} rows={4} maxLength={p.channel === 'sms' ? 1600 : 4000} />
       </FormField>
     </ConfirmDialog>
@@ -330,9 +332,10 @@ function TextDialog(p: { channel: 'sms' | 'whatsapp'; templates: EmailTemplateCh
 function NoteDialog(p: { onClose: () => void; onSave: (note: string, rating: number | null) => Promise<unknown> }) {
   const [note, setNote] = useState('');
   const [rating, setRating] = useState<number | null>(null);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title="Add a note" confirmLabel="Save note" confirmDisabled={!note.trim() && rating == null} onConfirm={async () => { await p.onSave(note.trim(), rating); p.onClose(); }}>
-      <FormField id="nt-note" label="Note" optional helper="General feedback. Interview judgements go on the scorecard.">
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title="Add a note" confirmLabel="Save note" onConfirm={async () => { setTried(true); if (!note.trim() && rating == null) return false; await p.onSave(note.trim(), rating); p.onClose(); }}>
+      <FormField id="nt-note" label="Note" optional helper="General feedback. Interview judgements go on the scorecard." error={tried && !note.trim() && rating == null ? 'Enter a note or choose a rating.' : null}>
         <TextArea value={note} onChange={setNote} rows={4} maxLength={5000} />
       </FormField>
       <FormField id="nt-rating" label="Rating" optional>
@@ -356,8 +359,11 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
   const iso = (d: Date, t: string) => new Date(`${dayKey(d)}T${t}:00`).toISOString();
   const slotsOk = slots.every((s) => s.date && s.start && s.end && s.end > s.start);
   const ok = location.trim() && tz.trim() && (mode === 'proposed' ? slotsOk : wFrom && wTo && wTo > wFrom);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Schedule an interview" confirmLabel="Schedule" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Schedule an interview" confirmLabel="Schedule" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onSchedule({
         mode,
         slots: mode === 'proposed' ? slots.map((s) => ({ startsAt: iso(s.date!, s.start!), endsAt: iso(s.date!, s.end!) })) : [],
@@ -377,13 +383,13 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
         <>
           {slots.map((s, i) => (
             <div key={i} className="yx-tim-row">
-              <FormField id={`sc-d${i}`} label={`Option ${i + 1} date`}>
+              <FormField id={`sc-d${i}`} label={`Option ${i + 1} date`} error={tried && !s.date ? 'Choose a date.' : null}>
                 <DatePicker aria-label={`Option ${i + 1} date`} value={s.date} onChange={(d) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, date: d } : y)))} min={new Date()} />
               </FormField>
-              <FormField id={`sc-s${i}`} label={`Option ${i + 1} from`}>
+              <FormField id={`sc-s${i}`} label={`Option ${i + 1} from`} error={tried && !s.start ? 'Choose a start time.' : null}>
                 <TimeField value={s.start} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, start: v } : y)))} />
               </FormField>
-              <FormField id={`sc-e${i}`} label={`Option ${i + 1} to`}>
+              <FormField id={`sc-e${i}`} label={`Option ${i + 1} to`} error={tried && !(s.end && (!s.start || s.end > s.start)) ? 'Choose an end time after the start time.' : null}>
                 <TimeField value={s.end} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, end: v } : y)))} />
               </FormField>
               {slots.length > 1 && <Button size="sm" variant="danger" onClick={() => setSlots((x) => x.filter((_, k) => k !== i))}>Remove option {i + 1}</Button>}
@@ -393,10 +399,10 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
         </>
       ) : (
         <>
-          <FormField id="sc-wf" label="Bookable from" required>
+          <FormField id="sc-wf" label="Bookable from" required error={tried && !wFrom ? 'Choose the first bookable date.' : null}>
             <DatePicker aria-label="Bookable from" value={wFrom} onChange={setWFrom} min={new Date()} />
           </FormField>
-          <FormField id="sc-wt" label="Bookable until" required>
+          <FormField id="sc-wt" label="Bookable until" required error={tried && !wTo ? 'Choose the last bookable date.' : tried && wFrom && wTo && !(wTo > wFrom) ? 'Choose an end date after the start date.' : null}>
             <DatePicker aria-label="Bookable until" value={wTo} onChange={setWTo} min={wFrom ?? new Date()} />
           </FormField>
           <FormField id="sc-len" label="Length">
@@ -407,10 +413,10 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
       <FormField id="sc-panel" label="Panel" optional helper="Each panellist fills a scorecard.">
         <MultiSelect aria-label="Panel" value={panel} onChange={setPanel} options={p.people} searchable />
       </FormField>
-      <FormField id="sc-loc" label="Where" required helper="An address, or 'Video call' (a meeting link is added when your calendar is connected).">
+      <FormField id="sc-loc" label="Where" required helper="An address, or 'Video call' (a meeting link is added when your calendar is connected)." error={tried && !location.trim() ? 'Enter where the interview takes place.' : null}>
         <TextField value={location} onChange={setLocation} maxLength={500} />
       </FormField>
-      <FormField id="sc-tz" label="Time zone" required>
+      <FormField id="sc-tz" label="Time zone" required error={tried && !tz.trim() ? 'Enter the time zone.' : null}>
         <TextField value={tz} onChange={setTz} maxLength={64} />
       </FormField>
       <FormField id="sc-card" label="Scorecard" optional>
@@ -432,18 +438,21 @@ function OfferDialog(p: { templates: EmailTemplateChoice[]; approval: boolean; o
   const [body, setBody] = useState(p.templates[0]?.body ?? '');
   const [then, setThen] = useState<OfferInput['then']>('save');
   const ok = comp.trim() && start && expires;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Create an offer" confirmLabel={then === 'save' ? 'Save draft' : then === 'send' ? 'Send offer' : 'Send for approval'} confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Create an offer" confirmLabel={then === 'save' ? 'Save draft' : then === 'send' ? 'Send offer' : 'Send for approval'} onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onSave({ compensation: comp.trim(), startDate: new Date(`${dayKey(start!)}T00:00:00`).toISOString(), expiresAt: new Date(`${dayKey(expires!)}T23:59:00`).toISOString(), templateId: tpl, subject: subject.trim(), body, then });
       p.onClose();
     }}>
-      <FormField id="of-comp" label="Compensation" required helper="As it should read in the letter, e.g. ₹12,00,000 a year.">
+      <FormField id="of-comp" label="Compensation" required helper="As it should read in the letter, e.g. ₹12,00,000 a year." error={tried && !comp.trim() ? 'Enter the compensation.' : null}>
         <TextField value={comp} onChange={setComp} maxLength={200} />
       </FormField>
-      <FormField id="of-start" label="Start date" required>
+      <FormField id="of-start" label="Start date" required error={tried && !start ? 'Choose the start date.' : null}>
         <DatePicker aria-label="Start date" value={start} onChange={setStart} min={new Date()} />
       </FormField>
-      <FormField id="of-exp" label="Answer by" required>
+      <FormField id="of-exp" label="Answer by" required error={tried && !expires ? 'Choose the date to answer by.' : null}>
         <DatePicker aria-label="Answer by" value={expires} onChange={setExpires} min={new Date()} />
       </FormField>
       <FormField id="of-tpl" label="Letter template" optional>

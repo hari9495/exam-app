@@ -137,6 +137,7 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
   const [value, setValue] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
+  const [tried, setTried] = useState(false);
   const fields = kind ? KIND_FIELDS[kind] : [];
   const problems = fields.map((f) => f.check((value[f.key] ?? '').trim()));
   const ready = Boolean(kind) && problems.every((p) => !p) && reason.trim().length > 0;
@@ -148,13 +149,15 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
       title="Change identity or bank details"
       consequence="HR approves it; you will be asked to confirm it is you. A new bank account is used for pay only after a short waiting period, and we tell you by email when it changes."
       confirmLabel="Send for approval"
-      confirmDisabled={!ready}
       onConfirm={async () => {
-        await onRequest({ kind: kind!, value: Object.fromEntries(fields.map((f) => [f.key, (value[f.key] ?? '').trim()])), reason: reason.trim() });
+        setTried(true);
+        setTouched(true);
+        if (!ready || !kind) return false;
+        await onRequest({ kind, value: Object.fromEntries(fields.map((f) => [f.key, (value[f.key] ?? '').trim()])), reason: reason.trim() });
         onClose();
       }}
     >
-      <FormField id="cr-kind" label="What changes" required>
+      <FormField id="cr-kind" label="What changes" required error={tried && !kind ? 'Choose what changes.' : null}>
         <Select
           aria-label="What changes"
           value={kind}
@@ -171,7 +174,7 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
           )}
         </FormField>
       ))}
-      <FormField id="cr-reason" label="Reason" required helper="For example: new bank, correction of a typo.">
+      <FormField id="cr-reason" label="Reason" required helper="For example: new bank, correction of a typo." error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -180,9 +183,10 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
 
 export function CancelDialog({ request, onCancel, onClose }: { request: ProfileRequest; onCancel: ProfileScreenProps['onCancelRequest']; onClose: () => void }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Withdraw the ${request.label.toLowerCase()} change?`} consequence="Nothing changes on the record." confirmLabel="Withdraw" destructive confirmDisabled={!reason.trim()} onConfirm={async () => (await onCancel(request.id, reason.trim()), onClose())}>
-      <FormField id="cc-reason" label="Reason" required>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Withdraw the ${request.label.toLowerCase()} change?`} consequence="Nothing changes on the record." confirmLabel="Withdraw" destructive onConfirm={async () => { setTried(true); if (!reason.trim()) return false; await onCancel(request.id, reason.trim()); onClose(); }}>
+      <FormField id="cc-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>

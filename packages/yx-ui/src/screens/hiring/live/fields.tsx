@@ -8,12 +8,13 @@ import type { JobCustomField } from './types';
 export type CustomValues = Record<string, string | number | null>;
 
 /** The company's custom fields as form inputs (jobs and candidates use the same definitions shape). */
-export function CustomFieldInputs({ fields, values, onChange, idPrefix }: { fields: JobCustomField[]; values: CustomValues; onChange: (v: CustomValues) => void; idPrefix: string }) {
+export function CustomFieldInputs({ fields, values, onChange, idPrefix, tried = false }: { fields: JobCustomField[]; values: CustomValues; onChange: (v: CustomValues) => void; idPrefix: string; /** Show "required" errors after a save attempt. */ tried?: boolean }) {
+  const empty = new Set(tried ? missingRequired(fields, values).map((f) => f.id) : []);
   const set = (id: string, v: string | number | null) => onChange({ ...values, [id]: v });
   return (
     <>
       {fields.map((f) => (
-        <FormField key={f.id} id={`${idPrefix}-cf-${f.id}`} label={f.label} required={f.required} optional={!f.required}>
+        <FormField key={f.id} id={`${idPrefix}-cf-${f.id}`} label={f.label} required={f.required} optional={!f.required} error={empty.has(f.id) ? `Enter the ${f.label}.` : null}>
           {f.fieldType === 'select' ? (
             <Select aria-label={f.label} value={(values[f.id] as string | undefined) ?? null} onChange={(v) => set(f.id, v)} options={(f.options ?? []).map((o) => ({ value: o, label: o }))} clearable />
           ) : f.fieldType === 'number' ? (

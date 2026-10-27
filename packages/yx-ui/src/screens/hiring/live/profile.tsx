@@ -184,6 +184,7 @@ function MergeDialog(p: CandidateProfileScreenProps & { keptName: string; kept: 
   const [other, setOther] = useState<string | null>(null);
   const [values, setValues] = useState<{ name: string; phone: string | null; hasResume: boolean } | null>(null);
   const [choices, setChoices] = useState<MergeChoices>({ name: 'kept', phone: 'kept', resume: 'kept' });
+  const [tried, setTried] = useState(false);
   const pickOther = async (id: string | null) => {
     setOther(id);
     setValues(id ? await p.loadOther(id) : null);
@@ -194,11 +195,16 @@ function MergeDialog(p: CandidateProfileScreenProps & { keptName: string; kept: 
     </FormField>
   );
   return (
-    <ConfirmDialog open destructive size="md" onOpenChange={(o) => !o && p.onClose()} title={`Merge a duplicate into ${p.keptName}`} consequence="Applications, messages, assessments, interviews, consents and files move to this candidate. If both applied to the same job, the duplicate's application closes as merged. A merge cannot be undone." confirmLabel="Merge" confirmDisabled={!other || !values} onConfirm={async () => {
-      await p.onMerge(other!, choices);
+    <ConfirmDialog open destructive size="md" onOpenChange={(o) => !o && p.onClose()} title={`Merge a duplicate into ${p.keptName}`} consequence="Applications, messages, assessments, interviews, consents and files move to this candidate. If both applied to the same job, the duplicate's application closes as merged. A merge cannot be undone." confirmLabel="Merge"
+      // Kept only while the chosen duplicate's details are still loading (a request is running).
+      confirmDisabled={Boolean(other) && !values}
+      onConfirm={async () => {
+      setTried(true);
+      if (!other || !values) return false;
+      await p.onMerge(other, choices);
       p.onClose();
     }}>
-      <FormField id="mg-other" label="Duplicate to merge in" required>
+      <FormField id="mg-other" label="Duplicate to merge in" required error={tried && !other ? 'Choose the duplicate to merge in.' : null}>
         <Select aria-label="Duplicate to merge in" value={other} onChange={(v) => void pickOther(v)} options={p.mergeCandidates} searchable onSearchChange={p.onMergeSearch} />
       </FormField>
       {values && (
@@ -215,13 +221,16 @@ function MergeDialog(p: CandidateProfileScreenProps & { keptName: string; kept: 
 
 function HoldDialog(p: { on: boolean; onClose: () => void; onSave: (on: boolean, reason: string | null) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.on ? 'Place a legal hold?' : 'Lift the legal hold?'} consequence={p.on ? 'While the hold is on, nothing about this candidate is erased, merged away or removed by the retention sweep.' : 'The candidate is handled by the normal retention rules again.'} confirmLabel={p.on ? 'Place hold' : 'Lift hold'} confirmDisabled={p.on && reason.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title={p.on ? 'Place a legal hold?' : 'Lift the legal hold?'} consequence={p.on ? 'While the hold is on, nothing about this candidate is erased, merged away or removed by the retention sweep.' : 'The candidate is handled by the normal retention rules again.'} confirmLabel={p.on ? 'Place hold' : 'Lift hold'} onConfirm={async () => {
+      setTried(true);
+      if (p.on && reason.trim().length < 3) return false;
       await p.onSave(p.on, p.on ? reason.trim() : null);
       p.onClose();
     }}>
       {p.on && (
-        <FormField id="lh-reason" label="Reason" required helper="For example the case or request reference.">
+        <FormField id="lh-reason" label="Reason" required helper="For example the case or request reference." error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
         </FormField>
       )}

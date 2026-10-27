@@ -120,12 +120,15 @@ function EntityDialog(p: { entity: CareersEntity; onClose: () => void; onSave: C
   const [color, setColor] = useState(p.entity.page?.primaryColor ?? '');
   const slugBad = slug !== '' && !SLUG.test(slug);
   const colorBad = color !== '' && !COLOR.test(color);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Careers page for ${p.entity.name}`} confirmLabel="Save page" confirmDisabled={!slug || slugBad || colorBad} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Careers page for ${p.entity.name}`} confirmLabel="Save page" onConfirm={async () => {
+      setTried(true);
+      if (!slug || slugBad || colorBad) return false;
       await p.onSave(p.entity.id, { slug, headline: headline.trim() || null, intro: intro.trim() || null, primaryColor: color || null });
       p.onClose();
     }}>
-      <FormField id="ce-slug" label="Web address" required helper="Lower-case letters, numbers and hyphens, for example kaveri-foods." error={slugBad ? 'Use lower-case letters, numbers and single hyphens.' : undefined}>
+      <FormField id="ce-slug" label="Web address" required helper="Lower-case letters, numbers and hyphens, for example kaveri-foods." error={slugBad ? 'Use lower-case letters, numbers and single hyphens.' : tried && !slug ? 'Enter the web address.' : undefined}>
         <TextField value={slug} onChange={setSlug} maxLength={60} />
       </FormField>
       <FormField id="ce-head" label="Headline" optional>
@@ -174,12 +177,15 @@ function NoticesCard(p: CareersSiteScreenProps) {
 function NoticeDialog(p: { purpose: ConsentPurpose; current: ConsentNotice | undefined; onClose: () => void; onPublish: CareersSiteScreenProps['onPublishNotice'] }) {
   const [text, setText] = useState(p.current?.text ?? '');
   const ok = text.trim().length >= 10 && text.trim() !== p.current?.text;
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Publish version ${(p.current?.version ?? 0) + 1}: ${PURPOSE[p.purpose].title.toLowerCase()}`} consequence="Applicants from now on see these words. You cannot edit a version once it is published." confirmLabel="Publish version" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title={`Publish version ${(p.current?.version ?? 0) + 1}: ${PURPOSE[p.purpose].title.toLowerCase()}`} consequence="Applicants from now on see these words. You cannot edit a version once it is published." confirmLabel="Publish version" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await p.onPublish(p.purpose, text.trim());
       p.onClose();
     }}>
-      <FormField id="cn-text" label="Notice text" required helper="Say what you collect, why, and how long you keep it (at least 10 characters).">
+      <FormField id="cn-text" label="Notice text" required helper="Say what you collect, why, and how long you keep it (at least 10 characters)." error={!tried || ok ? null : text.trim().length < 10 ? 'Enter a notice of at least 10 characters.' : 'Change the words to publish a new version.'}>
         <TextArea value={text} onChange={setText} maxLength={5000} rows={6} />
       </FormField>
     </ConfirmDialog>

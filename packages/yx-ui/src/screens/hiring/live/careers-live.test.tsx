@@ -25,12 +25,16 @@ describe('Careers site (AT3)', () => {
     await ue.click(screen.getByRole('button', { name: 'Set up page for Kaveri Retail LLP' }));
     const d = screen.getByRole('dialog');
     const save = within(d).getByRole('button', { name: 'Save page' });
+    await ue.click(save);
+    expect(within(d).getByText('Enter the web address.')).toBeInTheDocument();
     await ue.type(within(d).getByLabelText(/Web address/), 'Kaveri Retail');
-    expect(save).toBeDisabled();
+    await ue.click(save);
+    expect(onSaveEntity).not.toHaveBeenCalled();
     await ue.clear(within(d).getByLabelText(/Web address/));
     await ue.type(within(d).getByLabelText(/Web address/), 'kaveri-retail');
     await ue.type(within(d).getByLabelText(/Brand colour/), 'red');
-    expect(save).toBeDisabled();
+    await ue.click(save);
+    expect(onSaveEntity).not.toHaveBeenCalled();
     await ue.clear(within(d).getByLabelText(/Brand colour/));
     await ue.type(within(d).getByLabelText(/Brand colour/), '#112233');
     await ue.click(save);
@@ -43,7 +47,9 @@ describe('Careers site (AT3)', () => {
     expect(screen.getByText('Version 2')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: /Publish a new version: applying for a job/ }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Publish version' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Publish version' }));
+    expect(within(d).getByText('Change the words to publish a new version.')).toBeInTheDocument();
+    expect(onPublishNotice).not.toHaveBeenCalled();
     await ue.type(within(d).getByLabelText(/Notice text/), ' Ask us to delete them any time.');
     await ue.click(within(d).getByRole('button', { name: 'Publish version' }));
     expect(onPublishNotice).toHaveBeenCalledWith('application', expect.stringContaining('delete them any time'));
@@ -61,7 +67,9 @@ describe('Job boards (AT3)', () => {
 
     await ue.click(screen.getByRole('button', { name: 'Set up LinkedIn' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Save board' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Save board' }));
+    expect(within(d).getAllByText(/^Enter the /)).toHaveLength(2);
+    expect(onSave).not.toHaveBeenCalled();
     await ue.type(within(d).getByLabelText(/Access token/), 'secret-token');
     await ue.type(within(d).getByLabelText(/Organisation URN/), 'urn:li:organization:9');
     await ue.click(within(d).getByRole('button', { name: 'Save board' }));
