@@ -173,6 +173,9 @@ describe('Lifecycle batch 6d', () => {
 
   it('a failing step is tried three times, then HR is told; HR fixes it and retries', async () => {
     await api('adminA', 'post', `/letters/templates/${ids.tpl_experience}/retire`).expect(200);
+    // Founder test 27 Oct 2026 (PPL-29): a stopped template stays listed, to use again.
+    const listed = (await api('adminA', 'get', '/letters/templates').expect(200)).body.templates as { id: string; status: string }[];
+    expect(listed.find((t) => t.id === ids.tpl_experience)).toMatchObject({ status: 'retired' });
     const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.kiran, exitType: 'retirement', lwd: today, reasonText: 'Retires' }).expect(201)).body;
     ids.kiranCase = k.id;
     for (let i = 0; i < 3; i++) await lastDay.sweepCase(org.A.id, k.id, tomorrowNoonIst()).then(() => lastDay.runStepsOf(org.A.id, k.id, ['t0']));
