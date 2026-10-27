@@ -328,6 +328,10 @@
 .yx-card__body { flex: 1; padding: var(--yx-space-3) var(--yx-space-4) var(--yx-space-4); }
 /* Blocks in a card never touch: each block after the first keeps one standard gap from the one above (only spacing; widths and order stay). */
 .yx-card__body > * + * { margin-top: var(--yx-space-3); }
+/* Lists and paragraphs: screens reset their browser margins with a later `margin: 0` (e.g. .yx-lif-list, .yx-growth-list), which beat the rule above. */
+.yx-card__body > * + :is(ul, ol, dl, p) { margin-top: var(--yx-space-3); }
+/* Badges placed straight in a card body sit in one line of text: keep 8px between them instead of touching. */
+.yx-card__body > .yx-badge + .yx-badge { margin-left: var(--yx-space-2); }
 .yx-card__foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--yx-space-2); padding: var(--yx-space-3) var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 
 .yx-dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--yx-space-3) var(--yx-space-6); margin: 0; }
