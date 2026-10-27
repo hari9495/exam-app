@@ -97,6 +97,14 @@ describe('PPL-29 letter templates, live', () => {
     expect(await screen.findByText('Relieving and experience is now in use')).toBeTruthy();
   });
 
+  it('the "Letter templates" breadcrumb goes back to the list (the workspace has no address of its own)', async () => {
+    page();
+    await ue.click(screen.getByRole('row', { name: /Relieving and experience/ }));
+    await ue.click(screen.getByRole('link', { name: 'Letter templates' }));
+    expect(screen.getByRole('row', { name: /Relieving, short/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Activate' })).toBeNull();
+  });
+
   it('an unknown placeholder is reported with "Use suggestion", which uploads again with the rename', async () => {
     const onUpload = vi.fn().mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'TEMPLATE_FIELDS', body: { errors: { emp_nme: 'employee_name' } } })).mockResolvedValueOnce(T('t3', 'Relieving and experience', { version: 2 }));
     page({ onUpload });

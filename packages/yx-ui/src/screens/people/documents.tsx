@@ -1288,7 +1288,7 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
     toast({ tone: 'success', title: `${t.name} version ${t.version} added as a draft` });
     open(t, 'test');
   };
-  if (ws) return <LiveTemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} />;
+  if (ws) return <LiveTemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} onClose={() => setWs(null)} />;
   const cols: TableColumn<LetterTemplate>[] = [
     { key: 'name', header: 'Template', value: (r) => r.name, width: 280 },
     { key: 'type', header: 'Letter type', value: (r) => typeName(d, r.letterType), groupable: true, width: 180 },
@@ -1465,7 +1465,7 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
 type UploadReport = { file: File; fixes: Record<string, string>; unknown?: Record<string, string>; refused?: string };
 
 // PPL-29 · template workspace, live: the designed workspace for one template (or a new one not saved yet).
-function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplates; ws: Workspace; onChange: (ws: Workspace) => void }) {
+function LiveTemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTemplates; ws: Workspace; onChange: (ws: Workspace) => void; onClose: () => void }) {
   const { t, spec } = ws;
   const d = live.data;
   const { toast } = useToast();
@@ -1534,7 +1534,7 @@ function LiveTemplateWorkspace({ live, ws, onChange }: { live: LiveLetterTemplat
   return (
     <PeopleFrame active="Documents & letters">
       <ObjectHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Letter templates', href: live.listHref }, { label: spec.name }]} />}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Letter templates', href: live.listHref, onClick: onClose }, { label: spec.name }]} />}
         name={spec.name}
         icon={FileUp}
         secondary={t ? `${typeName(d, spec.letterType)} · ${madeWith} · ${LANGUAGE.of(t.language) ?? t.language} · version ${t.version}` : `${typeName(d, spec.letterType)} · not saved yet`}
