@@ -46,8 +46,8 @@ export class WorkAuthService {
         designation,
         reminderDays: reminders,
         rows: [
-          ...rows.map((r) => ({ id: r.id, kind: r.kind, country: r.country, number: `•••• ${r.numberLast4}`, sponsor: r.sponsor, occupation: r.occupation, issuedOn: r.issuedOn ? isoDate(r.issuedOn) : null, expiresOn: isoDate(r.expiresOn), remindedDays: r.remindedDays })),
-          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: `•••• ${passport.passportLast4}`, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
+          ...rows.map((r) => ({ id: r.id, kind: r.kind, country: r.country, number: `XXXX-${r.numberLast4}`, sponsor: r.sponsor, occupation: r.occupation, issuedOn: r.issuedOn ? isoDate(r.issuedOn) : null, expiresOn: isoDate(r.expiresOn), remindedDays: r.remindedDays })),
+          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: `XXXX${passport.passportLast4}`, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
         ],
       };
     });
