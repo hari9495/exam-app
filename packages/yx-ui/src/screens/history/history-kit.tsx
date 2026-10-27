@@ -564,7 +564,7 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
                   </Text>
                 )}
                 <Text size="sm" tone="secondary" as="p">
-                  There is no settlement at the old entity. A continuity checklist opens on this change: UAN transfer, ESI IP, Form 12B, declarations, loans, leave and gratuity.
+                  There is no settlement at the old entity. HR approves the move in People › Restructure. A continuity checklist opens on it: UAN transfer, ESI IP, Form 12B, declarations, loans, leave and gratuity.
                 </Text>
               </div>
             </Card>
