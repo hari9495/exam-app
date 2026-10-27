@@ -163,6 +163,27 @@ describe('Checklist record (PPL-13)', () => {
     expect(screen.getByRole('heading', { name: 'Joining day' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'After joining' })).toBeInTheDocument();
   });
+
+  it('PPL-15: a cancelled joiner shows why, with no countdown, ring or task count; the alert stays', () => {
+    const cancelled = { ...JOURNEY, status: 'cancelled' as const, joiner: { status: 'cancelled', outcome: 'reneged', joined: false } };
+    wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-09')} live={{ ...live(), journey: cancelled }} />);
+    expect(screen.getByText('Cancelled: reneged')).toBeInTheDocument();
+    expect(screen.getByText(/was to join 19 Oct 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/in 10 days/)).toBeNull();
+    expect(screen.queryByText('Tasks done')).toBeNull();
+    expect(screen.queryByRole('img', { name: /% done/ })).toBeNull();
+    expect(screen.getByText('This checklist was cancelled.')).toBeInTheDocument();
+  });
+
+  it('PPL-15: a joining day that passed without being marked joined is "was due to join", never "joined"', () => {
+    const due = { ...JOURNEY, joiner: { status: 'invited', outcome: null, joined: false } };
+    const { unmount } = wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-21')} live={{ ...live(), journey: due }} />);
+    expect(screen.getByText(/was due to join 19 Oct 2026 \(2 days ago\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/· joined 19 Oct 2026/)).toBeNull();
+    unmount();
+    wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-21')} live={{ ...live(), journey: { ...JOURNEY, joiner: { status: 'joined', outcome: null, joined: true } } }} />);
+    expect(screen.getByText(/joined 19 Oct 2026/)).toBeInTheDocument();
+  });
 });
 
 describe('My checklist tasks (PPL-47) and Life events (PPL-48)', () => {

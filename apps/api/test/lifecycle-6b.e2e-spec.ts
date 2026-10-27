@@ -447,6 +447,8 @@ describe('Lifecycle batch 6b', () => {
     await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: '  ', version: now.version }).expect(400);
     await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'reneged', version: now.version }).expect(200);
     expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }))).toMatchObject({ status: 'cancelled', outcome: 'reneged', outcomeReason: null });
+    // The checklist header reads the joiner's own state (cancelled, why), never a countdown (PPL-15).
+    expect((await api('hr', 'get', `/lifecycle/journeys/${j.journeyId}`).expect(200)).body.joiner).toEqual({ status: 'cancelled', outcome: 'reneged', joined: false });
     await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: now.version + 1 }).expect(409);
   });
 

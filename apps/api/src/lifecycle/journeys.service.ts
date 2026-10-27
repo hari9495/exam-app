@@ -394,6 +394,8 @@ export class LifecycleJourneysService implements OnModuleInit {
       // G1: the journey's name and steps in the reader's language where the company translated them.
       const words = await journeyWords(tx, c, [j]);
       const today = todayIst();
+      // PPL-15: a joiner's own state, so the header never says "joined" before they did, or "joins" once cancelled.
+      const pb = j.subjectType === 'preboarding' ? await tx.preboarding.findFirst({ where: { organizationId: org, id: j.subjectId }, select: { status: true, outcome: true, joinedAt: true } }) : null;
       // A document task stays open until HR verifies the file; say when the file is already in (or was refused).
       const docKeys = tasks.flatMap((x) => (x.kind === 'document' && (x.config as { typeKey?: string }).typeKey ? [(x.config as { typeKey: string }).typeKey] : []));
       const docs = docKeys.length ? await tx.document.findMany({ where: { organizationId: org, personId: j.personId, typeKey: { in: docKeys } }, select: { typeKey: true, status: true } }) : [];
@@ -409,6 +411,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         status: j.status,
         progress: j.progress,
         template: words.template(j.templateId, t?.name ?? ''),
+        joiner: pb ? { status: pb.status, outcome: pb.outcome, joined: Boolean(pb.joinedAt) } : null,
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
         today,

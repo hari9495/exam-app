@@ -85,6 +85,8 @@ export interface Journey {
   status: 'active' | 'done' | 'cancelled';
   progress: number;
   template: string;
+  /** PPL-15: an onboarding's joiner: still to join, joined (marked so), or cancelled with the outcome. */
+  joiner?: { status: string; outcome: string | null; joined: boolean } | null;
   owner: string | null;
   canManage: boolean;
   today: string;
