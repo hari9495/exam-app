@@ -233,7 +233,7 @@ export class RestructureService {
     const into = h.intoEntityId ? await tx.legalEntity.findFirst({ where: { organizationId: org, id: h.intoEntityId } }) : null;
     if (h.kind === 'within') {
       if (h.intoEntityId) throw new BadRequestException('A move inside one legal entity has no second entity.');
-      if (!p.locationIds.length && !p.departmentIds.length) throw new BadRequestException('Choose the locations or departments whose people move.');
+      if (!p.locationIds.length && !p.departmentIds.length && !p.employeeIds?.length) throw new BadRequestException('Choose the locations, departments or people who move.');
       const t = p.target;
       if (!t.departmentId && !t.locationId && t.managerEmployeeId === undefined && !t.costCentreId) throw new BadRequestException('Choose the new department, location, manager or cost centre.');
       if (t.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: t.locationId, legalEntityId: from.id, archivedAt: null } }))) throw new BadRequestException(`Choose a location of ${from.name}.`);
@@ -242,7 +242,7 @@ export class RestructureService {
       if (!into) throw new BadRequestException('Choose the legal entity people move into.');
       if (into.id === from.id) throw new BadRequestException('People move into another legal entity.');
       if (into.archivedAt) throw new BadRequestException(`${into.name} is archived.`);
-      if (h.kind === 'demerge' && !p.locationIds.length && !p.employeeIds?.length) throw new BadRequestException('Choose the locations whose people move.');
+      if (h.kind === 'demerge' && !p.locationIds.length && !p.employeeIds?.length) throw new BadRequestException('Choose the locations or the people who move.');
       const targets = [...Object.values(p.locationMap), ...(p.target.locationId ? [p.target.locationId] : [])];
       if (targets.length) {
         const ok = await tx.location.count({ where: { organizationId: org, id: { in: targets }, legalEntityId: into.id, archivedAt: null } });
