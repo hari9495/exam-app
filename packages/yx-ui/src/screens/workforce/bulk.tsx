@@ -116,6 +116,7 @@ function BatchDrawer({ id, canApprove, canManage, loadBatch, onApprove, onReject
   const [rebase, setRebase] = useState(false);
   const [ask, setAsk] = useState<'reject' | 'cancel' | null>(null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
     loadBatch(id).then(setBatch, (e: Error) => setLoadError(e.message));
@@ -176,20 +177,26 @@ function BatchDrawer({ id, canApprove, canManage, loadBatch, onApprove, onReject
       {ask && (
         <ConfirmDialog
           open
-          onOpenChange={(o) => !o && setAsk(null)}
+          onOpenChange={(o) => {
+            if (!o) {
+              setAsk(null);
+              setTried(false);
+            }
+          }}
           size="md"
           title={ask === 'reject' ? 'Reject every change in this batch?' : 'Cancel this batch?'}
           consequence={ask === 'reject' ? 'None of the changes go ahead. The person who raised it sees your reason.' : 'None of the changes go ahead.'}
           confirmLabel={ask === 'reject' ? 'Reject batch' : 'Cancel batch'}
           destructive
-          confirmDisabled={reason.trim().length < 3}
           onConfirm={async () => {
+            setTried(true);
+            if (reason.trim().length < 3) return false;
             await (ask === 'reject' ? onReject(id, reason.trim()) : onCancel(id, reason.trim()));
             setAsk(null);
             onClose();
           }}
         >
-          <FormField id="bt-reason" label="Reason" required helper="At least 3 characters.">
+          <FormField id="bt-reason" label="Reason" required helper="At least 3 characters." error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
             <TextArea value={reason} onChange={setReason} rows={2} maxLength={1000} />
           </FormField>
         </ConfirmDialog>

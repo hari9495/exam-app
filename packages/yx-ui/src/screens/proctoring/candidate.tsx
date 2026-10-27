@@ -82,6 +82,7 @@ export function CandidatePortalHomeScreen({ state = 'tests', rescheduleCount = 0
           </Card>
         </div>
       )}
+      {/* confirmDisabled kept: the reschedule rule is set elsewhere; nothing in this dialog can change it (the reason is shown). */}
       <ConfirmDialog open={open} onOpenChange={setOpen} title="Change your slot?" consequence={rule.ok ? `You have ${2 - rescheduleCount} changes left.` : rule.reason} confirmLabel="Choose a new slot" confirmDisabled={!rule.ok} onConfirm={() => setOpen(false)} />
     </CandidateFrame>
   );

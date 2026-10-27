@@ -26,6 +26,7 @@ export default function YxAbscondingPage() {
   const [who, setWho] = useState<string | null>(null);
   const [last, setLast] = useState<Date | null>(null);
   const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
   return (
     <AbscondingTimeline
       today={day(today)}
@@ -36,10 +37,12 @@ export default function YxAbscondingPage() {
         onStart: () => {
           setWho(null);
           setLast(null);
+          setTried(false);
           setStarting(true);
         },
         onStop: (r) => {
           setText('');
+          setTried(false);
           setStopping(r);
         },
         onResume: async (r) => {
@@ -48,6 +51,7 @@ export default function YxAbscondingPage() {
         },
         onDispatch: (r, key) => {
           setText('');
+          setTried(false);
           setDispatch({ r, key });
         },
         onOpenExit: (exitCaseId) => router.push(`/yx/people/exits/${id(exitCaseId)}`),
@@ -61,17 +65,18 @@ export default function YxAbscondingPage() {
                 title="Start an absconding timeline"
                 consequence="The steps run on their days. Every step is recorded; you can stop it at any time."
                 confirmLabel="Start timeline"
-                confirmDisabled={!who || !last}
                 onConfirm={async () => {
+                  setTried(true);
+                  if (!who || !last) return false;
                   await write('POST', '/lifecycle/absconding', { employeeId: who!, lastPresentOn: dayKey(last!) });
                   setStarting(false);
                   toast({ tone: 'success', title: `Absconding timeline started for ${places.managers.find((m) => m.value === who)?.label.split(',')[0] ?? 'the employee'}` });
                 }}
               >
-                <FormField id="ab-who" label="Person" required>
+                <FormField id="ab-who" label="Person" required error={tried && !who ? 'Choose the person.' : null}>
                   <Select aria-label="Person" value={who} onChange={setWho} options={places.managers} searchable />
                 </FormField>
-                <FormField id="ab-last" label="Last day present" required>
+                <FormField id="ab-last" label="Last day present" required error={tried && !last ? 'Choose the last day present.' : null}>
                   <DatePicker value={last} onChange={setLast} max={day(today)} aria-label="Last day present" />
                 </FormField>
               </ConfirmDialog>
@@ -83,14 +88,15 @@ export default function YxAbscondingPage() {
                 title={`Stop the absconding timeline for ${stopping.name}?`}
                 consequence="No further notices go out, and the salary hold is released (the held pay goes in the next payment). Regularise the absent days in Time."
                 confirmLabel="Stop timeline"
-                confirmDisabled={text.trim().length < 3}
                 onConfirm={async () => {
+                  setTried(true);
+                  if (text.trim().length < 3) return false;
                   await write('POST', `/lifecycle/absconding/${id(stopping.id)}/stop`, { reason: text.trim(), version: stopping.version });
                   toast({ tone: 'success', title: `The timeline for ${stopping.name} is stopped` });
                   setStopping(null);
                 }}
               >
-                <FormField id="ab-why" label="Reason" required>
+                <FormField id="ab-why" label="Reason" required error={tried && text.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
                   <TextArea value={text} onChange={setText} rows={2} maxLength={500} />
                 </FormField>
               </ConfirmDialog>
@@ -102,14 +108,15 @@ export default function YxAbscondingPage() {
                 title={`Dispatch proof for ${dispatch.r.name}`}
                 consequence="The registered post's article number is kept with the notice."
                 confirmLabel="Save"
-                confirmDisabled={text.trim().length < 3}
                 onConfirm={async () => {
+                  setTried(true);
+                  if (text.trim().length < 3) return false;
                   await write('PUT', `/lifecycle/absconding/${id(dispatch.r.id)}/steps/${id(dispatch.key)}/dispatch`, { ref: text.trim(), version: dispatch.r.version });
                   toast({ tone: 'success', title: `Dispatch proof saved for ${dispatch.r.name}` });
                   setDispatch(null);
                 }}
               >
-                <FormField id="ab-ref" label="Article number" required>
+                <FormField id="ab-ref" label="Article number" required error={tried && text.trim().length < 3 ? 'Enter an article number of at least 3 characters.' : null}>
                   <TextField value={text} onChange={setText} maxLength={60} />
                 </FormField>
               </ConfirmDialog>

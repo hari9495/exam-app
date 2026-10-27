@@ -1578,6 +1578,7 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
   const [newEnd, setNewEnd] = useState<Date | null>(null);
   const [remitting, setRemitting] = useState<CourtOrder | null>(null);
   const [remitRef, setRemitRef] = useState('');
+  const [triedRemit, setTriedRemit] = useState(false);
   const newPerson = findRunPerson(newWho);
   // Deductions start with the October 2026 run and run to the end month.
   const OCT = d(1, 9);
@@ -1803,17 +1804,19 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
           if (!o) {
             setRemitting(null);
             setRemitRef('');
+            setTriedRemit(false);
           }
         }}
         title={remitting ? `Record ${formatINR(remitting.monthly)} paid to the ${remitting.payee.toLowerCase()} for ${remitting.ref} (September)?` : ''}
         consequence={remitting ? `Remitted becomes ${formatINR(remitting.remitted + remitting.monthly)} of ${formatINR(remitting.total)}. The payment reference is saved in the audit trail.` : undefined}
         confirmLabel="Record remittance"
-        confirmDisabled={!remitRef.trim()}
         onConfirm={() => {
+          setTriedRemit(true);
+          if (!remitRef.trim()) return false;
           if (remitting) recordRemittance(remitting);
         }}
       >
-        <FormField label="Payment reference" required helper="The bank or challan reference of the payment to the court.">
+        <FormField label="Payment reference" required helper="The bank or challan reference of the payment to the court." error={triedRemit && !remitRef.trim() ? 'Enter the payment reference.' : null}>
           <TextField value={remitRef} onChange={setRemitRef} placeholder="UTR or challan number" />
         </FormField>
       </ConfirmDialog>

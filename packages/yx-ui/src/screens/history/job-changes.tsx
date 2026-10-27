@@ -59,6 +59,7 @@ export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: 
 export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; onDone: () => void; onClose: () => void; act: (reason: string, date: string | null) => Promise<void> }) {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
   // "Joined" is a past-tense label; as the thing being moved or cancelled it reads "joining".
   const what = ask.row.changeType === 'join' ? 'joining' : TYPE_LABEL[ask.row.changeType].toLowerCase();
   const copy = {
@@ -76,18 +77,19 @@ export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; on
       consequence={copy.consequence}
       confirmLabel={copy.label}
       destructive={ask.kind !== 'reschedule'}
-      confirmDisabled={!ready}
       onConfirm={async () => {
+        setTried(true);
+        if (!ready) return false;
         await act(reason.trim(), date ? dayKey(date) : null);
         onDone();
       }}
     >
       {ask.kind === 'reschedule' ? (
-        <FormField id="rs-date" label="New date" required>
+        <FormField id="rs-date" label="New date" required error={tried && !date ? 'Choose the new date.' : null}>
           <DatePicker value={date} onChange={setDate} aria-label="New date" />
         </FormField>
       ) : (
-        <FormField id="rs-reason" label="Reason" required helper="At least 3 characters.">
+        <FormField id="rs-reason" label="Reason" required helper="At least 3 characters." error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={2} maxLength={1000} />
         </FormField>
       )}

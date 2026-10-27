@@ -411,6 +411,7 @@ export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, c
         </Card>
       )}
       {approved && <InlineAlert tone="success">Approved {formatClock(c.needsApproval)} extra by Neha Joshi on 28 Sep, 11:06 am. Reason: "Area-wide outage confirmed by the college."</InlineAlert>}
+      {/* confirmDisabled kept: the reason field is on the page behind the dialog, not in it; the dialog says what to fix. */}
       <ConfirmDialog open={open} onOpenChange={setOpen} title={`Approve ${formatClock(c.needsApproval)} extra time for Ananya Rao?`} consequence="The timer adds this time when she resumes after the face re-check. This is audited." confirmLabel="Approve extra time" onConfirm={() => setOpen(false)} confirmDisabled={reason.trim().length < 10}>
         {reason.trim().length < 10 && <p className="yx-prc-small yx-prc-danger">Enter a reason of at least 10 characters first.</p>}
       </ConfirmDialog>
