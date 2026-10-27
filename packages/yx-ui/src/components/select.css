@@ -19,6 +19,7 @@
   align-items: center;
   gap: var(--yx-space-2);
   width: 100%;
+  box-sizing: border-box; /* the multi-select is a div, not a button: without this its padding pushed it 22px past drawers and cards */
   /* A single choice never needs more than a form's width; page-wide pickers (Person, …) stopped stretching across 1400 px (founder review 14 Oct 2026). */
   max-width: var(--yx-form-max);
   height: var(--yx-control-md);
