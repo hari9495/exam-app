@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { samePersonPairs } from '../people/same-person.service';
+import { cycleOf } from '../people/bfsi.service';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
@@ -425,6 +426,11 @@ export class WorkspaceService {
       out.approvals = await one(Prisma.sql`SELECT count(*) AS n FROM wf_tasks t JOIN wf_requests r ON r.id = t.request_id
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
+      // PPL-43: a designated person's annual declaration still to submit (absent for everyone else).
+      const own = await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (!support && own && (await tx.bfsiDesignation.count({ where: { organizationId: org, employeeId: own.id } }))) {
+        out.declarationsDue = (await tx.bfsiDeclaration.count({ where: { organizationId: org, employeeId: own.id, cycle: cycleOf(todayIst()), status: 'submitted' } })) ? 0 : 1;
+      }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
       // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
       // count leaves out reviews that went to HR, which only HR decides) (company-wide

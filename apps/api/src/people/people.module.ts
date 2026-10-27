@@ -18,6 +18,8 @@ import { IdentityChecksService } from './identity-checks.service';
 import { WorkAuthService } from './work-auth.service';
 import { DisabilityService } from './disability.service';
 import { SamePersonService } from './same-person.service';
+import { BfsiService } from './bfsi.service';
+import { BfsiController } from './bfsi.controller';
 import { PersonPanelsController } from './person-panels.controller';
 
 // People core on top of the P06 history engine (step 2c): directory, org chart, team, persons, probation and
@@ -25,8 +27,8 @@ import { PersonPanelsController } from './person-panels.controller';
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
   imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule, NotificationsModule],
-  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
-  controllers: [PeopleController, WorkforceController, EmployeeImportController, PersonPanelsController],
+  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, BfsiService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
+  controllers: [PeopleController, WorkforceController, EmployeeImportController, PersonPanelsController, BfsiController],
   exports: [PeopleService, ProfileService],
 })
 export class PeopleModule {}

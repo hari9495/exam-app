@@ -47,6 +47,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
   'work.normal_week_hours': { pack: 'From the country pack' },
   'pay.band.above_max': { warn: 'Warn only', cap: 'Cap at the maximum', block: 'Block' },
+  'bfsi.declaration_due': { '04-30': '30 April', '06-30': '30 June', '09-30': '30 September', '10-15': '15 October', '12-31': '31 December' },
   'work_auth.reminder_days': { '90,60,30': '90, 60 and 30 days before', '60,30': '60 and 30 days before', '30': '30 days before', off: 'No reminders' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
 };
@@ -69,6 +70,7 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
     { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },
     { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
+    { title: 'Regulated declarations', description: 'For designated persons (BFSI): the day each financial year’s holdings, related persons and conflicts are due.', keys: ['bfsi.declaration_due'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
   access: [

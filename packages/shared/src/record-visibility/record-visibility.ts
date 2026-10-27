@@ -56,6 +56,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
   // M05 expenses E2: claims are about people, scoped like their records; finance checks them per legal entity.
   if (key === 'expense.claim.view') return GRANT_SCOPE_TYPES;
+  // PPL-43 / PPL-44: the compliance officer works for the designated persons of their entities, like employee records.
+  if (key === 'compliance.declaration.manage') return GRANT_SCOPE_TYPES;
   // M06 PM2: goals are about people, scoped like their records; periods and company goals are company-wide.
   if (key === 'perf.goal.view') return GRANT_SCOPE_TYPES;
   // PM4: reviews are about people, scoped like their records; cycles are company-wide for now.

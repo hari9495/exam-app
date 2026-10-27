@@ -1,9 +1,10 @@
 import { Type } from 'class-transformer';
 import { Equals, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ID_TYPES } from './identity-checks.service';
+import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the person record's panels (PPL-34 identity checks, PPL-45 work authorisations) and the person's own
-// disability declaration (PPL-38); possible same person and merges (PPL-36, PPL-37).
+// disability declaration (PPL-38); possible same person and merges (PPL-36, PPL-37); BFSI declarations (PPL-43).
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
@@ -103,4 +104,38 @@ export class MergeDto {
 export class UnmergeDto {
   @IsString() @MinLength(1, { message: 'Enter a reason for the audit log.' }) @MaxLength(1000)
   note!: string;
+}
+
+export class BfsiHoldingDto {
+  @IsString() @MinLength(1) @MaxLength(200)
+  security!: string;
+
+  @IsInt() @Min(1) @Max(1_000_000_000)
+  quantity!: number;
+
+  @IsOptional() @IsString() @MaxLength(120)
+  how?: string;
+}
+
+export const RELATIONS = ['Spouse', 'Father', 'Mother', 'Son', 'Daughter', 'Brother', 'Sister', 'Dependant', 'Other'] as const;
+export class BfsiRelatedDto {
+  @IsString() @MinLength(1) @MaxLength(200)
+  name!: string;
+
+  @IsIn(RELATIONS)
+  relation!: string;
+
+  @IsOptional() @Matches(PAN, { message: 'pan is 5 letters, 4 digits, 1 letter (e.g. ABCPE1234F)' })
+  pan?: string;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  holdings?: string;
+}
+
+export class BfsiCoiDto {
+  @IsIn(['yes', 'no'])
+  answer!: 'yes' | 'no';
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  details?: string;
 }

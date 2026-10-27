@@ -44,6 +44,7 @@ export const CONFIDENTIAL_LABEL: Record<string, string> = {
   'org.entity.statutory.manage': 'change company tax identifiers',
   'succession.manage': 'see and edit succession plans',
   'employee.disability.view': 'see disability declarations',
+  'compliance.declaration.manage': 'see declared holdings and approve trades',
 };
 
 const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentId' | null> = {

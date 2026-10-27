@@ -3,9 +3,10 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, PersonOption } from '@yukthix/ui/history';
 import type { MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
-import { apiFetch } from './api-client';
+import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 import { todayIst, useOrg } from './yx-org';
+import { saveBlob } from './yx-pay';
 
 // API glue for People › job history and changes (P06). The screens in @yukthix/ui/history stay presentational.
 
@@ -20,6 +21,15 @@ export function usePeople<T>(path: string | null, opts: { keepPrevious?: boolean
     // Paged / searched lists keep showing the last page while the next one loads.
     ...(opts.keepPrevious ? { placeholderData: keepPreviousData } : {}),
   });
+}
+
+/** A file from the people API saved to the device (a CSV register). */
+export function usePeopleDownload() {
+  const { accessToken } = useAuth();
+  return async (path: string, fallbackName: string) => {
+    const { blob, filename } = await apiFetchBlob(`/people${path}`, {}, accessToken ?? undefined);
+    saveBlob(blob, filename ?? fallbackName);
+  };
 }
 
 /** A one-off read under the people API (not cached), stable across renders. */

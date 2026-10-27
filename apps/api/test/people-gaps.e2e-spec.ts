@@ -13,9 +13,9 @@ import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.serv
 
 // The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
 // authorisations (PPL-45), international bank details (PPL-46), disability declarations (PPL-38), possible same person, merge and
-// unmerge (PPL-36/37). Each with its key,
+// unmerge (PPL-36/37), BFSI declarations (PPL-43). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, PPL-36, PPL-37)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, PPL-36, PPL-37, PPL-43)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -77,7 +77,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
     const hrKeys = ['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.identity.view', 'employee.identity.manage'];
     const hr = await profile([...hrKeys, 'employee.aadhaar.view', 'employee.identity.approve'], 'HR');
     const hrPlain = await profile(hrKeys, 'HR without Special');
-    ids.plant = await profile(['employee.profile.view', 'employee.aadhaar.view', 'employee.disability.view'], 'Plant HR');
+    ids.plant = await profile(['employee.profile.view', 'employee.aadhaar.view', 'employee.disability.view', 'compliance.declaration.manage'], 'Plant HR');
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string | null][] = [
       ['hrA', 'A', 'panel', hr],
@@ -394,6 +394,69 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       expect(back.login.roleType).toBe('login');
       expect(back.emp.userId).toBeNull();
       expect(back.log.map((l) => l.action)).toEqual(['merge', 'unmerge']);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ BFSI declarations (PPL-43)
+
+  describe('BFSI declarations (PPL-43)', () => {
+    it('the compliance officer designates people they reach; nobody else may', async () => {
+      await api('hrA', 'post', `/people/bfsi/designations/${ids.arjun}`).expect(403);
+      await api('arjunU', 'get', '/people/bfsi/register').expect(403);
+      await api('hrTn', 'post', `/people/bfsi/designations/${ids.arjun}`).expect(404); // outside the plant
+      expect((await api('arjunU', 'get', '/people/me/bfsi').expect(200)).body).toEqual({ designated: false });
+      await api('arjunU', 'post', '/people/me/bfsi/holdings').send({ security: 'X', quantity: 1 }).expect(403);
+      // hrPlain holds the officer profile company-wide (granted in PPL-38's test).
+      expect((await api('hrPlain', 'get', '/people/bfsi/candidates').expect(200)).body.map((p: { employeeId: string }) => p.employeeId)).toContain(ids.arjun);
+      await api('hrPlain', 'post', `/people/bfsi/designations/${ids.arjun}`).expect(201);
+      const reg = (await api('hrPlain', 'get', '/people/bfsi/register').expect(200)).body;
+      expect(reg.rows).toEqual([expect.objectContaining({ employeeId: ids.arjun, name: 'Arjun', status: expect.stringMatching(/Pending|Overdue/) })]);
+      expect((await api('hrTn', 'get', '/people/bfsi/register').expect(200)).body.rows).toEqual([]);
+    });
+
+    it('the person declares holdings, related persons and conflicts; values are sealed; submitting needs step-up and an answer', async () => {
+      const holding = (await api('arjunU', 'post', '/people/me/bfsi/holdings').send({ security: 'Deccan Agro Industries Ltd', quantity: 350, how: 'Demat · NSDL' }).expect(201)).body.id;
+      await api('arjunU', 'post', '/people/me/bfsi/holdings').send({ security: 'Y', quantity: 0 }).expect(400);
+      await api('arjunU', 'post', '/people/me/bfsi/related').send({ name: 'Shalini', relation: 'Spouse', pan: 'BRGPR7712' }).expect(400);
+      await api('arjunU', 'post', '/people/me/bfsi/related').send({ name: 'Shalini', relation: 'Cousin' }).expect(400);
+      await api('arjunU', 'post', '/people/me/bfsi/related').send({ name: 'Shalini', relation: 'Spouse', pan: 'BRGPR7712K' }).expect(201);
+      const extra = (await api('arjunU', 'post', '/people/me/bfsi/holdings').send({ security: 'Mistake Ltd', quantity: 1 }).expect(201)).body.id;
+      await api('arjunU', 'delete', `/people/me/bfsi/holdings/${extra}`).expect(200);
+      await api('arjunU', 'put', '/people/me/bfsi/coi').send({ answer: 'yes' }).expect(400);
+      await up('arjunU');
+      await api('arjunU', 'post', '/people/me/bfsi/submit').expect(400); // the conflict question first
+      await api('arjunU', 'put', '/people/me/bfsi/coi').send({ answer: 'yes', details: 'My brother supplies packaging' }).expect(200);
+      const mine = (await api('arjunU', 'get', '/people/me/bfsi').expect(200)).body;
+      expect(mine).toMatchObject({ designated: true, status: 'draft', holdings: [{ id: holding, security: 'Deccan Agro Industries Ltd', quantity: 350, how: 'Demat · NSDL' }], related: [{ name: 'Shalini', relation: 'Spouse', pan: '•••• 712K' }], coi: { answer: 'yes', details: 'My brother supplies packaging' } });
+      const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.bfsiDeclaration.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(`${row.holdingsEnc}${row.relatedEnc}${row.coiEnc}`).not.toMatch(/Deccan|BRGPR|brother/);
+      // The officer cannot read a draft.
+      await api('hrPlain', 'get', `/people/bfsi/declarations/${ids.arjun}`).expect(404);
+      await api('arjunU', 'post', '/people/me/bfsi/submit').expect(201);
+      await api('arjunU', 'post', '/people/me/bfsi/holdings').send({ security: 'Late Ltd', quantity: 1 }).expect(409);
+    });
+
+    it('the officer reviews (a recorded look), cannot remind a submitted person, and exports statuses only', async () => {
+      const review = (await api('hrPlain', 'get', `/people/bfsi/declarations/${ids.arjun}`).expect(200)).body;
+      expect(review.holdings).toHaveLength(1);
+      expect((await audits('compliance.declaration.viewed')).map((a) => a.entityId)).toEqual([ids.arjun]);
+      const log = (await api('arjunU', 'get', '/people/me/access-log').expect(200)).body.entries;
+      expect(log).toEqual(expect.arrayContaining([expect.objectContaining({ what: 'Annual declaration (holdings and related persons)', context: 'Compliance review' })]));
+      await api('hrPlain', 'post', `/people/bfsi/declarations/${ids.arjun}/remind`).expect(409);
+      const csv = (await api('hrPlain', 'get', '/people/bfsi/register.csv').expect(200)).text;
+      expect(csv).toContain('Arjun,Holdings and relatives (annual)');
+      expect(csv).toContain(',Done,');
+      expect(csv).not.toContain('Deccan');
+      expect((await api('hrPlain', 'get', '/people/bfsi/register').expect(200)).body.rows[0].status).toBe('Done');
+    });
+
+    it('a pending person is reminded; undesignating removes them from the register', async () => {
+      await api('hrPlain', 'post', `/people/bfsi/designations/${ids.imran}`).expect(201);
+      await api('hrPlain', 'post', `/people/bfsi/declarations/${ids.imran}/remind`).expect(201);
+      expect((await audits('compliance.declaration.reminded')).map((a) => a.entityId)).toEqual([ids.imran]);
+      await api('hrPlain', 'delete', `/people/bfsi/designations/${ids.imran}`).expect(200);
+      await api('hrPlain', 'delete', `/people/bfsi/designations/${ids.imran}`).expect(404);
+      expect((await api('hrPlain', 'get', '/people/bfsi/register').expect(200)).body.rows.map((r: { employeeId: string }) => r.employeeId)).toEqual([ids.arjun]);
     });
   });
 });

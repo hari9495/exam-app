@@ -10,6 +10,8 @@ import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
 import { ConfirmDialog } from '../../components/overlay';
+import { Drawer } from '../../components/drawer';
+import { MenuItem } from '../../components/menu';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
@@ -19,7 +21,7 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
-import { addDays, isIfsc, isPan, preclearanceState } from './people-logic';
+import { addDays, daysBetween, isIfsc, isPan, preclearanceState } from './people-logic';
 import { ACCESS_LOG } from './people-data';
 import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
 import { useRun } from '../org/org-kit';
@@ -720,12 +722,104 @@ const RELATED = [
   { id: 'r2', name: 'Suman Kulkarni', relation: 'Mother', pan: 'XXXXXX9082', holdings: 'Deccan Agro Industries Ltd · 80' },
 ];
 
+export const RELATIONS = ['Spouse', 'Father', 'Mother', 'Son', 'Daughter', 'Brother', 'Sister', 'Dependant', 'Other'] as const;
+export interface BfsiHolding { id: string; security: string; quantity: number; how: string | null }
+export interface BfsiRelated { id: string; name: string; relation: string; pan: string | null; holdings: string | null }
+/** PPL-43 live: my annual declaration as a designated person (the page shows the toasts). */
+export interface LiveBfsi {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  cycle: string;
+  due: Date;
+  submittedAt: Date | null;
+  holdings: BfsiHolding[];
+  related: BfsiRelated[];
+  coi: { answer: 'yes' | 'no'; details: string | null } | null;
+  onAddHolding: (h: { security: string; quantity: number; how?: string }) => Promise<void>;
+  onRemoveHolding: (id: string) => Promise<void>;
+  onAddRelated: (r: { name: string; relation: string; pan?: string; holdings?: string }) => Promise<void>;
+  onRemoveRelated: (id: string) => Promise<void>;
+  onSaveCoi: (c: { answer: 'yes' | 'no'; details?: string }) => Promise<void>;
+  /** Attests and submits; the app asks for the one-time code first. */
+  onSubmit: () => Promise<void>;
+}
+
+const fy = (cycle: string) => cycle.replace('-', '–');
+
+function HoldingDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddHolding']; onClose: () => void }) {
+  const [security, setSecurity] = useState('');
+  const [quantity, setQuantity] = useState<number | null>(null);
+  const [how, setHow] = useState('');
+  return (
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="Add holding" confirmLabel="Add holding" confirmDisabled={!security.trim() || !quantity || quantity < 1} onConfirm={() => onAdd({ security: security.trim(), quantity: quantity!, ...(how.trim() ? { how: how.trim() } : {}) })}>
+      <FormField label="Security" required>
+        <TextField value={security} onChange={setSecurity} maxLength={200} />
+      </FormField>
+      <FormField label="Quantity" required>
+        <NumberField value={quantity} onChange={setQuantity} />
+      </FormField>
+      <FormField label="How held" optional helper="For example Demat · NSDL, or an ESOP grant.">
+        <TextField value={how} onChange={setHow} maxLength={120} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function RelatedDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddRelated']; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [relation, setRelation] = useState<string | null>(null);
+  const [pan, setPan] = useState('');
+  const [holdings, setHoldings] = useState('');
+  const panBad = pan.trim() !== '' && !isPan(pan.trim().toUpperCase());
+  return (
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="Add related person" confirmLabel="Add related person" confirmDisabled={!name.trim() || !relation || panBad} onConfirm={() => onAdd({ name: name.trim(), relation: relation!, ...(pan.trim() ? { pan: pan.trim().toUpperCase() } : {}), ...(holdings.trim() ? { holdings: holdings.trim() } : {}) })}>
+      <FormField label="Name" required>
+        <TextField value={name} onChange={setName} maxLength={200} />
+      </FormField>
+      <FormField label="Relation" required>
+        <Select aria-label="Relation" value={relation} onChange={setRelation} options={RELATIONS.map((r) => ({ value: r, label: r }))} />
+      </FormField>
+      <FormField label="PAN" optional error={panBad ? 'Enter a 10-character PAN like ABCDE1234F.' : null} helper="Only the last four are shown again.">
+        <TextField value={pan} onChange={setPan} maxLength={10} className="yx-mono" />
+      </FormField>
+      <FormField label="Holdings" optional helper="Securities and quantities, or None.">
+        <TextField value={holdings} onChange={setHoldings} maxLength={200} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 // PPL-43
-export function BfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean }) {
+export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, live }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; today?: Date; live?: LiveBfsi }) {
   const [t, setT] = useState(tab);
+  const [adding, setAdding] = useState<'holding' | 'related' | null>(null);
+  const [coi, setCoi] = useState<'yes' | 'no' | null>(live?.coi?.answer ?? null);
+  const [details, setDetails] = useState(live?.coi?.details ?? '');
+  const [agreed, setAgreed] = useState(false);
+  const { run, busy, error } = useRun();
+  if (live && live.state !== 'ready')
+    return <MeFrame active="Declarations">{live.state === 'error' ? <ErrorState title="We couldn't load your declarations" description="Check your connection and try again." onRetry={live.onRetry} /> : <ListSkeleton label="Loading your declarations" />}</MeFrame>;
+  const done = Boolean(live?.submittedAt);
+  const left = live && today ? daysBetween(today, live.due) : 16;
+  const status = done ? <StatusBadge status="Submitted" /> : <Badge tone={left < 0 ? 'danger' : 'warning'}>{left < 0 ? `Overdue by ${-left} days` : `Due in ${left} days`}</Badge>;
+  const holdings = live ? live.holdings : HOLDINGS.map((h) => ({ id: h.id, security: h.security, quantity: h.qty, how: h.how as string | null }));
+  const related = live ? live.related : RELATED;
+  const remove = (fn: (id: string) => Promise<void>, id: string, label: string) =>
+    !live || done ? null : (
+      <Button size="sm" onClick={() => void run(id, () => fn(id))} loading={busy === id} aria-label={`Remove ${label}`}>
+        Remove
+      </Button>
+    );
+  const coiReady = coi === 'no' || (coi === 'yes' && details.trim() !== '');
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Annual declarations 2026–27" description="You are a designated person. Submit holdings, related persons and conflicts by 15 Oct 2026, and attest the code of conduct." status={<Badge tone="warning">Due in 16 days</Badge>} />
+      <PageHeader
+        title={`Annual declarations ${live ? fy(live.cycle) : '2026–27'}`}
+        description={`You are a designated person. Submit holdings, related persons and conflicts by ${live ? formatDate(live.due) : '15 Oct 2026'}, and attest the code of conduct.`}
+        status={status}
+      />
+      {done && <InlineAlert tone="success" title={`Submitted on ${formatDate(live!.submittedAt!)}`}>Ask the compliance officer if something has to change.</InlineAlert>}
+      {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <Tabs value={t} onValueChange={(v) => setT(v as typeof t)}>
         <TabsList aria-label="Declarations">
           <TabsTrigger value="holdings">Holdings</TabsTrigger>
@@ -738,16 +832,17 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 
             <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
             <table className="yx-ppl__impact">
               <thead>
-                <tr><th scope="col">Security</th><th scope="col">Quantity</th><th scope="col">How held</th></tr>
+                <tr><th scope="col">Security</th><th scope="col">Quantity</th><th scope="col">How held</th>{live && !done && <th scope="col"><span className="yx-visually-hidden">Remove</span></th>}</tr>
               </thead>
               <tbody>
-                {HOLDINGS.map((h) => (
-                  <tr key={h.id}><td>{h.security}</td><td className="yx-ppl__num">{h.qty}</td><td>{h.how}</td></tr>
+                {live && holdings.length === 0 && <tr><td colSpan={4}>No holdings yet. Add each security you, or your dependants through you, hold.</td></tr>}
+                {holdings.map((h) => (
+                  <tr key={h.id}><td>{h.security}</td><td className="yx-ppl__num">{h.quantity}</td><td>{h.how ?? '—'}</td>{live && !done && <td>{remove(live.onRemoveHolding, h.id, h.security)}</td>}</tr>
                 ))}
               </tbody>
             </table>
             </div>
-            <div><Button icon={Plus}>Add holding</Button></div>
+            {!done && <div><Button icon={Plus} onClick={live ? () => setAdding('holding') : undefined}>Add holding</Button></div>}
           </div>
         </TabsContent>
         <TabsContent value="related">
@@ -755,73 +850,176 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false }: { tab?: 
             <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
             <table className="yx-ppl__impact">
               <thead>
-                <tr><th scope="col">Name</th><th scope="col">Relation</th><th scope="col">PAN</th><th scope="col">Holdings</th></tr>
+                <tr><th scope="col">Name</th><th scope="col">Relation</th><th scope="col">PAN</th><th scope="col">Holdings</th>{live && !done && <th scope="col"><span className="yx-visually-hidden">Remove</span></th>}</tr>
               </thead>
               <tbody>
-                {RELATED.map((r) => (
-                  <tr key={r.id}><td>{r.name}</td><td>{r.relation}</td><td className="yx-mono">{r.pan}</td><td>{r.holdings}</td></tr>
+                {live && related.length === 0 && <tr><td colSpan={5}>No related persons yet.</td></tr>}
+                {related.map((r) => (
+                  <tr key={r.id}><td>{r.name}</td><td>{r.relation}</td><td className="yx-mono">{r.pan ?? '—'}</td><td>{r.holdings ?? 'None'}</td>{live && !done && <td>{remove(live.onRemoveRelated, r.id, r.name)}</td>}</tr>
                 ))}
               </tbody>
             </table>
             </div>
-            <div><Button icon={Plus}>Add related person</Button></div>
+            {!done && <div><Button icon={Plus} onClick={live ? () => setAdding('related') : undefined}>Add related person</Button></div>}
           </div>
         </TabsContent>
         <TabsContent value="coi">
           <div className="yx-ppl__form">
             <FormField label="Do you or a related person have an interest in a supplier, customer or competitor?" required>
-              <RadioGroup value="yes" onChange={() => {}} orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+              <RadioGroup value={live ? coi ?? '' : 'yes'} onChange={(v) => setCoi(v as 'yes' | 'no')} disabled={done} orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
             </FormField>
-            <FormField label="Details" required>
-              <TextArea rows={3} defaultValue="My brother Vinod is a partner in Hosur Pack Solutions, a packaging vendor to the Hosur plant. I am not involved in vendor selection." />
-            </FormField>
+            {(!live || coi === 'yes') && (
+              <FormField label="Details" required>
+                {live ? <TextArea rows={3} value={details} onChange={setDetails} maxLength={2000} disabled={done} /> : <TextArea rows={3} defaultValue="My brother Vinod is a partner in Hosur Pack Solutions, a packaging vendor to the Hosur plant. I am not involved in vendor selection." />}
+              </FormField>
+            )}
           </div>
         </TabsContent>
         <TabsContent value="attest">
           <div className="yx-ppl__form">
-            <Card title="Code of conduct, version 2026.1">
-              <Text as="p">Updated 1 Apr 2026: gifts limit ₹2,000, new trading-window rules. <a href="#coc">Read the code</a></Text>
+            <Card title={live ? `Code of conduct, ${fy(live.cycle)}` : 'Code of conduct, version 2026.1'}>
+              {live ? <Text as="p">Read the code of conduct your company shared with you before you attest.</Text> : <Text as="p">Updated 1 Apr 2026: gifts limit ₹2,000, new trading-window rules. <a href="#coc">Read the code</a></Text>}
             </Card>
-            <Checkbox defaultChecked label="I have read and will follow the code of conduct, version 2026.1" />
+            {live ? (
+              <Checkbox checked={done || agreed} onChange={setAgreed} disabled={done} label={`I have read and will follow the code of conduct, ${fy(live.cycle)}`} />
+            ) : (
+              <Checkbox defaultChecked label="I have read and will follow the code of conduct, version 2026.1" />
+            )}
             {otpSent ? (
               <FormField label="OTP sent to +91 98450 •••71" required helper="Valid for 10 minutes.">
                 <TextField inputMode="numeric" defaultValue="" />
               </FormField>
             ) : null}
-            <div className="yx-ppl__row">
-              <Button>Save draft</Button>
-              <Button variant="primary" icon={ShieldCheck}>{otpSent ? 'Verify and submit' : 'Send OTP to attest'}</Button>
-            </div>
+            {!done && (
+              <>
+                {live && !coiReady && <Text size="sm" tone="secondary" as="p">Answer the conflict of interest question before you attest.</Text>}
+                <div className="yx-ppl__row">
+                  <Button onClick={live ? () => coi && void run('draft', () => live.onSaveCoi({ answer: coi, ...(coi === 'yes' ? { details: details.trim() } : {}) })) : undefined} disabled={Boolean(live) && !coiReady} loading={busy === 'draft'}>
+                    Save draft
+                  </Button>
+                  <Button
+                    variant="primary"
+                    icon={ShieldCheck}
+                    disabled={Boolean(live) && (!coiReady || !agreed)}
+                    loading={busy === 'submit'}
+                    onClick={live ? () => void run('submit', async () => (await live.onSaveCoi({ answer: coi!, ...(coi === 'yes' ? { details: details.trim() } : {}) }), await live.onSubmit())) : undefined}
+                  >
+                    {otpSent ? 'Verify and submit' : 'Send OTP to attest'}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </TabsContent>
       </Tabs>
+      {adding === 'holding' && live && <HoldingDialog onAdd={live.onAddHolding} onClose={() => setAdding(null)} />}
+      {adding === 'related' && live && <RelatedDialog onAdd={live.onAddRelated} onClose={() => setAdding(null)} />}
     </MeFrame>
   );
 }
 
+/** PPL-43 live: the compliance officer's register (statuses only; a review is a recorded look). */
+export interface LiveBfsiRegister {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rows: { employeeId: string; name: string; due: Date; status: 'Pending' | 'Overdue' | 'Done' }[];
+  onExport: () => void;
+  onRemind: (employeeId: string) => Promise<void>;
+  onReview: (employeeId: string) => Promise<{ submittedAt: Date; holdings: BfsiHolding[]; related: BfsiRelated[]; coi: { answer: 'yes' | 'no'; details: string | null } | null }>;
+  /** Who may be designated (people the officer reaches). */
+  people: { value: string; label: string }[];
+  onDesignate: (employeeId: string) => Promise<void>;
+  onUndesignate: (employeeId: string) => Promise<void>;
+}
+
+function BfsiReview({ name, data, onClose }: { name: string; data: Awaited<ReturnType<LiveBfsiRegister['onReview']>>; onClose: () => void }) {
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title={`${name} · annual declaration`} subtitle={`Submitted on ${formatDate(data.submittedAt)}`} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
+      <div className="yx-ppl__stack">
+        <Card title="Holdings">
+          {data.holdings.length ? (
+            <ul className="yx-ppl__successors">
+              {data.holdings.map((h) => <li key={h.id}><span>{h.security}{h.how ? ` · ${h.how}` : ''}</span><span className="yx-ppl__num">{h.quantity}</span></li>)}
+            </ul>
+          ) : <Text as="p" tone="secondary">None declared.</Text>}
+        </Card>
+        <Card title="Related persons">
+          {data.related.length ? (
+            <ul className="yx-ppl__successors">
+              {data.related.map((r) => <li key={r.id}><span>{r.name} · {r.relation}{r.pan ? ` · ${r.pan}` : ''}</span><span>{r.holdings ?? 'None'}</span></li>)}
+            </ul>
+          ) : <Text as="p" tone="secondary">None declared.</Text>}
+        </Card>
+        <Card title="Conflict of interest">
+          <Text as="p">{data.coi?.answer === 'yes' ? data.coi.details : 'None declared.'}</Text>
+        </Card>
+      </div>
+    </Drawer>
+  );
+}
+
 // PPL-43 · compliance officer
-export function BfsiComplianceList() {
-  const rows = [
-    { id: '1', name: 'Arjun Kulkarni', type: 'Holdings and relatives (annual)', due: new Date(2026, 9, 15), status: 'Pending' },
-    { id: '2', name: 'Suresh Pillai', type: 'Fit and proper (KMP)', due: new Date(2026, 8, 30), status: 'Pending' },
-    { id: '3', name: 'Sana Nizami', type: 'Holdings and relatives (annual)', due: new Date(2026, 8, 15), status: 'Overdue' },
-    { id: '4', name: 'Priya Nair', type: 'Code of conduct attestation', due: new Date(2026, 9, 15), status: 'Done' },
-  ];
+export function BfsiComplianceList({ live }: { live?: LiveBfsiRegister }) {
+  const [review, setReview] = useState<{ name: string; data: Awaited<ReturnType<LiveBfsiRegister['onReview']>> } | null>(null);
+  const [designating, setDesignating] = useState(false);
+  const [person, setPerson] = useState<string | null>(null);
+  const { run, busy, error } = useRun();
+  const rows = live
+    ? live.rows.map((r) => ({ id: r.employeeId, name: r.name, type: 'Holdings and relatives (annual)', due: r.due, status: r.status as string }))
+    : [
+        { id: '1', name: 'Arjun Kulkarni', type: 'Holdings and relatives (annual)', due: new Date(2026, 9, 15), status: 'Pending' },
+        { id: '2', name: 'Suresh Pillai', type: 'Fit and proper (KMP)', due: new Date(2026, 8, 30), status: 'Pending' },
+        { id: '3', name: 'Sana Nizami', type: 'Holdings and relatives (annual)', due: new Date(2026, 8, 15), status: 'Overdue' },
+        { id: '4', name: 'Priya Nair', type: 'Code of conduct attestation', due: new Date(2026, 9, 15), status: 'Done' },
+      ];
   return (
     <PeopleFrame active="Declarations">
-      <PageHeader title="Regulated declarations" description="Confidential to the compliance officer. Overdue items escalate to the head of compliance." status={<Badge tone="warning">Confidential</Badge>} actions={<Button icon={FileText}>Export register</Button>} />
-      <DataTable
-        label="Declarations"
-        columns={[
-          { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }), width: 220 },
-          { key: 'type', header: 'Declaration', value: (r) => r.type, groupable: true, width: 280 },
-          { key: 'due', header: 'Due', type: 'date', value: (r) => r.due, width: 130 },
-          { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Overdue' ? 'danger' : 'warning'), width: 130 },
-        ]}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowButtons={(r) => (r.status === 'Done' ? <Button variant="review" size="sm">Review</Button> : <Button size="sm">Remind</Button>)}
+      <PageHeader
+        title="Regulated declarations"
+        description="Confidential to the compliance officer. Overdue items escalate to the head of compliance."
+        status={<Badge tone="warning">Confidential</Badge>}
+        actions={
+          <>
+            {live && <Button icon={Plus} onClick={() => (setPerson(null), setDesignating(true))}>Add designated person</Button>}
+            <Button icon={FileText} onClick={live?.onExport}>Export register</Button>
+          </>
+        }
       />
+      {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the register" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading the register" />
+      ) : (
+        <DataTable
+          label="Declarations"
+          columns={[
+            { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }), width: 220 },
+            { key: 'type', header: 'Declaration', value: (r) => r.type, groupable: true, width: 280 },
+            { key: 'due', header: 'Due', type: 'date', value: (r) => r.due, width: 130 },
+            { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Overdue' ? 'danger' : 'warning'), width: 130 },
+          ]}
+          rows={rows}
+          getRowId={(r) => r.id}
+          rowButtons={(r) =>
+            r.status === 'Done' ? (
+              <Button variant="review" size="sm" loading={busy === `review-${r.id}`} onClick={live ? () => void run(`review-${r.id}`, async () => setReview({ name: r.name, data: await live.onReview(r.id) })) : undefined}>Review</Button>
+            ) : (
+              <Button size="sm" loading={busy === `remind-${r.id}`} onClick={live ? () => void run(`remind-${r.id}`, () => live.onRemind(r.id)) : undefined}>Remind</Button>
+            )
+          }
+          rowActions={live ? (r) => <MenuItem onSelect={() => void run(`undesignate-${r.id}`, () => live.onUndesignate(r.id))}>No longer a designated person</MenuItem> : undefined}
+          empty={<EmptyState title="No designated persons" description="Add the people who must declare their holdings and ask before they trade." />}
+        />
+      )}
+      {review && <BfsiReview name={review.name} data={review.data} onClose={() => setReview(null)} />}
+      {live && (
+        <ConfirmDialog open={designating} onOpenChange={setDesignating} title="Add a designated person" consequence="They are asked for this year's declarations and need pre-clearance before they trade." confirmLabel="Add designated person" confirmDisabled={!person} onConfirm={() => live.onDesignate(person!)}>
+          <FormField label="Person" required>
+            <Select aria-label="Person" value={person} onChange={setPerson} options={live.people} searchable />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </PeopleFrame>
   );
 }

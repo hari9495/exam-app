@@ -2843,6 +2843,37 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
+/// PPL-43: the compliance officer's designated persons (BFSI insider-trading rules).
+model BfsiDesignation {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  designatedOn   DateTime @map("designated_on") @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("bfsi_designations")
+}
+
+/// PPL-43: a designated person's annual declaration (holdings, related persons, conflicts sealed; attested with step-up).
+model BfsiDeclaration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  cycle          String    @db.Char(7)
+  holdingsEnc    String?   @map("holdings_enc")
+  relatedEnc     String?   @map("related_enc")
+  coi            String?   @db.VarChar(3)
+  coiEnc         String?   @map("coi_enc")
+  status         String    @default("draft") @db.VarChar(10)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(3)
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, cycle], map: "bfsi_declarations_cycle_key")
+  @@map("bfsi_declarations")
+}
+
 /// PPL-38: a voluntary disability declaration (Special); category, percentage and adjustments sealed, cleared on withdrawal.
 model DisabilityDeclaration {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

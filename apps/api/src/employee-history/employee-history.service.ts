@@ -63,6 +63,8 @@ export const HISTORY_KEYS = [
   'employee.aadhaar.view',
   // PPL-38: disability declarations (Special), the HR diversity role.
   'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer, for the designated persons in scope.
+  'compliance.declaration.manage',
   // PPL-06: the annual increment reads released ratings where this reaches.
   'perf.review.view',
   // PPL-03 Activity: documents and letters on a person's record, only where these reach.

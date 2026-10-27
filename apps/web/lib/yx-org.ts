@@ -26,6 +26,8 @@ export const YX_KEYS = [
   'employee.aadhaar.view',
   // PPL-38: disability declarations (Special), the HR diversity role.
   'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer.
+  'compliance.declaration.manage',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
