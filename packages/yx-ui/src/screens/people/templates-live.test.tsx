@@ -47,6 +47,12 @@ function page(over: Partial<LiveLetterTemplates> = {}) {
 }
 
 describe('PPL-29 letter templates, live', () => {
+  it('shows what the page gives it (the Signatories drawer)', () => {
+    page({ onSignatories: () => {}, children: <p>Signatories drawer</p> });
+    expect(screen.getByRole('button', { name: 'Signatories' })).toBeTruthy();
+    expect(screen.getByText('Signatories drawer')).toBeTruthy();
+  });
+
   it('lists templates with the designed columns and one menu per row; a newer starter is offered', async () => {
     page();
     const row = screen.getByRole('row', { name: /Relieving and experience/ });

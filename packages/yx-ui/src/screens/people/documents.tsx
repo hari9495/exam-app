@@ -1278,6 +1278,7 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
           }}
         />
       )}
+      {live.children}
     </PeopleFrame>
   );
 }
