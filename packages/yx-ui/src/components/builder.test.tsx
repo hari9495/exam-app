@@ -192,6 +192,15 @@ describe('RichTextEditor', () => {
     await pick('Font size', 'Large', 'radio');
   });
 
+  it('refuses a link that is not https or mailto (founder 27 Oct 2026)', async () => {
+    const u = userEvent.setup();
+    render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" />);
+    await u.click(await screen.findByRole('button', { name: 'Link' }));
+    await u.type(await screen.findByLabelText('Link address'), 'http://example.com');
+    await u.click(screen.getByRole('button', { name: 'Apply link' }));
+    expect(await screen.findByText('Enter a full address starting with https:// or mailto:')).toBeInTheDocument();
+  });
+
   it('hides the buttons a place cannot keep', async () => {
     render(<RichTextEditor aria-label="Letter" hide={['code', 'highlight']} />);
     expect(await screen.findByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();

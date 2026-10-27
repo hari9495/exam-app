@@ -472,7 +472,7 @@ function Swatches({ label, none, colours, value, onPick }: { label: string; none
   );
 }
 
-const SAFE_HREF = /^(https?:\/\/|mailto:)\S+$/i;
+const SAFE_HREF = /^(https:\/\/|mailto:)\S+$/i;
 
 function LinkPanel({ editor, active, href, done }: { editor: Editor; active: boolean; href: string; done: () => void }) {
   const [text, setText] = useState(href);
