@@ -174,6 +174,87 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'merge', fromEntityId: null, step: 'scope' }), 'Restructure', null);
   });
 
+  const ENTITY_PEOPLE = [
+    { id: 'divya', name: 'Divya Raghunathan', code: 'TN0001', locationId: 'hsr', location: 'Hosur plant' },
+    { id: 'imran', name: 'Imran Sheikh', code: 'TN0002', locationId: 'hsr', location: 'Hosur plant' },
+  ];
+  // The API moves only the picked people: the dry run answers with them alone.
+  const pickedPreview = vi.fn(async (input: RestructureInput): Promise<RestructurePreview> => ({
+    people: (input.employeeIds ?? ['divya', 'imran']).map((e) => person(e === 'divya' ? 'Divya' : 'Imran')),
+    checks: [],
+    counts: { ready: 1, failed: 0, leftOut: 0 },
+  }));
+  const partOf = async (l: LiveRestructure) => {
+    wrap(<RestructureWizard live={l} />);
+    await ue.click(screen.getByRole('radio', { name: 'Move part of the entity to another one' }));
+    await ue.click(screen.getByRole('combobox', { name: /From entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
+    await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
+    await ue.click(screen.getByRole('textbox', { name: /Effective date/ }));
+    await ue.keyboard('01/11/2026{Enter}');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Divya moves');
+  };
+
+  it('pick people: only the picked people are sent and checked; By location again clears them', async () => {
+    const l = live({ onEntityPeople: vi.fn(async () => ENTITY_PEOPLE), onPreview: pickedPreview, onSaveDraft: vi.fn(async () => undefined) });
+    await partOf(l);
+    expect(screen.getByRole('radio', { name: 'By location' })).toHaveAttribute('aria-checked', 'true');
+    await ue.click(screen.getByRole('radio', { name: 'Pick people' }));
+    expect(l.onEntityPeople).toHaveBeenCalledWith('tn');
+    expect(screen.getByText('Only the people you pick move.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('combobox', { name: /People/ }));
+    await ue.click(await screen.findByRole('option', { name: /Divya Raghunathan · TN0001/ }));
+    await ue.keyboard('{Escape}');
+    expect(screen.getByText(/^Moves 1 employment with one preview/)).toBeInTheDocument();
+    // Only Divya's location needs a place in the new entity.
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('1 person')).toBeInTheDocument();
+    await ue.click(screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' }));
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
+    await waitFor(() => expect(l.onPreview).toHaveBeenCalled(), { timeout: 3000 });
+    expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).toMatchObject({ kind: 'demerge', employeeIds: ['divya'], locationIds: [], locationMap: { hsr: 'blr' } });
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    const table = screen.getByRole('table', { name: /Each person after the move/ });
+    expect(within(table).getByText('Divya')).toBeInTheDocument();
+    expect(within(table).queryByText('Imran')).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
+    expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'demerge', employeeIds: ['divya'], locationIds: [] }), 'Move part of Kaveri TN to Kaveri Foods', null);
+    // Back to By location: the picked people are gone and the plan is by location again.
+    await ue.click(screen.getByRole('button', { name: /What moves/ }));
+    await ue.click(screen.getByRole('radio', { name: 'By location' }));
+    await ue.click(screen.getByRole('combobox', { name: /Locations/ }));
+    await ue.click(await screen.findByRole('option', { name: /Hosur plant/ }));
+    await ue.keyboard('{Escape}');
+    await waitFor(() => expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).toMatchObject({ locationIds: ['hsr'] }), { timeout: 3000 });
+    expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).not.toHaveProperty('employeeIds');
+    await ue.click(screen.getByRole('radio', { name: 'Pick people' }));
+    expect(screen.queryByText(/Divya Raghunathan · TN0001/)).toBeNull();
+  });
+
+  it('pick people with no one picked: Continue stays enabled and says what is missing; nothing is checked', async () => {
+    const l = live({ onEntityPeople: vi.fn(async () => ENTITY_PEOPLE), onPreview: vi.fn(pickedPreview) });
+    await partOf(l);
+    await ue.click(screen.getByRole('radio', { name: 'Pick people' }));
+    const next = screen.getByRole('button', { name: 'Continue' });
+    expect(next).toBeEnabled();
+    await ue.click(next);
+    expect(screen.getByText('Pick at least one person who moves.')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Pick people' })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 700));
+    expect(l.onPreview).not.toHaveBeenCalled();
+  });
+
+  it('a draft saved with picked people continues with them (inside one entity)', async () => {
+    const l = live({ onEntityPeople: vi.fn(async () => ENTITY_PEOPLE), onPreview: vi.fn(pickedPreview), draft: { id: 'd2', state: { kind: 'within', fromEntityId: 'tn', effectiveDate: '2026-11-01', employeeIds: ['imran'], target: { locationId: 'hsr' }, reason: 'Imran moves' } } });
+    wrap(<RestructureWizard live={l} />);
+    expect(screen.getByRole('radio', { name: 'Pick people' })).toHaveAttribute('aria-checked', 'true');
+    expect(await screen.findByText('Imran Sheikh · TN0002')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Departments/ })).toBeNull();
+    await waitFor(() => expect(l.onPreview).toHaveBeenCalled(), { timeout: 3000 });
+    expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).toMatchObject({ kind: 'within', employeeIds: ['imran'], locationIds: [], departmentIds: [] });
+  });
+
   it('names the financial-year quarter of a day', () => {
     expect(quarterOf(new Date(2026, 9, 31))).toBe('Q3 (Oct–Dec)');
     expect(quarterOf(new Date(2026, 8, 30))).toBe('Q2 (Jul–Sep)');

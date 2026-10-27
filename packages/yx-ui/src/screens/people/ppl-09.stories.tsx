@@ -9,6 +9,7 @@ export default meta;
 type S = StoryObj;
 
 export const Scope: S = { name: 'Step 1 · merge scope', render: () => <RestructureWizard /> };
+export const PickPeople: S = { name: 'Step 1 · move part of the entity, pick people', render: () => <RestructureWizard action="demerge" picked={['Divya Raghunathan']} /> };
 export const Options: S = { name: 'Step 2 · transfer options and overrides', render: () => <RestructureWizard current="options" /> };
 export const CloseBlocked: S = { name: 'Step 3 · close blocked (payroll not locked)', render: () => <RestructureWizard current="close" payrollLocked={false} /> };
 export const CloseReady: S = { name: 'Step 3 · close checks pass', render: () => <RestructureWizard current="close" /> };
