@@ -77,7 +77,8 @@ describe('PPL-23 death in service, live', () => {
     expect(screen.getByText('No valid nomination on file')).toBeInTheDocument();
     expect(screen.getAllByText(/The shares do not make 100 % yet/).length).toBeGreaterThan(0);
     await ue.click(screen.getByRole('button', { name: 'Change payees' }));
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save payees' })).toBeDisabled();
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save payees' }));
+    expect(within(screen.getByRole('dialog')).getByText('Enter a name of at least 2 characters.')).toBeInTheDocument();
     await ue.keyboard('{Escape}');
     await next();
     expect(screen.getAllByText('When the payees make 100 %').length).toBeGreaterThan(0);
