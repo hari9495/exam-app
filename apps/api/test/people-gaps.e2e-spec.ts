@@ -237,7 +237,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       await raise('arjunU', 'arjun', { ...good, ifsc: 'HDFC0001234' }).expect(400);
       await raise('arjunU', 'imran', good).expect(404); // someone else's: not even found
       const r = (await raise('arjunU', 'arjun', good).expect(201)).body;
-      expect(r).toMatchObject({ kind: 'bank_international', label: 'Salary account abroad', proposed: { country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED' }, current: null });
+      expect(r).toMatchObject({ kind: 'bank_international', label: 'Salary account abroad', proposed: { country: 'AE', iban: 'XXXX XXXX 3456', bic: 'ECBKAEAD', currency: 'AED' }, current: null });
       await raise('arjunU', 'arjun', good).expect(409);
       ids.intlReq = r.id;
     });
@@ -246,18 +246,18 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       await up('hrA');
       await api('hrA', 'post', `/people/profile-requests/${ids.intlReq}/approve`).send({}).expect(201);
       const identity = (await api('hrA', 'get', `/people/employees/${ids.arjun}/profile`).expect(200)).body.identity;
-      expect(identity.internationalAccount).toMatchObject({ country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED' });
+      expect(identity.internationalAccount).toMatchObject({ country: 'AE', iban: 'XXXX XXXX 3456', bic: 'ECBKAEAD', currency: 'AED' });
       expect(JSON.stringify(identity)).not.toContain('0123456');
       const stored = await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIntlBankAccount.findFirstOrThrow({ where: { organizationId: org.A.id } }));
       expect(stored.ibanEnc).not.toContain('AE07');
       // HR raises a replacement for Arjun; HR cannot approve their own request.
       const next = (await raise('hrA', 'arjun', { country: 'GB', iban: 'GB82WEST12345698765432', bic: 'NWBKGB2L', currency: 'GBP' }).expect(201)).body;
-      expect(next.current).toMatchObject({ iban: '•••• 3456' });
+      expect(next.current).toMatchObject({ iban: 'XXXX XXXX 3456' });
       await api('hrA', 'post', `/people/profile-requests/${next.id}/approve`).send({}).expect(403);
       await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeProfileRequest.update({ where: { id: next.id }, data: { requestedBy: users.hrPlain } }));
       await api('hrA', 'post', `/people/profile-requests/${next.id}/approve`).send({}).expect(201);
       const now = (await api('hrA', 'get', `/people/employees/${ids.arjun}/profile`).expect(200)).body.identity.internationalAccount;
-      expect(now).toMatchObject({ country: 'GB', iban: '•••• 5432' });
+      expect(now).toMatchObject({ country: 'GB', iban: 'XXXX XXXX 5432' });
       expect(new Date(now.usableFrom).getTime()).toBeGreaterThan(Date.now() + 47 * 3_600_000);
       expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIntlBankAccount.count({ where: { organizationId: org.A.id, validTo: null } }))).toBe(1);
     });
@@ -352,6 +352,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       ids.nobody = await loose('nobodyU');
       ids.meenaP = await personOf('meena');
       ids.raviP = await personOf('ravi');
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIdentifiers.create({ data: { organizationId: org.A.id, employeeId: ids.meena, panEnc: 'test-sealed', panHash: `pan-${runId}`, panLast4: '234F', uanEnc: 'test-sealed', uanHash: `uan-${runId}`, uanLast4: '7731' } }));
     });
 
     it('lists a login whose email is another person’s work email, for HR company-wide only', async () => {
@@ -360,7 +361,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       const rows = (await api('hrA', 'get', '/people/same-person').expect(200)).body.rows;
       expect(rows.map((r: { a: { personId: string }; b: { personId: string } }) => [r.a.personId, r.b.personId]).sort()).toEqual([[ids.meenaLoose, ids.meenaP], [ids.raviLoose, ids.raviP]].sort());
       const meena = rows.find((r: { a: { personId: string } }) => r.a.personId === ids.meenaLoose);
-      expect(meena).toMatchObject({ basis: ['login email'], a: { name: 'meenaU desk', email: email('meenaU'), role: 'Login' }, b: { name: 'Meena', email: email('meenaU'), role: 'Employee · KF0300' } });
+      expect(meena).toMatchObject({ basis: ['login email'], a: { name: 'meenaU desk', email: email('meenaU'), role: 'Login' }, b: { name: 'Meena', email: email('meenaU'), role: 'Employee · KF0300', pan: 'XXXXXX234F', uan: 'XXXXXXXX7731' } });
     });
 
     it('not the same person: logged and never proposed again', async () => {
@@ -439,7 +440,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       await api('arjunU', 'post', '/people/me/bfsi/submit').expect(400); // the conflict question first
       await api('arjunU', 'put', '/people/me/bfsi/coi').send({ answer: 'yes', details: 'My brother supplies packaging' }).expect(200);
       const mine = (await api('arjunU', 'get', '/people/me/bfsi').expect(200)).body;
-      expect(mine).toMatchObject({ designated: true, status: 'draft', holdings: [{ id: holding, security: 'Deccan Agro Industries Ltd', quantity: 350, how: 'Demat · NSDL' }], related: [{ name: 'Shalini', relation: 'Spouse', pan: '•••• 712K' }], coi: { answer: 'yes', details: 'My brother supplies packaging' } });
+      expect(mine).toMatchObject({ designated: true, status: 'draft', holdings: [{ id: holding, security: 'Deccan Agro Industries Ltd', quantity: 350, how: 'Demat · NSDL' }], related: [{ name: 'Shalini', relation: 'Spouse', pan: 'XXXXXX712K' }], coi: { answer: 'yes', details: 'My brother supplies packaging' } });
       const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.bfsiDeclaration.findFirstOrThrow({ where: { organizationId: org.A.id } }));
       expect(`${row.holdingsEnc}${row.relatedEnc}${row.coiEnc}`).not.toMatch(/Deccan|BRGPR|brother/);
       // The officer cannot read a draft.

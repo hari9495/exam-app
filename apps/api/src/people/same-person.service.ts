@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { maskTail, TenantContext } from '@exam-platform/shared';
+import { maskShaped, maskTail, TenantContext } from '@exam-platform/shared';
 import { tenantWide } from '../access/scope';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isoDate } from '../org-structure/org-validation';
@@ -63,8 +63,8 @@ export class SamePersonService {
       email: p.primaryEmail ?? e?.workEmail ?? user?.email ?? null,
       phone: maskTail(p.primaryPhone?.slice(-4)),
       dob: personal?.dateOfBirth ? isoDate(personal.dateOfBirth) : null,
-      pan: maskTail(ids?.panLast4),
-      uan: maskTail(ids?.uanLast4),
+      pan: maskShaped('pan', ids?.panLast4),
+      uan: maskShaped('uan', ids?.uanLast4),
       role: job ? `${job.exitedOn ? 'Former employee' : 'Employee'} · ${job.employeeCode}` : [...new Set(roles.map((r) => ROLE[r.roleType] ?? r.roleType))].join(', ') || 'No role',
       roles: roles.map((r) => ({ id: r.id, role: ROLE[r.roleType] ?? r.roleType, from: isoDate(r.startOn) })),
       _person: p,

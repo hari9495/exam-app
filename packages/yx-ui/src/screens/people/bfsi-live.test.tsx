@@ -10,7 +10,7 @@ const day = (iso: string) => new Date(`${iso}T00:00:00`);
 const mine = (o: Partial<LiveBfsi> = {}): LiveBfsi => ({
   state: 'ready', onRetry: vi.fn(), cycle: '2026-27', due: day('2026-10-15'), submittedAt: null,
   holdings: [{ id: 'h1', security: 'Deccan Agro Industries Ltd', quantity: 350, how: 'Demat · NSDL' }],
-  related: [{ id: 'r1', name: 'Shalini Kulkarni', relation: 'Spouse', pan: '•••• 4411', holdings: null }],
+  related: [{ id: 'r1', name: 'Shalini Kulkarni', relation: 'Spouse', pan: 'XXXXXX4411', holdings: null }],
   coi: null,
   onAddHolding: vi.fn(async () => undefined), onRemoveHolding: vi.fn(async () => undefined), onAddRelated: vi.fn(async () => undefined), onRemoveRelated: vi.fn(async () => undefined),
   onSaveCoi: vi.fn(async () => undefined), onSubmit: vi.fn(async () => undefined), ...o,
@@ -36,7 +36,7 @@ describe('PPL-43 annual declarations, live', () => {
     await ue.click(screen.getByRole('button', { name: 'Remove Deccan Agro Industries Ltd' }));
     expect(live.onRemoveHolding).toHaveBeenCalledWith('h1');
     await ue.click(screen.getByRole('tab', { name: 'Related persons' }));
-    expect(screen.getByRole('row', { name: /Shalini Kulkarni Spouse •••• 4411 None/ })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Shalini Kulkarni Spouse XXXXXX4411 None/ })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Add related person' }));
     dialog = screen.getByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox', { name: /Name/ }), 'Suman Kulkarni');
