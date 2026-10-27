@@ -981,6 +981,7 @@ export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLe
         description="Every template is a Word file: upload your own or build it in the editor. Starter templates are yours to edit; updates never overwrite your copy."
         actions={
           <>
+            <Button>Signatories</Button>
             <Button icon={Upload}>Upload Word</Button>
             <Button variant="primary" icon={Plus}>
               New template
