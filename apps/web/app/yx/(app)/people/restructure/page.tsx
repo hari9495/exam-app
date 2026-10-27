@@ -42,6 +42,11 @@ function Restructure() {
         letterTypes,
         drafts: drafts.data ?? [],
         draft: draft.data ?? null,
+        // "Pick people": the entity's employees from the directory (People › Directory reads the same list).
+        onEntityPeople: async (e) =>
+          (await write<{ rows: { id: string; kind: string; name: string; employeeCode?: string; location: { id: string; name: string | null } | null }[] }>('GET', `/workforce?legalEntityId=${id(e)}`)).rows
+            .filter((r) => r.kind === 'employee')
+            .map((r) => ({ id: r.id, name: r.name, code: r.employeeCode ?? '', locationId: r.location?.id ?? null, location: r.location?.name ?? null })),
         onPreview: (input) => write<RestructurePreview>('POST', '/restructures/preview', input),
         onSend: async (input, title) => {
           const out = await write<{ id: string }>('POST', '/restructures', input);

@@ -1153,6 +1153,13 @@ const FROM_ENTITY = 'Kaveri Foods Pvt Ltd (Tamil Nadu)';
 const INTO_ENTITY = 'Kaveri Foods Pvt Ltd';
 /** Who is in the old entity, by location and department. */
 const MOVE_LOCATIONS: Record<string, number> = { 'Hosur plant': 64, 'Chennai office': 32 };
+/** "Pick people": the people of the old entity (name · code, location underneath). */
+const MOVE_PEOPLE: { name: string; code: string; location: string }[] = [
+  { name: 'Divya Raghunathan', code: 'KFT-0012', location: 'Chennai office' },
+  { name: 'Arjun Mehta', code: 'KFT-0027', location: 'Hosur plant' },
+  { name: 'Selvi Perumal', code: 'KFT-0031', location: 'Chennai office' },
+  { name: 'Imran Sheikh', code: 'KFT-0044', location: 'Hosur plant' },
+];
 const MOVE_DEPTS: [string, number][] = [['Operations', 40], ['Quality', 22], ['Sales', 18], ['Finance', 8], ['People', 4], ['Engineering', 4]];
 const TRANSFER_DEFAULTS: { key: string; label: string; options: string[] }[] = [
   { key: 'leave', label: 'Leave balance', options: ['Carry over', 'Encash at old entity', 'Lapse'] },
@@ -1168,20 +1175,24 @@ const INITIAL_OVERRIDES = [
 ];
 
 // PPL-09
-export function RestructureWizard(props: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; live?: LiveRestructure }) {
+export function RestructureWizard(props: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; action?: RestructureAction; picked?: string[]; live?: LiveRestructure }) {
   return props.live ? <LiveRestructureWizard live={props.live} /> : <SampleRestructureWizard {...props} />;
 }
 
-function SampleRestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
+function SampleRestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false, action: startAction = 'merge', picked: startPicked }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; action?: RestructureAction; picked?: string[] }) {
   const [confirm, setConfirm] = useState(confirmOpen);
   const [step, setStep] = useState(current);
-  const [action, setAction] = useState<RestructureAction>('merge');
+  const [action, setAction] = useState<RestructureAction>(startAction);
+  // Who moves (part of the entity, or inside it): everyone at chosen locations, or only the people picked.
+  const [by, setBy] = useState<'location' | 'people'>(startPicked ? 'people' : 'location');
+  const [picked, setPicked] = useState<string[]>(startPicked ?? []);
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [locations, setLocations] = useState<string[]>(['Chennai office']);
   const [defaults, setDefaults] = useState<Record<string, string>>(Object.fromEntries(TRANSFER_DEFAULTS.map((o) => [o.key, o.options[0]])));
   const [overrides, setOverrides] = useState(INITIAL_OVERRIDES);
   const [addOpen, setAddOpen] = useState(false);
-  const moving = action === 'demerge' ? locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0) : 96;
+  const part = action === 'demerge' || action === 'within';
+  const moving = part ? (by === 'people' ? picked.length : locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0)) : 96;
   const date = effective ? formatDate(effective) : 'the effective date';
   const heading =
     action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : action === 'within' ? `Move people inside ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
@@ -1239,7 +1250,7 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
           {
             id: 'scope',
             title: 'What moves',
-            summary: `${moving} people · ${action === 'demerge' ? locations.join(', ') : 'Hosur plant and Chennai office'} · into ${INTO_ENTITY} · ${date}`,
+            summary: `${moving} people · ${part ? (by === 'people' ? picked.join(', ') : locations.join(', ')) : 'Hosur plant and Chennai office'} · into ${INTO_ENTITY} · ${date}`,
             content: (
               <div className="yx-ppl__form">
                 <FormField label="Action" required>
@@ -1260,15 +1271,26 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
                 <FormField label={action === 'close' ? 'Transfer people to' : 'Into entity'} required>
                   <Select options={[{ value: 'ka', label: `${INTO_ENTITY} · 152 people` }]} value="ka" onChange={() => {}} />
                 </FormField>
-                {action === 'demerge' && (
-                  <FormField label="Who moves" required helper="Everyone at the chosen locations moves.">
-                    <MultiSelect options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
-                  </FormField>
+                {part && (
+                  <>
+                    <FormField label="Who moves" required>
+                      <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]))} options={[{ value: 'location', label: 'By location' }, { value: 'people', label: 'Pick people' }]} />
+                    </FormField>
+                    {by === 'location' ? (
+                      <FormField label="Locations" required helper="Everyone at the chosen locations moves.">
+                        <MultiSelect aria-label="Locations" placeholder="Locations" options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
+                      </FormField>
+                    ) : (
+                      <FormField label="People" required helper="Only the people you pick move.">
+                        <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" options={MOVE_PEOPLE.map((p) => ({ value: p.name, label: `${p.name} · ${p.code}`, description: p.location }))} value={picked} onChange={setPicked} />
+                      </FormField>
+                    )}
+                  </>
                 )}
                 <FormField label="Effective date" required>
                   <DatePicker value={effective} onChange={setEffective} />
                 </FormField>
-                {action !== 'demerge' && (
+                {!part && (
                   <Card title={`Who moves (${moving})`}>
                     <dl className="yx-ppl__dl">
                       {Object.entries(MOVE_LOCATIONS).map(([l, n]) => (

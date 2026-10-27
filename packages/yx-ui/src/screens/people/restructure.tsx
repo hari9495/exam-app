@@ -10,6 +10,7 @@ import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
+import { Segment } from '../../components/segment';
 import { ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
@@ -39,6 +40,8 @@ export interface RestructureInput {
   effectiveDate: string;
   locationIds: string[];
   departmentIds: string[];
+  /** "Pick people": only these people move (no locations or departments then). */
+  employeeIds?: string[];
   locationMap: Record<string, string>;
   /** Old department, designation, employment type or grade → the one in the new entity. */
   masterMap: Record<string, string>;
@@ -59,6 +62,8 @@ export interface RestructureDraftState {
   effectiveDate?: string | null;
   locationIds?: string[];
   departmentIds?: string[];
+  /** Present (even empty) when "Pick people" was chosen. */
+  employeeIds?: string[];
   locationMap?: Record<string, string>;
   masterMap?: Record<string, string>;
   target?: RestructureInput['target'];
@@ -79,6 +84,13 @@ export interface RestructurePersonResult {
   service: { from: string; kept: boolean } | null;
   leave: { name: string; days: number; action: 'carried' | 'lapsed' }[];
   pay: 'kept' | 'set_later' | 'none' | null;
+}
+export interface EntityPerson {
+  id: string;
+  name: string;
+  code: string;
+  locationId: string | null;
+  location: string | null;
 }
 export interface RestructureCheck {
   id: string;
@@ -133,6 +145,8 @@ export interface LiveRestructure {
   setup: RestructureSetup | null;
   /** Current employees, for the new manager. */
   people: { id: string; name: string; role?: string }[];
+  /** "Pick people": the current employees of one legal entity, with their location. */
+  onEntityPeople?: (entityId: string) => Promise<EntityPerson[]>;
   /** The dry run through the API (nothing kept). */
   onPreview: (input: RestructureInput) => Promise<RestructurePreview>;
   onSend: (input: RestructureInput, title: string) => Promise<void>;
@@ -239,6 +253,11 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [effective, setEffective] = useState<Date | null>(d0.effectiveDate ? day(d0.effectiveDate) : null);
   const [locations, setLocations] = useState<string[]>(d0.locationIds ?? []);
   const [departments, setDepartments] = useState<string[]>(d0.departmentIds ?? []);
+  // Who moves (part of the entity, or inside it): everyone at chosen places, or only the people picked.
+  const [by, setBy] = useState<'place' | 'people'>(d0.employeeIds ? 'people' : 'place');
+  const [picked, setPicked] = useState<string[]>(d0.employeeIds ?? []);
+  const [tried, setTried] = useState(false);
+  const [entityPeople, setEntityPeople] = useState<EntityPerson[] | null>(null);
   const [map, setMap] = useState<Record<string, string>>(d0.locationMap ?? {});
   const [masterMap, setMasterMap] = useState<Record<string, string>>(d0.masterMap ?? {});
   const [target, setTarget] = useState<RestructureInput['target']>(d0.target ?? {});
@@ -268,11 +287,27 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [confirm, setConfirm] = useState(false);
 
   const across = kind !== 'within';
+  const picking = by === 'people' && (kind === 'demerge' || kind === 'within');
+  useEffect(() => {
+    setEntityPeople(null);
+    if (!picking || !from || !live.onEntityPeople) return;
+    let gone = false;
+    live.onEntityPeople(from).then((r) => !gone && setEntityPeople(r)).catch(() => !gone && setEntityPeople([]));
+    return () => {
+      gone = true;
+    };
+  }, [picking, from]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickedPeople = (entityPeople ?? []).filter((p) => picked.includes(p.id));
   const closes = kind === 'merge' || kind === 'close';
   const fromE = s?.entities.find((e) => e.id === from);
   const intoE = s?.entities.find((e) => e.id === into);
   const fromLocations = (s?.locations ?? []).filter((l) => l.legalEntityId === from);
-  const moving = across ? fromLocations.filter((l) => l.people > 0 && (kind !== 'demerge' || locations.includes(l.id))) : [];
+  // Picked people: only their locations need a place in the new entity, each with its picked count.
+  const moving = !across
+    ? []
+    : picking
+      ? fromLocations.map((l) => ({ ...l, people: pickedPeople.filter((p) => p.locationId === l.id).length })).filter((l) => l.people > 0)
+      : fromLocations.filter((l) => l.people > 0 && (kind !== 'demerge' || locations.includes(l.id)));
   // Departments, designations, types and grades only for the old entity: people take another one in the new entity.
   const allMasters = [...(s?.departments ?? []), ...(s?.masters ?? [])];
   const closedMasters = across && from && into ? allMasters.filter((m) => m.byEntity[from] && m.openTo && !m.openTo.includes(into)) : [];
@@ -294,16 +329,17 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           : `Move people inside ${fromE.name}`;
   const input = useMemo((): RestructureInput | null => {
     if (!from || !effective || (across && !into) || reason.trim().length < 3) return null;
-    if (kind === 'demerge' && !locations.length) return null;
-    if (kind === 'within' && ((!locations.length && !departments.length) || (!target.departmentId && !target.locationId && target.managerEmployeeId === undefined && !target.costCentreId))) return null;
+    if (picking ? !picked.length || !entityPeople : kind === 'demerge' && !locations.length) return null;
+    if (kind === 'within' && ((!picking && !locations.length && !departments.length) || (!target.departmentId && !target.locationId && target.managerEmployeeId === undefined && !target.costCentreId))) return null;
     if (unmapped) return null;
     return {
       kind,
       fromEntityId: from,
       intoEntityId: across ? into : null,
       effectiveDate: iso(effective),
-      locationIds: kind === 'demerge' || kind === 'within' ? locations : [],
-      departmentIds: kind === 'within' ? departments : [],
+      locationIds: !picking && (kind === 'demerge' || kind === 'within') ? locations : [],
+      departmentIds: !picking && kind === 'within' ? departments : [],
+      ...(picking ? { employeeIds: picked } : {}),
       locationMap: across ? Object.fromEntries(moving.map((l) => [l.id, locOf(l)!])) : {},
       masterMap: across ? Object.fromEntries(closedMasters.map((m) => [m.id, masterOf(m)!])) : {},
       target: kind === 'within' ? target : {},
@@ -311,7 +347,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
       overrides,
       reason: reason.trim(),
     };
-  }, [kind, from, into, effective, locations, departments, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters, unmapped]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kind, from, into, effective, locations, departments, picking, picked, entityPeople, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters, unmapped]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every edit is checked again (a dry run through the API) half a second after the last one.
   const key = JSON.stringify(input);
@@ -343,7 +379,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const ready = people.filter((p) => p.status === 'ready');
   const blockedCheck = preview?.checks.find((c) => c.status === 'Blocked');
   // The employments in the plan (left-out people not counted): from the check, or before it from today's head counts.
-  const moveCount = preview ? people.filter((p) => p.status !== 'left_out').length : across && from ? moving.reduce((n, l) => n + l.people, 0) : null;
+  const moveCount = preview ? people.filter((p) => p.status !== 'left_out').length : picking ? picked.length : across && from ? moving.reduce((n, l) => n + l.people, 0) : null;
   const mapBlocked = unmapped ? `Choose a place in ${intoE?.name ?? 'the new entity'} for every row first` : undefined;
   const entityOptions = s.entities.map((e) => ({ value: e.id, label: `${e.name} · ${persons(e.people)}` }));
   const finishBlocked = mapBlocked
@@ -456,12 +492,14 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
         {...(live.onSaveDraft
           ? {
               onSaveAndExit: () => {
-                const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
+                const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, ...(picking ? { employeeIds: picked } : {}), locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
                 live.onSaveDraft!(state, heading, live.draft?.id ?? null).catch((e) => setSaving(e instanceof Error ? e.message : 'Try again.'));
               },
             }
           : {})}
         continueBlocked={step === 'options' ? mapBlocked : undefined}
+        // Continue stays enabled with no one picked: the click says what is missing under the field.
+        onContinue={(id) => (id === 'scope' && picking && !picked.length ? (setTried(true), false) : undefined)}
         finishLabel="Send for approval"
         finishBlocked={finishBlocked}
         onFinish={() => setConfirm(true)}
@@ -486,7 +524,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                   />
                 </FormField>
                 <FormField label={kind === 'within' ? 'Legal entity' : 'From entity'} required>
-                  <Select options={entityOptions} value={from} onChange={(v) => (setFrom(v), setLocations([]), setDepartments([]), setMap({}), setMasterMap({}), setTarget({}))} placeholder="Choose a legal entity" />
+                  <Select options={entityOptions} value={from} onChange={(v) => (setFrom(v), setLocations([]), setDepartments([]), setPicked([]), setMap({}), setMasterMap({}), setTarget({}))} placeholder="Choose a legal entity" />
                 </FormField>
                 {across && (
                   <FormField label={kind === 'close' ? 'Transfer people to' : 'Into entity'} required>
@@ -494,15 +532,28 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                   </FormField>
                 )}
                 {(kind === 'demerge' || kind === 'within') && from && (
-                  <FormField label="Who moves" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
-                    <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
-                  </FormField>
+                  <>
+                    <FormField label="Who moves" required>
+                      <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]), setDepartments([]), setTried(false))} options={[{ value: 'place', label: kind === 'demerge' ? 'By location' : 'By location and department' }, { value: 'people', label: 'Pick people' }]} />
+                    </FormField>
+                    {picking ? (
+                      <FormField label="People" required helper="Only the people you pick move." error={tried && !picked.length ? 'Pick at least one person who moves.' : null}>
+                        <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" emptyText={entityPeople ? 'No matches' : 'Loading the people'} options={(entityPeople ?? []).map((p) => ({ value: p.id, label: [p.name, p.code].filter(Boolean).join(' · '), description: p.location ?? undefined }))} value={picked} onChange={(v) => (setPicked(v), setTried(false))} />
+                      </FormField>
+                    ) : (
+                      <FormField label="Locations" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
+                        <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
+                      </FormField>
+                    )}
+                  </>
                 )}
                 {kind === 'within' && from && (
                   <>
-                    <FormField label="Departments">
-                      <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${persons(d.byEntity[from])}` }))} value={departments} onChange={setDepartments} />
-                    </FormField>
+                    {!picking && (
+                      <FormField label="Departments">
+                        <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${persons(d.byEntity[from])}` }))} value={departments} onChange={setDepartments} />
+                      </FormField>
+                    )}
                     <Card title="Move to">
                       <div className="yx-ppl__form">
                         <FormField label="Department">
@@ -606,7 +657,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                         </table>
                       </div>
                     ) : (
-                      <Text size="sm" tone="secondary" as="p">{kind === 'demerge' ? 'Choose the locations whose people move.' : 'No one works here today.'}</Text>
+                      <Text size="sm" tone="secondary" as="p">{kind === 'demerge' ? (picking ? 'Pick the people who move.' : 'Choose the locations whose people move.') : 'No one works here today.'}</Text>
                     )}
                   </Card>
                 )}
