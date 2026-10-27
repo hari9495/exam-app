@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { PayeesCard, RehireCard, VrsCard } from './special';
+import { PayeesDialog, RehireCard, VrsCard } from './special';
 import type { AbscondingRow, RehireView } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -27,9 +27,7 @@ describe('Batch 6e screens', () => {
   });
 
   it('payees: shares must make 100 % before saving', async () => {
-    render(<PayeesCard data={{ payees: [], total: '0.00', complete: false }} documents={[]} onSave={vi.fn()} />);
-    expect(screen.getByText('Payees are not complete')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Change' }));
+    render(<PayeesDialog current={[]} documents={[]} onClose={vi.fn()} onSave={vi.fn()} />);
     const dialog = screen.getByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox', { name: /Name/ }), 'Meera');
     await ue.type(within(dialog).getByRole('textbox', { name: /Relation/ }), 'Wife');

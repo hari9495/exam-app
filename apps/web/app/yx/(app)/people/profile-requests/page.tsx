@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ProfileRequestsScreen, type ProfileRequest } from '@yukthix/ui/access';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
+import { useDocumentDownload } from '../../../../../lib/yx-lifecycle';
 
 const id = encodeURIComponent;
 
@@ -15,6 +16,7 @@ export default function YxProfileRequestsPage() {
   const perms = useYxPermissions();
   const list = usePeople<{ rows: ProfileRequest[] }>('/profile-requests');
   const write = usePeopleWrite();
+  const download = useDocumentDownload();
   return (
     <ProfileRequestsScreen
       state={loadState(list)}
@@ -24,6 +26,7 @@ export default function YxProfileRequestsPage() {
       onApprove={async (requestId, overrideReason) => void (await write('POST', `/profile-requests/${id(requestId)}/approve`, overrideReason ? { overrideReason } : {}))}
       onReject={async (requestId, reason) => void (await write('POST', `/profile-requests/${id(requestId)}/reject`, { reason }))}
       onOpenProfile={(employeeId) => router.push(`/yx/people/directory/${id(employeeId)}`)}
+      onProof={(documentId) => download(documentId, 'proof')}
     />
   );
 }

@@ -76,7 +76,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };

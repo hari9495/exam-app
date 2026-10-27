@@ -57,6 +57,12 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
   const ids: Record<string, string> = {};
   const roles: Record<string, string> = {};
   const asA = () => ({ organizationId: org.A.id, isSuperAdmin: false });
+  // PPL-32: a proof document on the person's record (the upload itself is covered by the documents tests).
+  const proof = (employeeId: string, typeKey: string) =>
+    tenantPrisma.forTenant(asA(), async (tx) => {
+      const where = { organizationId: org.A.id, personId: (await tx.employee.findFirstOrThrow({ where: { id: employeeId } })).personId!, typeKey };
+      return ((await tx.document.findFirst({ where })) ?? (await tx.document.create({ data: { ...where, status: 'uploaded' } }))).id;
+    });
   const email = (who: string) => `${who}-${runId}@acc.test`;
   const CTC = ['2400000', '920000', '540000', '420000', '610000', '330000'];
   /** R1: no amount in any form (field names or the seeded figures). */
@@ -514,16 +520,26 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       // A manager (Lakshmi manages Imran) never edits or sees Personal data.
       await api('lakshmiU', 'put', `/people/employees/${ids.imran}/personal`).send({ city: 'X' }).expect(403);
 
-      const bank = { kind: 'bank_salary', value: { holderName: 'Imran', accountNumber: '123456789012', ifsc: 'HDFC0001234' }, reason: 'Salary account' };
+      const bank = { kind: 'bank_salary', value: { holderName: 'Imran', accountNumber: '123456789012', ifsc: 'HDFC0001234' }, proofDocumentId: await proof(ids.imran, 'bank_proof') };
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send(bank).expect(403); // step-up
       await up('imranU');
+      // PPL-32: one's own change needs its proof (company default), the person's own document of that kind.
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ ...bank, proofDocumentId: undefined }).expect(400);
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ ...bank, proofDocumentId: await proof(ids.imran, 'pan_card') }).expect(400);
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ ...bank, proofDocumentId: await proof(ids.kavya, 'bank_proof') }).expect(400);
+      await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'legal_name', value: { legalName: 'Imran K' }, proofDocumentId: await proof(ids.imran, 'name_change_proof'), effectiveOn: addDays(today, 1) }).expect(400);
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ ...bank, value: { ...bank.value, ifsc: 'HDFC1234' } }).expect(400);
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ ...bank, value: { ...bank.value, pan: 'ABCPE1234F' } }).expect(400);
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'aadhaar', value: { aadhaar: '468135790249' }, reason: 'x' }).expect(400); // checksum
       ids.bankReq = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send(bank).expect(201)).body.id;
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send(bank).expect(409);
-      ids.panReq = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'pan', value: { pan: 'ABCPE1234F' }, reason: 'PAN' }).expect(201)).body.id;
-      ids.aadhaarReq = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'aadhaar', value: { aadhaar: '468135790248' }, reason: 'Aadhaar' }).expect(201)).body.id;
+      ids.panReq = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'pan', value: { pan: 'ABCPE1234F' }, proofDocumentId: await proof(ids.imran, 'pan_card') }).expect(201)).body.id;
+      ids.aadhaarReq = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'aadhaar', value: { aadhaar: '468135790248' }, proofDocumentId: await proof(ids.imran, 'aadhaar') }).expect(201)).body.id;
+      const name = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'legal_name', value: { legalName: 'Imran K' }, proofDocumentId: await proof(ids.imran, 'name_change_proof'), effectiveOn: today }).expect(201)).body;
+      expect(name).toMatchObject({ effectiveOn: today, proofDocumentId: expect.any(String), reason: null });
+      const form = (await api('imranU', 'get', '/people/me/change-form').expect(200)).body;
+      expect(form).toMatchObject({ employeeId: ids.imran, proofRequired: true, coolingHours: expect.any(Number) });
+      expect(Object.keys(form.current)).toEqual(expect.arrayContaining(['bank_salary', 'pan', 'legal_name']));
       // Someone else's record: only with employee.identity.manage reaching them.
       await up('lakshmiU');
       await api('lakshmiU', 'post', `/people/employees/${ids.imran}/profile-requests`).send(bank).expect(403);
@@ -550,12 +566,15 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('payrollTn', 'post', `/people/profile-requests/${ids.aadhaarReq}/approve`).send({}).expect(201);
       // A second salary account replaces the first and waits for the cooling period.
       await up('imranU');
-      const second = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'bank_salary', value: { holderName: 'Imran', accountNumber: '999988887777', ifsc: 'SBIN0004321' }, reason: 'New bank' }).expect(201)).body.id;
+      const second = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'bank_salary', value: { holderName: 'Imran', accountNumber: '999988887777', ifsc: 'SBIN0004321' }, proofDocumentId: await proof(ids.imran, 'bank_proof') }).expect(201)).body.id;
       await up('payrollTn');
       await api('payrollTn', 'post', `/people/profile-requests/${second}/approve`).send({}).expect(201);
       const p = (await api('imranU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body;
       expect(p.identity.bankAccounts).toEqual([expect.objectContaining({ purpose: 'salary', account: '•••• 7777', ifsc: 'SBIN0004321' })]);
       expect(new Date(p.identity.bankAccounts[0].usableFrom).getTime()).toBeGreaterThan(Date.now() + 47 * 3_600_000);
+      // PPL-32: my request says when the new account starts being used.
+      const mine = (await api('imranU', 'get', '/people/profile-requests').expect(200)).body.rows.find((r: { id: string }) => r.id === second);
+      expect(mine.usableFrom).toBe(p.identity.bankAccounts[0].usableFrom);
       // Payroll never approves a change about themselves (Kavya signs in as payrollTn).
       await up('payrollTn');
       const own = (await api('payrollTn', 'post', `/people/employees/${ids.kavya}/profile-requests`).send({ kind: 'uan', value: { uan: '100912345678' }, reason: 'UAN' }).expect(201)).body.id;
@@ -625,7 +644,7 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       // Passport: a change with approval, masked on the record, the number only to identity access.
       await up('imranU');
       await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728' }, reason: 'New passport' }).expect(400);
-      const pp = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728', passportExpiresOn: '2031-02-08' }, reason: 'New passport' }).expect(201)).body.id;
+      const pp = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'passport', value: { passport: 'Z4417728', passportExpiresOn: '2031-02-08' }, proofDocumentId: await proof(ids.imran, 'passport') }).expect(201)).body.id;
       await up('payrollTn');
       await api('payrollTn', 'post', `/people/profile-requests/${pp}/approve`).send({}).expect(201);
       expect((await api('hrTn', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.identity).toMatchObject({ passport: '•••• 7728', passportExpiresOn: '2031-02-08' });
@@ -714,9 +733,27 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       expect(log.enabled).toBe(true);
       expect(log.entries.map((e: { what: string; who: string }) => [e.what, e.who])).toEqual(expect.arrayContaining([['PAN', 'payrollTn'], ['Aadhaar', 'payrollTn'], ['Pay', 'payrollTn']]));
       expect(log.entries.some((e: { who: string }) => e.who === 'imranU')).toBe(false);
+      // PPL-33: each look says where it happened; the page names the company.
+      expect(log.company).toEqual(expect.any(String));
+      expect(log.entries.find((e: { what: string }) => e.what === 'PAN')).toMatchObject({ context: 'Shown in full on your record' });
+      expect(log.entries.find((e: { what: string }) => e.what === 'Pay')).toMatchObject({ context: expect.any(String), role: 'Analyst' });
+      // My data as a file: JSON or PDF, identifiers masked as on the record, recorded; only one's own.
+      const json = await api('imranU', 'get', '/people/me/data').expect(200);
+      expect(json.headers['content-disposition']).toContain('my-data.json');
+      expect(json.body).toMatchObject({ company: log.company, name: expect.any(String), personal: expect.any(Object), identity: expect.any(Object), viewedBy: expect.any(Array), documents: expect.any(Array) });
+      expect(json.text).not.toContain('ABCPE1234F');
+      const pdf = await api('imranU', 'get', '/people/me/data?format=pdf').buffer(true).parse((res, cb) => {
+        const parts: Buffer[] = [];
+        res.on('data', (c: Buffer) => parts.push(c));
+        res.on('end', () => cb(null, Buffer.concat(parts)));
+      }).expect(200);
+      expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+      await api('imranU', 'get', '/people/me/data?format=doc').expect(400);
+      expect((await auditRows('employee.data.exported')).length).toBe(2);
+      await api('outsider', 'get', '/people/me/data').expect(404);
       await up('adminA');
       await api('adminA', 'put', '/org/settings').send({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' }).expect(200);
-      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, entries: [] });
+      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, company: log.company, entries: [] });
       await api('outsider', 'get', '/people/me/access-log').expect(404);
     });
 
@@ -910,7 +947,7 @@ ${await codeOf(ids.lakshmi)},KFPL,redesignation,${addDays(today, 16)},Title,AN
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ personalEmail: `imran.new-${runId}@mail.test` }).expect(200);
       expect(sent.map((s) => s.to).sort()).toEqual([`imran-${runId}@acc.test`, `imran.home-${runId}@mail.test`].sort());
       await up('imranU');
-      const req = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'bank_reimbursement', value: { holderName: 'Imran', accountNumber: '555566667777', ifsc: 'ICIC0001111' }, reason: 'Claims account' }).expect(201)).body.id;
+      const req = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'bank_reimbursement', value: { holderName: 'Imran', accountNumber: '555566667777', ifsc: 'ICIC0001111' }, proofDocumentId: await proof(ids.imran, 'bank_proof') }).expect(201)).body.id;
       // Someone holding the session swaps the personal email before approval.
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ personalEmail: `attacker-${runId}@evil.test` }).expect(200);
       sent.length = 0;

@@ -40,6 +40,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'probation.auto_confirm_after_days': { off: 'Never (HR confirms)', '0': 'On the end date', '7': '7 days after', '15': '15 days after', '30': '30 days after' },
   'access.manager.view_scope': { all_reports: 'Everyone under them', direct_reports: 'Direct reports only' },
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
+  'employee.profile_change.proof': { required: 'Required', optional: 'Optional' },
   'home.pay_on_employee_home': { off: 'Not shown', on: 'Shown, hidden until the employee asks' },
   'attendance.mode': { punch: 'Punch in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' },
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },

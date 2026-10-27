@@ -10,8 +10,9 @@ import { LettersService } from '../documents/letters/letters.service';
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { settingFor } from '../people/probation';
 import { holdersOf } from '../time/time-core';
+import { EmailService } from '../email/email.service';
 import { ExitsService } from './exits.service';
-import { addDaysIso } from './exit-rules';
+import { DEATH_CLAIMS, addDaysIso } from './exit-rules';
 import { freezeSettlementIn } from './settlement';
 import { withPayScope } from '../payroll/pay-access';
 import { showDate } from '../people/employee-import';
@@ -54,6 +55,7 @@ export class ExitExtrasService {
     private readonly exits: ExitsService,
     private readonly letters: LettersService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -128,6 +130,73 @@ export class ExitExtrasService {
       await audit(tx, c, 'exit.payees.set', 'exit_case', id, { count: list.length, kinds: list.map((p) => p.kind) });
       return this.payeesIn(tx, org, id);
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ death: the flow's facts (PPL-23)
+
+  private async deathCase(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const k = await this.managedCase(tx, c, v, id);
+    if (k.exitType !== 'death') throw new BadRequestException('This is not a death in service.');
+    return k;
+  }
+
+  /** HR users who may run this case: the choices for the family's compassionate contact. */
+  private async contactsIn(tx: Tx, org: string, employeeId: string) {
+    const ids = await holdersOf(tx, org, 'lifecycle.exit.manage', employeeId, todayIst());
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } });
+    return users.map((u) => ({ value: u.id, label: u.name || u.email }));
+  }
+
+  /** What the death-in-service flow shows besides the case: their job, the family's contact, the certificate, the claim forms. */
+  async death(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const k = await this.deathCase(tx, c, v, id);
+      const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: k.employmentId }, orderBy: { validFrom: 'desc' }, select: { designationId: true, locationId: true } });
+      const job = a?.designationId ? await tx.designation.findFirst({ where: { organizationId: org, id: a.designationId }, select: { name: true } }) : null;
+      const place = a?.locationId ? await tx.location.findFirst({ where: { organizationId: org, id: a.locationId }, select: { name: true } }) : null;
+      const cert = await tx.document.findFirst({ where: { organizationId: org, personId: k.personId, typeKey: 'death_certificate' }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+      const claims = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId: k.id, department: 'hr', title: { in: [...DEATH_CLAIMS] } }, select: { id: true } });
+      return {
+        about: [job?.name, place?.name].filter(Boolean).join(', ') || null,
+        contactUserId: k.familyContactUserId,
+        contacts: await this.contactsIn(tx, org, k.employeeId),
+        certificate: cert ? { status: cert.status } : null,
+        claimItemIds: claims.map((x) => x.id),
+      };
+    });
+  }
+
+  async setFamilyContact(ctx: TenantContext, user: ScopeUser, id: string, userId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const k = await this.deathCase(tx, c, v, id);
+      if (!(await this.contactsIn(tx, c.organizationId, k.employeeId)).some((x) => x.value === userId)) throw new BadRequestException('Choose someone who can run this case.');
+      await tx.exitCase.update({ where: { id: k.id }, data: { familyContactUserId: userId } });
+      await audit(tx, c, 'exit.family_contact.set', 'exit_case', k.id, { from: k.familyContactUserId, to: userId });
+      return { ok: true };
+    });
+  }
+
+  /** Emails each payee with an email the link to their own login (the alumni portal's one-time code). */
+  async sendPayeeAccess(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    const x = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const k = await this.deathCase(tx, c, v, id);
+      const to = (await tx.exitPayee.findMany({ where: { organizationId: org, exitCaseId: k.id, removedAt: null, email: { not: null } }, select: { name: true, email: true } })).filter((p) => p.email);
+      if (!to.length) throw new BadRequestException('No payee has an email. Add one under Payees; they sign in with it.');
+      const o = await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true, slug: true } });
+      await audit(tx, c, 'exit.payees.access_sent', 'exit_case', k.id, { count: to.length });
+      return { org, to, o };
+    });
+    const link = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}/yx/alumni/${encodeURIComponent(x.o.slug)}`;
+    const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+    for (const p of x.to) {
+      await this.email.send({ to: p.email!, organizationId: x.org, subject: `${x.o.name}: your documents`, html: `<p>Dear ${esc(p.name)},</p><p>${esc(x.o.name)} has documents for you: the F&amp;F statement, Form 16 and claim papers as HR releases them. Sign in here: <a href="${esc(link)}">${esc(link)}</a></p><p>Use this email address; we send you a one-time code.</p>` });
+    }
+    return { sent: x.to.length };
   }
 
   // ------------------------------------------------------------------------------------------ absconding (LIFE-5.05)

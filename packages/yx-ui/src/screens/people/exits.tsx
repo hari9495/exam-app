@@ -24,8 +24,8 @@ import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noti
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
 import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
-import { PayeesCard } from './live/special';
-import type { AbscondingRow, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem } from './live/types';
+import { PayeesDialog } from './live/special';
+import type { AbscondingRow, Choice, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem, Payee, Payees } from './live/types';
 import { Segment } from './people-kit';
 import { useRun } from '../org/org-kit';
 import type { FnfSettlementView, FnfSlipLine } from '../pay/live/types-5j';
@@ -469,7 +469,6 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           },
         ]}
       />
-      {d.exitType === 'death' && p.payees && p.onPayees && <PayeesCard data={p.payees} documents={p.payeeDocuments ?? []} onSave={p.onPayees} />}
       <div className="yx-ppl__grid2">
         <Card title="Deprovisioning">
           {deprov.length ? <StatusChecklist label="Deprovisioning" rows={deprov.map(stepRow)} /> : <Text as="p" className="yx-ppl__muted">{p.steps ? 'The steps run on and after the last working day.' : 'HR sees the deprovisioning steps.'}</Text>}
@@ -1286,8 +1285,215 @@ function SampleFnfCalculator({ variant = 'standard', today }: { variant?: FnfVar
 
 /* ================================================================== PPL-23 death in service */
 
+/** The live death in service (PPL-23): the designed five steps with the case, its payees, the F&F and the letters. */
+export interface LiveDeath {
+  state: 'ready' | 'loading' | 'error' | 'not-found';
+  onRetry: () => void;
+  name: string;
+  /** "Maintenance Supervisor, Hosur plant". */
+  about: string | null;
+  diedOn: Date;
+  contact: string | null;
+  contacts: Choice[];
+  onContact: (userId: string) => Promise<unknown>;
+  certificate: { status: string } | null;
+  onCertificate: (file: File) => Promise<unknown>;
+  payees: Payees | null;
+  successionDocuments: Choice[];
+  onSuccession: (file: File) => Promise<unknown>;
+  onPayees: (payees: Payee[]) => Promise<unknown>;
+  /** The F&F settlement; undefined when the viewer may not see pay, null when there is none yet. */
+  settlement?: FnfSettlementView | null;
+  claims: ClearanceItem[];
+  letters: ExitStep[];
+  onAccess: () => Promise<unknown>;
+  onBack: () => void;
+  onFinish?: () => Promise<unknown>;
+  /** Why Send F&F for approval cannot run yet. */
+  finishBlocked?: string;
+}
+
+const CERT: Record<string, string> = { uploaded: 'waiting for verification', verified: 'certificate verified', rejected: 'certificate rejected' };
+const CLAIM: Record<ClearanceItem['status'], string> = { open: 'Pending', cleared: 'Done', waived: 'Skipped' };
+
+function LiveDeathInService({ live }: { live: LiveDeath }) {
+  const [editing, setEditing] = useState(false);
+  const { busy, error, run } = useRun();
+  if (live.state !== 'ready')
+    return (
+      <PeopleFrame active="Exit cases">
+        {live.state === 'error' ? <ErrorState title="We couldn't load this case" description="Check your connection and try again." onRetry={live.onRetry} /> : live.state === 'not-found' ? <EmptyState title="Not found" description="This case doesn't exist or you can't open it." /> : <ListSkeleton label="Loading the case" />}
+      </PeopleFrame>
+    );
+  const payees = live.payees?.payees ?? [];
+  const heirs = !payees.some((p) => p.kind === 'nominee');
+  const s = live.settlement;
+  const bank = (name: string) => {
+    const b = s?.payees.find((x) => x.name === name);
+    return b?.accountLast4 ? `XXXX ${b.accountLast4}` : null;
+  };
+  const shares = payees.map((p) => Number(p.sharePercent));
+  const dues = s ? liveLines(s, live.diedOn).earnings.filter((l) => l.amount > 0) : [];
+  const paidTo = (amount: number) => {
+    if (!live.payees?.complete) return 'When the payees make 100 %';
+    if (payees.length === 1) return payees[0].name;
+    const parts = splitByShares(amount, shares);
+    return payees.map((p, i) => `${p.name.split(' ')[0]} ${formatINR(parts[i])}`).join(' · ');
+  };
+  const contactName = live.contacts.find((c) => c.value === live.contact)?.label.split(',')[0];
+  const certText = live.certificate ? (CERT[live.certificate.status] ?? 'certificate on file') : 'certificate not uploaded';
+  const claimsDone = live.claims.filter((c) => c.status !== 'open').length;
+  const issued = live.letters.filter((l) => l.status === 'done' || l.status === 'manual').length;
+  return (
+    <PeopleFrame active="Exit cases">
+      <PageHeader title={`Death in service · Late ${live.name}`} description={`${live.about ? `${live.about}. ` : ''}Access was revoked at once. No exit interview and no employee sign-offs.${contactName ? ` Compassionate contact: ${contactName}.` : ''}`} />
+      {error && (
+        <InlineAlert tone="danger" title="That didn't work">
+          {error}
+        </InlineAlert>
+      )}
+      <Stepper
+        title="Death in service"
+        defaultCurrent="payees"
+        finishLabel="Send F&F for approval"
+        onFinish={live.onFinish ? () => void run('finish', live.onFinish!) : undefined}
+        finishing={busy === 'finish'}
+        finishBlocked={live.finishBlocked}
+        onSaveAndExit={live.onBack}
+        steps={[
+          {
+            id: 'details',
+            title: 'Details and certificate',
+            summary: `Date of death ${formatDate(live.diedOn)} · ${certText}`,
+            content: (
+              <div className="yx-ppl__form">
+                <FormField label="Date of death" required helper="As recorded when the case was opened.">
+                  <DatePicker value={live.diedOn} onChange={() => {}} disabled />
+                </FormField>
+                <FormField label="Death certificate" required helper={live.certificate ? `On file: ${certText}.` : undefined}>
+                  <FileUpload upload={(file) => live.onCertificate(file).then(() => undefined)} accept={['.pdf', '.jpg', '.png']} maxSize={10 * 1024 * 1024} multiple={false} />
+                </FormField>
+                <FormField label="Compassionate contact for the family" required>
+                  <Select options={live.contacts} value={live.contact} onChange={(v) => v && void run('contact', () => live.onContact(v))} disabled={busy === 'contact'} />
+                </FormField>
+              </div>
+            ),
+          },
+          {
+            id: 'payees',
+            title: 'Payees',
+            status: live.payees?.complete ? undefined : 'error',
+            statusNote: live.payees?.complete ? undefined : 'The shares do not make 100 % yet',
+            summary: heirs ? `${plural(payees.length, 'legal heir')} · succession certificate needed` : `${plural(payees.length, 'nominee')} per nominations`,
+            content: (
+              <div className="yx-ppl__stack">
+                {heirs && (
+                  <InlineAlert tone="warning" title="No valid nomination on file">
+                    Pay legal heirs once HR verifies a succession or legal-heir certificate. The deadline doesn't move; the case records why payment is pending.
+                  </InlineAlert>
+                )}
+                {payees.length > 0 && (
+                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                    <table className="yx-ppl__impact">
+                      <thead>
+                        <tr>
+                          <th scope="col">Payee</th>
+                          <th scope="col">Scheme</th>
+                          <th scope="col">Share</th>
+                          {s !== undefined && <th scope="col">Bank account</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payees.map((p) => (
+                          <tr key={p.id ?? p.name}>
+                            <td>
+                              {p.name}
+                              <Text size="sm" tone="secondary" as="div">{`${p.relation}${p.kind === 'legal_heir' ? ' (legal heir)' : ''}`}</Text>
+                            </td>
+                            <td>All dues</td>
+                            <td className="yx-ppl__num">{Number(p.sharePercent)}%</td>
+                            {s !== undefined && <td>{bank(p.name) ? <><span className="yx-mono">{bank(p.name)}</span> <StatusBadge status="Pending verification" /></> : <span className="yx-mono">Not given yet</span>}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {heirs && (
+                  <FormField label="Succession or legal-heir certificate" required>
+                    <FileUpload upload={(file) => live.onSuccession(file).then(() => undefined)} accept={['.pdf']} maxSize={10 * 1024 * 1024} multiple={false} />
+                  </FormField>
+                )}
+                <div>
+                  <Button onClick={() => setEditing(true)}>Change payees</Button>
+                </div>
+                {editing && <PayeesDialog current={payees} documents={live.successionDocuments} onClose={() => setEditing(false)} onSave={live.onPayees} />}
+              </div>
+            ),
+          },
+          {
+            id: 'dues',
+            title: 'Dues and split',
+            summary: s ? `${plural(dues.length, 'line')} split ${shares.join(' / ')}` : 'Worked out by payroll',
+            content: (
+              <div className="yx-ppl__stack">
+                {s ? (
+                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                    <table className="yx-ppl__impact">
+                      <thead>
+                        <tr>
+                          <th scope="col">Line</th>
+                          <th scope="col">Amount</th>
+                          <th scope="col">Paid to</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dues.map((l) => (
+                          <tr key={l.id}>
+                            <td>{l.label}</td>
+                            <td className="yx-ppl__num">{formatINR(l.amount)}</td>
+                            <td>{paidTo(l.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Text as="p">{s === null ? 'The F&F settlement is not made yet. It starts once the case is accepted.' : 'Payroll works out the dues and splits them by these shares.'}</Text>
+                )}
+                <Text size="sm" tone="secondary" as="p">Recoveries only as HR confirms. Form 16 goes to the legal heir.</Text>
+              </div>
+            ),
+          },
+          { id: 'forms', title: 'Claim forms', summary: `${claimsDone} of ${live.claims.length} done`, content: <StatusChecklist label="Claim forms" rows={live.claims.map((c) => ({ id: c.id, title: c.title, owner: c.owner, status: CLAIM[c.status], note: c.note ?? undefined }))} /> },
+          {
+            id: 'letters',
+            title: 'Letters and access',
+            summary: `${issued} of ${plural(live.letters.length, 'letter')} issued · nominee logins`,
+            content: (
+              <div className="yx-ppl__stack">
+                <StatusChecklist label="Letters to next of kin" rows={live.letters.map((l) => ({ id: l.handler, title: l.label, status: l.status === 'done' || l.status === 'manual' ? 'Issued' : LIVE_STEP[l.status], note: l.lastError ?? undefined }))} />
+                <InlineAlert tone="info">Each nominee gets an OTP login to view and download only the F&F statement, Form 16 and claim documents HR releases.</InlineAlert>
+                <div>
+                  <Button icon={Mail} loading={busy === 'access'} onClick={() => void run('access', live.onAccess)}>
+                    Send nominee access
+                  </Button>
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
+    </PeopleFrame>
+  );
+}
+
 // PPL-23
-export function DeathInServiceFlow({ current = 'payees', noNomination = false }: { current?: string; noNomination?: boolean }) {
+export function DeathInServiceFlow(props: { current?: string; noNomination?: boolean; live?: LiveDeath }) {
+  return props.live ? <LiveDeathInService live={props.live} /> : <SampleDeathInService {...props} />;
+}
+
+function SampleDeathInService({ current = 'payees', noNomination = false }: { current?: string; noNomination?: boolean }) {
   const g = gratuity(28000, 50, { death: true });
   const gratuityParts = splitByShares(g.amount, [70, 30]);
   const payees = noNomination

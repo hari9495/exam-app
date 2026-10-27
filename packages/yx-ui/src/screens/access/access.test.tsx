@@ -6,8 +6,7 @@ import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 import { CancelDialog, ChangeDialog, PersonalDialog } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
-import { AccessLogScreen } from './access-log';
-import { ACCESS_LOG, EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
+import { EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
 const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
@@ -192,7 +191,7 @@ describe('Profile dialogs (P02 §4.4–4.5; the person record PPL-03 opens them)
 describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
   it('a duplicate value needs a reason to approve anyway', async () => {
     const onApprove = vi.fn().mockRejectedValueOnce(coded('DUPLICATE_IDENTIFIER', 'Arjun Kulkarni (KF-0142) already has this Reimbursement bank account.')).mockResolvedValueOnce(undefined);
-    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Approve' }));
@@ -203,20 +202,26 @@ describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
     expect(onApprove).toHaveBeenLastCalledWith('pr-1', 'Joint account, checked');
   });
 
+  it('PPL-32: the approver opens the proof and sees the effective date; no proof says so', async () => {
+    const onProof = vi.fn(async () => {});
+    const { unmount } = render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], reason: null, proofDocumentId: 'd1', effectiveOn: '2026-10-01' }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/Reason given/)).toBeNull();
+    expect(within(dialog).getByText(/Effective from/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Open the proof' }));
+    expect(onProof).toHaveBeenCalledWith('d1');
+    unmount();
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Approve' })[0]);
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('No proof attached.')).toBeInTheDocument();
+  });
+
   it('a change you raised shows Profile, never Approve', () => {
-    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeInTheDocument();
-  });
-});
-
-describe('Who accessed my data (P02 §7)', () => {
-  it('lists the looks, or says the company turned the view off', () => {
-    const { unmount } = render(<AccessLogScreen state="ready" log={ACCESS_LOG} />);
-    expect(screen.getAllByText('Suresh Pillai').length).toBeGreaterThan(0);
-    unmount();
-    render(<AccessLogScreen state="ready" log={{ enabled: false, entries: [] }} />);
-    expect(screen.getByText('Your company has turned this view off')).toBeInTheDocument();
   });
 });
 

@@ -39,6 +39,8 @@ const IMPLICIT: Record<string, string[]> = {
     'person', // HR in scope or the person
     'me', // one's own record
     'accessLog', // who looked at one's own data
+    'myChangeForm', // one's own identity and bank change page (PPL-32)
+    'myData', // one's own data as a file (PPL-33)
     'profile', // classes decided per record
     'reveal', // the person, or identity / Aadhaar keys in scope (checked by the service)
     'updatePersonal', // the person, or employee.profile.edit in scope

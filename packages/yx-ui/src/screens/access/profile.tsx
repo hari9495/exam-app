@@ -38,7 +38,7 @@ export interface ProfileScreenProps {
 
 const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']; label: string; check: (v: string) => string | null; date?: boolean }[]> = {
+export const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['value']; label: string; check: (v: string) => string | null; date?: boolean }[]> = {
   pan: [{ key: 'pan', label: 'New PAN', check: (v) => (PAN.test(v) ? null : 'Enter a PAN like ABCPE1234F') }],
   aadhaar: [{ key: 'aadhaar', label: 'New Aadhaar number', check: (v) => (/^[2-9][0-9]{11}$/.test(v) ? null : 'Enter the 12-digit Aadhaar number') }],
   uan: [{ key: 'uan', label: 'New UAN', check: (v) => (/^[0-9]{12}$/.test(v) ? null : 'Enter the 12-digit UAN') }],

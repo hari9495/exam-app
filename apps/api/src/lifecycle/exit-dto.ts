@@ -284,6 +284,11 @@ export class RehireDto {
   version!: number;
 }
 
+export class FamilyContactDto {
+  @IsUUID()
+  userId!: string;
+}
+
 export class BuddyDto {
   @IsOptional()
   @IsUUID()

@@ -520,6 +520,8 @@ export class ExitsService implements OnModuleInit {
     // Death in service (YX-LC-16): the family's claim forms are tasks on the case; the nominations become the payees.
     if (k.exitType === 'death') {
       if (owner) for (const title of DEATH_CLAIMS) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId: id, department: 'hr', title, ownerUserId: owner } });
+      // PPL-23: the case's HR owner is the family's compassionate contact until HR picks someone else.
+      if (owner) await tx.exitCase.update({ where: { id }, data: { familyContactUserId: owner } });
       const noms = await tx.employeeNomination.findMany({ where: { organizationId: org, employeeId: k.employeeId, scheme: { in: ['gratuity', 'all'] }, supersededAt: null } });
       if (noms.length && !(await tx.exitPayee.findFirst({ where: { organizationId: org, exitCaseId: id }, select: { id: true } }))) {
         await tx.exitPayee.createMany({ data: noms.map((n) => ({ organizationId: org, exitCaseId: id, kind: 'nominee', name: n.name, relation: n.relation, sharePercent: n.sharePercent })) });

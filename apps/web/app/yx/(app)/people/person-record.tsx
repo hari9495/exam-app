@@ -210,7 +210,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ...(r.mine || self ? { onWithdraw: () => setWithdrawing(r) } : {}),
     })),
     ...(prof?.can.editPersonal && prof.personal ? { onEditPersonal: () => setEditing(true) } : {}),
-    ...(prof?.can.requestChange ? { onRequestChange: () => setChanging(true) } : {}),
+    // PPL-32: one's own change is the Me › Change requests page (with proof); HR raising one for someone keeps the dialog.
+    ...(prof?.can.requestChange ? { onRequestChange: () => (prof.self ? router.push('/yx/me/change-requests') : setChanging(true)) } : {}),
     // Family and nominations: HR edits them; emergency contacts: the person too (whoever may edit Personal details).
     family: prof?.family
       ? { ...familyData(prof.family), ...(prof.can.editFamily ? { onEdit: () => setFamilyEdit('family') } : {}), ...(prof.can.editPersonal ? { onEditContacts: () => setFamilyEdit('contacts') } : {}) }

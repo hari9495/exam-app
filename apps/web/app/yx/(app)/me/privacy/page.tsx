@@ -1,11 +1,23 @@
 'use client';
 
-import { AccessLogScreen, type AccessLog } from '@yukthix/ui/access';
-import { loadState } from '../../../../../lib/yx-org';
+import { MyDataScreen } from '@yukthix/ui/frame';
+import type { AccessLog } from '@yukthix/ui/access';
 import { usePeople } from '../../../../../lib/yx-people';
+import { usePayDownload } from '../../../../../lib/yx-pay';
 
-// Me › Who accessed my data (PPL-33; P02 §7, YX-SEC-09): looks by others at one's pay, identity and bank details.
+// Me › Privacy (PPL-33; P02 §7, YX-SEC-09): what the company holds about me by class, my data as a file, and who
+// looked at my pay, identity, bank details and Confidential documents.
 export default function YxPrivacyPage() {
   const log = usePeople<AccessLog>('/me/access-log');
-  return <AccessLogScreen state={loadState(log)} onRetry={() => void log.refetch()} log={log.data ?? null} />;
+  const download = usePayDownload();
+  return (
+    <MyDataScreen
+      live={{
+        state: log.isError ? 'error' : log.data ? 'ready' : 'loading',
+        onRetry: () => void log.refetch(),
+        log: log.data ?? null,
+        onDownload: (format) => download(`/people/me/data?format=${format}`, `my-data.${format}`),
+      }}
+    />
+  );
 }

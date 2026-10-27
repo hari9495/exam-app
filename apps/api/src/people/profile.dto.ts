@@ -108,8 +108,17 @@ export class ProfileRequestDto {
   @Type(() => ProposedValueDto)
   value!: ProposedValueDto;
 
-  @IsString() @MinLength(1) @MaxLength(500)
-  reason!: string;
+  // PPL-32: the proof says why; a reason is optional.
+  @IsOptional() @IsString() @MaxLength(500)
+  reason?: string;
+
+  /** The proof, uploaded to the person's own documents first (PPL-32). */
+  @IsOptional() @IsUUID()
+  proofDocumentId?: string;
+
+  /** A legal name: the day it took effect (the gazette or marriage date). */
+  @IsOptional() @IsDateString({ strict: true }) @Matches(DATE, { message: 'effectiveOn is a date (YYYY-MM-DD)' })
+  effectiveOn?: string;
 }
 
 export class ProfileDecisionDto {
@@ -130,6 +139,12 @@ export const REVEAL_FIELDS = ['pan', 'aadhaar', 'uan', 'esic', 'passport', 'bank
 export class RevealDto {
   @IsIn(REVEAL_FIELDS)
   field!: (typeof REVEAL_FIELDS)[number];
+}
+
+/** PPL-33: my data as JSON (default) or PDF. */
+export class MyDataDto {
+  @IsOptional() @IsIn(['json', 'pdf'])
+  format?: string;
 }
 
 export class ProfileRequestListDto {

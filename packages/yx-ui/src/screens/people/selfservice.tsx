@@ -1,13 +1,13 @@
 // PPL-32 Profile change request · PPL-33 My data + Who accessed my data · PPL-38 Disability declaration
 // PPL-43 BFSI declarations · PPL-44 Personal-trading pre-clearance (M01 §3.1, §3.11; P02 §4.5, §6, §7; P08 Q6).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Download, FileText, Plus, ShieldCheck } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -17,9 +17,13 @@ import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline } from '../../components/timeline';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
+import { dayKey } from '../../lib/dates';
 import { addDays, isIfsc, isPan, preclearanceState } from './people-logic';
 import { ACCESS_LOG } from './people-data';
-import { ClassBadge, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
+import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
+import { useRun } from '../org/org-kit';
+import { KIND_FIELDS } from '../access/profile';
+import type { AccessLog, ChangeForm, ProfileRequest, ProfileRequestInput, RequestKind } from '../access/types';
 
 /* ================================================================== PPL-32 profile change request */
 
@@ -86,8 +90,180 @@ function ChangeFields({ kind, value, setValue, ifsc, setIfsc }: { kind: ProfileC
   );
 }
 
+/** The live page (PPL-32): my own identity, bank and legal-name changes with proof, and where each one stands. */
+export interface LiveProfileChange {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  form: ChangeForm | null;
+  /** Requests about me. */
+  requests: ProfileRequest[];
+  /** Uploads the proof to my documents; resolves to the document id. */
+  onProof: (kind: RequestKind, file: File) => Promise<string>;
+  onSend: (input: ProfileRequestInput) => Promise<unknown>;
+  onCancel: () => void;
+}
+
+// The designed three first; the other kinds the API takes follow.
+const LIVE_KINDS: { value: RequestKind; label: string }[] = [
+  { value: 'bank_salary', label: 'Bank account' },
+  { value: 'pan', label: 'PAN' },
+  { value: 'legal_name', label: 'Legal name' },
+  { value: 'aadhaar', label: 'Aadhaar' },
+  { value: 'uan', label: 'UAN' },
+  { value: 'esic', label: 'ESIC IP number' },
+  { value: 'passport', label: 'Passport' },
+  { value: 'bank_reimbursement', label: 'Reimbursement bank account' },
+];
+const PROOF_LABEL: Partial<Record<RequestKind, string>> = { bank_salary: 'Cancelled cheque or passbook page', bank_reimbursement: 'Cancelled cheque or passbook page', pan: 'PAN card', legal_name: 'Gazette notification or marriage certificate', aadhaar: 'Aadhaar (masked copy)', passport: 'Passport' };
+const ROW_LABEL: Record<RequestKind, string> = { bank_salary: 'Salary account', bank_reimbursement: 'Reimbursement account', pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', passport: 'Passport' };
+// The design's labels and messages where it has them; KIND_FIELDS (the record's dialog) for the rest.
+const FIELD_LABEL: Record<string, string> = { legalName: 'New legal name' };
+const FIELD_CHECK: Record<string, (v: string) => string | null> = {
+  pan: (v) => (isPan(v) ? null : 'Enter a 10-character PAN like ABCDE1234F.'),
+  ifsc: (v) => (isIfsc(v) ? null : 'Enter an 11-character IFSC like CNRB0001234. The fifth character is zero.'),
+};
+const shownValue = (kind: RequestKind, v: Record<string, string | null> | null) => {
+  if (!v) return 'Not on file';
+  if (kind === 'bank_salary' || kind === 'bank_reimbursement') return [v.account, v.ifsc].filter(Boolean).join(' · ');
+  if (kind === 'legal_name') return v.legalName ?? '—';
+  return [v.value, v.expiresOn ? `expires ${formatDate(new Date(`${v.expiresOn}T00:00:00`))}` : null].filter(Boolean).join(' · ');
+};
+
+function RequestCard({ r, now }: { r: ProfileRequest; now: Date }) {
+  const at = (iso: string | null) => (iso ? new Date(iso) : undefined);
+  const cooling = r.usableFrom && new Date(r.usableFrom) > now;
+  return (
+    <Card title={`${r.label} change`}>
+      <ApprovalTimeline
+        now={now}
+        steps={[
+          { id: 'asked', label: 'Requested', status: 'done', approver: r.mine ? 'You' : (r.requestedBy ?? undefined), at: at(r.requestedAt) },
+          { id: 'hr', label: 'HR approval', status: r.status === 'approved' ? 'done' : 'current', approver: r.decidedBy ?? 'HR', at: at(r.decidedAt) },
+          ...(r.usableFrom ? [{ id: 'cooling', label: 'Cooling period ends', status: cooling ? ('current' as const) : ('done' as const), approver: formatDate(new Date(r.usableFrom)) }] : []),
+        ]}
+      />
+      {r.status === 'approved' && r.decidedAt && <Text size="sm" tone="secondary" as="p">{`We emailed your old contact on ${formatDate(new Date(r.decidedAt))}. If you didn't ask for this, tell HR now.`}</Text>}
+    </Card>
+  );
+}
+
+function LiveProfileChangeRequest({ today, live }: { today: Date; live: LiveProfileChange }) {
+  const [kind, setKind] = useState<RequestKind>('bank_salary');
+  const [value, setValue] = useState<Record<string, string>>({});
+  const [proof, setProof] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const [round, setRound] = useState(0);
+  const { busy, error, run } = useRun();
+  const frame = (body: ReactNode) => (
+    <MeFrame active="Change requests">
+      <PageHeader title="Change identity or bank details" description="PAN, bank account and legal name need HR approval with proof. Personal details like address and phone you edit directly on your profile." />
+      {body}
+    </MeFrame>
+  );
+  if (live.state === 'error') return frame(<ErrorState title="We couldn't load your details" description="Check your connection and try again." onRetry={live.onRetry} />);
+  if (live.state === 'loading' || !live.form) return frame(<ListSkeleton label="Loading your details" />);
+  const form = live.form;
+  const now = new Date();
+  const waiting = live.requests.filter((r) => r.status === 'pending').map((r) => r.kind);
+  const open = live.requests.filter((r) => r.status === 'pending' || (r.status === 'approved' && r.usableFrom && new Date(r.usableFrom) > now));
+  const fields = KIND_FIELDS[kind];
+  const bank = kind === 'bank_salary' || kind === 'bank_reimbursement';
+  const proofLabel = form.proofTypes[kind] && PROOF_LABEL[kind];
+  const problem = (key: string, v: string) => (FIELD_CHECK[key] ?? fields.find((f) => f.key === key)!.check)(v);
+  const errorOf = (key: string) => {
+    const v = (value[key] ?? '').trim();
+    return v ? problem(key, v) : tried ? 'Fill this in.' : null;
+  };
+  const proofMissing = Boolean(proofLabel) && form.proofRequired && !proof;
+  const ready = fields.every((f) => (value[f.key] ?? '').trim() && !problem(f.key, (value[f.key] ?? '').trim())) && (kind !== 'legal_name' || Boolean(value.effectiveOn)) && !proofMissing;
+  const pick = (k: RequestKind) => {
+    setKind(k);
+    setValue({});
+    setProof(null);
+    setTried(false);
+    setRound((n) => n + 1);
+  };
+  const send = async () => {
+    setTried(true);
+    if (!ready) return;
+    const ok = await run('send', () => live.onSend({ kind, value: Object.fromEntries(fields.map((f) => [f.key, (value[f.key] ?? '').trim()])), ...(proof ? { proofDocumentId: proof } : {}), ...(kind === 'legal_name' ? { effectiveOn: value.effectiveOn } : {}) }));
+    if (ok) pick(kind);
+  };
+  const days = form.coolingHours / 24;
+  const changeTo = (bank ? [value.accountNumber, value.ifsc] : fields.map((f) => value[f.key])).filter(Boolean).join(' · ');
+  return frame(
+    <div className="yx-ppl__stack">
+      {open.map((r) => <RequestCard key={r.id} r={r} now={now} />)}
+      {error && (
+        <InlineAlert tone="danger" title="That didn't work">
+          {error}
+        </InlineAlert>
+      )}
+      <FormField label="What do you want to change?" required>
+        <RadioGroup value={kind} onChange={(v) => pick(v as RequestKind)} orientation="horizontal" options={LIVE_KINDS.map((k) => ({ ...k, disabled: waiting.includes(k.value), description: waiting.includes(k.value) ? 'A change is already waiting' : undefined }))} />
+      </FormField>
+      <div className="yx-ppl__form">
+        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+          <table className="yx-ppl__impact">
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Now</th>
+                <th scope="col">Change to</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">{ROW_LABEL[kind]}</th>
+                <td className="yx-mono">{shownValue(kind, form.current[kind])}</td>
+                <td className="yx-mono" data-changed>{changeTo}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {fields.map((f) =>
+          f.date ? (
+            <FormField key={f.key} label={f.label} required error={tried && !value[f.key] ? 'Choose the date.' : null}>
+              <DatePicker value={value[f.key] ? new Date(`${value[f.key]}T00:00:00`) : null} onChange={(d) => setValue((x) => ({ ...x, [f.key]: d ? dayKey(d) : '' }))} min={today} />
+            </FormField>
+          ) : (
+            <FormField key={f.key} label={FIELD_LABEL[f.key] ?? f.label} required error={errorOf(f.key)} helper={f.key === 'legalName' ? 'Used on letters, payslips and statutory filings from the effective date.' : undefined}>
+              <TextField value={value[f.key] ?? ''} onChange={(v) => setValue((x) => ({ ...x, [f.key]: ['pan', 'ifsc', 'passport'].includes(f.key) ? v.toUpperCase() : v }))} inputMode={f.key === 'accountNumber' ? 'numeric' : undefined} autoComplete="off" />
+            </FormField>
+          ),
+        )}
+        {kind === 'legal_name' && (
+          <FormField label="Effective from" required error={tried && !value.effectiveOn ? 'Choose the date the name changed.' : null}>
+            <DatePicker value={value.effectiveOn ? new Date(`${value.effectiveOn}T00:00:00`) : null} onChange={(d) => setValue((x) => ({ ...x, effectiveOn: d ? dayKey(d) : '' }))} max={today} />
+          </FormField>
+        )}
+        {proofLabel && (
+          <FormField label={proofLabel} required={form.proofRequired} optional={!form.proofRequired} error={tried && proofMissing ? 'Add the proof.' : null}>
+            <FileUpload key={`${kind}-${round}`} upload={async (file) => setProof(await live.onProof(kind, file))} accept={['.pdf', '.jpg', '.png']} maxSize={5 * 1024 * 1024} multiple={false} />
+          </FormField>
+        )}
+        <InlineAlert tone="info">
+          {bank
+            ? `HR approves the change. ${kind === 'bank_salary' ? 'Salary goes' : 'Reimbursements go'} to the new account ${days > 0 ? `after a ${days}-day cooling period` : 'once it is approved'}, and we tell your old contact.`
+            : 'HR approves this change. We tell your old contact when it is done.'}
+        </InlineAlert>
+      </div>
+      <div className="yx-ppl__row">
+        <Button onClick={live.onCancel}>Cancel</Button>
+        <Button variant="primary" loading={busy === 'send'} onClick={() => void send()}>
+          Send for approval
+        </Button>
+      </div>
+    </div>,
+  );
+}
+
 // PPL-32
-export function ProfileChangeRequest({ kind: initial = 'bank', submitted = false, today, defaultValue }: { kind?: ProfileChangeKind; submitted?: boolean; today: Date; defaultValue?: string }) {
+export function ProfileChangeRequest(props: { kind?: ProfileChangeKind; submitted?: boolean; today: Date; defaultValue?: string; live?: LiveProfileChange }) {
+  return props.live ? <LiveProfileChangeRequest today={props.today} live={props.live} /> : <SampleProfileChangeRequest {...props} />;
+}
+
+function SampleProfileChangeRequest({ kind: initial = 'bank', submitted = false, today, defaultValue }: { kind?: ProfileChangeKind; submitted?: boolean; today: Date; defaultValue?: string }) {
   const [kind, setKind] = useState<ProfileChangeKind>(initial);
   const [value, setValue] = useState(defaultValue ?? (initial === 'bank' ? '3890 1122 4410' : initial === 'pan' ? 'BRGPR7712K' : 'Divya Raghunathan Iyer'));
   const [ifsc, setIfsc] = useState('SBIN0012765');
@@ -148,8 +324,102 @@ const HELD = [
 ];
 type Access = (typeof ACCESS_LOG)[number];
 
+/** The live Privacy page (PPL-33): what the company holds about me, my data as a file, who viewed my sensitive data. */
+export interface LiveMyData {
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  log: AccessLog | null;
+  onDownload: (format: 'pdf' | 'json') => Promise<unknown>;
+}
+type LiveAccess = AccessLog['entries'][number];
+
+// What the record holds (P02 classes). The design's Special row named a health check-up, which YukthiX does not hold.
+const LIVE_HELD = HELD.map((h) => (h.cls === 'Special' ? { ...h, what: 'Aadhaar (masked), background check reports', why: 'Identity check, background check' } : h));
+
+function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'access' }) {
+  const [t, setT] = useState(tab);
+  const { busy, error, run } = useRun();
+  const log = live.log;
+  const cols: TableColumn<LiveAccess>[] = [
+    { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role ?? undefined }), width: 240 },
+    { key: 'what', header: 'What they viewed', value: (r) => r.what, width: 200 },
+    { key: 'why', header: 'Context', value: (r) => r.context, width: 280 },
+    { key: 'at', header: 'When', value: (r) => r.at, render: (r) => `${formatDate(new Date(r.at))}, ${new Date(r.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}`, width: 200 },
+  ];
+  return (
+    <MeFrame active="Privacy">
+      <PageHeader title="Privacy" description={`What ${log?.company ?? 'your company'} holds about you, and who viewed your Confidential or Special data.`} />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load your privacy page" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' || !log ? (
+        <ListSkeleton label="Loading your privacy page" />
+      ) : (
+        <Tabs value={t} onValueChange={(v) => setT(v as 'data' | 'access')}>
+          <TabsList aria-label="Privacy">
+            <TabsTrigger value="data">My data</TabsTrigger>
+            <TabsTrigger value="access" count={log.enabled ? log.entries.length : undefined}>
+              Who accessed my data
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="data">
+            <div className="yx-ppl__stack">
+              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                <table className="yx-ppl__impact">
+                  <thead>
+                    <tr>
+                      <th scope="col">What we hold</th>
+                      <th scope="col">Class</th>
+                      <th scope="col">Why</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {LIVE_HELD.map((h) => (
+                      <tr key={h.what}>
+                        <td>{h.what}</td>
+                        <td><ClassBadge cls={h.cls} /></td>
+                        <td>{h.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {error && (
+                <InlineAlert tone="danger" title="That didn't work">
+                  {error}
+                </InlineAlert>
+              )}
+              <div className="yx-ppl__row">
+                <Button icon={Download} loading={busy === 'pdf'} onClick={() => void run('pdf', () => live.onDownload('pdf'))}>
+                  Download my data (PDF)
+                </Button>
+                <Button icon={Download} loading={busy === 'json'} onClick={() => void run('json', () => live.onDownload('json'))}>
+                  Download my data (JSON)
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="access">
+            {!log.enabled ? (
+              <InlineAlert tone="info" title="Your company has turned this view off">Every view of your Confidential and Special data is still recorded. If the view is turned back on, you'll see the full history.</InlineAlert>
+            ) : (
+              <div className="yx-ppl__stack">
+                <Text as="p">People who viewed your Confidential or Special data. Automatic payroll processing isn't listed.</Text>
+                <DataTable label="Who accessed my data" columns={cols} rows={log.entries} getRowId={(r) => r.id} cardSummary empty={<EmptyState title="No one has viewed your sensitive data" description="Views by HR, payroll or your manager appear here." />} />
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
+    </MeFrame>
+  );
+}
+
 // PPL-33
-export function MyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 'access'; viewOff?: boolean }) {
+export function MyDataScreen(props: { tab?: 'data' | 'access'; viewOff?: boolean; live?: LiveMyData }) {
+  return props.live ? <LiveMyDataScreen live={props.live} tab={props.tab ?? 'data'} /> : <SampleMyDataScreen {...props} />;
+}
+
+function SampleMyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 'access'; viewOff?: boolean }) {
   const [t, setT] = useState(tab);
   const cols: TableColumn<Access>[] = [
     { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role }), width: 240 },

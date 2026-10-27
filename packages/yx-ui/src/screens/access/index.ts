@@ -4,6 +4,5 @@ export * from './types';
 export { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 export { CancelDialog, ChangeDialog, PersonalDialog, type ProfileScreenProps } from './profile';
 export { ProfileRequestsScreen, type ProfileRequestsScreenProps } from './profile-requests';
-export { AccessLogScreen, type AccessLogScreenProps } from './access-log';
 export { SCOPE_LABEL, KIND_LABEL } from './access-kit';
 export { SupportAccessScreen, type SupportAccessScreenProps } from './support-access';
