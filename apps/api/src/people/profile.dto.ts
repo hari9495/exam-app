@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsISO4217CurrencyCode, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
@@ -55,7 +55,7 @@ export class WorkPhoneDto {
   workPhone!: string | null;
 }
 
-export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport'] as const;
+export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport', 'bank_international'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
 /** The proposed value; only the part the kind needs is read (the rest must be absent). */
@@ -92,6 +92,19 @@ export class ProposedValueDto {
   // RBI IFSC: four letters, a zero, six letters or digits.
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z]{4}0[A-Z0-9]{6}$/, { message: 'ifsc is 11 characters, e.g. HDFC0001234' })
   ifsc?: string;
+
+  // PPL-46: an account abroad. IBAN country length and mod-97 check digits, and BIC, by validator.js (ISO 13616, ISO 9362).
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z]{2}$/, { message: 'country is an ISO 3166-1 alpha-2 code' })
+  country?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z0-9]{15,34}$/, { message: 'iban is written without spaces, in capitals' }) @IsIBAN({ message: 'That IBAN fails its country length or check digits.' })
+  iban?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsBIC({ message: 'bic is an 8 or 11 character BIC, like ECBKAEAD' })
+  bic?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsISO4217CurrencyCode({ message: 'currency is an ISO 4217 code, like AED' })
+  currency?: string;
 }
 
 export class ProfileRequestDto {
@@ -156,4 +169,5 @@ export const KIND_FIELDS: Record<RequestKind, (keyof ProposedValueDto)[]> = {
   passport: ['passport', 'passportExpiresOn'],
   bank_salary: ['holderName', 'accountNumber', 'ifsc'],
   bank_reimbursement: ['holderName', 'accountNumber', 'ifsc'],
+  bank_international: ['country', 'iban', 'bic', 'currency'],
 };

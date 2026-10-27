@@ -2843,6 +2843,26 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
+/// PPL-46: a salary account abroad (IBAN, BIC, payout currency); dated rows like the Indian accounts, IBAN sealed.
+model EmployeeIntlBankAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  country        String    @db.Char(2)
+  ibanEnc        String    @map("iban_enc")
+  ibanHash       String    @map("iban_hash") @db.Char(64)
+  ibanLast4      String    @map("iban_last4") @db.Char(4)
+  bic            String    @db.VarChar(11)
+  currency       String    @db.Char(3)
+  validFrom      DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(3)
+  usableFrom     DateTime  @map("usable_from") @db.Timestamptz(3)
+  requestId      String?   @map("request_id") @db.Uuid
+
+  @@index([organizationId, ibanHash], map: "employee_intl_bank_accounts_hash_idx")
+  @@map("employee_intl_bank_accounts")
+}
+
 /// P02 §4.5: identity, bank and legal-name changes with old → new and a second person's approval.
 model EmployeeProfileRequest {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

@@ -54,7 +54,10 @@ export function passportRow(p: ProfileView, reveal: (field: RevealField) => Prom
 }
 
 export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise<string>): FieldRow[] {
-  return (p.identity?.bankAccounts ?? []).map((b) => {
+  const abroad = p.identity?.internationalAccount;
+  // PPL-46: the account abroad, masked (no full-value look is designed for it).
+  const intl: FieldRow[] = abroad ? [{ label: 'Salary account abroad', value: `${abroad.iban} · ${abroad.bic} · ${abroad.currency}${day(abroad.usableFrom) > new Date() ? ` · used for pay from ${dateText(abroad.usableFrom)}` : ''}`, cls: 'Confidential' as const, mono: true }] : [];
+  return [...intl, ...(p.identity?.bankAccounts ?? []).map((b) => {
     const field: RevealField = b.purpose === 'salary' ? 'bank_salary' : 'bank_reimbursement';
     const later = day(b.usableFrom) > new Date() ? ` · used for pay from ${dateText(b.usableFrom)}` : '';
     const masked = `${b.account} · ${b.ifsc}${later}`;
@@ -67,7 +70,7 @@ export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise
       canReveal: p.can.reveal,
       ...(p.can.reveal ? { reveal: async () => `${await reveal(field)} · ${b.ifsc}${later}` } : {}),
     };
-  });
+  })];
 }
 
 /** Current assignment (Job tab), as on the viewed date. */

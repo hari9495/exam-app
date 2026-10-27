@@ -15,7 +15,7 @@ const FORM: ChangeForm = {
   proofRequired: true,
   proofTypes: { bank_salary: 'bank_proof', pan: 'pan_card', legal_name: 'name_change_proof' },
   coolingHours: 72,
-  current: { bank_salary: { holderName: 'Divya R', ifsc: 'CNRB0001234', account: '•••• 6789' }, bank_reimbursement: null, pan: { value: '••••••821M' }, aadhaar: null, uan: null, esic: null, legal_name: { legalName: 'Divya Raghunathan' }, passport: null },
+  current: { bank_salary: { holderName: 'Divya R', ifsc: 'CNRB0001234', account: '•••• 6789' }, bank_reimbursement: null, pan: { value: '••••••821M' }, aadhaar: null, uan: null, esic: null, legal_name: { legalName: 'Divya Raghunathan' }, passport: null, bank_international: null },
 };
 const REQ = (x: Partial<ProfileRequest>): ProfileRequest => ({ id: 'r1', employeeId: 'e1', employeeName: 'Divya', kind: 'bank_salary', label: 'Salary bank account', proposed: {}, current: null, reason: null, status: 'pending', requestedBy: 'Divya', requestedAt: '2026-09-28T09:40:00Z', mine: true, decidedBy: null, decidedAt: null, decisionNote: null, overrideReason: null, proofDocumentId: 'd1', effectiveOn: null, usableFrom: null, ...x });
 

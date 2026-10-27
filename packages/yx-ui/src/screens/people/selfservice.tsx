@@ -115,7 +115,7 @@ const LIVE_KINDS: { value: RequestKind; label: string }[] = [
   { value: 'bank_reimbursement', label: 'Reimbursement bank account' },
 ];
 const PROOF_LABEL: Partial<Record<RequestKind, string>> = { bank_salary: 'Cancelled cheque or passbook page', bank_reimbursement: 'Cancelled cheque or passbook page', pan: 'PAN card', legal_name: 'Gazette notification or marriage certificate', aadhaar: 'Aadhaar (masked copy)', passport: 'Passport' };
-const ROW_LABEL: Record<RequestKind, string> = { bank_salary: 'Salary account', bank_reimbursement: 'Reimbursement account', pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', passport: 'Passport' };
+const ROW_LABEL: Record<RequestKind, string> = { bank_salary: 'Salary account', bank_reimbursement: 'Reimbursement account', pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', passport: 'Passport', bank_international: 'Salary account abroad' };
 // The design's labels and messages where it has them; KIND_FIELDS (the record's dialog) for the rest.
 const FIELD_LABEL: Record<string, string> = { legalName: 'New legal name' };
 const FIELD_CHECK: Record<string, (v: string) => string | null> = {

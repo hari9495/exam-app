@@ -23,9 +23,10 @@ import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, R
 
 type Kind = RequestKind;
 type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport';
+const INTL = 'bank_international';
 const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic', 'passport'];
 const BANK: Record<string, 'salary' | 'reimbursement'> = { bank_salary: 'salary', bank_reimbursement: 'reimbursement' };
-const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport' };
+const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport', bank_international: 'Salary account abroad' };
 /** PPL-32: the document type that proves each kind of change (UAN and ESIC have none). */
 export const PROOF_TYPE: Partial<Record<Kind, string>> = { bank_salary: 'bank_proof', bank_reimbursement: 'bank_proof', pan: 'pan_card', aadhaar: 'aadhaar', legal_name: 'name_change_proof', passport: 'passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
@@ -68,7 +69,7 @@ export class ProfileService {
     return plain.slice(prefix.length);
   }
 
-  private hash(c: CompanyContext, kind: Identifier | 'bank', value: string): string {
+  private hash(c: CompanyContext, kind: Identifier | 'bank' | 'iban', value: string): string {
     return hashValue(this.crypto, c.organizationId, kind, value);
   }
 
@@ -145,6 +146,7 @@ export class ProfileService {
   private async identityView(tx: Tx, c: CompanyContext, employeeId: string) {
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, employeeId, validTo: null }, orderBy: { purpose: 'asc' } });
+    const abroad = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
     const pending = await tx.employeeProfileRequest.findMany({ where: { organizationId: c.organizationId, employeeId, status: 'pending' }, select: { id: true, kind: true } });
     return {
       legalName: ids?.legalName ?? null,
@@ -155,6 +157,8 @@ export class ProfileService {
       passport: maskTail(ids?.passportLast4),
       passportExpiresOn: ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null,
       bankAccounts: banks.map((b) => ({ purpose: b.purpose, holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4), usableFrom: b.usableFrom })),
+      // PPL-46: the salary account abroad, the IBAN masked like any account number.
+      internationalAccount: abroad ? { country: abroad.country, iban: maskTail(abroad.ibanLast4), bic: abroad.bic, currency: abroad.currency, usableFrom: abroad.usableFrom } : null,
       pending: pending.map((p) => ({ requestId: p.id, kind: p.kind })),
     };
   }
@@ -325,6 +329,7 @@ export class ProfileService {
     if (kind === 'legal_name') return { legalName: p.legalName ?? null };
     if (BANK[kind]) return { holderName: p.holderName ?? null, ifsc: p.ifsc ?? null, account: maskTail(last4(p.accountNumber ?? '')) };
     if (kind === 'passport') return { value: maskTail(last4(p.passport ?? '')), expiresOn: p.passportExpiresOn ?? null };
+    if (kind === INTL) return { country: p.country ?? null, iban: maskTail(last4(p.iban ?? '')), bic: p.bic ?? null, currency: p.currency ?? null };
     return { value: maskTail(last4(p[kind as Identifier] ?? '')) };
   }
 
@@ -332,6 +337,10 @@ export class ProfileService {
     if (BANK[kind]) {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return b ? { holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4) } : null;
+    }
+    if (kind === INTL) {
+      const b = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
+      return b ? { country: b.country, iban: maskTail(b.ibanLast4), bic: b.bic, currency: b.currency } : null;
     }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (!ids) return null;
@@ -344,6 +353,7 @@ export class ProfileService {
   /** The person themselves, or HR holding employee.identity.manage in scope (raising on their behalf). Step-up at the route. */
   requestChange(ctx: TenantContext, v: Viewer, employeeId: string, dto: ProfileRequestDto) {
     const p = this.proposal(dto.kind, dto.value);
+    if (dto.kind === INTL && !p.iban!.startsWith(p.country!)) throw new BadRequestException('The IBAN must be from the country of the account.');
     return this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
       if (!a.self && !(await this.can(tx, c, v, 'employee.identity.manage', employeeId))) throw new ForbiddenException('Raising an identity or bank change for someone else needs employee.identity.manage.');
@@ -445,6 +455,10 @@ export class ProfileService {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return Boolean(b && b.accountHash === this.hash(c, 'bank', `${p.ifsc}:${p.accountNumber}`) && b.holderName === p.holderName);
     }
+    if (kind === INTL) {
+      const b = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
+      return Boolean(b && b.ibanHash === this.hash(c, 'iban', p.iban!) && b.bic === p.bic && b.currency === p.currency);
+    }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (kind === 'legal_name') return ids?.legalName === p.legalName;
     // A renewed passport may keep its number: the expiry is part of what is on file.
@@ -468,7 +482,10 @@ export class ProfileService {
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } } });
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: rows.flatMap((r) => [r.requestedBy, r.decidedBy].filter((x): x is string => Boolean(x))) } }, select: { id: true, name: true, email: true } });
       // A new bank account's first pay day after the cooling period (PPL-32 timeline).
-      const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } });
+      const banks = [
+        ...(await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } })),
+        ...(await tx.employeeIntlBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } })),
+      ];
       return {
         rows: rows.map((r) =>
           this.requestView(
@@ -564,6 +581,26 @@ export class ProfileService {
             requestId: r.id,
           },
         });
+      } else if (kind === INTL) {
+        const old = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId, validTo: null } });
+        if (old) await tx.employeeIntlBankAccount.update({ where: { id: old.id }, data: { validTo: now } });
+        const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId }, orderBy: { joinedOn: 'desc' } });
+        const hours = Number(await settingFor(tx, c, 'employee.bank_change.cooling_hours', { legalEntityId: employment?.legalEntityId ?? '' }));
+        await tx.employeeIntlBankAccount.create({
+          data: {
+            organizationId: c.organizationId,
+            employeeId: r.employeeId,
+            country: p.country!,
+            ibanEnc: this.seal(c, r.employeeId, p.iban!),
+            ibanHash: this.hash(c, 'iban', p.iban!),
+            ibanLast4: last4(p.iban!),
+            bic: p.bic!,
+            currency: p.currency!,
+            validFrom: now,
+            usableFrom: old ? new Date(now.getTime() + hours * 3_600_000) : now,
+            requestId: r.id,
+          },
+        });
       } else {
         const data: Record<string, unknown> =
           kind === 'legal_name'
@@ -597,8 +634,13 @@ export class ProfileService {
 
   /** YX-EMP-02: other employees with an open employment holding the same value. Names only for people the approver's view reaches. */
   private async duplicates(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string, kind: Kind, p: Proposal) {
-    if (kind === 'legal_name' || kind === 'esic' || (!BANK[kind] && !IDENTIFIERS.includes(kind as Identifier))) return [];
-    const others = BANK[kind]
+    if (kind === 'legal_name' || kind === 'esic' || (!BANK[kind] && kind !== INTL && !IDENTIFIERS.includes(kind as Identifier))) return [];
+    const others = kind === INTL
+      ? await tx.$queryRaw<{ id: string }[]>`
+          SELECT DISTINCT b.employee_id::text AS id FROM employee_intl_bank_accounts b
+          WHERE b.organization_id = ${c.organizationId}::uuid AND b.valid_to IS NULL AND b.employee_id <> ${employeeId}::uuid
+            AND b.iban_hash = ${this.hash(c, 'iban', p.iban!)}`
+      : BANK[kind]
       ? await tx.$queryRaw<{ id: string }[]>`
           SELECT DISTINCT b.employee_id::text AS id FROM employee_bank_accounts b
           WHERE b.organization_id = ${c.organizationId}::uuid AND b.valid_to IS NULL AND b.employee_id <> ${employeeId}::uuid

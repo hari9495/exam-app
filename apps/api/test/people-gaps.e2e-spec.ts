@@ -12,9 +12,9 @@ import { markSteppedUp } from './fixtures/step-up';
 import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.service';
 
 // The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
-// authorisations (PPL-45). Each with its key,
+// authorisations (PPL-45), international bank details (PPL-46). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34, PPL-45)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -68,7 +68,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45)', () => {
 
     const profile = (keys: string[], name: string) => tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } })).then((p) => p.id);
     const hrKeys = ['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.identity.view', 'employee.identity.manage'];
-    const hr = await profile([...hrKeys, 'employee.aadhaar.view'], 'HR');
+    const hr = await profile([...hrKeys, 'employee.aadhaar.view', 'employee.identity.approve'], 'HR');
     const hrPlain = await profile(hrKeys, 'HR without Special');
     ids.plant = await profile(['employee.profile.view', 'employee.aadhaar.view'], 'Plant HR');
     const passwordHash = await argon2.hash(PASSWORD);
@@ -212,6 +212,55 @@ describe('People: the remaining designed pages (PPL-34, PPL-45)', () => {
       await up('hrA');
       await api('hrA', 'post', path('arjun')).send({ ...visa, number: '784 2026 9001', issuedOn: undefined, expiresOn: addDays(todayIst(), 400) }).expect(201);
       expect(await lapsed(addDays(todayIst(), 60))).toEqual([]);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ international bank (PPL-46)
+
+  describe('international bank details (PPL-46)', () => {
+    const raise = (who: Who, employee: string, value: Record<string, string>) => api(who, 'post', `/people/employees/${ids[employee]}/profile-requests`).send({ kind: 'bank_international', value });
+    const good = { country: 'AE', iban: 'AE070331234567890123456', bic: 'ECBKAEAD', currency: 'AED' };
+
+    it('the IBAN, BIC, country and currency are checked by the API; the person raises it after step-up', async () => {
+      await up('arjunU');
+      await raise('arjunU', 'arjun', { ...good, iban: 'AE070331234567890123457' }).expect(400); // check digits
+      await raise('arjunU', 'arjun', { ...good, iban: 'AE07033123456789012345' }).expect(400); // UAE length
+      await raise('arjunU', 'arjun', { ...good, country: 'GB' }).expect(400); // the IBAN is from another country
+      await raise('arjunU', 'arjun', { ...good, bic: 'ECB1' }).expect(400);
+      await raise('arjunU', 'arjun', { ...good, currency: 'XYZ' }).expect(400);
+      await raise('arjunU', 'arjun', { ...good, ifsc: 'HDFC0001234' }).expect(400);
+      await raise('arjunU', 'imran', good).expect(404); // someone else's: not even found
+      const r = (await raise('arjunU', 'arjun', good).expect(201)).body;
+      expect(r).toMatchObject({ kind: 'bank_international', label: 'Salary account abroad', proposed: { country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED' }, current: null });
+      await raise('arjunU', 'arjun', good).expect(409);
+      ids.intlReq = r.id;
+    });
+
+    it('HR approves (never their own); it shows masked on the record; a replacement waits for the cooling period', async () => {
+      await up('hrA');
+      await api('hrA', 'post', `/people/profile-requests/${ids.intlReq}/approve`).send({}).expect(201);
+      const identity = (await api('hrA', 'get', `/people/employees/${ids.arjun}/profile`).expect(200)).body.identity;
+      expect(identity.internationalAccount).toMatchObject({ country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED' });
+      expect(JSON.stringify(identity)).not.toContain('0123456');
+      const stored = await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIntlBankAccount.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(stored.ibanEnc).not.toContain('AE07');
+      // HR raises a replacement for Arjun; HR cannot approve their own request.
+      const next = (await raise('hrA', 'arjun', { country: 'GB', iban: 'GB82WEST12345698765432', bic: 'NWBKGB2L', currency: 'GBP' }).expect(201)).body;
+      expect(next.current).toMatchObject({ iban: '•••• 3456' });
+      await api('hrA', 'post', `/people/profile-requests/${next.id}/approve`).send({}).expect(403);
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeProfileRequest.update({ where: { id: next.id }, data: { requestedBy: users.hrPlain } }));
+      await api('hrA', 'post', `/people/profile-requests/${next.id}/approve`).send({}).expect(201);
+      const now = (await api('hrA', 'get', `/people/employees/${ids.arjun}/profile`).expect(200)).body.identity.internationalAccount;
+      expect(now).toMatchObject({ country: 'GB', iban: '•••• 5432' });
+      expect(new Date(now.usableFrom).getTime()).toBeGreaterThan(Date.now() + 47 * 3_600_000);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeIntlBankAccount.count({ where: { organizationId: org.A.id, validTo: null } }))).toBe(1);
+    });
+
+    it('the same IBAN on another person needs a reason to approve', async () => {
+      await up('hrPlain');
+      const r = (await raise('hrPlain', 'imran', { country: 'GB', iban: 'GB82WEST12345698765432', bic: 'NWBKGB2L', currency: 'GBP' }).expect(201)).body;
+      await api('hrA', 'post', `/people/profile-requests/${r.id}/approve`).send({}).expect(409);
+      await api('hrA', 'post', `/people/profile-requests/${r.id}/approve`).send({ overrideReason: 'Joint account of a married couple' }).expect(201);
     });
   });
 });
