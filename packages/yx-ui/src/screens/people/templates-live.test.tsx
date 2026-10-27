@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { RichTextEditor } from '../../components/editor';
 import { LetterTemplatesList, fromHtml, toHtml, type LiveLetterTemplates } from './documents';
@@ -61,6 +61,8 @@ function page(over: Partial<LiveLetterTemplates> = {}) {
 }
 
 describe('PPL-29 letter templates, live', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/'));
+
   it('shows what the page gives it (the Signatories drawer)', () => {
     page({ onSignatories: () => {}, children: <p>Signatories drawer</p> });
     expect(screen.getByRole('button', { name: 'Signatories' })).toBeTruthy();
@@ -101,8 +103,26 @@ describe('PPL-29 letter templates, live', () => {
     page();
     await ue.click(screen.getByRole('row', { name: /Relieving and experience/ }));
     await ue.click(screen.getByRole('link', { name: 'Letter templates' }));
-    expect(screen.getByRole('row', { name: /Relieving, short/ })).toBeTruthy();
+    expect(await screen.findByRole('row', { name: /Relieving, short/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Activate' })).toBeNull();
+    expect(window.location.search).toBe('');
+  });
+
+  it('an open template has its own address: Back returns to the list, Forward and a reload open it again', async () => {
+    page();
+    await ue.click(screen.getByRole('row', { name: /Relieving and experience/ }));
+    expect(window.location.search).toBe('?template=t1');
+    window.history.back();
+    expect(await screen.findByRole('row', { name: /Relieving, short/ })).toBeTruthy();
+    window.history.forward();
+    expect(await screen.findByRole('button', { name: 'Activate' })).toBeTruthy();
+  });
+
+  it('a reload with ?template= opens that template', async () => {
+    window.history.replaceState(null, '', '/?template=t2');
+    page();
+    expect(await screen.findByRole('button', { name: 'Download as Word' })).toBeTruthy();
+    expect(screen.queryByRole('row', { name: /Relieving and experience/ })).toBeNull();
   });
 
   it('an unknown placeholder is reported with "Use suggestion", which uploads again with the rename', async () => {
