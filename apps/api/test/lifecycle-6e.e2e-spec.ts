@@ -248,6 +248,28 @@ describe('Lifecycle batch 6e', () => {
     await api('hr', 'post', `/lifecycle/exits/${k.id}/settled-outside`).send({ settledOn: today, reason: 'Paid to the legal heir' }).expect(200);
   });
 
+  it('PPL-23: the flow’s facts; the family contact is someone who may run the case; payees get their login by email', async () => {
+    emp.ravi = await hire('Ravi', 'SF-022');
+    const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.ravi, exitType: 'death', lwd: addDays(today, -1), reasonText: 'Passed away' }).expect(201)).body;
+    const d = (await api('hr', 'get', `/lifecycle/exits/${k.id}/death`).expect(200)).body;
+    expect(d).toMatchObject({ contactUserId: expect.any(String), certificate: null });
+    expect(d.claimItemIds).toHaveLength(5);
+    expect(d.contacts.map((c: { value: string }) => c.value)).toEqual(expect.arrayContaining([users.hr, users.hr2]));
+    expect(d.contacts.map((c: { value: string }) => c.value)).not.toContain(users.mgr);
+    await api('mgr', 'get', `/lifecycle/exits/${k.id}/death`).expect(403);
+    await api('adminB', 'get', `/lifecycle/exits/${k.id}/death`).expect(404);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: users.mgr }).expect(400);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: 'not-a-user' }).expect(400);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: users.hr2 }).expect(200);
+    expect((await api('hr', 'get', `/lifecycle/exits/${k.id}/death`).expect(200)).body.contactUserId).toBe(users.hr2);
+    await api('hr', 'post', `/lifecycle/exits/${k.id}/payees/access`).expect(400);
+    const mail = `uma-${run}@mail.test`;
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/payees`).send({ payees: [{ kind: 'nominee', name: 'Uma', relation: 'Wife', sharePercent: '100', email: mail }] }).expect(200);
+    email.send.mockClear();
+    expect((await api('hr', 'post', `/lifecycle/exits/${k.id}/payees/access`).expect(200)).body).toEqual({ sent: 1 });
+    expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: mail, html: expect.stringContaining(`/yx/alumni/${org.A.slug}`) }));
+  });
+
   it("absconding (Anil): day 3 / 7 / 14 / 21 steps, deemed abandonment with LWD = last day present; a timeline stops on return", async () => {
     emp.anil = await hire('Anil', 'SF-030');
     const lastPresent = addDays(today, -22);

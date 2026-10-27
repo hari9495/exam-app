@@ -148,7 +148,8 @@ export function retrenchmentCompensation(avgDailyPay: number, serviceMonths: num
 /** Split an amount by percentage shares so the parts add up exactly (last payee takes the rounding). */
 export function splitByShares(amount: number, shares: number[]): number[] {
   const total = shares.reduce((s, x) => s + x, 0);
-  if (total !== 100) throw new Error('Shares must add up to 100%');
+  // Decimal shares (33.33 / 33.33 / 33.34) add up to 100 only within float error.
+  if (Math.abs(total - 100) > 1e-6) throw new Error('Shares must add up to 100%');
   const parts = shares.map((s) => Math.floor((amount * s) / 100));
   parts[parts.length - 1] += amount - parts.reduce((s, x) => s + x, 0);
   return parts;

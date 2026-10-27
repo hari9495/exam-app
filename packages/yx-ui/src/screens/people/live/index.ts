@@ -40,7 +40,7 @@ export {
   BuddyCard,
   BatchDialog,
   AddMembersDialog,
-  PayeesCard,
+  PayeesDialog,
   ContractDialog,
   VrsCard,
   type BatchesScreenProps,

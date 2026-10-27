@@ -16,7 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import { TaskForm } from './lifecycle';
-import type { AlumniMe, ExitStep, Handoff, Letter, MyVrsScheme, Payee, Payees } from './types';
+import type { AlumniMe, ExitStep, Handoff, Letter, MyVrsScheme } from './types';
 import { VrsCard } from './special';
 import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyResignation } from './types';
 
@@ -412,10 +412,6 @@ export interface ExitCaseScreenProps {
   onStepDone?: (s: ExitStep, note: string) => Promise<unknown>;
   handoff?: Handoff | null;
   onSettledOutside?: (input: { settledOn: string; reason: string }) => Promise<unknown>;
-  /** 6e death in service: the payees, and the succession certificates on the person's record. */
-  payees?: Payees | null;
-  payeeDocuments?: Choice[];
-  onPayees?: (payees: Payee[]) => Promise<unknown>;
 }
 export type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
 

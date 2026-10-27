@@ -2,10 +2,12 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { ExitCaseWorkspace } from '@yukthix/ui/frame';
-import { type ExitStep, type ExitWorkspace, type Handoff, type InterviewAnswers, type Payees, type QueueDocument } from '@yukthix/ui/lifecycle';
+import { DeathInServiceFlow, ExitCaseWorkspace } from '@yukthix/ui/frame';
+import { type DeathFacts, type ExitStep, type ExitWorkspace, type Handoff, type InterviewAnswers, type Payee, type Payees, type QueueDocument } from '@yukthix/ui/lifecycle';
+import type { FnfSettlementView } from '@yukthix/ui/pay';
 import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useLife, useLifeWrite } from '../../../../../../lib/yx-lifecycle';
+import { usePay, usePayWrite } from '../../../../../../lib/yx-pay';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { apiFetch } from '../../../../../../lib/api-client';
 
@@ -27,6 +29,11 @@ export default function YxExitPage() {
   const payees = useLife<Payees>(death ? `/lifecycle/exits/${id(caseId)}/payees` : null);
   const docs = useLife<{ documents: QueueDocument[] }>(death && data.data?.personId ? `/documents/people/${id(data.data.personId)}` : null);
   const handoff = useLife<Handoff>(manage || perms.has('payroll.period.view') ? `/lifecycle/exits/${id(caseId)}/handoff` : null);
+  // PPL-23: a death in service runs as its own five steps; its F&F shows only to those who may see pay.
+  const facts = useLife<DeathFacts>(death ? `/lifecycle/exits/${id(caseId)}/death` : null);
+  const seesPay = death && perms.has('payroll.fnf.manage');
+  const fnf = usePay<FnfSettlementView[]>(seesPay ? '/fnf' : null);
+  const payWrite = usePayWrite();
   const write = useLifeWrite();
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const who = data.data?.name ?? 'the leaver';
@@ -41,6 +48,50 @@ export default function YxExitPage() {
       write('POST', `/lifecycle/clearance/${id(item.id)}/sign-off`, { action: x.action, version: item.version, ...(x.note ? { note: x.note } : {}), ...(x.recoveryAmount ? { recoveryAmount: x.recoveryAmount, recoveryReason: x.recoveryReason } : {}) }),
     (item, x) => `${item.title} ${x.action === 'clear' ? 'signed off' : 'waived'} for ${who}`,
   );
+  if (death && data.data) {
+    const d = data.data;
+    const s = fnf.data?.find((x) => x.employeeId === d.employeeId && x.exitType === 'death') ?? null;
+    const canSubmit = Boolean(perms.has('payroll.run.prepare') && s?.runId);
+    const upload = (typeKey: string) => (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return write('POST', `/documents/people/${id(d.personId!)}/${typeKey}`, form);
+    };
+    const state = loadState(data, facts, payees, ...(seesPay ? [fnf] : []));
+    return (
+      <DeathInServiceFlow
+        live={{
+          state: state === 'no-access' ? 'not-found' : state,
+          onRetry: () => void Promise.all([data.refetch(), facts.refetch(), payees.refetch(), ...(seesPay ? [fnf.refetch()] : [])]),
+          name: d.name,
+          about: facts.data?.about ?? null,
+          diedOn: new Date(`${d.lastDay}T00:00:00`),
+          contact: facts.data?.contactUserId ?? null,
+          contacts: facts.data?.contacts ?? [],
+          onContact: said((userId: string) => write('PUT', `/lifecycle/exits/${id(caseId)}/death/contact`, { userId }), () => `Compassionate contact for ${who}'s family saved`),
+          certificate: facts.data?.certificate ?? null,
+          onCertificate: said(upload('death_certificate'), () => `Death certificate uploaded for ${who}`),
+          payees: payees.data ?? null,
+          successionDocuments: (docs.data?.documents ?? []).filter((x) => x.typeKey === 'succession_certificate').map((x) => ({ value: x.id, label: `${x.typeName}${x.file ? `: ${x.file.name}` : ''}` })),
+          onSuccession: said(upload('succession_certificate'), () => `Succession certificate uploaded for ${who}`),
+          onPayees: said(
+            (list: Payee[]) => write('PUT', `/lifecycle/exits/${id(caseId)}/payees`, { payees: list.map((p) => ({ kind: p.kind, name: p.name, relation: p.relation, sharePercent: p.sharePercent, ...(p.email ? { email: p.email } : {}), ...(p.documentId ? { documentId: p.documentId } : {}) })) }),
+            () => `Payees for ${who} saved`,
+          ),
+          settlement: seesPay ? s : undefined,
+          claims: d.clearance.filter((c) => facts.data?.claimItemIds.includes(c.id)),
+          letters: (steps.data ?? []).filter((x) => x.handler.startsWith('letters.')),
+          onAccess: async () => {
+            const r = await write<{ sent: number }>('POST', `/lifecycle/exits/${id(caseId)}/payees/access`);
+            toast({ tone: 'success', title: `Login link sent to ${r.sent} ${r.sent === 1 ? 'payee' : 'payees'}` });
+          },
+          onBack: () => router.push('/yx/people/exits'),
+          ...(canSubmit ? { onFinish: said(() => payWrite(`/runs/${id(s!.runId!)}/submit`, {}), () => `The F&F for ${who} is sent for approval`) } : {}),
+          finishBlocked: !payees.data?.complete ? 'Complete the payees first; nothing is paid before that.' : !canSubmit ? 'Payroll sends the F&F for approval.' : s!.runStatus !== 'calculated' ? 'Calculate the F&F run in Full and final first.' : undefined,
+        }}
+      />
+    );
+  }
   return (
     <ExitCaseWorkspace
       today={new Date(`${today}T00:00:00`)}
@@ -66,12 +117,6 @@ export default function YxExitPage() {
         onStepDone: said((s: ExitStep, note: string) => write('POST', `/lifecycle/exits/${id(caseId)}/steps/${id(s.handler)}/done`, { note }), (s) => `${s.label} marked done for ${who}`),
         handoff: handoff.data ?? null,
         onSettledOutside: said((x: { settledOn: string; reason: string }) => write('POST', `/lifecycle/exits/${id(caseId)}/settled-outside`, x), () => `${who}'s F&F marked settled outside`),
-        payees: payees.data ?? null,
-        payeeDocuments: (docs.data?.documents ?? []).filter((d) => d.typeKey === 'succession_certificate').map((d) => ({ value: d.id, label: `${d.typeName}${d.file ? `: ${d.file.name}` : ''}` })),
-        onPayees: said(
-          (list: Payees['payees']) => write('PUT', `/lifecycle/exits/${id(caseId)}/payees`, { payees: list.map((p) => ({ kind: p.kind, name: p.name, relation: p.relation, sharePercent: p.sharePercent, ...(p.email ? { email: p.email } : {}), ...(p.documentId ? { documentId: p.documentId } : {}) })) }),
-          () => `Payees for ${who} saved`,
-        ),
       }}
     />
   );

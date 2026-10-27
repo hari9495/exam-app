@@ -640,3 +640,12 @@ export interface EditorParagraph {
   bold: boolean;
   heading: boolean;
 }
+
+/** PPL-23: what the death-in-service flow needs besides the case (GET /lifecycle/exits/:id/death). */
+export interface DeathFacts {
+  about: string | null;
+  contactUserId: string | null;
+  contacts: Choice[];
+  certificate: { status: string } | null;
+  claimItemIds: string[];
+}

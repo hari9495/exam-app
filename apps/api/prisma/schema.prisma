@@ -6218,6 +6218,8 @@ model ExitCase {
   retrenchment         Json?
   irPermissionId       String?   @map("ir_permission_id") @db.Uuid
   vrsSchemeId          String?   @map("vrs_scheme_id") @db.Uuid
+  /// PPL-23: a death in service's compassionate contact for the family (an HR user).
+  familyContactUserId  String?   @map("family_contact_user_id") @db.Uuid
   /// M06 PM8 (§4.1 change 4): an exit opened from an improvement plan links back to it.
   sourceType           String?   @map("source_type") @db.VarChar(16)
   sourceId             String?   @map("source_id") @db.Uuid

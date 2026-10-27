@@ -13,7 +13,7 @@ import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { dayKey } from '../../../lib/dates';
 import { dateText } from '../../time/live/kit';
-import type { Batch, Choice, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, Payees, RehireView, UpcomingExit } from './types';
+import type { Batch, Choice, IrOverview, IrPermission, LoadState, MyVrsScheme, Payee, RehireView, UpcomingExit } from './types';
 
 // Lifecycle batch 6e, wired (design §16.5): the rehire options and the buddy on a joiner (PPL-41), campus batches
 // (PPL-14), the payees of a death in service (PPL-23), absconding timelines (PPL-24), upcoming retirements and contract
@@ -206,37 +206,8 @@ export function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Ba
 
 // ------------------------------------------------------------------------------------------ death in service: payees (LIFE-5.04)
 
-export function PayeesCard({ data, documents, onSave }: { data: Payees; documents: Choice[]; onSave: (payees: Payee[]) => Promise<unknown> }) {
-  const [edit, setEdit] = useState(false);
-  return (
-    <Card
-      title="Payees (death in service)"
-      actions={
-        <Button size="sm" onClick={() => setEdit(true)}>
-          Change
-        </Button>
-      }
-    >
-      {!data.complete && <InlineAlert tone="warning" title="Payees are not complete">Record the nominees, or the legal heirs with their succession certificate, so that the shares make 100 %. Nothing is settled before that.</InlineAlert>}
-      {data.payees.length ? (
-        <ul className="yx-lif-list">
-          {data.payees.map((x, i) => (
-            <li key={x.id ?? i}>
-              <Badge tone="neutral">{x.kind === 'nominee' ? 'Nominee' : 'Legal heir'}</Badge>
-              <Text>{`${x.name} (${x.relation}): ${Number(x.sharePercent)} %`}</Text>
-              {x.email && <Text tone="secondary" size="sm">{`Signs in with ${x.email}`}</Text>}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Text as="p">No nomination on file.</Text>
-      )}
-      {edit && <PayeesDialog current={data.payees} documents={documents} onClose={() => setEdit(false)} onSave={onSave} />}
-    </Card>
-  );
-}
-
-function PayeesDialog({ current, documents, onClose, onSave }: { current: Payee[]; documents: Choice[]; onClose: () => void; onSave: (payees: Payee[]) => Promise<unknown> }) {
+/** Who is paid on a death in service and their shares (PPL-23 Payees step). */
+export function PayeesDialog({ current, documents, onClose, onSave }: { current: Payee[]; documents: Choice[]; onClose: () => void; onSave: (payees: Payee[]) => Promise<unknown> }) {
   const blank: Payee = { kind: 'nominee', name: '', relation: '', sharePercent: '', email: null, documentId: null };
   const [rows, setRows] = useState<Payee[]>(current.length ? current.map((x) => ({ ...x, sharePercent: String(Number(x.sharePercent)) })) : [blank]);
   const set = (i: number, patch: Partial<Payee>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
