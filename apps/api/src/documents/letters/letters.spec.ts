@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { plainRenderError } from './letters.service';
 import PizZip from 'pizzip';
 import { PDFDocument } from 'pdf-lib';
 import { plainToInstance } from 'class-transformer';
@@ -128,5 +129,15 @@ describe('letter PDFs', () => {
     expect((await PDFDocument.load(stamped)).getPageCount()).toBe((await PDFDocument.load(pdf)).getPageCount());
     const copy = await acceptanceCopy(stamped, { title: 'Appointment letter', referenceNo: 'KFPL/APT/2026/000001', letterSha256: 'a'.repeat(64), who: 'Sneha Pillai', at: '2026-10-09T05:00:00Z', channel: 'email', ip: '127.0.0.1', device: 'test', assurance: 'test' });
     expect((await PDFDocument.load(copy)).getPageCount()).toBe((await PDFDocument.load(stamped)).getPageCount() + 1);
+  });
+});
+
+// PPL-28: a letter that could not be made says why in plain words, never the system's own message.
+describe('plainRenderError', () => {
+  it('names a missing template file, a PDF service that did not answer, and anything else plainly', () => {
+    expect(plainRenderError("ENOENT: no such file or directory, open '/srv/.pay-files/x'")).toMatch(/^The letter template file is missing from storage/);
+    expect(plainRenderError('connect ECONNREFUSED 127.0.0.1:3000')).toMatch(/^The service that makes PDFs did not answer/);
+    expect(plainRenderError('Unsupported state or unable to authenticate data')).toMatch(/could not be opened/);
+    expect(plainRenderError('TypeError: x is undefined')).toBe('Something went wrong while making the letter. Try again; if it fails again, ask your admin.');
   });
 });

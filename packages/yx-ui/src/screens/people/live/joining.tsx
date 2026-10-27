@@ -28,6 +28,7 @@ import type { Choice, JoinerForms, JoinerPlaces, Letter, LoadState, PortalAnswer
 const SECTION_LABEL: Record<SectionKey, string> = { personal: 'Personal details', identity: 'PAN and ID', bank: 'Bank account', emergency: 'Emergency contact', nominees: 'Nominees (PF and gratuity)', tax: 'Tax regime' };
 const LETTER_STATUS: Record<Letter['status'], { label: string; tone: BadgeTone }> = {
   draft: { label: 'Draft', tone: 'neutral' },
+  discarded: { label: 'Discarded', tone: 'neutral' },
   pending_approval: { label: 'Waiting for approval', tone: 'info' },
   rejected: { label: 'Not approved', tone: 'danger' },
   rendering: { label: 'Being prepared', tone: 'warning' },

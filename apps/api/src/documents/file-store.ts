@@ -17,6 +17,17 @@ import { BlobStorageService, OrgSecretsCryptoService } from '@exam-platform/shar
 export const sha256 = (data: Buffer | string) => createHash('sha256').update(data).digest('hex');
 
 /** An S3-compatible bucket from the environment, or null. Path-style addressing works for MinIO and AWS alike. */
+/**
+ * A script's files land in its own working folder when no S3 bucket or blob store is set. If its DATABASE_URL names
+ * another app's database (not the one this folder's .env names), that app would never find them: the reason to refuse.
+ */
+export function foreignLocalStore(env: Record<string, string | undefined>, ownEnvFile: string | null): string | null {
+  if (env.S3_BUCKET || env.PAY_LOCAL_FILES_DIR || (env.AZURE_STORAGE_CONNECTION_STRING && env.AZURE_STORAGE_CONTAINER)) return null;
+  const own = ownEnvFile?.match(/^DATABASE_URL="?([^"\r\n]+)"?/m)?.[1];
+  if (!env.DATABASE_URL || !own || env.DATABASE_URL === own) return null;
+  return "DATABASE_URL is another app's database, but its files would be stored in this folder. Set PAY_LOCAL_FILES_DIR to that app's .pay-files folder (its apps/api/.pay-files) and run again.";
+}
+
 export function s3FromEnv(env = process.env): { client: S3Client; bucket: string } | null {
   if (!env.S3_BUCKET) return null;
   const client = new S3Client({

@@ -161,17 +161,58 @@ describe('PPL-28 bulk issue, live', () => {
 
 describe('PPL-15 a drafted withdrawal letter, live', () => {
   const draft = { id: 'l9', title: 'Offer withdrawal letter: Kavya Reddy', letterType: 'offer_withdrawal', personId: 'p9', person: 'Kavya Reddy', referenceNo: null, verifyCode: null, status: 'draft' as const, renderError: null, issuedAt: null, personSigns: false, acceptedAt: null, signature: null, supersededById: null };
-  it('shows as a draft with no number, and HR issues it from the row', async () => {
-    const onIssueDraft = vi.fn(async () => {});
+  const register = (live: Partial<LiveLetters>, rows: LiveLetters['rows'] = [draft]) =>
     render(
       <ToastProvider>
-        <IssuedLettersRegister rows={[]} live={{ state: 'ready', onRetry: () => {}, rows: [draft], verifyUrl: (c) => c, onDownload: () => {}, onIssueDraft }} />
+        <IssuedLettersRegister rows={[]} live={{ state: 'ready', onRetry: () => {}, rows, verifyUrl: (c) => c, onDownload: () => {}, ...live }} />
       </ToastProvider>,
     );
+  const handlers = () => ({ onPreview: vi.fn(async () => 'blob:draft'), onIssue: vi.fn(async () => {}), onDiscard: vi.fn(async () => {}) });
+
+  it('a draft is reviewed in the issue preview (the reason in it), then issued; Cancel leaves it a draft', async () => {
+    const draftH = handlers();
+    register({ draft: draftH });
     const row = screen.getByRole('row', { name: /Offer withdrawal letter Kavya Reddy/ });
     expect(within(row).getByText('Draft')).toBeInTheDocument();
     await ue.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
-    await ue.click(await screen.findByRole('menuitem', { name: 'Issue letter' }));
-    await waitFor(() => expect(onIssueDraft).toHaveBeenCalledWith(draft));
+    expect(screen.queryByRole('menuitem', { name: 'Issue letter' })).toBeNull();
+    await ue.click(await screen.findByRole('menuitem', { name: 'Review and issue' }));
+    const drawer = await screen.findByRole('dialog', { name: /Review and issue/ });
+    await waitFor(() => expect(draftH.onPreview).toHaveBeenCalledWith(draft));
+    expect(within(drawer).getByRole('combobox', { name: 'Employee' })).toBeDisabled();
+    await ue.click(within(drawer).getByRole('button', { name: 'Cancel' }));
+    expect(draftH.onIssue).not.toHaveBeenCalled();
+    await ue.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Review and issue' }));
+    const again = await screen.findByRole('dialog', { name: /Review and issue/ });
+    await waitFor(() => expect(within(again).getByRole('button', { name: 'Issue letter' })).toBeEnabled());
+    await ue.click(within(again).getByRole('button', { name: 'Issue letter' }));
+    await waitFor(() => expect(draftH.onIssue).toHaveBeenCalledWith(draft));
+  });
+
+  it('Discard draft asks why and keeps the letter for the audit', async () => {
+    const draftH = handlers();
+    register({ draft: draftH });
+    await ue.click(within(screen.getByRole('row', { name: /Kavya Reddy/ })).getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Discard draft' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard this draft?' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    expect(within(dialog).getByText('Say why it is not sent (3 characters or more).')).toBeInTheDocument();
+    expect(draftH.onDiscard).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox'), 'Candidate asked us not to send it');
+    await ue.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    await waitFor(() => expect(draftH.onDiscard).toHaveBeenCalledWith(draft, 'Candidate asked us not to send it'));
+  });
+
+  it('a letter that could not be made says so with the reason, and Try again makes it again', async () => {
+    const onRetryRender = vi.fn(async () => {});
+    const failed = { ...draft, id: 'l10', status: 'rendering' as const, referenceNo: 'KFPL-TN/OWD/2026/000001', renderError: 'The letter template file is missing from storage.' };
+    register({ onRetryRender }, [failed]);
+    const row = screen.getByRole('row', { name: /KFPL-TN\/OWD\/2026\/000001/ });
+    expect(within(row).getByText("Couldn't be made")).toBeInTheDocument();
+    expect(screen.getByText(/missing from storage/)).toBeInTheDocument();
+    await ue.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Try again' }));
+    await waitFor(() => expect(onRetryRender).toHaveBeenCalledWith(failed));
   });
 });

@@ -562,6 +562,8 @@ const LIVE_PHASE_WORD: Record<LiveJourneyData['kind'], [string, string, string]>
 };
 const LIVE_ANCHOR: Record<LiveJourneyData['kind'], string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on' };
 const LIVE_ANCHOR_PAST: Record<LiveJourneyData['kind'], string> = { onboarding: 'joined', offboarding: 'left', new_manager: 'managing since', transfer: 'moved', parental_leave: 'leave from', return_to_work: 'back since' };
+/** PPL-15: why a joiner's checklist was cancelled, as the header's badge says it. */
+const CANCEL_OUTCOME: Record<string, string> = { reneged: 'reneged', withdrawn: 'offer withdrawn', did_not_join: 'did not join' };
 const LIVE_TITLE: Record<LiveJourneyData['kind'], string> = { onboarding: 'onboarding', offboarding: 'leaving', new_manager: 'new manager', transfer: 'transfer', parental_leave: 'parental leave', return_to_work: 'return to work' };
 const liveWhen = (offset: number, kind: LiveJourneyData['kind']) => {
   const [before, day, after] = LIVE_PHASE_WORD[kind];
@@ -603,19 +605,30 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
   const kindTitle = LIVE_TITLE[j.kind];
   const where = [live.joiner?.role, live.joiner?.location].filter(Boolean).join(' · ');
   const doneCount = tasks.filter(done).length;
+  const cancelled = j.status === 'cancelled';
+  // "joined" only once the joiner is marked joined; a passed joining day without it is "was due to join".
+  const notJoined = j.kind === 'onboarding' && Boolean(j.joiner) && !j.joiner!.joined;
+  const when = cancelled
+    ? `${j.kind === 'onboarding' ? 'was to join' : LIVE_ANCHOR[j.kind]} ${formatDate(anchor)}`
+    : daysLeft < 0
+      ? notJoined
+        ? `was due to join ${formatDate(anchor)} (${plural(-daysLeft, 'day')} ago)`
+        : `${LIVE_ANCHOR_PAST[j.kind]} ${formatDate(anchor)}`
+      : `${LIVE_ANCHOR[j.kind]} ${formatDate(anchor)} (${daysLeft === 0 ? 'today' : `in ${plural(daysLeft, 'day')}`})`;
+  const outcome = j.joiner?.outcome ? CANCEL_OUTCOME[j.joiner.outcome] : null;
   return (
     <PeopleFrame active="Onboarding board">
       <ObjectHeader
         name={`${j.person} · ${kindTitle}`}
         avatarName={j.person}
         person
-        secondary={`${where ? `${where} · ` : ''}${daysLeft < 0 ? LIVE_ANCHOR_PAST[j.kind] : LIVE_ANCHOR[j.kind]} ${formatDate(anchor)}${daysLeft < 0 ? '' : ` (${daysLeft === 0 ? 'today' : `in ${plural(daysLeft, 'day')}`})`}`}
-        status={<ProgressRing value={j.progress} label={kindTitle} />}
+        secondary={`${where ? `${where} · ` : ''}${when}`}
+        status={cancelled ? <Badge tone="neutral">{outcome ? `Cancelled: ${outcome}` : 'Cancelled'}</Badge> : <ProgressRing value={j.progress} label={kindTitle} />}
         facts={[
           { label: 'Template', value: j.template },
           ...(live.joiner?.buddy ? [{ label: 'Buddy', value: live.joiner.buddy }] : []),
           ...(live.joiner?.manager ? [{ label: 'Manager', value: live.joiner.manager }] : j.owner ? [{ label: 'Run by', value: j.owner }] : []),
-          { label: 'Tasks done', value: `${doneCount} of ${tasks.length}` },
+          ...(cancelled ? [] : [{ label: 'Tasks done', value: `${doneCount} of ${tasks.length}` }]),
         ]}
         // Add task: no way to add a one-off task to a running checklist yet (left out).
         actions={j.canManage && j.status === 'active' && live.preboard ? <Button onClick={() => setChanging(true)}>Change status</Button> : undefined}

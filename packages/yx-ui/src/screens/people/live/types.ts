@@ -85,6 +85,8 @@ export interface Journey {
   status: 'active' | 'done' | 'cancelled';
   progress: number;
   template: string;
+  /** PPL-15: an onboarding's joiner: still to join, joined (marked so), or cancelled with the outcome. */
+  joiner?: { status: string; outcome: string | null; joined: boolean } | null;
   owner: string | null;
   canManage: boolean;
   today: string;
@@ -264,7 +266,8 @@ export interface Letter {
   person?: string;
   referenceNo: string | null;
   verifyCode: string | null;
-  status: 'draft' | 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  status: 'draft' | 'discarded' | 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  /** Why it could not be made, in plain words (only while it waits to be made). */
   renderError: string | null;
   issuedAt: string | null;
   personSigns: boolean;
