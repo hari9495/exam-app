@@ -123,6 +123,8 @@
 .yx-drawer__subtitle { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yx-drawer__meta { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); margin-top: var(--yx-space-1); }
 .yx-drawer__body { flex: 1; overflow-y: auto; padding: var(--yx-space-4) var(--yx-space-5); }
+/* Blocks placed straight in a drawer never touch (same rule as the card body). */
+.yx-drawer__body > :where(* + *:not(.yx-badge + .yx-badge, .yx-button + .yx-button)) { margin-top: var(--yx-space-4); }
 .yx-drawer__foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--yx-space-2); padding: var(--yx-space-3) var(--yx-space-5); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-drawer__foot > .yx-alert { flex: 1; }
 .yx-drawer__notice { flex: 0 0 100%; order: -3; }
