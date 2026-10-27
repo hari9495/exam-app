@@ -132,7 +132,7 @@
 /* impact preview table */
 .yx-ppl__impact { width: 100%; border-collapse: collapse; }
 .yx-ppl__impact th, .yx-ppl__impact td { text-align: start; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
-.yx-ppl__impact thead th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); }
+.yx-ppl__impact thead th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); white-space: nowrap; }
 /* Plain tables wrap long values instead of scrolling sideways. */
 .yx-ppl__impact th, .yx-ppl__impact td { overflow-wrap: anywhere; }
 .yx-ppl__impact .yx-number-field, .yx-ppl__impact input { min-width: 0; }
