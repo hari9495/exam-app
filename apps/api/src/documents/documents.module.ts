@@ -11,6 +11,8 @@ import { FilesService } from './files.service';
 import { DocumentSharesService } from './shares.service';
 import { LettersController } from './letters/letters.controller';
 import { LettersService } from './letters/letters.service';
+import { ReverificationController } from './reverification.controller';
+import { ReverificationService } from './reverification.service';
 import { PublishedCcaRoots } from './cca-roots.provider';
 import { DSC_REVOCATION, DSC_ROOTS, OnlineRevocationChecker } from './signed-pdf';
 
@@ -18,8 +20,8 @@ import { DSC_REVOCATION, DSC_ROOTS, OnlineRevocationChecker } from './signed-pdf
 // keep their own table and reuse the store, the reference format, the verify page and the signing adapter (D10).
 @Module({
   imports: [CryptoModule, StorageModule, NotificationsModule, WorkflowModule, RulesEngineModule, AuthModule],
-  controllers: [DocumentsController, PublicSharesController, LettersController],
-  providers: [{ provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, FileStore, FilesService, DocumentsService, DocumentSharesService, LettersService],
-  exports: [FileStore, FilesService, DocumentsService, LettersService],
+  controllers: [ReverificationController, DocumentsController, PublicSharesController, LettersController],
+  providers: [{ provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, FileStore, FilesService, DocumentsService, DocumentSharesService, ReverificationService, LettersService],
+  exports: [FileStore, FilesService, DocumentsService, ReverificationService, LettersService],
 })
 export class DocumentsModule {}

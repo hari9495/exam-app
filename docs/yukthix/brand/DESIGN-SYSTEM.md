@@ -157,7 +157,7 @@ Two icon families, each with its own job.
 
 ### ✅ §12 Navigation — two-tier sidebar (decided 28 Sep 2026)
 - **Tier 1 rail (56 px):** icons with labels on hover for Home, People, Time, Pay, Hire, Assess, Performance, Learning, Helpdesk, Analytics, Settings — only what the role can see; product switch is implicit (YukthiX HR / Hire / Assess areas).
-- **Tier 2 panel (240 px):** pages of the selected area with section headings, counters (e.g. Approvals 12), pinned favourites at the top; collapsible to rail-only; state remembered per user.
+- **Tier 2 panel (240 px):** pages of the selected area with section headings, counters (e.g. Approvals 12), pinned favourites at the top; collapsible to rail-only; state remembered per user. Section headings are item size and bold, and each section opens and closes from its heading (remembered in the browser); the section holding the current page always stays open (founder, 21 Oct 2026).
 - **Top bar:** global search and command palette (Ctrl / Cmd + K, P17), company / entity switcher, notifications, help, profile menu.
 - **Breadcrumbs** only on deep pages (object → sub-object). **Tabs** inside object pages. **Mobile:** bottom tabs Home · Time · Requests · Pay · Me (M04), with the rail's areas under "Me › More".
 

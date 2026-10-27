@@ -9,7 +9,10 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeDraftDto, ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
 import { holdersOf } from '../time/time-core';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
-import { startProbation } from '../people/probation';
+import { settingFor, startProbation } from '../people/probation';
+import { noticeLabel } from '../lifecycle/exit-rules';
+import { factsOn as timeFactsOn } from '../time/time-core';
+import { ScheduleBook } from '../time/schedule';
 import { serviceDates as datesFor, Spell } from './service-dates';
 import { payScope, withPayScope } from '../payroll/pay-access';
 import { normalWeekAt, readerLanguage, SubjectType, translated } from '../global/global-data';
@@ -424,12 +427,35 @@ export class EmployeeHistoryService {
         assignment: facts.assignment && row ? { validFrom: isoDate(row.validFrom), validTo: iso(row.validTo), changeId: row.changeId, ...this.describe(facts.assignment, await this.names(tx, c, [facts.assignment], true)), ...(await this.fte(tx, c, facts.assignment, on)) } : null,
         status: st ? { status: st.status, validFrom: isoDate(st.validFrom), validTo: iso(st.validTo), changeId: st.changeId } : null,
         payAccess: covers(a.payPeriods, on),
+        // PPL-03 Job tab: the holiday calendar, shift pattern, notice period and probation end in force on the day.
+        job: facts.assignment && !recordedAt ? await this.jobExtras(tx, c, employeeId, e, facts.assignment, st?.status ?? null, on) : null,
         compensation: showPay && pay ? { currency: pay.currency, annualCtc: pay.annualCtc.toFixed(2), validFrom: isoDate(pay.validFrom), validTo: iso(pay.validTo), changeId: pay.changeId } : null,
       };
     });
   }
 
+  /** What the Job tab adds to the assignment (founder 22 Oct 2026); null where nothing applies. */
+  private async jobExtras(tx: Tx, c: CompanyContext, employeeId: string, e: { id: string; legalEntityId: string }, f: { locationId: string; employmentTypeId?: string | null; gradeId?: string | null }, status: string | null, on: string) {
+    const org = c.organizationId;
+    const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId }, select: { name: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { name: true } }));
+    const tf = await timeFactsOn(tx, org, employeeId, on);
+    let shiftPattern: string | null = null;
+    if (tf) {
+      const book = await ScheduleBook.load(tx, org);
+      const p = book.patternOn(tf, on);
+      shiftPattern = p ? book.patternName(p.patternId) : `${(await book.locationDay(tf, on)).base.shiftName} (location default)`;
+    }
+    const notice = await settingFor(tx, c, status === 'probation' ? 'exit.notice.probation' : 'exit.notice.confirmed', { legalEntityId: e.legalEntityId, employmentTypeId: f.employmentTypeId ?? undefined, gradeId: f.gradeId ?? undefined }, on);
+    const probation = await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id }, select: { plannedEndOn: true } });
+    return { holidayCalendar: cal?.name ?? null, shiftPattern, noticePeriod: notice ? noticeLabel(notice) : null, probationEndsOn: probation ? isoDate(probation.plannedEndOn) : null };
+  }
+
   // ================= service dates (G1, gap pass C3) =================
+
+  /** The three service dates of one employment (G1). */
+  async serviceDatesOf(tx: Tx, c: CompanyContext, e: Employment) {
+    return datesFor(await this.spells(tx, c, e.employeeId), e.id);
+  }
 
   private async spells(tx: Tx, c: CompanyContext, employeeId: string): Promise<Spell[]> {
     const list = await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'asc' } });
@@ -507,12 +533,26 @@ export class EmployeeHistoryService {
       });
       const showPay = a.pay && withPay;
       const payRows = showPay ? rows.compensation.filter((r) => inPay(r.validFrom, r.validTo)) : [];
+      // PPL-03: who raised and who approved each effective or scheduled change, and its letter (letters for HR and the person).
+      const sched = changes.filter((ch) => ch.status === 'scheduled' || ch.status === 'effective');
+      const userIds = sched.flatMap((ch) => [ch.decidedBy, ch.requestedBy].filter((x): x is string => Boolean(x)));
+      const deciders = userIds.length ? await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [];
+      const letters = sched.length && (a.hr || a.self) ? await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, subjectType: 'change', subjectId: { in: sched.map((ch) => ch.id) }, status: 'issued' }, select: { subjectId: true, referenceNo: true, acceptedAt: true } }) : [];
+      const nameOf = (id: string | null) => {
+        const u = id ? deciders.find((x) => x.id === id) : undefined;
+        return u ? u.name || u.email : null;
+      };
+      const extra = (ch: (typeof all)[number]) => {
+        if (ch.status !== 'scheduled' && ch.status !== 'effective') return {};
+        const l = letters.find((x) => x.subjectId === ch.id && x.referenceNo);
+        return { decidedByName: nameOf(ch.decidedBy), requestedByName: nameOf(ch.requestedBy), letter: l ? { referenceNo: l.referenceNo, accepted: Boolean(l.acceptedAt) } : null };
+      };
       if (payRows.length) await this.auditPayView(tx, c, a, employeeId, 'history');
       return {
         employee: await this.header(tx, c, employeeId, e),
         payAccess: a.pay,
         // An impact speaks about other dates (later changes it recalculated): HR only. Pay on a change only where pay is in scope.
-        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay ? a.payPeriods : [], a.hrPeriods), ...(a.hr ? {} : { impact: null }) })),
+        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay ? a.payPeriods : [], a.hrPeriods), ...(a.hr ? {} : { impact: null }), ...extra(ch) })),
         assignment: rows.assignment.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), ...this.describe(assignmentValues(r), names) })),
         status: rows.status.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), status: r.status })),
         compensation: payRows.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })),
@@ -1464,7 +1504,7 @@ export class EmployeeHistoryService {
 
   /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
   /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
-  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null, opts: { transfer?: boolean } = {}) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
@@ -1534,9 +1574,10 @@ export class EmployeeHistoryService {
       await this.rebuild(tx, c, e, dto.joinedOn, join.id);
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
-      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
-      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08).
-      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
+      await audit(tx, c, opts.transfer ? 'employee.transferred_in' : 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false, ...(rehireOf ? { from: rehireOf } : {}) });
+      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08). A move
+      // between legal entities (PPL-09) is not a new joiner, so it starts no joiner journey.
+      if (!opts.transfer) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({

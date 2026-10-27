@@ -53,8 +53,13 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
 // People (PPL-17 buddies, PPL-30 succession): personal rows.
-// PPL-04 change drafts may hold proposed pay.
-const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors', 'employee_change_drafts'];
+const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors',
+  // PPL-09 and PPL-10: restructures, the people they move and the continuity checklist.
+  'restructures', 'restructure_people', 'continuity_items', 'restructure_drafts',
+  // PPL-04 change drafts may hold proposed pay.
+  'employee_change_drafts',
+  // PPL-07: saved employee imports (also restricted to the person who saved them).
+  'employee_import_drafts'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
@@ -682,7 +687,7 @@ describe('PostgreSQL row-level security (app role)', () => {
 
   // Access, visibility and privacy (step 2d): scoped role grants (P02 §4.2–4.3), Personal details, encrypted
   // identifiers and bank accounts (§4.4), identity / bank change requests (§4.5).
-  const ACCESS_TABLES = ['employee_bank_accounts', 'employee_identifiers', 'employee_personal_details', 'employee_profile_requests', 'role_grants'];
+  const ACCESS_TABLES = ['employee_bank_accounts', 'employee_emergency_contacts', 'employee_family_members', 'employee_identifiers', 'employee_personal_details', 'employee_profile_requests', 'role_grants'];
 
   it('the access and privacy tables are forced-RLS tenant tables', async () => {
     const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
@@ -724,6 +729,8 @@ describe('PostgreSQL row-level security (app role)', () => {
       const person = await tx.person.create({ data: { ...o, givenName: 'Bea' } });
       const employee = await tx.employee.create({ data: { ...o, personId: person.id, givenName: 'Bea' } });
       await tx.employeePersonalDetails.create({ data: { ...o, employeeId: employee.id, personalEmail: `bea-${tag}@b.test` } });
+      await tx.employeeFamilyMember.create({ data: { ...o, employeeId: employee.id, name: 'Ben B', relation: 'Spouse' } });
+      await tx.employeeEmergencyContact.create({ data: { ...o, employeeId: employee.id, name: 'Ben B', relation: 'Spouse', phone: '+919845022872', position: 0 } });
       await tx.employeeIdentifiers.create({ data: { ...o, employeeId: employee.id, legalName: 'Bea B', panEnc: 'x.y.z', panHash: 'a'.repeat(64), panLast4: '123F' } });
       const bank = await tx.employeeBankAccount.create({ data: { ...o, employeeId: employee.id, purpose: 'salary', holderName: 'Bea', accountEnc: 'x.y.z', accountHash: 'b'.repeat(64), accountLast4: '6789', ifsc: 'HDFC0001234', usableFrom: new Date() } });
       const request = await tx.employeeProfileRequest.create({ data: { ...o, employeeId: employee.id, kind: 'pan', proposedEnc: 'x.y.z', proposedDisplay: {}, reason: 'new PAN', requestedBy: userB } });
@@ -740,11 +747,13 @@ describe('PostgreSQL row-level security (app role)', () => {
         ...counts,
         grant: await tx.$executeRaw`UPDATE role_grants SET status = 'revoked' WHERE id = ${b.grant}::uuid`,
         personal: await tx.$executeRaw`UPDATE employee_personal_details SET personal_email = 'x@a.test' WHERE employee_id = ${b.employee}::uuid`,
+        family: await tx.$executeRaw`UPDATE employee_family_members SET name = 'Hacked' WHERE employee_id = ${b.employee}::uuid`,
+        contacts: await tx.$executeRaw`UPDATE employee_emergency_contacts SET phone = '+911111111111' WHERE employee_id = ${b.employee}::uuid`,
         ids: await tx.$executeRaw`UPDATE employee_identifiers SET legal_name = 'Hacked' WHERE employee_id = ${b.employee}::uuid`,
         request: await tx.$executeRaw`UPDATE employee_profile_requests SET status = 'approved' WHERE id = ${b.request}::uuid`,
       };
     });
-    expect(seenByA).toEqual({ ...Object.fromEntries(ACCESS_TABLES.map((t) => [t, 0])), grant: 0, personal: 0, ids: 0, request: 0 });
+    expect(seenByA).toEqual({ ...Object.fromEntries(ACCESS_TABLES.map((t) => [t, 0])), grant: 0, personal: 0, family: 0, contacts: 0, ids: 0, request: 0 });
     // B's rows cannot be planted from A, nor A's rows point at B's user, role, entity or employee, even with the bypass.
     await expect(tenantPrisma.forTenant(asA(), (tx) => tx.employeeIdentifiers.create({ data: { organizationId: orgB, employeeId: b.employee } }))).rejects.toThrow(RLS_VIOLATION);
     const a = await tenantPrisma.forTenant(asA(), async (tx) => {
@@ -758,6 +767,7 @@ describe('PostgreSQL row-level security (app role)', () => {
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.roleGrant.create({ data: { organizationId: orgA, userId: a.user, permissionProfileId: b.profile, scopeType: 'tenant', validFrom: day, status: 'active', reason: 'x' } }))).rejects.toThrow(/role_grants_profile_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.roleGrant.create({ data: { organizationId: orgA, userId: a.user, permissionProfileId: a.profile, scopeType: 'legal_entity', legalEntityId: b.entity, validFrom: day, status: 'active', reason: 'x' } }))).rejects.toThrow(/role_grants_entity_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeePersonalDetails.create({ data: { organizationId: orgA, employeeId: b.employee } }))).rejects.toThrow(/employee_personal_details_employee_fkey|Foreign key/);
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeFamilyMember.create({ data: { organizationId: orgA, employeeId: b.employee, name: 'x', relation: 'x' } }))).rejects.toThrow(/employee_family_members_employee_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeBankAccount.create({ data: { organizationId: orgA, employeeId: b.employee, purpose: 'salary', holderName: 'x', accountEnc: 'x', accountHash: 'c'.repeat(64), accountLast4: '0000', ifsc: 'HDFC0001234', usableFrom: day } }))).rejects.toThrow(/employee_bank_accounts_employee_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeProfileRequest.create({ data: { organizationId: orgA, employeeId: b.employee, kind: 'pan', proposedEnc: 'x', proposedDisplay: {}, reason: 'x', requestedBy: a.user } }))).rejects.toThrow(/employee_profile_requests_employee_fkey|Foreign key/);
     }

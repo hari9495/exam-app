@@ -70,6 +70,9 @@ function cellText(v: ExcelJS.CellValue): string {
 }
 
 /** Rows of a CSV or .xlsx file (first sheet, header in row 1), or an ImportFileProblem saying what is wrong with the file. */
+/** The fields a column can be matched to, in order, and which ones every row needs. */
+export const importFieldList = () => FIELD_KEYS.map((key) => ({ key, label: IMPORT_FIELDS[key].label, required: REQUIRED_FIELDS.includes(key) }));
+
 export async function readImportFile(buffer: Buffer, fileName: string): Promise<ReadFile> {
   if (buffer.length > MAX_IMPORT_BYTES) throw new ImportFileProblem('The file is larger than 2 MB. Split it into smaller files.');
   const lower = fileName.toLowerCase();
@@ -120,7 +123,7 @@ export async function readImportFile(buffer: Buffer, fileName: string): Promise<
   return {
     columns: headers.map((column, i) => ({ column, sample: rows.find((r) => r.cells[i])?.cells[i] ?? '', field: fields[i] })),
     rows,
-    fields: FIELD_KEYS.map((key) => ({ key, label: IMPORT_FIELDS[key].label, required: REQUIRED_FIELDS.includes(key) })),
+    fields: importFieldList(),
   };
 }
 
@@ -129,10 +132,11 @@ export function importDate(s: string): string | null {
   const t = s.trim();
   let y: number, m: number, d: number;
   let x: RegExpMatchArray | null;
-  if ((x = t.match(/^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/))) {
+  // "01 Oct 2026", and Excel's own CSV form "01-Oct-26": with the month as a word a 2-digit year is 20yy.
+  if ((x = t.match(/^(\d{1,2})[ -]([A-Za-z]{3})[ -](\d{2}|\d{4})$/))) {
     const i = MONTHS.findIndex((mm) => mm.toLowerCase() === x![2].toLowerCase());
     if (i < 0) return null;
-    [d, m, y] = [Number(x[1]), i + 1, Number(x[3])];
+    [d, m, y] = [Number(x[1]), i + 1, Number(x[3].length === 2 ? `20${x[3]}` : x[3])];
   } else if ((x = t.match(/^(\d{4})-(\d{2})-(\d{2})$/))) [y, m, d] = [Number(x[1]), Number(x[2]), Number(x[3])];
   else if ((x = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) [d, m, y] = [Number(x[1]), Number(x[2]), Number(x[3])];
   else return null;

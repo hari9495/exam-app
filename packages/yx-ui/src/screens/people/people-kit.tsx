@@ -1,6 +1,6 @@
 // Reusable pieces for the People screens (M01, P02, P05, P06). Token-only CSS in people.css.
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, Eye, Lock } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { IconButton } from '../../components/button';
@@ -65,11 +65,13 @@ export function MeFrame({ active, children }: { active: MePage; children: ReactN
 /* ------------------------------------------------------------------ small displays */
 
 export const STATUS_TONE: Record<string, BadgeTone> = {
-  Verified: 'success', Done: 'success', Approved: 'success', Issued: 'success', Valid: 'success', Covered: 'success', Match: 'success', Accepted: 'success', Active: 'success',
+  Verified: 'success', Done: 'success', Approved: 'success', Issued: 'success', Valid: 'success', Covered: 'success', Match: 'success', Accepted: 'success', Active: 'success', Confirmed: 'success', 'Waiting for confirmation': 'warning',
   Pending: 'warning', 'Pending verification': 'warning', 'Needs review': 'warning', Expiring: 'warning', Waiting: 'warning', 'Pending approval': 'warning', 'Needs recalculating': 'warning', 'Review due': 'warning', Held: 'warning', 'Due soon': 'warning', Draft: 'neutral',
   Missing: 'danger', Rejected: 'danger', Failed: 'danger', Blocked: 'danger', Overdue: 'danger', Expired: 'danger', Escalated: 'danger', 'With HR': 'danger', 'No successor': 'danger', 'No ready successor': 'warning', Mismatch: 'danger',
   Refused: 'danger', Correction: 'warning', Current: 'success', Past: 'neutral',
   Scheduled: 'info', 'In progress': 'info', Ready: 'success', 'On approval': 'neutral', 'Fix needed': 'warning', Skipped: 'neutral', Leaving: 'warning', Superseded: 'neutral', Scanning: 'info', 'Auto-verified': 'success',
+  // PPL-09 restructure.
+  Moved: 'success', 'Waiting for approval': 'warning', "Couldn't move": 'danger', "Can't move": 'danger', 'Left out': 'neutral', 'You do this': 'neutral', Cancelled: 'neutral',
 };
 export const toneOf = (status: string): BadgeTone => STATUS_TONE[status] ?? STATUS_TONE[status.split(':')[0]] ?? 'neutral';
 export const StatusBadge = ({ status }: { status: string }) => <Badge tone={toneOf(status)}>{status}</Badge>;
@@ -105,6 +107,8 @@ export function MaskedValue({ value, masked, canReveal, onReveal, label }: { val
     <span className="yx-ppl__masked">
       <span className="yx-mono">{shown ?? masked}</span>
       {canReveal && shown === null && <IconButton icon={Eye} size="sm" label={`Show ${label}. Your view is recorded.`} disabled={busy} onClick={() => void reveal()} />}
+      {/* Hide again, like a password field (founder, 22 Oct 2026); showing it again asks the server and is recorded again. */}
+      {shown !== null && <IconButton icon={EyeOff} size="sm" label={`Hide ${label}`} onClick={() => setShown(null)} />}
       {failed && (
         <Text size="sm" tone="danger">
           Could not show the {label}. Try again.

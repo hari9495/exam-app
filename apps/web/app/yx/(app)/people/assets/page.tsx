@@ -24,7 +24,8 @@ export default function YxAssetsPage() {
   const write = useLifeWrite();
   const [adding, setAdding] = useState(false);
   const today = data.data?.today ?? todayIst();
-  const where = (a: AssetRow) => places.locations.find((l) => l.value === a.locationId)?.label ?? places.entities.find((e) => e.value === a.legalEntityId)?.label ?? '';
+  // The site only; an asset with no site says so rather than showing its company under Location (founder, 22 Oct 2026).
+  const where = (a: AssetRow) => places.locations.find((l) => l.value === a.locationId)?.label ?? 'Not set';
   const rows = (data.data?.rows ?? []).map((a) => ({
     id: a.id,
     tag: a.tag,

@@ -3,12 +3,14 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
-import { covers } from '../access/scope';
+import { covers, has } from '../access/scope';
+import { serializeCustomFieldValues, upsertCustomFieldValues, type CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
+import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-field.dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
 import { settingFor } from './probation';
-import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
 
 // The employee's own data beyond job facts (P02 §4.4–4.5; P01 §4.4; M01 §3.1, Q4):
 //   Personal      the person and HR holding employee.personal.view in scope; the person edits it directly,
@@ -105,6 +107,8 @@ export class ProfileService {
           pay: covers(a.payPeriods, today),
         },
         personal: personal ? this.personalView(details) : null,
+        // PPL-03 family, nominations and emergency contacts: Personal class, like the details above.
+        family: personal ? await this.familyView(tx, c, employeeId) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
         // Internal class: the work phone and email (PPL-03 key facts, Message).
         work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
@@ -115,6 +119,8 @@ export class ProfileService {
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
           reveal: !v.actingForOther && identity,
           editWork: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
+          // Family and nominations decide who is paid (YX-LC-16): HR changes them, the person asks HR.
+          editFamily: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
         },
       };
     });
@@ -237,6 +243,85 @@ export class ProfileService {
     const html = `<p>The personal email on your work record was changed on ${todayIst()}.</p><p>If you did not do this, contact HR at once.</p>`;
     await Promise.allSettled(out.tell.map((to) => this.email.send({ to, subject: 'Your personal email at work was changed', html, organizationId: out.organizationId }))).catch((e) => this.logger.error(e));
     return out.view;
+  }
+
+  // ================= family, nominations, emergency contacts (PPL-03; Personal) =================
+
+  /** The family, the current nominations and the emergency contacts; nominee names follow the family member. */
+  private async familyView(tx: Tx, c: CompanyContext, employeeId: string) {
+    const o = { organizationId: c.organizationId, employeeId };
+    const members = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+    const nominations = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null }, orderBy: { createdAt: 'asc' } });
+    const contacts = await tx.employeeEmergencyContact.findMany({ where: o, orderBy: { position: 'asc' } });
+    const statutory = await tx.employeeStatutory.findFirst({ where: { ...o, validTo: null }, orderBy: { validFrom: 'desc' }, select: { pf: true, eps: true } });
+    const marital = await tx.auditLog.findFirst({
+      where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, action: 'employee.personal.updated', metadataJson: { contains: '"maritalStatus"' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const reviewedAt = nominations.reduce<Date | null>((m, n) => (!m || n.createdAt > m ? n.createdAt : m), null);
+    return {
+      members: members.map((m) => ({ id: m.id, name: m.name, relation: m.relation, dateOfBirth: m.dateOfBirth ? isoDate(m.dateOfBirth) : null, dependant: m.dependant })),
+      nominations: nominations.map((n) => {
+        const m = members.find((x) => x.id === n.familyMemberId);
+        return { scheme: n.scheme, familyMemberId: n.familyMemberId, name: m?.name ?? n.name, relation: m?.relation ?? n.relation, sharePercent: Number(n.sharePercent) };
+      }),
+      // Schemes the person should name a nominee for: gratuity always; PF and EPS only while covered.
+      expectedSchemes: ['gratuity', ...(statutory?.pf === 'yes' ? ['pf', ...(statutory.eps ? ['eps'] : [])] : [])],
+      contacts: contacts.map((x) => ({ name: x.name, relation: x.relation, phone: x.phone })),
+      maritalChangedAt: marital?.createdAt.toISOString() ?? null,
+      nominationsReviewedAt: reviewedAt?.toISOString() ?? null,
+    };
+  }
+
+  /** Family and nominations together (nominees are family members; each scheme's shares total 100). HR only. */
+  updateFamily(ctx: TenantContext, v: Viewer, employeeId: string, dto: FamilyDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (a.self) throw new ForbiddenException('HR keeps your family and nominations. Ask HR to change them.');
+      if (!(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing family and nominations needs employee.profile.edit for this person.');
+      const problem = nominationProblem(dto.members.length, dto.nominations);
+      if (problem) throw new BadRequestException(problem);
+      const today = todayIst();
+      if (dto.members.some((m) => m.dateOfBirth && (m.dateOfBirth > today || m.dateOfBirth < '1900-01-01'))) throw new BadRequestException('A date of birth must be a real past date.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const current = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, select: { id: true } });
+      if (dto.members.some((m) => m.id && !current.some((x) => x.id === m.id))) throw new BadRequestException('A family member is not on this record.');
+      const by = c.userId ?? null;
+      const ids: string[] = [];
+      for (const [position, m] of dto.members.entries()) {
+        const data = { name: m.name.trim(), relation: m.relation.trim(), dateOfBirth: m.dateOfBirth ? new Date(`${m.dateOfBirth}T00:00:00Z`) : null, dependant: m.dependant, position, updatedBy: by };
+        ids.push(m.id ? (await tx.employeeFamilyMember.update({ where: { id: m.id }, data })).id : (await tx.employeeFamilyMember.create({ data: { ...o, ...data } })).id);
+      }
+      const removed = current.filter((x) => !ids.includes(x.id)).map((x) => x.id);
+      if (removed.length) await tx.employeeFamilyMember.updateMany({ where: { ...o, id: { in: removed } }, data: { removedAt: new Date(), updatedBy: by } });
+      // Nominations are replaced only when they changed, so "reviewed" stays the date they were last decided.
+      const key = (r: { scheme: string; familyMemberId: string | null; sharePercent: unknown }) => `${r.scheme}:${r.familyMemberId}:${Number(r.sharePercent).toFixed(2)}`;
+      const before = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null } });
+      const next = dto.nominations.map((n) => ({ scheme: n.scheme, familyMemberId: ids[n.member], sharePercent: n.sharePercent, member: dto.members[n.member] }));
+      const nominationsChanged = before.map(key).sort().join('|') !== next.map(key).sort().join('|');
+      if (nominationsChanged) {
+        await tx.employeeNomination.updateMany({ where: { ...o, supersededAt: null }, data: { supersededAt: new Date() } });
+        if (next.length) await tx.employeeNomination.createMany({ data: next.map((n) => ({ ...o, scheme: n.scheme, familyMemberId: n.familyMemberId, name: n.member.name.trim(), relation: n.member.relation.trim(), sharePercent: n.sharePercent, source: 'hr' })) });
+      }
+      // P08: what changed and by whom, never the values (Personal data stays out of the log).
+      await audit(tx, c, 'employee.family.updated', 'employee', employeeId, { members: ids.length, removed: removed.length, nominationsChanged, by: 'hr' });
+      return this.familyView(tx, c, employeeId);
+    });
+  }
+
+  /** Emergency contacts, in calling order: the person edits their own directly; HR with employee.profile.edit. */
+  setEmergencyContacts(ctx: TenantContext, v: Viewer, employeeId: string, dto: EmergencyContactsDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (!a.self && !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing emergency contacts needs employee.profile.edit for this person.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const rows = dto.contacts.map((x, position) => ({ ...o, name: x.name.trim(), relation: x.relation.trim(), phone: e164(x.phone), position, updatedBy: c.userId ?? null }));
+      await tx.employeeEmergencyContact.deleteMany({ where: o });
+      if (rows.length) await tx.employeeEmergencyContact.createMany({ data: rows });
+      await audit(tx, c, 'employee.emergency_contacts.updated', 'employee', employeeId, { count: rows.length, by: a.self ? 'self' : 'hr' });
+      return (await this.familyView(tx, c, employeeId)).contacts;
+    });
   }
 
   /** Work phone (Internal): HR with employee.profile.edit for the person; the person asks HR (it is the company's line). */
@@ -679,6 +764,83 @@ export class ProfileService {
       await tx.employeeProfileRequest.update({ where: { id }, data: { status: 'cancelled', decidedBy: c.userId, decidedAt: new Date(), decisionNote: reason.trim() } });
       await audit(tx, c, 'employee.profile_change.cancelled', 'employee', r.employeeId, { requestId: id, kind: r.kind });
       return { id, status: 'cancelled' };
+    });
+  }
+
+  // ================= Additional details: the company's own employee fields (PPL-03, P18) =================
+  /**
+   * Which data classes of the company's employee fields the viewer reads and edits on this person (P02 §4.4), the
+   * same rules as the record's own fields: Public to anyone the directory serves (colleagues too); Internal to the
+   * person and those who may open the record (HR in scope, managers); Personal to the person and
+   * employee.personal.view; Confidential to the person and employee.identity.view, masked. HR edits with
+   * employee.profile.edit what they read; the person edits their own Personal fields (§4.5). Anyone else: 404.
+   */
+  private async fieldAccess(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    let a: Awaited<ReturnType<EmployeeHistoryService['access']>> | null = null;
+    try {
+      a = await this.history.access(tx, c, v, employeeId);
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      // A colleague: the person must exist and the viewer be served by the directory (HR or an employee here).
+      const exists = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } });
+      if (!exists || !(has(v, 'employee.profile.view') || (await this.history.ownEmployeeId(tx, c, v)))) throw e;
+    }
+    const self = Boolean(a?.self);
+    const read = new Set<CustomFieldDataClass>(['public']);
+    if (a && (self || covers(a.periods, todayIst()))) read.add('internal');
+    if (self || (await this.can(tx, c, v, 'employee.personal.view', employeeId))) read.add('personal');
+    if (self || (await this.can(tx, c, v, 'employee.identity.view', employeeId))) read.add('confidential');
+    const edit = new Set<CustomFieldDataClass>();
+    if (!v.actingForOther) {
+      if (self) edit.add('personal');
+      else if (await this.can(tx, c, v, 'employee.profile.edit', employeeId)) read.forEach((k) => edit.add(k));
+    }
+    return { self, read, edit };
+  }
+
+  private async employeeFields(tx: Tx, c: CompanyContext) {
+    return tx.customFieldDefinition.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', archivedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+  }
+
+  private async fieldsView(tx: Tx, c: CompanyContext, employeeId: string, access: { read: Set<CustomFieldDataClass>; edit: Set<CustomFieldDataClass> }) {
+    const defs = (await this.employeeFields(tx, c)).filter((d) => access.read.has(d.dataClass as CustomFieldDataClass));
+    if (!defs.length) return { fields: [] };
+    // Only the values of the fields the viewer may read are fetched at all.
+    const rows = await tx.customFieldValue.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, definitionId: { in: defs.map((d) => d.id) } } });
+    const values = serializeCustomFieldValues(rows, defs as CustomFieldDefinitionLite[]);
+    return {
+      fields: defs.map((d, i) => {
+        const value = values[i].value;
+        return {
+          id: d.id,
+          label: d.label,
+          fieldType: d.fieldType,
+          options: d.optionsJson ? (JSON.parse(d.optionsJson) as string[]) : null,
+          required: d.required,
+          dataClass: d.dataClass,
+          // Confidential: the last four only, like PAN and bank (P02 §4.4 masked level).
+          value: d.dataClass === 'confidential' && value !== null ? maskTail(last4(String(value))) : value,
+          canEdit: access.edit.has(d.dataClass as CustomFieldDataClass),
+        };
+      }),
+    };
+  }
+
+  customFields(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => this.fieldsView(tx, c, employeeId, await this.fieldAccess(tx, c, v, employeeId)));
+  }
+
+  /** Sets the given fields only; each must be one the viewer edits. Audited with the field keys, never values (P08). */
+  setCustomFields(ctx: TenantContext, v: Viewer, employeeId: string, dto: CustomFieldValuesDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const access = await this.fieldAccess(tx, c, v, employeeId);
+      const ids = Object.keys(dto.values);
+      const defs = (await this.employeeFields(tx, c)).filter((d) => ids.includes(d.id) && access.edit.has(d.dataClass as CustomFieldDataClass));
+      // Unknown, archived, hidden and read-only fields get one answer, so a field's existence is not leaked.
+      if (!ids.length || defs.length !== ids.length) throw new ForbiddenException('You may not change one or more of these fields.');
+      await upsertCustomFieldValues(tx, c.organizationId, 'employee', employeeId, defs as CustomFieldDefinitionLite[], dto.values);
+      await audit(tx, c, 'employee.custom_fields.updated', 'employee', employeeId, { fields: defs.map((d) => d.key), by: access.self ? 'self' : 'hr' });
+      return this.fieldsView(tx, c, employeeId, access);
     });
   }
 

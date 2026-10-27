@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsISO4217CurrencyCode, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsInt, IsISO4217CurrencyCode, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
@@ -47,6 +47,12 @@ export class PersonalDetailsDto {
 
   @IsOptional() @IsIn(MARITAL)
   maritalStatus?: string | null;
+}
+
+/** PPL-03 Additional details: definition id -> value (null or '' clears); each value is checked against its field type. */
+export class CustomFieldValuesDto {
+  @IsObject()
+  values!: Record<string, unknown>;
 }
 
 /** Work phone (Internal): HR with employee.profile.edit; null clears it. */
@@ -171,3 +177,80 @@ export const KIND_FIELDS: Record<RequestKind, (keyof ProposedValueDto)[]> = {
   bank_reimbursement: ['holderName', 'accountNumber', 'ifsc'],
   bank_international: ['country', 'iban', 'bic', 'currency'],
 };
+
+// ---- PPL-03 family, nominations and emergency contacts (Personal class) ----
+
+export const NOMINATION_SCHEMES = ['pf', 'eps', 'gratuity', 'group_term'] as const;
+
+export class FamilyMemberDto {
+  /** An existing member keeps its id (its nominations stay pointed at it); absent adds one. */
+  @IsOptional() @IsUUID()
+  id?: string;
+
+  @IsString() @MinLength(1) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(1) @MaxLength(40)
+  relation!: string;
+
+  @IsOptional() @IsDateString({ strict: true }) @Matches(DATE, { message: 'dateOfBirth is a date (YYYY-MM-DD)' })
+  dateOfBirth?: string | null;
+
+  @IsBoolean()
+  dependant!: boolean;
+}
+
+export class NominationDto {
+  @IsIn(NOMINATION_SCHEMES)
+  scheme!: (typeof NOMINATION_SCHEMES)[number];
+
+  /** The nominee: an index into members (a nominee is always one of the person's family). */
+  @IsInt() @Min(0)
+  member!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(100)
+  sharePercent!: number;
+}
+
+/** The whole family and the nominations in one save, so shares are checked against the family as saved. */
+export class FamilyDto {
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => FamilyMemberDto)
+  members!: FamilyMemberDto[];
+
+  @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => NominationDto)
+  nominations!: NominationDto[];
+}
+
+export class EmergencyContactDto {
+  @IsString() @MinLength(1) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(1) @MaxLength(40)
+  relation!: string;
+
+  @IsString() @MaxLength(30)
+  phone!: string;
+}
+
+/** In calling order: the first is called first. */
+export class EmergencyContactsDto {
+  @IsArray() @ArrayMaxSize(5) @ValidateNested({ each: true }) @Type(() => EmergencyContactDto)
+  contacts!: EmergencyContactDto[];
+}
+
+/** Nominees are members of the family being saved, each once per scheme, and each scheme's shares total exactly 100. */
+export function nominationProblem(memberCount: number, nominations: Pick<NominationDto, 'scheme' | 'member' | 'sharePercent'>[]): string | null {
+  const totals = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const n of nominations) {
+    if (!Number.isInteger(n.member) || n.member < 0 || n.member >= memberCount) return 'A nominee must be one of the family members.';
+    if (seen.has(`${n.scheme}:${n.member}`)) return 'A family member is nominated once per scheme.';
+    seen.add(`${n.scheme}:${n.member}`);
+    // In hundredths, so 33.33 + 33.33 + 33.34 is exactly 100.
+    totals.set(n.scheme, (totals.get(n.scheme) ?? 0) + Math.round(n.sharePercent * 100));
+  }
+  for (const [scheme, total] of totals) if (total !== 10000) return `The ${SCHEME_LABEL[scheme] ?? scheme} shares must total 100% (now ${total / 100}%).`;
+  return null;
+}
+
+export const SCHEME_LABEL: Record<string, string> = { pf: 'PF', eps: 'EPS', gratuity: 'Gratuity', group_term: 'Group term insurance', all: 'All schemes' };

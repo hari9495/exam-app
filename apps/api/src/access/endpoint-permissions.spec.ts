@@ -7,6 +7,7 @@ import { EmployeeHistoryController } from '../employee-history/employee-history.
 import { OrgStructureController } from '../org-structure/org-structure.controller';
 import { LifecycleController } from '../lifecycle/lifecycle.controller';
 import { DocumentsController } from '../documents/documents.controller';
+import { ReverificationController } from '../documents/reverification.controller';
 import { LettersController } from '../documents/letters/letters.controller';
 import { ExitsController } from '../lifecycle/exits.controller';
 import { PerformanceSetupController } from '../performance/setup.controller';
@@ -24,6 +25,7 @@ import { ExpenseTripsController } from '../expenses/trips.controller';
 import { ExpenseReportsController } from '../expenses/reports.controller';
 import { EmployeeImportController } from '../people/employee-import.controller';
 import { PeopleRegistersController } from '../lifecycle/people-registers.controller';
+import { RestructureController } from '../people/restructure.controller';
 import { PersonPanelsController } from '../people/person-panels.controller';
 import { BfsiController } from '../people/bfsi.controller';
 
@@ -60,6 +62,7 @@ const IMPLICIT: Record<string, string[]> = {
   BfsiController: ['myBfsi', 'addHolding', 'removeHolding', 'addRelated', 'removeRelated', 'saveCoi', 'submitBfsi', 'myPreclearance', 'requestPreclearance', 'reportTrade'],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
+  ReverificationController: ['forPerson'], // PPL-42: the person, HR in scope or the manager (decided by the service)
   // PPL-03: a manager's read-only view of the team's Public and Internal documents.
   // PPL-30: share links to my own issued letters and pay documents (the service refuses anyone else's).
   DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam', 'myShares', 'share', 'revokeShare'],
@@ -94,11 +97,12 @@ const IMPLICIT: Record<string, string[]> = {
   // People › Import, buddies, union register and succession: every route has its key.
   EmployeeImportController: [],
   PeopleRegistersController: [],
+  RestructureController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, EmployeeImportController, PeopleRegistersController, PersonPanelsController, BfsiController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PersonPanelsController, BfsiController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

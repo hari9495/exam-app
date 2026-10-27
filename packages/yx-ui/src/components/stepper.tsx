@@ -226,8 +226,9 @@ export function Stepper({
         ))}
         <footer className="yx-stepper__foot">
           {onSaveAndExit && <Button onClick={onSaveAndExit}>Save and exit</Button>}
-          <span className="yx-stepper__spacer" />
+          {/* Back on the left, so a blocked reason has room on one line next to Continue (founder, 21 Oct 2026). */}
           {index > 0 && <Button onClick={() => go(index - 1)}>Back</Button>}
+          <span className="yx-stepper__spacer" />
           {last ? (
             <>
               {finishBlocked && (

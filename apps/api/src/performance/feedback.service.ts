@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, implicitSql, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, implicitSql, inScopeSql, started } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { ActionDto, AgendaDto, FeedbackDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto } from './dto';
 
@@ -169,6 +169,32 @@ export class PerformanceFeedbackService {
       const people = await this.names(tx, org, rows.flatMap((x) => [x.fromEmployeeId, x.toEmployeeId]));
       // Sealed items leave every list but the recipient's and giver's own, where they show as removed (§15.3).
       return { items: rows.filter((x) => !x.sealedAt || view !== 'team').map((x) => this.itemView(x, people, me, sealer && view === 'employee')) };
+    });
+  }
+
+  /**
+   * PPL-03 Performance tab: how much feedback a person received and gave this quarter. Counts only, never content. The
+   * person themself, their manager chain and perf.review.view in scope may ask; anyone else gets 404. Sealed items never
+   * count; recipient-only items count only for the person themself (a count must not reveal they exist).
+   */
+  async counts(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = (await this.me(tx, org, v))?.id ?? null;
+      const today = todayIst();
+      const self = employeeId === me;
+      if (!self) {
+        const emp = Prisma.sql`${employeeId}::uuid`;
+        const [r] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT (${await implicitSql(tx, c, me, emp, Prisma.sql`${today}::date`)}) OR (${inScopeSql(c, v, 'perf.review.view', emp, Prisma.sql`${today}::date`, me)}) AS ok`;
+        if (!r?.ok) throw new NotFoundException('Not found');
+      }
+      // The calendar quarter of today in India (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec).
+      const [y, m] = today.split('-').map(Number);
+      const from = `${y}-${String(Math.floor((m - 1) / 3) * 3 + 1).padStart(2, '0')}-01`;
+      const base = { organizationId: org, withdrawnAt: null, sealedAt: null, createdAt: { gte: new Date(`${from}T00:00:00+05:30`) }, ...(self ? {} : { visibility: 'private' }) };
+      const [received, given] = await Promise.all([tx.feedbackItem.count({ where: { ...base, toEmployeeId: employeeId } }), tx.feedbackItem.count({ where: { ...base, fromEmployeeId: employeeId } })]);
+      return { from, received, given };
     });
   }
 

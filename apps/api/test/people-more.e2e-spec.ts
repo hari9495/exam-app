@@ -9,6 +9,7 @@ import { hashValue, sealValue } from '../src/people/profile.service';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
+import { EmployeeImportDraftsService } from '../src/people/employee-import-drafts.service';
 
 // People menu, the rest of the designed pages, against the real database (forced RLS): employee import (PPL-07)
 // through the hire path, the directory cards, the buddy pool (PPL-41), the union register (PPL-39) and succession
@@ -280,5 +281,51 @@ describe('People: import, cards, buddies, unions, succession (PPL-07, PPL-01, PP
     await api('hrA', 'delete', `/people/succession/${ids.pos}/successors/${ids.arjun}`).expect(404);
     await api('adminB', 'get', '/people/succession').expect(403);
     expect(await audits('succession.nominated')).toHaveLength(2);
+  });
+
+  it('save and exit (PPL-07): only the person who saved it sees it, sealed, resumed exactly, gone after import or 30 days', async () => {
+    const D = '/people/employee-import/draft';
+    const draft = {
+      legalEntityId: ids.leKF,
+      step: 'validate',
+      file: { name: 'joiners.csv', columns: [{ column: 'Name', sample: 'Kavya', field: 'name' }, { column: 'PAN', sample: 'ABCPK1234Q', field: 'pan' }], rows: [{ row: 2, cells: ['Kavya Rao', 'ABCPK1234Q'] }, { row: 3, cells: ['Ravi', ''] }] },
+      mapping: { Name: 'name', PAN: 'pan' },
+      edits: { '3': { pan: 'ABCPR7788K' } },
+    };
+    expect((await api('hrA', 'get', D).expect(200)).body).toEqual({ draft: null });
+    // The import key is needed; the parts must agree; another company's entity is refused.
+    await api('empA', 'put', D).send(draft).expect(403);
+    await api('hrA', 'put', D).send({ ...draft, mapping: { Name: 'salary' } }).expect(400);
+    await api('hrA', 'put', D).send({ ...draft, edits: { '9': { pan: 'x' } } }).expect(400);
+    await api('hrA', 'put', D).send({ ...draft, legalEntityId: ids.leBB }).expect(400);
+    const saved = (await api('hrA', 'put', D).send(draft).expect(200)).body;
+    expect(Date.parse(saved.keptUntil) - Date.now()).toBeGreaterThan(29 * 86_400_000);
+    expect((await api('hrA', 'get', D).expect(200)).body.draft).toMatchObject({ fileName: 'joiners.csv', rows: 2, entity: 'Entity KF', step: 'validate' });
+    // Sealed: no cell, PAN or fix is readable in the table.
+    const stored = await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeImportDraft.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+    expect(stored.payloadEnc).not.toMatch(/Kavya|ABCPK1234Q|ABCPR7788K/);
+    // Nobody else: another HR person with the same key, and another company.
+    expect((await api('hrNoPan', 'get', D).expect(200)).body).toEqual({ draft: null });
+    await api('hrNoPan', 'get', `${D}/content`).expect(404);
+    await api('adminB', 'get', `${D}/content`).expect(404);
+    // RLS itself: in company A as another user, the row is not there.
+    expect(await tenantPrisma.forTenant({ ...ctx('A'), userId: users.hrNoPan }, (tx) => tx.employeeImportDraft.count())).toBe(0);
+    expect(await tenantPrisma.forTenant({ ...ctx('A'), userId: users.hrA }, (tx) => tx.employeeImportDraft.count())).toBe(1);
+    // Resumed exactly as saved, with the field list from the server.
+    const back = (await api('hrA', 'get', `${D}/content`).expect(200)).body;
+    expect(back).toMatchObject({ legalEntityId: ids.leKF, step: 'validate', mapping: draft.mapping, edits: draft.edits, file: { name: 'joiners.csv', rows: draft.file.rows } });
+    expect(back.file.fields.map((f: { key: string }) => f.key)).toContain('pan');
+    // Discard; then save again and import: the import clears it.
+    await api('hrA', 'delete', D).expect(200);
+    expect((await api('hrA', 'get', D).expect(200)).body).toEqual({ draft: null });
+    await api('hrA', 'put', D).send(draft).expect(200);
+    await api('hrA', 'post', '/people/employee-import').send({ legalEntityId: ids.leKF, fileName: 'joiners.csv', rows: [row(2, { name: 'Kavya Rao' })] }).expect(200);
+    expect((await api('hrA', 'get', D).expect(200)).body).toEqual({ draft: null });
+    // Past its 30 days it is not offered, and the daily sweep deletes it.
+    await api('hrA', 'put', D).send(draft).expect(200);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeImportDraft.updateMany({ where: { organizationId: org.A.id }, data: { expiresAt: new Date(Date.now() - 1000) } }));
+    expect((await api('hrA', 'get', D).expect(200)).body).toEqual({ draft: null });
+    await app.get(EmployeeImportDraftsService).prune();
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.employeeImportDraft.count({ where: { organizationId: org.A.id } }))).toBe(0);
   });
 });

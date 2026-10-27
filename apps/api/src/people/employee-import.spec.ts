@@ -41,6 +41,9 @@ describe('employee import file (PPL-07)', () => {
     expect(importDate('1/10/2026')).toBe('2026-10-01');
     expect(importDate('31 Feb 2026')).toBeNull();
     expect(importDate('1/10/26')).toBeNull();
+    // Excel writes dates into a CSV as 01-Nov-26.
+    expect(importDate('01-Nov-26')).toBe('2026-11-01');
+    expect(importDate('1-nov-2026')).toBe('2026-11-01');
   });
 
   it('says what is wrong with a row in plain words', () => {

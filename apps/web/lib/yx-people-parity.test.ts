@@ -5,7 +5,8 @@ import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
 import { boardColumns } from './yx-onboarding';
 import { minutesText, todayText } from './yx-team';
-import { docRows, upcoming } from './yx-record';
+import { attendanceCard, bankRows, historyRows, clock, docRows, familyData, identityRows, jobRows, leaveOrder, payShown, scheduledBody, upcoming } from './yx-record';
+import type { ProfileView } from '@yukthix/ui/access';
 
 // The People screens' live mapping (design parity): the stage, status and wording rules each designed screen shows.
 const as = <T>(x: unknown) => x as T;
@@ -82,5 +83,134 @@ describe('person record (PPL-03)', () => {
     const v = as<AsOfView>({ status: { status: 'probation', validTo: '2026-12-01' }, employee: { joinedOn: '2024-11-05', exitedOn: null } });
     const h = as<HistoryView>({ changes: [] });
     expect(upcoming(v, h, '2026-10-20', ['Salary bank account']).map((e) => [e.label, e.note])).toEqual([['Probation ends', undefined], ['Work anniversary (2 years)', undefined], ['1 pending request', 'Profile change: salary bank account']]);
+  });
+  it('coming up: re-verification due within 30 days or overdue; the manager gets no document name', () => {
+    const v = as<AsOfView>({ status: null, employee: { joinedOn: '2026-10-01', exitedOn: null } });
+    const ev = upcoming(v, as<HistoryView>({ changes: [] }), '2026-10-20', [], [], [
+      { due: '2026-10-10', status: 'overdue', typeName: 'PAN card' },
+      { due: '2026-11-01', status: 'due soon' },
+      { due: '2027-06-01', status: 'not due', typeName: 'Photograph' },
+    ]);
+    expect(ev.filter((e) => e.label.startsWith('Re-')).map((e) => [e.label, e.tone, e.note])).toEqual([['Re-verification due', 'danger', 'PAN card'], ['Re-verification due', 'warning', undefined]]);
+  });
+});
+
+describe('person record identity and family (PPL-03, founder 22 Oct 2026)', () => {
+  const prof = {
+    can: { reveal: true, editPersonal: false, requestChange: false },
+    classes: { aadhaar: false },
+    identity: { legalName: 'Arjun Kulkarni', pan: '•••• 821M', aadhaar: '•••• 1942', uan: '•••• 1775', esic: null, passport: '•••• 7728', passportExpiresOn: null, bankAccounts: [{ purpose: 'salary', holderName: 'Arjun', ifsc: 'CNRB0001234', account: '•••• 6789', usableFrom: '2020-01-01' }], pending: [] },
+  } as unknown as ProfileView;
+  it('masks in the design shape, from the last four the API sent', () => {
+    const rows = identityRows(prof, async () => '');
+    const v = (label: string) => rows.find((r) => r.label === label)?.masked;
+    expect([v('PAN'), v('Aadhaar'), v('UAN'), v('Passport'), v('Salary account')]).toEqual(['XXXXXX821M', 'XXXX XXXX 1942', 'XXXXXXXX1775', 'XXXX7728', 'CNRB0001234 · XXXX XXXX 6789']);
+    expect(rows.find((r) => r.label === 'Aadhaar')?.canReveal).toBe(false);
+    expect(bankRows(prof, async () => '')).toHaveLength(1);
+  });
+  it('family: nominees by member, the marital-status note only when the record shows the change', () => {
+    const f = { members: [{ id: 'm1', name: 'Shalini', relation: 'Spouse', dateOfBirth: '1994-11-02', dependant: true }], nominations: [{ scheme: 'pf', familyMemberId: 'm1', name: 'Shalini', relation: 'Spouse', sharePercent: 100 }, { scheme: 'all', familyMemberId: null, name: 'Old', relation: 'Father', sharePercent: 100 }], expectedSchemes: ['gratuity'], contacts: [], maritalChangedAt: null, nominationsReviewedAt: '2026-10-01T10:00:00.000Z' };
+    const out = familyData(f);
+    expect(out.nominations.map((n) => n.member)).toEqual([0, null]);
+    expect(out.note).toBeNull();
+    expect(familyData({ ...f, maritalChangedAt: '2026-09-01T10:00:00.000Z' }).note).toBe('Marital status changed on 1 Sept 2026. Nominations were reviewed after that change.');
+    expect(familyData({ ...f, maritalChangedAt: '2026-10-05T10:00:00.000Z' }).note).toMatch(/not been reviewed since/);
+  });
+});
+
+describe('person record Pay tab (PPL-03, founder 22 Oct 2026)', () => {
+  const comp = {
+    validFrom: '2026-04-01',
+    currency: 'INR',
+    annualCtc: '583200.00',
+    lines: [
+      { name: 'Basic', kind: 'earning' as const, monthly: '19440.00', inCtc: true },
+      { name: 'Special allowance', kind: 'earning' as const, monthly: '27360.00', inCtc: true },
+      { name: 'Employer PF', kind: 'employer' as const, monthly: '1800.00', inCtc: true, basis: '12% of ₹15,000' },
+      { name: 'Employer ESI', kind: 'employer' as const, monthly: '0.00', inCtc: true },
+      { name: 'Gratuity provision', kind: 'employer' as const, monthly: '934.62', inCtc: false, basis: '4.81% of basic' },
+      { name: 'PF', kind: 'deduction' as const, monthly: '1800.00', inCtc: false },
+    ],
+    lastNetPay: { month: '2026-08', net: '49812.40', paid: true, paidOn: '2026-08-31' },
+    taxRegime: { regime: 'new', taxYear: '2026-27', proofsPending: 2 },
+    next: { annualCtc: '780000.00', from: '2026-10-01' },
+  };
+  it('the table counts what the CTC counts (its total is the CTC); ₹0 lines hidden; basis in the label', () => {
+    const p = payShown(comp, [{ label: 'Salary account', value: 'x', cls: 'Confidential' }]);
+    expect(p.lines.map((l) => l.label)).toEqual(['Basic', 'Special allowance', 'Employer PF (12% of ₹15,000)']);
+    expect(p.lines.reduce((s, l) => s + l.monthly, 0) * 12).toBe(p.ctc);
+    expect(p.outside).toEqual([{ label: 'Gratuity provision (4.81% of basic)', monthly: 934.62 }]);
+    expect(p.next).toBe('₹7,80,000 from 1 Oct 2026 (scheduled)');
+    expect(p.lastNet?.note).toBe('August 2026 · paid 31 Aug 2026');
+    expect(p.taxRegime).toEqual({ label: 'New', note: 'FY 2026–27 · 2 proofs pending' });
+    expect(p.banks.map((b) => [b.label, b.value])).toEqual([['Salary account', 'x'], ['Reimbursement account', 'Same as salary account']]);
+  });
+  it('no payslip and no regime yet are empty, not hidden', () => {
+    const p = payShown({ ...comp, lastNetPay: null, taxRegime: null, next: null }, []);
+    expect([p.lastNet, p.taxRegime, p.next]).toEqual([null, null, undefined]);
+  });
+});
+
+describe('person record Job tab (PPL-03, founder 22 Oct 2026)', () => {
+  const assignment = { designation: { name: 'Quality Analyst' }, grade: { name: 'G5' }, department: { name: 'Quality' }, location: { name: 'Hosur plant' }, manager: { name: 'Divya R' }, dottedLineManagers: [], employmentType: { name: 'Permanent' }, costCentres: [{ code: 'QA-HSR-01', name: 'QA', percent: '100' }], hoursPerWeek: null, normalWeekHours: '48' };
+  const view = (o: object) => ({ employee: { legalEntity: { name: 'Kaveri Foods' } }, assignment, status: { status: 'confirmed', validFrom: '2021-09-12', validTo: null }, job: { holidayCalendar: 'Tamil Nadu 2026', shiftPattern: 'Rotational (A / B / C)', noticePeriod: '60 days', probationEndsOn: '2021-09-11' }, ...o }) as unknown as AsOfView;
+  it("the design's fields in its order, then the live extras; Not set where nothing applies", () => {
+    expect(jobRows(view({}))).toEqual([
+      ['Designation', 'Quality Analyst'], ['Grade', 'G5'], ['Department', 'Quality'], ['Location', 'Hosur plant'], ['Manager', 'Divya R'], ['Employment type', 'Permanent'],
+      ['Probation', 'Confirmed on 12 Sept 2021'], ['Holiday calendar', 'Tamil Nadu 2026'], ['Shift pattern', 'Rotational (A / B / C)'], ['Cost centre', 'QA-HSR-01'], ['Notice period', '60 days'],
+      ['Working hours', 'Full-time (48 hours)'], ['Legal entity', 'Kaveri Foods'],
+    ]);
+    const bare = jobRows(view({ status: { status: 'probation', validFrom: '2026-07-01', validTo: null }, job: { holidayCalendar: null, shiftPattern: null, noticePeriod: null, probationEndsOn: '2026-12-31' }, assignment: { ...assignment, costCentres: [] } }));
+    expect(bare.filter(([l]) => ['Probation', 'Holiday calendar', 'Cost centre', 'Notice period'].includes(l))).toEqual([['Probation', 'On probation until 31 Dec 2026'], ['Holiday calendar', 'Not set'], ['Cost centre', 'Not set'], ['Notice period', 'Not set']]);
+  });
+  it('history rows: who raised it and the letter; a secondary manager change says from and to', () => {
+    const h = {
+      payAccess: false,
+      assignment: [
+        { changeId: 'c0', validFrom: '2024-07-01', supersededAt: null, grade: { name: 'G2' }, designation: { name: 'Quality Analyst' }, location: { name: 'Bengaluru' }, manager: { name: 'Divya R' }, dottedLineManagers: [] },
+        { changeId: 'c1', validFrom: '2026-07-01', supersededAt: null, grade: { name: 'G2' }, designation: { name: 'Quality Analyst' }, location: { name: 'Bengaluru' }, manager: { name: 'Divya R' }, dottedLineManagers: [{ name: 'Lakshmi V' }] },
+      ],
+      compensation: [],
+      status: [],
+      changes: [
+        { id: 'c1', changeType: 'manager_change', status: 'effective', effectiveDate: '2026-07-01', reason: 'Campus drive', impact: null, requestedByName: 'Lakshmi V', letter: { referenceNo: 'KF/HR/2026/0300', accepted: true } },
+      ],
+    } as unknown as HistoryView;
+    const [row] = historyRows(h, '2026-10-22');
+    expect(row).toMatchObject({ by: 'Lakshmi V', letter: 'KF/HR/2026/0300', summary: 'Secondary manager: — → Lakshmi V', state: 'current' });
+  });
+  it('the scheduled banner: new grade, the CTC only with pay, who approved and when, the letter', () => {
+    const h = {
+      payAccess: true,
+      assignment: [{ changeId: 'c0', validFrom: '2021-03-12', supersededAt: null, grade: { name: 'G5' }, designation: { name: 'Quality Analyst' }, location: { name: 'Hosur' } }, { changeId: 'c1', validFrom: '2026-10-01', supersededAt: null, grade: { name: 'G6' }, designation: { name: 'Quality Lead' }, location: { name: 'Hosur' } }],
+      compensation: [{ changeId: 'c1', supersededAt: null, annualCtc: '780000.00', currency: 'INR' }],
+      status: [],
+      changes: [],
+    } as unknown as HistoryView;
+    const ch = { id: 'c1', status: 'scheduled', touchesPay: true, decidedAt: '2026-09-24T10:00:00Z', decidedByName: 'Karthik Subramanian', letter: { referenceNo: 'KF/HR/2026/0418', accepted: true }, impact: null } as unknown as ChangeRecord;
+    expect(scheduledBody(ch, h)).toBe('New role: Quality Lead · Grade G6 · CTC ₹7,80,000 a year. Approved by Karthik Subramanian on 24 Sept 2026. Letter KF/HR/2026/0418 accepted.');
+    expect(scheduledBody({ ...ch, letter: null }, { ...h, payAccess: false, compensation: [] })).toBe('New role: Quality Lead · Grade G6 · Pay changes. Approved by Karthik Subramanian on 24 Sept 2026.');
+    // The pay rise stored as its own row on the same date still shows.
+    const own = { ...h, compensation: [{ changeId: 'c9', supersededAt: null, validFrom: '2026-10-01', annualCtc: '780000.00', currency: 'INR' }] } as unknown as HistoryView;
+    expect(scheduledBody({ ...ch, effectiveDate: '2026-10-01', letter: null } as ChangeRecord, own)).toContain('CTC ₹7,80,000 a year');
+    // Pay kept in payroll (no history row): the CTC once Pay was opened, "see Pay" before.
+    const none = { ...h, compensation: [] } as unknown as HistoryView;
+    const promo = { ...ch, effectiveDate: '2026-11-01', letter: null } as ChangeRecord;
+    expect(scheduledBody(promo, none, { annualCtc: '780000.00', from: '2026-11-01' })).toContain('CTC ₹7,80,000 a year');
+    expect(scheduledBody(promo, none)).toContain('Pay changes · see Pay');
+  });
+});
+
+describe('person record Time tab (PPL-03, founder 22 Oct 2026)', () => {
+  it("the design's attendance card", () => {
+    expect(attendanceCard({ month: '2026-09', present: 20, late: ['2026-09-07', '2026-09-18'], missing: [{ on: '2026-09-23', regularisation: 'pending' }], shift: { pattern: 'Rotational', weekOf: '2026-09-28', name: 'B shift', start: 840, end: 1320 } })).toEqual({
+      title: 'Attendance, September 2026',
+      rows: [['Present', '20 days'], ['Late marks', '2 (7 Sept, 18 Sept)'], ['Missing punch', '1 (23 Sept, regularisation pending)'], ['Shift', 'Rotational · week of 28 Sept: B shift, 2 pm to 10 pm']],
+    });
+    expect(attendanceCard({ month: '2026-10', present: 0.5, late: [], missing: [], shift: { pattern: null, weekOf: '2026-10-19', name: null, start: null, end: null } }).rows.map((r) => r[1])).toEqual(['0.5 days', 'None', 'None', 'Location default · week of 19 Oct: weekly off']);
+    expect(clock(570)).toBe('9:30 am');
+  });
+  it('leave cards: Casual, Sick, Earned, then the rest in the order given', () => {
+    expect(leaveOrder([{ kind: 'earned' }, { kind: 'comp_off' }, { kind: 'sick' }, { kind: 'other' }, { kind: 'casual' }]).map((x) => x.kind)).toEqual(['casual', 'sick', 'earned', 'comp_off', 'other']);
   });
 });

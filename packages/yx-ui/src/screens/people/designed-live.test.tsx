@@ -336,7 +336,7 @@ describe('Assets (PPL-25)', () => {
   it('a return as "not returned" needs what happened and keeps the clearance open for a recovery', async () => {
     const onReturn = vi.fn(async () => undefined);
     wrap(<AssetRegister rows={[]} live={{ state: 'ready', onRetry: vi.fn(), rows: [row], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn }} />);
-    expect(screen.getByText('Waiting for acknowledgement')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for confirmation')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Return' }));
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
@@ -442,6 +442,39 @@ describe('Person record (PPL-03)', () => {
     expect(screen.queryByRole('tab', { name: 'Performance' })).toBeNull();
     await ue.click(screen.getByRole('tab', { name: 'Pay' }));
     expect(screen.getByText(/have access to pay details for Arjun Kulkarni/)).toBeInTheDocument();
+  });
+
+  it('pay: the table total is the header CTC, in whole rupees; empty cards say so', async () => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ pay: { kind: 'shown', ctc: 583200, currency: 'INR', from: day('2026-04-01'), lines: [{ label: 'Basic', monthly: 19440 }, { label: 'Special allowance', monthly: 28659.38 }, { label: 'Employer PF (12% of ₹15,000)', monthly: 500.62 }], outside: [{ label: 'Gratuity provision', monthly: 934.62 }], banks: [], lastNet: null, taxRegime: null } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Pay' }));
+    expect(screen.getAllByText('₹5,83,200')).toHaveLength(2);
+    expect(screen.getByText('₹48,600')).toBeInTheDocument();
+    expect(screen.queryByText(/\.\d\d$/)).toBeNull();
+    expect(screen.getByText('No payslip yet.')).toBeInTheDocument();
+    expect(screen.getByText('Not chosen for this tax year yet.')).toBeInTheDocument();
+  });
+
+  it('Additional details: label, class and value as the server sends them, "Not set" when empty, Edit only when given', async () => {
+    const onEdit = vi.fn();
+    const rows = [
+      { label: 'Forklift licence number', value: 'TN70 2019 0004412', cls: 'Internal' as const, selfEdit: false },
+      { label: 'T-shirt size', value: null, cls: 'Public' as const, selfEdit: false },
+    ];
+    const { unmount } = wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ custom: { rows, onEdit } })} />);
+    const card = screen.getByRole('heading', { name: 'Additional details' }).closest('.yx-card') as HTMLElement;
+    expect(within(card).getByText('TN70 2019 0004412')).toBeInTheDocument();
+    expect(within(card).getByText('Not set')).toBeInTheDocument();
+    expect(within(card).getByText('Internal')).toBeInTheDocument();
+    await ue.click(within(card).getByRole('button', { name: 'Edit' }));
+    expect(onEdit).toHaveBeenCalled();
+    unmount();
+    // A manager with read-only fields: no Edit; nothing to see: no card at all.
+    const second = wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-10-20')} live={live({ custom: { rows } })} />);
+    expect(screen.getByText('Additional details')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    second.unmount();
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-10-20')} live={live({ custom: { rows: [] } })} />);
+    expect(screen.queryByText('Additional details')).toBeNull();
   });
 
   it('pay is shown only after "Show pay"', async () => {

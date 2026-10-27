@@ -286,7 +286,7 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
     { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span className="yx-auth__item-main"><Text>{r.name}</Text><Text tone="secondary" size="sm">{`${r.category} · ${r.tag}`}</Text></span>, width: 240, hideable: false },
     { key: 'issued', header: 'Issued on', value: (r) => r.issuedOn, render: (r) => dateText(r.issuedOn), width: 130 },
     { key: 'condition', header: 'Condition when issued', value: (r) => r.condition, width: 220, optional: true },
-    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Not confirmed</Badge>), width: 140 },
+    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
   ];
   return (
     <LivePage title="My assets" description="Company things you hold. Confirm what you received; hand them back when you leave." state={p.state} onRetry={p.onRetry} what="your assets">

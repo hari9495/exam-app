@@ -233,27 +233,43 @@ export const ARJUN = {
     { label: 'Salary account', value: 'Canara Bank · 1122 0045 6789 · CNRB0001234', masked: 'Canara Bank · XXXX XXXX 6789', cls: 'Confidential', mono: true },
     { label: 'Passport', value: 'Z4417728 · expires 08 Feb 2031', masked: 'XXXX7728 · expires 08 Feb 2031', cls: 'Confidential', mono: true },
   ] as FieldRow[],
+  // Family and nominees (PPL-03): nominees point at family members by position; EPS has no nominee yet.
   family: [
-    { name: 'Shalini Kulkarni', relation: 'Spouse', dob: '02 Nov 1994', dependent: true },
-    { name: 'Aarav Kulkarni', relation: 'Son', dob: '19 Jan 2022', dependent: true },
-    { name: 'Suman Kulkarni', relation: 'Mother', dob: '07 Aug 1963', dependent: true },
+    { name: 'Shalini Kulkarni', relation: 'Spouse', dateOfBirth: d(1994, 11, 2), dependant: true },
+    { name: 'Aarav Kulkarni', relation: 'Son', dateOfBirth: d(2022, 1, 19), dependant: true },
+    { name: 'Suman Kulkarni', relation: 'Mother', dateOfBirth: d(1963, 8, 7), dependant: true },
+    { name: 'Vinod Kulkarni', relation: 'Brother', dateOfBirth: null, dependant: false },
   ],
   nominations: [
-    { scheme: 'PF', name: 'Shalini Kulkarni', share: 100 },
-    { scheme: 'Gratuity', name: 'Shalini Kulkarni', share: 60 },
-    { scheme: 'Gratuity', name: 'Suman Kulkarni', share: 40 },
-    { scheme: 'Group term insurance', name: 'Shalini Kulkarni', share: 100 },
-  ],
+    { scheme: 'pf', member: 0, name: 'Shalini Kulkarni', share: 100 },
+    { scheme: 'gratuity', member: 0, name: 'Shalini Kulkarni', share: 60 },
+    { scheme: 'gratuity', member: 2, name: 'Suman Kulkarni', share: 40 },
+    { scheme: 'group_term', member: 0, name: 'Shalini Kulkarni', share: 100 },
+  ] as { scheme: string; member: number | null; name: string; share: number }[],
+  expectedSchemes: ['pf', 'eps', 'gratuity'],
+  familyNote: 'Marital status changed on 2 Feb 2020. Nominations were reviewed after that change.',
   emergency: [
     { name: 'Shalini Kulkarni', relation: 'Spouse', phone: '+91 98450 22872' },
     { name: 'Vinod Kulkarni', relation: 'Brother', phone: '+91 99001 44120' },
   ],
   custom: [
     { label: 'Forklift licence number', value: 'TN70 2019 0004412', cls: 'Internal' as FieldClass, selfEdit: false },
-    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: true },
+    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: false },
     { label: 'Blood group', value: 'B positive', cls: 'Personal' as FieldClass, selfEdit: true },
   ],
 };
+
+/** The company's employee fields (Settings › Custom fields) and Arjun's values on them, as the API sends them. */
+export const EMPLOYEE_FIELDS = [
+  { id: 'cf1', label: 'Forklift licence number', fieldType: 'text' as const, options: null, dataClass: 'internal' as const },
+  { id: 'cf2', label: 'T-shirt size', fieldType: 'select' as const, options: ['S', 'M', 'L', 'XL'], dataClass: 'public' as const },
+  { id: 'cf3', label: 'Blood group', fieldType: 'select' as const, options: ['A positive', 'B positive', 'O positive', 'AB positive'], dataClass: 'personal' as const },
+];
+export const ARJUN_CUSTOM_VALUES = [
+  { ...EMPLOYEE_FIELDS[0], required: false, value: 'TN70 2019 0004412', canEdit: true },
+  { ...EMPLOYEE_FIELDS[1], required: false, value: 'L', canEdit: true },
+  { ...EMPLOYEE_FIELDS[2], required: false, value: 'B positive', canEdit: true },
+];
 
 /** Dated job history (P06), newest first, with a scheduled promotion and a correction. */
 export interface JobChange {
@@ -556,13 +572,19 @@ export const VRS = {
   ],
 };
 
-export const REVERIFY = [
-  { id: 'rv1', name: 'Arjun Kulkarni', trigger: 'Periodic, every 3 years', last: d(2023, 10, 20), due: d(2026, 10, 20), consent: 'Given 22 Sep 2026', result: 'In progress', partner: 'BGV-8812' },
-  { id: 'rv2', name: 'Priya Nair', trigger: 'Client mandate: Brindavan Retail Ltd', last: d(2024, 1, 5), due: d(2026, 10, 1), consent: 'Not yet asked', result: 'Not started', partner: '' },
-  { id: 'rv3', name: 'Rohit Bhat', trigger: 'Role change into Payroll (sensitive)', last: d(2022, 6, 2), due: d(2026, 9, 1), consent: 'Refused 3 Sep 2026', result: 'HR review', partner: '' },
-  { id: 'rv4', name: 'Deepa Rao', trigger: 'Periodic, every 3 years', last: d(2023, 8, 14), due: d(2026, 8, 14), consent: 'Given 1 Aug 2026', result: 'Adverse: HR review', partner: 'BGV-8790' },
-  { id: 'rv5', name: 'Imran Qureshi', trigger: 'Periodic, every 3 years', last: d(2024, 2, 1), due: d(2027, 2, 1), consent: '—', result: 'Clear (last cycle)', partner: 'BGV-7104' },
+// PPL-42: re-verification rules and who is due on TODAY (29 Sep 2026).
+export const REVERIF_RULES = [
+  { id: 'rr1', typeName: 'PAN card', everyMonths: 36, legalEntity: null, departments: ['Finance', 'Payroll'], designations: [], onRoleChange: true, validFrom: '2026-04-01', validTo: null, active: true, canManage: true },
+  { id: 'rr2', typeName: 'Background check report', everyMonths: 24, legalEntity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', departments: ['Quality'], designations: [], onRoleChange: false, validFrom: '2026-07-01', validTo: null, active: true, canManage: true },
+  { id: 'rr3', typeName: 'Bank proof (cancelled cheque or passbook)', everyMonths: 12, legalEntity: null, departments: [], designations: [], onRoleChange: false, validFrom: '2025-04-01', validTo: '2026-03-31', active: false, canManage: true },
 ];
+export const REVERIF_ROWS = [
+  { id: 'rv1', ruleId: 'rr1', employeeId: 'e1', name: 'Arjun Kulkarni', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2023-10-20', due: '2026-10-20', status: 'due soon', request: 'asked', askedAt: '2026-09-22T10:00:00Z', documentId: 'd1' },
+  { id: 'rv2', ruleId: 'rr1', employeeId: 'e2', name: 'Priya Nair', typeName: 'PAN card', why: 'Moved into the role on 1 Sep 2026', lastVerified: '2024-01-05', due: '2026-09-01', status: 'overdue', request: 'not asked', askedAt: null, documentId: 'd2' },
+  { id: 'rv3', ruleId: 'rr2', employeeId: 'e3', name: 'Rohit Bhat', typeName: 'Background check report', why: 'Every 24 months', lastVerified: '2024-08-14', due: '2026-08-14', status: 'overdue', request: 'uploaded', askedAt: '2026-08-01T10:00:00Z', documentId: 'd3' },
+  { id: 'rv4', ruleId: 'rr1', employeeId: 'e4', name: 'Deepa Rao', typeName: 'PAN card', why: 'Every 36 months', lastVerified: null, due: '2026-10-12', status: 'due soon', request: 'not asked', askedAt: null, documentId: null },
+  { id: 'rv5', ruleId: 'rr1', employeeId: 'e5', name: 'Imran Qureshi', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2024-02-01', due: '2027-02-01', status: 'not due', request: 'not asked', askedAt: null, documentId: 'd5' },
+] as const;
 
 /* ------------------------------------------------------------------ identity (PPL-34, 36, 37) */
 

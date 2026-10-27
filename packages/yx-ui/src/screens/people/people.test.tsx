@@ -204,6 +204,10 @@ describe('screens', () => {
     await u.click(screen.getByRole('button', { name: /Show PAN/ }));
     expect(screen.getByText('AKDPK4821M')).toBeTruthy();
     expect(screen.getByText(/You viewed PAN/)).toBeTruthy();
+    // Hide again, like a password field.
+    await u.click(screen.getByRole('button', { name: 'Hide PAN' }));
+    expect(screen.getByText('XXXXXX821M')).toBeTruthy();
+    expect(screen.queryByText('AKDPK4821M')).toBeNull();
   });
 
   it('probation: extending past the maximum shows an error', () => {

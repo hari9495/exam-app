@@ -22,7 +22,8 @@ import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
-import { LiveEmployeeImport, type LiveImport } from './import';
+import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
+import { LiveRestructureWizard, type LiveRestructure } from './restructure';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
 import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
@@ -943,11 +944,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; live?: LiveImport }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean; live?: LiveImport }) {
   return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
 }
 
-function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload', saved = false }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});
@@ -981,6 +982,13 @@ function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SA
             summary: hasFile ? `kaveri-joiners-oct.xlsx · ${initialRows.length} rows · Kaveri Foods Pvt Ltd` : 'No file yet',
             content: (
               <div className="yx-ppl__form">
+                {saved && !hasFile && (
+                  <SavedImportNotice
+                    draft={{ fileName: 'kaveri-joiners-oct.xlsx', rows: initialRows.length, entity: 'Kaveri Foods Pvt Ltd', step: 'validate', savedAt: '2026-10-21T09:40:00Z', keptUntil: '2026-11-20T09:40:00Z' }}
+                    onResume={() => setHasFile(true)}
+                    onDiscard={async () => {}}
+                  />
+                )}
                 <FormField label="Legal entity" required helper="New people join this entity and get codes in its series (KF).">
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="kf" onChange={() => {}} />
                 </FormField>
@@ -1109,7 +1117,7 @@ function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SA
 
 /* ================================================================== PPL-09 restructure */
 
-type RestructureAction = 'merge' | 'close' | 'demerge';
+type RestructureAction = 'merge' | 'close' | 'demerge' | 'within';
 const FROM_ENTITY = 'Kaveri Foods Pvt Ltd (Tamil Nadu)';
 const INTO_ENTITY = 'Kaveri Foods Pvt Ltd';
 /** Who is in the old entity, by location and department. */
@@ -1129,7 +1137,11 @@ const INITIAL_OVERRIDES = [
 ];
 
 // PPL-09
-export function RestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
+export function RestructureWizard(props: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; live?: LiveRestructure }) {
+  return props.live ? <LiveRestructureWizard live={props.live} /> : <SampleRestructureWizard {...props} />;
+}
+
+function SampleRestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
   const [confirm, setConfirm] = useState(confirmOpen);
   const [step, setStep] = useState(current);
   const [action, setAction] = useState<RestructureAction>('merge');
@@ -1141,8 +1153,8 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
   const moving = action === 'demerge' ? locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0) : 96;
   const date = effective ? formatDate(effective) : 'the effective date';
   const heading =
-    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
-  const closes = action !== 'demerge';
+    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : action === 'within' ? `Move people inside ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
+  const closes = action === 'merge' || action === 'close';
   const beforeRows: ChecklistRow[] = [
     { id: 'b1', title: `${moving} employments ready to move`, status: 'Ready' },
     { id: 'b2', title: '3 open onboarding and exit journeys will move with them', status: 'Ready' },
@@ -1205,8 +1217,9 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
                     onChange={(v) => setAction(v as RestructureAction)}
                     options={[
                       { value: 'merge', label: 'Merge into another entity' },
-                      { value: 'close', label: 'Close the entity (exits or transfers)' },
+                      { value: 'close', label: 'Close the entity (transfers)' },
                       { value: 'demerge', label: 'Move part of the entity to another one' },
+                      { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
                     ]}
                   />
                 </FormField>

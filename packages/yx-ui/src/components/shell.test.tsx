@@ -9,6 +9,8 @@ import {
   Breadcrumbs,
   CommandPalette,
   OrgUnitPicker,
+  PanelGroup,
+  PanelLink,
   RAIL_ITEMS,
   SideRail,
   Tabs,
@@ -20,6 +22,48 @@ import {
   type OrgUnit,
   type PaletteGroup,
 } from './shell';
+
+// Founder 21 Oct 2026: a section header opens and closes its section, remembered in the browser; the section with
+// the page you are on never closes.
+describe('PanelGroup', () => {
+  it('closes and opens from its header, remembers it, and keeps the section of the current page open', async () => {
+    localStorage.clear();
+    const { unmount } = render(
+      <PanelGroup label="Exits">
+        <PanelLink href="#a">Exit cases</PanelLink>
+      </PanelGroup>,
+    );
+    const head = screen.getByRole('button', { name: 'Exits' });
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('link', { name: 'Exit cases' })).toBeNull();
+    unmount();
+    // Remembered after a reload.
+    render(
+      <PanelGroup label="Exits">
+        <PanelLink href="#a">Exit cases</PanelLink>
+      </PanelGroup>,
+    );
+    expect(screen.getByRole('button', { name: 'Exits' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('never hides the section with the current page', async () => {
+    localStorage.setItem('yx-nav-closed:Changes', '1');
+    render(
+      <PanelGroup label="Changes">
+        <PanelLink href="#r" active>
+          Restructure
+        </PanelLink>
+      </PanelGroup>,
+    );
+    const head = screen.getByRole('button', { name: 'Changes' });
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(head);
+    expect(screen.getByRole('link', { name: 'Restructure' })).toBeInTheDocument();
+    localStorage.clear();
+  });
+});
 
 describe('SideRail', () => {
   it('uses a roving tabindex and moves with arrow keys, Home and End', async () => {

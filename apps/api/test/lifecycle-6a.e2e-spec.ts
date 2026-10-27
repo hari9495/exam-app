@@ -312,8 +312,8 @@ describe('Lifecycle batch 6a', () => {
     const file = await api('emp', 'get', `/documents/${photo.id}/file`).expect(200);
     expect(file.headers['x-content-type-options']).toBe('nosniff');
     expect(file.headers['content-disposition']).toMatch(/^attachment/);
-    // PPL-03: the manager reads the team's documents below Confidential (the photo), never the HR route.
-    await api('mgr', 'get', `/documents/${photo.id}/file`).expect(200);
+    // PPL-03 (founder 22 Oct 2026): a manager never reads a Personal document (the photo), nor the HR route.
+    await api('mgr', 'get', `/documents/${photo.id}/file`).expect(403);
     await api('mgr', 'get', `/documents/people/${ids.empPerson}`).expect(403);
     // HTML renamed as a PNG is refused before storing.
     const refused = await api('emp', 'post', `/documents/people/${ids.empPerson}/photo`).attach('file', HTML_AS_PNG, 'me.png').expect(400);
@@ -341,9 +341,9 @@ describe('Lifecycle batch 6a', () => {
     expect(await inA((tx) => documentsBlockingPay(tx, org.A.id, [employment.id]))).toEqual([]);
     const mine = (await api('emp', 'get', '/documents/me').expect(200)).body;
     expect(mine.documents.map((d: { typeKey: string }) => d.typeKey).sort()).toEqual(['pan_card', 'photo']);
-    // The manager's read-only Documents tab: the photo, never the PAN card; nothing to request or verify.
+    // The manager's read-only Documents tab: Public and Internal only, so not the photo (Personal) nor the PAN card.
     const team = (await api('mgr', 'get', `/documents/team/${ids.empPerson}`).expect(200)).body;
-    expect(team.documents.map((d: { typeKey: string }) => d.typeKey)).toEqual(['photo']);
+    expect(team.documents.map((d: { typeKey: string }) => d.typeKey)).toEqual([]);
     expect(team).toMatchObject({ askable: [], canManage: false });
     await api('mgr', 'get', `/documents/${v2.id}/file`).expect(403);
     // Not the manager: the employee about their own manager, another company.

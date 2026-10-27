@@ -1,10 +1,12 @@
 // PPL-07 Employee import, live: the designed steps with the company's legal entities, the file read by the API and
 // every row checked by the API through the hire path. Nothing is saved until "Import"; rows with problems are skipped.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, PageHeader } from '../../components/shell';
 import { InlineAlert } from '../../components/feedback';
+import { ConfirmDialog } from '../../components/overlay';
+import { formatDate } from '../../lib/format';
 import { FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { TextField } from '../../components/inputs';
@@ -37,6 +39,56 @@ export interface ImportResult {
   ready: number;
   created?: number;
 }
+/** A saved import ("Save and exit"), as the upload step shows it. */
+export interface ImportDraftSummary {
+  fileName: string;
+  rows: number;
+  entity: string;
+  step: string;
+  savedAt: string;
+  keptUntil: string;
+}
+/** Everything needed to carry on: the file as read, the matching, the fixes typed in and the step. */
+export interface ImportDraftState {
+  legalEntityId: string;
+  step: 'upload' | 'map' | 'validate' | 'review';
+  /** The field list comes from the API when the import is resumed; it is not saved. */
+  file: { name: string; columns: ImportFile['columns']; rows: ImportFile['rows']; fields?: ImportFile['fields'] };
+  mapping: Record<string, string>;
+  edits: Record<number, Record<string, string>>;
+}
+const STEP_NAME: Record<string, string> = { upload: 'Upload file', map: 'Match columns', validate: 'Check rows', review: 'Review' };
+
+/** The saved import on the upload step: carry on, or discard it (confirmed). Only the person who saved it sees it. */
+export function SavedImportNotice({ draft, onResume, onDiscard }: { draft: ImportDraftSummary; onResume: () => void; onDiscard: () => Promise<void> }) {
+  const [discarding, setDiscarding] = useState(false);
+  return (
+    <>
+      <InlineAlert
+        tone="info"
+        title={`Saved import: ${draft.fileName}`}
+        actions={
+          <>
+            <Button size="sm" onClick={onResume}>Resume</Button>
+            <Button size="sm" onClick={() => setDiscarding(true)}>Discard</Button>
+          </>
+        }
+      >
+        {draft.rows} {draft.rows === 1 ? 'row' : 'rows'}{draft.entity ? ` for ${draft.entity}` : ''}, saved on {formatDate(new Date(draft.savedAt))} at {STEP_NAME[draft.step] ?? draft.step}. Only you can see it. It is kept until {formatDate(new Date(draft.keptUntil))}, then deleted.
+      </InlineAlert>
+      <ConfirmDialog
+        open={discarding}
+        onOpenChange={setDiscarding}
+        title={`Discard the saved import of ${draft.fileName}?`}
+        consequence="The file, the column matches and the fixes you typed are deleted. Nobody is imported."
+        confirmLabel="Discard import"
+        destructive
+        onConfirm={onDiscard}
+      />
+    </>
+  );
+}
+
 export type ImportInput = { legalEntityId: string; fileName: string; rows: { row: number; values: Record<string, string> }[] };
 
 export interface LiveImport {
@@ -50,6 +102,13 @@ export interface LiveImport {
   onImport: (input: ImportInput) => Promise<ImportResult>;
   /** Saves a CSV the browser made (the template, the rows with problems). */
   onSaveFile: (name: string, csv: string) => void;
+  /** The person's saved import, if any ("Save and exit"). */
+  draft?: ImportDraftSummary | null;
+  onSaveDraft?: (state: ImportDraftState) => Promise<void>;
+  /** "Save and exit" before any file: nothing to keep, so it only leaves. */
+  onExit?: () => void;
+  onResume?: () => Promise<ImportDraftState>;
+  onDiscard?: () => Promise<void>;
 }
 
 const SKIP = "Don't import";
@@ -71,6 +130,9 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
   const [failed, setFailed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState('upload');
+  // A resumed import on "Check rows" checks again once its rows are in place.
+  const [recheck, setRecheck] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const fields = file?.data.fields ?? [];
   const labelOf = (key: string) => fields.find((f) => f.key === key)?.label ?? key;
@@ -108,6 +170,35 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
     if (id === 'validate' && !busy) void check();
   };
 
+  useEffect(() => {
+    if (recheck && input) {
+      setRecheck(false);
+      void check();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recheck, input]);
+
+  const resume = async () => {
+    if (!live.onResume) return;
+    setResumeError(null);
+    try {
+      const s = await live.onResume();
+      setEntity(s.legalEntityId);
+      setFile({ name: s.file.name, data: { columns: s.file.columns, rows: s.file.rows, fields: s.file.fields ?? [] } });
+      setMapping(s.mapping);
+      setEdits(s.edits);
+      setResult(null);
+      setStep(s.step === 'review' ? 'validate' : s.step);
+      setRecheck(s.step === 'validate' || s.step === 'review');
+    } catch (e) {
+      setResumeError(e instanceof Error ? e.message : 'The saved import could not be opened. Try again.');
+    }
+  };
+  const saveAndExit =
+    live.onSaveDraft && file && entity
+      ? () => void live.onSaveDraft!({ legalEntityId: entity, step: (['upload', 'map', 'validate'].includes(step) ? step : 'review') as ImportDraftState['step'], file: { name: file.name, columns: file.data.columns, rows: file.data.rows }, mapping, edits })
+      : live.onExit;
+
   const rows = result?.rows ?? [];
   const bad = rows.filter((r) => r.issues.length);
   const ready = rows.filter((r) => !r.issues.length);
@@ -132,6 +223,7 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
         title="Employee import"
         current={step}
         onCurrentChange={go}
+        onSaveAndExit={saveAndExit}
         finishLabel={`Import ${ready.length} ${ready.length === 1 ? 'employee' : 'employees'}`}
         finishing={busy}
         finishBlocked={!result ? 'Check the rows first' : ready.length === 0 ? 'No row is ready' : undefined}
@@ -159,6 +251,8 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
             summary: file ? `${file.name} · ${file.data.rows.length} rows · ${entityName}` : 'No file yet',
             content: (
               <div className="yx-ppl__form">
+                {live.draft && !file && live.onResume && live.onDiscard && <SavedImportNotice draft={live.draft} onResume={() => void resume()} onDiscard={live.onDiscard} />}
+                {resumeError && <InlineAlert tone="danger">{resumeError}</InlineAlert>}
                 <FormField label="Legal entity" required helper="New people join this entity and get codes in its series.">
                   <Select options={live.entities} value={entity} onChange={(v) => (setEntity(v), setResult(null))} placeholder="Choose a legal entity" />
                 </FormField>
@@ -173,6 +267,8 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
                   accept={['.csv', '.xlsx']}
                   maxSize={2 * 1024 * 1024}
                   multiple={false}
+                  key={file ? `saved:${file.name}` : 'empty'}
+                  defaultItems={file ? [{ id: 'saved', file: new File([], file.name), status: 'done', progress: 100 }] : []}
                   onItemsChange={(items) => !items.some((i) => i.status === 'done') && setFile(null)}
                 />
                 {file && <Text size="sm" tone="secondary" as="p">{file.data.rows.length} rows found.</Text>}
@@ -231,7 +327,7 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
           {
             id: 'validate',
             title: 'Check rows',
-            summary: result ? `${ready.length} rows ready · ${bad.length} rows skipped` : 'Not checked yet',
+            summary: result ? `${ready.length} ${ready.length === 1 ? 'row' : 'rows'} ready · ${bad.length} ${bad.length === 1 ? 'row' : 'rows'} skipped` : 'Not checked yet',
             content: failed ? (
               <InlineAlert tone="danger" title="The rows were not checked" actions={<Button size="sm" onClick={() => void check()}>Try again</Button>}>
                 {failed}

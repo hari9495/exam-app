@@ -189,7 +189,7 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
   const cols: TableColumn<Asset & { live: AssetRow }>[] = [
     { key: 'tag', header: 'Tag', type: 'id', value: (r) => r.tag, width: 130 },
     { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div">{[r.type, r.serial].filter(Boolean).join(' · ')}</Text></span>, width: 240 },
-    { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => (r.holder ? <span>{r.holder}{r.live.holder && <Text size="sm" tone="secondary" as="div">{r.live.holder.acknowledged ? 'Acknowledged' : 'Waiting for acknowledgement'}</Text>}</span> : <span className="yx-table__none">—</span>), width: 200 },
+    { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => (r.holder ? <span>{r.holder}{r.live.holder && <Text size="sm" tone="secondary" as="div">{r.live.holder.acknowledged ? 'Confirmed' : 'Waiting for confirmation'}</Text>}</span> : <span className="yx-table__none">—</span>), width: 200 },
     { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 180 },
     { key: 'purchased', header: 'Purchased', type: 'date', value: (r) => r.purchased, width: 130 },
     { key: 'cost', header: 'Cost', type: 'money', value: (r) => r.cost, total: 'sum', width: 120 },

@@ -44,7 +44,7 @@ describe('buildNav: People', () => {
 
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true });
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Import', 'Job history', 'Possible same person']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -64,7 +64,7 @@ describe('buildNav: People', () => {
     expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Buddies', 'Life events']);
     expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Buddies', 'Life events', 'My checklist tasks']);
     expect(labels(nav(['lifecycle.exit.manage', 'employee.profile.view']), 'people')).toEqual(expect.arrayContaining(['Exit cases', 'Clearance', 'Retirements and contracts', 'Absconding', 'VRS schemes']));
-    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters']);
+    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters', 'Re-verification']); // PPL-42 under More
     expect(nav(['document.manage'])[1].sections[0].items[0].count).toBe('documentsToVerify');
     expect(labels(nav([], { tasks: true }), 'people')).toEqual(['My checklist tasks']);
   });
@@ -122,11 +122,15 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields']);
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('Restructure is HR work: a payroll role with the approval key does not see it', () => {
+    expect(labels(nav(['employee.change.approve', 'payroll.run.prepare']), 'people')).not.toContain('Restructure');
+    expect(labels(nav(['employee.change.manage']), 'people')).toContain('Restructure');
+  });
   it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
     expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
     // PPL-38: the HR diversity role.

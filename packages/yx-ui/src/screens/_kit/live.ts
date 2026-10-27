@@ -21,6 +21,9 @@ export { DisabilityDeclaration, type DisabilityInput, type LiveDisability, type 
 export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank } from '../people/record';
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
+export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';
+export type { CustomField as RecordCustomRow } from '../people/record';
+export { ContactsDrawer, FamilyDrawer, type EmergencyContact, type FamilyMember, type Nomination, type RecordFamily } from '../people/family';
 // PPL-02 Org chart and PPL-08 My team with live data.
 export { OrgChartScreen, type LiveOrgChart } from '../people/directory';
 export { TeamPage, type LiveTeam, type TeamMember as TeamPageMember } from '../people/directory';
@@ -47,6 +50,7 @@ export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
 // PPL-22 F&F calculator with the live settlements (Payroll › Full and final).
 export { FnfCalculator, type LiveFnf } from '../people/exits';
 export { VrsScheme, type LiveVrs } from '../people/relations';
+export { ReverificationCycles, type ReverifData, type ReverifRow, type ReverifRule, type ReverifRuleInput } from '../people/reverification';
 export { UpcomingExits } from '../people/upcoming';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { BulkLetterWizard, IssuedLettersRegister, type LiveBulkLetters, type LiveLetters } from '../people/documents';
@@ -58,7 +62,10 @@ export { CertificateRequest, type LiveCertificateRequest, type MyCertificateKind
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
 export { EmployeeImportWizard } from '../people/changes';
-export type { ImportFile, ImportInput, ImportResult, LiveImport } from '../people/import';
+export type { ImportDraftState, ImportDraftSummary, ImportFile, ImportInput, ImportResult, LiveImport } from '../people/import';
 export { BuddyPanel, type LiveBuddies } from '../people/onboarding';
 export { SuccessionScreen, type LiveSuccession } from '../people/assets';
 export { UnionRegister, type LiveUnionRegister } from '../people/relations';
+// People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
+export { RestructureWizard } from '../people/changes';
+export { RestructureRecord, type ContinuityItemData, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
