@@ -509,34 +509,6 @@ export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; a
   );
 }
 
-export function PostponeDialog({ current, today, onClose, onPostpone }: { current: string; today: string; onClose: () => void; onPostpone: (joiningOn: string, reason: string) => Promise<unknown> }) {
-  const [date, setDate] = useState<Date | null>(fromKey(current));
-  const [reason, setReason] = useState('');
-  const ready = Boolean(date) && dayKey(date!) !== current && reason.trim().length >= 3;
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      size="md"
-      title="Change the joining day?"
-      consequence="Every task not done yet moves by the same number of days. Done tasks stay as they are."
-      confirmLabel="Change joining day"
-      confirmDisabled={!ready}
-      onConfirm={async () => {
-        await onPostpone(dayKey(date!), reason.trim());
-        onClose();
-      }}
-    >
-      <FormField id="pp-date" label="New joining day" required>
-        <DatePicker value={date} onChange={setDate} min={fromKey(today)} aria-label="New joining day" />
-      </FormField>
-      <FormField id="pp-reason" label="Reason" required helper="Kept on the record.">
-        <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
-
 // ------------------------------------------------------------------------------------------ 6f: my first 30 days, life events
 
 export interface FirstThirtyDaysScreenProps extends TaskActions {
