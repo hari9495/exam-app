@@ -230,7 +230,7 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
               <li><span>Field choices made at merge (name, email, phone)</span><Badge tone="neutral">Original values return</Badge></li>
             </ul>
           )}
-          {u?.note && <Text size="sm" tone="secondary" as="p">Merge note: {u.note}</Text>}
+          {(u ? u.note : true) && <Text size="sm" tone="secondary" as="p">Merge note: {u ? u.note : 'Same DOB, near-identical phone; confirmed by call with the candidate on 26 Sep.'}</Text>}
           </div>
         </Card>
         <ConfirmDialog
