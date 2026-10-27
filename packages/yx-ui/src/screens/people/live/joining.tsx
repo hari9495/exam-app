@@ -5,7 +5,8 @@ import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
-import { InlineAlert, Meter } from '../../../components/feedback';
+import { MenuItem } from '../../../components/menu';
+import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { FileUpload } from '../../../components/upload';
@@ -14,6 +15,7 @@ import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
+import { DataTable } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
@@ -687,29 +689,29 @@ export function SignatoriesDrawer(p: SignatoriesDrawerProps) {
   const [adding, setAdding] = useState(false);
   const { busy, error, run } = useRun();
   return (
-    <Drawer open onOpenChange={(o) => !o && p.onClose()} title="Who signs letters" size="md" footer={<Button onClick={p.onClose}>Close</Button>}>
+    <Drawer open onOpenChange={(o) => !o && p.onClose()} title="Who signs letters" size="lg" footer={<Button onClick={p.onClose}>Close</Button>}>
       {error && (
         <InlineAlert tone="danger" title="That didn't work">
           {error}
         </InlineAlert>
       )}
-      {p.signatories.length ? (
-        <ul className="yx-lif-list">
-          {p.signatories.map((s) => (
-            <li key={s.id}>
-              <Text>{`${s.name}, ${s.title}`}</Text> <Text tone="secondary" size="sm">{p.entities.find((e) => e.value === s.legalEntityId)?.label}</Text> {s.hasSignatureImage ? <Badge tone="success">Signature image</Badge> : <Badge tone="neutral">No image</Badge>}
-              <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onRemove(s))}>
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Text tone="secondary">No one yet. Letters that print who signs need a signatory for the legal entity.</Text>
-      )}
       <div>
-        <Button onClick={() => setAdding(true)}>Add a signatory</Button>
+        <Button onClick={() => setAdding(true)}>Add signatory</Button>
       </div>
+      {/* The columns of the design's Authorised signatories table (Settings 5.3). */}
+      <DataTable
+        label="Authorised signatories"
+        columns={[
+          { key: 'name', header: 'Name', value: (s) => s.name },
+          { key: 'title', header: 'Designation', value: (s) => s.title },
+          { key: 'entity', header: 'Legal entity', value: (s) => p.entities.find((e) => e.value === s.legalEntityId)?.label ?? '' },
+          { key: 'image', header: 'Signature image', type: 'status', value: (s) => (s.hasSignatureImage ? 'Uploaded' : 'No image'), statusTone: (v) => (v === 'Uploaded' ? 'success' : 'neutral') },
+        ]}
+        rows={p.signatories}
+        getRowId={(s) => s.id}
+        rowActions={(s) => <MenuItem disabled={busy === s.id} onSelect={() => void run(s.id, () => p.onRemove(s))}>Remove</MenuItem>}
+        empty={<EmptyState title="No one yet" description="Letters that print who signs need a signatory for the legal entity." />}
+      />
       {adding && <AddSignatory entities={p.entities} users={p.users} onClose={() => setAdding(false)} onAdd={p.onAdd} />}
     </Drawer>
   );
