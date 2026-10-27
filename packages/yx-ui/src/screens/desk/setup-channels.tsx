@@ -664,7 +664,7 @@ function PortalDrawer({ portal, desks, onClose, onSave }: { portal: PortalView |
         <FormField label="Name" required>
           <TextField value={name} onChange={setName} maxLength={100} placeholder="Customer help" />
         </FormField>
-        <FormField label="Web address part" required helper={`2 to 40 small letters, digits or dashes. The page lives at …/yx/portal/<company>/${slug || 'help'}`} error={slug && !slugOk ? 'Use small letters, digits and dashes' : null}>
+        <FormField label="Web address part" required rule="2 to 40 small letters, digits or dashes." helper={`The page lives at …/yx/portal/<company>/${slug || 'help'}`} error={slug && !slugOk ? 'Use small letters, digits and dashes' : null}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={40} />
         </FormField>
         <FormField label="Desks on this page" required helper="Customer support desks only.">

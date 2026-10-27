@@ -190,6 +190,7 @@ export interface MoveInput {
   locationId: string;
   departmentId?: string;
   designationId?: string;
+  employmentTypeId?: string;
   options: TransferOptions;
   reason: string;
   overrideReason?: string;
@@ -198,7 +199,8 @@ export interface MoveInput {
 /** The Change action's inter-entity transfer (HR only): the entities, the defaults, and the restructure calls. */
 export interface MoveHandlers {
   entities: { value: string; label: string }[];
-  onDefaults: (employeeId: string) => Promise<{ options: TransferOptions; employeeCode: string; serviceFrom: string }>;
+  /** `current`: the person's department, designation and employment type today (a move must replace any not open to the new entity). */
+  onDefaults: (employeeId: string) => Promise<{ options: TransferOptions; employeeCode: string; serviceFrom: string; current: { departmentId: string | null; designationId: string | null; employmentTypeId: string | null } }>;
   onPreview: (input: MoveInput) => Promise<Impact>;
   onSubmit: (input: MoveInput) => Promise<void>;
 }

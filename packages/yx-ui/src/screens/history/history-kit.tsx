@@ -184,7 +184,7 @@ const FIELDS: Record<Raisable, Field[]> = {
   promotion: ['designationId', 'gradeId'],
   transfer: ['locationId'],
   // The department and designation stay unless a new one is chosen (the engine checks the new entity may use them).
-  entity_transfer: ['locationId', 'departmentId', 'designationId'],
+  entity_transfer: ['locationId', 'departmentId', 'designationId', 'employmentTypeId'],
   redesignation: ['designationId', 'skillClass'],
   manager_change: ['managerEmployeeId'],
   salary_revision: [],
@@ -236,21 +236,33 @@ export interface ChangeDraft {
   transfer?: TransferOptions | null;
 }
 
+type MoveFact = 'departmentId' | 'designationId' | 'employmentTypeId';
+/** PPL-04: the job facts a move must choose anew, because the person's current one is not open to the new entity. */
+export function moveNeeds(current: Partial<Record<MoveFact, string | null>> | null, o: Pick<ChangeOptions, 'departments' | 'designations' | 'employmentTypes'>, entityId: string | null): MoveFact[] {
+  if (!current || !entityId) return [];
+  const lists: Record<MoveFact, ChoiceOption[]> = { departmentId: o.departments, designationId: o.designations, employmentTypeId: o.employmentTypes };
+  return (Object.keys(lists) as MoveFact[]).filter((f) => {
+    const now = lists[f].find((x) => x.value === current[f]);
+    return Boolean(current[f]) && (!now || !forEntity([now], entityId).length);
+  });
+}
+
 /** PPL-04: the one-person move, or what to fix. The restructure engine checks everything again. */
-export function moveInput(d: ChangeDraft, o: Pick<ChangeOptions, 'retroLimit'>, fromEntityId: string | null): { input: MoveInput | null; errors: FormErrorItem[] } {
+export function moveInput(d: ChangeDraft, o: Pick<ChangeOptions, 'retroLimit'>, fromEntityId: string | null, needs: readonly MoveFact[] = []): { input: MoveInput | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (!d.employeeId) errors.push({ fieldId: 'ch-person', message: 'Choose the person' });
   if (!d.effectiveDate) errors.push({ fieldId: 'ch-date', message: 'Choose the date it takes effect' });
   if (!d.entityId) errors.push({ fieldId: 'ch-entity', message: 'Choose the new legal entity' });
   if (!d.values.locationId) errors.push({ fieldId: 'ch-locationId', message: 'Choose the new location' });
+  for (const f of needs) if (!d.values[f]) errors.push({ fieldId: `ch-${f}`, message: `Choose the new ${FIELD_LABEL[f].toLowerCase()}` });
   if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Enter the reason for this change' });
   const date = d.effectiveDate ? dayKey(d.effectiveDate) : null;
   const beforeLimit = Boolean(date && date < o.retroLimit);
   if (beforeLimit && d.overrideReason.trim().length < 10) errors.push({ fieldId: 'ch-override', message: 'Explain why this goes back before the limit (10 characters or more)' });
   if (errors.length || !d.transfer || !fromEntityId) return { input: null, errors };
-  const { departmentId, designationId } = d.values;
+  const { departmentId, designationId, employmentTypeId } = d.values;
   return {
-    input: { employeeId: d.employeeId!, fromEntityId, intoEntityId: d.entityId!, effectiveDate: date!, locationId: d.values.locationId!, ...(departmentId ? { departmentId } : {}), ...(designationId ? { designationId } : {}), options: d.transfer, reason: d.reason.trim(), ...(beforeLimit ? { overrideReason: d.overrideReason.trim() } : {}) },
+    input: { employeeId: d.employeeId!, fromEntityId, intoEntityId: d.entityId!, effectiveDate: date!, locationId: d.values.locationId!, ...(departmentId ? { departmentId } : {}), ...(designationId ? { designationId } : {}), ...(employmentTypeId ? { employmentTypeId } : {}), options: d.transfer, reason: d.reason.trim(), ...(beforeLimit ? { overrideReason: d.overrideReason.trim() } : {}) },
     errors,
   };
 }
@@ -353,13 +365,15 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
   };
   const person = options.people.find((p) => p.id === draft.employeeId) ?? null;
   const moving = draft.changeType === MOVE;
-  const built = moving ? moveInput(draft, options, person?.legalEntityId ?? null) : changeInput(draft, options);
+  const [defaults, setDefaults] = useState<Awaited<ReturnType<MoveHandlers['onDefaults']>> | null>(null);
+  // Required where the person's current one is only for the old entity; optional (it stays) otherwise.
+  const needs = moving ? moveNeeds(defaults?.current ?? null, options, draft.entityId ?? null) : [];
+  const built = moving ? moveInput(draft, options, person?.legalEntityId ?? null, needs) : changeInput(draft, options);
   const { input, errors } = built;
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
   // A move offers the new entity's locations and masters; every other change the person's own entity's.
   const entity = moving ? (draft.entityId ?? null) : (person?.legalEntityId ?? null);
-  const [defaults, setDefaults] = useState<Awaited<ReturnType<MoveHandlers['onDefaults']>> | null>(null);
   useEffect(() => {
     if (!moving || !draft.employeeId || !move) return;
     let current = true;
@@ -496,7 +510,7 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
           {draft.changeType &&
             (!moving || draft.entityId) &&
             FIELDS[draft.changeType].map((f) => {
-              const required = Boolean(REQUIRED[draft.changeType!]?.includes(f));
+              const required = Boolean(REQUIRED[draft.changeType!]?.includes(f)) || (needs as string[]).includes(f);
               return (
                 <FormField key={f} id={`ch-${f}`} label={label(f)} required={required} optional={!required} error={errorOf(`ch-${f}`)}>
                   <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable={!required} placeholder={required ? 'Choose' : 'No change'} aria-label={label(f)} />

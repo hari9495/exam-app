@@ -187,7 +187,7 @@ function SettingsCard({ settings, onSave }: { settings: PrivacySettings; onSave:
           <NumberField value={months} onChange={setMonths} min={6} max={240} suffix="months" />
         </FormField>
         <Switch checked={hold} onChange={setHold} label="Legal hold" description="While on, nothing is erased or cleared, for example during a legal case." />
-        <FormField label="Keep deleted items in the recycle bin for" required helper="1 to 90 days, then they are gone for good." error={binOk ? null : 'Use 1 to 90 days'}>
+        <FormField label="Keep deleted items in the recycle bin for" required rule="1 to 90 days." helper="Then they are gone for good." error={binOk ? null : 'Use 1 to 90 days'}>
           <NumberField value={binDays} onChange={setBinDays} min={1} max={90} suffix="days" />
         </FormField>
         <span>

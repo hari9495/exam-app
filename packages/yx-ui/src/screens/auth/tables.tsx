@@ -51,7 +51,7 @@ function UnlockDialog({ row, onUnlock }: { row: LoginEventRow; onUnlock: (row: L
       }}
       onOpenChange={(open) => !open && (setReason(''), setTried(false))}
     >
-      <FormField label="Reason" required helper={`At least ${UNLOCK_REASON_MIN} characters, for example how you checked it's them.`} error={tried && short ? `Enter a reason of at least ${UNLOCK_REASON_MIN} characters.` : null}>
+      <FormField label="Reason" required rule={`At least ${UNLOCK_REASON_MIN} characters.`} helper="For example, how you checked it's them." error={tried && short ? `Enter a reason of at least ${UNLOCK_REASON_MIN} characters.` : null}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>

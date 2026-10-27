@@ -271,7 +271,7 @@ function RuleDialog({ data, today, onClose, onAdd }: { data: ReverifData; today:
         <FormField id="rv-type" label="Document" required error={tried && !type ? 'Choose the document.' : null}>
           <Select aria-label="Document" value={type} onChange={setType} options={data.types} />
         </FormField>
-        <FormField id="rv-every" label="Every (months)" required helper="1 to 120." error={tried && !everyOk ? 'Enter a number from 1 to 120.' : null}>
+        <FormField id="rv-every" label="Every (months)" required rule="1 to 120." error={tried && !everyOk ? 'Enter a number from 1 to 120.' : null}>
           <TextField value={every} onChange={setEvery} inputMode="numeric" maxLength={3} />
         </FormField>
         <FormField id="rv-entity" label="Legal entity" required={!data.canManageCompany} optional={data.canManageCompany} helper={data.canManageCompany ? 'Blank: the whole company.' : undefined} error={tried && !data.canManageCompany && !entity ? 'Choose the legal entity.' : null}>
