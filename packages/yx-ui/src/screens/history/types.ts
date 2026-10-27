@@ -1,7 +1,7 @@
 // People › job history and changes (P06 §7, M01 §3.3): the shapes the API returns and accepts.
 export type { LoadState } from '../org/types';
 
-export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'entity_transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
+export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 export type ChangeStatus = 'pending' | 'scheduled' | 'effective' | 'rejected' | 'cancelled';
 export type EmploymentStatus = 'probation' | 'confirmed' | 'notice';
@@ -105,24 +105,6 @@ export interface ChangePayload {
   };
   status?: EmploymentStatus;
   compensation?: { currency?: string; annualCtc?: string; increasePercent?: string };
-  /** PPL-04: a move to another legal entity carries only this. */
-  transfer?: { legalEntityId: string; locationId: string; departmentId?: string; designationId?: string; options: Partial<TransferOptions> };
-}
-
-/** PPL-04 inter-entity transfer options (company defaults in Settings, changed for one move). */
-export interface TransferOptions {
-  leave: 'carry' | 'encash' | 'lapse';
-  service: 'continue' | 'restart';
-  code: 'keep' | 'new';
-  settlement: 'none' | 'full';
-  structure: 'keep' | 'new';
-}
-
-/** The company defaults of a move for one person, with what the option labels name. */
-export interface TransferDefaults {
-  options: TransferOptions;
-  employeeCode: string;
-  serviceFrom: string;
 }
 
 export interface ChangeRecord {
@@ -204,8 +186,6 @@ export interface ChangeOptions {
   types?: Exclude<ChangeType, 'join'>[];
   /** Who can be chosen as manager or dotted-line manager. Default: `people`. */
   managers?: PersonOption[];
-  /** PPL-04: the legal entities a move can go to. */
-  legalEntities?: { value: string; label: string }[];
 }
 
 /** G1 (gap pass C3): the three named service dates. */

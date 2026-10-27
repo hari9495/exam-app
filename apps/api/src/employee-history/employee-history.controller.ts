@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
-import { ApproveDto, AsOfQueryDto, ChangeDraftDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, ChangeRouteQueryDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto, ServiceDatesDto, TransferDefaultsQueryDto } from './dto';
+import { ApproveDto, AsOfQueryDto, ChangeDraftDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, ChangeRouteQueryDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto, ServiceDatesDto } from './dto';
 import { EmployeeHistoryService, RequestUser } from './employee-history.service';
 
 // People › job history and changes (P06 §4.3–4.7, §7; M01 §3.3). Permissions (P02 YX-SEC-01):
@@ -88,14 +88,6 @@ export class EmployeeHistoryController {
   async route(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ChangeRouteQueryDto) {
     ownSession(req);
     return this.history.changeRoute(ctx, await this.viewer(req), q);
-  }
-
-  /** PPL-04: an inter-entity transfer's company defaults for this person (HR raises moves, never a manager). */
-  @Get('changes/transfer-defaults')
-  @RequirePermissions('employee.change.manage')
-  async transferDefaults(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: TransferDefaultsQueryDto) {
-    ownSession(req);
-    return this.history.transferDefaults(ctx, await this.viewer(req), q.employeeId);
   }
 
   /** PPL-04: the caller's own saved drafts. */

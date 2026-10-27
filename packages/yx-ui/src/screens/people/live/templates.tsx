@@ -34,10 +34,10 @@ const OWNERS: { value: OwnerType; label: string }[] = [
 const KIND_TEXT: Record<TemplateTask['kind'], string> = { tick: 'To do', form: 'Form', document: 'Document', letter: 'Letter', desk_request: 'Service Desk request', read: 'Read and acknowledge', watch: 'Watch a video', survey: 'Quick survey' };
 /** Kinds HR can pick for a step it adds or changes; the others come from starters and stay as they are. */
 const PICKABLE: TaskKind[] = ['tick', 'read', 'watch', 'survey'];
-const LIFE: JourneyKind[] = ['new_manager', 'transfer', 'parental_leave', 'return_to_work', 'continuity'];
+const LIFE: JourneyKind[] = ['new_manager', 'transfer', 'parental_leave', 'return_to_work'];
 type Group = 'onboarding' | 'offboarding' | 'life';
 const groupOf = (k: JourneyKind): Group => (k === 'onboarding' || k === 'offboarding' ? k : 'life');
-const DAY_NAME: Record<JourneyKind, string> = { onboarding: 'joining', offboarding: 'last', new_manager: 'first', transfer: 'move', parental_leave: 'first leave', return_to_work: 'return', continuity: 'move' };
+const DAY_NAME: Record<JourneyKind, string> = { onboarding: 'joining', offboarding: 'last', new_manager: 'first', transfer: 'move', parental_leave: 'first leave', return_to_work: 'return' };
 const TEAM_OWNERS = new Set<OwnerType>(['hr', 'it', 'admin', 'finance', 'payroll', 'group']);
 const dayText = (n: number, kind: JourneyKind) => (n === 0 ? `On the ${DAY_NAME[kind]} day` : `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'before' : 'after'}`);
 

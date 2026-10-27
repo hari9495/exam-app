@@ -43,7 +43,7 @@ const KIND_HINT: Record<JourneyTask['kind'], string> = {
   survey: 'Quick survey',
 };
 /** What a journey's day 0 is, in words (6f adds life events). */
-const ANCHOR_WORD: Record<JourneyKind, string> = { onboarding: 'Joins', offboarding: 'Leaves', new_manager: 'Manages from', transfer: 'Moves', parental_leave: 'Leave from', return_to_work: 'Back on', continuity: 'Moves' };
+const ANCHOR_WORD: Record<JourneyKind, string> = { onboarding: 'Joins', offboarding: 'Leaves', new_manager: 'Manages from', transfer: 'Moves', parental_leave: 'Leave from', return_to_work: 'Back on' };
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
 
 export function AddJoinerDrawer({ places, today, onClose, onAdd }: { places: JoinerPlaces; today: string; onClose: () => void; onAdd: (x: JoinerInput) => Promise<void> }) {

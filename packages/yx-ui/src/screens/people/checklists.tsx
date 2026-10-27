@@ -16,7 +16,7 @@ import { JOURNEY_KIND_LABEL, type JourneyKind, type JourneyTask, type LifeJourne
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
-const ANCHOR: Record<JourneyKind, string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on', continuity: 'moves' };
+const ANCHOR: Record<JourneyKind, string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on' };
 
 /** The buttons a task offers the viewer: do it (its kind decides the words), upload, issue the letter, skip. */
 export function taskButtons(t: JourneyTask, onAsk: (a: TaskAsk) => void, opts: { manage: boolean; actions: TaskActions }): ReactNode {

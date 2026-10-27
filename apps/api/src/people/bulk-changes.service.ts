@@ -22,8 +22,8 @@ import { Logger } from '@nestjs/common';
 // approved once (all or nothing again) by someone other than the requester and the people in it (YX-SEC-11).
 // Each row goes through the same change path as a single change (YX-HIS-01), so every rule applies to it.
 
-/** Change types a file may carry: joins come from hiring, corrections, confirmations and moves to another entity one by one. */
-const BULK_TYPES = CHANGE_TYPES.filter((t) => !['join', 'correction', 'confirmation', 'entity_transfer', 'notice', 'notice_withdrawal', 'exit'].includes(t));
+/** Change types a file may carry: joins come from hiring, corrections and confirmations one by one. */
+const BULK_TYPES = CHANGE_TYPES.filter((t) => !['join', 'correction', 'confirmation', 'notice', 'notice_withdrawal', 'exit'].includes(t));
 
 interface Item {
   line: number;

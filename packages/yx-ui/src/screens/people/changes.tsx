@@ -1352,73 +1352,8 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
 
 /* ================================================================== PPL-10 continuity checklist */
 
-/** The live app's continuity checklist of one move (PPL-10): the journey's tasks, ticked off by their owners. */
-export interface LiveContinuity {
-  state: 'ready' | 'loading' | 'error' | 'no-access';
-  onRetry: () => void;
-  person: string;
-  from: string;
-  to: string;
-  effective: Date;
-  rows: { id: string; title: string; owner: string; due: Date; status: string; note?: string; canDone: boolean }[];
-  /** Marks a row done (its owner, or HR running the checklist). */
-  onDone: (id: string) => Promise<void>;
-}
-
-function LiveContinuityPanel({ live, today }: { live: LiveContinuity; today: Date }) {
-  const [open, setOpen] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
-  const open_ = live.rows.filter((r) => r.status !== 'Done').length;
-  const rows: ChecklistRow[] = live.rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    owner: r.owner,
-    due: r.due,
-    status: r.status,
-    note: r.note,
-    action: r.canDone ? (
-      <Button
-        size="sm"
-        loading={busy === r.id}
-        disabled={busy !== null && busy !== r.id}
-        onClick={() => {
-          setBusy(r.id);
-          void live.onDone(r.id).finally(() => setBusy(null));
-        }}
-      >
-        Mark done
-      </Button>
-    ) : undefined,
-  }));
-  return (
-    <PeopleFrame active="Change action">
-      <ObjectHeader name={`Inter-entity transfer · ${live.person}`} icon={Pencil} secondary={`${live.from} → ${live.to} · effective ${formatDate(live.effective)}`} status={<StatusBadge status="Approved" />} actions={<Button onClick={() => setOpen(true)}>Continuity checklist</Button>} />
-      {live.state === 'no-access' ? (
-        <NoAccessState what="this checklist" grantedBy="your HR admin" />
-      ) : live.state === 'error' ? (
-        <ErrorState title="We couldn't load the checklist" description="Check your connection and try again." onRetry={live.onRetry} />
-      ) : (
-        <Drawer open={open} onOpenChange={setOpen} title="Continuity checklist" subtitle={live.state === 'loading' ? undefined : open_ ? `${open_} items open · shown in payroll pre-flight` : 'All items done'} footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
-          {live.state === 'loading' ? (
-            <ListSkeleton label="Loading the continuity checklist" rows={4} />
-          ) : (
-            <div className="yx-ppl__stack">
-              {open_ > 0 && <InlineAlert tone="warning">{`Open items show in payroll pre-flight for ${live.to}.`}</InlineAlert>}
-              <StatusChecklist label="Continuity items" rows={rows} today={today} />
-            </div>
-          )}
-        </Drawer>
-      )}
-    </PeopleFrame>
-  );
-}
-
 // PPL-10
-export function ContinuityChecklistPanel({ allDone = false, today, live }: { allDone?: boolean; today: Date; live?: LiveContinuity }) {
-  return live ? <LiveContinuityPanel live={live} today={today} /> : <SampleContinuityPanel allDone={allDone} today={today} />;
-}
-
-function SampleContinuityPanel({ allDone, today }: { allDone: boolean; today: Date }) {
+export function ContinuityChecklistPanel({ allDone = false, today }: { allDone?: boolean; today: Date }) {
   const [open, setOpen] = useState(true);
   const st = (s: string) => (allDone ? 'Done' : s);
   const rows: ChecklistRow[] = [

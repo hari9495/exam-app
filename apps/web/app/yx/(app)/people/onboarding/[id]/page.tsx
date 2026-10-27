@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { JourneyRecord } from '@yukthix/ui/frame';
 import { useToast } from '@yukthix/ui';
 import { BuddyCard, JoinerPanel, RehireCard, type Joiner, type JoinerForms, type Journey, type JourneyTask, type RehireView, type TaskActions } from '@yukthix/ui/lifecycle';
@@ -17,11 +16,6 @@ export default function YxJourneyPage() {
   const { toast } = useToast();
   const journey = useLife<Journey>(`/lifecycle/journeys/${encodeURIComponent(id)}`);
   const j = journey.data;
-  // PPL-10: a move's continuity checklist has its own designed page.
-  const router = useRouter();
-  useEffect(() => {
-    if (j?.kind === 'continuity') router.replace(`/yx/people/changes/${encodeURIComponent(j.subjectId)}/continuity`);
-  }, [j, router]);
   const hrJoiner = Boolean(j?.canManage && j.subjectType === 'preboarding');
   const joiner = useLife<Joiner>(hrJoiner ? `/lifecycle/joiners/${encodeURIComponent(j!.subjectId)}` : null);
   const forms = useLife<JoinerForms>(hrJoiner ? `/lifecycle/joiners/${encodeURIComponent(j!.subjectId)}/forms` : null);

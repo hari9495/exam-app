@@ -4,7 +4,7 @@ import { addDays } from '../org-structure/org-validation';
 // P06 effective-dated history: the change types, which facts each may touch, and the fold that turns an
 // ordered list of changes into dated rows. Pure functions; the service does the database work.
 
-export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'entity_transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
+export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
 /** System changes made by the exit flow (lifecycle 6c), never requested by hand. */
 export const SYSTEM_CHANGE_TYPES: readonly ChangeType[] = ['notice', 'notice_withdrawal', 'exit'];
 export type ChangeType = (typeof CHANGE_TYPES)[number];
@@ -54,22 +54,6 @@ export interface ChangePayload {
   assignment?: Partial<AssignmentValues>;
   status?: EmploymentStatus;
   compensation?: { currency?: string; annualCtc?: string; increasePercent?: string };
-  /** PPL-04 / PPL-10: an inter-entity transfer carries only this; the move is a new employment, never a fold. */
-  transfer?: EntityTransfer;
-}
-
-/** P01 YX-ORG-17: the choices of an inter-entity transfer, company defaults in the transfer.* settings. */
-export const TRANSFER_OPTIONS = { leave: ['carry', 'encash', 'lapse'], service: ['continue', 'restart'], code: ['keep', 'new'], settlement: ['none', 'full'], structure: ['keep', 'new'] } as const;
-export type TransferOptions = { [K in keyof typeof TRANSFER_OPTIONS]: (typeof TRANSFER_OPTIONS)[K][number] };
-
-export interface EntityTransfer {
-  legalEntityId: string;
-  locationId: string;
-  /** Unset: the department and designation in force stay (they must be open to the new entity). */
-  departmentId?: string;
-  designationId?: string;
-  /** Unset keys take the company default when the change is raised; stored complete. */
-  options: Partial<TransferOptions>;
 }
 
 export type Fact = 'assignment' | 'status' | 'compensation';
@@ -92,8 +76,6 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the location.
   promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
   transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'], changes: ['locationId'] },
-  // P01 YX-ORG-17: the employment in one entity ends and a new one opens in the other (payload.transfer only).
-  entity_transfer: { requires: [] },
   redesignation: { assignment: ['designationId', 'skillClass'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
@@ -113,8 +95,6 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
 /** The problem with a payload for its type, or null. */
 export function payloadProblem(type: ChangeType, p: ChangePayload): string | null {
   const rule = TYPE_RULES[type];
-  if (type === 'entity_transfer') return p.transfer && !p.assignment && p.status === undefined && !p.compensation ? null : 'An inter-entity transfer sets the new legal entity and location, and nothing else.';
-  if (p.transfer) return 'Only an inter-entity transfer moves someone to another legal entity.';
   for (const fact of rule.requires) if (p[fact] === undefined) return `A ${label(type)} must set the ${fact}.`;
   if (!p.assignment && !p.status && !p.compensation) return 'The change sets nothing.';
   if (p.assignment) {
@@ -155,7 +135,7 @@ export function payloadProblem(type: ChangeType, p: ChangePayload): string | nul
   return null;
 }
 
-export const label = (type: ChangeType) => (type === 'entity_transfer' ? 'inter-entity transfer' : type.replace(/_/g, ' '));
+export const label = (type: ChangeType) => type.replace(/_/g, ' ');
 /** "designationId" → "designation". */
 export const fieldWord = (k: AssignmentField) => k.replace(/Id$/, '').replace(/([A-Z])/g, ' $1').toLowerCase();
 

@@ -8,7 +8,6 @@ import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-struc
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { lapsedWorkPermits } from '../people/work-auth.service';
-import { openContinuity } from '../lifecycle/continuity-items';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { StatutoryRulesService } from '../statutory/statutory.service';
@@ -391,8 +390,6 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, statute: cv.statute, status: { in: ['on', 'applied_awaited'] } } });
       if (!reg) found.push({ employeeId: null, checkKey: `coverage_${cv.statute}`, severity: 'block', blocks: 'approval', waivable: false, message: `The entity has ${cv.headcount} people and is covered by ${cv.statute}, but no registration is recorded.` });
     }
-    // PPL-10: someone who moved into this entity with continuity items still open (UAN, ESI, Form 12B, loans...).
-    for (const x of await openContinuity(tx, org, run.legalEntityId, ids)) found.push({ employeeId: x.employeeId, checkKey: 'continuity_open', severity: 'warn', message: `${nameOf(x.employeeId)}: ${x.titles.length} continuity item${x.titles.length === 1 ? '' : 's'} open after the move from another entity: ${x.titles.join('; ')}.` });
     // PPL-45: an expired employment visa or work permit for the entity's country holds approval (WPS files fail on it).
     const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: run.legalEntityId }, select: { country: true } })).country;
     for (const id of await lapsedWorkPermits(tx, org, country, ids, run.periodEnd)) found.push({ employeeId: id, checkKey: 'work_permit_expired', severity: 'block', blocks: 'approval', message: `${nameOf(id)}: the employment visa or work permit has expired. Record the renewal on their record before approval.` });

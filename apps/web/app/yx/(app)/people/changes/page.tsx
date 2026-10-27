@@ -77,7 +77,6 @@ export default function YxChangeActionPage() {
                 initial={draft?.form}
                 onPreview={raise.onPreview}
                 onRoute={raise.onRoute}
-                onTransferDefaults={canManage ? raise.onTransferDefaults : undefined}
                 onSubmit={async (input) => {
                   await raise.onSubmit(input, draft?.id);
                   toast({ tone: 'success', title: `${CHANGE_LABEL[input.changeType]} for ${subjects.find((s) => s.id === input.employeeId)?.name ?? 'the employee'} sent for approval` });

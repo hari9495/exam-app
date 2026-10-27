@@ -9,7 +9,7 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeDraftDto, ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
 import { holdersOf } from '../time/time-core';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
-import { settingFor, startProbation } from '../people/probation';
+import { startProbation } from '../people/probation';
 import { serviceDates as datesFor, Spell } from './service-dates';
 import { payScope, withPayScope } from '../payroll/pay-access';
 import { normalWeekAt, readerLanguage, SubjectType, translated } from '../global/global-data';
@@ -35,9 +35,6 @@ import {
   Segment,
   capSegments,
   StatusValues,
-  TRANSFER_OPTIONS,
-  type EntityTransfer,
-  type TransferOptions,
 } from './history-rules';
 
 // P06 effective-dated history on the P01 employee core. One write path (YX-HIS-01): an employee change
@@ -122,10 +119,6 @@ const iso = (d: Date | null) => (d ? isoDate(d) : null);
 const has = (v: Viewer, k: Key) => holds(v, k);
 /** M01 §3.10: the job changes a manager may raise for their team (salary only with the pay grant, R1). */
 const ON_BEHALF_TYPES: readonly ChangeType[] = ['promotion', 'transfer', 'redesignation', 'manager_change'];
-/** PPL-10: the system making an approved move to another entity (the raiser's and approver's grants were checked before). */
-const MOVER: Viewer = { userId: null, grants: new Set(['employee.change.manage', 'employee.change.retro', 'employee.change.retro_override']), scopes: new Map([['employee.change.manage', [{ type: 'tenant', id: null }]]]), actingForOther: false };
-const LEAVE_WORD: Record<TransferOptions['leave'], string> = { carry: 'Carried over', encash: 'Encashed at the old entity', lapse: 'Lapses' };
-const dayWord = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 /** HR-side change rights: everything else is a manager raising on behalf (YX-SEC-27). */
 const changeDesk = (v: Viewer) => has(v, 'employee.profile.view') || has(v, 'employee.change.manage') || has(v, 'employee.change.approve');
 
@@ -1032,13 +1025,6 @@ export class EmployeeHistoryService {
     await this.checkRefs(tx, c, e, payload);
     // PPL-04: a transfer to where the person already works (or a promotion to the same job) changes nothing.
     const day = asDate(dto.effectiveDate);
-    // PPL-10: a move to another entity ends this employment; later changes are raised in the new one.
-    const move = await tx.employeeChange.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, changeType: 'entity_transfer', status: { in: ['pending', 'scheduled'] }, effectiveDate: { lte: day } }, select: { effectiveDate: true } });
-    if (move) throw new ConflictException(`This employment ends with a move to another entity on ${isoDate(move.effectiveDate)}. Raise the change in the new entity after the move.`);
-    if (payload.transfer) {
-      payload.transfer.options = await this.transferOptions(tx, c, e.legalEntityId, payload.transfer.options);
-      await this.checkTransfer(tx, c, v, 'employee.change.manage', e, payload.transfer, dto.effectiveDate, null);
-    }
     const now = await tx.employeeAssignment.findFirst({
       where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
       select: { locationId: true, designationId: true, gradeId: true },
@@ -1079,7 +1065,6 @@ export class EmployeeHistoryService {
       // A change approved after its date reaches back from the approval day (YX-HIS-12).
       await this.checkReach(tx, c, v, e, date, ch.overrideReason);
     }
-    if (ch.changeType === 'entity_transfer') return this.approveTransferIn(tx, c, v, ch, e, opts);
     await this.checkRefs(tx, c, e, payload);
     const today = todayIst();
     const status = 'scheduled';
@@ -1369,7 +1354,6 @@ export class EmployeeHistoryService {
       await this.lockEmployment(tx, c, e.id);
       const fresh = await this.changeOr404(tx, c, id);
       if (fresh.status !== 'pending' && fresh.status !== 'scheduled') throw new ConflictException(`A ${fresh.status} change cannot be edited; raise a correction instead.`);
-      if (fresh.changeType === 'entity_transfer') throw new ConflictException('A move to another entity is not edited: cancel it and raise it again.');
       await this.notInOpenBatch(tx, c, fresh);
       const oldDate = isoDate(fresh.effectiveDate);
       const date = dto.effectiveDate ?? oldDate;
@@ -1479,15 +1463,10 @@ export class EmployeeHistoryService {
   }
 
   /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
-  /**
-   * A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18).
-   * `move`: the new employment of an inter-entity transfer (PPL-10): the approved pay in force carries over (nothing
-   * about it changes), the probation is copied by the caller, and it is no joining (no joiner journey).
-   */
-  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null, move: { pay: CompensationValues | null } | null = null) {
+  /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
-    if (move?.pay) payload.compensation = { currency: move.pay.currency, annualCtc: move.pay.annualCtc };
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
     if (pay) this.checkPayload('salary_revision', pay, v);
     {
@@ -1518,7 +1497,10 @@ export class EmployeeHistoryService {
             },
           });
       const personId = person.personId;
-      const codeScopeKey = await this.codeScope(tx, c, entity.id);
+      // YX-ORG-16: codes are unique per legal entity or across the company (setting), generated if blank.
+      const scopeRows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'employee_code.scope' } });
+      const scope = resolveSetting(SETTINGS['employee_code.scope'], scopeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value;
+      const codeScopeKey = scope === 'tenant' ? c.organizationId : entity.id;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-code:${c.organizationId}:${codeScopeKey}`}))`;
       const employeeCode = dto.employeeCode ?? (await this.nextCode(tx, c, codeScopeKey, entity.employeeCodePrefix));
       const e = await tx.employment.create({
@@ -1532,7 +1514,7 @@ export class EmployeeHistoryService {
       await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, personId, employmentId: null }, data: { employmentId: e.id } });
       if (dto.userId) await addRole(tx, c, personId, 'login', { table: 'users', id: dto.userId }, e.joinedOn);
       // M01 §3.4: a joiner on probation gets the company's probation plan.
-      if (dto.status === 'probation' && !move) await startProbation(tx, c, e.id, dto.joinedOn, { legalEntityId: entity.id, employmentTypeId: payload.assignment?.employmentTypeId, gradeId: payload.assignment?.gradeId });
+      if (dto.status === 'probation') await startProbation(tx, c, e.id, dto.joinedOn, { legalEntityId: entity.id, employmentTypeId: payload.assignment?.employmentTypeId, gradeId: payload.assignment?.gradeId });
       const join = await tx.employeeChange.create({
         data: {
           organizationId: c.organizationId,
@@ -1552,9 +1534,9 @@ export class EmployeeHistoryService {
       await this.rebuild(tx, c, e, dto.joinedOn, join.id);
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
-      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: Boolean(move?.pay), ...(move ? { movedFrom: rehireOf } : {}) });
+      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
       // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08).
-      if (!move) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
+      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({
@@ -1591,135 +1573,6 @@ export class EmployeeHistoryService {
     throw new ForbiddenException(`Your ${key} grant does not cover that legal entity, location or department.`);
   }
 
-  /** YX-ORG-16: codes are unique per legal entity or across the company (setting): the key of the series. */
-  private async codeScope(tx: Tx, c: CompanyContext, legalEntityId: string): Promise<string> {
-    const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'employee_code.scope' } });
-    const scope = resolveSetting(SETTINGS['employee_code.scope'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value;
-    return scope === 'tenant' ? c.organizationId : legalEntityId;
-  }
-
-  // ================= a move to another legal entity (PPL-04, PPL-10; P01 YX-ORG-17) =================
-
-  /** The company defaults (transfer.* settings of the entity the person leaves), for the change form. */
-  transferDefaults(ctx: TenantContext, v: Viewer, employeeId: string) {
-    return this.run(ctx, async (tx, c) => {
-      const e = await this.openEmployment(tx, c, employeeId);
-      if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, todayIst()))) throw new NotFoundException('No open employment for that employee');
-      return { options: await this.transferOptions(tx, c, e.legalEntityId, {}), employeeCode: e.employeeCode, serviceFrom: datesFor(await this.spells(tx, c, e.employeeId), e.id).continuousServiceFrom };
-    });
-  }
-
-  private async transferOptions(tx: Tx, c: CompanyContext, legalEntityId: string, given: Partial<TransferOptions>): Promise<TransferOptions> {
-    const out: Partial<Record<keyof TransferOptions, string>> = {};
-    for (const k of Object.keys(TRANSFER_OPTIONS) as (keyof TransferOptions)[]) out[k] = given[k] ?? (await settingFor(tx, c, `transfer.${k}` as const, { legalEntityId }));
-    return out as TransferOptions;
-  }
-
-  /**
-   * PPL-04: a move is possible on its date: another live entity, a location there and the job's masters open to it
-   * (YX-ORG-08, YX-ORG-15), the viewer's grant reaching it, the employment in force the day before and not on notice,
-   * nothing else dated on or after the move, and a kept code free in the new series (YX-ORG-16).
-   */
-  private async checkTransfer(tx: Tx, c: CompanyContext, v: Viewer, key: Key | null, e: Employment, t: EntityTransfer, date: string, self: string | null) {
-    const org = c.organizationId;
-    const entity = await tx.legalEntity.findFirst({ where: { organizationId: org, id: t.legalEntityId } });
-    if (!entity || entity.archivedAt) throw new BadRequestException('Choose a live legal entity of this company.');
-    if (entity.id === e.legalEntityId) throw new BadRequestException('The person already works for that legal entity: a move within it is a transfer.');
-    if (date <= isoDate(e.joinedOn)) throw new BadRequestException('A move to another entity is dated after the joining day.');
-    const now = this.factsOn(await this.rows(tx, c, e.id), addDays(date, -1));
-    if (!now.assignment || !now.status) throw new BadRequestException('The employment is not in force the day before the move.');
-    if (now.status.status === 'notice') throw new ConflictException('The person is serving notice: finish or withdraw the exit before a move.');
-    const later = await tx.employeeChange.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: ['pending', ...ACTIVE] }, effectiveDate: { gte: asDate(date) }, ...(self ? { NOT: { id: self } } : {}) }, select: { changeType: true, effectiveDate: true } });
-    if (later) throw new ConflictException(`A ${label(later.changeType as ChangeType)} is dated ${isoDate(later.effectiveDate)}, on or after the move. Cancel it first, or raise it in the new entity after the move.`);
-    // Cost centres belong to one entity: they stay behind.
-    const a: AssignmentValues = { ...now.assignment, locationId: t.locationId, departmentId: t.departmentId ?? now.assignment.departmentId, designationId: t.designationId ?? now.assignment.designationId, costCentres: [] };
-    await this.checkRefs(tx, c, { ...e, legalEntityId: entity.id }, { assignment: a });
-    if (key) await this.mustHireInto(tx, c, v, key, entity.id, a);
-    if (t.options.code === 'keep' && (await tx.employment.findFirst({ where: { organizationId: org, codeScopeKey: await this.codeScope(tx, c, entity.id), employeeCode: e.employeeCode, employeeId: { not: e.employeeId } }, select: { id: true } }))) {
-      throw new ConflictException(`${e.employeeCode} is someone else's code in ${entity.name}. Choose a new code in its series.`);
-    }
-    return { entity, now, a };
-  }
-
-  /** Approving a move: checked again, its impact kept, scheduled. It happens on its date (now when that has come). */
-  private async approveTransferIn(tx: Tx, c: CompanyContext, v: Viewer, ch: ChangeRow, e: Employment, opts: { note?: string; simulate: boolean }) {
-    const date = isoDate(ch.effectiveDate);
-    const t = (ch.payload as ChangePayload).transfer!;
-    const { entity, now, a } = await this.checkTransfer(tx, c, v, opts.simulate ? null : 'employee.change.approve', e, t, date, ch.id);
-    const impact = await this.transferImpact(tx, c, e, t, date, entity.name, now.assignment!, a);
-    await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'scheduled', decidedBy: c.userId, decidedAt: new Date(), decisionNote: opts.note?.trim() || null, impact: impact as unknown as Prisma.InputJsonObject } });
-    const effectiveNow = !opts.simulate && date <= localToday(await this.timezoneOn(tx, c, e.id, addDays(date, -1)));
-    if (effectiveNow) await this.transferNow(tx, c, ch.id);
-    return { updated: await this.changeOr404(tx, c, ch.id), impact, effectiveNow };
-  }
-
-  /** PPL-04 "What changes" for a move (the design's rows, then the options chosen). */
-  private async transferImpact(tx: Tx, c: CompanyContext, e: Employment, t: EntityTransfer, date: string, toName: string, from: AssignmentValues, to: AssignmentValues) {
-    const old = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.legalEntityId }, select: { name: true } });
-    const n = await this.names(tx, c, [from, to]);
-    const [da, db] = [this.describe(from, n), this.describe(to, n)];
-    const o = t.options as TransferOptions;
-    const facts: { fact: string; from: string | null; to: string | null }[] = [
-      { fact: 'Legal entity', from: old.name, to: toName },
-      { fact: 'Employee code', from: e.employeeCode, to: o.code === 'keep' ? `${e.employeeCode} (kept)` : `New code in the ${toName} series` },
-    ];
-    const push = (fact: string, x: string | null | undefined, y: string | null | undefined) => (x ?? null) !== (y ?? null) && facts.push({ fact, from: x ?? null, to: y ?? null });
-    push('Location', da.location.name, db.location.name);
-    facts.push(...(await this.locationEffects(tx, c, e, from.locationId, to.locationId, date)));
-    push('Department', da.department?.name, db.department?.name);
-    push('Designation', da.designation?.name, db.designation?.name);
-    const service = datesFor(await this.spells(tx, c, e.employeeId), e.id).continuousServiceFrom;
-    facts.push(
-      { fact: 'PF', from: 'Same UAN', to: 'Same UAN · transfer tracked on the checklist' },
-      { fact: 'Tax', from: 'Pay and tax so far this year', to: 'Form 12B carried into the new entity' },
-      { fact: 'Leave balance', from: 'Balance on the day', to: LEAVE_WORD[o.leave] },
-      { fact: 'Continuous service', from: `From ${dayWord(service)}`, to: o.service === 'continue' ? `Continues from ${dayWord(service)}` : `Restarts on ${dayWord(date)}` },
-      { fact: 'Settlement at the old entity', from: null, to: o.settlement === 'full' ? 'Full and final settlement' : 'None (amounts move over)' },
-      { fact: 'Salary structure', from: null, to: o.structure === 'keep' ? 'Kept' : 'A new one is assigned' },
-    );
-    const today = todayIst();
-    const rebased: Awaited<ReturnType<EmployeeHistoryService['applyWithImpact']>>['rebased'] = [];
-    return { effectiveDate: date, facts, pay: [] as { fact: string; from: string | null; to: string | null }[], rebased, retro: date < today ? { from: date, months: affectedMonths(date, today) } : null };
-  }
-
-  /**
-   * The move itself, on its date (P01 YX-ORG-17): the employment in the old entity ends the day before with no
-   * settlement, a new one opens in the new entity on the same employee record with the options chosen, and lifecycle
-   * starts the continuity checklist from the event (PPL-10).
-   */
-  async transferNow(tx: Tx, c: CompanyContext, changeId: string) {
-    const org = c.organizationId;
-    const ch = await this.changeOr404(tx, c, changeId);
-    const old = await this.employmentById(tx, c, ch.employmentId);
-    await this.lockEmployment(tx, c, old.id);
-    const t = (ch.payload as ChangePayload).transfer!;
-    const o = t.options as TransferOptions;
-    const date = isoDate(ch.effectiveDate);
-    const last = addDays(date, -1);
-    const { entity, now, a } = await this.checkTransfer(tx, c, MOVER, 'employee.change.manage', old, t, date, ch.id);
-    const from = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: old.legalEntityId }, select: { name: true } });
-    await payScope(tx, [old.legalEntityId, entity.id]);
-    const s = await tx.employeeStatutory.findFirst({ where: { organizationId: org, employmentId: old.id, validFrom: { lte: asDate(last) }, OR: [{ validTo: null }, { validTo: { gte: asDate(last) } }] }, orderBy: { validFrom: 'desc' } });
-    const probation = now.status!.status === 'probation' ? await tx.probation.findFirst({ where: { organizationId: org, employmentId: old.id } }) : null;
-    const serviceFrom = datesFor(await this.spells(tx, c, old.employeeId), old.id).continuousServiceFrom;
-    await this.exitIn(tx, c, old.id, last, `Moved to ${entity.name} (inter-entity transfer)`);
-    const dto = { legalEntityId: entity.id, joinedOn: date, status: now.status!.status, reason: ch.reason, overrideReason: ch.overrideReason ?? undefined, givenName: '', assignment: a, ...(o.code === 'keep' ? { employeeCode: old.employeeCode } : {}) } as unknown as EmployeeCreateDto;
-    const hired = await this.createEmployeeIn(tx, c, MOVER, dto, old.id, { pay: o.structure === 'keep' ? now.compensation : null });
-    const next = hired.employmentId;
-    if (o.service === 'continue') await tx.employment.update({ where: { id: next }, data: { continuousServiceFrom: asDate(serviceFrom), continuousServiceReason: `Continues across the move from ${from.name}` } });
-    if (probation) await tx.probation.create({ data: { organizationId: org, employmentId: next, startOn: probation.startOn, originalEndOn: probation.originalEndOn, plannedEndOn: probation.plannedEndOn, extendedMonths: probation.extendedMonths, createdBy: c.userId ?? null } });
-    // PF and ESI go on (same UAN, same IP); professional tax and LWF follow the new location.
-    if (s) {
-      await tx.employeeStatutory.create({
-        data: { organizationId: org, legalEntityId: entity.id, employeeId: old.employeeId, employmentId: next, validFrom: asDate(date), pf: s.pf, eps: s.eps, pre2014Member: s.pre2014Member, higherPension: s.higherPension, vpfPercent: s.vpfPercent, pfOnActualWage: s.pfOnActualWage, internationalWorker: s.internationalWorker, esi: s.esi, pwdCeilingConsent: s.pwdCeilingConsent, reason: `Carried over on the move from ${from.name}`, createdBy: c.userId ?? null },
-      });
-    }
-    await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'effective', appliedAt: new Date() } });
-    await audit(tx, c, 'employee.entity_transferred', 'employee', old.employeeId, { changeId: ch.id, fromEmploymentId: old.id, toEmploymentId: next, legalEntityId: entity.id, options: o });
-    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'employee.entity_transferred', payload: { changeId: ch.id, employeeId: old.employeeId, fromEmploymentId: old.id, toEmploymentId: next, effectiveDate: date } } });
-    return next;
-  }
-
   /** The next code in the entity's series: its prefix (default E) and one more than the highest number after it. */
   private async nextCode(tx: Tx, c: CompanyContext, scopeKey: string, prefix: string | null): Promise<string> {
     const p = prefix ?? 'E'; // only A-Z, 0-9, - and / (DTO and DB check), so no regex metacharacters
@@ -1748,7 +1601,7 @@ export class EmployeeHistoryService {
           const due = await tx.$queryRaw<{ id: string; employee_id: string; change_type: string; effective_date: string }[]>`
             UPDATE employee_changes ch SET status = 'effective', applied_at = now(), updated_at = now()
             FROM employee_assignments a JOIN locations l ON l.organization_id = a.organization_id AND l.id = a.location_id
-            WHERE ch.organization_id = ${c.organizationId}::uuid AND ch.status = 'scheduled' AND ch.change_type <> 'entity_transfer'
+            WHERE ch.organization_id = ${c.organizationId}::uuid AND ch.status = 'scheduled'
               AND a.organization_id = ch.organization_id AND a.employment_id = ch.employment_id AND a.superseded_at IS NULL
               AND ch.effective_date <@ daterange(a.valid_from, a.valid_to, '[]')
               AND ch.effective_date <= (${now}::timestamptz AT TIME ZONE l.timezone)::date
@@ -1759,36 +1612,9 @@ export class EmployeeHistoryService {
       } catch (e) {
         this.logger.error(`Applying scheduled changes failed for ${id}: ${e instanceof Error ? e.message : String(e)}`);
       }
-      applied += await this.applyMoves(id, now).catch((e: unknown) => {
-        this.logger.error(`Moves to another entity failed for ${id}: ${e instanceof Error ? e.message : String(e)}`);
-        return 0;
-      });
     }
     if (applied) this.logger.log(`Applied ${applied} scheduled employee change(s)`);
     return applied;
-  }
-
-  /**
-   * PPL-10: the moves to another entity whose day has come (IST) in one company, each in its own transaction, so one
-   * that no longer fits (say, a change raised after it was approved) waits, logged, without holding up the rest.
-   */
-  async applyMoves(organizationId: string, now = new Date()): Promise<number> {
-    const ctx = { organizationId, isSuperAdmin: false, userId: null };
-    const due = await this.run(ctx, (tx, c) => tx.employeeChange.findMany({ where: { organizationId: c.organizationId, status: 'scheduled', changeType: 'entity_transfer', effectiveDate: { lte: asDate(todayIst(now)) } }, select: { id: true } }));
-    let moved = 0;
-    for (const m of due) {
-      try {
-        await this.run(ctx, async (tx, c) => {
-          await this.transferNow(tx, c, m.id);
-          const ch = await this.changeOr404(tx, c, m.id);
-          await audit(tx, c, 'employee.change.effective', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
-        });
-        moved++;
-      } catch (e) {
-        this.logger.error(`Moving ${m.id} to another entity failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    return moved;
   }
 }
 

@@ -412,7 +412,6 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           employeeId={personId}
           onPreview={raise.onPreview}
           onRoute={raise.onRoute}
-          onTransferDefaults={canChange ? raise.onTransferDefaults : undefined}
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             done(`Change for ${first} sent`);
