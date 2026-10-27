@@ -5,6 +5,8 @@
 .yx-tim-form { display: flex; flex-direction: column; gap: var(--yx-space-4); max-width: var(--yx-form-max); }
 .yx-tim-effect { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); padding: var(--yx-space-4); display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-tim-effect__line { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); align-items: center; font-variant-numeric: tabular-nums; }
+/* <dl> rows and stacks inside the effect box keep only the box's 8px gap (browser margins made it 22px / 29px) */
+.yx-tim-effect > dl, .yx-tim-effect__row { margin: 0; }
 .yx-tim-effect__row { display: flex; justify-content: space-between; gap: var(--yx-space-4); font-size: var(--yx-text-sm); }
 .yx-tim-effect__row dd { margin: 0; font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
 .yx-tim-effect__row dt { color: var(--yx-color-text-secondary); }
