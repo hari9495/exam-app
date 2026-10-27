@@ -6,6 +6,8 @@ describe('EmployeeHistoryService helpers', () => {
     const impact = { facts: [{ fact: 'Grade', from: 'G2', to: 'G3' }], pay: [{ fact: 'Annual CTC', from: 'INR 1', to: 'INR 2' }], rebased: [{ changeId: 'c', facts: [], pay: [{ fact: 'Annual CTC', from: 'INR 2', to: 'INR 3' }] }], retro: null };
     expect(redactImpact(impact)).toEqual({ facts: impact.facts, pay: 'hidden', rebased: [{ changeId: 'c', facts: [], pay: 'hidden' }], retro: null });
     expect(redactImpact({ facts: [], pay: [], rebased: [] })).toEqual({ facts: [], pay: [], rebased: [] });
+    // A warning about pay (a promotion lowering it) is pay too.
+    expect(redactImpact({ ...impact, warnings: ['This promotion lowers the annual CTC.'] })).toMatchObject({ pay: 'hidden', warnings: [] });
   });
 
   it('shows the preferred name, else given and family names', () => {

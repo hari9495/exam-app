@@ -85,6 +85,8 @@ export interface Impact {
   pay: ImpactLine[] | 'hidden';
   rebased: { changeId: string; changeType: ChangeType; effectiveDate: string; facts: ImpactLine[]; pay: ImpactLine[] | 'hidden' }[];
   retro: { from: string; months: string[] } | null;
+  /** Things to check before sending (e.g. a promotion that lowers pay); never a block. Empty without pay access. */
+  warnings?: string[];
 }
 
 export interface CostCentreShare {

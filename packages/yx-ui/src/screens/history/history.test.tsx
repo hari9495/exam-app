@@ -2,9 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { ChangeDrawer, changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
+import { ChangeDrawer, changeInput, DesignImpact, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
-import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
+import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, IMPACT_LOWERS_PAY, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 const draft = (over: Partial<ChangeDraft>): ChangeDraft => ({ employeeId: 'p-arjun', changeType: 'promotion', effectiveDate: new Date(2026, 10, 1), values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: 'Promotion', overrideReason: '', ...over });
@@ -96,6 +96,24 @@ describe('inter-entity transfer (PPL-04, a one-person restructure)', () => {
     expect(await screen.findByRole('radio', { name: 'Keep KF-0142' })).toHaveProperty('ariaChecked', 'true');
     expect(screen.getByRole('radio', { name: 'Continue from 14 Jul 2019' })).toBeTruthy();
     expect(onDefaults).toHaveBeenCalledWith('p-arjun');
+  });
+});
+
+describe('a promotion that lowers pay: a warning, never a block', () => {
+  it('the raiser sees it before sending and the approver before approving; none when pay goes up', () => {
+    const { unmount } = render(<DesignImpact impact={IMPACT_LOWERS_PAY} />);
+    expect(screen.getByText('Check before you send')).toBeTruthy();
+    expect(screen.getByText(/lowers the annual CTC/)).toBeTruthy();
+    unmount();
+    render(<ImpactPanel impact={IMPACT_LOWERS_PAY} />);
+    expect(screen.getByText('Check before you approve')).toBeTruthy();
+  });
+
+  it('no warning on a raise, or on an older impact without warnings', () => {
+    render(<DesignImpact impact={{ ...IMPACT, warnings: [] }} />);
+    expect(screen.queryByText(/Check before/)).toBeNull();
+    render(<ImpactPanel impact={IMPACT} />);
+    expect(screen.queryByText(/Check before/)).toBeNull();
   });
 });
 
