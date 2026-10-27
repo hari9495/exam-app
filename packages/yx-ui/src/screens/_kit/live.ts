@@ -9,6 +9,16 @@ export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
+// PPL-36 / PPL-37: possible same person, merge and unmerge.
+export { MergeReview, SamePersonQueue, type LiveMerge, type LiveSamePerson, type LiveUnmerge, type MergeKeep, type SamePersonRow } from '../people/relations';
+// PPL-44: trading pre-clearance (the person's own, and the compliance officer's decisions).
+export { PreclearanceQueue, TradingPreclearance, type LivePreclearance, type LivePreclearanceQueue, type PreclearanceInput, type PreclearanceItem, type PreclearanceRules } from '../people/selfservice';
+// PPL-43: BFSI annual declarations and the compliance officer's register.
+export { BfsiComplianceList, BfsiDeclarations, type BfsiHolding, type BfsiRelated, type LiveBfsi, type LiveBfsiRegister } from '../people/selfservice';
+// PPL-38: the disability declaration (the person's own, and the HR diversity role's list).
+export { DisabilityDeclaration, type DisabilityInput, type LiveDisability, type LiveDisabilityList } from '../people/selfservice';
+// PPL-46: the salary account abroad (HR's page and the person's own).
+export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank } from '../people/record';
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
 export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';

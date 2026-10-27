@@ -52,6 +52,14 @@ function Letters() {
         verifyUrl,
         onDownload: (l) => void download(l.id, 'letter', `${l.referenceNo ?? 'letter'}.pdf`),
         ...(perms.has('letter.template.manage') ? { templatesHref: '/yx/settings/letters' } : {}),
+        ...(perms.has('letter.issue')
+          ? {
+              onIssueDraft: async (l: Letter) => {
+                await write('POST', `/letters/${encodeURIComponent(l.id)}/issue`);
+                toast({ tone: 'success', title: `${l.title.split(': ')[0]} for ${l.person ?? 'the person'} issued` });
+              },
+            }
+          : {}),
         ...(canIssue
           ? {
               issue: {

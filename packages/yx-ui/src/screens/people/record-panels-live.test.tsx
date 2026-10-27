@@ -3,10 +3,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { PersonWorkspace, type LiveIdentity, type LiveRecord, type LiveWorkAuth } from './record';
+import { InternationalBankPhone, InternationalBankTab, PersonWorkspace, type LiveIdentity, type LiveIntlBank, type LiveRecord, type LiveWorkAuth } from './record';
 
 // The person record's panels and tabs with the live app's data: Identity (PPL-34), Person roles (PPL-35),
-// Work authorisations (PPL-45).
+// Work authorisations (PPL-45), International bank details (PPL-46).
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -176,5 +176,78 @@ describe('Work authorisations tab (PPL-45), live', () => {
   it('no tab without identity access', () => {
     wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ workAuth: null })} />);
     expect(screen.queryByRole('tab', { name: /Work authorisations/ })).toBeNull();
+  });
+});
+
+describe('International bank details (PPL-46), live', () => {
+  const bank = (o: Partial<LiveIntlBank> = {}): LiveIntlBank => ({ name: 'Arjun Kulkarni', current: null, waiting: false, onSend: vi.fn(async () => undefined), onCancel: vi.fn(), ...o });
+  const box = (name: RegExp) => screen.getByRole('textbox', { name });
+  const send = () => screen.getByRole('button', { name: 'Send for approval' });
+
+  it('HR: the IBAN is checked for its country, length and check digits, the BIC for its shape; then it goes for approval', async () => {
+    const live = bank();
+    wrap(<InternationalBankTab persona="hr" splits={[]} net={0} live={live} />);
+    expect(screen.getByText('Changes need approval and a cooling period before the first payout. The employee and the old contact are notified.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('combobox', { name: 'Country of account' }));
+    await ue.type(await screen.findByPlaceholderText('Search'), 'United Arab');
+    await ue.click(await screen.findByRole('option', { name: 'United Arab Emirates' }));
+    await ue.type(box(/IBAN/), 'GB82 WEST 1234 5698 7654 32');
+    await ue.tab();
+    expect(screen.getByText('The IBAN of an account in this country starts with AE.')).toBeInTheDocument();
+    await ue.clear(box(/IBAN/));
+    await ue.type(box(/IBAN/), 'AE07 0331 2345 6789 0123 457');
+    await ue.tab();
+    expect(screen.getByText('The check digits do not match. Check the IBAN for a typo.')).toBeInTheDocument();
+    await ue.clear(box(/IBAN/));
+    await ue.type(box(/IBAN/), 'AE07 0331 2345 6789 0123 456');
+    await ue.tab();
+    expect(screen.getByText('IBAN check passed (country length and check digits).')).toBeInTheDocument();
+    await ue.type(box(/BIC/), 'ECB1');
+    await ue.tab();
+    expect(screen.getByText('Enter an 8 or 11 character BIC, like ECBKAEAD.')).toBeInTheDocument();
+    expect(send()).toBeDisabled();
+    await ue.clear(box(/BIC/));
+    await ue.type(box(/BIC/), 'ecbkaead');
+    await ue.tab();
+    expect(send()).toBeDisabled(); // no payout currency yet
+    await ue.click(screen.getByRole('combobox', { name: 'Payout currency' }));
+    await ue.type(await screen.findByPlaceholderText('Search'), 'AED');
+    await ue.click(await screen.findByRole('option', { name: /^AED/ }));
+    await ue.click(send());
+    await waitFor(() => expect(live.onSend).toHaveBeenCalledWith({ country: 'AE', iban: 'AE070331234567890123456', bic: 'ECBKAEAD', currency: 'AED' }));
+  });
+
+  it('HR: a change already waiting blocks another; what is on file shows masked', () => {
+    wrap(<InternationalBankTab persona="hr" splits={[]} net={0} live={bank({ waiting: true, current: { country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED', usableFrom: day('2026-01-01') } })} />);
+    expect(screen.getByText('A change is already waiting for approval')).toBeInTheDocument();
+    expect(screen.getByText('United Arab Emirates · •••• 3456 · ECBKAEAD · AED')).toBeInTheDocument();
+    expect(screen.getByText('In use')).toBeInTheDocument();
+    expect(send()).toBeDisabled();
+  });
+
+  it('employee: the country comes from the IBAN; a wrong IBAN says what to fix', async () => {
+    const live = bank({ current: { country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED', usableFrom: day('2099-01-01') } });
+    wrap(<InternationalBankPhone live={live} />);
+    expect(screen.getByText('Used for pay from 1 Jan 2099')).toBeInTheDocument();
+    await ue.type(box(/New IBAN/), 'AE07 0331');
+    await ue.tab();
+    expect(screen.getByText('Fix the IBAN to continue.')).toBeInTheDocument();
+    await ue.clear(box(/New IBAN/));
+    await ue.type(box(/New IBAN/), 'AE070331234567890123456');
+    await ue.tab();
+    await ue.type(box(/BIC/), 'ECBKAEADXXX');
+    await ue.tab();
+    await ue.click(send());
+    await waitFor(() => expect(live.onSend).toHaveBeenCalledWith({ country: 'AE', iban: 'AE070331234567890123456', bic: 'ECBKAEADXXX', currency: 'AED' }));
+    await ue.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(live.onCancel).toHaveBeenCalled();
+  });
+
+  it('the record offers it to HR on the menu, and to the person on their Pay tab', async () => {
+    const onBankAbroad = vi.fn();
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ onBankAbroad })} />);
+    await ue.click(screen.getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'International bank details' }));
+    expect(onBankAbroad).toHaveBeenCalled();
   });
 });

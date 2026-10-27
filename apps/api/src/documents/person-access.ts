@@ -35,12 +35,15 @@ export async function joinerInScope(tx: Tx, c: CompanyContext, v: Viewer, key: s
   return Boolean(d && depts.some((s) => d.path.includes(`/${s.id}/`)));
 }
 
-/** Does `key` reach this person today (as an employee in scope, or as a joiner in scope)? */
-export async function reachesPerson(tx: Tx, c: CompanyContext, v: Viewer, key: string, personId: string, own: { employeeId: string | null }): Promise<boolean> {
+/**
+ * Does `key` reach this person today (as an employee in scope, or as a joiner in scope)? `joiners`: the joiner states
+ * that count (letters also reach a joiner whose pre-boarding was cancelled: the offer withdrawal letter, PPL-15).
+ */
+export async function reachesPerson(tx: Tx, c: CompanyContext, v: Viewer, key: string, personId: string, own: { employeeId: string | null }, joiners: string[] = ['invited']): Promise<boolean> {
   if (!v.grants.has(key)) return false;
   const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, personId }, select: { id: true } });
   if (emp) return covers(started(await grantPeriods(tx, c, v, key, emp.id, own.employeeId), todayIst()), todayIst());
-  const j = await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, personId, status: 'invited' } });
+  const j = await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, personId, status: { in: joiners } }, orderBy: { createdAt: 'desc' } });
   return Boolean(j && (await joinerInScope(tx, c, v, key, j)));
 }
 

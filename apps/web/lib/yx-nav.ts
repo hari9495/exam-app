@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue';
 
 export interface NavLink {
   id: string;
@@ -41,6 +41,8 @@ export interface NavInput {
   firstDays: boolean;
   /** The side-menu counts include Possible same person: company-wide HR (the server decides). */
   samePerson?: boolean;
+  /** A designated person (BFSI): their annual declarations (the server decides). */
+  designated?: boolean;
 }
 
 const L = (id: string, label: string, href: string, count?: CountKey): NavLink => ({ id, label, href, ...(count ? { count } : {}) });
@@ -76,7 +78,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations'), ...when(Boolean(n.designated), L('my-annual-declarations', 'Annual declarations', '/yx/me/annual-declarations', 'declarationsDue'), L('my-preclearance', 'Trading pre-clearance', '/yx/me/pre-clearance')), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };
@@ -126,9 +128,11 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
       ...sec('More', [
-        ...when(!support && Boolean(n.samePerson), L('desk-people', 'Possible same person', '/yx/desk/people', 'possibleSamePerson')),
+        ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
         ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
         ...when(has('document.manage'), L('reverification', 'Re-verification', '/yx/people/reverification')),
+        ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
+        ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations'), L('pre-clearance', 'Pre-clearance requests', '/yx/people/pre-clearance')),
       ]),
     ],
   };

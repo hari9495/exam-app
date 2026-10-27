@@ -2,10 +2,10 @@
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
 import { useMemo, useState, type ReactNode } from 'react';
 import { getCountries } from 'libphonenumber-js';
-import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileText, History, IdCard, Landmark, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
-import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Breadcrumbs, Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { MenuItem } from '../../components/menu';
@@ -21,9 +21,9 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
-import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
+import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
-import { ClassBadge, FactRail, FieldList, ListSkeleton, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
 import { FamilyCards, type RecordFamily } from './family';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
@@ -171,6 +171,8 @@ export interface LiveRecord {
   onStartChange?: () => void;
   /** Header "Message": writes to the person (their work email). Not on one's own record. */
   onMessage?: () => void;
+  /** PPL-46: the salary account abroad (HR menu, or the person's Pay tab). */
+  onBankAbroad?: () => void;
   /** HR menu: change the work phone (Internal). */
   onEditWorkPhone?: () => void;
   /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
@@ -346,6 +348,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 Change work phone
               </MenuItem>
             )}
+            {live.onBankAbroad && (
+              <MenuItem icon={Landmark} onSelect={live.onBankAbroad}>
+                International bank details
+              </MenuItem>
+            )}
             {live.history && (
               <MenuItem icon={History} onSelect={() => setTab('history')}>
                 View as on a date
@@ -498,7 +505,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               </TabsContent>
               <TabsContent value="pay">
                 {live ? (
-                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} onRequestChange={live.onRequestChange} />
+                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} onRequestChange={live.onRequestChange} onBankAbroad={self ? live.onBankAbroad : undefined} />
                 ) : payVisible ? (
                   <PayTab persona={persona} self={self} international={international} />
                 ) : (
@@ -734,7 +741,7 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
 }
 
 /** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
-function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; onRequestChange?: () => void }) {
+function LivePayTab({ pay, name, persona, self, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; onRequestChange?: () => void; onBankAbroad?: () => void }) {
   if (pay.kind === 'none') return <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />;
   if (pay.kind === 'ask')
     return (
@@ -787,7 +794,17 @@ function LivePayTab({ pay, name, persona, self, onRequestChange }: { pay: LiveRe
       </div>
       {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} ctc={pay.ctc} outside={pay.outside} />}
       {pay.banks.length > 0 && (
-        <Card title="Bank accounts" actions={self && onRequestChange ? <Button size="sm" onClick={onRequestChange}>Request a change</Button> : undefined}>
+        <Card
+          title="Bank accounts"
+          actions={
+            self && (onRequestChange || onBankAbroad) ? (
+              <span className="yx-ppl__row">
+                {onBankAbroad && <Button size="sm" onClick={onBankAbroad}>Account abroad</Button>}
+                {onRequestChange && <Button size="sm" onClick={onRequestChange}>Request a change</Button>}
+              </span>
+            ) : undefined
+          }
+        >
           <FieldList rows={pay.banks} persona={persona} relation={self ? 'self' : 'other'} />
         </Card>
       )}
@@ -1417,8 +1434,139 @@ const RULES = [
   { value: 'percent', label: 'Percentage' },
 ];
 
+/** PPL-46 live: the salary account abroad, changed through approval (HR for someone, or the person themselves). */
+export interface LiveIntlBank {
+  name: string;
+  /** On file now (IBAN masked), or null. */
+  current: { country: string; iban: string; bic: string; currency: string; usableFrom: Date } | null;
+  /** A change is already waiting for approval. */
+  waiting: boolean;
+  /** The page shows the success toast and goes back. */
+  onSend: (value: { country: string; iban: string; bic: string; currency: string }) => Promise<void>;
+  onCancel: () => void;
+}
+
+const CURRENCY = new Intl.DisplayNames(['en'], { type: 'currency' });
+const CURRENCY_OPTIONS = Intl.supportedValuesOf('currency').map((c) => ({ value: c, label: `${c} · ${CURRENCY.of(c) ?? c}` }));
+const compact = (v: string) => v.replace(/\s+/g, '').toUpperCase();
+
+/** The form both live pages share: what is wrong, and the value to send once nothing is. */
+function useIntlBankForm(live: LiveIntlBank, fixedCountry: boolean) {
+  const [country, setCountry] = useState<string | null>(live.current?.country ?? null);
+  const [iban, setIban] = useState('');
+  const [bic, setBic] = useState('');
+  const [currency, setCurrency] = useState<string | null>(live.current?.currency ?? null);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const cc = fixedCountry ? compact(iban).slice(0, 2) || null : country;
+  const ibanError = iban.trim() ? ibanProblem(iban, cc) : null;
+  const bicError = bic.trim() && !isBic(bic) ? 'Enter an 8 or 11 character BIC, like ECBKAEAD.' : null;
+  const ready = Boolean(cc && iban.trim() && !ibanError && bic.trim() && !bicError && currency && !live.waiting);
+  const send = async () => {
+    setSending(true);
+    setFailed(null);
+    try {
+      await live.onSend({ country: cc!, iban: compact(iban), bic: compact(bic), currency: currency! });
+    } catch (e) {
+      setFailed(errorText(e));
+    }
+    setSending(false);
+  };
+  return { country, setCountry, iban, setIban, bic, setBic, currency, setCurrency, ibanError, bicError, ready, send, sending, failed };
+}
+
+function IntlBankOnFile({ current }: { current: NonNullable<LiveIntlBank['current']> }) {
+  const later = current.usableFrom > new Date();
+  return (
+    <>
+      <Text as="p" className="yx-mono">
+        {REGION.of(current.country) ?? current.country} · {current.iban} · {current.bic} · {current.currency}
+      </Text>
+      <Badge tone={later ? 'warning' : 'success'}>{later ? `Used for pay from ${formatDate(current.usableFrom)}` : 'In use'}</Badge>
+    </>
+  );
+}
+
+function LiveInternationalBank({ persona, live }: { persona: Persona; live: LiveIntlBank }) {
+  const f = useIntlBankForm(live, false);
+  return (
+    <PeopleFrame active="Directory" persona={persona}>
+      <ObjectHeader name={live.name} person secondary="Pay › Bank details" />
+      <div className="yx-ppl__stack">
+        {live.waiting && <InlineAlert tone="warning" title="A change is already waiting for approval">Wait for the decision, or withdraw it on the person's record first.</InlineAlert>}
+        {live.current && (
+          <Card title="Salary account abroad">
+            <IntlBankOnFile current={live.current} />
+          </Card>
+        )}
+        <div className="yx-ppl__form">
+          <FormField label="Country of account" required>
+            <Select aria-label="Country of account" options={COUNTRY_OPTIONS} value={f.country} onChange={f.setCountry} searchable />
+          </FormField>
+          <FormField label="IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed (country length and check digits).' : undefined}>
+            <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
+          </FormField>
+          <FormField label="BIC / SWIFT" required error={f.bicError}>
+            <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
+          </FormField>
+          <FormField label="Payout currency" required>
+            <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
+          </FormField>
+        </div>
+        <InlineAlert tone="info">Changes need approval and a cooling period before the first payout. The employee and the old contact are notified.</InlineAlert>
+        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        <div className="yx-ppl__row">
+          <Button onClick={live.onCancel}>Cancel</Button>
+          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+            Send for approval
+          </Button>
+        </div>
+      </div>
+    </PeopleFrame>
+  );
+}
+
+function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
+  const f = useIntlBankForm(live, true);
+  return (
+    <MeFrame active="Change requests">
+      <PageHeader title="Bank details" />
+      <div className="yx-ppl__stack">
+        <Card title="Salary account abroad">{live.current ? <IntlBankOnFile current={live.current} /> : <Text as="p" tone="secondary">No account abroad on file yet.</Text>}</Card>
+        {live.waiting && <InlineAlert tone="warning" title="A change is already waiting for approval">You can withdraw it in Change requests.</InlineAlert>}
+        <FormField label="New IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed.' : undefined}>
+          <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
+        </FormField>
+        <FormField label="BIC / SWIFT" required error={f.bicError}>
+          <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
+        </FormField>
+        <FormField label="Payout currency" required>
+          <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
+        </FormField>
+        <InlineAlert tone="info">HR approves bank changes. Your first salary to a new account waits for the cooling period.</InlineAlert>
+        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        <div className="yx-ppl__row">
+          <Button onClick={live.onCancel}>Cancel</Button>
+          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+            Send for approval
+          </Button>
+        </div>
+        {f.ibanError && (
+          <Text size="sm" tone="danger" as="p">
+            <Icon icon={AlertTriangle} size="sm" /> Fix the IBAN to continue.
+          </Text>
+        )}
+      </div>
+    </MeFrame>
+  );
+}
+
 // PPL-46
-export function InternationalBankTab({ persona, splits: initial, net, embedded, defaultIban = 'AE07 0331 2345 6789 0123 456', defaultBic = 'ECBKAEAD' }: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string }) {
+export function InternationalBankTab(props: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string; live?: LiveIntlBank }) {
+  return props.live ? <LiveInternationalBank persona={props.persona} live={props.live} /> : <SampleInternationalBank {...props} />;
+}
+
+function SampleInternationalBank({ persona, splits: initial, net, embedded, defaultIban = 'AE07 0331 2345 6789 0123 456', defaultBic = 'ECBKAEAD' }: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string }) {
   const [splits, setSplits] = useState(initial);
   const [iban, setIban] = useState(defaultIban);
   const [bic, setBic] = useState(defaultBic);
@@ -1514,8 +1662,12 @@ export function InternationalBankTab({ persona, splits: initial, net, embedded, 
   );
 }
 
-// PPL-46 · phone
-export function InternationalBankPhone({ defaultIban }: { defaultIban?: string }) {
+// PPL-46 · phone (live: the person's own page)
+export function InternationalBankPhone({ defaultIban, live }: { defaultIban?: string; live?: LiveIntlBank }) {
+  return live ? <LiveInternationalBankPhone live={live} /> : <SampleInternationalBankPhone defaultIban={defaultIban} />;
+}
+
+function SampleInternationalBankPhone({ defaultIban }: { defaultIban?: string }) {
   const [iban, setIban] = useState(defaultIban ?? 'AE07 0331 2345 6789 0123 456');
   const ok = isIban(iban);
   return (

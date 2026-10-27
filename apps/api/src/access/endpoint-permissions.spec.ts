@@ -27,6 +27,7 @@ import { EmployeeImportController } from '../people/employee-import.controller';
 import { PeopleRegistersController } from '../lifecycle/people-registers.controller';
 import { RestructureController } from '../people/restructure.controller';
 import { PersonPanelsController } from '../people/person-panels.controller';
+import { BfsiController } from '../people/bfsi.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -56,7 +57,9 @@ const IMPLICIT: Record<string, string[]> = {
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
   // PPL-34 on: the person record's panels, each with its class's key (the service checks scope per person).
-  PersonPanelsController: [],
+  PersonPanelsController: ['myDisability', 'declareDisability', 'withdrawDisability'], // one's own disability declaration (PPL-38)
+  // PPL-43: a designated person's own declaration (the service checks the designation).
+  BfsiController: ['myBfsi', 'addHolding', 'removeHolding', 'addRelated', 'removeRelated', 'saveCoi', 'submitBfsi', 'myPreclearance', 'requestPreclearance', 'reportTrade'],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
   ReverificationController: ['forPerson'], // PPL-42: the person, HR in scope or the manager (decided by the service)
@@ -99,7 +102,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PersonPanelsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PersonPanelsController, BfsiController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

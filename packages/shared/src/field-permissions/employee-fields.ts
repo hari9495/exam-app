@@ -72,6 +72,10 @@ export const CONFIDENTIAL_KEYS: readonly string[] = [
   'org.entity.statutory.manage',
   // People › Succession (PPL-26): HR and leadership only.
   'succession.manage',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer (designated persons' holdings and trades).
+  'compliance.declaration.manage',
 ];
 export const holdsConfidential = (keys: readonly string[]) => keys.some((k) => CONFIDENTIAL_KEYS.includes(k));
 

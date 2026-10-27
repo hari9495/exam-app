@@ -102,6 +102,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         tasks: Boolean(myTasks.data?.tasks.length),
         firstDays: Boolean(firstDays.data?.card),
         samePerson: counts.data?.possibleSamePerson !== undefined,
+        designated: counts.data?.declarationsDue !== undefined,
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -277,6 +277,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     ...(!canChange && !self && !hr && perms.has('request.raise_on_behalf') ? { onStartChange: () => router.push(`/yx/people/changes?person=${p}`) } : {}),
     // Message: the person's work email in the viewer's mail app (there is no in-app chat).
     ...(!self && workEmail ? { onMessage: () => window.location.assign(`mailto:${workEmail}`) } : {}),
+    // PPL-46: the salary account abroad goes to approval like any bank change (HR with identity change rights, or the person).
+    ...(prof?.can.requestChange ? { onBankAbroad: () => router.push(self ? '/yx/me/bank-abroad' : `/yx/people/directory/${p}/bank-abroad`) } : {}),
     ...(prof?.can.editWork ? { onEditWorkPhone: () => (setPhone(prof.work?.phone ?? ''), setPhoneOpen(true)) } : {}),
     activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
     performance:

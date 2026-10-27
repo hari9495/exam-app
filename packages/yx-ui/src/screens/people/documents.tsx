@@ -408,9 +408,11 @@ export interface LiveLetters {
   };
   /** letter.template.manage: Settings › Letter templates, from the page header. */
   templatesHref?: string;
+  /** PPL-15: issue a letter an event drafted (an offer withdrawn), once HR reviewed it; the page shows the toast. */
+  onIssueDraft?: (l: LiveLetter) => Promise<void>;
 }
 
-const LETTER_STATE: Record<LiveLetter['status'], string> = { pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+const LETTER_STATE: Record<LiveLetter['status'], string> = { draft: 'Draft', pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
 const LANGUAGE = new Intl.DisplayNames(['en'], { type: 'language' });
 
 type LetterPreview = { url: string } | { missing: Record<string, string> } | { failed: string } | null;
@@ -613,6 +615,10 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
                 )}
                 {r.status === 'issued' && live.issue && <MenuItem onSelect={() => startIssue(r)}>Issue a correction</MenuItem>}
               </>
+            ) : r.status === 'draft' && live.onIssueDraft ? (
+              <MenuItem icon={FileUp} onSelect={() => void live.onIssueDraft!(r)}>
+                Issue letter
+              </MenuItem>
             ) : null
           }
           defaultSort={{ key: 'issued', dir: 'desc' }}

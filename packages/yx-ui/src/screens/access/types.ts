@@ -105,7 +105,7 @@ export interface PersonalDetails {
 }
 
 export type RevealField = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport' | 'bank_salary' | 'bank_reimbursement';
-export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name' | 'passport';
+export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name' | 'passport' | 'bank_international';
 
 export interface IdentityView {
   legalName: string | null;
@@ -116,6 +116,8 @@ export interface IdentityView {
   passport?: string | null;
   passportExpiresOn?: string | null;
   bankAccounts: { purpose: 'salary' | 'reimbursement'; holderName: string; ifsc: string; account: string | null; usableFrom: string }[];
+  /** PPL-46: the salary account abroad (IBAN masked). */
+  internationalAccount?: { country: string; iban: string; bic: string; currency: string; usableFrom: string } | null;
   pending: { requestId: string; kind: RequestKind }[];
 }
 

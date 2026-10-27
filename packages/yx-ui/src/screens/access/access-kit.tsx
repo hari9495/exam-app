@@ -46,6 +46,7 @@ export const KIND_LABEL: Record<RequestKind, string> = {
   esic: 'ESIC IP number',
   legal_name: 'Legal name',
   passport: 'Passport',
+  bank_international: 'Salary account abroad',
 };
 
 export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', transgender: 'Transgender', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say' };

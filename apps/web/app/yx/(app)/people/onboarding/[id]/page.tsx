@@ -63,6 +63,7 @@ export default function YxJourneyPage() {
                 today: day(j!.today),
                 tasks: j!.tasks.filter((t) => t.status !== 'cancelled').map((t) => ({ id: t.id, title: t.title, dueOn: day(t.dueOn), done: t.status === 'done' || t.status === 'skipped' })),
                 fromOffer: pb.source === 'offer',
+                requisition: pb.requisition ?? null,
                 rehire: rehire.data ? { first: pb.name.split(' ')[0], code: rehire.data.previous.employeeCode } : null,
                 onPostpone: async (joiningOn: string) => {
                   await write('POST', `${base}/postpone`, { joiningOn, version: pb.version });

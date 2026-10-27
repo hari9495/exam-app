@@ -231,10 +231,8 @@ export const isUan = (v: string) => /^\d{12}$/.test(v.replace(/\s/g, ''));
 
 /** IBAN mod-97 with country length (YX-GLB-08). */
 const IBAN_LEN: Record<string, number> = { AE: 23, SA: 24, GB: 22, DE: 22, FR: 27, NL: 18 };
-export function isIban(raw: string): boolean {
-  const v = raw.replace(/\s+/g, '').toUpperCase();
-  const len = IBAN_LEN[v.slice(0, 2)];
-  if (!len || v.length !== len || !/^[A-Z0-9]+$/.test(v)) return false;
+/** ISO 13616 check digits: the IBAN read as a number, country and check digits moved to the end, leaves 1 mod 97. */
+function mod97(v: string): boolean {
   const moved = v.slice(4) + v.slice(0, 4);
   let rem = 0;
   for (const ch of moved) {
@@ -242,6 +240,21 @@ export function isIban(raw: string): boolean {
     for (const d of n) rem = (rem * 10 + Number(d)) % 97;
   }
   return rem === 1;
+}
+export function isIban(raw: string): boolean {
+  const v = raw.replace(/\s+/g, '').toUpperCase();
+  const len = IBAN_LEN[v.slice(0, 2)];
+  if (!len || v.length !== len || !/^[A-Z0-9]+$/.test(v)) return false;
+  return mod97(v);
+}
+/** PPL-46 live: what is wrong with an IBAN for an account in `country` (the API checks every country's length too). */
+export function ibanProblem(raw: string, country: string | null): string | null {
+  const v = raw.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(v)) return 'Enter the IBAN: the country code, two check digits, then the account number.';
+  if (country && v.slice(0, 2) !== country) return `The IBAN of an account in this country starts with ${country}.`;
+  const len = IBAN_LEN[v.slice(0, 2)];
+  if (len && v.length !== len) return `Enter a ${len}-character IBAN starting with ${v.slice(0, 2)}.`;
+  return mod97(v) ? null : 'The check digits do not match. Check the IBAN for a typo.';
 }
 export const isBic = (v: string) => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.trim().toUpperCase());
 

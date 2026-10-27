@@ -50,12 +50,15 @@ export const KIND_FIELDS: Record<RequestKind, { key: keyof ProfileRequestInput['
     { key: 'ifsc', label: 'IFSC', check: (v) => (IFSC.test(v) ? null : 'Enter an IFSC like HDFC0001234') },
   ],
   bank_reimbursement: [],
+  bank_international: [],
   passport: [
     { key: 'passport', label: 'Passport number', check: (v) => (/^[A-Z0-9]{6,9}$/.test(v) ? null : 'Enter the passport number, like Z4417728') },
     { key: 'passportExpiresOn', label: 'Expires on', date: true, check: (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? null : 'Choose the expiry date') },
   ],
 };
 KIND_FIELDS.bank_reimbursement = KIND_FIELDS.bank_salary;
+/** PPL-46: an account abroad has its own page (International bank details), not this dialog. */
+const DIALOG_KINDS = (Object.keys(KIND_LABEL) as RequestKind[]).filter((k) => k !== 'bank_international');
 
 export function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
   const [d, setD] = useState(initial);
@@ -156,7 +159,7 @@ export function ChangeDialog({ pending, onRequest, onClose }: { pending: Request
           aria-label="What changes"
           value={kind}
           onChange={(v) => (setKind(v), setValue({}), setTouched(false))}
-          options={(Object.keys(KIND_LABEL) as RequestKind[]).map((k) => ({ value: k, label: pending.includes(k) ? `${KIND_LABEL[k]} (a change is already waiting)` : KIND_LABEL[k], disabled: pending.includes(k) }))}
+          options={DIALOG_KINDS.map((k) => ({ value: k, label: pending.includes(k) ? `${KIND_LABEL[k]} (a change is already waiting)` : KIND_LABEL[k], disabled: pending.includes(k) }))}
         />
       </FormField>
       {fields.map((f, i) => (

@@ -2845,6 +2845,100 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
+/// PPL-43: the compliance officer's designated persons (BFSI insider-trading rules).
+model BfsiDesignation {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  designatedOn   DateTime @map("designated_on") @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("bfsi_designations")
+}
+
+/// PPL-43: a designated person's annual declaration (holdings, related persons, conflicts sealed; attested with step-up).
+model BfsiDeclaration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  cycle          String    @db.Char(7)
+  holdingsEnc    String?   @map("holdings_enc")
+  relatedEnc     String?   @map("related_enc")
+  coi            String?   @db.VarChar(3)
+  coiEnc         String?   @map("coi_enc")
+  status         String    @default("draft") @db.VarChar(10)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(3)
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, cycle], map: "bfsi_declarations_cycle_key")
+  @@map("bfsi_declarations")
+}
+
+/// PPL-44: a designated person's trading pre-clearance, the officer's decision and the trade reported.
+model TradePreclearance {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String    @map("organization_id") @db.Uuid
+  employeeId             String    @map("employee_id") @db.Uuid
+  referenceNo            String    @map("reference_no") @db.VarChar(20)
+  security               String    @db.VarChar(200)
+  side                   String    @db.VarChar(4)
+  quantity               Int
+  value                  Decimal   @db.Decimal(16, 2)
+  status                 String    @default("pending") @db.VarChar(10)
+  requestedBy            String    @map("requested_by") @db.Uuid
+  decidedBy              String?   @map("decided_by") @db.Uuid
+  decidedAt              DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote           String?   @map("decision_note") @db.VarChar(500)
+  validUntil             DateTime? @map("valid_until") @db.Date
+  tradedOn               DateTime? @map("traded_on") @db.Date
+  tradedQuantity         Int?      @map("traded_quantity")
+  contractNoteDocumentId String?   @map("contract_note_document_id") @db.Uuid
+  reportedAt             DateTime? @map("reported_at") @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, referenceNo], map: "trade_preclearances_reference_key")
+  @@index([organizationId, employeeId, createdAt], map: "trade_preclearances_employee_idx")
+  @@map("trade_preclearances")
+}
+
+/// PPL-38: a voluntary disability declaration (Special); category, percentage and adjustments sealed, cleared on withdrawal.
+model DisabilityDeclaration {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  employeeId            String    @map("employee_id") @db.Uuid
+  answer                String    @db.VarChar(4)
+  detailsEnc            String?   @map("details_enc")
+  certificateDocumentId String?   @map("certificate_document_id") @db.Uuid
+  consentAt             DateTime  @map("consent_at") @db.Timestamptz(3)
+  withdrawnAt           DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId], map: "disability_declarations_employee_key")
+  @@map("disability_declarations")
+}
+
+/// PPL-46: a salary account abroad (IBAN, BIC, payout currency); dated rows like the Indian accounts, IBAN sealed.
+model EmployeeIntlBankAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  country        String    @db.Char(2)
+  ibanEnc        String    @map("iban_enc")
+  ibanHash       String    @map("iban_hash") @db.Char(64)
+  ibanLast4      String    @map("iban_last4") @db.Char(4)
+  bic            String    @db.VarChar(11)
+  currency       String    @db.Char(3)
+  validFrom      DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(3)
+  usableFrom     DateTime  @map("usable_from") @db.Timestamptz(3)
+  requestId      String?   @map("request_id") @db.Uuid
+
+  @@index([organizationId, ibanHash], map: "employee_intl_bank_accounts_hash_idx")
+  @@map("employee_intl_bank_accounts")
+}
+
 /// P02 §4.5: identity, bank and legal-name changes with old → new and a second person's approval.
 model EmployeeProfileRequest {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

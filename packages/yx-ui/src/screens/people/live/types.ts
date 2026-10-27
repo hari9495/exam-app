@@ -122,6 +122,8 @@ export interface LifeJourneyRow {
 
 export interface Joiner {
   id: string;
+  /** PPL-15: the accepted offer's requisition (its job) and whether it holds a headcount-plan slot (the joiner record only). */
+  requisition?: { title: string; planned: boolean } | null;
   personId: string;
   name: string;
   email: string | null;
@@ -262,7 +264,7 @@ export interface Letter {
   person?: string;
   referenceNo: string | null;
   verifyCode: string | null;
-  status: 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  status: 'draft' | 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
   renderError: string | null;
   issuedAt: string | null;
   personSigns: boolean;

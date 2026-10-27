@@ -66,7 +66,10 @@ export function passportRow(p: ProfileView, reveal: (field: RevealField) => Prom
 }
 
 export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise<string>): FieldRow[] {
-  return (p.identity?.bankAccounts ?? []).map((b) => {
+  const abroad = p.identity?.internationalAccount;
+  // PPL-46: the account abroad, masked (no full-value look is designed for it).
+  const intl: FieldRow[] = abroad ? [{ label: 'Salary account abroad', value: `${abroad.iban} · ${abroad.bic} · ${abroad.currency}${day(abroad.usableFrom) > new Date() ? ` · used for pay from ${dateText(abroad.usableFrom)}` : ''}`, cls: 'Confidential' as const, mono: true }] : [];
+  return [...intl, ...(p.identity?.bankAccounts ?? []).map((b) => {
     const field: RevealField = b.purpose === 'salary' ? 'bank_salary' : 'bank_reimbursement';
     const later = day(b.usableFrom) > new Date() ? ` · used for pay from ${dateText(b.usableFrom)}` : '';
     // shortcut: no IFSC-to-bank-name list in the codebase, so the IFSC stands where the design shows the bank name.
@@ -80,7 +83,7 @@ export function bankRows(p: ProfileView, reveal: (field: RevealField) => Promise
       canReveal: p.can.reveal,
       ...(p.can.reveal ? { reveal: async () => `${b.ifsc} · ${await reveal(field)}${later}` } : {}),
     };
-  });
+  })];
 }
 
 /** Family and nominees, emergency contacts (PPL-03); the note only when the record shows a marital status change. */

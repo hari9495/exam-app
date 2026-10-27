@@ -150,6 +150,13 @@ export class LettersController {
     return this.letters.issue(ctx, this.user(req), dto);
   }
 
+  /** PPL-15: issue a letter an event drafted (an offer withdrawn), after HR reviewed it. */
+  @Post(':id/issue')
+  @RequirePermissions('letter.issue')
+  issueDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.issueDraft(ctx, this.user(req), id);
+  }
+
   @Get('issued')
   @RequirePermissions('letter.issue')
   register(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('personId') personId?: string) {

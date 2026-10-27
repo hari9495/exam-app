@@ -24,6 +24,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { matchPersons, type Persona } from './people-logic';
 import { MATCHES, UNIONS, VRS } from './people-data';
 import { CompareTable, MeFrame, PeopleFrame, Segment } from './people-kit';
+import { errorText, useRun } from '../org/org-kit';
 
 /* ================================================================== PPL-36 same-person queue */
 
@@ -38,39 +39,96 @@ const KEYS: { label: string; k: keyof Match['left'] }[] = [
   { label: 'Role', k: 'role' },
 ];
 
+/** One record of a live proposal: its own fields, and the employee's the viewer may see (masked). */
+export interface PersonSide {
+  personId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  dob: string | null;
+  pan: string | null;
+  uan: string | null;
+  role: string;
+  roles: { id: string; role: string; from: string }[];
+}
+export interface SamePersonRow {
+  id: string;
+  a: PersonSide;
+  b: PersonSide;
+  basis: string[];
+}
+/** PPL-36 live: the proposals, and HR's two decisions (the page shows the toast). */
+export interface LiveSamePerson {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rows: SamePersonRow[];
+  onNotSame: (row: SamePersonRow) => Promise<void>;
+  onReviewMerge: (row: SamePersonRow) => void;
+}
+
+const sideKeys = (s: PersonSide): Match['left'] => ({ name: s.name, dob: s.dob ? formatDate(new Date(`${s.dob}T00:00:00`)) : '', email: s.email ?? '', phone: s.phone ?? '', pan: s.pan ?? '', uan: s.uan ?? '', role: s.role });
+
 // PPL-36
-export function SamePersonQueue({ rows, defaultOpenId }: { rows: Match[]; defaultOpenId?: string }) {
+export function SamePersonQueue({ rows, defaultOpenId, live }: { rows: Match[]; defaultOpenId?: string; live?: LiveSamePerson }) {
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
-  const proposals = rows.map((r) => ({ ...r, result: matchPersons(r.left, r.right, r.face) })).filter((r) => r.result.kind === 'propose');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const proposals = live
+    ? live.rows.map((r) => ({ id: r.id, left: sideKeys(r.a), right: sideKeys(r.b), face: false, result: { kind: 'propose' as const, basis: r.basis } }))
+    : rows.map((r) => ({ ...r, result: matchPersons(r.left, r.right, r.face) })).filter((r) => r.result.kind === 'propose');
   const open = proposals.find((r) => r.id === openId);
+  const same = (l: string) => KEYS.some((k) => k.label === l && open && open.left[k.k] && open.left[k.k].toLowerCase() === open.right[k.k].toLowerCase());
   const cols: TableColumn<(typeof proposals)[number]>[] = [
     { key: 'left', header: 'Record A', value: (r) => r.left.name, render: (r) => <span>{r.left.name}<Text size="sm" tone="secondary" as="div">{r.left.role}</Text></span>, width: 260 },
     { key: 'right', header: 'Record B', value: (r) => r.right.name, render: (r) => <span>{r.right.name}<Text size="sm" tone="secondary" as="div">{r.right.role}</Text></span>, width: 260 },
     { key: 'basis', header: 'Why proposed', value: (r) => r.result.basis.join(', '), width: 280 },
   ];
+  const close = () => (setOpenId(null), setFailed(null));
+  const notSame = async () => {
+    const row = live?.rows.find((r) => r.id === openId);
+    if (!row) return close();
+    setBusy(true);
+    try {
+      await live!.onNotSame(row);
+      close();
+    } catch (e) {
+      setFailed(errorText(e));
+    }
+    setBusy(false);
+  };
   return (
     <PeopleFrame active="Possible same person">
-      <PageHeader title="Possible same person" description="Verified email, phone, PAN or UAN link records automatically. Name and date of birth, or a consented face match, only propose a link for you to check. A name alone never links." />
-      <DataTable
-        label="Proposed matches"
-        columns={cols}
-        rows={proposals}
-        getRowId={(r) => r.id}
-        onRowClick={(r) => setOpenId(r.id)}
-        activeRowId={openId}
-        rowButtons={(r) => <Button size="sm" onClick={() => setOpenId(r.id)}>Compare</Button>}
-        empty={<EmptyState title="No possible matches" description="New proposals appear when a new record looks like an existing person." />}
+      <PageHeader
+        title="Possible same person"
+        description={live ? 'A record with only a login or a help desk contact is listed when its email is another person’s email or work email. Check the evidence before you merge. A name alone never links.' : 'Verified email, phone, PAN or UAN link records automatically. Name and date of birth, or a consented face match, only propose a link for you to check. A name alone never links.'}
       />
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the proposals" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading the proposals" />
+      ) : (
+        <DataTable
+          label="Proposed matches"
+          columns={cols}
+          rows={proposals}
+          getRowId={(r) => r.id}
+          onRowClick={(r) => setOpenId(r.id)}
+          activeRowId={openId}
+          rowButtons={(r) => <Button size="sm" onClick={() => setOpenId(r.id)}>Compare</Button>}
+          empty={<EmptyState title="No possible matches" description="New proposals appear when a new record looks like an existing person." />}
+        />
+      )}
       <Drawer
         open={!!open}
-        onOpenChange={(o) => !o && setOpenId(null)}
+        onOpenChange={(o) => !o && close()}
         size="lg"
         title="Are these the same person?"
         subtitle={open ? `Proposed on ${open.result.basis.join(' and ')}` : undefined}
+        notice={failed && <InlineAlert tone="danger" title="That didn't work">{failed}</InlineAlert>}
         footer={
           <>
-            <Button onClick={() => setOpenId(null)}>Not the same person</Button>
-            <Button variant="primary" icon={GitMerge}>
+            <Button onClick={live ? () => void notSame() : close} loading={busy}>Not the same person</Button>
+            <Button variant="primary" icon={GitMerge} onClick={live && open ? () => live.onReviewMerge(live.rows.find((r) => r.id === open.id)!) : undefined}>
               Same person: review merge
             </Button>
           </>
@@ -78,7 +136,7 @@ export function SamePersonQueue({ rows, defaultOpenId }: { rows: Match[]; defaul
       >
         {open && (
           <div className="yx-ppl__stack">
-            <CompareTable caption="Evidence side by side" left="Record A" right="Record B" rows={KEYS.map((k) => ({ label: k.label, a: open.left[k.k], b: open.right[k.k] }))} highlight={(l) => KEYS.some((k) => k.label === l && open.left[k.k] && open.left[k.k] === open.right[k.k])} />
+            <CompareTable caption="Evidence side by side" left="Record A" right="Record B" rows={KEYS.map((k) => ({ label: k.label, a: open.left[k.k], b: open.right[k.k] }))} highlight={same} />
             {open.face && <InlineAlert tone="info">Face match ran because both records have recorded consent. No images are shown here.</InlineAlert>}
             <Text size="sm" tone="secondary" as="p">Rows in green match exactly. Your decision is logged with its basis; a merge can be undone.</Text>
           </div>
@@ -99,28 +157,101 @@ const MERGE_FIELDS = [
   { label: 'UAN', a: '—', b: 'XXXXXXXX3344', pick: 'b' },
 ];
 
+export type MergeKeep = { name: 'a' | 'b'; email: 'a' | 'b'; phone: 'a' | 'b' };
+/** PPL-37 live: merging the proposal's record A into record B (the page shows the toast and moves on). */
+export interface LiveMerge {
+  row: SamePersonRow;
+  onMerge: (keep: MergeKeep, note: string) => Promise<void>;
+  onCancel: () => void;
+}
+/** PPL-37 live: a merged record and what unmerge puts back. */
+export interface LiveUnmerge {
+  name: string;
+  intoName: string;
+  mergedAt: Date;
+  mergedBy: string | null;
+  note: string | null;
+  moved: string[];
+  employeeLinked: boolean;
+  onUnmerge: (note: string) => Promise<void>;
+}
+
+/** The fields a live merge shows; only the person's own (name, email, phone) can come from record A. */
+function liveFields(r: SamePersonRow) {
+  const v = (x: string | null) => x || '—';
+  const dob = (x: string | null) => (x ? formatDate(new Date(`${x}T00:00:00`)) : '—');
+  return [
+    { key: 'name', label: 'Name', a: r.a.name, b: r.b.name, pick: 'b' },
+    { key: 'email', label: 'Primary email', a: v(r.a.email), b: v(r.b.email), pick: r.b.email ? 'b' : 'a' },
+    { key: 'phone', label: 'Primary phone', a: v(r.a.phone), b: v(r.b.phone), pick: r.b.phone || !r.a.phone ? 'b' : 'a' },
+    { key: 'dob', label: 'Date of birth', a: dob(r.a.dob), b: dob(r.b.dob), pick: 'b' },
+    { key: 'pan', label: 'PAN', a: v(r.a.pan), b: v(r.b.pan), pick: 'b' },
+    { key: 'uan', label: 'UAN', a: v(r.a.uan), b: v(r.b.uan), pick: 'b' },
+  ];
+}
+
 // PPL-37
-export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'merge' | 'unmerge'; noteError?: boolean }) {
-  const [picks, setPicks] = useState(Object.fromEntries(MERGE_FIELDS.map((f) => [f.label, f.pick])));
+export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmerge }: { mode?: 'merge' | 'unmerge'; noteError?: boolean; live?: LiveMerge; liveUnmerge?: LiveUnmerge }) {
+  const fields = live ? liveFields(live.row) : MERGE_FIELDS;
+  const [picks, setPicks] = useState(Object.fromEntries(fields.map((f) => [f.label, f.pick])));
   const [confirm, setConfirm] = useState(false);
-  if (mode === 'unmerge')
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  if (mode === 'unmerge' || liveUnmerge) {
+    const u = liveUnmerge;
     return (
       <PeopleFrame active="Possible same person">
-        <ObjectHeader name="Suresh K Nair" person secondary="Merged on 26 Sep 2026 by Lakshmi Venkatesan · basis: name + date of birth, confirmed by HR" status={<Badge tone="info">Merged record</Badge>} actions={<Button icon={Split} variant="danger" onClick={() => setConfirm(true)}>Unmerge</Button>} />
+        <ObjectHeader
+          name={u ? u.name : 'Suresh K Nair'}
+          person
+          secondary={u ? `Merged into ${u.intoName} on ${formatDate(u.mergedAt)}${u.mergedBy ? ` by ${u.mergedBy}` : ''} · basis: same email, confirmed by HR` : 'Merged on 26 Sep 2026 by Lakshmi Venkatesan · basis: name + date of birth, confirmed by HR'}
+          status={<Badge tone="info">Merged record</Badge>}
+          actions={<Button icon={Split} variant="danger" onClick={() => (setNote(''), setConfirm(true))}>Unmerge</Button>}
+        />
         <Card title="What unmerge restores">
-          <ul className="yx-ppl__successors">
-            <li><span>Candidate role APP-2026-1188 with its application, tests and documents</span><Badge tone="neutral">Back to record A</Badge></li>
-            <li><span>Alumnus role and employment KF-0077 history</span><Badge tone="neutral">Stays on record B</Badge></li>
-            <li><span>Field choices made at merge (name, email, phone)</span><Badge tone="neutral">Original values return</Badge></li>
-          </ul>
+          {u ? (
+            <ul className="yx-ppl__successors">
+              {u.moved.map((r, i) => (
+                <li key={`${r}-${i}`}><span>{r} role</span><Badge tone="neutral">Back to record A</Badge></li>
+              ))}
+              {u.employeeLinked && <li><span>The login linked to {u.intoName}’s employee record</span><Badge tone="neutral">Comes off it</Badge></li>}
+              <li><span>Field choices made at merge (name, email, phone)</span><Badge tone="neutral">Original values return</Badge></li>
+              <li><span>{u.intoName}’s own roles and records</span><Badge tone="neutral">Stay on record B</Badge></li>
+            </ul>
+          ) : (
+            <ul className="yx-ppl__successors">
+              <li><span>Candidate role APP-2026-1188 with its application, tests and documents</span><Badge tone="neutral">Back to record A</Badge></li>
+              <li><span>Alumnus role and employment KF-0077 history</span><Badge tone="neutral">Stays on record B</Badge></li>
+              <li><span>Field choices made at merge (name, email, phone)</span><Badge tone="neutral">Original values return</Badge></li>
+            </ul>
+          )}
+          {u?.note && <Text size="sm" tone="secondary" as="p">Merge note: {u.note}</Text>}
         </Card>
-        <ConfirmDialog open={confirm || noteError} onOpenChange={setConfirm} title="Unmerge Suresh K Nair?" consequence="Each role, document and history row goes back to the person it came from. The link log keeps both actions." confirmLabel="Unmerge" destructive onConfirm={() => setConfirm(false)}>
-          <FormField label="Audit note" required error={noteError ? 'Enter a reason for the audit log.' : null}>
-            <TextArea rows={2} />
+        <ConfirmDialog
+          open={confirm || (!u && noteError)}
+          onOpenChange={setConfirm}
+          title={`Unmerge ${u ? u.name : 'Suresh K Nair'}?`}
+          consequence="Each role, document and history row goes back to the person it came from. The link log keeps both actions."
+          confirmLabel="Unmerge"
+          destructive
+          confirmDisabled={Boolean(u) && !note.trim()}
+          onConfirm={async () => (u ? u.onUnmerge(note.trim()) : setConfirm(false))}
+        >
+          <FormField label="Audit note" required error={!u && noteError ? 'Enter a reason for the audit log.' : null}>
+            <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} />
           </FormField>
         </ConfirmDialog>
       </PeopleFrame>
     );
+  }
+  const r = live?.row;
+  const merge = () => {
+    setTried(true);
+    if (!note.trim()) return;
+    void run('merge', () => live!.onMerge({ name: picks.Name as 'a' | 'b', email: picks['Primary email'] as 'a' | 'b', phone: picks['Primary phone'] as 'a' | 'b' }, note.trim()));
+  };
+  const noteMissing = live ? tried && !note.trim() : noteError;
   return (
     <PeopleFrame active="Possible same person">
       <PageHeader title="Merge two records" description="Pick the value to keep for each field. Every role moves to the merged person; nothing is deleted and you can unmerge later." />
@@ -129,13 +260,13 @@ export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'mer
         <thead>
           <tr>
             <th scope="col">Field</th>
-            <th scope="col">Record A · candidate</th>
-            <th scope="col">Record B · alumnus</th>
+            <th scope="col">{r ? `Record A · ${r.a.role.toLowerCase()}` : 'Record A · candidate'}</th>
+            <th scope="col">{r ? `Record B · ${r.b.role.toLowerCase()}` : 'Record B · alumnus'}</th>
             <th scope="col">Keep</th>
           </tr>
         </thead>
         <tbody>
-          {MERGE_FIELDS.map((f) => (
+          {fields.map((f) => (
             <tr key={f.label}>
               <th scope="row">{f.label}</th>
               <td className="yx-mono">{f.a}</td>
@@ -149,19 +280,33 @@ export function MergeReview({ mode = 'merge', noteError = false }: { mode?: 'mer
       </table>
       </div>
       <Card title="Roles that move to the merged person">
-        <ul className="yx-ppl__successors">
-          <li><span>Candidate · APP-2026-1188 (Maintenance Technician)</span><Badge tone="info">Moves</Badge></li>
-          <li><span>Alumnus · employment KF-0077, 2019 to 14 Feb 2025, rehire eligible</span><Badge tone="neutral">Stays</Badge></li>
-        </ul>
-        <Text size="sm" tone="secondary" as="p">The application now shows "Ex-employee" to the recruiter and the rehire path applies.</Text>
+        {r ? (
+          <ul className="yx-ppl__successors">
+            {r.a.roles.map((x) => (
+              <li key={x.id}><span>{x.role} · from {formatDate(new Date(`${x.from}T00:00:00`))}</span><Badge tone="info">Moves</Badge></li>
+            ))}
+            {r.b.roles.map((x) => (
+              <li key={x.id}><span>{x.role} · from {formatDate(new Date(`${x.from}T00:00:00`))}</span><Badge tone="neutral">Stays</Badge></li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            <ul className="yx-ppl__successors">
+              <li><span>Candidate · APP-2026-1188 (Maintenance Technician)</span><Badge tone="info">Moves</Badge></li>
+              <li><span>Alumnus · employment KF-0077, 2019 to 14 Feb 2025, rehire eligible</span><Badge tone="neutral">Stays</Badge></li>
+            </ul>
+            <Text size="sm" tone="secondary" as="p">The application now shows "Ex-employee" to the recruiter and the rehire path applies.</Text>
+          </>
+        )}
       </Card>
       <div className="yx-ppl__form">
-        <FormField label="Audit note" required error={noteError ? 'Enter why you are merging. It goes to the link log.' : null}>
-          <TextArea rows={2} defaultValue={noteError ? '' : 'Same DOB, near-identical phone; confirmed by call with the candidate on 26 Sep.'} />
+        <FormField label="Audit note" required error={noteMissing ? 'Enter why you are merging. It goes to the link log.' : null}>
+          {live ? <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} /> : <TextArea rows={2} defaultValue={noteError ? '' : 'Same DOB, near-identical phone; confirmed by call with the candidate on 26 Sep.'} />}
         </FormField>
+        {error && <InlineAlert tone="danger" title="Not merged">{error}</InlineAlert>}
         <div className="yx-ppl__row">
-          <Button>Cancel</Button>
-          <Button variant="primary" icon={GitMerge}>
+          <Button onClick={live?.onCancel}>Cancel</Button>
+          <Button variant="primary" icon={GitMerge} loading={busy === 'merge'} onClick={live ? merge : undefined}>
             Merge records
           </Button>
         </div>

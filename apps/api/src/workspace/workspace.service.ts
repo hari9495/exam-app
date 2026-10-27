@@ -1,4 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { samePersonPairs } from '../people/same-person.service';
+import { cycleOf } from '../people/bfsi.service';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
@@ -424,6 +426,11 @@ export class WorkspaceService {
       out.approvals = await one(Prisma.sql`SELECT count(*) AS n FROM wf_tasks t JOIN wf_requests r ON r.id = t.request_id
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
+      // PPL-43: a designated person's annual declaration still to submit (absent for everyone else).
+      const own = await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (!support && own && (await tx.bfsiDesignation.count({ where: { organizationId: org, employeeId: own.id } }))) {
+        out.declarationsDue = (await tx.bfsiDeclaration.count({ where: { organizationId: org, employeeId: own.id, cycle: cycleOf(todayIst()), status: 'submitted' } })) ? 0 : 1;
+      }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
       // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
       // count leaves out reviews that went to HR, which only HR decides) (company-wide
@@ -453,13 +460,8 @@ export class WorkspaceService {
         WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
           AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
       if (linksPeople) {
-        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM persons p
-          JOIN person_roles r ON r.organization_id = p.organization_id AND r.person_id = p.id AND r.role_type = 'login' AND r.source_table = 'users' AND r.end_on IS NULL
-          JOIN users u ON u.organization_id = r.organization_id AND u.id = r.source_id
-          LEFT JOIN employees e ON e.organization_id = p.organization_id AND lower(e.work_email::text) = lower(u.email::text) AND e.person_id <> p.id
-          JOIN persons m ON m.organization_id = p.organization_id AND m.status = 'active' AND m.id <> p.id AND (m.id = e.person_id OR lower(m.primary_email::text) = lower(u.email::text))
-          WHERE p.organization_id = ${org}::uuid AND p.status = 'active' AND p.primary_email IS NULL
-            AND NOT EXISTS (SELECT 1 FROM employees x WHERE x.organization_id = p.organization_id AND x.person_id = p.id)`);
+        // PPL-36: the designed list's own pairs (People › More › Possible same person).
+        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM (${samePersonPairs(org)}) pairs`);
       }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });

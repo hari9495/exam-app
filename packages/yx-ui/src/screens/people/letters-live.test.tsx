@@ -158,3 +158,20 @@ describe('PPL-28 bulk issue, live', () => {
     expect(await within(dialog).findByText('Type ISSUE 2 LETTERS to confirm.')).toBeTruthy();
   });
 });
+
+describe('PPL-15 a drafted withdrawal letter, live', () => {
+  const draft = { id: 'l9', title: 'Offer withdrawal letter: Kavya Reddy', letterType: 'offer_withdrawal', personId: 'p9', person: 'Kavya Reddy', referenceNo: null, verifyCode: null, status: 'draft' as const, renderError: null, issuedAt: null, personSigns: false, acceptedAt: null, signature: null, supersededById: null };
+  it('shows as a draft with no number, and HR issues it from the row', async () => {
+    const onIssueDraft = vi.fn(async () => {});
+    render(
+      <ToastProvider>
+        <IssuedLettersRegister rows={[]} live={{ state: 'ready', onRetry: () => {}, rows: [draft], verifyUrl: (c) => c, onDownload: () => {}, onIssueDraft }} />
+      </ToastProvider>,
+    );
+    const row = screen.getByRole('row', { name: /Offer withdrawal letter Kavya Reddy/ });
+    expect(within(row).getByText('Draft')).toBeInTheDocument();
+    await ue.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Issue letter' }));
+    await waitFor(() => expect(onIssueDraft).toHaveBeenCalledWith(draft));
+  });
+});
