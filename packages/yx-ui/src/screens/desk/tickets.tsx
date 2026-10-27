@@ -11,7 +11,7 @@ import { Segment } from '../../components/segment';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { KanbanBoard, type KanbanColumn } from '../../components/kanban';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { MenuItem } from '../../components/menu';
 import { Dialog } from '../../components/overlay';
 import type { FilterValue } from '../../lib/table';
@@ -359,7 +359,7 @@ function NewTicketDrawer({ open, onOpenChange, desks, details, onSearchPeople, o
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
         <FormField label="What they need" required>
-          <RichTextEditor value={body} onChange={setBody} mergeFields={[]} />
+          <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} />
         </FormField>
       </div>
     </Drawer>

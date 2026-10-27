@@ -9,7 +9,7 @@ import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from './ticket-kb';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Dialog } from '../../components/overlay';
@@ -202,7 +202,7 @@ export function TicketScreen(props: TicketScreenProps) {
                   <div className="yx-ops-stack">
                     {mode === 'note' && <p className="yx-ops-muted">Only people working this desk and the ticket’s collaborators see notes.</p>}
                     <FormField label={mode === 'note' ? 'Note' : 'Reply'} hideLabel>
-                      <RichTextEditor key={editorKey} value={draft} onChange={setDraft} mergeFields={[]} placeholder={mode === 'note' ? 'Add a note for colleagues' : `Write to ${first}`} />
+                      <RichTextEditor hide={STYLE_TOOLS} key={editorKey} value={draft} onChange={setDraft} mergeFields={[]} placeholder={mode === 'note' ? 'Add a note for colleagues' : `Write to ${first}`} />
                     </FormField>
                     {mode === 'note' && (
                       <FormField label="Tell colleagues" optional helper="They get a notice. A desk collaborator is added to this ticket.">

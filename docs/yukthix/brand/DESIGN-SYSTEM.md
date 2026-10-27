@@ -385,7 +385,7 @@ Every component below lives in `packages/ui`, uses only §41 tokens, has a Story
 | MaskedField (PAN, IFSC, UAN, Aadhaar-masked, phone) | Build | Live format check |
 | PersonPicker, OrgUnitPicker, EntityPicker, LocationPicker | Build | Photo, name, role, department |
 | FileUpload, Dropzone | Build | Type, size, progress, scan status (§31) |
-| RichTextEditor | Build | Letters and policies; limited toolbar |
+| RichTextEditor | Build | Letters, policies and messages. Toolbar: B I U S, headings, lists, highlight, text colour, font size (preset lists only), quote, link, code, undo, redo; buttons that do not fit move into "More formatting" (…). `hide` drops buttons a place cannot keep (letters hide Code; the service desk hides highlight, colour and size) |
 | FormField, FormSection, ErrorSummary, StickySaveBar | Build | §16 layout |
 | ConditionBuilder | Build | When / If / Then rows (§46, P19) |
 

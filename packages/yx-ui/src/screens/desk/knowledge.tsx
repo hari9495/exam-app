@@ -9,7 +9,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { ConfirmDialog } from '../../components/overlay';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useRun } from '../org/org-kit';
@@ -537,7 +537,7 @@ function EditorCard(props: KnowledgeScreenProps & { article: KbArticle }) {
           </span>
         )}
         <FormField label="Article" required helper="A block shows as {{block:key}} here; readers see its current text.">
-          <RichTextEditor value={body} onChange={setBody} mergeFields={[]} placeholder="Write the article" />
+          <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} placeholder="Write the article" />
         </FormField>
         <FormField label="What changed" optional helper="A short note for the reviewer.">
           <TextField value={note} onChange={setNote} maxLength={300} />
@@ -931,7 +931,7 @@ function SnippetDrawer({ kind, item, onClose, onSave }: { kind: 'block' | 'templ
           </FormField>
         )}
         <FormField label="Text" required>
-          <RichTextEditor value={body} onChange={setBody} mergeFields={[]} placeholder="Write the text" />
+          <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} placeholder="Write the text" />
         </FormField>
       </div>
     </Drawer>
