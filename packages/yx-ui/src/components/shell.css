@@ -324,7 +324,7 @@
   border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
 }
 .yx-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2); min-height: var(--yx-control-lg); padding: var(--yx-space-3) var(--yx-space-4) 0; }
-.yx-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-1); margin-left: auto; }
+.yx-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
 .yx-card__body { flex: 1; padding: var(--yx-space-3) var(--yx-space-4) var(--yx-space-4); }
 /* Blocks in a card never touch: each block after the first keeps one standard gap from the one above (only spacing; widths and order stay). */
 .yx-card__body > * + * { margin-top: var(--yx-space-3); }
