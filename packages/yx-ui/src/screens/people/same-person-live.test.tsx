@@ -78,7 +78,9 @@ describe('PPL-37 merge and unmerge, live', () => {
     expect(screen.getByText('The login linked to Suresh K Nair’s employee record')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Unmerge' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Unmerge' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Unmerge' }));
+    expect(within(dialog).getByText('Enter a reason for the audit log.')).toBeInTheDocument();
+    expect(u.onUnmerge).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), 'Different people after all');
     await ue.click(within(dialog).getByRole('button', { name: 'Unmerge' }));
     await waitFor(() => expect(u.onUnmerge).toHaveBeenCalledWith('Different people after all'));
