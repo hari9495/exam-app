@@ -316,7 +316,10 @@ export class JoinersService {
       if (!r) throw new NotFoundException('No such joiner.');
       const own = await ownOf(tx, c, v);
       if (r.managerEmployeeId !== own.employeeId && !(await joinerInScope(tx, c, v, v.grants.has('lifecycle.onboarding.view') ? 'lifecycle.onboarding.view' : 'lifecycle.onboarding.manage', r))) throw new ForbiddenException('You cannot see this joiner.');
-      return this.rowView(tx, c.organizationId, r);
+      // PPL-15: the requisition (the job the accepted offer was for) an unwind opens again, and whether it holds a plan slot.
+      const offer = r.offerId ? await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: r.offerId }, select: { pipelineEntryId: true } }) : null;
+      const entry = offer ? await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: offer.pipelineEntryId }, select: { job: { select: { title: true, headcountPlanLineId: true } } } }) : null;
+      return { ...(await this.rowView(tx, c.organizationId, r)), requisition: entry ? { title: entry.job.title, planned: Boolean(entry.job.headcountPlanLineId) } : null };
     });
   }
 

@@ -7,6 +7,7 @@ import { EmployeeHistoryService } from '../employee-history/employee-history.ser
 import { ProfileService } from '../people/profile.service';
 import { DocumentsService } from '../documents/documents.service';
 import { LettersService } from '../documents/letters/letters.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService } from './portal.service';
@@ -36,6 +37,7 @@ export class JoiningService {
     private readonly desk: DeskJourneysService,
     private readonly extras: OnboardingExtrasService,
     private readonly letters: LettersService,
+    private readonly pipeline: PipelineService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -185,10 +187,31 @@ export class JoiningService {
       if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: dto.outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
       await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome: dto.outcome } } });
-      return { tickets, org };
+      return { tickets, org, offerId: pb.offerId };
     });
     await this.desk.stopFor({ organizationId: res.org, isSuperAdmin: false } as CompanyContext, res.tickets, `The joiner's onboarding was cancelled (${dto.outcome.replace(/_/g, ' ')}).`).catch(() => undefined);
+    if (res.offerId && user.userId) await this.unwindHire(ctx, user.userId, res.offerId, dto.outcome);
     return { ok: true };
+  }
+
+  /**
+   * PPL-15 (founder 27 Oct 2026): the candidate leaves the hired (or offer) stage in Hiring, as withdrawn or reneged, which
+   * frees the headcount-plan slot (a slot counts hired candidates), and a closed requisition opens again. Through the ATS's
+   * own moves (no message goes to the candidate); a status named for the outcome in the job's pipeline is used when the
+   * company has one, else the rejected stage with the reason.
+   */
+  private async unwindHire(ctx: TenantContext, actorUserId: string, offerId: string, outcome: 'did_not_join' | 'reneged' | 'withdrawn') {
+    const found = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const offer = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { pipelineEntryId: true } });
+      const entry = offer ? await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: offer.pipelineEntryId }, include: { status: { include: { stage: true } }, job: { select: { id: true, status: true, pipelineId: true } } } }) : null;
+      if (!entry || !['hired', 'offer'].includes(entry.status?.stage.category ?? '')) return null;
+      const status = entry.job.pipelineId ? await tx.pipelineStatus.findFirst({ where: { stage: { pipelineId: entry.job.pipelineId, category: 'rejected' }, name: { contains: outcome === 'withdrawn' ? 'withdraw' : 'renege', mode: 'insensitive' } } }) : null;
+      return { entryId: entry.id, job: entry.job, statusId: status?.id ?? null };
+    });
+    if (!found) return;
+    const reason = outcome === 'withdrawn' ? 'Offer withdrawn by the company' : outcome === 'reneged' ? 'Reneged after accepting the offer' : 'Did not join';
+    await this.pipeline.patchEntry(ctx, actorUserId, found.entryId, found.statusId ? { statusId: found.statusId, reason } : { rejected: true, reason }, { skipComms: true });
+    if (found.job.status === 'closed') await this.pipeline.updateJob(ctx, actorUserId, found.job.id, { status: 'open' });
   }
 
   // ------------------------------------------------------------------------------------------ BGV (LIFE-2.03)

@@ -21,6 +21,7 @@ function page(over: Partial<LivePreboardAction> = {}, journey: Partial<Journey> 
       { id: 't2', title: 'Laptop or work device', dueOn: day('2026-10-12'), done: true },
     ],
     fromOffer: true,
+    requisition: { title: 'Production Supervisor', planned: true },
     rehire: null,
     onPostpone: vi.fn(async () => {}),
     onCancel: vi.fn(async () => {}),
@@ -69,7 +70,7 @@ describe('PPL-15 pre-boarding actions, live', () => {
     const p = page({ rehire: { first: 'Sneha', code: 'KF-0077' } });
     await ue.click(screen.getByRole('button', { name: 'Change status' }));
     await ue.click(within(drawer()).getByRole('radio', { name: /Withdraw offer/ }));
-    expect(within(drawer()).getByText(/The candidate's offer is marked withdrawn in Hiring\. The withdrawal letter is drafted for your review\./)).toBeInTheDocument();
+    expect(within(drawer()).getByText(/The headcount-plan slot is released and the requisition for Production Supervisor reopens\. The candidate is marked withdrawn in Hiring\. The withdrawal letter is drafted for your review\./)).toBeInTheDocument();
     expect(within(drawer()).getByText('The company withdraws. A reason and a withdrawal letter are required.')).toBeInTheDocument();
     expect(within(drawer()).getByText(/code KF-0077 and UAN stay as they were/)).toBeInTheDocument();
     await ue.click(within(drawer()).getByRole('button', { name: 'Withdraw offer' }));

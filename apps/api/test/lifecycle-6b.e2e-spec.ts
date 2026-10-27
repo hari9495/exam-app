@@ -17,6 +17,7 @@ import { buildDocx } from '../src/documents/letters/docx';
 import { BGV_NOTICE } from '../src/lifecycle/portal.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { PipelinesService } from '../src/pipeline/pipelines.service';
 
 // Lifecycle batch 6b end to end against the real database (forced RLS, the app role) and Redis: Word templates (safety,
 // unknown fields with "did you mean", the preview gate), the pre-boarding portal (code sign-in, sealed and masked
@@ -494,6 +495,49 @@ describe('Lifecycle batch 6b', () => {
     await api('hr', 'post', `/lifecycle/ready-to-onboard/${offers.fresh}`).send(body).expect(409);
     await api('hr', 'post', `/lifecycle/ready-to-onboard/${offers.internal}`).send({ ...body, givenName: 'Divya' }).expect(409);
     expect((await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body.some((r: { offerId: string }) => r.offerId === offers.fresh)).toBe(false);
+  });
+
+  it('PPL-15 unwinding a joiner from an offer moves the candidate out of hired in Hiring (no message to them) and reopens a closed requisition', async () => {
+    const pipe = await app.get(PipelinesService).getDefaultPipeline({ organizationId: org.A.id, isSuperAdmin: false });
+    const status = (category: string) => pipe.stages.find((st) => st.category === category)!.statuses[0].id;
+    // The company keeps a "Withdrawn" status in its rejected stage: a withdrawal lands there; reneging uses the stage itself.
+    const rejected = pipe.stages.find((st) => st.category === 'rejected')!;
+    const withdrawn = (await inA((tx) => tx.pipelineStatus.create({ data: { organizationId: org.A.id, stageId: rejected.id, name: 'Withdrawn by us', position: 5 } }))).id;
+    const hired = async (name: string, jobStatus: string) =>
+      inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        const job = await tx.job.create({ data: { ...o, title: `Line Lead ${name}`, status: jobStatus, closedAt: jobStatus === 'closed' ? new Date() : null, createdById: users.hr, pipelineId: pipe.id } });
+        const cand = await tx.candidate.create({ data: { ...o, name: `${name} ${run}`, email: `${name.toLowerCase()}-${run}@mail.test` } });
+        const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual', statusId: status('hired') } });
+        const offer = await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', respondedAt: new Date(), letterSubject: 'Offer', letterBody: 'Offer' } });
+        return { job: job.id, entry: pe.id, offer: offer.id };
+      });
+    const onboard = async (x: { offer: string }, given: string) => (await api('hr', 'post', `/lifecycle/ready-to-onboard/${x.offer}`).send({ givenName: given, familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr, designationId: ids.desig }).expect(201)).body.id as string;
+    const entry = (id: string) => inA((tx) => tx.pipelineEntry.findFirstOrThrow({ where: { id }, include: { status: { include: { stage: true } } } }));
+    const a = await hired('Gopal', 'closed');
+    const ja = await onboard(a, 'Gopal');
+    const pbA = (await api('hr', 'get', `/lifecycle/joiners/${ja}`).expect(200)).body;
+    expect(pbA.requisition).toEqual({ title: 'Line Lead Gopal', planned: false });
+    await markSteppedUp(tenantPrisma, token.hr);
+    const sent = email.send.mock.calls.length;
+    await api('hr', 'post', `/lifecycle/joiners/${ja}/cancel`).send({ outcome: 'reneged', version: pbA.version }).expect(200);
+    const ea = await entry(a.entry);
+    expect(ea).toMatchObject({ rejected: true, rejectedReason: 'Reneged after accepting the offer', statusId: status('rejected') });
+    expect(await inA((tx) => tx.job.findFirstOrThrow({ where: { id: a.job } }))).toMatchObject({ status: 'open', closedAt: null });
+    expect(email.send.mock.calls.slice(sent).some((call: [{ to: string }]) => /gopal-/.test(call[0].to))).toBe(false);
+
+    const b = await hired('Hema', 'open');
+    const jb = await onboard(b, 'Hema');
+    const pbB = (await api('hr', 'get', `/lifecycle/joiners/${jb}`).expect(200)).body;
+    const sentB = email.send.mock.calls.length;
+    await api('hr', 'post', `/lifecycle/joiners/${jb}/cancel`).send({ outcome: 'withdrawn', reason: 'Budget frozen', version: pbB.version }).expect(200);
+    expect(await entry(b.entry)).toMatchObject({ rejected: true, statusId: withdrawn });
+    expect(await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: b.offer } }))).toMatchObject({ status: 'withdrawn' });
+    // No rejection message went to either candidate.
+    expect(email.send.mock.calls.slice(sentB).some((call: [{ to: string }]) => /hema-/.test(call[0].to))).toBe(false);
+    // A direct joiner (no offer) has no requisition.
+    const direct = await addJoiner('Omana', `omana-${run}@mail.test`);
+    expect((await api('hr', 'get', `/lifecycle/joiners/${direct.id}`).expect(200)).body.requisition).toBeNull();
   });
 
   it('PPL-31 my certificate: instant with number and code, or HR approves first (approve and reject reach the bell); only my own, only switched-on kinds', async () => {

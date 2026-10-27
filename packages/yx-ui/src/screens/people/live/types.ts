@@ -122,6 +122,8 @@ export interface LifeJourneyRow {
 
 export interface Joiner {
   id: string;
+  /** PPL-15: the accepted offer's requisition (its job) and whether it holds a headcount-plan slot (the joiner record only). */
+  requisition?: { title: string; planned: boolean } | null;
   personId: string;
   name: string;
   email: string | null;

@@ -1006,6 +1006,8 @@ export interface LivePreboardAction {
   tasks: PreboardTask[];
   /** The joiner came from an accepted offer in Hiring. */
   fromOffer: boolean;
+  /** That offer's requisition (its job), and whether it holds a headcount-plan slot. */
+  requisition?: { title: string; planned: boolean } | null;
   /** A rehire: the first name and the old employee code the unwind leaves alone. */
   rehire: { first: string; code: string } | null;
   onPostpone: (joiningOn: string) => Promise<unknown>;
@@ -1096,7 +1098,7 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
           <>
             <InlineAlert tone="warning" title="This unwinds pre-boarding in one audited step">
               {live
-                ? `The checklist, desk requests, background checks, unsigned letters and the pre-boarding login are cancelled (kept, not deleted).${live.fromOffer ? ` The candidate's offer is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.` : ''}${action === 'withdraw' ? ' The withdrawal letter is drafted for your review.' : ''}`
+                ? `The checklist, desk requests, background checks, unsigned letters and the pre-boarding login are cancelled (kept, not deleted).${live.requisition ? ` ${live.requisition.planned ? 'The headcount-plan slot is released and the' : 'The'} requisition for ${live.requisition.title} reopens.` : ''}${live.fromOffer ? ` The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.` : ''}${action === 'withdraw' ? ' The withdrawal letter is drafted for your review.' : ''}`
                 : `The employee, employment, draft compensation and pre-boarding login are cancelled (kept, not deleted). The headcount-plan slot is released and requisition REQ-2026-0288 reopens. The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.`}
             </InlineAlert>
             <FormField label="Reason" required={action === 'withdraw'} optional={action !== 'withdraw'} error={tried && reasonMissing ? 'Enter a reason. It goes on the withdrawal letter and the audit log.' : null}>
