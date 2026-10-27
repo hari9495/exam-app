@@ -1,7 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { existsSync, readFileSync } from 'fs';
 import { BlobStorageService, OrgSecretsCryptoService } from '@exam-platform/shared';
-import { FileStore, sha256 } from '../../src/documents/file-store';
+import { FileStore, foreignLocalStore, sha256 } from '../../src/documents/file-store';
 import { buildDocx, templateFields } from '../../src/documents/letters/docx';
 import { STARTER_LETTERS } from '../../src/documents/letters/fields';
 import { dueOn, openable, type TaskStatus } from '../../src/lifecycle/journey-rules';
@@ -13,6 +14,7 @@ import { dueOn, openable, type TaskStatus } from '../../src/lifecycle/journey-ru
 //   on that joiner moves the candidate out of Hired, reopens the requisition and frees the slot. The YukthiX "Offer
 //   withdrawal letter" starter is switched on. Safe to run again. Run from apps/api (DATABASE_URL picks the database):
 //   npx ts-node --transpile-only prisma/scripts/demo-preboarding.ts
+// For another app's database, also set PAY_LOCAL_FILES_DIR to that app's apps/api/.pay-files (the script refuses otherwise).
 const prisma = new PrismaClient();
 type Tx = Prisma.TransactionClient;
 
@@ -21,6 +23,9 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const plus = (days: number) => new Date(asDate(istToday()).getTime() + days * 86_400_000).toISOString().slice(0, 10);
 
 (async () => {
+  // Never write another app's files into this worktree (the letter template file).
+  const why = foreignLocalStore(process.env, existsSync('.env') ? readFileSync('.env', 'utf8') : null);
+  if (why) throw new Error(why);
   const log: string[] = [];
   await prisma.$transaction(
     async (tx: Tx) => {
