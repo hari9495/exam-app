@@ -9,6 +9,8 @@ export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
+// PPL-38: the disability declaration (the person's own, and the HR diversity role's list).
+export { DisabilityDeclaration, type DisabilityInput, type LiveDisability, type LiveDisabilityList } from '../people/selfservice';
 // PPL-46: the salary account abroad (HR's page and the person's own).
 export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank } from '../people/record';
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';

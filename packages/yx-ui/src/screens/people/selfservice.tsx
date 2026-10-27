@@ -8,7 +8,8 @@ import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../.
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { ConfirmDialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
@@ -515,80 +516,181 @@ export function WhoAccessedPhone() {
 
 const RPWD = ['Locomotor disability', 'Low vision', 'Blindness', 'Hard of hearing', 'Deaf', 'Specific learning disability', 'Autism spectrum disorder', 'Intellectual disability', 'Mental illness', 'Multiple disabilities', 'Other benchmark disability'];
 
-function DisabilityFields({ consent, setConsent }: { consent: boolean; setConsent: (b: boolean) => void }) {
+export type DisabilityAnswer = 'yes' | 'no' | 'skip';
+export interface DisabilityInput {
+  consent: true;
+  answer: DisabilityAnswer;
+  category?: string;
+  percent?: number;
+  certificateDocumentId?: string;
+  adjustments?: string;
+}
+/** PPL-38 live, the person's own declaration. */
+export interface LiveDisability {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  company: string;
+  declaration: { answer: DisabilityAnswer; category?: string; percent?: number; adjustments?: string | null; consentAt: Date; certificate: { status: string; validUntil: Date | null } | null } | null;
+  /** Stores the certificate in my documents; resolves to its id. */
+  onUpload: (file: File, validUntil: string | null) => Promise<string>;
+  /** The page shows the success toast. */
+  onSave: (input: DisabilityInput) => Promise<void>;
+  onWithdraw: () => Promise<void>;
+  onSkip: () => void;
+}
+/** PPL-38 live, the HR diversity role's list. */
+export interface LiveDisabilityList {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rows: { employeeId: string; name: string; category: string; percent: number; validUntil: Date | null; verified: boolean; expiringSoon: boolean }[];
+}
+
+const ANSWER_LABEL: Record<DisabilityAnswer, string> = { yes: 'Yes', no: 'No', skip: 'Prefer not to say' };
+
+function DisabilityFields({ consent, setConsent, company = 'Kaveri Foods', live }: { consent: boolean; setConsent: (b: boolean) => void; company?: string; live?: { form: DisabilityForm; set: (f: Partial<DisabilityForm>) => void; errorOf: (id: string) => string | undefined; onUpload: LiveDisability['onUpload'] } }) {
+  const f = live?.form;
   return (
     <div className="yx-ppl__form">
       <InlineAlert tone="info" title="This is voluntary">
         You can skip it or withdraw it at any time. It is Special data: you, the HR diversity role and payroll (only the ESI flag it needs) can see it. Your manager never does. Reports show only totals.
       </InlineAlert>
-      <Checkbox checked={consent} onChange={setConsent} label="I agree Kaveri Foods may record this to provide reasonable adjustments and apply the correct ESI ceiling" description="Read the notice: how we use disability data" />
-      <FormField label="Do you have a disability you want to declare?" required>
-        <RadioGroup value="yes" onChange={() => {}} disabled={!consent} orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }, { value: 'skip', label: 'Prefer not to say' }]} />
+      <Checkbox checked={consent} onChange={setConsent} label={`I agree ${company} may record this to provide reasonable adjustments and apply the correct ESI ceiling`} description="Read the notice: how we use disability data" />
+      <FormField id="ds-answer" label="Do you have a disability you want to declare?" required>
+        <RadioGroup value={f ? f.answer : 'yes'} onChange={(v) => live?.set({ answer: v as DisabilityAnswer })} disabled={!consent} orientation="horizontal" options={(['yes', 'no', 'skip'] as const).map((value) => ({ value, label: ANSWER_LABEL[value] }))} />
       </FormField>
-      <FormField label="Category (RPwD Act 2016)" required>
-        <Select options={RPWD.map((x) => ({ value: x, label: x }))} value="Locomotor disability" onChange={() => {}} disabled={!consent} />
-      </FormField>
-      <FormField label="Percentage on the certificate" required>
-        <NumberField value={45} onChange={() => {}} disabled={!consent} suffix="%" />
-      </FormField>
-      <FormField label="Disability certificate (UDID or medical board)" required helper="Valid until">
-        <FileUpload upload={async () => {}} accept={['.pdf', '.jpg']} maxSize={5 * 1024 * 1024} disabled={!consent} />
-      </FormField>
-      <FormField label="Reasonable adjustments you need" optional>
-        <TextArea rows={2} defaultValue="Ground-floor workstation near the lift; flexible start on physiotherapy days." disabled={!consent} />
-      </FormField>
-      <a href="#eop">Equal opportunity policy</a>
+      {(!f || f.answer === 'yes') && (
+        <>
+          <FormField id="ds-category" label="Category (RPwD Act 2016)" required error={live?.errorOf('ds-category')}>
+            <Select aria-label="Category (RPwD Act 2016)" options={RPWD.map((x) => ({ value: x, label: x }))} value={f ? f.category : 'Locomotor disability'} onChange={(v) => live?.set({ category: v })} disabled={!consent} />
+          </FormField>
+          <FormField id="ds-percent" label="Percentage on the certificate" required error={live?.errorOf('ds-percent')}>
+            <NumberField value={f ? f.percent : 45} onChange={(v) => live?.set({ percent: v })} disabled={!consent} suffix="%" />
+          </FormField>
+          {live && (
+            <FormField id="ds-valid" label="Certificate valid until" optional helper="Leave it empty if the certificate has no end date. Choose it before you upload.">
+              <DatePicker value={f!.validUntil} onChange={(v) => live.set({ validUntil: v })} disabled={!consent} aria-label="Certificate valid until" />
+            </FormField>
+          )}
+          <FormField id="ds-cert" label="Disability certificate (UDID or medical board)" required helper={live ? undefined : 'Valid until'} error={live?.errorOf('ds-cert')}>
+            <FileUpload
+              multiple={false}
+              upload={async (file) => {
+                if (live) live.set({ certificateId: await live.onUpload(file, f!.validUntil ? dayKey(f!.validUntil) : null) });
+              }}
+              accept={['.pdf', '.jpg', '.png']}
+              maxSize={5 * 1024 * 1024}
+              disabled={!consent}
+            />
+          </FormField>
+          <FormField id="ds-adjust" label="Reasonable adjustments you need" optional>
+            {f ? <TextArea rows={2} value={f.adjustments} onChange={(v) => live!.set({ adjustments: v })} maxLength={500} disabled={!consent} /> : <TextArea rows={2} defaultValue="Ground-floor workstation near the lift; flexible start on physiotherapy days." disabled={!consent} />}
+          </FormField>
+        </>
+      )}
+      {!live && <a href="#eop">Equal opportunity policy</a>}
     </div>
   );
 }
 
+interface DisabilityForm {
+  answer: DisabilityAnswer;
+  category: string | null;
+  percent: number | null;
+  validUntil: Date | null;
+  certificateId: string | null;
+  adjustments: string;
+}
+
 // PPL-38
-export function DisabilityDeclaration({ declared = false, persona = 'emp' }: { declared?: boolean; persona?: 'emp' | 'hr' }) {
+export function DisabilityDeclaration({ declared = false, persona = 'emp', live, liveList }: { declared?: boolean; persona?: 'emp' | 'hr'; live?: LiveDisability; liveList?: LiveDisabilityList }) {
   const [consent, setConsent] = useState(declared);
-  if (persona === 'hr')
+  const [form, setForm] = useState<DisabilityForm>({ answer: 'yes', category: null, percent: null, validUntil: null, certificateId: null, adjustments: '' });
+  const [withdrawing, setWithdrawing] = useState(false);
+  const errors: FormErrorItem[] =
+    form.answer === 'yes'
+      ? [
+          ...(!form.category ? [{ fieldId: 'ds-category', message: 'Choose the category.' }] : []),
+          ...(!form.percent || form.percent < 1 || form.percent > 100 ? [{ fieldId: 'ds-percent', message: 'Enter the percentage, from 1 to 100.' }] : []),
+          ...(!form.certificateId ? [{ fieldId: 'ds-cert', message: 'Upload the certificate.' }] : []),
+        ]
+      : [];
+  const sv = useSaveErrors(errors);
+  const { run, busy, error } = useRun();
+  if (persona === 'hr') {
+    const rows = liveList
+      ? liveList.rows.map((r) => ({ id: r.employeeId, n: r.name, c: `${r.category} · ${r.percent}%`, v: r.validUntil ? formatDate(r.validUntil) : 'No end date', s: r.verified ? (r.expiringSoon ? 'Expiring' : 'Verified') : 'To verify' }))
+      : [
+          { id: '1', n: 'Divya Raghunathan', c: 'Locomotor disability · 45%', v: '14 Mar 2031', s: 'Verified' },
+          { id: '2', n: 'Joseph Mathew', c: 'Hard of hearing · 50%', v: '2 Nov 2026', s: 'Expiring' },
+        ];
     return (
       <PeopleFrame active="Declarations">
         <PageHeader title="Disability declarations" description="Special class. Visible to the HR diversity role; payroll sees only the ESI flag. Managers never see this." status={<Badge tone="danger">Special</Badge>} />
         <InlineAlert tone="info">Totals in reports are hidden for groups under 5 people.</InlineAlert>
-        <DataTable
-          label="Declarations"
-          columns={[
-            { key: 'n', header: 'Employee', type: 'person', value: (r: { n: string }) => r.n, person: (r: { n: string }) => ({ name: r.n }), width: 220 },
-            { key: 'c', header: 'Category', value: (r: { c: string }) => r.c, width: 220 },
-            { key: 'v', header: 'Certificate valid to', value: (r: { v: string }) => r.v, width: 180 },
-            { key: 's', header: 'Status', type: 'status', value: (r: { s: string }) => r.s, statusTone: (v) => (v === 'Verified' ? 'success' : 'warning'), width: 140 },
-          ]}
-          rows={[
-            { id: '1', n: 'Divya Raghunathan', c: 'Locomotor disability · 45%', v: '14 Mar 2031', s: 'Verified' },
-            { id: '2', n: 'Joseph Mathew', c: 'Hard of hearing · 50%', v: '2 Nov 2026', s: 'Expiring' },
-          ]}
-          getRowId={(r) => r.id}
-        />
+        {liveList?.state === 'error' ? (
+          <ErrorState title="We couldn't load the declarations" description="Check your connection and try again." onRetry={liveList.onRetry} />
+        ) : liveList?.state === 'loading' ? (
+          <ListSkeleton label="Loading the declarations" />
+        ) : (
+          <DataTable
+            label="Declarations"
+            columns={[
+              { key: 'n', header: 'Employee', type: 'person', value: (r: { n: string }) => r.n, person: (r: { n: string }) => ({ name: r.n }), width: 220 },
+              { key: 'c', header: 'Category', value: (r: { c: string }) => r.c, width: 220 },
+              { key: 'v', header: 'Certificate valid to', value: (r: { v: string }) => r.v, width: 180 },
+              { key: 's', header: 'Status', type: 'status', value: (r: { s: string }) => r.s, statusTone: (v) => (v === 'Verified' ? 'success' : 'warning'), width: 140 },
+            ]}
+            rows={rows}
+            getRowId={(r) => r.id}
+            empty={<EmptyState title="No declarations" description="People declare a disability themselves, in Me › Declarations. It is voluntary." />}
+          />
+        )}
       </PeopleFrame>
     );
+  }
+  if (live && live.state !== 'ready')
+    return <MeFrame active="Declarations">{live.state === 'error' ? <ErrorState title="We couldn't load your declaration" description="Check your connection and try again." onRetry={live.onRetry} /> : <ListSkeleton label="Loading your declaration" />}</MeFrame>;
+  const d = live?.declaration;
+  const isDeclared = live ? Boolean(d) : declared;
+  const verified = live ? d?.certificate?.status === 'verified' : true;
+  const save = () => {
+    if (errors.length) return sv.reveal();
+    void run('save', () => live!.onSave({ consent: true, answer: form.answer, ...(form.answer === 'yes' ? { category: form.category!, percent: form.percent!, certificateDocumentId: form.certificateId!, ...(form.adjustments.trim() ? { adjustments: form.adjustments.trim() } : {}) } : {}) }));
+  };
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Disability declaration" status={declared ? <StatusBadge status="Verified" /> : undefined} />
-      {declared ? (
-        <Card title="Your declaration" actions={<Button variant="danger">Withdraw consent</Button>}>
+      <PageHeader title="Disability declaration" status={isDeclared && (!d || d.answer === 'yes') ? <StatusBadge status={verified ? 'Verified' : 'Waiting'} /> : undefined} />
+      {isDeclared ? (
+        <Card title="Your declaration" actions={<Button variant="danger" onClick={live ? () => setWithdrawing(true) : undefined}>Withdraw consent</Button>}>
           <dl className="yx-ppl__rail-facts">
-            <div><dt>Category</dt><dd>Locomotor disability · 45%</dd></div>
-            <div><dt>Certificate</dt><dd>UDID · valid until 14 Mar 2031 · verified by HR</dd></div>
-            <div><dt>Adjustments</dt><dd>Ground-floor workstation (done) · flexible start (approved)</dd></div>
-            <div><dt>Consent</dt><dd>Given on 3 Feb 2026</dd></div>
+            {d && d.answer !== 'yes' ? (
+              <div><dt>Answer</dt><dd>{ANSWER_LABEL[d.answer]}</dd></div>
+            ) : (
+              <>
+                <div><dt>Category</dt><dd>{d ? `${d.category} · ${d.percent}%` : 'Locomotor disability · 45%'}</dd></div>
+                <div><dt>Certificate</dt><dd>{d ? [d.certificate?.validUntil ? `Valid until ${formatDate(d.certificate.validUntil)}` : 'No end date', verified ? 'verified by HR' : 'waiting for HR to verify'].join(' · ') : 'UDID · valid until 14 Mar 2031 · verified by HR'}</dd></div>
+                <div><dt>Adjustments</dt><dd>{d ? d.adjustments || 'None asked for' : 'Ground-floor workstation (done) · flexible start (approved)'}</dd></div>
+              </>
+            )}
+            <div><dt>Consent</dt><dd>Given on {d ? formatDate(d.consentAt) : '3 Feb 2026'}</dd></div>
           </dl>
           <Text size="sm" tone="secondary" as="p">Withdrawing hides this from everyone except the audit trail.</Text>
         </Card>
       ) : (
         <>
-          <DisabilityFields consent={consent} setConsent={setConsent} />
+          {sv.showErrors && <ErrorSummary errors={sv.shownErrors} />}
+          <DisabilityFields consent={consent} setConsent={setConsent} company={live?.company} live={live ? { form, set: (x) => setForm((o) => ({ ...o, ...x })), errorOf: sv.errorOf, onUpload: live.onUpload } : undefined} />
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
           <div className="yx-ppl__row">
-            <Button>Skip</Button>
-            <Button variant="primary" disabled={!consent}>
+            <Button onClick={live?.onSkip}>Skip</Button>
+            <Button variant="primary" disabled={!consent} loading={busy === 'save'} onClick={live ? save : undefined}>
               Save declaration
             </Button>
           </div>
         </>
+      )}
+      {live && (
+        <ConfirmDialog open={withdrawing} onOpenChange={setWithdrawing} title="Withdraw your consent?" consequence="What you declared is cleared and nobody sees it any more. The audit trail keeps only that you withdrew." confirmLabel="Withdraw consent" destructive onConfirm={() => live.onWithdraw()} />
       )}
     </MeFrame>
   );

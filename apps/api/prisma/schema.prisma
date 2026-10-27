@@ -2843,6 +2843,22 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
+/// PPL-38: a voluntary disability declaration (Special); category, percentage and adjustments sealed, cleared on withdrawal.
+model DisabilityDeclaration {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  employeeId            String    @map("employee_id") @db.Uuid
+  answer                String    @db.VarChar(4)
+  detailsEnc            String?   @map("details_enc")
+  certificateDocumentId String?   @map("certificate_document_id") @db.Uuid
+  consentAt             DateTime  @map("consent_at") @db.Timestamptz(3)
+  withdrawnAt           DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId], map: "disability_declarations_employee_key")
+  @@map("disability_declarations")
+}
+
 /// PPL-46: a salary account abroad (IBAN, BIC, payout currency); dated rows like the Indian accounts, IBAN sealed.
 model EmployeeIntlBankAccount {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

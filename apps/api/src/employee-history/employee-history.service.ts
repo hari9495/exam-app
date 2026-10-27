@@ -61,6 +61,8 @@ export const HISTORY_KEYS = [
   'employee.identity.manage',
   'employee.identity.approve',
   'employee.aadhaar.view',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
   // PPL-06: the annual increment reads released ratings where this reaches.
   'perf.review.view',
   // PPL-03 Activity: documents and letters on a person's record, only where these reach.

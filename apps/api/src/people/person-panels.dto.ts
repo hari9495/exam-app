@@ -1,7 +1,8 @@
-import { IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { Equals, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { ID_TYPES } from './identity-checks.service';
 
-// Bodies for the person record's panels (PPL-34 identity checks, PPL-45 work authorisations).
+// Bodies for the person record's panels (PPL-34 identity checks, PPL-45 work authorisations) and the person's own
+// disability declaration (PPL-38).
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
@@ -37,4 +38,27 @@ export class WorkAuthDto {
 
   @IsDateString({ strict: true }) @Matches(DATE, { message: 'expiresOn is a date (YYYY-MM-DD)' })
   expiresOn!: string;
+}
+
+/** The RPwD Act 2016 categories, grouped as the declaration form lists them. */
+export const RPWD = ['Locomotor disability', 'Low vision', 'Blindness', 'Hard of hearing', 'Deaf', 'Specific learning disability', 'Autism spectrum disorder', 'Intellectual disability', 'Mental illness', 'Multiple disabilities', 'Other benchmark disability'] as const;
+
+export class DisabilityDto {
+  @Equals(true, { message: 'Agree to how the company uses the declaration first.' })
+  consent!: boolean;
+
+  @IsIn(['yes', 'no', 'skip'])
+  answer!: 'yes' | 'no' | 'skip';
+
+  @IsOptional() @IsIn(RPWD)
+  category?: string;
+
+  @IsOptional() @IsInt() @Min(1) @Max(100)
+  percent?: number;
+
+  @IsOptional() @IsUUID()
+  certificateDocumentId?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  adjustments?: string;
 }

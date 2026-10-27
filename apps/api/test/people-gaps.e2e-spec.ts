@@ -12,9 +12,9 @@ import { markSteppedUp } from './fixtures/step-up';
 import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.service';
 
 // The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
-// authorisations (PPL-45), international bank details (PPL-46). Each with its key,
+// authorisations (PPL-45), international bank details (PPL-46), disability declarations (PPL-38). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -70,7 +70,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46)', () => 
     const hrKeys = ['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.identity.view', 'employee.identity.manage'];
     const hr = await profile([...hrKeys, 'employee.aadhaar.view', 'employee.identity.approve'], 'HR');
     const hrPlain = await profile(hrKeys, 'HR without Special');
-    ids.plant = await profile(['employee.profile.view', 'employee.aadhaar.view'], 'Plant HR');
+    ids.plant = await profile(['employee.profile.view', 'employee.aadhaar.view', 'employee.disability.view'], 'Plant HR');
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string | null][] = [
       ['hrA', 'A', 'panel', hr],
@@ -261,6 +261,58 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46)', () => 
       const r = (await raise('hrPlain', 'imran', { country: 'GB', iban: 'GB82WEST12345698765432', bic: 'NWBKGB2L', currency: 'GBP' }).expect(201)).body;
       await api('hrA', 'post', `/people/profile-requests/${r.id}/approve`).send({}).expect(409);
       await api('hrA', 'post', `/people/profile-requests/${r.id}/approve`).send({ overrideReason: 'Joint account of a married couple' }).expect(201);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ disability (PPL-38)
+
+  describe('disability declaration (PPL-38)', () => {
+    const certificate = (employee: string, typeKey = 'disability_certificate') =>
+      tenantPrisma.forTenant(ctx('A'), async (tx) => {
+        const personId = (await tx.employee.findFirstOrThrow({ where: { id: ids[employee] } })).personId!;
+        return (await tx.document.create({ data: { organizationId: org.A.id, personId, typeKey, status: 'uploaded' } })).id;
+      });
+
+    it('the person declares with consent; a "Yes" needs its details and their own certificate', async () => {
+      const yes = { consent: true, answer: 'yes', category: 'Low vision', percent: 60, certificateDocumentId: await certificate('arjun'), adjustments: 'Screen reader' };
+      expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body).toMatchObject({ company: 'Org A', declaration: null });
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, consent: false }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, category: 'Tired' }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, percent: 101 }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, certificateDocumentId: undefined }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, certificateDocumentId: await certificate('imran') }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ ...yes, certificateDocumentId: await certificate('arjun', 'pan_card') }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send({ consent: true, answer: 'no', category: 'Low vision' }).expect(400);
+      await api('arjunU', 'put', '/people/me/disability').send(yes).expect(200);
+      const mine = (await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration;
+      expect(mine).toMatchObject({ answer: 'yes', category: 'Low vision', percent: 60, adjustments: 'Screen reader', certificate: { status: 'uploaded', validUntil: null } });
+      const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.disabilityDeclaration.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(row.detailsEnc).not.toContain('Low vision');
+      const a = (await audits('employee.disability.declared'))[0];
+      expect(a.metadataJson).not.toContain('Low vision');
+    });
+
+    it('only the HR diversity role in scope sees the list, each look recorded; never HR without it, a manager or the person', async () => {
+      await api('hrA', 'get', '/people/disability-declarations').expect(403);
+      await api('arjunU', 'get', '/people/disability-declarations').expect(403);
+      expect((await api('hrTn', 'get', '/people/disability-declarations').expect(200)).body.rows).toEqual([]); // Arjun is outside the plant
+      await tenantPrisma.forTenant(ctx('A'), (tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.hrPlain, permissionProfileId: ids.plant, scopeType: 'tenant', validFrom: new Date(`${addDays(todayIst(), -1)}T00:00:00Z`), status: 'active', reason: 'Diversity role' } }));
+      const rows = (await api('hrPlain', 'get', '/people/disability-declarations').expect(200)).body.rows;
+      expect(rows).toEqual([{ employeeId: ids.arjun, name: 'Arjun', category: 'Low vision', percent: 60, validUntil: null, verified: false, expiringSoon: false }]);
+      expect((await audits('employee.disability.viewed')).map((x) => x.entityId)).toEqual([ids.arjun]);
+      const log = (await api('arjunU', 'get', '/people/me/access-log').expect(200)).body.entries;
+      expect(log).toEqual(expect.arrayContaining([expect.objectContaining({ what: 'Disability declaration', className: 'special' })]));
+    });
+
+    it('withdrawing clears what was declared; nothing is left to list', async () => {
+      await api('arjunU', 'post', '/people/me/disability/withdraw').expect(201);
+      await api('arjunU', 'post', '/people/me/disability/withdraw').expect(404);
+      expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration).toBeNull();
+      const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.disabilityDeclaration.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(row).toMatchObject({ detailsEnc: null, certificateDocumentId: null });
+      expect((await api('hrPlain', 'get', '/people/disability-declarations').expect(200)).body.rows).toEqual([]);
+      await api('arjunU', 'put', '/people/me/disability').send({ consent: true, answer: 'skip' }).expect(200);
+      expect((await api('arjunU', 'get', '/people/me/disability').expect(200)).body.declaration).toMatchObject({ answer: 'skip' });
     });
   });
 });
