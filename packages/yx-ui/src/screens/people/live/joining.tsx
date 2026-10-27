@@ -8,6 +8,7 @@ import { Drawer } from '../../../components/drawer';
 import { MenuItem } from '../../../components/menu';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
+import { ifscBank } from '../people-logic';
 import { Text } from '../../../components/foundations';
 import { FileUpload } from '../../../components/upload';
 import { CodeField, NumberField, TextArea, TextField } from '../../../components/inputs';
@@ -531,7 +532,7 @@ function SectionDrawer({ section, me, onClose, onSave, onStepUpCode, onStepUp }:
         <>
           {field('holderName', 'Account holder name')}
           {field('accountNumber', 'Account number', { max: 18, helper: a.bank ? `On file: ${a.bank.account}. Type it again to change it.` : undefined })}
-          {field('ifsc', 'IFSC', { max: 11 })}
+          {field('ifsc', 'IFSC', { max: 11, helper: ifscBank(v.ifsc ?? '') ?? undefined })}
         </>
       ) : section === 'emergency' ? (
         <>

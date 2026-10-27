@@ -229,6 +229,24 @@ export const isPan = (v: string) => PAN_RE.test(v.trim().toUpperCase());
 export const isIfsc = (v: string) => IFSC_RE.test(v.trim().toUpperCase());
 export const isUan = (v: string) => /^\d{12}$/.test(v.replace(/\s/g, ''));
 
+/**
+ * The bank behind an IFSC: its first four letters are the RBI bank code. A bundled list of the banks most people use,
+ * so nothing is looked up online. shortcut: no branch names and no small co-operative / regional rural banks; bundle the
+ * full RBI IFSC list if the founder wants the branch too.
+ */
+const IFSC_BANKS: Record<string, string> = {
+  AIRP: 'Airtel Payments Bank', AUBL: 'AU Small Finance Bank', BARB: 'Bank of Baroda', BDBL: 'Bandhan Bank', BKID: 'Bank of India',
+  CBIN: 'Central Bank of India', CITI: 'Citibank', CIUB: 'City Union Bank', CNRB: 'Canara Bank', CSBK: 'CSB Bank', DBSS: 'DBS Bank India',
+  DCBL: 'DCB Bank', DEUT: 'Deutsche Bank', DLXB: 'Dhanlaxmi Bank', ESFB: 'Equitas Small Finance Bank', FDRL: 'Federal Bank', HDFC: 'HDFC Bank',
+  HSBC: 'HSBC', ICIC: 'ICICI Bank', IDFB: 'IDFC FIRST Bank', IDIB: 'Indian Bank', INDB: 'IndusInd Bank', IOBA: 'Indian Overseas Bank',
+  IPOS: 'India Post Payments Bank', JAKA: 'Jammu and Kashmir Bank', KARB: 'Karnataka Bank', KKBK: 'Kotak Mahindra Bank', KVBL: 'Karur Vysya Bank',
+  MAHB: 'Bank of Maharashtra', PSIB: 'Punjab and Sind Bank', PUNB: 'Punjab National Bank', PYTM: 'Paytm Payments Bank', RATN: 'RBL Bank',
+  SBIN: 'State Bank of India', SCBL: 'Standard Chartered Bank', SIBL: 'South Indian Bank', TMBL: 'Tamilnad Mercantile Bank', UBIN: 'Union Bank of India',
+  UCBA: 'UCO Bank', UJVN: 'Ujjivan Small Finance Bank', UTIB: 'Axis Bank', YESB: 'Yes Bank',
+};
+/** "State Bank of India" for a well-formed SBIN… IFSC; null when it is not an IFSC or the bank is not on the list. */
+export const ifscBank = (v: string): string | null => (isIfsc(v) ? (IFSC_BANKS[v.trim().toUpperCase().slice(0, 4)] ?? null) : null);
+
 /** IBAN mod-97 with country length (YX-GLB-08). */
 const IBAN_LEN: Record<string, number> = { AE: 23, SA: 24, GB: 22, DE: 22, FR: 27, NL: 18 };
 /** ISO 13616 check digits: the IBAN read as a number, country and check digits moved to the end, leaves 1 mod 97. */

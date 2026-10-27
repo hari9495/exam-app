@@ -21,7 +21,7 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
-import { addDays, daysBetween, isIfsc, isPan, preclearanceState } from './people-logic';
+import { addDays, daysBetween, ifscBank, isIfsc, isPan, preclearanceState } from './people-logic';
 import { ACCESS_LOG } from './people-data';
 import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
 import { useRun } from '../org/org-kit';
@@ -61,7 +61,7 @@ function ChangeFields({ kind, value, setValue, ifsc, setIfsc }: { kind: ProfileC
           <FormField label="Account number" required>
             <TextField value={value} onChange={setValue} inputMode="numeric" />
           </FormField>
-          <FormField label="IFSC" required error={ifscErr} helper={!ifscErr && ifsc ? 'State Bank of India, Hosur branch' : undefined}>
+          <FormField label="IFSC" required error={ifscErr} helper={(!ifscErr && ifscBank(ifsc)) || undefined}>
             <TextField value={ifsc} onChange={setIfsc} />
           </FormField>
         </>
@@ -230,7 +230,7 @@ function LiveProfileChangeRequest({ today, live }: { today: Date; live: LiveProf
               <DatePicker value={value[f.key] ? new Date(`${value[f.key]}T00:00:00`) : null} onChange={(d) => setValue((x) => ({ ...x, [f.key]: d ? dayKey(d) : '' }))} min={today} />
             </FormField>
           ) : (
-            <FormField key={f.key} label={FIELD_LABEL[f.key] ?? f.label} required error={errorOf(f.key)} helper={f.key === 'legalName' ? 'Used on letters, payslips and statutory filings from the effective date.' : undefined}>
+            <FormField key={f.key} label={FIELD_LABEL[f.key] ?? f.label} required error={errorOf(f.key)} helper={f.key === 'legalName' ? 'Used on letters, payslips and statutory filings from the effective date.' : f.key === 'ifsc' ? (ifscBank(value.ifsc ?? '') ?? undefined) : undefined}>
               <TextField value={value[f.key] ?? ''} onChange={(v) => setValue((x) => ({ ...x, [f.key]: ['pan', 'ifsc', 'passport'].includes(f.key) ? v.toUpperCase() : v }))} inputMode={f.key === 'accountNumber' ? 'numeric' : undefined} autoComplete="off" />
             </FormField>
           ),
