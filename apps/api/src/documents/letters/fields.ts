@@ -140,7 +140,7 @@ export async function monthlyGross(tx: Tx, c: CompanyContext, personId: string, 
   });
 }
 
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null; withdrawalReason?: string | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null; withdrawalReason?: string | null; letterType?: string } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string; joiner: boolean }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -148,6 +148,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
   let lastDay: string | null = null;
   let nextOfKin = '';
   let place: { legalEntityId: string; locationId: string | null; departmentId: string | null; designationId: string | null; employmentTypeId: string | null; managerEmployeeId: string | null; joiningOn: string; code: string | null; onProbation: boolean };
+  let offerId: string | null = null;
   if (emp) {
     const e = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { joinedOn: 'desc' } });
     const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: new Date(`${today}T00:00:00Z`) } }, orderBy: { validFrom: 'desc' } });
@@ -162,6 +163,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     // A joiner's planned job; a cancelled one still names the job its offer withdrawal letter is about (PPL-15).
     const pb = (await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })) ?? (await tx.preboarding.findFirst({ where: { organizationId: org, personId }, orderBy: { createdAt: 'desc' } }));
     if (!pb) throw new Error('This person has no job record or joiner record.');
+    offerId = pb.offerId;
     place = { legalEntityId: pb.legalEntityId, locationId: pb.locationId, departmentId: pb.departmentId, designationId: pb.designationId, employmentTypeId: pb.employmentTypeId, managerEmployeeId: pb.managerEmployeeId, joiningOn: pb.joiningOn.toISOString().slice(0, 10), code: null, onProbation: true };
   }
   const [entity, orgRow, loc, dept, desig, type, mgr, personal] = await Promise.all([
@@ -219,7 +221,13 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     monthly_gross: extra.gross ? inr(extra.gross) : '',
     withdrawal_reason: extra.withdrawalReason ?? '',
   };
-  return { data, legalEntityId: place.legalEntityId };
+  // PPL-15: a joiner from Hiring started without a designation: their offer withdrawal letter names the offered job
+  // (the job's title); the joiner record itself is left as it is.
+  if (!data.designation && offerId && extra.letterType === 'offer_withdrawal') {
+    const o = await tx.offer.findFirst({ where: { organizationId: org, id: offerId }, select: { pipelineEntry: { select: { job: { select: { title: true } } } } } });
+    data.designation = o?.pipelineEntry.job.title ?? '';
+  }
+  return { data, legalEntityId: place.legalEntityId, joiner: !emp };
 }
 
 /** Values missing for the fields a template uses (YX-DOC-07: never a silent blank). Yes / no fields are never missing. */
