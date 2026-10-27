@@ -27,7 +27,7 @@ const PREVIEW_KEYS: readonly { key: string; label: string }[] = [
   { key: 'employee.personal.view', label: 'See personal details' },
   { key: 'employee.identity.view', label: 'See identity and bank details' },
   { key: 'employee.identity.approve', label: 'Approve bank and identity changes' },
-  { key: 'employee.aadhaar.view', label: 'See Aadhaar in full' },
+  { key: 'employee.aadhaar.view', label: 'See Special data' },
   { key: 'employee.salary.view', label: 'See salary' },
 ];
 
@@ -38,7 +38,7 @@ export const CONFIDENTIAL_LABEL: Record<string, string> = {
   'employee.identity.view': 'see identity and bank details',
   'employee.identity.manage': 'change identity and bank details',
   'employee.identity.approve': 'approve bank and identity changes',
-  'employee.aadhaar.view': 'see Aadhaar in full',
+  'employee.aadhaar.view': 'see Special data',
   'pay.range.view': 'see pay ranges',
   'pay.range.manage': 'change pay ranges',
   'org.entity.statutory.manage': 'change company tax identifiers',

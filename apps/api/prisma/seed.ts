@@ -68,7 +68,7 @@ export const PERMISSIONS = [
   { key: 'employee.identity.view', description: 'View identity and bank details (masked; full value with an audited reveal)' },
   { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
   { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
-  { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
+  { key: 'employee.aadhaar.view', description: 'See Special data: Aadhaar in full and the identity panel (every view recorded)' },
   // Step 3, the YukthiX platform console (P14 §7) and support sessions (P02 Q8). Platform keys are staff only.
   { key: 'platform.companies.view', description: 'See companies, their lifecycle and products (YukthiX staff)' },
   { key: 'platform.companies.manage', description: 'Create companies and change their lifecycle (YukthiX staff)' },
