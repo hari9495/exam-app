@@ -21,6 +21,7 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 interface PersonRoles {
   id: string;
+  company: string;
   primaryEmail: string | null;
   primaryPhone: string | null;
   roles: { id: string; roleType: string; startOn: string; endOn: string | null; label: string }[];
@@ -54,7 +55,7 @@ const LOCKED_IDENTITY: FieldRow[] = [
   { label: 'Aadhaar', value: '', cls: 'Special' as const },
 ];
 
-const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', joiner: 'Joiner', alumni: 'Former employee' };
+const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', preboarder: 'Joiner', external_login: 'Help desk contact', alumni: 'Former employee' };
 
 // People › person record (PPL-03, design audit step 3): the designed record with the live person. Opened from the
 // Directory (HR, anyone their grants reach), My team (a manager, their team) and Profile (the person). The API decides
@@ -237,6 +238,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ? {
           rows: historyRows(h, today),
           roles: (person.data?.roles ?? []).filter((r) => r.roleType !== 'login').map((r) => ({ role: ROLE[r.roleType] ?? r.roleType, from: day(r.startOn), to: r.endOn ? day(r.endOn) : null, link: r.label })),
+          company: person.data?.company,
         }
       : null,
     asOf: asOfParam ? day(asOfParam) : null,

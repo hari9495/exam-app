@@ -103,7 +103,8 @@ export interface LiveRecord {
   time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
   assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
-  history: { rows: JobChange[]; roles: RecordRole[] } | null;
+  /** `company` names the company in the Person roles panel (PPL-35). */
+  history: { rows: JobChange[]; roles: RecordRole[]; company?: string } | null;
   asOf: Date | null;
   onAsOf: (d: Date | null) => void;
   onStartChange?: () => void;
@@ -343,7 +344,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
           {live.activity.length ? <ActivityFeed entries={live.activity} today={today} /> : <Text size="sm" tone="secondary" as="p">Nothing yet.</Text>}
         </Card>
       )}
-      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} onClose={live.activity ? () => setSide('activity') : undefined} />}
+      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} company={live.history.company} onClose={live.activity ? () => setSide('activity') : undefined} />}
     </div>
   ) : (
     <div className="yx-ppl__stack">
@@ -1055,11 +1056,11 @@ function RolesList({ roles = ARJUN_ROLES }: { roles?: RecordRole[] }) {
 /* ================================================================== PPL-35 roles panel */
 
 // PPL-35
-export function PersonRolesPanel({ onClose, roles }: { onClose?: () => void; roles?: RecordRole[] }) {
+export function PersonRolesPanel({ onClose, roles, company }: { onClose?: () => void; roles?: RecordRole[]; company?: string }) {
   return (
     <Card title="Person roles" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
       <Text size="sm" tone="secondary" as="p">
-        {roles ? 'One person record links every role this person has had with the company.' : 'One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).'}
+        {roles ? `One person record links every role in ${company ?? 'the company'}.` : 'One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).'}
       </Text>
       <RolesList roles={roles} />
     </Card>

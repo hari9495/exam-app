@@ -159,11 +159,11 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       ids.imran = await hire({ givenName: 'Imran', legalEntityId: ids.tn, workEmail: `imran-${runId}@ppl.test` }, { locationId: ids.hsr, departmentId: ids.prod, managerEmployeeId: ids.lakshmi, costCentres: [{ costCentreId: ids.ccTn, percent: '100' }] });
       const person = (await api('hrA', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body;
       // The phone is Personal class (P02 §4.4, YX-SEC-07): this HR holds employee.profile.view only. The work email shows.
-      expect(person).toMatchObject({ givenName: 'Lakshmi', familyName: 'Venkatesan', primaryEmail: email('lakshmiA'), primaryPhone: null, status: 'active', loginLinked: true });
+      expect(person).toMatchObject({ company: 'Org A', givenName: 'Lakshmi', familyName: 'Venkatesan', primaryEmail: email('lakshmiA'), primaryPhone: null, status: 'active', loginLinked: true });
       // Stored in E.164; the person sees it.
       expect((await api('lakshmiA', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body.primaryPhone).toBe('+919845012345');
       expect(person.roles.map((r: { roleType: string; label: string }) => [r.roleType, r.label])).toEqual([
-        ['employee', 'E0001 · Kaveri Foods'],
+        ['employee', 'Employment E0001 · Kaveri Foods'],
         ['login', email('lakshmiA')],
       ]);
     });
