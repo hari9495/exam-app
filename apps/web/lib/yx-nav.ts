@@ -78,7 +78,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations'), ...when(Boolean(n.designated), L('my-annual-declarations', 'Annual declarations', '/yx/me/annual-declarations', 'declarationsDue')), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations'), ...when(Boolean(n.designated), L('my-annual-declarations', 'Annual declarations', '/yx/me/annual-declarations', 'declarationsDue'), L('my-preclearance', 'Trading pre-clearance', '/yx/me/pre-clearance')), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };
@@ -129,7 +129,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
         ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
         ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
-        ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations')),
+        ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations'), L('pre-clearance', 'Pre-clearance requests', '/yx/people/pre-clearance')),
       ]),
     ],
   };

@@ -4,7 +4,7 @@ import { ID_TYPES } from './identity-checks.service';
 import { PAN } from '../org-structure/org-validation';
 
 // Bodies for the person record's panels (PPL-34 identity checks, PPL-45 work authorisations) and the person's own
-// disability declaration (PPL-38); possible same person and merges (PPL-36, PPL-37); BFSI declarations (PPL-43).
+// disability declaration (PPL-38); possible same person and merges (PPL-36, PPL-37); BFSI declarations (PPL-43) and pre-clearance (PPL-44).
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
@@ -138,4 +138,40 @@ export class BfsiCoiDto {
 
   @IsOptional() @IsString() @MaxLength(2000)
   details?: string;
+}
+
+export class PreclearanceDto {
+  @IsString() @MinLength(1) @MaxLength(200)
+  security!: string;
+
+  @IsIn(['buy', 'sell'])
+  side!: 'buy' | 'sell';
+
+  @IsInt() @Min(1) @Max(1_000_000_000)
+  quantity!: number;
+
+  @IsInt() @Min(1) @Max(100_000_000_000)
+  value!: number;
+
+  @Equals(true, { message: 'Confirm you hold no unpublished price-sensitive information about this company.' })
+  noUpsi!: boolean;
+}
+
+export class TradeReportDto {
+  @IsDateString({ strict: true }) @Matches(DATE, { message: 'tradedOn is a date (YYYY-MM-DD)' })
+  tradedOn!: string;
+
+  @IsInt() @Min(1) @Max(1_000_000_000)
+  quantity!: number;
+
+  @IsUUID()
+  contractNoteDocumentId!: string;
+}
+
+export class DecisionDto {
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
 }

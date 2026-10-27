@@ -105,6 +105,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   // PPL-43: the day each financial year's BFSI declarations are due (designated persons).
   'bfsi.declaration_due': { label: 'Annual BFSI declarations are due on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['04-30', '06-30', '09-30', '10-15', '12-31'], default: '10-15' },
+  // PPL-44: trading pre-clearance for designated persons: the quarterly value that needs it, how long an approval
+  // lasts (trading days) and how soon the compliance officer decides.
+  'bfsi.preclearance_threshold': { label: 'Pre-clearance is needed for trades in a quarter above (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['500000', '1000000', '2500000'], default: '1000000' },
+  'bfsi.preclearance_valid_days': { label: 'A pre-clearance is valid for (trading days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10'], default: '7' },
+  'bfsi.preclearance_decide_days': { label: 'The compliance officer decides within (working days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3'], default: '2' },
   // PPL-45: reminders before a visa, permit or national ID expires (days before; the person is told each time).
   'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
   // PPL-32: an employee's own identity or bank change carries proof (a cancelled cheque, the PAN card, a gazette notice).

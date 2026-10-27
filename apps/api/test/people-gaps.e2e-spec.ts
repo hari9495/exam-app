@@ -10,12 +10,13 @@ import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
 import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.service';
+import { tradingDaysFrom } from '../src/people/preclearance.service';
 
 // The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
 // authorisations (PPL-45), international bank details (PPL-46), disability declarations (PPL-38), possible same person, merge and
-// unmerge (PPL-36/37), BFSI declarations (PPL-43). Each with its key,
+// unmerge (PPL-36/37), BFSI declarations (PPL-43), trading pre-clearance (PPL-44). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, PPL-36, PPL-37, PPL-43)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, PPL-36, PPL-37, PPL-43, PPL-44)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -457,6 +458,61 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       await api('hrPlain', 'delete', `/people/bfsi/designations/${ids.imran}`).expect(200);
       await api('hrPlain', 'delete', `/people/bfsi/designations/${ids.imran}`).expect(404);
       expect((await api('hrPlain', 'get', '/people/bfsi/register').expect(200)).body.rows.map((r: { employeeId: string }) => r.employeeId)).toEqual([ids.arjun]);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ pre-clearance (PPL-44)
+
+  describe('trading pre-clearance (PPL-44)', () => {
+    const ask = { security: 'Deccan Agro Industries Ltd', side: 'sell', quantity: 350, value: 1225000, noUpsi: true };
+
+    it('only designated persons ask; the request is validated', async () => {
+      await api('hrA', 'get', '/people/me/pre-clearance').expect(404); // no employee record
+      await api('arjunU', 'post', '/people/me/pre-clearance').send({ ...ask, noUpsi: false }).expect(400);
+      await api('arjunU', 'post', '/people/me/pre-clearance').send({ ...ask, side: 'short' }).expect(400);
+      await api('arjunU', 'post', '/people/me/pre-clearance').send({ ...ask, quantity: 0 }).expect(400);
+      const r = (await api('arjunU', 'post', '/people/me/pre-clearance').send(ask).expect(201)).body;
+      expect(r.referenceNo).toMatch(/^PC-\d{4}-0001$/);
+      ids.pc1 = r.id;
+      const mine = (await api('arjunU', 'get', '/people/me/pre-clearance').expect(200)).body;
+      expect(mine.rules).toEqual({ threshold: 1000000, validDays: 7, decideDays: 2 });
+      expect(mine.requests[0]).toMatchObject({ referenceNo: r.referenceNo, status: 'Pending', value: '1225000' });
+    });
+
+    it('the officer in scope decides (a reason to reject); approval is valid for the trading days', async () => {
+      await api('hrA', 'get', '/people/pre-clearance').expect(403);
+      expect((await api('hrTn', 'get', '/people/pre-clearance').expect(200)).body.rows).toEqual([]);
+      await api('hrTn', 'post', `/people/pre-clearance/${ids.pc1}/decision`).send({ decision: 'approve' }).expect(404);
+      await api('hrPlain', 'post', `/people/pre-clearance/${ids.pc1}/decision`).send({ decision: 'reject' }).expect(400);
+      await api('hrPlain', 'post', `/people/pre-clearance/${ids.pc1}/decision`).send({ decision: 'approve' }).expect(201);
+      await api('hrPlain', 'post', `/people/pre-clearance/${ids.pc1}/decision`).send({ decision: 'approve' }).expect(409);
+      const row = (await api('hrPlain', 'get', '/people/pre-clearance').expect(200)).body.rows[0];
+      expect(row).toMatchObject({ status: 'Approved', validUntil: tradingDaysFrom(todayIst(), 7), name: 'Arjun' });
+      const told = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, recipientUserId: users.arjunU, type: 'workflow.approval.decided' } }));
+      expect(told).toHaveLength(1);
+    });
+
+    it('the trade is reported once, within the window, with the person\u2019s own contract note', async () => {
+      const note = await tenantPrisma.forTenant(ctx('A'), async (tx) => {
+        const personId = (await tx.employee.findFirstOrThrow({ where: { id: ids.arjun } })).personId!;
+        return (await tx.document.create({ data: { organizationId: org.A.id, personId, typeKey: 'contract_note', status: 'uploaded' } })).id;
+      });
+      const pan = await tenantPrisma.forTenant(ctx('A'), async (tx) => (await tx.document.findFirstOrThrow({ where: { organizationId: org.A.id, typeKey: 'disability_certificate' } })).id);
+      const path = `/people/me/pre-clearance/${ids.pc1}/report`;
+      await api('arjunU', 'post', path).send({ tradedOn: addDays(todayIst(), 1), quantity: 350, contractNoteDocumentId: note }).expect(400); // the future
+      await api('arjunU', 'post', path).send({ tradedOn: todayIst(), quantity: 351, contractNoteDocumentId: note }).expect(400);
+      await api('arjunU', 'post', path).send({ tradedOn: todayIst(), quantity: 350, contractNoteDocumentId: pan }).expect(400);
+      await api('arjunU', 'post', path).send({ tradedOn: todayIst(), quantity: 300, contractNoteDocumentId: note }).expect(201);
+      await api('arjunU', 'post', path).send({ tradedOn: todayIst(), quantity: 300, contractNoteDocumentId: note }).expect(409);
+      expect((await api('arjunU', 'get', '/people/me/pre-clearance').expect(200)).body.requests[0]).toMatchObject({ status: 'Done', tradedOn: todayIst(), tradedQuantity: 300 });
+    });
+
+    it('the officer never decides their own request', async () => {
+      // hrPlain becomes a designated employee with their own login.
+      const own = await hire('KF', 'Officer', 'KF0400', { workEmail: email('hrPlain'), userId: users.hrPlain });
+      await api('hrPlain', 'post', `/people/bfsi/designations/${own}`).expect(201);
+      const r = (await api('hrPlain', 'post', '/people/me/pre-clearance').send(ask).expect(201)).body;
+      await api('hrPlain', 'post', `/people/pre-clearance/${r.id}/decision`).send({ decision: 'approve' }).expect(403);
     });
   });
 });

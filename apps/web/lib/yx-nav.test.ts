@@ -131,6 +131,8 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
     // PPL-38: the HR diversity role.
     expect(labels(nav(['employee.disability.view']), 'people')).toEqual(['Declarations']);
+    // PPL-43 / PPL-44: the compliance officer.
+    expect(labels(nav(['compliance.declaration.manage']), 'people')).toEqual(['Regulated declarations', 'Pre-clearance requests']);
     expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));
     const hr = nav(['employee.profile.view', 'payroll.fnf.manage']);
     expect(labels(hr, 'people')).toContain('F&F');

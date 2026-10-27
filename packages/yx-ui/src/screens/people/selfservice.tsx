@@ -1043,37 +1043,179 @@ export function BfsiPhone() {
 
 export type PreclearView = 'request' | 'approved' | 'blocked' | 'report' | 'expired';
 
+/** One pre-clearance as the person and the officer see it (live). */
+export interface PreclearanceItem {
+  id: string;
+  name?: string | null;
+  referenceNo: string;
+  security: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  value: number;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Expired' | 'Done';
+  requestedAt: Date;
+  decidedBy: string | null;
+  decidedAt: Date | null;
+  decisionNote: string | null;
+  validUntil: Date | null;
+  tradedOn: Date | null;
+}
+export interface PreclearanceRules {
+  threshold: number;
+  validDays: number;
+  decideDays: number;
+}
+export interface PreclearanceInput {
+  security: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  value: number;
+  noUpsi: true;
+}
+/** PPL-44 live: my pre-clearances (the page shows the toasts). */
+export interface LivePreclearance {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rules: PreclearanceRules;
+  requests: PreclearanceItem[];
+  onRequest: (input: PreclearanceInput) => Promise<void>;
+  /** Stores the contract note in my documents; resolves to its id. */
+  onUploadNote: (file: File) => Promise<string>;
+  onReport: (id: string, report: { tradedOn: string; quantity: number; contractNoteDocumentId: string }) => Promise<void>;
+}
+
+const tradeTitle = (p: Pick<PreclearanceItem, 'side' | 'quantity' | 'security'>) => `${p.side === 'buy' ? 'Buy' : 'Sell'} ${p.quantity.toLocaleString('en-IN')} ${p.security}`;
+const preclearDescription = (r: PreclearanceRules, live: boolean) =>
+  `Designated persons need pre-clearance for trades above ${formatINR(r.threshold)} in a quarter. Approval is valid for ${r.validDays} trading days${live ? '.' : ' and never during a closed trading window.'}`;
+
+function PreclearanceForm({ disabled, onCancel, onRequest }: { disabled?: boolean; onCancel?: () => void; onRequest?: LivePreclearance['onRequest'] }) {
+  const [security, setSecurity] = useState('');
+  const [side, setSide] = useState<'buy' | 'sell' | null>(null);
+  const [quantity, setQuantity] = useState<number | null>(null);
+  const [value, setValue] = useState<number | null>(null);
+  const [noUpsi, setNoUpsi] = useState(false);
+  const { run, busy, error } = useRun();
+  if (!onRequest)
+    return (
+      <div className="yx-ppl__form">
+        <FormField label="Security" required>
+          <Select options={[{ value: 'dai', label: 'Deccan Agro Industries Ltd' }]} value="dai" onChange={() => {}} disabled={disabled} />
+        </FormField>
+        <FormField label="Buy or sell" required>
+          <RadioGroup value="sell" onChange={() => {}} orientation="horizontal" disabled={disabled} options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }]} />
+        </FormField>
+        <FormField label="Quantity" required>
+          <NumberField value={350} onChange={() => {}} disabled={disabled} />
+        </FormField>
+        <FormField label="Approximate value" required>
+          <CurrencyField value={1225000} onChange={() => {}} disabled={disabled} />
+        </FormField>
+        <Checkbox label="I don't hold unpublished price-sensitive information about this company" defaultChecked disabled={disabled} />
+        <div className="yx-ppl__row">
+          <Button>Cancel</Button>
+          <Button variant="primary" disabled={disabled}>
+            Request pre-clearance
+          </Button>
+        </div>
+      </div>
+    );
+  const ready = security.trim() && side && quantity && quantity > 0 && value && value > 0 && noUpsi;
+  return (
+    <div className="yx-ppl__form">
+      <FormField label="Security" required helper="The company’s name as on the exchange.">
+        <TextField value={security} onChange={setSecurity} maxLength={200} />
+      </FormField>
+      <FormField label="Buy or sell" required>
+        <RadioGroup value={side ?? ''} onChange={(v) => setSide(v as 'buy' | 'sell')} orientation="horizontal" options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }]} />
+      </FormField>
+      <FormField label="Quantity" required>
+        <NumberField value={quantity} onChange={setQuantity} />
+      </FormField>
+      <FormField label="Approximate value" required>
+        <CurrencyField value={value} onChange={setValue} />
+      </FormField>
+      <Checkbox checked={noUpsi} onChange={setNoUpsi} label="I don't hold unpublished price-sensitive information about this company" />
+      {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+      <div className="yx-ppl__row">
+        {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+        <Button variant="primary" disabled={!ready} loading={busy === 'request'} onClick={() => void run('request', () => onRequest({ security: security.trim(), side: side!, quantity: quantity!, value: Math.round(value!), noUpsi: true }))}>
+          Request pre-clearance
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TradeReport({ item, today, live }: { item: PreclearanceItem; today: Date; live: LivePreclearance }) {
+  const [on, setOn] = useState<Date | null>(null);
+  const [quantity, setQuantity] = useState<number | null>(item.quantity);
+  const [note, setNote] = useState<string | null>(null);
+  const { run, busy, error } = useRun();
+  const ready = on && quantity && quantity > 0 && quantity <= item.quantity && note;
+  return (
+    <div className="yx-ppl__form">
+      <h3 className="yx-ppl__section-title">Report the trade</h3>
+      <FormField label="Traded on" required>
+        <DatePicker value={on} onChange={setOn} min={item.decidedAt ?? undefined} max={item.validUntil && item.validUntil < today ? item.validUntil : today} aria-label="Traded on" />
+      </FormField>
+      <FormField label="Quantity traded" required error={quantity && quantity > item.quantity ? `You were cleared for ${item.quantity}.` : null}>
+        <NumberField value={quantity} onChange={setQuantity} />
+      </FormField>
+      <FormField label="Contract note" required>
+        <FileUpload multiple={false} upload={async (file) => setNote(await live.onUploadNote(file))} accept={['.pdf']} maxSize={5 * 1024 * 1024} />
+      </FormField>
+      {error && <InlineAlert tone="danger" title="Not reported">{error}</InlineAlert>}
+      <div>
+        <Button variant="primary" disabled={!ready} loading={busy === 'report'} onClick={() => void run('report', () => live.onReport(item.id, { tradedOn: dayKey(on!), quantity: quantity!, contractNoteDocumentId: note! }))}>
+          Report trade
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LivePreclearancePage({ today, live }: { today: Date; live: LivePreclearance }) {
+  const [asking, setAsking] = useState(false);
+  const item = live.requests[0];
+  const state = (i: PreclearanceItem) => (i.status === 'Done' ? 'trade reported' : i.status === 'Expired' ? 'expired: report or re-apply' : 'valid');
+  return (
+    <MeFrame active="Declarations">
+      <PageHeader title="Trading pre-clearance" description={preclearDescription(live.rules, true)} actions={item && !asking && item.status !== 'Pending' ? <Button onClick={() => setAsking(true)}>New request</Button> : undefined} />
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load your pre-clearances" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' ? (
+        <ListSkeleton label="Loading your pre-clearances" />
+      ) : !item || asking ? (
+        <PreclearanceForm onCancel={item ? () => setAsking(false) : undefined} onRequest={async (x) => (await live.onRequest(x), setAsking(false))} />
+      ) : (
+        <Card title={`${tradeTitle(item)} · ${item.referenceNo}`} actions={<StatusBadge status={item.status} />}>
+          <dl className="yx-ppl__rail-facts">
+            <div><dt>Decision</dt><dd>{item.status === 'Pending' ? `Waiting for the compliance officer, who decides within ${live.rules.decideDays} working days` : `${item.status === 'Rejected' ? 'Rejected' : 'Approved'} by ${item.decidedBy ?? 'the compliance officer'} (compliance officer) on ${formatDate(item.decidedAt!)}`}</dd></div>
+            {item.validUntil && <div><dt>Valid until</dt><dd>{formatDate(item.validUntil)} ({state(item)})</dd></div>}
+            <div><dt>Value</dt><dd>{formatINR(item.value)}</dd></div>
+            {item.decisionNote && <div><dt>Note</dt><dd>{item.decisionNote}</dd></div>}
+          </dl>
+          {(item.status === 'Approved' || item.status === 'Expired') && <TradeReport item={item} today={today} live={live} />}
+          {item.status === 'Expired' && <InlineAlert tone="warning">The window ended without a trade report. Report the trade if you made it, or request again.</InlineAlert>}
+          {item.status === 'Done' && <InlineAlert tone="success">Trade reported on {formatDate(item.tradedOn!)}. Late or missing reports alert the compliance officer.</InlineAlert>}
+        </Card>
+      )}
+    </MeFrame>
+  );
+}
+
 // PPL-44
-export function TradingPreclearance({ view = 'request', today }: { view?: PreclearView; today: Date }) {
+export function TradingPreclearance({ view = 'request', today, live }: { view?: PreclearView; today: Date; live?: LivePreclearance }) {
+  if (live) return <LivePreclearancePage today={today} live={live} />;
   const approvedOn = view === 'expired' ? new Date(2026, 8, 14) : new Date(2026, 8, 28);
   const state = preclearanceState(approvedOn, 7, today, view === 'report', view === 'blocked');
   const validUntil = addDays(approvedOn, 6);
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Trading pre-clearance" description="Designated persons need pre-clearance for trades above ₹10,00,000 in a quarter. Approval is valid for 7 trading days and never during a closed trading window." />
+      <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 }, false)} />
       {view === 'blocked' && <InlineAlert tone="danger" title="Trading window closed until 16 Oct 2026">Quarterly results are due. You can't request or use a pre-clearance until the window reopens.</InlineAlert>}
       {view === 'request' || view === 'blocked' ? (
-        <div className="yx-ppl__form">
-          <FormField label="Security" required>
-            <Select options={[{ value: 'dai', label: 'Deccan Agro Industries Ltd' }]} value="dai" onChange={() => {}} disabled={view === 'blocked'} />
-          </FormField>
-          <FormField label="Buy or sell" required>
-            <RadioGroup value="sell" onChange={() => {}} orientation="horizontal" disabled={view === 'blocked'} options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }]} />
-          </FormField>
-          <FormField label="Quantity" required>
-            <NumberField value={350} onChange={() => {}} disabled={view === 'blocked'} />
-          </FormField>
-          <FormField label="Approximate value" required>
-            <CurrencyField value={1225000} onChange={() => {}} disabled={view === 'blocked'} />
-          </FormField>
-          <Checkbox label="I don't hold unpublished price-sensitive information about this company" defaultChecked disabled={view === 'blocked'} />
-          <div className="yx-ppl__row">
-            <Button>Cancel</Button>
-            <Button variant="primary" disabled={view === 'blocked'}>
-              Request pre-clearance
-            </Button>
-          </div>
-        </div>
+        <PreclearanceForm disabled={view === 'blocked'} />
       ) : (
         <Card title="Sell 350 Deccan Agro Industries Ltd · PC-2026-0114" actions={<StatusBadge status={state === 'valid' ? 'Approved' : state === 'trade reported' ? 'Done' : 'Expired'} />}>
           <dl className="yx-ppl__rail-facts">
@@ -1104,29 +1246,66 @@ export function TradingPreclearance({ view = 'request', today }: { view?: Precle
   );
 }
 
+/** PPL-44 live: the compliance officer's decisions (the page shows the toasts). */
+export interface LivePreclearanceQueue {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rules: PreclearanceRules;
+  rows: PreclearanceItem[];
+  onDecide: (id: string, approve: boolean, note?: string) => Promise<void>;
+}
+
 // PPL-44 · compliance officer list
-export function PreclearanceQueue() {
-  const rows = [
-    { id: '1', name: 'Arjun Kulkarni', trade: 'Sell 350 Deccan Agro Industries Ltd', value: 1225000, requested: new Date(2026, 8, 28), status: 'Pending' },
-    { id: '2', name: 'Sana Nizami', trade: 'Buy 500 Coromandel Textiles Ltd', value: 1840000, requested: new Date(2026, 8, 26), status: 'Approved' },
-    { id: '3', name: 'Suresh Pillai', trade: 'Sell 1,000 Nilgiri Logistics Ltd', value: 2100000, requested: new Date(2026, 8, 12), status: 'Expired' },
-  ];
+export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
+  const [rejecting, setRejecting] = useState<PreclearanceItem | null>(null);
+  const [reason, setReason] = useState('');
+  const { run, busy, error } = useRun();
+  const rows = live
+    ? live.rows.map((r) => ({ id: r.id, name: r.name ?? '', trade: tradeTitle(r), value: r.value, requested: r.requestedAt, status: r.status as string }))
+    : [
+        { id: '1', name: 'Arjun Kulkarni', trade: 'Sell 350 Deccan Agro Industries Ltd', value: 1225000, requested: new Date(2026, 8, 28), status: 'Pending' },
+        { id: '2', name: 'Sana Nizami', trade: 'Buy 500 Coromandel Textiles Ltd', value: 1840000, requested: new Date(2026, 8, 26), status: 'Approved' },
+        { id: '3', name: 'Suresh Pillai', trade: 'Sell 1,000 Nilgiri Logistics Ltd', value: 2100000, requested: new Date(2026, 8, 12), status: 'Expired' },
+      ];
+  const r = live?.rules ?? { decideDays: 2, validDays: 7 };
   return (
     <PeopleFrame active="Declarations">
-      <PageHeader title="Pre-clearance requests" status={<Badge tone="warning">Confidential</Badge>} description="Decide within 2 working days. Approvals are valid for 7 trading days." />
-      <DataTable
-        label="Pre-clearance requests"
-        columns={[
-          { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }), width: 200 },
-          { key: 'trade', header: 'Trade', value: (r) => r.trade, width: 300 },
-          { key: 'value', header: 'Value', type: 'money', value: (r) => r.value, width: 140 },
-          { key: 'requested', header: 'Requested', type: 'date', value: (r) => r.requested, width: 130 },
-          { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Expired' ? 'neutral' : 'warning'), width: 120 },
-        ]}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowButtons={(r) => (r.status === 'Pending' ? (<><Button size="sm">Reject</Button><Button variant="approve" size="sm">Approve</Button></>) : null)}
-      />
+      <PageHeader title="Pre-clearance requests" status={<Badge tone="warning">Confidential</Badge>} description={`Decide within ${r.decideDays} working days. Approvals are valid for ${r.validDays} trading days.`} />
+      {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the requests" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading the requests" />
+      ) : (
+        <DataTable
+          label="Pre-clearance requests"
+          columns={[
+            { key: 'name', header: 'Person', type: 'person', value: (x) => x.name, person: (x) => ({ name: x.name }), width: 200 },
+            { key: 'trade', header: 'Trade', value: (x) => x.trade, width: 300 },
+            { key: 'value', header: 'Value', type: 'money', value: (x) => x.value, width: 140 },
+            { key: 'requested', header: 'Requested', type: 'date', value: (x) => x.requested, width: 130 },
+            { key: 'status', header: 'Status', type: 'status', value: (x) => x.status, statusTone: (v) => (v === 'Approved' || v === 'Done' ? 'success' : v === 'Expired' ? 'neutral' : v === 'Rejected' ? 'danger' : 'warning'), width: 120 },
+          ]}
+          rows={rows}
+          getRowId={(x) => x.id}
+          rowButtons={(x) =>
+            x.status === 'Pending' ? (
+              <>
+                <Button size="sm" onClick={live ? () => (setReason(''), setRejecting(live.rows.find((y) => y.id === x.id)!)) : undefined}>Reject</Button>
+                <Button variant="approve" size="sm" loading={busy === x.id} onClick={live ? () => void run(x.id, () => live.onDecide(x.id, true)) : undefined}>Approve</Button>
+              </>
+            ) : null
+          }
+          empty={<EmptyState title="No requests" description="Designated persons' pre-clearance requests appear here." />}
+        />
+      )}
+      {live && rejecting && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setRejecting(null)} title={`Reject ${tradeTitle(rejecting)}?`} consequence={`${rejecting.name ?? 'The person'} sees your reason and may not trade on it.`} confirmLabel="Reject" destructive confirmDisabled={!reason.trim()} onConfirm={() => live.onDecide(rejecting.id, false, reason.trim())}>
+          <FormField label="Reason" required>
+            <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </PeopleFrame>
   );
 }

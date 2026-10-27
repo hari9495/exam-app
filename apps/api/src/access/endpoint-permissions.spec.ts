@@ -57,7 +57,7 @@ const IMPLICIT: Record<string, string[]> = {
   // PPL-34 on: the person record's panels, each with its class's key (the service checks scope per person).
   PersonPanelsController: ['myDisability', 'declareDisability', 'withdrawDisability'], // one's own disability declaration (PPL-38)
   // PPL-43: a designated person's own declaration (the service checks the designation).
-  BfsiController: ['myBfsi', 'addHolding', 'removeHolding', 'addRelated', 'removeRelated', 'saveCoi', 'submitBfsi'],
+  BfsiController: ['myBfsi', 'addHolding', 'removeHolding', 'addRelated', 'removeRelated', 'saveCoi', 'submitBfsi', 'myPreclearance', 'requestPreclearance', 'reportTrade'],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
   // PPL-03: a manager's read-only view of the team's Public and Internal documents.

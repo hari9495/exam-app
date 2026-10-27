@@ -9,9 +9,10 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { EmployeeHistoryService, RequestUser } from '../employee-history/employee-history.service';
 import { BfsiService } from './bfsi.service';
-import { BfsiCoiDto, BfsiHoldingDto, BfsiRelatedDto } from './person-panels.dto';
+import { BfsiCoiDto, BfsiHoldingDto, BfsiRelatedDto, DecisionDto, PreclearanceDto, TradeReportDto } from './person-panels.dto';
+import { PreclearanceService } from './preclearance.service';
 
-// BFSI declarations (PPL-43). The designated person keeps their own declaration (the service checks they are
+// BFSI declarations (PPL-43) and trading pre-clearance (PPL-44). The designated person keeps their own declaration (the service checks they are
 // designated); compliance.declaration.manage is the compliance officer, for the designated persons in scope.
 @Controller('people')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -19,6 +20,7 @@ export class BfsiController {
   constructor(
     private readonly history: EmployeeHistoryService,
     private readonly bfsi: BfsiService,
+    private readonly preclearance: PreclearanceService,
   ) {}
 
   private viewer(req: Request) {
@@ -67,6 +69,37 @@ export class BfsiController {
   async submitBfsi(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     ownSession(req);
     return this.bfsi.submit(ctx, await this.viewer(req));
+  }
+
+  @Get('me/pre-clearance')
+  async myPreclearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.preclearance.my(ctx, await this.viewer(req));
+  }
+
+  @Post('me/pre-clearance')
+  async requestPreclearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PreclearanceDto) {
+    ownSession(req);
+    return this.preclearance.request(ctx, await this.viewer(req), dto);
+  }
+
+  @Post('me/pre-clearance/:id/report')
+  async reportTrade(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TradeReportDto) {
+    ownSession(req);
+    return this.preclearance.report(ctx, await this.viewer(req), id, dto);
+  }
+
+  @Get('pre-clearance')
+  @RequirePermissions('compliance.declaration.manage')
+  async preclearanceQueue(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.preclearance.queue(ctx, await this.viewer(req));
+  }
+
+  @Post('pre-clearance/:id/decision')
+  @RequirePermissions('compliance.declaration.manage')
+  async decidePreclearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto) {
+    ownSession(req);
+    return this.preclearance.decide(ctx, await this.viewer(req), id, dto.decision === 'approve', dto.note);
   }
 
   @Get('bfsi/register')
