@@ -393,16 +393,24 @@ export class PeopleService {
       const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'employments').map((r) => r.sourceId) } } });
       const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: employments.map((e) => e.legalEntityId) } }, select: { id: true, name: true } });
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'users').map((r) => r.sourceId) } }, select: { id: true, email: true } });
+      const joins = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'preboardings').map((r) => r.sourceId) } }, select: { id: true, designationId: true } });
+      const titles = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: joins.flatMap((j) => (j.designationId ? [j.designationId] : [])) } }, select: { id: true, name: true } });
       const label = (r: (typeof roles)[number]) => {
         if (r.sourceTable === 'employments') {
           const e = employments.find((x) => x.id === r.sourceId);
-          return e ? `${e.employeeCode} · ${entities.find((x) => x.id === e.legalEntityId)?.name ?? ''}`.trim() : null;
+          return e ? `Employment ${e.employeeCode} · ${entities.find((x) => x.id === e.legalEntityId)?.name ?? ''}`.trim() : null;
         }
         if (r.sourceTable === 'users') return users.find((u) => u.id === r.sourceId)?.email ?? null;
+        if (r.sourceTable === 'preboardings') {
+          const title = titles.find((t) => t.id === joins.find((j) => j.id === r.sourceId)?.designationId)?.name;
+          return `Pre-boarding${title ? ` · ${title}` : ''}`;
+        }
         return null;
       };
       return {
         id: person.id,
+        // PPL-35: "One person record links every role in <company>".
+        company: (await tx.organization.findUniqueOrThrow({ where: { id: c.organizationId }, select: { name: true } })).name,
         givenName: person.givenName,
         familyName: person.familyName,
         preferredName: person.preferredName,

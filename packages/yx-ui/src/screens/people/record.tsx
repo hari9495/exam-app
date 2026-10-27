@@ -1,6 +1,7 @@
 // PPL-03 Person record workspace (DESIGN-SYSTEM §13, M01 §3.1, P06 §7, P05 §7) with
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
 import { useMemo, useState, type ReactNode } from 'react';
+import { getCountries } from 'libphonenumber-js';
 import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
@@ -8,17 +9,21 @@ import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigg
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { MenuItem } from '../../components/menu';
+import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
-import { FormField } from '../../components/field';
-import { TextField, NumberField } from '../../components/inputs';
+import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { Drawer } from '../../components/drawer';
+import { TextArea, TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
+import { dayKey } from '../../lib/dates';
+import { errorText } from '../org/org-kit';
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
-import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { ClassBadge, FactRail, FieldList, ListSkeleton, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
 import { FamilyCards, type RecordFamily } from './family';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
@@ -93,6 +98,39 @@ export interface RecordPerformance {
   onOpenGoals?: () => void;
 }
 
+/** PPL-34 Identity panel, live: HR's identity checks on the person (Special class; opening it is recorded). */
+export interface LiveIdentity {
+  state: 'idle' | 'loading' | 'error' | 'ready';
+  /** Opening the panel loads it (each load is a recorded view). */
+  onOpen: () => void;
+  onRetry: () => void;
+  checks: { kind: 'day1' | 'attested' | 'requested'; at: Date; by: string | null; note: string | null }[];
+  /** The photo IDs HR may ask a fresh copy of. */
+  idTypes: { key: string; name: string }[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onReverify?: (typeKey: string) => Promise<void>;
+  onAttest?: (note: string) => Promise<void>;
+}
+
+export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
+export type WorkAuthKind = (typeof WORK_AUTH_KINDS)[number];
+const WORK_AUTH_KIND: Record<WorkAuthKind | 'passport', string> = { employment_visa: 'Employment visa', residence_visa: 'Residence visa', work_permit: 'Work permit', national_id: 'National ID', passport: 'Passport' };
+const REGION = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRY_OPTIONS = getCountries()
+  .map((c) => ({ value: c as string, label: REGION.of(c) ?? c }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+/** PPL-45 Work authorisations tab, live (HR with identity access; numbers masked to the last four). */
+export interface LiveWorkAuth {
+  rows: { id: string; kind: WorkAuthKind | 'passport'; country: string | null; number: string; sponsor: string | null; occupation: string | null; expires: Date; remindedDays: number[] }[];
+  /** Today's designation: an employment visa or permit for another occupation is flagged. */
+  designation: string | null;
+  /** The company's reminder days, largest first. */
+  reminderDays: number[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onAdd?: (input: { kind: WorkAuthKind; country: string; number: string; sponsor?: string; occupation?: string; issuedOn?: string; expiresOn: string }) => Promise<void>;
+}
+
 /** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
 export interface LiveRecord {
   directoryHref: string;
@@ -126,7 +164,8 @@ export interface LiveRecord {
   time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
   assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
-  history: { rows: JobChange[]; roles: RecordRole[] } | null;
+  /** `company` names the company in the Person roles panel (PPL-35). */
+  history: { rows: JobChange[]; roles: RecordRole[]; company?: string } | null;
   asOf: Date | null;
   onAsOf: (d: Date | null) => void;
   onStartChange?: () => void;
@@ -136,6 +175,10 @@ export interface LiveRecord {
   onEditWorkPhone?: () => void;
   /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
   activity?: ActivityEntry[] | null;
+  /** Work authorisations tab (HR with identity access). */
+  workAuth?: LiveWorkAuth | null;
+  /** HR menu "Identity panel" (only for HR holding the Special key for the person). */
+  identityPanel?: LiveIdentity;
   /** Performance tab (only for viewers who may see this person's goals or reviews). */
   performance?: RecordPerformance | null;
   onIssueLetter?: () => void;
@@ -264,7 +307,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
     ...(!live ? [{ id: 'learning' as const, label: 'Learning' }] : []),
     ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
     ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
-    ...(!live && international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
+    ...(live ? (live.workAuth ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: live.workAuth.rows.length || undefined }] : []) : international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
   ];
 
   const header = live ? (
@@ -306,6 +349,11 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             {live.history && (
               <MenuItem icon={History} onSelect={() => setTab('history')}>
                 View as on a date
+              </MenuItem>
+            )}
+            {live.identityPanel && (
+              <MenuItem icon={IdCard} onSelect={() => (live.identityPanel!.onOpen(), setSide('identity'))}>
+                Identity panel
               </MenuItem>
             )}
             {live.history && (
@@ -366,7 +414,8 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
           {live.activity.length ? <ActivityFeed entries={live.activity} today={today} /> : <Text size="sm" tone="secondary" as="p">Nothing yet.</Text>}
         </Card>
       )}
-      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} onClose={live.activity ? () => setSide('activity') : undefined} />}
+      {side === 'identity' && live.identityPanel && <IdentityPanel live={live.identityPanel} name={first} onClose={() => setSide(live.activity ? 'activity' : 'roles')} />}
+      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} company={live.history.company} onClose={live.activity ? () => setSide('activity') : undefined} />}
     </div>
   ) : (
     <div className="yx-ppl__stack">
@@ -479,10 +528,19 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               <TabsContent value="history">
                 {live ? live.history && <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={live.history.rows} roles={live.history.roles} /> : <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={ARJUN_HISTORY} roles={ARJUN_ROLES} />}
               </TabsContent>
-              {!live && international && persona === 'hr' && (
-                <TabsContent value="work-auth">
-                  <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
-                </TabsContent>
+              {live ? (
+                live.workAuth && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab today={today} live={live.workAuth} />
+                  </TabsContent>
+                )
+              ) : (
+                international &&
+                persona === 'hr' && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
+                  </TabsContent>
+                )
               )}
             </>
           )}
@@ -1051,11 +1109,11 @@ function RolesList({ roles = ARJUN_ROLES }: { roles?: RecordRole[] }) {
 /* ================================================================== PPL-35 roles panel */
 
 // PPL-35
-export function PersonRolesPanel({ onClose, roles }: { onClose?: () => void; roles?: RecordRole[] }) {
+export function PersonRolesPanel({ onClose, roles, company }: { onClose?: () => void; roles?: RecordRole[]; company?: string }) {
   return (
     <Card title="Person roles" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
       <Text size="sm" tone="secondary" as="p">
-        {roles ? 'One person record links every role this person has had with the company.' : 'One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).'}
+        {roles ? `One person record links every role in ${company ?? 'the company'}.` : 'One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).'}
       </Text>
       <RolesList roles={roles} />
     </Card>
@@ -1065,15 +1123,27 @@ export function PersonRolesPanel({ onClose, roles }: { onClose?: () => void; rol
 /* ================================================================== PPL-34 identity panel */
 
 // PPL-34
-export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refused' | 'mismatch'; onClose?: () => void }) {
-  const checks =
-    state === 'refused'
+export function IdentityPanel({ state = 'consented', onClose, live, name }: { state?: 'consented' | 'refused' | 'mismatch'; onClose?: () => void; live?: LiveIdentity; name?: string }) {
+  const [dialog, setDialog] = useState<'reverify' | 'attest' | null>(null);
+  const [idType, setIdType] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  // Live: the checks HR made (no face match runs in the app yet, so the attestation is always on offer).
+  const checks = live
+    ? live.checks.map((c) => ({ at: c.at, point: LIVE_CHECK[c.kind][0], result: LIVE_CHECK[c.kind][1], by: [c.by ? `HR: ${c.by}` : null, c.note].filter(Boolean).join(' · ') }))
+    : state === 'refused'
       ? IDENTITY.checks.map((c) => ({ ...c, result: c.point === 'Application verification' ? 'ID check only (face consent refused)' : 'Attested', by: c.by === 'System' ? 'Proctor: Kavitha Rao' : c.by }))
       : state === 'mismatch'
         ? [...IDENTITY.checks.slice(0, 3), { at: new Date(2021, 2, 12), point: 'Day-1 identity check', result: 'Mismatch: HR review', by: 'System' }]
         : IDENTITY.checks;
+  const close = onClose && <Button size="sm" onClick={onClose}>Close</Button>;
+  if (live && live.state !== 'ready')
+    return (
+      <Card title="Identity" actions={close}>
+        {live.state === 'error' ? <ErrorState title="We couldn't load the identity checks" description="Retry in a moment." onRetry={live.onRetry} /> : <ListSkeleton rows={4} label="Loading the identity checks" />}
+      </Card>
+    );
   return (
-    <Card title="Identity" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
+    <Card title="Identity" actions={close}>
       <div className="yx-ppl__stack">
         <Text size="sm" tone="secondary" as="p">
           Special class. No face image is shown here. Views are recorded.
@@ -1089,17 +1159,23 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {IDENTITY.consent.map((c) => (
-              <tr key={c.jurisdiction}>
-                <td>{c.jurisdiction}</td>
-                <td>
-                  <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
-                </td>
-                <td>
-                  {c.point}, {formatDate(c.on)}
-                </td>
+            {live ? (
+              <tr>
+                <td colSpan={3}>No face-match consent on file. Identity is checked against the original ID.</td>
               </tr>
-            ))}
+            ) : (
+              IDENTITY.consent.map((c) => (
+                <tr key={c.jurisdiction}>
+                  <td>{c.jurisdiction}</td>
+                  <td>
+                    <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
+                  </td>
+                  <td>
+                    {c.point}, {formatDate(c.on)}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         </div>
@@ -1114,12 +1190,17 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {checks.map((c) => (
-              <tr key={c.point}>
+            {checks.length === 0 && (
+              <tr>
+                <td colSpan={3}>No identity checks recorded yet.</td>
+              </tr>
+            )}
+            {checks.map((c, i) => (
+              <tr key={`${c.point}-${i}`}>
                 <td>{formatDate(c.at)}</td>
                 <td>
                   {c.point}
-                  <Text size="sm" tone="secondary" as="div">{c.by}</Text>
+                  {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
                 </td>
                 <td>
                   <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge>
@@ -1129,55 +1210,202 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
           </tbody>
         </table>
         </div>
-        {state === 'mismatch' && (
+        {state === 'mismatch' && !live && (
           <InlineAlert tone="warning" title="Identity flag for HR review">
             A mismatch never blocks joining. Ask for a fresh ID and selfie, or attest against the original ID.
           </InlineAlert>
         )}
-        <div className="yx-ppl__row">
-          <Button icon={IdCard}>Request re-verification</Button>
-          {state !== 'consented' && <Button>Record HR attestation</Button>}
-        </div>
+        {!live ? (
+          <div className="yx-ppl__row">
+            <Button icon={IdCard}>Request re-verification</Button>
+            {state !== 'consented' && <Button>Record HR attestation</Button>}
+          </div>
+        ) : (
+          (live.onReverify || live.onAttest) && (
+            <div className="yx-ppl__row">
+              {live.onReverify && <Button icon={IdCard} onClick={() => (setIdType(null), setDialog('reverify'))}>Request re-verification</Button>}
+              {live.onAttest && <Button onClick={() => (setNote(''), setDialog('attest'))}>Record HR attestation</Button>}
+            </div>
+          )
+        )}
       </div>
+      {live?.onReverify && (
+        <ConfirmDialog
+          open={dialog === 'reverify'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Ask ${name} for a fresh ID?`}
+          consequence={`${name} is told in the app and by email to upload a fresh copy in My documents. You verify it in the documents queue.`}
+          confirmLabel="Send request"
+          confirmDisabled={!idType}
+          onConfirm={() => live.onReverify!(idType!)}
+        >
+          <FormField label="ID to upload" required>
+            <Select aria-label="ID to upload" value={idType} onChange={setIdType} options={live.idTypes.map((t) => ({ value: t.key, label: t.name }))} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {live?.onAttest && (
+        <ConfirmDialog
+          open={dialog === 'attest'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Record HR attestation for ${name}?`}
+          consequence={`Confirm you checked ${name}'s original ID against them in person. It is recorded with your name.`}
+          confirmLabel="Record attestation"
+          onConfirm={() => live.onAttest!(note.trim())}
+        >
+          <FormField label="Note" optional helper="Which ID you checked, for example the passport.">
+            <TextArea value={note} onChange={setNote} rows={3} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </Card>
   );
 }
 
+const LIVE_CHECK: Record<LiveIdentity['checks'][number]['kind'], [string, string]> = {
+  day1: ['Day-1 identity check', 'Attested'],
+  attested: ['HR attestation', 'Attested'],
+  requested: ['Re-verification', 'Fresh ID asked for'],
+};
+
 /* ================================================================== PPL-45 work authorisations */
 
 // PPL-45
-export function WorkAuthTab({ rows, today }: { rows: typeof ARJUN_WORK_AUTH; today: Date }) {
-  const cols: TableColumn<(typeof ARJUN_WORK_AUTH)[number]>[] = [
-    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}<Text size="sm" tone="secondary" as="div">{r.country}</Text></span>, width: 200 },
+export function WorkAuthTab({ rows: sample = [], today, live }: { rows?: typeof ARJUN_WORK_AUTH; today: Date; live?: LiveWorkAuth }) {
+  const [adding, setAdding] = useState(false);
+  type Row = { id: string; type: string; country: string; number: string; sponsor: string; occupation: string; expires: Date; status: string; differs: boolean; kind: string; reminded: number[] };
+  const soon = live?.reminderDays[0] ?? 90;
+  const rows: Row[] = live
+    ? live.rows.map((r) => {
+        const left = daysBetween(today, r.expires);
+        return {
+          id: r.id,
+          type: r.kind === 'national_id' && r.country === 'AE' ? 'Emirates ID' : WORK_AUTH_KIND[r.kind],
+          country: r.country ? REGION.of(r.country) ?? r.country : '',
+          number: r.number,
+          sponsor: r.sponsor ?? '—',
+          occupation: r.occupation ?? '—',
+          expires: r.expires,
+          status: left < 0 ? 'Expired' : left <= soon ? 'Expiring' : 'Valid',
+          differs: (r.kind === 'employment_visa' || r.kind === 'work_permit') && Boolean(r.occupation && live.designation && r.occupation.trim().toLowerCase() !== live.designation.trim().toLowerCase()),
+          kind: r.kind,
+          reminded: r.remindedDays,
+        };
+      })
+    : sample.map((r) => ({ ...r, id: r.type + r.country, differs: r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa', kind: '', reminded: [90, 60] }));
+  const cols: TableColumn<Row>[] = [
+    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}{r.country && <Text size="sm" tone="secondary" as="div">{r.country}</Text>}</span>, width: 200 },
     { key: 'number', header: 'Number', type: 'id', value: (r) => r.number, width: 170 },
     { key: 'sponsor', header: 'Sponsor', value: (r) => r.sponsor, width: 160 },
     {
       key: 'occupation',
       header: 'Occupation on permit',
       value: (r) => r.occupation,
-      render: (r) => (r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa' ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
+      render: (r) => (r.differs ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
       width: 260,
     },
     { key: 'expires', header: 'Expires', type: 'date', value: (r) => r.expires, width: 130 },
     { key: 'left', header: 'Days left', type: 'number', value: (r) => daysBetween(today, r.expires), width: 110 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expiring' ? 'warning' : 'success'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expired' ? 'danger' : v === 'Expiring' ? 'warning' : 'success'), width: 120 },
   ];
+  // The soonest to lapse: what went, what goes next, and what an expired permit stops.
+  const due = rows.filter((r) => r.status !== 'Valid').sort((a, b) => a.expires.getTime() - b.expires.getTime())[0];
+  const left = due ? daysBetween(today, due.expires) : 0;
+  const went = due ? [...due.reminded].sort((a, b) => b - a) : [];
+  const next = live && due ? live.reminderDays.filter((d) => d < left && !went.includes(d))[0] : 30;
+  const add = live ? (live.onAdd ? () => setAdding(true) : undefined) : () => {};
   return (
     <div className="yx-ppl__stack">
-      {rows.some((r) => r.status === 'Expiring') && (
-        <InlineAlert tone="warning" title="Employment visa expires on 1 Nov 2026">
-          Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.
+      {due && (
+        <InlineAlert tone={due.status === 'Expired' ? 'danger' : 'warning'} title={`${due.type} ${due.status === 'Expired' ? 'expired' : 'expires'} on ${formatDate(due.expires)}`}>
+          {!live
+            ? 'Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.'
+            : [
+                went.length ? `Reminders went at ${listDays(went)} days.` : due.kind === 'passport' ? '' : 'No reminder has gone yet.',
+                next ? `The next goes at ${next} days.` : '',
+                due.kind === 'employment_visa' || due.kind === 'work_permit' ? `Payroll approval is held once it ${due.status === 'Expired' ? 'has expired' : 'expires'}.` : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
         </InlineAlert>
       )}
       <DataTable
         label="Work authorisations"
         columns={cols}
         rows={rows}
-        getRowId={(r) => r.type + r.country}
-        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={<Button variant="primary">Add document</Button>} />}
-        toolbar={<Button icon={Plus} size="sm">Add document</Button>}
+        getRowId={(r) => r.id}
+        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={add && <Button variant="primary" onClick={add}>Add document</Button>} />}
+        toolbar={add && <Button icon={Plus} size="sm" onClick={add}>Add document</Button>}
       />
+      {adding && live?.onAdd && <AddWorkAuthDrawer today={today} onAdd={live.onAdd} onClose={() => setAdding(false)} />}
     </div>
+  );
+}
+
+const listDays = (days: number[]) => (days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]}` : String(days[0]));
+
+/** Add a visa, permit or national ID (HR, with the right to change identity details). */
+function AddWorkAuthDrawer({ today, onAdd, onClose }: { today: Date; onAdd: NonNullable<LiveWorkAuth['onAdd']>; onClose: () => void }) {
+  const [kind, setKind] = useState<WorkAuthKind | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
+  const [number, setNumber] = useState('');
+  const [sponsor, setSponsor] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [issued, setIssued] = useState<Date | null>(null);
+  const [expires, setExpires] = useState<Date | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const permit = kind === 'employment_visa' || kind === 'work_permit';
+  const errors: FormErrorItem[] = [
+    ...(!kind ? [{ fieldId: 'wa-kind', message: 'Choose the document.' }] : []),
+    ...(!country ? [{ fieldId: 'wa-country', message: 'Choose the country.' }] : []),
+    ...(!/^[A-Za-z0-9][A-Za-z0-9 /-]{3,29}$/.test(number.trim()) ? [{ fieldId: 'wa-number', message: 'Enter the number as printed: 4 to 30 letters or digits.' }] : []),
+    ...(!expires ? [{ fieldId: 'wa-expires', message: 'Choose the expiry date.' }] : issued && expires <= issued ? [{ fieldId: 'wa-expires', message: 'The expiry date must be after the issue date.' }] : []),
+  ];
+  const sv = useSaveErrors(errors);
+  const save = async () => {
+    if (errors.length) return sv.reveal();
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onAdd({ kind: kind!, country: country!, number: number.trim(), ...(sponsor.trim() ? { sponsor: sponsor.trim() } : {}), ...(permit && occupation.trim() ? { occupation: occupation.trim() } : {}), ...(issued ? { issuedOn: dayKey(issued) } : {}), expiresOn: dayKey(expires!) });
+      onClose();
+    } catch (e) {
+      setFailed(errorText(e));
+      setSaving(false);
+    }
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Add work authorisation" size="lg" dirty={Boolean(kind || country || number || sponsor || occupation || issued || expires)} notice={failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>Add document</Button></>}>
+      <div className="yx-ppl__stack">
+        {sv.showErrors && <ErrorSummary errors={sv.shownErrors} />}
+        <div className="yx-ppl__form">
+          <FormField id="wa-kind" label="Document" required error={sv.errorOf('wa-kind')}>
+            <Select aria-label="Document" value={kind} onChange={setKind} options={WORK_AUTH_KINDS.map((k) => ({ value: k, label: WORK_AUTH_KIND[k] }))} />
+          </FormField>
+          <FormField id="wa-country" label="Country" required error={sv.errorOf('wa-country')}>
+            <Select aria-label="Country" value={country} onChange={setCountry} options={COUNTRY_OPTIONS} searchable />
+          </FormField>
+          <FormField id="wa-number" label="Number" required error={sv.errorOf('wa-number')} helper="Only the last four are shown on the record.">
+            <TextField value={number} onChange={setNumber} maxLength={30} className="yx-mono" />
+          </FormField>
+          <FormField id="wa-sponsor" label="Sponsor" optional>
+            <TextField value={sponsor} onChange={setSponsor} maxLength={120} />
+          </FormField>
+          {permit && (
+            <FormField id="wa-occupation" label="Occupation on permit" optional helper="As printed. We flag it when it differs from the designation.">
+              <TextField value={occupation} onChange={setOccupation} maxLength={120} />
+            </FormField>
+          )}
+          <FormField id="wa-issued" label="Issued on" optional>
+            <DatePicker value={issued} onChange={setIssued} max={today} aria-label="Issued on" />
+          </FormField>
+          <FormField id="wa-expires" label="Expires on" required error={sv.errorOf('wa-expires')}>
+            <DatePicker value={expires} onChange={setExpires} aria-label="Expires on" />
+          </FormField>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 

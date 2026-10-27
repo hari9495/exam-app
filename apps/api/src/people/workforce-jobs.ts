@@ -5,10 +5,11 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { WorkforceService } from './workforce.service';
 import { RestructureService } from './restructure.service';
+import { WorkAuthService } from './work-auth.service';
 
 const QUEUE = 'people-jobs';
 
-/** Daily: this month's head counts per company and entity (the last run in a month stands for that month). Hourly: restructures due. */
+/** Daily: this month's head counts per company and entity (the last run in a month stands for that month), and work permit reminders. Hourly: restructures due. */
 @Injectable()
 export class WorkforceJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkforceJobs.name);
@@ -20,12 +21,13 @@ export class WorkforceJobs implements OnModuleInit, OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly workforce: WorkforceService,
     private readonly restructures: RestructureService,
+    private readonly workAuth: WorkAuthService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => (job.name === 'restructures' ? this.restructures.runDue() : this.snapshotAll()), bullOpts(this.connection)), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, async (job) => (job.name === 'restructures' ? this.restructures.runDue() : (await this.snapshotAll(), await this.workAuth.remind())), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('workforce-snapshot', { every: 24 * 3_600_000 }, { name: 'snapshot', data: {} });
     // PPL-09: approved restructures move people once their effective date has come (hourly, so a day starts on time).
     await this.queue.upsertJobScheduler('restructures-due', { every: 3_600_000 }, { name: 'restructures', data: {} });

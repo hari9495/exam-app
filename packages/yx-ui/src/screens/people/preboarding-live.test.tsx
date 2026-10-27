@@ -40,7 +40,7 @@ describe('PPL-15 pre-boarding actions, live', () => {
     const p = page();
     await ue.click(screen.getByRole('button', { name: 'Change status' }));
     expect(within(drawer()).getByText('Change pre-boarding for Sneha Pillai')).toBeInTheDocument();
-    await ue.click(within(drawer()).getByRole('button', { name: 'Postpone joining' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Change joining date' }));
     expect(within(drawer()).getByText('Pick the new joining date.')).toBeInTheDocument();
     expect(p.onPostpone).not.toHaveBeenCalled();
     await ue.type(within(drawer()).getByLabelText(/New joining date/), '26/10/2026');
@@ -48,8 +48,21 @@ describe('PPL-15 pre-boarding actions, live', () => {
     const rows = within(drawer()).getAllByRole('row');
     expect(within(rows[1]).getByText('23 Oct 2026')).toBeInTheDocument();
     expect(within(rows[2]).getByText('Done')).toBeInTheDocument();
-    await ue.click(within(drawer()).getByRole('button', { name: 'Postpone joining' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Change joining date' }));
     expect(p.onPostpone).toHaveBeenCalledWith('2026-10-26');
+  });
+
+  it('a candidate may join earlier: any day from today, not before it', async () => {
+    const p = page();
+    await ue.click(screen.getByRole('button', { name: 'Change status' }));
+    await ue.type(within(drawer()).getByLabelText(/New joining date/), '08/10/2026');
+    await ue.click(within(drawer()).getByText('Open tasks re-anchor; done tasks stay'));
+    expect(within(drawer()).getByText('Choose a date on or after 9 Oct 2026')).toBeInTheDocument();
+    await ue.clear(within(drawer()).getByLabelText(/New joining date/));
+    await ue.type(within(drawer()).getByLabelText(/New joining date/), '15/10/2026');
+    await ue.click(within(drawer()).getByText('Open tasks re-anchor; done tasks stay'));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Change joining date' }));
+    expect(p.onPostpone).toHaveBeenCalledWith('2026-10-15');
   });
 
   it('withdraw: a reason is required; reneged may go without one; the unwind says what is cancelled', async () => {

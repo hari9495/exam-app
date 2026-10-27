@@ -103,6 +103,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
+  // PPL-45: reminders before a visa, permit or national ID expires (days before; the person is told each time).
+  'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
   // PPL-32: an employee's own identity or bank change carries proof (a cancelled cheque, the PAN card, a gazette notice).
   'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.

@@ -8,7 +8,7 @@ import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type P
 import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
-import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { useChangeOptions, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
@@ -22,6 +22,7 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 interface PersonRoles {
   id: string;
+  company: string;
   primaryEmail: string | null;
   primaryPhone: string | null;
   roles: { id: string; roleType: string; startOn: string; endOn: string | null; label: string }[];
@@ -33,6 +34,16 @@ interface Balance {
   available: number;
   entitlement: number | null;
   takenThisYear: number;
+}
+interface WorkAuths {
+  designation: string | null;
+  reminderDays: number[];
+  rows: { id: string; kind: 'employment_visa' | 'residence_visa' | 'work_permit' | 'national_id' | 'passport'; country: string | null; number: string; sponsor: string | null; occupation: string | null; issuedOn: string | null; expiresOn: string; remindedDays: number[] }[];
+}
+interface IdentityChecks {
+  checks: { kind: 'day1' | 'attested' | 'requested'; at: string; by: string | null; note: string | null }[];
+  idTypes: { key: string; name: string }[];
+  canManage: boolean;
 }
 interface PersonDocs {
   personId: string;
@@ -47,7 +58,7 @@ const LOCKED_IDENTITY: FieldRow[] = [
   { label: 'Aadhaar', value: '', cls: 'Special' as const },
 ];
 
-const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', joiner: 'Joiner', alumni: 'Former employee' };
+const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', candidate: 'Candidate', consultant: 'Consultant', contract_worker: 'Contract worker', preboarder: 'Joiner', external_login: 'Help desk contact', alumni: 'Former employee' };
 
 // People › person record (PPL-03, design audit step 3): the designed record with the live person. Opened from the
 // Directory (HR, anyone their grants reach), My team (a manager, their team) and Profile (the person). The API decides
@@ -96,6 +107,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
   const payRead = usePayRead();
+  // PPL-45: HR who sees the person's identity class.
+  const workAuth = usePeople<WorkAuths>(hr && profile.data && !profile.data.self && profile.data.classes.identity ? `/employees/${p}/work-authorisations` : null);
   const activity = usePeople<{ entries: { id: string; kind: ActivityEntry['kind']; actor: string | null; at: string; text: string }[] }>(personId ? `/employees/${p}/activity` : null);
   // Performance tab: for the person, their managers (the API decides) and perf.goal.view / perf.review.view.
   const perfAllowed = Boolean(profile.data) && (Boolean(profile.data?.self) || !hr || perms.has('perf.goal.view') || perms.has('perf.review.view'));
@@ -117,6 +130,17 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [phone, setPhone] = useState('');
+  // PPL-34: loaded each time HR opens the identity panel (every load is a recorded view of Special data).
+  const [ids, setIds] = useState<{ state: 'idle' | 'loading' | 'error' | 'ready'; data: IdentityChecks | null }>({ state: 'idle', data: null });
+  const read = usePeopleRead();
+  const loadIds = async () => {
+    setIds((x) => ({ state: 'loading', data: x.data }));
+    try {
+      setIds({ state: 'ready', data: await read<IdentityChecks>(`/employees/${p}/identity-checks`) });
+    } catch {
+      setIds({ state: 'error', data: null });
+    }
+  };
 
   const reveal = async (field: RevealField) => (await write<{ value: string }>('POST', `/employees/${p}/identity/reveal`, { field })).value;
   const done = (title: string) => toast({ tone: 'success', title });
@@ -238,6 +262,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       ? {
           rows: historyRows(h, today),
           roles: (person.data?.roles ?? []).filter((r) => r.roleType !== 'login').map((r) => ({ role: ROLE[r.roleType] ?? r.roleType, from: day(r.startOn), to: r.endOn ? day(r.endOn) : null, link: r.label })),
+          company: person.data?.company,
         }
       : null,
     asOf: asOfParam ? day(asOfParam) : null,
@@ -258,6 +283,47 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       perfAllowed && (goals.data || reviews.data) && personId
         ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), feedback: feedbackCounts.data ? `${feedbackCounts.data.received} received · ${feedbackCounts.data.given} given` : null, onOpenGoals: () => router.push('/yx/performance/goals') }
         : null,
+    workAuth: workAuth.data
+      ? {
+          rows: workAuth.data.rows.map((r) => ({ ...r, expires: day(r.expiresOn) })),
+          designation: workAuth.data.designation,
+          reminderDays: workAuth.data.reminderDays,
+          // requestChange on someone else's record is employee.identity.manage for them.
+          ...(prof?.can.requestChange
+            ? {
+                onAdd: async (input: object) => {
+                  await write('POST', `/employees/${p}/work-authorisations`, input);
+                  done(`Work authorisation added for ${first}`);
+                },
+              }
+            : {}),
+        }
+      : null,
+    ...(hr && !self && perms.has('employee.aadhaar.view')
+      ? {
+          identityPanel: {
+            state: ids.state,
+            onOpen: () => void loadIds(),
+            onRetry: () => void loadIds(),
+            checks: (ids.data?.checks ?? []).map((c) => ({ ...c, at: new Date(c.at) })),
+            idTypes: ids.data?.idTypes ?? [],
+            ...(ids.data?.canManage
+              ? {
+                  onReverify: async (typeKey: string) => {
+                    await write('POST', `/employees/${p}/identity-checks/reverify`, { typeKey });
+                    done(`${first} asked for a fresh ${ids.data!.idTypes.find((t) => t.key === typeKey)?.name ?? 'ID'}`);
+                    void loadIds();
+                  },
+                  onAttest: async (note: string) => {
+                    await write('POST', `/employees/${p}/identity-checks/attest`, note ? { note } : {});
+                    done('HR attestation recorded');
+                    void loadIds();
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };
