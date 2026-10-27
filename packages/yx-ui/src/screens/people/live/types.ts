@@ -635,10 +635,24 @@ export interface MyVrsScheme {
   minServiceYears: number;
   eligible: boolean;
 }
-export interface EditorParagraph {
+/** The letter editor's paragraphs (the API's documents/letters Block): colours, highlights and sizes are the editor's presets. */
+export interface EditorRun {
   text: string;
-  bold: boolean;
-  heading: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+  highlight?: string;
+  /** Points. */
+  size?: number;
+  link?: string;
+}
+export interface EditorParagraph {
+  kind: 'normal' | 'heading' | 'subheading' | 'bullet' | 'numbered' | 'quote';
+  /** List items: 0 to 3. */
+  level?: number;
+  runs: EditorRun[];
 }
 
 /** PPL-23: what the death-in-service flow needs besides the case (GET /lifecycle/exits/:id/death). */

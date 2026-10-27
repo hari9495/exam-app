@@ -369,11 +369,22 @@ describe('Lifecycle batch 6e', () => {
   });
 
   it('the letter editor saves Word without a new library; the bulk wizard issues to many', async () => {
-    const t = (await api('adminA', 'post', '/letters/templates/compose').send({ letterType: 'notice_board', name: 'Notice', requiresApproval: false, personSigns: false, paragraphs: [{ text: '{{legal_entity}}', heading: true }, { text: 'Dear {{employee_name}},' }, { text: 'Thank you.', bold: true }] }).expect(201)).body;
+    const compose = (letterType: string, paragraphs: object[]) => api('adminA', 'post', '/letters/templates/compose').send({ letterType, name: 'Notice', requiresApproval: false, personSigns: false, paragraphs });
+    const paragraphs = [
+      { kind: 'heading', runs: [{ text: '{{legal_entity}}' }] },
+      { kind: 'normal', runs: [{ text: 'Dear ' }, { text: '{{employee_name}}', bold: true }, { text: ',' }] },
+      { kind: 'bullet', level: 0, runs: [{ text: 'Read the ', italic: true }, { text: 'policies', link: 'https://kaveri.example/policies' }] },
+      { kind: 'numbered', level: 1, runs: [{ text: 'Thank you.', underline: true, strike: true, color: '#2F5496', highlight: '#00FFFF', size: 14 }] },
+      { kind: 'quote', runs: [{ text: 'Quoted' }] },
+    ];
+    const t = (await compose('notice_board', paragraphs).expect(201)).body;
     expect(t).toMatchObject({ source: 'editor', status: 'draft', fields: expect.arrayContaining(['legal_entity', 'employee_name']) });
     const back = (await api('adminA', 'get', `/letters/templates/${t.id}/paragraphs`).expect(200)).body;
-    expect(back.paragraphs).toEqual([{ text: '{{legal_entity}}', bold: true, heading: true }, { text: 'Dear {{employee_name}},', bold: false, heading: false }, { text: 'Thank you.', bold: true, heading: false }]);
-    await api('adminA', 'post', '/letters/templates/compose').send({ letterType: 'bad_one', name: 'Bad', requiresApproval: false, personSigns: false, paragraphs: [{ text: 'Dear {{emp_nme}}' }] }).expect(400);
+    expect(back.paragraphs).toEqual(paragraphs);
+    await compose('bad_one', [{ runs: [{ text: 'Dear {{emp_nme}}' }] }]).expect(400);
+    for (const [run, why] of [[{ color: '#123456' }, /Text colour/], [{ size: 72 }, /Font size/], [{ link: 'http://kaveri.example' }, /https/], [{ font: 'Comic Sans' }, /font should not exist/]] as const) {
+      expect(JSON.stringify((await compose('bad_one', [{ runs: [{ text: 'x', ...run }] }]).expect(400)).body.message)).toMatch(why);
+    }
     const people = await inA((tx) => tx.employee.findMany({ where: { id: { in: [emp.buddy, emp.kavi] } }, select: { personId: true } }));
     const cert = (await api('hr', 'get', '/letters/templates').expect(200)).body.templates.find((x: { letterType: string; status: string }) => x.letterType === 'employment_certificate' && x.status === 'active');
     const bulk = (await api('hr', 'post', '/letters/bulk').send({ templateId: cert.id, source: 'people', personIds: people.map((x) => x.personId), confirm: 'ISSUE 2 LETTERS' }).expect(200)).body;

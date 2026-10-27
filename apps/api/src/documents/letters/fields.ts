@@ -2,7 +2,7 @@ import { CompanyContext, Tx } from '../../org-structure/org-structure.service';
 import { todayIst } from '../../org-structure/org-validation';
 import { settingFor } from '../../people/probation';
 import { withPayScope } from '../../payroll/pay-access';
-import { buildDocx } from './docx';
+import { buildDocx, type Block, type Run } from './docx';
 
 // LIFE-2.04 the merge-field registry (P05 §4.3, YX-DOC-07 / 08): every field a letter template may use, its plain
 // label and its P02 data class. Templates may only use these; an issuer must see a field's class for the person.
@@ -223,30 +223,30 @@ export const missingFields = (fields: readonly string[], data: Record<string, st
 
 // ------------------------------------------------------------------------------------------ YukthiX starter letters
 
-type Para = { text: string; bold?: boolean; heading?: boolean; centre?: boolean };
+const p = (text: string, run: Omit<Run, 'text'> = {}, block: Omit<Block, 'runs'> = {}): Block => ({ ...block, runs: [{ text, ...run }] });
 // A proper letter from day one: the letterhead (name, registered address and CIN when recorded), reference and date,
 // the addressee, a subject, the body and who signs. The QR code and the check line are stamped on issue (pdf.ts).
-const LETTERHEAD: Para[] = [
-  { text: '{{legal_entity}}', heading: true },
-  { text: '{{#legal_entity_address}}{{legal_entity_address}}{{/legal_entity_address}}', centre: true },
-  { text: '{{#legal_entity_cin}}CIN {{legal_entity_cin}}{{/legal_entity_cin}}', centre: true },
-  { text: '' },
-  { text: 'Ref: {{reference_no}}' },
-  { text: 'Date: {{today}}' },
-  { text: '' },
+const LETTERHEAD: Block[] = [
+  p('{{legal_entity}}', {}, { kind: 'heading' }),
+  p('{{#legal_entity_address}}{{legal_entity_address}}{{/legal_entity_address}}', { size: 9 }, { align: 'center' }),
+  p('{{#legal_entity_cin}}CIN {{legal_entity_cin}}{{/legal_entity_cin}}', { size: 9 }, { align: 'center' }),
+  p(''),
+  p('Ref: {{reference_no}}'),
+  p('Date: {{today}}'),
+  p(''),
 ];
-const SIGNED: Para[] = [{ text: '' }, { text: 'For {{legal_entity}}' }, { text: '' }, { text: '' }, { text: '{{signatory_name}}', bold: true }, { text: '{{signatory_title}}' }];
+const SIGNED: Block[] = [p(''), p('For {{legal_entity}}'), p(''), p(''), p('{{signatory_name}}', { bold: true }), p('{{signatory_title}}')];
 // PPL-31: an employee's own certificate goes to whom they named, else to whom it may concern, and says why they asked.
 const ADDRESSEE = '{{addressed_to}}{{^addressed_to}}To whom it may concern{{/addressed_to}}';
 const AT_REQUEST = 'This certificate is issued at their request.{{#certificate_purpose}} Purpose: {{certificate_purpose}}.{{/certificate_purpose}}';
-const letter = (to: string[], subject: string, body: string[]): Para[] => [...LETTERHEAD, ...to.map((text) => ({ text })), ...(to.length ? [{ text: '' }] : []), { text: `Subject: ${subject}`, bold: true }, { text: '' }, ...body.map((text) => ({ text })), ...SIGNED];
+const letter = (to: string[], subject: string, body: string[]): Block[] => [...LETTERHEAD, ...to.map((t) => p(t)), ...(to.length ? [p('')] : []), p(`Subject: ${subject}`, { bold: true }), p(''), ...body.map((t) => p(t)), ...SIGNED];
 
 /**
  * Starter letters (APX-F #5, #6, #12), written by YukthiX in plain English; companies download and edit them in Word.
  * `revision` goes up when YukthiX improves a starter: companies that added an older one are offered the new one as a
  * fresh draft version; the version they use (or changed) stays as it is until they switch the new one on.
  */
-export const STARTER_LETTERS: readonly { letterType: string; name: string; revision: number; requiresApproval: boolean; personSigns: boolean; onePerPerson: boolean; paragraphs: Para[] }[] = [
+export const STARTER_LETTERS: readonly { letterType: string; name: string; revision: number; requiresApproval: boolean; personSigns: boolean; onePerPerson: boolean; paragraphs: Block[] }[] = [
   {
     letterType: 'appointment',
     name: 'Appointment letter',

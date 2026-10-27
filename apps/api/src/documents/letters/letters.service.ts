@@ -14,7 +14,7 @@ import { ownOf, reachesPerson } from '../person-access';
 import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
-import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields } from './docx';
+import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields, type Block } from './docx';
 import { FIELDS, STARTER_LETTERS, letterData, longDate, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
@@ -194,9 +194,10 @@ export class LettersService implements OnModuleInit {
   }
 
   /** PPL-29 editor tab: a template written in YukthiX, saved as a new draft version (.docx, no new library). */
-  compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; onePerPerson?: boolean; paragraphs: { text: string; bold?: boolean; heading?: boolean }[] }) {
+  compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; onePerPerson?: boolean; paragraphs: Block[] }) {
     if (!dto.paragraphs.length || dto.paragraphs.length > 80) throw new BadRequestException('A letter has 1 to 80 paragraphs.');
-    const buf = buildDocx(dto.paragraphs.map((p) => ({ text: p.text.slice(0, 2000), bold: Boolean(p.bold), heading: Boolean(p.heading) })));
+    if (dto.paragraphs.some((p) => p.runs.reduce((n, r) => n + r.text.length, 0) > 2000)) throw new BadRequestException('A paragraph has at most 2000 characters.');
+    const buf = buildDocx(dto.paragraphs);
     return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: false, onePerPerson: Boolean(dto.onePerPerson), source: 'editor', fileName: `${dto.letterType}.docx`, buf });
   }
 
