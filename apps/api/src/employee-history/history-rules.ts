@@ -150,6 +150,19 @@ export function unchangedProblem(type: ChangeType, p: ChangePayload, now: Partia
   return `A ${label(type)} needs a new ${keys.map(fieldWord).join(' or ')}: that is the one in force on that date.`;
 }
 
+/**
+ * The company's rule for what a promotion must move (setting promotion.must_change): 'either' a new designation or
+ * grade (payloadProblem already checks it), 'both', or only the 'grade' / 'designation'. "New" means given and not the
+ * one in force on the date. Null when the promotion meets the rule.
+ */
+export function promotionRuleProblem(rule: string, p: ChangePayload, now: Partial<AssignmentValues> | null): string | null {
+  const moves = (k: 'designationId' | 'gradeId') => Boolean(p.assignment?.[k]) && p.assignment![k] !== now?.[k];
+  const need = rule === 'both' ? (['designationId', 'gradeId'] as const) : rule === 'grade' ? (['gradeId'] as const) : rule === 'designation' ? (['designationId'] as const) : [];
+  const missing = need.filter((k) => !moves(k));
+  if (!missing.length) return null;
+  return `Your company's rule: a promotion needs a new ${missing.map(fieldWord).join(' and a new ')}${rule === 'both' ? ' (both change)' : ''}.`;
+}
+
 /** Hours a week: above 0, at most 80, in half hours (the database checks the same). */
 export const hoursOk = (h: string) => /^\d{1,2}(\.\d{1,2})?$/.test(h) && Number(h) > 0 && Number(h) <= 80 && Number.isInteger(Number(h) * 2);
 

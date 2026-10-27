@@ -39,6 +39,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // PPL-06 (founder 20 Oct 2026): when a raise takes someone above their grade's pay range maximum (Structure › Grades),
   // the company decides: warn and let the approver decide, cap the new pay at the maximum, or refuse until it is changed.
   'pay.band.above_max': { label: 'A raise above the pay range maximum', scopes: ['tenant', 'legal_entity'], dated: false, values: ['warn', 'cap', 'block'], default: 'warn' },
+  // Founder queue 28 Oct 2026: what a promotion must move. 'either' (a new designation or grade) is the starting rule.
+  'promotion.must_change': { label: 'A promotion must change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['either', 'both', 'grade', 'designation'], default: 'either' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
   // Auto-confirmation is a system change with no approver (YX-SEC-11), so turning it on is the access admin's.
   'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off', guard: 'access.role.manage' },

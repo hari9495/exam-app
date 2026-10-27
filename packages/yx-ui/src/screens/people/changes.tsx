@@ -150,6 +150,8 @@ export interface ChangeActionSheetProps {
   payrollProcessedTo?: Date;
   /** The side panel starts open (stories); false shows the page itself. */
   startOpen?: boolean;
+  /** What a promotion must change (Settings › Job changes): designation or grade (default), both, or one of them. */
+  promotionMustChange?: 'either' | 'both' | 'grade' | 'designation';
   live?: LiveChangeAction;
 }
 
@@ -230,7 +232,7 @@ export function ChangeActionSheet(props: ChangeActionSheetProps) {
   return props.live ? <LiveChangeActionPage persona={props.persona} live={props.live} /> : <SampleChangeActionSheet {...props} />;
 }
 
-function SampleChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
+function SampleChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true, promotionMustChange = 'either' }: ChangeActionSheetProps) {
   const mgr = persona === 'mgr';
   const people = CHANGE_PEOPLE.filter((p) => !mgr || p.mine);
   const [open, setOpen] = useState(startOpen);
@@ -324,10 +326,10 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
             </FormField>
             {kind === 'Promotion' && (
               <>
-                <FormField label="New designation" required>
+                <FormField label="New designation" required={promotionMustChange === 'both' || promotionMustChange === 'designation'} optional={promotionMustChange === 'grade'} helper={promotionMustChange === 'either' ? 'Choose a new designation, a new grade, or both.' : undefined}>
                   <Select options={[{ value: 'ql', label: 'Quality Lead' }, { value: 'qe', label: 'Quality Engineer' }]} value="ql" onChange={() => {}} />
                 </FormField>
-                <FormField label="New grade" required>
+                <FormField label="New grade" required={promotionMustChange === 'both' || promotionMustChange === 'grade'} optional={promotionMustChange === 'designation'}>
                   <Select options={[{ value: 'G6', label: showPay ? 'G6 · ₹6,80,000 to ₹9,60,000' : 'G6' }]} value="G6" onChange={() => {}} />
                 </FormField>
                 {showPay ? (

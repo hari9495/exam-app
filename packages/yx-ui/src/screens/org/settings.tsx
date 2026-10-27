@@ -47,6 +47,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
   'work.normal_week_hours': { pack: 'From the country pack' },
   'pay.band.above_max': { warn: 'Warn only', cap: 'Cap at the maximum', block: 'Block' },
+  'promotion.must_change': { either: 'Designation or grade', both: 'Both', grade: 'Grade only', designation: 'Designation only' },
   'bfsi.declaration_due': { '04-30': '30 April', '06-30': '30 June', '09-30': '30 September', '10-15': '15 October', '12-31': '31 December' },
   'bfsi.preclearance_threshold': { '500000': '₹5,00,000', '1000000': '₹10,00,000', '2500000': '₹25,00,000' },
   'work_auth.reminder_days': { '90,60,30': '90, 60 and 30 days before', '60,30': '60 and 30 days before', '30': '30 days before', off: 'No reminders' },
@@ -70,7 +71,7 @@ export interface SettingsSection {
 /** Settings group 1 (Organisation) and group 2 (People & Access). Codes and master ownership live on Legal entities. */
 export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection[]> = {
   organisation: [
-    { title: 'Job changes', description: 'How far back HR may date a change without a System Admin.', keys: ['employee_change.retro_limit'] },
+    { title: 'Job changes', description: 'How far back HR may date a change without a System Admin, and what a promotion must change (a new designation, a new grade, or both).', keys: ['employee_change.retro_limit', 'promotion.must_change'] },
     { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
