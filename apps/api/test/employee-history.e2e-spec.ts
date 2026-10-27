@@ -691,6 +691,21 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
     });
 
+    it("a waiting change shows in its approvers' Approvals inbox, count and bell; never the raiser's; gone once cancelled", async () => {
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      type Row = { requestId: string; type: string; person: string; decideAt: string | null };
+      const inbox = (who: Who) => api(who, 'get', '/workflow/approvals/inbox').expect(200).then((r) => (r.body as Row[]).find((x) => x.requestId === raised.id));
+      expect(await inbox('approverA')).toMatchObject({ type: 'Job change', person: 'Nisha', decideAt: '/yx/people/scheduled' });
+      expect(await inbox('hrA')).toBeUndefined();
+      expect(await inbox('outsiderA')).toBeUndefined();
+      expect((await api('approverA', 'get', '/workspace/counts').expect(200)).body.approvals).toBeGreaterThanOrEqual(1);
+      const bell = (await api('approverA', 'get', '/notifications').expect(200)).body as { type: string; entityId: string; contextText: string }[];
+      expect(bell.find((n) => n.entityId === raised.id)).toMatchObject({ type: 'employee.change.approval_needed', contextText: expect.stringMatching(/^Nisha · transfer on .* waits for your approval$/) });
+      expect(((await api('hrA', 'get', '/notifications').expect(200)).body as { entityId: string }[]).some((n) => n.entityId === raised.id)).toBe(false);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+      expect(await inbox('approverA')).toBeUndefined();
+    });
+
     it('drafts: only the raiser sees and edits theirs; another company gets 404; sending removes the draft', async () => {
       const form = { changeType: 'transfer', values: { locationId: ids.maa }, reason: 'Half done' };
       const saved = (await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, changeType: 'transfer', form }).expect(201)).body;

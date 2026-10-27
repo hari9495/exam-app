@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, covers, coversRange, grantPeriods, grantPeriodsFor, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, started, tenantWide, Viewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ApprovalsEngine, InboxItem } from '../workflow/approvals-engine.service';
 import { audit, CompanyContext, companyContext, mapDbError, Tx } from '../org-structure/org-structure.service';
 import { addDays, asDate, IN_STATES, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
@@ -151,14 +152,19 @@ class Rollback<T> extends Error {
 }
 
 @Injectable()
-export class EmployeeHistoryService {
+export class EmployeeHistoryService implements OnModuleInit {
   private readonly logger = new Logger(EmployeeHistoryService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications?: NotificationsService,
+    private readonly engine?: ApprovalsEngine,
   ) {}
+
+  onModuleInit() {
+    this.engine?.registerInboxSource((tx, c, userId) => this.waitingFor(tx, c, userId));
+  }
 
   /** The asker's keys with their scopes, resolved as the permissions guard resolves them (P02 YX-SEC-03). */
   viewer(user: RequestUser): Promise<Viewer> {
@@ -1169,7 +1175,10 @@ export class EmployeeHistoryService {
       // Sent from a saved draft: the draft has done its job (only the raiser's own, never someone else's).
       if (dto.draftId) await tx.employeeChangeDraft.deleteMany({ where: { organizationId: c.organizationId, id: dto.draftId, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' } });
       await audit(tx, c, 'employee.change.requested', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: dto.effectiveDate, touchesPay: Boolean(dto.payload.compensation) });
-      return (await this.viewChanges(tx, c, v, [ch], 'change'))[0];
+      return { ch, view: (await this.viewChanges(tx, c, v, [ch], 'change'))[0] };
+    }).then(async ({ ch, view }) => {
+      await this.tellApprovers(ctx, ch);
+      return view;
     });
   }
 
@@ -1243,6 +1252,15 @@ export class EmployeeHistoryService {
    * only, as the approvals inbox shows a requester their approvers; "you" when the reader is one of them.
    */
   async approverNames(tx: Tx, c: CompanyContext, employeeId: string, raisedBy: string | null, pay: boolean, date: string): Promise<string[]> {
+    const ids = await this.approverIds(tx, c, employeeId, raisedBy, pay, date);
+    if (!ids.length) return [];
+    const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, name: true } });
+    const names = users.filter((u) => u.id !== c.userId && u.name?.trim()).map((u) => u.name!.trim()).sort((a, b) => a.localeCompare(b));
+    return users.some((u) => u.id === c.userId) ? ['you', ...names] : names;
+  }
+
+  /** The logins who may decide a change (see approverNames). */
+  async approverIds(tx: Tx, c: CompanyContext, employeeId: string, raisedBy: string | null, pay: boolean, date: string): Promise<string[]> {
     const org = c.organizationId;
     const today = todayIst();
     // shortcut: holdersOf checks the grant on one day (the later of today and the change date), not the whole span the change shapes.
@@ -1253,11 +1271,61 @@ export class EmployeeHistoryService {
       ids = ids.filter((id) => sees.has(id));
     }
     const subject = (await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } }))?.userId ?? null;
-    ids = ids.filter((id) => id !== raisedBy && id !== subject);
-    if (!ids.length) return [];
-    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true } });
-    const names = users.filter((u) => u.id !== c.userId && u.name?.trim()).map((u) => u.name!.trim()).sort((a, b) => a.localeCompare(b));
-    return users.some((u) => u.id === c.userId) ? ['you', ...names] : names;
+    return ids.filter((id) => id !== raisedBy && id !== subject);
+  }
+
+  /**
+   * Founder queue 28 Oct 2026: a change waiting for an approver shows in their Approvals inbox (and its count), not only on
+   * People > Scheduled. Batch changes are decided as a batch on their own page, so they stay out.
+   * shortcut: the route is worked out per pending change (at most 200); fine for a company's open changes, index it if that grows.
+   */
+  async waitingFor(tx: Tx, c: CompanyContext, userId: string): Promise<InboxItem[]> {
+    const org = c.organizationId;
+    const rows = await tx.employeeChange.findMany({ where: { organizationId: org, status: 'pending', batchId: null }, orderBy: [{ requestedAt: 'asc' }], take: 200 });
+    const mine: { r: (typeof rows)[number]; approvers: number }[] = [];
+    for (const r of rows) {
+      const ids = await this.approverIds(tx, c, r.employeeId, r.requestedBy, Boolean((r.payload as ChangePayload).compensation), isoDate(r.effectiveDate));
+      if (ids.includes(userId)) mine.push({ r, approvers: ids.length });
+    }
+    if (!mine.length) return [];
+    const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: mine.map((m) => m.r.employeeId) } } });
+    const raisers = await tx.user.findMany({ where: { organizationId: org, id: { in: mine.map((m) => m.r.requestedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+    return mine.map(({ r, approvers }) => {
+      const p = people.find((x) => x.id === r.employeeId);
+      const who = p ? displayName(p) : '';
+      const what = label(r.changeType as ChangeType);
+      const from = isoDate(r.effectiveDate);
+      const raiser = raisers.find((u) => u.id === r.requestedBy);
+      return {
+        taskId: r.id,
+        requestId: r.id,
+        type: 'Job change',
+        title: `${who}: ${what[0].toUpperCase()}${what.slice(1)} from ${from}`,
+        summary: [{ label: 'Effective', value: from }, { label: 'Reason', value: r.reason }],
+        requester: raiser ? raiser.name?.trim() || raiser.email : '',
+        raisedBy: null,
+        onBehalfOf: null,
+        person: who,
+        step: { index: 1, of: 1, name: 'Approval', need: 1, approvers },
+        dueAt: null,
+        submittedAt: r.requestedAt,
+        decideAt: '/yx/people/scheduled',
+      };
+    });
+  }
+
+  /** Founder queue 28 Oct 2026: whoever may decide a new change hears of it in their bell (and email), after commit. */
+  async tellApprovers(ctx: TenantContext, ch: { id: string; employeeId: string; changeType: string; effectiveDate: Date; requestedBy: string | null; payload: unknown }) {
+    if (!this.notifications) return;
+    const { to, who } = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const c = companyContext(ctx);
+      const p = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: ch.employeeId } });
+      return { to: await this.approverIds(tx, c, ch.employeeId, ch.requestedBy, Boolean((ch.payload as ChangePayload).compensation), isoDate(ch.effectiveDate)), who: p ? displayName(p) : '' };
+    });
+    if (!to.length) return;
+    await this.notifications
+      .notify(ctx, ch.requestedBy ?? '00000000-0000-0000-0000-000000000000', to, 'employee.change.approval_needed', { entityType: 'employee_change', entityId: ch.id, contextText: `${who} · ${label(ch.changeType as ChangeType)} on ${isoDate(ch.effectiveDate)} waits for your approval`, linkPath: '/yx/people/scheduled' })
+      .catch((err: unknown) => this.logger.error(err));
   }
 
   /** PPL-04: may the viewer raise a change for this person today (HR's scope, or a manager for their team)? 404 if not. */

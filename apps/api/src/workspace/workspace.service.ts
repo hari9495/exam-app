@@ -425,6 +425,8 @@ export class WorkspaceService {
       const out: Record<string, number> = {};
       out.approvals = await one(Prisma.sql`SELECT count(*) AS n FROM wf_tasks t JOIN wf_requests r ON r.id = t.request_id
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
+      // Plus what waits in the modules' own approval flows (job changes), as the Approvals page lists them.
+      if (!support) out.approvals += (await this.service(ApprovalsEngine).sourceItems(tx, c, me)).length;
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
       // PPL-43: a designated person's annual declaration still to submit (absent for everyone else).
       const own = await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
