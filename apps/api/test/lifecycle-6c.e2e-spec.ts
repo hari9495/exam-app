@@ -336,6 +336,23 @@ describe('Lifecycle batch 6c', () => {
     await time(`/people/${emp.sita}/balances`, 'adminB').expect(404);
   });
 
+  it("asset returns go to the IT and Admin team on the exit checklist, not the issuer (the issuer only when there is no team)", async () => {
+    const o = { organizationId: org.A.id };
+    await inA(async (tx) => {
+      const g = await tx.userGroup.create({ data: { ...o, name: `IT and Admin team ${run}` } });
+      await tx.userGroupMember.create({ data: { ...o, groupId: g.id, userId: users.it } });
+      await tx.journeyTemplateTask.updateMany({ where: { ...o, ownerType: { in: ['it', 'admin'] } }, data: { ownerGroupId: g.id } });
+    });
+    const neha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Neha', familyName: run, employeeCode: 'EX-007', joinedOn: '2026-04-06', workEmail: `neha@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const tag = `MS-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Surface Pro', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: neha, issuedOn: today, condition: 'New' }).expect(200);
+    await api('hr', 'post', '/lifecycle/exits').send({ employeeId: neha, exitType: 'end_of_contract', lwd: addDays(today, 20), reasonText: 'Contract ends' }).expect(201);
+    const item = (who: Who) => api(who, 'get', '/lifecycle/clearance/mine').expect(200).then((r) => (r.body.rows as { title: string }[]).find((i) => i.title.includes(tag)));
+    expect(await item('it')).toBeTruthy();
+    expect(await item('hr')).toBeUndefined(); // HR issued it, but IT takes it back
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

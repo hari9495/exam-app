@@ -5,6 +5,7 @@ import { FileStore, sha256 } from '../src/documents/file-store';
 import { buildDocx, templateFields } from '../src/documents/letters/docx';
 import { STARTER_LETTERS } from '../src/documents/letters/fields';
 import { STARTERS } from '../src/lifecycle/starters';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { dueOn, openable, type TaskStatus } from '../src/lifecycle/journey-rules';
 
 type Tx = Prisma.TransactionClient;
@@ -34,6 +35,7 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 
 export async function seedLifecycle(tx: Tx, organizationId: string): Promise<void> {
   const org = { organizationId };
+  await grantItAssets(tx, organizationId);
   if (await tx.journeyTemplate.findFirst({ where: { ...org, starterKey: 'onboarding_standard' } })) return;
   const hr = await tx.user.findFirstOrThrow({ where: { ...org, email: 'hr@demo-org.test' } });
   const itAgent = await tx.user.findFirst({ where: { ...org, email: 'it-agent@demo-org.test' } });
@@ -113,6 +115,21 @@ export async function seedLifecycleLetters(tx: Tx, organizationId: string): Prom
 }
 
 /** Lifecycle 6c demo: the shared asset list (D3) with Divya's laptop issued to her, a phone and a card in stock. */
+/**
+ * Founder queue 28 Oct 2026: issuing and taking back assets is IT's work, not HR Admin's (HR Admin keeps asset.view).
+ * Suresh, the IT agent, holds the IT / Admin coordinator role company-wide. Runs on every seed, once per company.
+ */
+async function grantItAssets(tx: Tx, organizationId: string) {
+  const org = { organizationId };
+  const suresh = await tx.user.findFirst({ where: { ...org, email: 'it-agent@demo-org.test' }, select: { id: true } });
+  const admin = await tx.user.findFirst({ where: { ...org, email: 'admin@demo-org.test' }, select: { id: true } });
+  if (!suresh || !admin) return;
+  const t = ROLE_TEMPLATES.find((x) => x.key === 'it_admin_coordinator')!;
+  const profile = (await tx.permissionProfile.findFirst({ where: { ...org, name: t.name } })) ?? (await tx.permissionProfile.create({ data: { ...org, name: t.name, permissionsJson: JSON.stringify(t.permissions) } }));
+  if (await tx.roleGrant.findFirst({ where: { ...org, userId: suresh.id, permissionProfileId: profile.id }, select: { id: true } })) return;
+  await tx.roleGrant.create({ data: { ...org, userId: suresh.id, permissionProfileId: profile.id, scopeType: 'tenant', validFrom: asDate('2026-10-01'), status: 'active', reason: 'Assets are issued and taken back by IT', grantedBy: admin.id } });
+}
+
 export async function seedLifecycleAssets(tx: Tx, organizationId: string): Promise<void> {
   const org = { organizationId };
   if (await tx.asset.findFirst({ where: org, select: { id: true } })) return;

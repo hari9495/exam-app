@@ -534,14 +534,24 @@ export class ExitsService implements OnModuleInit {
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.accepted', payload: { exitCaseId: id, employeeId: k.employeeId, lastDay: lwd, journeyId, exitType: k.exitType } } });
   }
 
-  /** One clearance item per asset the leaver still holds (returning it clears the item). */
+  /**
+   * One clearance item per asset the leaver still holds (returning it clears the item). Founder queue 28 Oct 2026: it
+   * goes to the IT and Admin team (the team on the exit checklist's IT, else Admin, task); without one, to whoever issued
+   * the asset, else the case owner.
+   */
   async assetItemsIn(tx: Tx, org: string, exitCaseId: string, personId: string, owner: string | null) {
     const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId, returnedOn: null } });
+    if (!open.length) return;
+    const journey = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: exitCaseId }, select: { id: true } });
+    const team = journey
+      ? ((await tx.journeyTask.findFirst({ where: { organizationId: org, journeyId: journey.id, ownerType: { in: ['it', 'admin'] }, assigneeGroupId: { not: null } }, orderBy: { ownerType: 'desc' }, select: { assigneeGroupId: true } }))?.assigneeGroupId ?? null)
+      : null;
     for (const x of open) {
       if (await tx.clearanceItem.findFirst({ where: { organizationId: org, exitCaseId, assetAssignmentId: x.id }, select: { id: true } })) continue;
       const asset = await tx.asset.findFirstOrThrow({ where: { organizationId: org, id: x.assetId } });
-      const keeper = (await tx.assetAssignment.findFirst({ where: { organizationId: org, id: x.id }, select: { issuedBy: true } }))?.issuedBy ?? owner;
-      if (keeper) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'asset', title: `Return ${asset.name} (${asset.tag})`.slice(0, 150), ownerUserId: keeper, assetAssignmentId: x.id } });
+      const keeper = x.issuedBy ?? owner;
+      const to = team ? { ownerUserId: null, ownerGroupId: team } : keeper ? { ownerUserId: keeper, ownerGroupId: null } : null;
+      if (to) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'asset', title: `Return ${asset.name} (${asset.tag})`.slice(0, 150), ...to, assetAssignmentId: x.id } });
     }
   }
 
