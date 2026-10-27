@@ -116,6 +116,8 @@ export function moveImpact(p: RestructurePreview, effectiveDate: string): Impact
     { fact: 'Employee code', from: r.from.code, to: r.to.code === r.from.code ? `${r.to.code} (kept)` : r.to.code },
     ...(r.from.location !== r.to.location ? [{ fact: 'Location', from: r.from.location, to: r.to.location }] : []),
     ...(r.from.department !== r.to.department ? [{ fact: 'Department', from: r.from.department, to: r.to.department }] : []),
+    ...(r.from.designation !== r.to.designation ? [{ fact: 'Designation', from: r.from.designation ?? null, to: r.to.designation ?? null }] : []),
+    ...(r.from.employmentType !== r.to.employmentType ? [{ fact: 'Employment type', from: r.from.employmentType ?? null, to: r.to.employmentType ?? null }] : []),
     { fact: 'PF', from: 'Same UAN', to: 'Same UAN · transfer tracked on the checklist' },
     { fact: 'Tax', from: 'Pay and tax so far this year', to: 'Form 12B carried into the new entity' },
   ];

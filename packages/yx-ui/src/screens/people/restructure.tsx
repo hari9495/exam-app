@@ -74,8 +74,8 @@ export interface RestructurePersonResult {
   code: string;
   status: 'ready' | 'moved' | 'failed' | 'left_out' | 'pending';
   reason: string | null;
-  from: { entity: string; code: string; location: string; department: string; manager: string | null };
-  to: { entity: string; code: string | null; location: string; department: string; manager: string | null } | null;
+  from: { entity: string; code: string; location: string; department: string; manager: string | null; designation?: string; employmentType?: string };
+  to: { entity: string; code: string | null; location: string; department: string; manager: string | null; designation?: string; employmentType?: string } | null;
   service: { from: string; kept: boolean } | null;
   leave: { name: string; days: number; action: 'carried' | 'lapsed' }[];
   pay: 'kept' | 'set_later' | 'none' | null;
