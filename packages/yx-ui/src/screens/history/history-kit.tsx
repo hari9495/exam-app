@@ -9,12 +9,13 @@ import { Card } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
+import { RadioGroup } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { dateLabel, daysBetweenIso, errorText, useRun } from '../org/org-kit';
 import '../people/people.css';
-import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine } from './types';
+import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine, TransferDefaults, TransferOptions } from './types';
 
 // Pieces shared by the job-history screens.
 
@@ -22,6 +23,7 @@ export const TYPE_LABEL: Record<ChangeType, string> = {
   join: 'Joined',
   promotion: 'Promotion',
   transfer: 'Transfer',
+  entity_transfer: 'Inter-entity transfer',
   redesignation: 'New designation',
   manager_change: 'Manager change',
   salary_revision: 'Salary revision',
@@ -170,7 +172,7 @@ export function DesignImpact({ impact }: { impact: Impact }) {
 
 /* ---------- raising a change (PPL-04) ---------- */
 
-const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
+const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'entity_transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
 type Field = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
 /** 5c-D2: the minimum-wage skill class of the job (payroll checks pay against the state table for it). */
 export const SKILL_CLASS_LABEL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
@@ -178,6 +180,8 @@ export const SKILL_CLASS_LABEL: Record<string, string> = { unskilled: 'Unskilled
 const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   promotion: ['designationId', 'gradeId'],
   transfer: ['locationId'],
+  // The department and designation in force move along unless a new one is chosen (the API checks the new entity may use them).
+  entity_transfer: ['locationId', 'departmentId', 'designationId'],
   redesignation: ['designationId', 'skillClass'],
   manager_change: ['managerEmployeeId'],
   salary_revision: [],
@@ -190,7 +194,7 @@ const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   exit: [],
 };
 /** The fields a type cannot be sent without (the API refuses a transfer without a new location, a promotion without a new job). */
-const REQUIRED: Partial<Record<ChangeType, Field[]>> = { promotion: ['designationId', 'gradeId'], transfer: ['locationId'], redesignation: ['designationId'], manager_change: ['managerEmployeeId'] };
+const REQUIRED: Partial<Record<ChangeType, Field[]>> = { promotion: ['designationId', 'gradeId'], transfer: ['locationId'], entity_transfer: ['locationId'], redesignation: ['designationId'], manager_change: ['managerEmployeeId'] };
 const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
 /** G1 (gap pass C1): contracted hours change with the employment type, or by a correction. */
 const HOURS_TYPES = new Set(['employment_type_change', 'correction']);
@@ -224,6 +228,9 @@ export interface ChangeDraft {
   hoursValue?: string;
   reason: string;
   overrideReason: string;
+  /** PPL-04 inter-entity transfer: the new legal entity and the options for this move. */
+  entityId?: string | null;
+  transfer?: TransferOptions | null;
 }
 
 /** The request body, or what to fix. The API checks everything again. */
@@ -234,7 +241,12 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
   if (!d.effectiveDate) errors.push({ fieldId: 'ch-date', message: 'Choose the date it takes effect' });
   const type = d.changeType;
   const payload: ChangePayload = {};
-  if (type) {
+  if (type === 'entity_transfer') {
+    if (!d.entityId) errors.push({ fieldId: 'ch-entity', message: 'Choose the new legal entity' });
+    if (!d.values.locationId) errors.push({ fieldId: 'ch-locationId', message: 'Choose the new location' });
+    const { locationId, departmentId, designationId } = d.values;
+    if (d.entityId && locationId) payload.transfer = { legalEntityId: d.entityId, locationId, ...(departmentId ? { departmentId } : {}), ...(designationId ? { designationId } : {}), options: d.transfer ?? {} };
+  } else if (type) {
     const missing = (REQUIRED[type] ?? []).filter((f) => !d.values[f]);
     for (const f of missing) errors.push({ fieldId: `ch-${f}`, message: `Choose the new ${FIELD_LABEL[f].toLowerCase()}` });
     const assignment: NonNullable<ChangePayload['assignment']> = {};
@@ -291,7 +303,7 @@ export function draftFromForm(form: Record<string, unknown>): ChangeDraft {
   const ymd = typeof f.effectiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.effectiveDate) ? f.effectiveDate.split('-').map(Number) : null;
   return { ...EMPTY_CHANGE, ...f, values: { ...(f.values ?? {}) }, effectiveDate: ymd ? new Date(ymd[0], ymd[1] - 1, ymd[2]) : null } as ChangeDraft;
 }
-const EMPTY_CHANGE: ChangeDraft = { employeeId: null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '' };
+const EMPTY_CHANGE: ChangeDraft = { employeeId: null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '', entityId: null, transfer: null };
 
 export interface ChangeDrawerProps {
   options: ChangeOptions;
@@ -305,11 +317,13 @@ export interface ChangeDrawerProps {
   onRoute?: (employeeId: string, effectiveDate: string | null, pay: boolean) => Promise<string[]>;
   /** "Save draft": keep the half-filled change for later. */
   onSaveDraft?: (draft: ChangeDraft) => Promise<void>;
+  /** PPL-04: the company defaults of a move for the person (HR only; without it the type is not offered). */
+  onTransferDefaults?: (employeeId: string) => Promise<TransferDefaults>;
   onClose: () => void;
 }
 
 /** PPL-04: pick the type, the date and the new values; what changes shows as you fill it in; send it for approval. */
-export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit, onRoute, onSaveDraft, onClose }: ChangeDrawerProps) {
+export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit, onRoute, onSaveDraft, onTransferDefaults, onClose }: ChangeDrawerProps) {
   const [draft, setDraft] = useState<ChangeDraft>(initial ?? { ...EMPTY_CHANGE, employeeId: employeeId ?? null });
   const [route, setRoute] = useState<string[] | null>(null);
   const [impact, setImpact] = useState<Impact | null>(null);
@@ -324,7 +338,27 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
   const person = options.people.find((p) => p.id === draft.employeeId) ?? null;
-  const entity = person?.legalEntityId ?? null;
+  const moving = draft.changeType === 'entity_transfer';
+  // A move offers the new entity's locations and masters; every other change the person's own entity's.
+  const entity = moving ? (draft.entityId ?? null) : (person?.legalEntityId ?? null);
+  const [defaults, setDefaults] = useState<TransferDefaults | null>(null);
+  useEffect(() => {
+    if (!moving || !draft.employeeId || !onTransferDefaults) return;
+    let current = true;
+    onTransferDefaults(draft.employeeId).then(
+      (d) => {
+        if (!current) return;
+        setDefaults(d);
+        setDraft((x) => (x.transfer ? x : { ...x, transfer: d.options }));
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moving, draft.employeeId]);
+  const setOption = <K extends keyof TransferOptions>(k: K, v: TransferOptions[K]) => draft.transfer && set({ transfer: { ...draft.transfer, [k]: v } });
   const choices: Record<Field, { value: string; label: string }[]> = useMemo(
     () => ({
       locationId: forEntity(options.locations, entity),
@@ -378,7 +412,7 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
     void run('submit', () => onSubmit(input)).then((ok) => ok && onClose());
   };
   const saveDraft = () => onSaveDraft && void run('draft', () => onSaveDraft(draft)).then((ok) => ok && onClose());
-  const types = (options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay);
+  const types = (options.types ?? RAISABLE).filter((t) => (t !== 'salary_revision' || options.canPay) && (t !== 'entity_transfer' || Boolean(onTransferDefaults)));
   const label = (f: Field) => (draft.changeType === 'correction' ? FIELD_LABEL[f] : `New ${FIELD_LABEL[f].toLowerCase()}`);
   const past = date && date < options.today;
   return (
@@ -424,7 +458,7 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
             </FormField>
           )}
           <FormField id="ch-type" label="Change type" required error={errorOf('ch-type')}>
-            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '' })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Change type" />
+            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '', entityId: null, transfer: defaults?.options ?? null })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Change type" />
           </FormField>
           <FormField
             id="ch-date"
@@ -436,7 +470,13 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
             <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Effective date" />
           </FormField>
           {draft.changeType && errorOf('ch-values') && <InlineAlert tone="danger">{errorOf('ch-values')}</InlineAlert>}
+          {moving && (
+            <FormField id="ch-entity" label="New legal entity" required error={errorOf('ch-entity')}>
+              <Select value={draft.entityId ?? null} onChange={(entityId) => set({ entityId, values: {} })} options={(options.legalEntities ?? []).filter((x) => x.value !== person?.legalEntityId)} aria-label="New legal entity" />
+            </FormField>
+          )}
           {draft.changeType &&
+            (!moving || draft.entityId) &&
             FIELDS[draft.changeType].map((f) => {
               const required = Boolean(REQUIRED[draft.changeType!]?.includes(f));
               return (
@@ -464,6 +504,41 @@ export function ChangeDrawer({ options, employeeId, initial, onPreview, onSubmit
             <FormField id="ch-hours" label="Part-time hours a week" required helper="For example 24 or 37.5." error={errorOf('ch-hours')}>
               <TextField value={draft.hoursValue ?? ''} onChange={(hoursValue) => set({ hoursValue: hoursValue.trim() })} inputMode="decimal" maxLength={4} />
             </FormField>
+          )}
+          {moving && (
+            <Card title="Transfer options">
+              <div className="yx-ppl__stack">
+                <Text size="sm" tone="secondary" as="p">
+                  Company defaults are selected. Change them for this transfer only.
+                </Text>
+                {draft.transfer ? (
+                  <>
+                    <FormField label="Leave balance">
+                      <RadioGroup value={draft.transfer.leave} onChange={(v) => setOption('leave', v as TransferOptions['leave'])} options={[{ value: 'carry', label: 'Carry over' }, { value: 'encash', label: 'Encash at old entity' }, { value: 'lapse', label: 'Lapse' }]} orientation="horizontal" />
+                    </FormField>
+                    <FormField label="Service continuity (gratuity, seniority, notice)">
+                      <RadioGroup value={draft.transfer.service} onChange={(v) => setOption('service', v as TransferOptions['service'])} options={[{ value: 'continue', label: defaults ? `Continue from ${dateLabel(defaults.serviceFrom)}` : 'Continue' }, { value: 'restart', label: 'Restart' }]} orientation="horizontal" />
+                    </FormField>
+                    <FormField label="Employee code">
+                      <RadioGroup value={draft.transfer.code} onChange={(v) => setOption('code', v as TransferOptions['code'])} options={[{ value: 'keep', label: defaults ? `Keep ${defaults.employeeCode}` : 'Keep' }, { value: 'new', label: 'New code in the target series' }]} orientation="horizontal" />
+                    </FormField>
+                    <FormField label="Settlement at the old entity">
+                      <RadioGroup value={draft.transfer.settlement} onChange={(v) => setOption('settlement', v as TransferOptions['settlement'])} options={[{ value: 'none', label: 'None (amounts move over)' }, { value: 'full', label: 'Full and final settlement' }]} orientation="horizontal" />
+                    </FormField>
+                    <FormField label="Salary structure">
+                      <RadioGroup value={draft.transfer.structure} onChange={(v) => setOption('structure', v as TransferOptions['structure'])} options={[{ value: 'keep', label: 'Keep' }, { value: 'new', label: 'Assign new' }]} orientation="horizontal" />
+                    </FormField>
+                  </>
+                ) : (
+                  <Text size="sm" tone="secondary" as="p">
+                    Loading the company defaults…
+                  </Text>
+                )}
+                <Text size="sm" tone="secondary" as="p">
+                  A continuity checklist opens on this change: UAN transfer, ESI IP, Form 12B, declarations, loans, leave ledger and gratuity.
+                </Text>
+              </div>
+            </Card>
           )}
           {draft.changeType === 'confirmation' && (
             <Text as="p" tone="secondary">

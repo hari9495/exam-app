@@ -16,6 +16,7 @@ import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LifeEventsService } from './life-events.service';
+import { ContinuityService } from './continuity.service';
 import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // M01 lifecycle batch 6a (M01-LIFECYCLE-BUILD-DESIGN §13). Keys (P02 YX-SEC-01), checked again per joiner / person:
@@ -34,6 +35,7 @@ export class LifecycleController {
     private readonly joiners: JoinersService,
     private readonly joining: JoiningService,
     private readonly lifeEvents: LifeEventsService,
+    private readonly continuity: ContinuityService,
   ) {}
 
   private user(req: Request) {
@@ -133,6 +135,12 @@ export class LifecycleController {
   @Get('journeys/:id')
   journey(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.journeys.journey(ctx, this.user(req), id);
+  }
+
+  /** PPL-10: a move's continuity checklist by its change (HR in scope, or someone with a task on it). */
+  @Get('continuity/:changeId')
+  continuityOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('changeId', ParseUUIDPipe) changeId: string) {
+    return this.continuity.view(ctx, this.user(req), changeId);
   }
 
   @Post('tasks/:id/complete')

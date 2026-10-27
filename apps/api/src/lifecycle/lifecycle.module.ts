@@ -13,6 +13,7 @@ import { JoinersService } from './joiners.service';
 import { JoiningService } from './joining.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LifeEventsService } from './life-events.service';
+import { ContinuityService } from './continuity.service';
 import { LifecycleController } from './lifecycle.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ExitsController } from './exits.controller';
@@ -36,7 +37,7 @@ import { PreboardingPortalService } from './portal.service';
 @Module({
   imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule],
   controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService, ContinuityService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
   exports: [LifecycleJourneysService, ExitsService],
 })

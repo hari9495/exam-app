@@ -7,8 +7,9 @@ export type TaskStatus = 'waiting' | 'open' | 'done' | 'skipped' | 'cancelled';
 export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request' | 'read' | 'watch' | 'survey';
 /** 6f: life events run on the same engine as joining and leaving (design §7.5). */
 export type LifeEventKind = 'new_manager' | 'transfer' | 'parental_leave' | 'return_to_work';
-export type JourneyKind = 'onboarding' | 'offboarding' | LifeEventKind;
-export const JOURNEY_KIND_LABEL: Record<JourneyKind, string> = { onboarding: 'Joining', offboarding: 'Leaving', new_manager: 'New manager', transfer: 'Transfer', parental_leave: 'Parental leave', return_to_work: 'Return to work' };
+/** PPL-10: 'continuity' is the checklist of a move to another legal entity. */
+export type JourneyKind = 'onboarding' | 'offboarding' | LifeEventKind | 'continuity';
+export const JOURNEY_KIND_LABEL: Record<JourneyKind, string> = { onboarding: 'Joining', offboarding: 'Leaving', new_manager: 'New manager', transfer: 'Transfer', parental_leave: 'Parental leave', return_to_work: 'Return to work', continuity: 'Inter-entity transfer' };
 /** 6f read / watch / quick-survey content (the API checks it when a checklist is saved). */
 export interface TaskContent {
   text?: string;
@@ -113,7 +114,7 @@ export interface FirstThirtyDays {
 /** 6f People › Life events. */
 export interface LifeJourneyRow {
   id: string;
-  kind: LifeEventKind;
+  kind: LifeEventKind | 'continuity';
   kindLabel: string;
   person: string;
   anchorOn: string;

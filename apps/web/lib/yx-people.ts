@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, PersonOption } from '@yukthix/ui/history';
+import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, PersonOption, TransferDefaults } from '@yukthix/ui/history';
 import type { MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
 import { apiFetch, apiFetchBlob } from './api-client';
@@ -68,6 +68,7 @@ export function useChangeOptions(people: PersonOption[], canPay: boolean, enable
   const types = useOrg<MasterRecord[]>('/masters/employment-types', enabled);
   const costCentres = useOrg<MasterRecord[]>('/masters/cost-centres', enabled);
   const locations = useOrg<OrgLocation[]>('/locations', enabled);
+  const entities = useOrg<{ id: string; name: string; archivedAt?: string | null }[]>('/legal-entities', enabled);
   const today = todayIst();
   return {
     people,
@@ -77,6 +78,7 @@ export function useChangeOptions(people: PersonOption[], canPay: boolean, enable
     employmentTypes: (types.data ?? []).map(masterChoice),
     costCentres: (costCentres.data ?? []).map((c) => ({ value: c.id, label: `${c.code} · ${c.name}`, entities: c.legalEntityId ? [c.legalEntityId] : [] })),
     locations: (locations.data ?? []).map((l) => ({ value: l.id, label: l.name, entities: [l.legalEntityId] })),
+    legalEntities: (entities.data ?? []).filter((e) => !e.archivedAt).map((e) => ({ value: e.id, label: e.name })),
     canPay,
     retroLimit: fyStart(today),
     today,
@@ -95,6 +97,8 @@ export function useRaiseChange() {
       const q = new URLSearchParams({ employeeId, pay: String(pay), ...(effectiveDate ? { effectiveDate } : {}) });
       return (await write<{ approvers: string[] }>('GET', `/changes/route?${q}`)).approvers;
     },
+    /** PPL-04: a move's company defaults for the person (HR only). */
+    onTransferDefaults: (employeeId: string) => write<TransferDefaults>('GET', `/changes/transfer-defaults?employeeId=${encodeURIComponent(employeeId)}`),
   };
 }
 

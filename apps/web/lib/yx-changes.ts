@@ -7,6 +7,7 @@ export const CHANGE_LABEL: Record<ChangeRecord['changeType'], string> = {
   join: 'Joining',
   promotion: 'Promotion',
   transfer: 'Transfer',
+  entity_transfer: 'Inter-entity transfer',
   redesignation: 'New designation',
   manager_change: 'Manager change',
   salary_revision: 'Salary revision',

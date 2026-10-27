@@ -17,7 +17,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { CHANGE_TYPES, ChangeType, SYSTEM_CHANGE_TYPES, EMPLOYMENT_STATUSES, EmploymentStatus, SKILL_CLASSES, SkillClass } from './history-rules';
+import { CHANGE_TYPES, ChangeType, SYSTEM_CHANGE_TYPES, EMPLOYMENT_STATUSES, EmploymentStatus, SKILL_CLASSES, SkillClass, TRANSFER_OPTIONS, type TransferOptions } from './history-rules';
 
 // Request bodies for the employee core and P06 changes. Every field is whitelisted (the global pipe
 // refuses anything else); amounts and percentages are decimal strings so no float ever touches pay.
@@ -101,12 +101,62 @@ export class CompensationPayloadDto {
   increasePercent?: string;
 }
 
+/** PPL-04 inter-entity transfer: each option left out takes the company default (transfer.* settings). */
+export class TransferOptionsDto {
+  @IsOptional()
+  @IsIn(TRANSFER_OPTIONS.leave)
+  leave?: TransferOptions['leave'];
+
+  @IsOptional()
+  @IsIn(TRANSFER_OPTIONS.service)
+  service?: TransferOptions['service'];
+
+  @IsOptional()
+  @IsIn(TRANSFER_OPTIONS.code)
+  code?: TransferOptions['code'];
+
+  @IsOptional()
+  @IsIn(TRANSFER_OPTIONS.settlement)
+  settlement?: TransferOptions['settlement'];
+
+  @IsOptional()
+  @IsIn(TRANSFER_OPTIONS.structure)
+  structure?: TransferOptions['structure'];
+}
+
+export class TransferPayloadDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsUUID()
+  locationId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  designationId?: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TransferOptionsDto)
+  options!: TransferOptionsDto;
+}
+
 export class ChangePayloadDto {
   @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => AssignmentPayloadDto)
   assignment?: AssignmentPayloadDto;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TransferPayloadDto)
+  transfer?: TransferPayloadDto;
 
   @IsOptional()
   @IsIn(EMPLOYMENT_STATUSES)
@@ -379,4 +429,10 @@ export class ServiceDatesDto {
   @MinLength(3)
   @MaxLength(300)
   reason!: string;
+}
+
+/** PPL-04: the company defaults of an inter-entity transfer for this person. */
+export class TransferDefaultsQueryDto {
+  @IsUUID()
+  employeeId!: string;
 }

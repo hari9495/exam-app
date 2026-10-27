@@ -56,7 +56,7 @@ export class TemplateTaskDto {
 }
 
 export class TemplateDto {
-  @IsIn(['onboarding', 'offboarding', ...LIFE_EVENT_KINDS])
+  @IsIn(['onboarding', 'offboarding', ...LIFE_EVENT_KINDS, 'continuity'])
   kind!: JourneyKind;
 
   @trim()

@@ -65,6 +65,27 @@ describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
   });
 });
 
+describe('inter-entity transfer (PPL-04)', () => {
+  const moveDraft = (over: Partial<ChangeDraft>) => draft({ changeType: 'entity_transfer', reason: 'Chennai sales now sit under the TN entity', ...over });
+  const options = { leave: 'carry', service: 'continue', code: 'keep', settlement: 'none', structure: 'keep' } as const;
+
+  it('sends the new entity, location and the options; asks for the entity and location first', () => {
+    expect(changeInput(moveDraft({ entityId: 'le-tn', values: { locationId: 'loc-hsr' }, transfer: { ...options, leave: 'lapse' } }), OPTIONS).input?.payload).toEqual({ transfer: { legalEntityId: 'le-tn', locationId: 'loc-hsr', options: { ...options, leave: 'lapse' } } });
+    expect(changeInput(moveDraft({ values: {} }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-entity', 'ch-locationId']);
+  });
+
+  it('the options start on the company defaults, named for the person (code, service start)', async () => {
+    const legalEntities = [{ value: 'le-kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'le-tn', label: 'Kaveri Foods (Tamil Nadu)' }];
+    const props = { options: { ...OPTIONS, legalEntities }, employeeId: 'p-arjun', onPreview: vi.fn().mockResolvedValue(IMPACT), onSubmit: ok(), onClose: vi.fn() };
+    const onTransferDefaults = vi.fn().mockResolvedValue({ options, employeeCode: 'KF-0142', serviceFrom: '2019-07-14' });
+    render(<ChangeDrawer {...props} initial={moveDraft({})} onTransferDefaults={onTransferDefaults} />);
+    expect(await screen.findByText('Transfer options')).toBeTruthy();
+    expect(await screen.findByRole('radio', { name: 'Keep KF-0142' })).toHaveProperty('ariaChecked', 'true');
+    expect(screen.getByRole('radio', { name: 'Continue from 14 Jul 2019' })).toBeTruthy();
+    expect(onTransferDefaults).toHaveBeenCalledWith('p-arjun');
+  });
+});
+
 describe('ImpactPanel (YX-HIS-11, YX-HIS-06, R1)', () => {
   it('shows what moves, the later changes recalculated, and hides pay without access', () => {
     const { rerender } = render(<ImpactPanel impact={IMPACT} />);

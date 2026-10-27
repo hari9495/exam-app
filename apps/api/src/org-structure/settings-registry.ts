@@ -112,6 +112,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'bfsi.preclearance_decide_days': { label: 'The compliance officer decides within (working days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3'], default: '2' },
   // PPL-45: reminders before a visa, permit or national ID expires (days before; the person is told each time).
   'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
+  // PPL-04 / PPL-10 (P01 YX-ORG-17): what an inter-entity transfer does by default, set for the entity people leave;
+  // HR may change any of them for one transfer.
+  'transfer.leave': { label: 'Leave balance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['carry', 'encash', 'lapse'], default: 'carry' },
+  'transfer.service': { label: 'Service continuity', scopes: ['tenant', 'legal_entity'], dated: false, values: ['continue', 'restart'], default: 'continue' },
+  'transfer.code': { label: 'Employee code', scopes: ['tenant', 'legal_entity'], dated: false, values: ['keep', 'new'], default: 'keep' },
+  'transfer.settlement': { label: 'Settlement at old entity', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', 'full'], default: 'none' },
+  'transfer.structure': { label: 'Salary structure', scopes: ['tenant', 'legal_entity'], dated: false, values: ['keep', 'new'], default: 'keep' },
   // PPL-32: an employee's own identity or bank change carries proof (a cancelled cheque, the PAN card, a gazette notice).
   'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.

@@ -559,10 +559,11 @@ const LIVE_PHASE_WORD: Record<LiveJourneyData['kind'], [string, string, string]>
   transfer: ['Before the move', 'Moving day', 'After the move'],
   parental_leave: ['Before the leave', 'First day of leave', 'After the leave starts'],
   return_to_work: ['Before the return', 'Return day', 'After the return'],
+  continuity: ['Before the move', 'Moving day', 'After the move'],
 };
-const LIVE_ANCHOR: Record<LiveJourneyData['kind'], string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on' };
-const LIVE_ANCHOR_PAST: Record<LiveJourneyData['kind'], string> = { onboarding: 'joined', offboarding: 'left', new_manager: 'managing since', transfer: 'moved', parental_leave: 'leave from', return_to_work: 'back since' };
-const LIVE_TITLE: Record<LiveJourneyData['kind'], string> = { onboarding: 'onboarding', offboarding: 'leaving', new_manager: 'new manager', transfer: 'transfer', parental_leave: 'parental leave', return_to_work: 'return to work' };
+const LIVE_ANCHOR: Record<LiveJourneyData['kind'], string> = { onboarding: 'joins', offboarding: 'leaves', new_manager: 'manages from', transfer: 'moves', parental_leave: 'leave from', return_to_work: 'back on', continuity: 'moves' };
+const LIVE_ANCHOR_PAST: Record<LiveJourneyData['kind'], string> = { onboarding: 'joined', offboarding: 'left', new_manager: 'managing since', transfer: 'moved', parental_leave: 'leave from', return_to_work: 'back since', continuity: 'moved' };
+const LIVE_TITLE: Record<LiveJourneyData['kind'], string> = { onboarding: 'onboarding', offboarding: 'leaving', new_manager: 'new manager', transfer: 'transfer', parental_leave: 'parental leave', return_to_work: 'return to work', continuity: 'inter-entity transfer' };
 const liveWhen = (offset: number, kind: LiveJourneyData['kind']) => {
   const [before, day, after] = LIVE_PHASE_WORD[kind];
   return offset === 0 ? `on ${day.toLowerCase()}` : offset < 0 ? `${plural(-offset, 'day')} ${before.toLowerCase()}` : `${plural(offset, 'day')} ${after.toLowerCase()}`;

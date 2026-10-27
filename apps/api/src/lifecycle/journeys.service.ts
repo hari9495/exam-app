@@ -455,7 +455,7 @@ export class LifecycleJourneysService implements OnModuleInit {
   }
 
   /** Opens tasks whose dependencies are now finished, recomputes progress and closes the journey when all is done. */
-  private async refresh(tx: Tx, c: CompanyContext, journeyId: string) {
+  async refresh(tx: Tx, c: CompanyContext, journeyId: string) {
     const tasks = await tx.journeyTask.findMany({ where: { organizationId: c.organizationId, journeyId } });
     const next = openable(tasks.map((t) => ({ key: t.key, dueOffsetDays: t.dueOffsetDays, dependsOn: t.dependsOn, required: t.required, status: t.status as TaskStatus })));
     for (const t of tasks) if (next.get(t.key) && next.get(t.key) !== t.status) await tx.journeyTask.update({ where: { id: t.id }, data: { status: next.get(t.key), version: { increment: 1 } } });

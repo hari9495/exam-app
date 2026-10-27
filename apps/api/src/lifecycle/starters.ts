@@ -8,7 +8,8 @@ export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request' 
 /** 6f (design §7.5): life events run on the same engine; each starter's company copy starts Not in use. */
 export const LIFE_EVENT_KINDS = ['new_manager', 'transfer', 'parental_leave', 'return_to_work'] as const;
 export type LifeEventKind = (typeof LIFE_EVENT_KINDS)[number];
-export type JourneyKind = 'onboarding' | 'offboarding' | LifeEventKind;
+/** PPL-10: the continuity checklist of a move to another entity (always on: a company copy is made when needed). */
+export type JourneyKind = 'onboarding' | 'offboarding' | LifeEventKind | 'continuity';
 export const isLifeEvent = (k: string): k is LifeEventKind => (LIFE_EVENT_KINDS as readonly string[]).includes(k);
 export interface StarterTask {
   key: string;
@@ -112,6 +113,25 @@ export const STARTERS: readonly Starter[] = [
       { key: 'welcome', title: 'Welcome to the new team', ownerType: 'manager', kind: 'tick', dueOffsetDays: 1 },
       { key: 'read_place', title: 'About your new place of work', ownerType: 'person', kind: 'read', config: { text: 'Timings, holidays and leave rules can differ by place. Check your new holiday list and attendance rules on your first day. Replace this text with your company’s own guide.' }, dueOffsetDays: 1 },
       { key: 'pulse', title: 'How is the move going?', ownerType: 'person', kind: 'survey', config: { questions: ['I have what I need to do my work.', 'My new team made me welcome.'] }, dueOffsetDays: 21 },
+    ],
+  },
+  // PPL-10 (P01 YX-ORG-17): what carries over when someone moves to another entity of the company. Tasks the options
+  // make moot (leave carried, service continuing, no settlement, structure kept, no open loans) close themselves.
+  {
+    key: 'continuity_standard',
+    kind: 'continuity',
+    name: 'Inter-entity transfer continuity (starter)',
+    summary: 'PF UAN transfer, ESI IP, Form 12B, declarations, loans, the leave ledger and gratuity when someone moves to another entity.',
+    tasks: [
+      { key: 'uan', title: 'PF UAN transfer (same UAN, Form 13 or EPFO auto-transfer)', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 15 },
+      { key: 'esi', title: 'ESI IP number carried (same IP)', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 5, required: false },
+      { key: 'form_12b', title: 'Form 12B from the old entity’s pay and tax so far this year', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 5 },
+      { key: 'declarations', title: 'Declarations and proofs copied to the new tax workspace', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 10 },
+      { key: 'loans', title: 'Open loans and advances re-parented to the new entity', ownerType: 'finance', kind: 'tick', dueOffsetDays: 5 },
+      { key: 'leave', title: 'Leave-ledger entries for the option chosen (encash or lapse)', ownerType: 'hr', kind: 'tick', dueOffsetDays: 0 },
+      { key: 'gratuity', title: 'Gratuity for the service so far (service restarts)', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 15 },
+      { key: 'settlement', title: 'Full and final settlement at the old entity', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 30 },
+      { key: 'structure', title: 'Assign the salary structure in the new entity', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 0 },
     ],
   },
   {

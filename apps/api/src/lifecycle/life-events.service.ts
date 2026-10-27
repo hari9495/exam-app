@@ -159,7 +159,8 @@ export class LifeEventsService {
     const v = await this.journeys.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const rows = await tx.journey.findMany({ where: { organizationId: org, kind: { in: [...LIFE_EVENT_KINDS] }, status: 'active' }, orderBy: { anchorOn: 'asc' }, take: 200 });
+      // PPL-10: a move's continuity checklist is listed with the life events.
+      const rows = await tx.journey.findMany({ where: { organizationId: org, kind: { in: [...LIFE_EVENT_KINDS, 'continuity'] }, status: 'active' }, orderBy: { anchorOn: 'asc' }, take: 200 });
       // Company-wide HR skips the per-journey check; others are checked one by one (at most 200 rows).
       const all = tenantWide(v, 'lifecycle.onboarding.view') || tenantWide(v, 'lifecycle.onboarding.manage');
       const seen: typeof rows = [];
@@ -168,7 +169,7 @@ export class LifeEventsService {
       return {
         rows: seen.map((j) => {
           const p = persons.find((x) => x.id === j.personId);
-          return { id: j.id, kind: j.kind, kindLabel: KIND_LABEL[j.kind as LifeEventKind], person: p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : '', anchorOn: iso(j.anchorOn), progress: j.progress };
+          return { id: j.id, kind: j.kind, kindLabel: j.kind === 'continuity' ? 'Inter-entity transfer' : KIND_LABEL[j.kind as LifeEventKind], person: p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : '', anchorOn: iso(j.anchorOn), progress: j.progress };
         }),
       };
     });
