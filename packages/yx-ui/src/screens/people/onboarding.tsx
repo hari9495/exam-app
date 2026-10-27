@@ -1012,7 +1012,7 @@ export interface LivePreboardAction {
   onCancel: (outcome: PreboardOutcome, reason: string) => Promise<unknown>;
 }
 
-const PREBOARD_LABEL: Record<PreboardAction, string> = { postpone: 'Postpone joining', 'did-not-join': 'Mark did not join', reneged: 'Record reneged', withdraw: 'Withdraw offer' };
+const PREBOARD_LABEL: Record<PreboardAction, string> = { postpone: 'Change joining date', 'did-not-join': 'Mark did not join', reneged: 'Record reneged', withdraw: 'Withdraw offer' };
 
 /** The Change status drawer; the sample (story) and the live journey record share it. */
 function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initialReason = '', reasonError = false, rehire, open, onClose, live }: { who: string; join: Date; tasks: PreboardTask[]; initial: PreboardAction; initialDate: Date | null; initialReason?: string; reasonError?: boolean; rehire: { first: string; code: string } | null; open: boolean; onClose: () => void; live?: LivePreboardAction }) {
@@ -1024,7 +1024,8 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
   const unwind = action !== 'postpone';
   const shift = date ? daysBetween(join, date) : 0;
   const reasonMissing = action === 'withdraw' && !reason.trim();
-  const earliest = live && live.today > join ? live.today : addDays(join, 1);
+  // Founder 27 Oct 2026: a candidate may also join early, so any day from today (the server checks the same).
+  const earliest = live ? live.today : undefined;
   const submit = async () => {
     setTried(true);
     if (!live || (action === 'postpone' ? !date : reasonMissing)) return;
@@ -1056,7 +1057,7 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
             value={action}
             onChange={(v) => setAction(v as PreboardAction)}
             options={[
-              { value: 'postpone', label: 'Postpone joining', description: 'The candidate or company moved the date. Nothing is cancelled.' },
+              { value: 'postpone', label: 'Change joining date', description: 'Earlier or later: the candidate or company moved the date. Nothing is cancelled.' },
               { value: 'did-not-join', label: 'Did not join', description: 'On or after the joining date, the person did not turn up.' },
               { value: 'reneged', label: 'Reneged', description: 'The candidate declined after accepting.' },
               { value: 'withdraw', label: 'Withdraw offer', description: live ? 'The company withdraws. A reason is required.' : 'The company withdraws. A reason and a withdrawal letter are required.' },
