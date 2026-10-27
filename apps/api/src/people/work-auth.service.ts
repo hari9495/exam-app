@@ -5,13 +5,16 @@ import { asDate, isCountry, isoDate, todayIst } from '../org-structure/org-valid
 import { EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { settingFor } from './probation';
+import { holdersOf } from '../time/time-core';
+import { displayName } from '../employee-history/employee-history.service';
 import { sealValue } from './profile.service';
 import type { WorkAuthDto } from './person-panels.dto';
 
 // PPL-45 Work authorisations (Confidential, P02 §4.4; P21 deputation): the visas, permits and national IDs a person
 // needs to work in a country, with the passport on file. HR holding employee.identity.view for the person reads
-// them, numbers masked to the last four; employee.identity.manage adds one. The person is reminded before each
-// expires (company setting), and an expired employment visa or work permit stops payroll approval (runs pre-flight).
+// them, numbers masked to the last four; employee.identity.manage adds one. The person and the HR who can record the
+// renewal (employee.identity.manage over them) are reminded before each expires (company setting), and an expired
+// employment visa or work permit stops payroll approval (runs pre-flight).
 
 const DAY = 86_400_000;
 
@@ -46,8 +49,8 @@ export class WorkAuthService {
         designation,
         reminderDays: reminders,
         rows: [
-          ...rows.map((r) => ({ id: r.id, kind: r.kind, country: r.country, number: `•••• ${r.numberLast4}`, sponsor: r.sponsor, occupation: r.occupation, issuedOn: r.issuedOn ? isoDate(r.issuedOn) : null, expiresOn: isoDate(r.expiresOn), remindedDays: r.remindedDays })),
-          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: `•••• ${passport.passportLast4}`, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
+          ...rows.map((r) => ({ id: r.id, kind: r.kind, country: r.country, number: `XXXX-${r.numberLast4}`, sponsor: r.sponsor, occupation: r.occupation, issuedOn: r.issuedOn ? isoDate(r.issuedOn) : null, expiresOn: isoDate(r.expiresOn), remindedDays: r.remindedDays })),
+          ...(passport?.passportExpiresOn ? [{ id: 'passport', kind: 'passport', country: null, number: `XXXX${passport.passportLast4}`, sponsor: null, occupation: null, issuedOn: null, expiresOn: isoDate(passport.passportExpiresOn), remindedDays: [] as number[] }] : []),
         ],
       };
     });
@@ -99,7 +102,7 @@ export class WorkAuthService {
       try {
         const notes = await this.tenantPrisma.forTenant(ctx, async (tx) => {
           const c = { ...ctx, organizationId } as CompanyContext;
-          const out: { userId: string; text: string; employeeId: string }[] = [];
+          const out: { userIds: string[]; text: string; employeeId: string; hr: boolean }[] = [];
           const rows = await tx.workAuthorisation.findMany({ where: { organizationId, expiresOn: { gt: asDate(today), lte: new Date(asDate(today).getTime() + 90 * DAY) } } });
           for (const r of rows) {
             const left = Math.round((r.expiresOn.getTime() - asDate(today).getTime()) / DAY);
@@ -110,14 +113,20 @@ export class WorkAuthService {
             if (r.remindedDays.some((x) => x <= day)) continue;
             await tx.workAuthorisation.update({ where: { id: r.id }, data: { remindedDays: [...r.remindedDays, day] } });
             await audit(tx, c, 'employee.work_auth.reminded', 'employee', r.employeeId, { id: r.id, daysLeft: left });
-            const user = (await tx.employee.findFirst({ where: { organizationId, id: r.employeeId }, select: { userId: true } }))?.userId;
-            if (user) out.push({ userId: user, employeeId: r.employeeId, text: `Your ${KIND_LABEL[r.kind] ?? 'work permit'} expires on ${isoDate(r.expiresOn)}, in ${left} days. Talk to HR about renewing it.` });
+            const e = await tx.employee.findFirstOrThrow({ where: { organizationId, id: r.employeeId } });
+            const what = KIND_LABEL[r.kind] ?? 'work permit';
+            if (e.userId) out.push({ userIds: [e.userId], employeeId: r.employeeId, hr: false, text: `Your ${what} expires on ${isoDate(r.expiresOn)}, in ${left} days. Talk to HR about renewing it.` });
+            // Founder 27 Oct 2026: HR is reminded too, never about themselves.
+            const hr = (await holdersOf(tx, organizationId, 'employee.identity.manage', r.employeeId, today)).filter((u) => u !== e.userId);
+            if (hr.length) out.push({ userIds: hr, employeeId: r.employeeId, hr: true, text: `${displayName(e)}'s ${what} expires on ${isoDate(r.expiresOn)}, in ${left} days. Record the renewal on their Work authorisations tab.` });
           }
           return out;
         });
         for (const n of notes) {
-          sent++;
-          await this.notifications.notifySystem(ctx, [n.userId], 'document.expiring', { entityType: 'employee', entityId: n.employeeId, contextText: n.text, linkPath: '/yx/me/documents' }, { subject: 'Your work permit or visa expires soon', html: `<p>${n.text}</p>` }).catch(() => undefined);
+          sent += n.userIds.length;
+          await this.notifications
+            .notifySystem(ctx, n.userIds, n.hr ? 'work_auth.expiring' : 'document.expiring', { entityType: 'employee', entityId: n.employeeId, contextText: n.text, linkPath: n.hr ? `/yx/people/directory/${n.employeeId}` : '/yx/me/documents' }, { subject: n.hr ? 'A work permit or visa expires soon' : 'Your work permit or visa expires soon', html: `<p>${n.text}</p>` })
+            .catch(() => undefined);
         }
       } catch (e) {
         this.logger.warn(`work permit reminders ${organizationId}: ${(e as Error).message}`);

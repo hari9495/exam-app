@@ -182,7 +182,7 @@ describe('People: the remaining designed pages (PPL-34, PPL-45, PPL-46, PPL-38, 
       await up('arjunU');
       await api('arjunU', 'post', path('arjun')).send(visa).expect(403);
       const list = (await api('hrA', 'get', path('arjun')).expect(200)).body;
-      expect(list.rows).toEqual([{ id: expect.any(String), kind: 'employment_visa', country: 'AE', number: '•••• 7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', issuedOn: visa.issuedOn, expiresOn: visa.expiresOn, remindedDays: [] }]);
+      expect(list.rows).toEqual([{ id: expect.any(String), kind: 'employment_visa', country: 'AE', number: 'XXXX-7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', issuedOn: visa.issuedOn, expiresOn: visa.expiresOn, remindedDays: [] }]);
       expect(JSON.stringify(list)).not.toContain('784');
       const stored = await tenantPrisma.forTenant(SUPER, (tx) => tx.workAuthorisation.findFirstOrThrow({ where: { organizationId: org.A.id } }));
       expect(stored.numberEnc).not.toContain('7731');

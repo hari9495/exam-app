@@ -234,7 +234,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     pending: pending.map((r) => ({
       id: r.id,
       label: r.label,
-      detail: `Sent on ${day(r.requestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. ${r.reason}`,
+      detail: `Sent on ${day(r.requestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.${r.reason ? ` ${r.reason}` : ''}`,
       ...(r.mine || self ? { onWithdraw: () => setWithdrawing(r) } : {}),
     })),
     ...(prof?.can.editPersonal && prof.personal ? { onEditPersonal: () => setEditing(true) } : {}),
