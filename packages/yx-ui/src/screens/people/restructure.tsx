@@ -124,6 +124,8 @@ export interface RestructureSetup {
   masters: SetupMaster[];
   costCentres: { id: string; code: string; name: string; legalEntityId: string }[];
   open: RestructureSummary[];
+  /** The company's transfer options (Settings › Inter-entity transfer defaults). */
+  defaults?: MoveOptions;
 }
 export interface LiveRestructure {
   state: 'loading' | 'ready' | 'error';
@@ -240,7 +242,11 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [map, setMap] = useState<Record<string, string>>(d0.locationMap ?? {});
   const [masterMap, setMasterMap] = useState<Record<string, string>>(d0.masterMap ?? {});
   const [target, setTarget] = useState<RestructureInput['target']>(d0.target ?? {});
-  const [defaults, setDefaults] = useState<MoveOptions>(d0.defaults ?? DEFAULTS);
+  const [defaults, setDefaults] = useState<MoveOptions>(d0.defaults ?? s?.defaults ?? DEFAULTS);
+  // The company's defaults arrive with the set-up; a continued draft keeps its own.
+  useEffect(() => {
+    if (!d0.defaults && s?.defaults) setDefaults(s.defaults);
+  }, [s?.defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [overrides, setOverrides] = useState<RestructureOverride[]>(d0.overrides ?? []);
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
   const [reason, setReason] = useState(d0.reason ?? '');

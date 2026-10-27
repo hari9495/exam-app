@@ -37,6 +37,8 @@ export class TargetDto {
   @IsOptional() @IsUUID() locationId?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() managerEmployeeId?: string | null;
   @IsOptional() @IsUUID() costCentreId?: string;
+  /** One person moving between entities (PPL-04): a new designation in the new entity. */
+  @IsOptional() @IsUUID() designationId?: string;
 }
 
 export class RestructureDto {
@@ -46,6 +48,8 @@ export class RestructureDto {
   @Matches(DATE) effectiveDate!: string;
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) locationIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) departmentIds?: string[];
+  /** PPL-04 Change action: only these people move (one person between entities). */
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) employeeIds?: string[];
   /** Old location id → new location id (moves between legal entities). */
   @IsOptional() @IsObject() locationMap?: Record<string, string>;
   /** Old master id → master id in the new entity (departments, designations, employment types, grades only for the old entity). */

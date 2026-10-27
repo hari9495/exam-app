@@ -8,7 +8,7 @@ import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type P
 import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
-import { useChangeOptions, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { useChangeOptions, useMove, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
@@ -103,6 +103,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const people = usePeople<PersonOption[]>(canChange ? '/employees' : null);
   const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canChange);
   const raise = useRaiseChange();
+  const move = useMove(people.data ?? [], canChange);
   const write = usePeopleWrite();
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
@@ -442,12 +443,21 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           employeeId={personId}
           onPreview={raise.onPreview}
           onRoute={raise.onRoute}
+          move={
+            move && {
+              ...move,
+              onSubmit: async (m) => {
+                await move.onSubmit(m);
+                done(`Inter-entity transfer for ${first} sent for approval in People › Restructure`);
+              },
+            }
+          }
           onSubmit={async (input) => {
             await raise.onSubmit(input);
             done(`Change for ${first} sent`);
           }}
           onSaveDraft={async (d) => {
-            await write('POST', '/changes/drafts', { employeeId: personId, ...(d.changeType ? { changeType: d.changeType } : {}), form: draftForm(d) });
+            await write('POST', '/changes/drafts', { employeeId: personId, ...(d.changeType && d.changeType !== 'entity_transfer' ? { changeType: d.changeType } : {}), form: draftForm(d) });
             done('Draft saved. Find it under People › Change action.');
           }}
           onClose={() => setStarting(false)}

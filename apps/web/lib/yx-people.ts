@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, PersonOption } from '@yukthix/ui/history';
+import type { ChangeInput, ChangeOptions, ChoiceOption, Impact, MoveHandlers, MoveInput, PersonOption, TransferOptions } from '@yukthix/ui/history';
+import type { RestructurePreview } from '@yukthix/ui/frame';
 import type { MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import type { OrgChartData } from '@yukthix/ui/workforce';
 import { apiFetch, apiFetchBlob } from './api-client';
@@ -95,6 +96,60 @@ export function useRaiseChange() {
       const q = new URLSearchParams({ employeeId, pay: String(pay), ...(effectiveDate ? { effectiveDate } : {}) });
       return (await write<{ approvers: string[] }>('GET', `/changes/route?${q}`)).approvers;
     },
+  };
+}
+
+/**
+ * PPL-04 "What changes" of a one-person move from the restructure dry run (PPL-09 engine): the person's result, or
+ * the reason they cannot move (thrown, shown instead of the table).
+ */
+export function moveImpact(p: RestructurePreview, effectiveDate: string): Impact {
+  const r = p.people[0];
+  if (!r) throw new Error('This person does not work for that legal entity on that date.');
+  if (r.status === 'failed' || !r.to) throw new Error(r.reason ?? 'This person cannot move on that date.');
+  const blocked = p.checks.find((c) => c.status === 'Blocked');
+  if (blocked) throw new Error(blocked.note ?? blocked.title);
+  const facts: Impact['facts'] = [
+    { fact: 'Legal entity', from: r.from.entity, to: r.to.entity },
+    { fact: 'Employee code', from: r.from.code, to: r.to.code === r.from.code ? `${r.to.code} (kept)` : r.to.code },
+    ...(r.from.location !== r.to.location ? [{ fact: 'Location', from: r.from.location, to: r.to.location }] : []),
+    ...(r.from.department !== r.to.department ? [{ fact: 'Department', from: r.from.department, to: r.to.department }] : []),
+    { fact: 'PF', from: 'Same UAN', to: 'Same UAN · transfer tracked on the checklist' },
+    { fact: 'Tax', from: 'Pay and tax so far this year', to: 'Form 12B carried into the new entity' },
+  ];
+  const balance = r.leave.map((l) => `${l.days} days ${l.name}`).join(', ');
+  if (balance) facts.push({ fact: 'Leave balance', from: balance, to: r.leave[0].action === 'lapsed' ? 'Lapses' : 'Carried over' });
+  if (r.service) facts.push({ fact: 'Continuous service', from: null, to: r.service.kept ? `Continues from ${r.service.from}` : `Restarts on ${r.service.from}` });
+  if (r.pay === 'kept' || r.pay === 'set_later') facts.push({ fact: 'Salary structure', from: null, to: r.pay === 'kept' ? 'Kept' : 'A new one is assigned' });
+  return { effectiveDate, facts, pay: [], rebased: [], retro: null };
+}
+
+/** PPL-04: one person's move to another legal entity, sent as a one-person restructure (HR only). */
+export function useMove(people: PersonOption[], enabled: boolean): MoveHandlers | undefined {
+  const setup = usePeople<{ entities: { id: string; name: string }[]; defaults: TransferOptions }>(enabled ? '/restructures/setup' : null);
+  const read = usePeopleRead();
+  const write = usePeopleWrite();
+  if (!enabled) return undefined;
+  const body = (m: MoveInput) => ({
+    kind: 'demerge',
+    fromEntityId: m.fromEntityId,
+    intoEntityId: m.intoEntityId,
+    effectiveDate: m.effectiveDate,
+    employeeIds: [m.employeeId],
+    target: { locationId: m.locationId, ...(m.departmentId ? { departmentId: m.departmentId } : {}), ...(m.designationId ? { designationId: m.designationId } : {}) },
+    defaults: m.options,
+    reason: m.reason,
+    ...(m.overrideReason ? { overrideReason: m.overrideReason } : {}),
+  });
+  return {
+    entities: (setup.data?.entities ?? []).map((e) => ({ value: e.id, label: e.name })),
+    onDefaults: async (employeeId) => {
+      const s = setup.data ?? (await read<{ defaults: TransferOptions }>('/restructures/setup'));
+      const dates = await read<{ continuousServiceFrom: string }>(`/employees/${encodeURIComponent(employeeId)}/service-dates`);
+      return { options: s.defaults, employeeCode: people.find((p) => p.id === employeeId)?.employeeCode ?? '', serviceFrom: dates.continuousServiceFrom };
+    },
+    onPreview: async (m) => moveImpact(await write<RestructurePreview>('POST', '/restructures/preview', body(m)), m.effectiveDate),
+    onSubmit: async (m) => void (await write('POST', '/restructures', body(m))),
   };
 }
 

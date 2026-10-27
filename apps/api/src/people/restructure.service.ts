@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { addDays, asDate, IN_STATES, isoDate, todayIst } from '../org-structure/org-validation';
+import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { buildViewer, has, tenantWide } from '../access/scope';
 import { displayName, EmployeeHistoryService, RequestUser, Viewer } from '../employee-history/employee-history.service';
 import type { ChangeRequestDto, EmployeeCreateDto } from '../employee-history/dto';
@@ -43,8 +44,11 @@ export interface Plan {
   /** Between entities: a department, designation, employment type or grade only for the old entity, and the one
    *  people take in the new entity (master ids are unique, so one map serves all four). */
   masterMap: Record<string, string>;
-  /** within: the new place (each one optional). */
-  target: { departmentId?: string; locationId?: string; managerEmployeeId?: string | null; costCentreId?: string };
+  /** within: the new place (each one optional). One person moving between entities (PPL-04): their new location, and
+   *  a new department or designation when chosen (the maps then stay empty). */
+  target: { departmentId?: string; locationId?: string; managerEmployeeId?: string | null; costCentreId?: string; designationId?: string };
+  /** PPL-04 Change action: the one person who moves (a demerge of one), instead of everyone at the locations. */
+  employeeIds?: string[];
   defaults: MoveOptions;
   overrides: Override[];
   /** The letter template for the transfer letters (offered in the bulk issue after approval). */
@@ -125,6 +129,8 @@ function reasonOf(e: unknown): string {
   }
   if (e instanceof FoldError) return e.message;
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return 'That employee code is already used in the new legal entity. Choose a new code.';
+  // A kept code that is someone else's in the new series (employments_code_owner_excl), not a date clash.
+  if (e instanceof Error && /employments_code/.test(e.message)) return 'That employee code is already used in the new legal entity. Choose a new code.';
   if (e instanceof Error && /exclusion constraint|23P01/.test(e.message)) return 'The dates clash with another change for this person.';
   throw e;
 }
@@ -179,6 +185,7 @@ export class RestructureService {
       ]);
       return {
         today,
+        defaults: await this.defaults(tx, c),
         entities: entities.map((e) => ({ ...e, people: sum((r) => r.legal_entity_id === e.id) })),
         locations: locations.map((l) => ({ ...l, state: IN_STATES[l.state] ?? l.state, people: sum((r) => r.location_id === l.id) })),
         departments: departments.map(shape('department', 'department_id')),
@@ -187,6 +194,14 @@ export class RestructureService {
         open: await Promise.all(open.map((r) => this.summary(tx, c, v, r))),
       };
     });
+  }
+
+  /** The company's transfer options (Settings › Inter-entity transfer defaults), where a plan starts. */
+  private async defaults(tx: Tx, c: CompanyContext): Promise<MoveOptions> {
+    const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: { startsWith: 'transfer.' } } });
+    const value = (key: 'transfer.leave' | 'transfer.service' | 'transfer.code' | 'transfer.salary') =>
+      String(resolveSetting(SETTINGS[key], rows.filter((r) => r.key === key).map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value);
+    return { leave: value('transfer.leave'), service: value('transfer.service'), code: value('transfer.code'), salary: value('transfer.salary') } as MoveOptions;
   }
 
   // ------------------------------------------------------------------------------------------ who moves
@@ -204,6 +219,7 @@ export class RestructureService {
     const p = h.plan;
     return rows
       .filter((r) => (h.kind === 'merge' || h.kind === 'close' ? true : (!p.locationIds.length || p.locationIds.includes(r.location_id)) && (h.kind === 'demerge' || !p.departmentIds.length || p.departmentIds.includes(r.department_id))))
+      .filter((r) => !p.employeeIds?.length || p.employeeIds.includes(r.employee_id))
       .map((r) => ({ employeeId: r.employee_id, employmentId: r.employment_id, name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }), code: r.employee_code, locationId: r.location_id, departmentId: r.department_id, designationId: r.designation_id, employmentTypeId: r.employment_type_id, gradeId: r.grade_id }));
   }
 
@@ -225,8 +241,8 @@ export class RestructureService {
       if (!into) throw new BadRequestException('Choose the legal entity people move into.');
       if (into.id === from.id) throw new BadRequestException('People move into another legal entity.');
       if (into.archivedAt) throw new BadRequestException(`${into.name} is archived.`);
-      if (h.kind === 'demerge' && !p.locationIds.length) throw new BadRequestException('Choose the locations whose people move.');
-      const targets = Object.values(p.locationMap);
+      if (h.kind === 'demerge' && !p.locationIds.length && !p.employeeIds?.length) throw new BadRequestException('Choose the locations whose people move.');
+      const targets = [...Object.values(p.locationMap), ...(p.target.locationId ? [p.target.locationId] : [])];
       if (targets.length) {
         const ok = await tx.location.count({ where: { organizationId: org, id: { in: targets }, legalEntityId: into.id, archivedAt: null } });
         if (ok !== new Set(targets).size) throw new BadRequestException(`Each new location is a location of ${into.name}.`);
@@ -243,12 +259,13 @@ export class RestructureService {
     const org = c.organizationId;
     const p = h.plan;
     const moving = people.filter((w) => !this.optionsFor(h, w.employeeId).leaveOut);
-    const noPlace = [...new Set(moving.map((w) => w.locationId))].filter((id) => !p.locationMap[id]);
+    const noPlace = [...new Set(moving.map((w) => w.locationId))].filter((id) => !p.locationMap[id] && !p.target.locationId);
     if (noPlace.length) {
       const names = await tx.location.findMany({ where: { organizationId: org, id: { in: noPlace } }, select: { name: true } });
       throw new BadRequestException(`Choose the location in ${into.name} for ${names.map((l) => l.name).join(', ')}.`);
     }
-    const used = new Set(moving.flatMap((w) => [w.departmentId, w.designationId, w.employmentTypeId, ...(w.gradeId ? [w.gradeId] : [])]));
+    // A department or designation chosen for one person replaces theirs (the hire path checks it is open to the new entity).
+    const used = new Set(moving.flatMap((w) => [...(p.target.departmentId ? [] : [w.departmentId]), ...(p.target.designationId ? [] : [w.designationId]), w.employmentTypeId, ...(w.gradeId ? [w.gradeId] : [])]));
     const ids = [...new Set([...used, ...Object.values(p.masterMap)])];
     const where = { organizationId: org, id: { in: ids } };
     const select = { id: true, name: true, ownerLegalEntityId: true, appliesToEntities: true, archivedAt: true } as const;
@@ -421,7 +438,8 @@ export class RestructureService {
     // A change on or after the move date would be cut off with the old employment: never lost silently.
     const later = await tx.employeeChange.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: ['pending', 'scheduled', 'effective'] }, effectiveDate: { gte: asDate(eff) }, changeType: { not: 'join' } }, orderBy: { effectiveDate: 'asc' } });
     if (later) throw new Stop(`Has a ${later.changeType.replace(/_/g, ' ')} on ${showDay(isoDate(later.effectiveDate))}, on or after the move date. ${later.status === 'effective' ? 'Choose a later move date.' : 'Decide or cancel it first.'}`);
-    const locationId = h.plan.locationMap[a.locationId];
+    const t = h.plan.target;
+    const locationId = h.plan.locationMap[a.locationId] ?? t.locationId;
     if (!locationId) throw new Stop(`No location in ${into.name} is chosen for ${names.loc.get(a.locationId)}.`);
     const service = await this.history.serviceDatesOf(tx, c, e);
     const pay = await withPayScope(tx, [from.id], () => tx.compensation.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(eff) }, OR: [{ validTo: null }, { validTo: { gte: asDate(eff) } }] } }));
@@ -444,8 +462,8 @@ export class RestructureService {
       ...(opts.code === 'keep' ? { employeeCode: e.employeeCode } : {}),
       assignment: {
         locationId,
-        departmentId: h.plan.masterMap[a.departmentId] ?? a.departmentId,
-        designationId: h.plan.masterMap[a.designationId] ?? a.designationId,
+        departmentId: t.departmentId ?? h.plan.masterMap[a.departmentId] ?? a.departmentId,
+        designationId: t.designationId ?? h.plan.masterMap[a.designationId] ?? a.designationId,
         employmentTypeId: h.plan.masterMap[a.employmentTypeId] ?? a.employmentTypeId,
         managerEmployeeId: a.managerEmployeeId,
         ...(a.gradeId ? { gradeId: h.plan.masterMap[a.gradeId] ?? a.gradeId } : {}),
@@ -498,7 +516,7 @@ export class RestructureService {
       name: who.name,
       code: e.employeeCode,
       from: fromView,
-      to: { entity: into.name, code: made.employeeCode, location: newLoc?.name ?? '', department: names.dept.get(h.plan.masterMap[a.departmentId] ?? a.departmentId) ?? '', manager: fromView.manager },
+      to: { entity: into.name, code: made.employeeCode, location: newLoc?.name ?? '', department: names.dept.get(t.departmentId ?? h.plan.masterMap[a.departmentId] ?? a.departmentId) ?? '', manager: fromView.manager },
       service: { from: keep ? service.continuousServiceFrom : eff, kept: keep },
       leave: balances.map((b) => ({ name: b.name, days: b.days, action: opts.leave === 'lapse' ? ('lapsed' as const) : ('carried' as const) })),
       pay: payState,
@@ -547,7 +565,7 @@ export class RestructureService {
       reason: dto.reason.trim(),
       overrideReason: dto.overrideReason?.trim() || null,
       requestedBy,
-      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [], ...(dto.letterType ? { letterType: dto.letterType } : {}) },
+      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [], ...(dto.employeeIds?.length ? { employeeIds: dto.employeeIds } : {}), ...(dto.letterType ? { letterType: dto.letterType } : {}) },
     };
   }
 
@@ -657,7 +675,8 @@ export class RestructureService {
     const count = await tx.restructurePerson.count({ where: { organizationId: c.organizationId, restructureId: r.id, status: { not: 'left_out' } } });
     const from = names.ent.get(r.fromEntityId) ?? '';
     const into = r.intoEntityId ? (names.ent.get(r.intoEntityId) ?? '') : null;
-    const title = r.kind === 'merge' ? `Merge ${from} into ${into}` : r.kind === 'close' ? `Close ${from}` : r.kind === 'demerge' ? `Move part of ${from} to ${into}` : `Move people inside ${from}`;
+    const one = (r.plan as unknown as Partial<Plan>).employeeIds;
+    const title = r.kind === 'merge' ? `Merge ${from} into ${into}` : r.kind === 'close' ? `Close ${from}` : one?.length === 1 ? `Move ${(await this.personName(tx, c, one[0])) ?? 'one person'} from ${from} to ${into}` : r.kind === 'demerge' ? `Move part of ${from} to ${into}` : `Move people inside ${from}`;
     return { id: r.id, kind: r.kind, title, from, into, effectiveDate: isoDate(r.effectiveOn), status: r.status, count, moved: r.moved, failed: r.failed, requestedBy: await this.userName(tx, c, r.requestedBy), mine: r.requestedBy === v.userId };
   }
 
