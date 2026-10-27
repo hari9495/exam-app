@@ -960,9 +960,13 @@ export class EmployeeHistoryService {
         return { changeId: l.id, changeType: l.changeType, effectiveDate: dates[i], ...this.diff(before[i], after[i], names) };
       })
       .filter((r) => r.facts.length || r.pay.length);
+    // Founder queue 28 Oct 2026: a promotion may lower pay, but whoever raises it is warned first (not a block).
+    const [was, will] = [before[0].compensation, after[0].compensation];
+    const lowersPay = ch.changeType === 'promotion' && was && will && was.currency === will.currency && new Prisma.Decimal(will.annualCtc).lt(was.annualCtc);
     return {
       effectiveDate: date,
       ...own,
+      warnings: lowersPay ? ['This promotion lowers the annual CTC. Check the new pay before you send it.'] : [],
       rebased,
       // P06 §4.5: past periods the change touches, for payroll arrears / recoveries (Q4).
       retro: date < today ? { from: date, months: affectedMonths(date, today) } : null,
@@ -1699,7 +1703,8 @@ function toPayload(p: { assignment?: object; status?: string; compensation?: obj
  * changes it rebased only on dates `desk` covers, so a preview is no window onto periods outside one's scope.
  */
 export function scopeImpact(impact: Record<string, unknown>, desk: readonly Period[], pay: readonly Period[]): Record<string, unknown> {
-  const strip = (x: Record<string, unknown>) => (covers(pay, String(x.effectiveDate)) ? x : { ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [] });
+  // Without pay access the pay lines are hidden, and so are the warnings about pay.
+  const strip = (x: Record<string, unknown>) => (covers(pay, String(x.effectiveDate)) ? x : { ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [], ...('warnings' in x ? { warnings: [] } : {}) });
   const rebased = Array.isArray(impact.rebased) ? (impact.rebased as Record<string, unknown>[]).filter((r) => covers(desk, String(r.effectiveDate))).map(strip) : [];
   return { ...strip(impact), rebased };
 }

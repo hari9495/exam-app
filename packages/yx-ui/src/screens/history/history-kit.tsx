@@ -91,6 +91,11 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
       ) : (
         impact.pay.length > 0 && <Lines lines={impact.pay} money />
       )}
+      {impact.warnings?.map((w) => (
+        <InlineAlert key={w} tone="warning" title="Check before you approve">
+          {w}
+        </InlineAlert>
+      ))}
       {impact.retro && (
         <InlineAlert tone="warning" title="This changes the past">
           {`Payroll will settle the difference for ${impact.retro.months.map(monthName).join(', ')} in the next run. Payslips already issued stay as they are.`}
@@ -146,6 +151,11 @@ export function DesignImpact({ impact }: { impact: Impact }) {
           </div>
         )}
         {impact.pay === 'hidden' && <Text as="p" tone="secondary" size="sm">Pay changes too. Only people with pay access see the amounts.</Text>}
+        {impact.warnings?.map((w) => (
+          <InlineAlert key={w} tone="warning" title="Check before you send">
+            {w}
+          </InlineAlert>
+        ))}
         {impact.retro && (
           <InlineAlert tone="warning" title="This changes the past">
             {`Payroll will settle the difference for ${impact.retro.months.map(monthName).join(', ')} in the next run. Payslips already issued stay as they are.`}

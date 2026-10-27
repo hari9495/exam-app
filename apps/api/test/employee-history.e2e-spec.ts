@@ -645,6 +645,22 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       }
     });
 
+    it('a promotion that lowers pay is warned about in the preview (not refused); a raise is not; without pay access no warning', async () => {
+      const joined = (await api('payrollA', 'post', '/people/employees').send(join({ givenName: 'Ravi', joinedOn: today, overrideReason: undefined, compensation: { annualCtc: '600000' } })).expect(201)).body;
+      const ravi = joined.id;
+      await markSteppedUp(tenantPrisma, token.payApproverA);
+      await api('payApproverA', 'post', `/people/changes/${joined.payChangeId}/approve`).send({}).expect(201);
+      const promo = (annualCtc: string) => ({ employeeId: ravi, changeType: 'promotion', effectiveDate: in20, payload: { assignment: { designationId: ids.lead }, compensation: { annualCtc } }, reason: 'Team lead' });
+      const lower = (await api('payrollA', 'post', '/people/changes/preview').send(promo('550000')).expect(201)).body.impact;
+      expect(lower.warnings).toEqual(['This promotion lowers the annual CTC. Check the new pay before you send it.']);
+      expect((await api('payrollA', 'post', '/people/changes/preview').send(promo('700000')).expect(201)).body.impact.warnings).toEqual([]);
+      // Without pay on the change (HR without pay access): the pay stays, nothing to warn about.
+      expect((await api('hrA', 'post', '/people/changes/preview').send({ ...promo('1'), payload: { assignment: { designationId: ids.lead } } }).expect(201)).body.impact.warnings).toEqual([]);
+      // Still allowed: sent for approval as usual.
+      const sent = (await api('payrollA', 'post', '/people/changes').send(promo('550000')).expect(201)).body;
+      await api('payrollA', 'post', `/people/changes/${sent.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
     it('the transfer impact lists what the new location carries: holidays, PT state with its slab, LWF, geofence', async () => {
       const { impact } = (await api('hrA', 'post', '/people/changes/preview').send(change({})).expect(201)).body;
       expect(impact.facts).toEqual(
