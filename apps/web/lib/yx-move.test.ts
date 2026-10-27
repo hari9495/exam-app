@@ -11,7 +11,7 @@ const person = (over: Partial<RestructurePreview['people'][number]> = {}): Restr
   from: { entity: 'Kaveri Foods Pvt Ltd', code: 'KF-0088', location: 'Bengaluru head office', department: 'Sales', manager: null },
   to: { entity: 'Kaveri Foods (Tamil Nadu)', code: 'KF-0088', location: 'Chennai office', department: 'Sales', manager: null },
   service: { from: '2019-07-14', kept: true },
-  leave: [{ name: 'PL', days: 11.5, action: 'carried' }],
+  leave: [{ name: 'PL', days: 11.5, action: 'carried' }, { name: 'Comp-off', days: 1, action: 'carried' }],
   pay: 'kept',
   ...over,
 });
@@ -26,8 +26,8 @@ describe('moveImpact (PPL-04)', () => {
       { fact: 'Location', from: 'Bengaluru head office', to: 'Chennai office' },
       { fact: 'PF', from: 'Same UAN', to: 'Same UAN · transfer tracked on the checklist' },
       { fact: 'Tax', from: 'Pay and tax so far this year', to: 'Form 12B carried into the new entity' },
-      { fact: 'Leave balance', from: '11.5 days PL', to: 'Carried over' },
-      { fact: 'Continuous service', from: null, to: 'Continues from 2019-07-14' },
+      { fact: 'Leave balance', from: '11.5 days PL, 1 day Comp-off', to: 'Carried over' },
+      { fact: 'Continuous service', from: null, to: 'Continues from 14 Jul 2019' },
       { fact: 'Salary structure', from: null, to: 'Kept' },
     ]);
     expect(i).toMatchObject({ effectiveDate: '2026-10-05', pay: [], rebased: [], retro: null });

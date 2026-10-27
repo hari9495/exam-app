@@ -99,6 +99,8 @@ export function useRaiseChange() {
   };
 }
 
+const dateText = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
 /**
  * PPL-04 "What changes" of a one-person move from the restructure dry run (PPL-09 engine): the person's result, or
  * the reason they cannot move (thrown, shown instead of the table).
@@ -117,9 +119,9 @@ export function moveImpact(p: RestructurePreview, effectiveDate: string): Impact
     { fact: 'PF', from: 'Same UAN', to: 'Same UAN · transfer tracked on the checklist' },
     { fact: 'Tax', from: 'Pay and tax so far this year', to: 'Form 12B carried into the new entity' },
   ];
-  const balance = r.leave.map((l) => `${l.days} days ${l.name}`).join(', ');
+  const balance = r.leave.map((l) => `${l.days} ${l.days === 1 ? 'day' : 'days'} ${l.name}`).join(', ');
   if (balance) facts.push({ fact: 'Leave balance', from: balance, to: r.leave[0].action === 'lapsed' ? 'Lapses' : 'Carried over' });
-  if (r.service) facts.push({ fact: 'Continuous service', from: null, to: r.service.kept ? `Continues from ${r.service.from}` : `Restarts on ${r.service.from}` });
+  if (r.service) facts.push({ fact: 'Continuous service', from: null, to: r.service.kept ? `Continues from ${dateText(r.service.from)}` : `Restarts on ${dateText(r.service.from)}` });
   if (r.pay === 'kept' || r.pay === 'set_later') facts.push({ fact: 'Salary structure', from: null, to: r.pay === 'kept' ? 'Kept' : 'A new one is assigned' });
   return { effectiveDate, facts, pay: [], rebased: [], retro: null };
 }
