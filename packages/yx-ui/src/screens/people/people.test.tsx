@@ -220,9 +220,11 @@ describe('screens', () => {
     render(<ScheduledChangesScreen rows={SCHEDULED} today={TODAY} defaultCancelId="s2" />);
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Cancel change' });
-    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await u.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 5 characters.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
     await u.type(within(dialog).getByRole('textbox'), 'Transfer postponed by the client');
-    expect(confirm.hasAttribute('disabled')).toBe(false);
+    expect(within(dialog).queryByText('Enter a reason of at least 5 characters.')).toBeNull();
   });
 
   it('international bank: invalid IBAN blocks sending', () => {

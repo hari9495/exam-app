@@ -99,12 +99,15 @@ describe('PPL-30 documents and letters, live', () => {
   });
 
   it('uploads a renewed document with its expiry date; Request a certificate opens its page', async () => {
-    page();
+    const live = page();
     expect(screen.getByRole('link', { name: 'Request a certificate' })).toHaveAttribute('href', '/yx/me/documents/certificate');
     await ue.click(screen.getAllByRole('button', { name: 'Upload' })[0]);
     const dialog = screen.getByRole('dialog', { name: 'Upload Forklift licence' });
-    expect(within(dialog).getByRole('button', { name: 'Upload' })).toBeDisabled();
     expect(within(dialog).getByLabelText('Expires on')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Upload' }));
+    expect(within(dialog).getByText('Add the file.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Choose the expiry date.')).toBeInTheDocument();
+    expect(live.onUpload).not.toHaveBeenCalled();
   });
 
   it('shows the empty state with Upload, and no Upload when the person uploads nothing themselves', () => {

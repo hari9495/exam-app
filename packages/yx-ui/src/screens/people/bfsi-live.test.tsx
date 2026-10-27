@@ -25,7 +25,10 @@ describe('PPL-43 annual declarations, live', () => {
     expect(screen.getByRole('row', { name: /Deccan Agro Industries Ltd 350 Demat · NSDL/ })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Add holding' }));
     let dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Add holding' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Add holding' }));
+    expect(within(dialog).getByText('Enter the security.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Enter a quantity of 1 or more.')).toBeInTheDocument();
+    expect(live.onAddHolding).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Security/ }), 'Nilgiri Logistics Ltd');
     await ue.type(within(dialog).getByRole('textbox', { name: /Quantity/ }), '1000');
     await ue.click(within(dialog).getByRole('button', { name: 'Add holding' }));
@@ -42,7 +45,9 @@ describe('PPL-43 annual declarations, live', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /PAN/ }), 'BRGPR7712');
     await ue.tab();
     expect(within(dialog).getByText('Enter a 10-character PAN like ABCDE1234F.')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Add related person' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Add related person' }));
+    expect(within(dialog).getByText('Enter a 10-character PAN like ABCDE1234F.')).toBeInTheDocument();
+    expect(live.onAddRelated).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /PAN/ }), 'k');
     await ue.click(within(dialog).getByRole('button', { name: 'Add related person' }));
     await waitFor(() => expect(live.onAddRelated).toHaveBeenCalledWith({ name: 'Suman Kulkarni', relation: 'Mother', pan: 'BRGPR7712K' }));

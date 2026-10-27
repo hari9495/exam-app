@@ -2035,6 +2035,7 @@ function UploadDialog({ types, typeKey, today, onClose, onUpload }: { types: Liv
   const [key, setKey] = useState<string | null>(typeKey ?? (types.length === 1 ? types[0].key : null));
   const [file, setFile] = useState<File | null>(null);
   const [expires, setExpires] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
   const type = types.find((t) => t.key === key);
   return (
     <ConfirmDialog
@@ -2043,22 +2044,23 @@ function UploadDialog({ types, typeKey, today, onClose, onUpload }: { types: Liv
       title={type ? `Upload ${type.name}` : 'Upload a document'}
       consequence="A PDF or a photo. HR checks it before it counts."
       confirmLabel="Upload"
-      confirmDisabled={!type || !file || (type.expiryTracked && !expires)}
       onConfirm={async () => {
+        setTried(true);
+        if (!type || !file || (type.expiryTracked && !expires)) return false;
         await onUpload(type!.key, file!, type!.expiryTracked && expires ? dayKey(expires) : null);
         toast({ tone: 'success', title: `${type!.name} uploaded`, description: 'HR checks it. You can see its status in the list.' });
         onClose();
       }}
     >
       <div className="yx-ppl__stack">
-        <FormField label="Document type" required>
+        <FormField label="Document type" required error={tried && !type ? 'Choose the document type.' : null}>
           <Select aria-label="Document type" options={types.map((t) => ({ value: t.key, label: t.name }))} value={key} onChange={setKey} disabled={Boolean(typeKey)} />
         </FormField>
-        <FormField id="md-file" label="File" required>
+        <FormField id="md-file" label="File" required error={tried && !file ? 'Add the file.' : null}>
           <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
         </FormField>
         {type?.expiryTracked && (
-          <FormField label="Expires on" required>
+          <FormField label="Expires on" required error={tried && !expires ? 'Choose the expiry date.' : null}>
             <DatePicker value={expires} onChange={setExpires} min={onDay(today)} aria-label="Expires on" />
           </FormField>
         )}

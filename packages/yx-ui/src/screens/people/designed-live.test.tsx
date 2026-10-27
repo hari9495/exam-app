@@ -144,7 +144,9 @@ describe('Checklist record (PPL-13)', () => {
     expect(onIssueLetter).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }));
     await ue.click(within(rowOf(/ESIC/)).getByRole('button', { name: 'Skip' }));
     dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Skip task' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Skip task' }));
+    expect(within(dialog).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onSkip).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), 'ESI does not apply');
     await ue.click(within(dialog).getByRole('button', { name: 'Skip task' }));
     expect(onSkip).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' }), 'ESI does not apply');
@@ -261,7 +263,10 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     await ue.click(screen.getByRole('button', { name: 'Sign off' }));
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('checkbox', { name: /recovery/ }));
-    expect(within(dialog).getByRole('button', { name: 'Sign off' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Sign off' }));
+    expect(within(dialog).getByText('Enter an amount above 0.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Enter what it is for, at least 3 characters.')).toBeInTheDocument();
+    expect(onSignOff).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Amount/ }), '15000');
     await ue.type(within(dialog).getByRole('textbox', { name: /For/ }), 'Phone not returned');
     await ue.click(within(dialog).getByRole('button', { name: 'Sign off' }));
@@ -281,7 +286,9 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     expect(screen.getByText(/Possible recovery/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Settled outside YukthiX' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Close the exit' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Close the exit' }));
+    expect(within(dialog).getByText('Enter how it was settled, at least 3 characters.')).toBeInTheDocument();
+    expect(onSettledOutside).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /How/ }), 'Bank transfer');
     await ue.click(within(dialog).getByRole('button', { name: 'Close the exit' }));
     expect(onSettledOutside).toHaveBeenCalledWith({ settledOn: '2026-11-02', reason: 'Bank transfer' });
@@ -289,12 +296,15 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
 
   it('Clearance: waiving needs a note', async () => {
     const rows: MyClearanceItem[] = [{ ...base.clearance[0], exitCaseId: 'k', person: 'Ravi Kumar', lastDay: '2026-10-31' }];
-    wrap(<ClearanceSignoffs live={{ state: 'ready', onRetry: vi.fn(), rows, onSignOff: vi.fn() }} />);
+    const onSignOff = vi.fn(async () => ({}));
+    wrap(<ClearanceSignoffs live={{ state: 'ready', onRetry: vi.fn(), rows, onSignOff }} />);
     expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Sign off' }));
     const dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('radio', { name: 'Waive' }));
-    expect(within(dialog).getByRole('button', { name: 'Waive' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Waive' }));
+    expect(within(dialog).getByText('Enter a note of at least 3 characters.')).toBeInTheDocument();
+    expect(onSignOff).not.toHaveBeenCalled();
   });
 });
 
@@ -503,7 +513,9 @@ describe('Change action (PPL-04) and Scheduled (PPL-05)', () => {
     await ue.click(await screen.findByRole('menuitem', { name: 'Cancel change' }));
     const dialog = screen.getByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox'), 'Not');
-    expect(within(dialog).getByRole('button', { name: 'Cancel change' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Cancel change' }));
+    expect(within(dialog).getByText('Enter a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), ' now');
     await ue.click(within(dialog).getByRole('button', { name: 'Cancel change' }));
     await waitFor(() => expect(onCancel).toHaveBeenCalledWith('s1', 'Not now'));
