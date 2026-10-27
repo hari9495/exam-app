@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailSettingsScreen, brandingErrors, contrastWithWhite, type EmailSettingsScreenProps } from './email-settings';
 import { EMAIL_OVERVIEW, EMAIL_PREVIEW_HTML } from './data';
 
@@ -22,6 +22,24 @@ function Screen(over: Partial<EmailSettingsScreenProps>) {
 }
 
 describe('EmailSettingsScreen', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/'));
+
+  it('an open email has its own address: Back returns to the list, a reload opens it again', async () => {
+    const ue = userEvent.setup();
+    const { unmount } = render(<Screen />);
+    await ue.click(screen.getByRole('button', { name: 'Edit Password reset' }));
+    expect(new URLSearchParams(window.location.search).get('email')).toBeTruthy();
+    window.history.back();
+    expect(await screen.findByRole('heading', { name: 'Emails' })).toBeTruthy();
+    window.history.forward();
+    expect(await screen.findByRole('heading', { name: 'Password reset' })).toBeTruthy();
+    unmount();
+    render(<Screen />);
+    expect(await screen.findByRole('heading', { name: 'Password reset' })).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Back to emails' }));
+    expect(await screen.findByRole('heading', { name: 'Emails' })).toBeTruthy();
+  });
+
   it('lists the emails by group with whose wording each uses', () => {
     render(<Screen />);
     expect(screen.getByRole('heading', { name: 'Emails' })).toBeTruthy();

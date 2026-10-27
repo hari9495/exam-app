@@ -1,6 +1,7 @@
 // PPL-27 Document verification queue · PPL-28 Issue letter + bulk issue + issued letters register · PPL-29 Letter templates
 // PPL-30 My documents & letters · PPL-31 Self-service certificate request (P05 §4.2–4.6, §7, Q7, Q8).
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useViewInUrl } from '../../lib/view-in-url';
 import { Camera, Copy, Download, FileUp, Link2, Mail, Plus, Share2, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
@@ -1268,18 +1269,6 @@ const BLANK_LETTER = toHtml(
 
 type Workspace = { t: LetterTemplate | null; spec: TemplateSpec; tab: TemplateTab };
 
-// The open template lives in the address (?template=…), so the browser's Back and Forward move between it and the list
-// and a reload keeps it open. Our own pushes are flagged, so the breadcrumb steps back instead of stacking the list.
-const TEMPLATE_PARAM = 'template';
-const templateInUrl = () => new URLSearchParams(window.location.search).get(TEMPLATE_PARAM);
-const setTemplateInUrl = (id: string | null, push: boolean) => {
-  const u = new URL(window.location.href);
-  if (id) u.searchParams.set(TEMPLATE_PARAM, id);
-  else u.searchParams.delete(TEMPLATE_PARAM);
-  if (push) window.history.pushState({ ...window.history.state, yxTemplate: true }, '', u);
-  else window.history.replaceState(window.history.state, '', u);
-};
-
 // PPL-29 · list, live: the designed list with the API's templates; a row opens the designed workspace.
 function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
   const [ws, setWs] = useState<Workspace | null>(null);
@@ -1300,31 +1289,12 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
     toast({ tone: 'success', title: `${t.name} version ${t.version} added as a draft` });
     open(t, 'test');
   };
-  const restored = useRef(false);
-  useEffect(() => {
-    if (!d) return;
-    const byUrl = () => d.templates.find((t) => t.id === templateInUrl());
-    if (!restored.current) {
-      restored.current = true;
-      const t = byUrl();
-      if (t) open(t);
-      else if (templateInUrl()) setTemplateInUrl(null, false);
-    }
-    const onPop = () => {
-      const t = byUrl();
-      if (t) open(t);
-      else setWs(null);
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open only sets state
-  }, [d]);
-  const shown = ws ? (ws.t?.id ?? 'new') : null;
-  useEffect(() => {
-    const now = templateInUrl();
-    if (restored.current && now !== shown) setTemplateInUrl(shown, now === null);
-  }, [shown]);
-  const close = () => (window.history.state?.yxTemplate ? window.history.back() : setWs(null));
+  const close = useViewInUrl('template', ws ? (ws.t?.id ?? 'new') : null, Boolean(d), (id) => {
+    const t = id ? d?.templates.find((x) => x.id === id) : undefined;
+    if (t) open(t);
+    else setWs(null);
+    return Boolean(t);
+  });
   if (ws) return <LiveTemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} onClose={close} />;
   const cols: TableColumn<LetterTemplate>[] = [
     { key: 'name', header: 'Template', value: (r) => r.name, width: 280 },
