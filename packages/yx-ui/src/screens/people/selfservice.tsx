@@ -1189,6 +1189,7 @@ function LivePreclearancePage({ today, live }: { today: Date; live: LivePreclear
         <PreclearanceForm onCancel={item ? () => setAsking(false) : undefined} onRequest={async (x) => (await live.onRequest(x), setAsking(false))} />
       ) : (
         <Card title={`${tradeTitle(item)} · ${item.referenceNo}`} actions={<StatusBadge status={item.status} />}>
+          <div className="yx-ppl__stack">
           <dl className="yx-ppl__rail-facts">
             <div><dt>Decision</dt><dd>{item.status === 'Pending' ? `Waiting for the compliance officer, who decides within ${live.rules.decideDays} working days` : `${item.status === 'Rejected' ? 'Rejected' : 'Approved'} by ${item.decidedBy ?? 'the compliance officer'} (compliance officer) on ${formatDate(item.decidedAt!)}`}</dd></div>
             {item.validUntil && <div><dt>Valid until</dt><dd>{formatDate(item.validUntil)} ({state(item)})</dd></div>}
@@ -1198,6 +1199,7 @@ function LivePreclearancePage({ today, live }: { today: Date; live: LivePreclear
           {(item.status === 'Approved' || item.status === 'Expired') && <TradeReport item={item} today={today} live={live} />}
           {item.status === 'Expired' && <InlineAlert tone="warning">The window ended without a trade report. Report the trade if you made it, or request again.</InlineAlert>}
           {item.status === 'Done' && <InlineAlert tone="success">Trade reported on {formatDate(item.tradedOn!)}. Late or missing reports alert the compliance officer.</InlineAlert>}
+          </div>
         </Card>
       )}
     </MeFrame>
@@ -1218,6 +1220,7 @@ export function TradingPreclearance({ view = 'request', today, live }: { view?: 
         <PreclearanceForm disabled={view === 'blocked'} />
       ) : (
         <Card title="Sell 350 Deccan Agro Industries Ltd · PC-2026-0114" actions={<StatusBadge status={state === 'valid' ? 'Approved' : state === 'trade reported' ? 'Done' : 'Expired'} />}>
+          <div className="yx-ppl__stack">
           <dl className="yx-ppl__rail-facts">
             <div><dt>Decision</dt><dd>Approved by Kavitha Menon (compliance officer) on {formatDate(approvedOn)}</dd></div>
             <div><dt>Valid until</dt><dd>{formatDate(validUntil)} ({state})</dd></div>
@@ -1240,6 +1243,7 @@ export function TradingPreclearance({ view = 'request', today, live }: { view?: 
           )}
           {view === 'expired' && <InlineAlert tone="warning">The window ended without a trade report. Report the trade if you made it, or request again.</InlineAlert>}
           {view === 'report' && <InlineAlert tone="success">Trade reported on {formatDate(today)}. Late or missing reports alert the compliance officer.</InlineAlert>}
+          </div>
         </Card>
       )}
     </MeFrame>
