@@ -261,7 +261,7 @@ function AskDialog({ about, people, onPeopleSearch, onClose, onSave }: { about: 
       <FormField id="ask-about" label="About" required error={tried && !who ? 'Choose who the feedback is about.' : null}>
         <Select aria-label="About" value={who} onChange={setWho} options={about} searchable />
       </FormField>
-      <FormField id="ask-who" label="Ask" required error={!tried ? null : asked.length === 0 ? 'Choose at least one colleague.' : asked.length > 10 ? 'Choose up to 10 colleagues.' : null} helper="Up to 10 colleagues.">
+      <FormField id="ask-who" label="Ask" required error={!tried ? null : asked.length === 0 ? 'Choose at least one colleague.' : asked.length > 10 ? 'Choose up to 10 colleagues.' : null} rule="Up to 10 colleagues.">
         <MultiSelect aria-label="Colleagues to ask" value={asked} onChange={(ids) => {
           setChosen(withChosen(people, chosen).filter((x) => ids.includes(x.id)));
           setAsked(ids);

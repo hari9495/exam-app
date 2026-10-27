@@ -196,7 +196,7 @@ function BatchDrawer({ id, canApprove, canManage, loadBatch, onApprove, onReject
             onClose();
           }}
         >
-          <FormField id="bt-reason" label="Reason" required helper="At least 3 characters." error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
+          <FormField id="bt-reason" label="Reason" required rule="At least 3 characters." error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
             <TextArea value={reason} onChange={setReason} rows={2} maxLength={1000} />
           </FormField>
         </ConfirmDialog>

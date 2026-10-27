@@ -212,7 +212,7 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
           setTried(false);
         }}
       >
-        <FormField label="Reason" required helper="At least 10 characters. Visible to HR and this calibration group." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
+        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and this calibration group." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>

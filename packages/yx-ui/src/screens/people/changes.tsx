@@ -627,7 +627,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           setCancelId(null);
         }}
       >
-        <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers." error={tried && reason.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+        <FormField label="Reason" required rule="At least 5 characters." helper="Shown to the approvers." error={tried && reason.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={2} />
         </FormField>
         {cancelError && <InlineAlert tone="danger" title={cancelError} />}

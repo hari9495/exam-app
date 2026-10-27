@@ -452,7 +452,7 @@ export function NineBox({ people: initial, onMove, readOnly, defaultPending }: N
           setTried(false);
         }}
       >
-        <FormField label="Reason" required helper="At least 10 characters. Visible to HR and the calibration group, never to the employee." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
+        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and the calibration group, never to the employee." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>

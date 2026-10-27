@@ -128,7 +128,7 @@ function EntityDialog(p: { entity: CareersEntity; onClose: () => void; onSave: C
       await p.onSave(p.entity.id, { slug, headline: headline.trim() || null, intro: intro.trim() || null, primaryColor: color || null });
       p.onClose();
     }}>
-      <FormField id="ce-slug" label="Web address" required helper="Lower-case letters, numbers and hyphens, for example kaveri-foods." error={slugBad ? 'Use lower-case letters, numbers and single hyphens.' : tried && !slug ? 'Enter the web address.' : undefined}>
+      <FormField id="ce-slug" label="Web address" required rule="Lower-case letters, numbers and hyphens, for example kaveri-foods." error={slugBad ? 'Use lower-case letters, numbers and single hyphens.' : tried && !slug ? 'Enter the web address.' : undefined}>
         <TextField value={slug} onChange={setSlug} maxLength={60} />
       </FormField>
       <FormField id="ce-head" label="Headline" optional>
@@ -185,7 +185,7 @@ function NoticeDialog(p: { purpose: ConsentPurpose; current: ConsentNotice | und
       await p.onPublish(p.purpose, text.trim());
       p.onClose();
     }}>
-      <FormField id="cn-text" label="Notice text" required helper="Say what you collect, why, and how long you keep it (at least 10 characters)." error={!tried || ok ? null : text.trim().length < 10 ? 'Enter a notice of at least 10 characters.' : 'Change the words to publish a new version.'}>
+      <FormField id="cn-text" label="Notice text" required rule="At least 10 characters." helper="Say what you collect, why, and how long you keep it." error={!tried || ok ? null : text.trim().length < 10 ? 'Enter a notice of at least 10 characters.' : 'Change the words to publish a new version.'}>
         <TextArea value={text} onChange={setText} maxLength={5000} rows={6} />
       </FormField>
     </ConfirmDialog>

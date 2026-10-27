@@ -183,7 +183,7 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
       <FormField id="bt-on" label="Joining day" required error={tried && !on ? 'Choose the joining day.' : null}>
         <DatePicker value={on} onChange={setOn} min={fromKey(today)} aria-label="Joining day" />
       </FormField>
-      <FormField id="bt-touch" label="Touchpoints" optional helper="One per line: yyyy-mm-dd and what happens, for example 2026-11-02 Welcome call." error={tried && !touchOk ? 'Write each line as yyyy-mm-dd and what happens.' : null}>
+      <FormField id="bt-touch" label="Touchpoints" optional rule="One per line: yyyy-mm-dd and what happens, for example 2026-11-02 Welcome call." error={tried && !touchOk ? 'Write each line as yyyy-mm-dd and what happens.' : null}>
         <TextArea value={touch} onChange={setTouch} rows={3} maxLength={2000} />
       </FormField>
       {moved && (

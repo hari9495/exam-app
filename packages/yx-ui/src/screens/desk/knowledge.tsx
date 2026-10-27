@@ -227,7 +227,7 @@ function SpaceDrawer({ space, desks, onClose, onSave }: { space?: KbSpace; desks
         <FormField label="Name" required>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Web address" required helper="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
+        <FormField label="Web address" required rule="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={40} />
         </FormField>
         <FormField label="Who can read it">

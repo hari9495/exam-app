@@ -8,7 +8,7 @@ import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FieldRow, FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea, TextField } from '../../components/inputs';
@@ -1175,12 +1175,14 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
             await live.onAdd(s, { componentCode: line.componentCode!, amount: line.amount, label: line.label.trim() }, why.trim());
           }}
         >
-          <FormField id="fnf-code" label="Line" required error={tried && !line.componentCode ? 'Choose the line.' : null}>
-            <Select aria-label="Line" value={line.componentCode} onChange={(v) => setLine({ ...line, componentCode: v })} options={ADDABLE} />
-          </FormField>
-          <FormField id="fnf-amount" label="Amount" required helper="Rupees, up to 2 decimals." error={tried && !(MONEY.test(line.amount) && Number(line.amount) > 0) ? 'Enter an amount above 0, up to 2 decimals.' : null}>
-            <TextField value={line.amount} onChange={(v) => setLine({ ...line, amount: v.trim() })} prefix="₹" inputMode="decimal" maxLength={13} />
-          </FormField>
+          <FieldRow>
+            <FormField id="fnf-code" label="Line" required error={tried && !line.componentCode ? 'Choose the line.' : null}>
+              <Select aria-label="Line" value={line.componentCode} onChange={(v) => setLine({ ...line, componentCode: v })} options={ADDABLE} />
+            </FormField>
+            <FormField id="fnf-amount" label="Amount" required rule="Rupees, up to 2 decimals." error={tried && !(MONEY.test(line.amount) && Number(line.amount) > 0) ? 'Enter an amount above 0, up to 2 decimals.' : null}>
+              <TextField value={line.amount} onChange={(v) => setLine({ ...line, amount: v.trim() })} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+          </FieldRow>
           <FormField id="fnf-label" label="What it is" required error={tried && line.label.trim().length < 3 ? 'Enter what it is, at least 3 characters.' : null}>
             <TextField value={line.label} onChange={(v) => setLine({ ...line, label: v })} maxLength={200} />
           </FormField>

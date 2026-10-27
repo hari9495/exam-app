@@ -50,6 +50,32 @@ describe('FormField', () => {
     expect(input).toHaveAttribute('aria-required', 'true');
     expect(input).toHaveAccessibleDescription(/Enter an email.*We send payslips here/);
   });
+  it('the rule shows before the helper and hides while an error says the same, also while typing', async () => {
+    const u = userEvent.setup();
+    function Reason() {
+      const [v, setV] = useState('');
+      return (
+        <FormField label="Reason" required rule="At least 5 characters." helper="Shown to the approvers." error={v.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+          <TextField value={v} onChange={setV} />
+        </FormField>
+      );
+    }
+    const { rerender } = render(
+      <FormField label="Reason" rule="At least 5 characters." helper="Shown to the approvers.">
+        <TextField value="" onChange={() => {}} />
+      </FormField>,
+    );
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+    rerender(<Reason />);
+    expect(screen.getByText('Enter a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(screen.getByText('Shown to the approvers.')).toBeInTheDocument();
+    expect(screen.queryByText(/At least 5 characters\./)).toBeNull();
+    // While typing the error steps aside, so the rule comes back: never an empty line under the field.
+    await u.type(screen.getByLabelText(/Reason/), 'ab');
+    expect(screen.queryByText('Enter a reason of at least 5 characters.')).toBeNull();
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+  });
+
   it('error summary links focus the field', async () => {
     render(
       <>
