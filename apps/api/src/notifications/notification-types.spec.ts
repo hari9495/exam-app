@@ -47,6 +47,7 @@ describe('notification catalog', () => {
       'document.requested',
       'document.rejected',
       'document.expiring',
+      'work_auth.expiring',
       'letter.ready',
       'letter.signed',
       'preboarding.completed',
