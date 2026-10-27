@@ -149,7 +149,7 @@
 /* code / placeholder chips */
 .yx-ppl__code { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); padding: 0 var(--yx-space-1); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-ppl__cheats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); max-height: calc(var(--yx-space-16) * 6); overflow: auto; }
-.yx-ppl__cheats li { display: flex; justify-content: space-between; gap: var(--yx-space-2); }
+.yx-ppl__cheats li { display: flex; justify-content: space-between; align-items: center; gap: var(--yx-space-2); }
 
 /* camera placeholder */
 .yx-ppl__camera { display: grid; place-items: center; gap: var(--yx-space-2); aspect-ratio: 3 / 4; border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); color: var(--yx-color-text-secondary); }
