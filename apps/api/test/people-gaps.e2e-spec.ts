@@ -9,10 +9,12 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import { lapsedWorkPermits, WorkAuthService } from '../src/people/work-auth.service';
 
-// The last People pages, against the real database (forced RLS): the identity panel (PPL-34). Each with its key,
+// The last People pages, against the real database (forced RLS): the identity panel (PPL-34) and work
+// authorisations (PPL-45). Each with its key,
 // scope and company boundary, positive and negative.
-describe('People: the remaining designed pages (PPL-34)', () => {
+describe('People: the remaining designed pages (PPL-34, PPL-45)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -155,6 +157,61 @@ describe('People: the remaining designed pages (PPL-34)', () => {
 
     it('checks are append-only for the app', async () => {
       await expect(tenantPrisma.forTenant(ctx('A'), (tx) => tx.personIdentityCheck.deleteMany({ where: { organizationId: org.A.id } }))).rejects.toThrow();
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ work authorisations (PPL-45)
+
+  describe('work authorisations (PPL-45)', () => {
+    const path = (who: string) => `/people/employees/${ids[who]}/work-authorisations`;
+    const visa = { kind: 'employment_visa', country: 'AE', number: '784 2025 7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', issuedOn: addDays(todayIst(), -300), expiresOn: addDays(todayIst(), 50) };
+
+    it('HR with identity access reads them, masked; identity.manage adds one after step-up; nobody else', async () => {
+      await api('arjunU', 'get', path('arjun')).expect(403);
+      await api('adminB', 'get', path('arjun')).expect(403);
+      await api('hrTn', 'get', path('imran')).expect(403); // the plant HR has no identity view
+      expect((await api('hrA', 'get', path('arjun')).expect(200)).body).toEqual({ designation: 'Analyst KF', reminderDays: [90, 60, 30], rows: [] });
+      await up('hrPlain');
+      await api('hrPlain', 'post', path('arjun')).send({ ...visa, country: 'XX' }).expect(400);
+      await api('hrPlain', 'post', path('arjun')).send({ ...visa, kind: 'tourist_visa' }).expect(400);
+      await api('hrPlain', 'post', path('arjun')).send({ ...visa, number: '1' }).expect(400);
+      await api('hrPlain', 'post', path('arjun')).send({ ...visa, expiresOn: visa.issuedOn }).expect(400);
+      await api('hrPlain', 'post', path('arjun')).send(visa).expect(201);
+      await up('arjunU');
+      await api('arjunU', 'post', path('arjun')).send(visa).expect(403);
+      const list = (await api('hrA', 'get', path('arjun')).expect(200)).body;
+      expect(list.rows).toEqual([{ id: expect.any(String), kind: 'employment_visa', country: 'AE', number: '•••• 7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', issuedOn: visa.issuedOn, expiresOn: visa.expiresOn, remindedDays: [] }]);
+      expect(JSON.stringify(list)).not.toContain('784');
+      const stored = await tenantPrisma.forTenant(SUPER, (tx) => tx.workAuthorisation.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(stored.numberEnc).not.toContain('7731');
+      const audit = await audits('employee.work_auth.added');
+      expect(audit).toHaveLength(1);
+      expect(audit[0].metadataJson).not.toContain('7731');
+    });
+
+    it('reminds the person once per reminder day, the latest reached, and the company may switch it off', async () => {
+      const service = app.get(WorkAuthService);
+      expect(await service.remind()).toBe(1); // 50 days left: the 60-day reminder
+      expect(await service.remind()).toBe(0);
+      expect(await service.remind(addDays(todayIst(), 25))).toBe(1); // 25 days left: the 30-day reminder
+      const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.workAuthorisation.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+      expect(row.remindedDays).toEqual([60, 30]);
+      const told = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, recipientUserId: users.arjunU, type: 'document.expiring' } }));
+      expect(told).toBe(2);
+      await tenantPrisma.forTenant(ctx('A'), (tx) => tx.setting.create({ data: { organizationId: org.A.id, key: 'work_auth.reminder_days', scopeType: 'tenant', scopeId: org.A.id, value: 'off' } }));
+      expect((await api('hrA', 'get', path('arjun')).expect(200)).body.reminderDays).toEqual([]);
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.workAuthorisation.updateMany({ where: { organizationId: org.A.id }, data: { remindedDays: [] } }));
+      expect(await service.remind()).toBe(0);
+    });
+
+    it('payroll pre-flight: only an expired visa or permit for the entity’s country, and a renewal clears it', async () => {
+      const lapsed = (on: string, country = 'AE') => tenantPrisma.forTenant(ctx('A'), (tx) => lapsedWorkPermits(tx, org.A.id, country, [ids.arjun, ids.imran], new Date(`${on}T00:00:00Z`)));
+      expect(await lapsed(addDays(todayIst(), 10))).toEqual([]);
+      expect(await lapsed(addDays(todayIst(), 60))).toEqual([ids.arjun]);
+      expect(await lapsed(addDays(todayIst(), 60), 'IN')).toEqual([]);
+      await up('hrA');
+      await api('hrA', 'post', path('arjun')).send({ ...visa, number: '784 2026 9001', issuedOn: undefined, expiresOn: addDays(todayIst(), 400) }).expect(201);
+      expect(await lapsed(addDays(todayIst(), 60))).toEqual([]);
     });
   });
 });

@@ -128,6 +128,7 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
+  'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
   'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },

@@ -1,6 +1,7 @@
 // PPL-03 Person record workspace (DESIGN-SYSTEM §13, M01 §3.1, P06 §7, P05 §7) with
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
 import { useMemo, useState, type ReactNode } from 'react';
+import { getCountries } from 'libphonenumber-js';
 import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
@@ -12,11 +13,14 @@ import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
-import { FormField } from '../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { Drawer } from '../../components/drawer';
 import { TextArea, TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
+import { dayKey } from '../../lib/dates';
+import { errorText } from '../org/org-kit';
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, ListSkeleton, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
@@ -89,6 +93,25 @@ export interface LiveIdentity {
   onAttest?: (note: string) => Promise<void>;
 }
 
+export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
+export type WorkAuthKind = (typeof WORK_AUTH_KINDS)[number];
+const WORK_AUTH_KIND: Record<WorkAuthKind | 'passport', string> = { employment_visa: 'Employment visa', residence_visa: 'Residence visa', work_permit: 'Work permit', national_id: 'National ID', passport: 'Passport' };
+const REGION = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRY_OPTIONS = getCountries()
+  .map((c) => ({ value: c as string, label: REGION.of(c) ?? c }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+/** PPL-45 Work authorisations tab, live (HR with identity access; numbers masked to the last four). */
+export interface LiveWorkAuth {
+  rows: { id: string; kind: WorkAuthKind | 'passport'; country: string | null; number: string; sponsor: string | null; occupation: string | null; expires: Date; remindedDays: number[] }[];
+  /** Today's designation: an employment visa or permit for another occupation is flagged. */
+  designation: string | null;
+  /** The company's reminder days, largest first. */
+  reminderDays: number[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onAdd?: (input: { kind: WorkAuthKind; country: string; number: string; sponsor?: string; occupation?: string; issuedOn?: string; expiresOn: string }) => Promise<void>;
+}
+
 /** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
 export interface LiveRecord {
   directoryHref: string;
@@ -129,6 +152,8 @@ export interface LiveRecord {
   onEditWorkPhone?: () => void;
   /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
   activity?: ActivityEntry[] | null;
+  /** Work authorisations tab (HR with identity access). */
+  workAuth?: LiveWorkAuth | null;
   /** HR menu "Identity panel" (only for HR holding the Special key for the person). */
   identityPanel?: LiveIdentity;
   /** Performance tab (only for viewers who may see this person's goals or reviews). */
@@ -259,7 +284,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
     ...(!live ? [{ id: 'learning' as const, label: 'Learning' }] : []),
     ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
     ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
-    ...(!live && international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
+    ...(live ? (live.workAuth ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: live.workAuth.rows.length || undefined }] : []) : international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
   ];
 
   const header = live ? (
@@ -480,10 +505,19 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               <TabsContent value="history">
                 {live ? live.history && <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={live.history.rows} roles={live.history.roles} /> : <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={ARJUN_HISTORY} roles={ARJUN_ROLES} />}
               </TabsContent>
-              {!live && international && persona === 'hr' && (
-                <TabsContent value="work-auth">
-                  <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
-                </TabsContent>
+              {live ? (
+                live.workAuth && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab today={today} live={live.workAuth} />
+                  </TabsContent>
+                )
+              ) : (
+                international &&
+                persona === 'hr' && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
+                  </TabsContent>
+                )
               )}
             </>
           )}
@@ -1241,38 +1275,141 @@ const LIVE_CHECK: Record<LiveIdentity['checks'][number]['kind'], [string, string
 /* ================================================================== PPL-45 work authorisations */
 
 // PPL-45
-export function WorkAuthTab({ rows, today }: { rows: typeof ARJUN_WORK_AUTH; today: Date }) {
-  const cols: TableColumn<(typeof ARJUN_WORK_AUTH)[number]>[] = [
-    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}<Text size="sm" tone="secondary" as="div">{r.country}</Text></span>, width: 200 },
+export function WorkAuthTab({ rows: sample = [], today, live }: { rows?: typeof ARJUN_WORK_AUTH; today: Date; live?: LiveWorkAuth }) {
+  const [adding, setAdding] = useState(false);
+  type Row = { id: string; type: string; country: string; number: string; sponsor: string; occupation: string; expires: Date; status: string; differs: boolean; kind: string; reminded: number[] };
+  const soon = live?.reminderDays[0] ?? 90;
+  const rows: Row[] = live
+    ? live.rows.map((r) => {
+        const left = daysBetween(today, r.expires);
+        return {
+          id: r.id,
+          type: r.kind === 'national_id' && r.country === 'AE' ? 'Emirates ID' : WORK_AUTH_KIND[r.kind],
+          country: r.country ? REGION.of(r.country) ?? r.country : '',
+          number: r.number,
+          sponsor: r.sponsor ?? '—',
+          occupation: r.occupation ?? '—',
+          expires: r.expires,
+          status: left < 0 ? 'Expired' : left <= soon ? 'Expiring' : 'Valid',
+          differs: (r.kind === 'employment_visa' || r.kind === 'work_permit') && Boolean(r.occupation && live.designation && r.occupation.trim().toLowerCase() !== live.designation.trim().toLowerCase()),
+          kind: r.kind,
+          reminded: r.remindedDays,
+        };
+      })
+    : sample.map((r) => ({ ...r, id: r.type + r.country, differs: r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa', kind: '', reminded: [90, 60] }));
+  const cols: TableColumn<Row>[] = [
+    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}{r.country && <Text size="sm" tone="secondary" as="div">{r.country}</Text>}</span>, width: 200 },
     { key: 'number', header: 'Number', type: 'id', value: (r) => r.number, width: 170 },
     { key: 'sponsor', header: 'Sponsor', value: (r) => r.sponsor, width: 160 },
     {
       key: 'occupation',
       header: 'Occupation on permit',
       value: (r) => r.occupation,
-      render: (r) => (r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa' ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
+      render: (r) => (r.differs ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
       width: 260,
     },
     { key: 'expires', header: 'Expires', type: 'date', value: (r) => r.expires, width: 130 },
     { key: 'left', header: 'Days left', type: 'number', value: (r) => daysBetween(today, r.expires), width: 110 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expiring' ? 'warning' : 'success'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expired' ? 'danger' : v === 'Expiring' ? 'warning' : 'success'), width: 120 },
   ];
+  // The soonest to lapse: what went, what goes next, and what an expired permit stops.
+  const due = rows.filter((r) => r.status !== 'Valid').sort((a, b) => a.expires.getTime() - b.expires.getTime())[0];
+  const left = due ? daysBetween(today, due.expires) : 0;
+  const went = due ? [...due.reminded].sort((a, b) => b - a) : [];
+  const next = live && due ? live.reminderDays.filter((d) => d < left && !went.includes(d))[0] : 30;
+  const add = live ? (live.onAdd ? () => setAdding(true) : undefined) : () => {};
   return (
     <div className="yx-ppl__stack">
-      {rows.some((r) => r.status === 'Expiring') && (
-        <InlineAlert tone="warning" title="Employment visa expires on 1 Nov 2026">
-          Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.
+      {due && (
+        <InlineAlert tone={due.status === 'Expired' ? 'danger' : 'warning'} title={`${due.type} ${due.status === 'Expired' ? 'expired' : 'expires'} on ${formatDate(due.expires)}`}>
+          {!live
+            ? 'Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.'
+            : [
+                went.length ? `Reminders went at ${listDays(went)} days.` : due.kind === 'passport' ? '' : 'No reminder has gone yet.',
+                next ? `The next goes at ${next} days.` : '',
+                due.kind === 'employment_visa' || due.kind === 'work_permit' ? `Payroll approval is held once it ${due.status === 'Expired' ? 'has expired' : 'expires'}.` : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
         </InlineAlert>
       )}
       <DataTable
         label="Work authorisations"
         columns={cols}
         rows={rows}
-        getRowId={(r) => r.type + r.country}
-        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={<Button variant="primary">Add document</Button>} />}
-        toolbar={<Button icon={Plus} size="sm">Add document</Button>}
+        getRowId={(r) => r.id}
+        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={add && <Button variant="primary" onClick={add}>Add document</Button>} />}
+        toolbar={add && <Button icon={Plus} size="sm" onClick={add}>Add document</Button>}
       />
+      {adding && live?.onAdd && <AddWorkAuthDrawer today={today} onAdd={live.onAdd} onClose={() => setAdding(false)} />}
     </div>
+  );
+}
+
+const listDays = (days: number[]) => (days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]}` : String(days[0]));
+
+/** Add a visa, permit or national ID (HR, with the right to change identity details). */
+function AddWorkAuthDrawer({ today, onAdd, onClose }: { today: Date; onAdd: NonNullable<LiveWorkAuth['onAdd']>; onClose: () => void }) {
+  const [kind, setKind] = useState<WorkAuthKind | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
+  const [number, setNumber] = useState('');
+  const [sponsor, setSponsor] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [issued, setIssued] = useState<Date | null>(null);
+  const [expires, setExpires] = useState<Date | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const permit = kind === 'employment_visa' || kind === 'work_permit';
+  const errors: FormErrorItem[] = [
+    ...(!kind ? [{ fieldId: 'wa-kind', message: 'Choose the document.' }] : []),
+    ...(!country ? [{ fieldId: 'wa-country', message: 'Choose the country.' }] : []),
+    ...(!/^[A-Za-z0-9][A-Za-z0-9 /-]{3,29}$/.test(number.trim()) ? [{ fieldId: 'wa-number', message: 'Enter the number as printed: 4 to 30 letters or digits.' }] : []),
+    ...(!expires ? [{ fieldId: 'wa-expires', message: 'Choose the expiry date.' }] : issued && expires <= issued ? [{ fieldId: 'wa-expires', message: 'The expiry date must be after the issue date.' }] : []),
+  ];
+  const sv = useSaveErrors(errors);
+  const save = async () => {
+    if (errors.length) return sv.reveal();
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onAdd({ kind: kind!, country: country!, number: number.trim(), ...(sponsor.trim() ? { sponsor: sponsor.trim() } : {}), ...(permit && occupation.trim() ? { occupation: occupation.trim() } : {}), ...(issued ? { issuedOn: dayKey(issued) } : {}), expiresOn: dayKey(expires!) });
+      onClose();
+    } catch (e) {
+      setFailed(errorText(e));
+      setSaving(false);
+    }
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Add work authorisation" size="lg" dirty={Boolean(kind || country || number || sponsor || occupation || issued || expires)} notice={failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>Add document</Button></>}>
+      <div className="yx-ppl__stack">
+        {sv.showErrors && <ErrorSummary errors={sv.shownErrors} />}
+        <div className="yx-ppl__form">
+          <FormField id="wa-kind" label="Document" required error={sv.errorOf('wa-kind')}>
+            <Select aria-label="Document" value={kind} onChange={setKind} options={WORK_AUTH_KINDS.map((k) => ({ value: k, label: WORK_AUTH_KIND[k] }))} />
+          </FormField>
+          <FormField id="wa-country" label="Country" required error={sv.errorOf('wa-country')}>
+            <Select aria-label="Country" value={country} onChange={setCountry} options={COUNTRY_OPTIONS} searchable />
+          </FormField>
+          <FormField id="wa-number" label="Number" required error={sv.errorOf('wa-number')} helper="Only the last four are shown on the record.">
+            <TextField value={number} onChange={setNumber} maxLength={30} className="yx-mono" />
+          </FormField>
+          <FormField id="wa-sponsor" label="Sponsor" optional>
+            <TextField value={sponsor} onChange={setSponsor} maxLength={120} />
+          </FormField>
+          {permit && (
+            <FormField id="wa-occupation" label="Occupation on permit" optional helper="As printed. We flag it when it differs from the designation.">
+              <TextField value={occupation} onChange={setOccupation} maxLength={120} />
+            </FormField>
+          )}
+          <FormField id="wa-issued" label="Issued on" optional>
+            <DatePicker value={issued} onChange={setIssued} max={today} aria-label="Issued on" />
+          </FormField>
+          <FormField id="wa-expires" label="Expires on" required error={sv.errorOf('wa-expires')}>
+            <DatePicker value={expires} onChange={setExpires} aria-label="Expires on" />
+          </FormField>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 

@@ -42,6 +42,11 @@ interface Compensation {
   lastNetPay?: { month: string; net: string; paid: boolean } | null;
   taxRegime?: { regime: string; taxYear: string } | null;
 }
+interface WorkAuths {
+  designation: string | null;
+  reminderDays: number[];
+  rows: { id: string; kind: 'employment_visa' | 'residence_visa' | 'work_permit' | 'national_id' | 'passport'; country: string | null; number: string; sponsor: string | null; occupation: string | null; issuedOn: string | null; expiresOn: string; remindedDays: number[] }[];
+}
 interface IdentityChecks {
   checks: { kind: 'day1' | 'attested' | 'requested'; at: string; by: string | null; note: string | null }[];
   idTypes: { key: string; name: string }[];
@@ -103,6 +108,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const lifeWrite = useLifeWrite();
   const download = useDocumentDownload();
   const payRead = usePayRead();
+  // PPL-45: HR who sees the person's identity class.
+  const workAuth = usePeople<WorkAuths>(hr && profile.data && !profile.data.self && profile.data.classes.identity ? `/employees/${p}/work-authorisations` : null);
   const activity = usePeople<{ entries: { id: string; kind: ActivityEntry['kind']; actor: string | null; at: string; text: string }[] }>(personId ? `/employees/${p}/activity` : null);
   // Performance tab: for the person, their managers (the API decides) and perf.goal.view / perf.review.view.
   const perfAllowed = Boolean(profile.data) && (Boolean(profile.data?.self) || !hr || perms.has('perf.goal.view') || perms.has('perf.review.view'));
@@ -275,6 +282,22 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       perfAllowed && (goals.data || reviews.data) && personId
         ? { ...performanceData(periods.data ?? [], periodId, goals.data?.goals ?? [], reviews.data ?? [], meetings.data?.meetings ?? [], personId, name, today), onOpenGoals: () => router.push('/yx/performance/goals') }
         : null,
+    workAuth: workAuth.data
+      ? {
+          rows: workAuth.data.rows.map((r) => ({ ...r, expires: day(r.expiresOn) })),
+          designation: workAuth.data.designation,
+          reminderDays: workAuth.data.reminderDays,
+          // requestChange on someone else's record is employee.identity.manage for them.
+          ...(prof?.can.requestChange
+            ? {
+                onAdd: async (input: object) => {
+                  await write('POST', `/employees/${p}/work-authorisations`, input);
+                  done(`Work authorisation added for ${first}`);
+                },
+              }
+            : {}),
+        }
+      : null,
     ...(hr && !self && perms.has('employee.aadhaar.view')
       ? {
           identityPanel: {

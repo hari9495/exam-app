@@ -4,10 +4,11 @@ import Redis from 'ioredis';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { WorkforceService } from './workforce.service';
+import { WorkAuthService } from './work-auth.service';
 
 const QUEUE = 'people-jobs';
 
-/** Daily: this month's head counts per company and entity (the last run in a month stands for that month). */
+/** Daily: this month's head counts per company and entity (the last run in a month stands for that month), and work permit reminders. */
 @Injectable()
 export class WorkforceJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkforceJobs.name);
@@ -18,12 +19,13 @@ export class WorkforceJobs implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly workforce: WorkforceService,
+    private readonly workAuth: WorkAuthService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, () => this.snapshotAll(), bullOpts(this.connection)), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, async () => (await this.snapshotAll(), await this.workAuth.remind()), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('workforce-snapshot', { every: 24 * 3_600_000 }, { name: 'snapshot', data: {} });
   }
 

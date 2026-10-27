@@ -3,9 +3,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { PersonWorkspace, type LiveIdentity, type LiveRecord } from './record';
+import { PersonWorkspace, type LiveIdentity, type LiveRecord, type LiveWorkAuth } from './record';
 
-// The person record's panels and tabs with the live app's data: Identity (PPL-34), Person roles (PPL-35).
+// The person record's panels and tabs with the live app's data: Identity (PPL-34), Person roles (PPL-35),
+// Work authorisations (PPL-45).
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -99,5 +100,81 @@ describe('Identity panel (PPL-34), live', () => {
     wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ activity: [], history: { rows: [], roles: [], company: 'K' } })} />);
     await ue.click(screen.getByRole('button', { name: /More actions|Actions/ }));
     expect(screen.queryByRole('menuitem', { name: 'Identity panel' })).toBeNull();
+  });
+});
+
+describe('Work authorisations tab (PPL-45), live', () => {
+  const workAuth = (o: Partial<LiveWorkAuth> = {}): LiveWorkAuth => ({
+    designation: 'Quality Lead',
+    reminderDays: [90, 60, 30],
+    rows: [
+      { id: 'w1', kind: 'employment_visa', country: 'AE', number: '•••• 7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', expires: day('2026-11-25'), remindedDays: [90, 60] },
+      { id: 'w2', kind: 'national_id', country: 'AE', number: '•••• 0004', sponsor: 'Kaveri Foods FZE', occupation: null, expires: day('2027-11-19'), remindedDays: [] },
+      { id: 'passport', kind: 'passport', country: null, number: '•••• 7728', sponsor: null, occupation: null, expires: day('2031-02-08'), remindedDays: [] },
+    ],
+    onAdd: vi.fn(async () => undefined),
+    ...o,
+  });
+  const open = async (w: LiveWorkAuth | null) => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ workAuth: w })} />);
+    if (w) await ue.click(screen.getByRole('tab', { name: /Work authorisations/ }));
+  };
+
+  it('lists each document masked, flags an occupation that differs and the visa about to lapse', async () => {
+    await open(workAuth());
+    expect(screen.getByRole('tab', { name: /Work authorisations/ })).toHaveTextContent('3');
+    expect(screen.getByText('Employment visa expires on 25 Nov 2026')).toBeInTheDocument();
+    expect(screen.getByText('Reminders went at 90 and 60 days. The next goes at 30 days. Payroll approval is held once it expires.')).toBeInTheDocument();
+    expect(screen.getByText('Emirates ID')).toBeInTheDocument();
+    expect(screen.getAllByText('United Arab Emirates')).toHaveLength(2);
+    expect(screen.getByText('•••• 7731')).toBeInTheDocument();
+    expect(screen.getByText('Differs from designation')).toBeInTheDocument();
+    expect(screen.getByText('Passport')).toBeInTheDocument();
+  });
+
+  it('an expired visa is named as expired', async () => {
+    await open(workAuth({ rows: [{ id: 'w1', kind: 'work_permit', country: 'AE', number: '•••• 7731', sponsor: null, occupation: 'Quality Lead', expires: day('2026-10-01'), remindedDays: [90, 60, 30] }] }));
+    expect(screen.getByText('Work permit expired on 1 Oct 2026')).toBeInTheDocument();
+    expect(screen.getByText('Reminders went at 90, 60 and 30 days. Payroll approval is held once it has expired.')).toBeInTheDocument();
+    expect(screen.queryByText('Differs from designation')).toBeNull();
+  });
+
+  it('adds a document only once it is complete and the dates make sense', async () => {
+    const w = workAuth({ rows: [] });
+    await open(w);
+    expect(screen.getByText('No work authorisations')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Add document' })[0]);
+    const drawer = screen.getByRole('dialog');
+    await ue.click(within(drawer).getByRole('button', { name: 'Add document' }));
+    expect(within(drawer).getByText('Fix these before saving')).toBeInTheDocument();
+    expect(w.onAdd).not.toHaveBeenCalled();
+    await ue.click(within(drawer).getByRole('combobox', { name: 'Document' }));
+    await ue.click(await screen.findByRole('option', { name: 'Employment visa' }));
+    await ue.click(within(drawer).getByRole('combobox', { name: 'Country' }));
+    await ue.type(await screen.findByPlaceholderText('Search'), 'United Arab');
+    await ue.click(await screen.findByRole('option', { name: 'United Arab Emirates' }));
+    await ue.type(within(drawer).getByRole('textbox', { name: /Number/ }), '784-2025-1234567');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Occupation on permit/ }), 'Quality Inspector');
+    await ue.type(within(drawer).getByRole('textbox', { name: 'Issued on' }), '2 Nov 2025');
+    await ue.type(within(drawer).getByRole('textbox', { name: 'Expires on' }), '1 Oct 2025');
+    await ue.tab();
+    await ue.click(within(drawer).getByRole('button', { name: 'Add document' }));
+    expect(within(drawer).getAllByText('The expiry date must be after the issue date.').length).toBeGreaterThan(0);
+    expect(w.onAdd).not.toHaveBeenCalled();
+    await ue.clear(within(drawer).getByRole('textbox', { name: 'Expires on' }));
+    await ue.type(within(drawer).getByRole('textbox', { name: 'Expires on' }), '1 Nov 2026');
+    await ue.tab();
+    await ue.click(within(drawer).getByRole('button', { name: 'Add document' }));
+    await waitFor(() => expect(w.onAdd).toHaveBeenCalledWith({ kind: 'employment_visa', country: 'AE', number: '784-2025-1234567', occupation: 'Quality Inspector', issuedOn: '2025-11-02', expiresOn: '2026-11-01' }));
+  });
+
+  it('without the right to change identity details there is no Add document', async () => {
+    await open(workAuth({ onAdd: undefined }));
+    expect(screen.queryByRole('button', { name: 'Add document' })).toBeNull();
+  });
+
+  it('no tab without identity access', () => {
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-10-20')} live={live({ workAuth: null })} />);
+    expect(screen.queryByRole('tab', { name: /Work authorisations/ })).toBeNull();
   });
 });
