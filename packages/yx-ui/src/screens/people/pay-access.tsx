@@ -146,7 +146,9 @@ export function PayAccessDialog({ person, teamSize, defaultScope, days, onSubmit
 }
 
 /** What the manager sees on the Pay tab about their access: waiting, open until a day, ended or refused. */
-export function PayAccessNote({ latest, onRequest }: { latest: PayAccessRow | null; onRequest?: () => void }) {
+export function PayAccessNote({ latest: row, onRequest }: { latest: PayAccessRow | null; onRequest?: () => void }) {
+  // The API words `covers` for HR ("their whole team"); the manager reads it about their own team.
+  const latest = row && { ...row, covers: row.covers.replace(/^their /, 'your ') };
   const again = onRequest ? (
     <div>
       <Button onClick={onRequest}>{latest ? 'Ask again' : 'Request access'}</Button>
@@ -334,10 +336,13 @@ export function PayAccessRequests({ rows, state = 'ready', onRetry, onDecide, de
             cardSummary
             empty={<EmptyState compact title={show === 'waiting' ? 'Nothing is waiting.' : show === 'active' ? 'No manager has access now.' : 'No ended or refused requests yet.'} />}
             rowButtons={(r) =>
-              r.canDecide && onDecide ? (
+              !onDecide ? null : r.canDecide ? (
                 <Button size="sm" variant="primary" onClick={() => setOpenId(r.id)}>
                   Decide
                 </Button>
+              ) : SHOWN.waiting.includes(r.state) ? (
+                // e.g. this HR person gave approval 1 or asked for it: say why there is no Decide.
+                <span className="yx-ppl__sub">Waiting for another HR person</span>
               ) : null
             }
           />

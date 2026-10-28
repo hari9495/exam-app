@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { RestructureWizard } from './changes';
-import { quarterOf, RestructureRecord, shortReason, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
+import { FinishedRestructuresScreen, quarterOf, RestructureRecord, shortReason, type LiveRestructure, type RestructureInput, type RestructurePreview, type RestructureRecordData } from './restructure';
 
 // People › Restructure (PPL-09) and the continuity checklist (PPL-10) with the live app's data.
 
@@ -271,6 +271,13 @@ describe('Restructure wizard (PPL-09)', () => {
     unmount();
     wrap(<RestructureWizard live={live({ finished: [] })} />);
     expect(screen.getByText('No finished restructures yet')).toBeInTheDocument();
+    expect(screen.getByText('Done, rejected and cancelled restructures show here.')).toBeInTheDocument();
+  });
+
+  it('payroll’s finished list (done ones only): its own empty wording', () => {
+    wrap(<FinishedRestructuresScreen state="ready" onRetry={vi.fn()} rows={[]} onOpen={vi.fn()} />);
+    expect(screen.getByText('Done restructures into your legal entities show here.')).toBeInTheDocument();
+    expect(screen.queryByText(/rejected and cancelled/)).toBeNull();
   });
 
   it('no finished list without the data (no access, or it could not load)', () => {
@@ -325,7 +332,11 @@ describe('Restructure record (PPL-09) and continuity checklist (PPL-10)', () => 
   });
 
   it('after the move: who moved, who could not and why, and each person’s checklist kept up to date', async () => {
-    const items = [{ id: 'i1', key: 'esi', title: 'ESI: the same IP number carries over', owner: 'Payroll', dueOn: '2026-11-30', status: 'open' as const, note: null, version: 1 }];
+    const items = [
+      { id: 'i1', key: 'esi', title: 'ESI: the same IP number carries over', owner: 'Payroll', dueOn: '2026-11-30', status: 'open' as const, note: null, version: 1, canSet: true },
+      // Payroll sees HR's item with its owner but cannot tick it (founder 28 Oct 2026).
+      { id: 'i2', key: 'costcentre', title: 'Cost centre: choose one of Kaveri Foods', owner: 'HR', dueOn: '2026-11-30', status: 'open' as const, note: null, version: 1, canSet: false },
+    ];
     const onItem = vi.fn(async () => undefined);
     const done: RestructureRecordData = {
       ...base,
@@ -344,6 +355,8 @@ describe('Restructure record (PPL-09) and continuity checklist (PPL-10)', () => 
     await ue.click(screen.getByRole('button', { name: 'Continuity checklist (1)' }));
     const drawer = await screen.findByRole('dialog', { name: 'Continuity checklist · Divya' });
     expect(await within(drawer).findByText('ESI: the same IP number carries over')).toBeInTheDocument();
+    expect(within(drawer).getByText('Cost centre: choose one of Kaveri Foods')).toBeInTheDocument();
+    expect(within(drawer).getAllByRole('button', { name: 'Mark done' })).toHaveLength(1);
     await ue.click(within(drawer).getByRole('button', { name: 'Mark done' }));
     await waitFor(() => expect(onItem).toHaveBeenCalledWith(items[0], true));
   });

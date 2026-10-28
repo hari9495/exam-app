@@ -685,7 +685,7 @@ const asked = (r: Partial<PayAccessRow> & Pick<PayAccessRow, 'id' | 'state'>): P
   canDecide: false,
   ...r,
 });
-/** Sample requests in each state; the HR person (Lakshmi) may decide the first two. */
+/** Sample requests in each state; the HR person (Lakshmi) may decide the first two; pa3 waits for another HR person (she gave approval 1). */
 export const PAY_ACCESS_ROWS: PayAccessRow[] = [
   asked({ id: 'pa1', state: 'first', canDecide: true, team: TEAM }),
   asked({ id: 'pa2', state: 'second', manager: { id: 'o12', name: 'Ramesh Gowda' }, scope: 'team', person: null, covers: 'their whole team (6 people)', reason: 'Annual increment planning for the Hosur line.', days: 15, askedAt: '2026-10-26T11:05:00Z', first: { by: 'Karthik Subramanian', at: '2026-10-27T10:15:00Z', note: 'Only for the increment cycle.' }, canDecide: true, team: TEAM }),

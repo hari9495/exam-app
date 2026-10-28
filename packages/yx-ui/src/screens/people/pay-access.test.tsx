@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { PayAccessDialog, PayAccessNote, PayAccessRequests } from './pay-access';
-import { PAY_ACCESS_ROWS } from './people-data';
+import { PAY_ACCESS_ROWS, TODAY } from './people-data';
+import { PersonWorkspace } from './record';
 
 // PPL-50 Team pay access: the manager's request, HR's two approvals (length and scope), and the manager's states.
 const wrap = (ui: ReactNode) => render(<ToastProvider>{ui}</ToastProvider>);
@@ -46,7 +47,15 @@ describe('PayAccessNote (manager, Pay tab)', () => {
   });
   it('active: until which day', () => {
     render(<PayAccessNote latest={active} />);
-    expect(screen.getByText('You can see the pay of their whole team (4 people) until 31 Oct 2026')).toBeInTheDocument();
+    expect(screen.getByText('You can see the pay of your whole team (4 people) until 31 Oct 2026')).toBeInTheDocument();
+  });
+  it('a whole-team request reads "your whole team" to the manager; one person stays named', () => {
+    const { unmount } = render(<PayAccessNote latest={{ ...second, scope: 'team', person: null, covers: 'their whole team (6 people)' }} />);
+    expect(screen.getByText(/You asked on .* to see the pay of your whole team \(6 people\)\./)).toBeInTheDocument();
+    expect(screen.queryByText(/their whole team/)).toBeNull();
+    unmount();
+    render(<PayAccessNote latest={ended} />);
+    expect(screen.getByText(/the pay of Ritu Sharma/)).toBeInTheDocument();
   });
   it('ended and refused: say so, and ask again', async () => {
     const onRequest = vi.fn();
@@ -58,6 +67,13 @@ describe('PayAccessNote (manager, Pay tab)', () => {
     render(<PayAccessNote latest={refused} onRequest={onRequest} />);
     expect(screen.getByText('HR refused your request on 12 Sep 2026')).toBeInTheDocument();
     expect(screen.getByText(/payroll report/)).toBeInTheDocument();
+  });
+  it('design, access open: pay waits for Show pay, as live (founder 28 Oct 2026)', async () => {
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="pay" payGrant payAccess={{ ...active, scope: 'person', person: first.person, covers: 'Arjun Kulkarni' }} />);
+    expect(screen.getByText('Arjun can see each time someone else looks at their pay.')).toBeInTheDocument();
+    expect(screen.queryByText('Annual CTC')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Show pay' }));
+    expect(screen.getByText('Annual CTC')).toBeInTheDocument();
   });
   it('nothing asked yet: Request access', () => {
     render(<PayAccessNote latest={null} onRequest={vi.fn()} />);
@@ -72,6 +88,14 @@ describe('PayAccessRequests (HR, PPL-50)', () => {
     expect(screen.getAllByText('Approval 1 of 2').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Decide' })).toHaveLength(2);
     expect(mineFirst.canDecide).toBe(false);
+    // The row this HR person gave approval 1 to says why there is no Decide.
+    expect(within(screen.getByRole('row', { name: /Neha Joshi/ })).getByText('Waiting for another HR person')).toBeInTheDocument();
+    expect(screen.getAllByText('Waiting for another HR person')).toHaveLength(1);
+  });
+  it('without the approve key: no Decide and no waiting hint', () => {
+    wrap(<PayAccessRequests rows={PAY_ACCESS_ROWS} />);
+    expect(screen.queryByRole('button', { name: 'Decide' })).toBeNull();
+    expect(screen.queryByText('Waiting for another HR person')).toBeNull();
   });
 
   it('first approval: HR changes the length and narrows it to one person', async () => {
