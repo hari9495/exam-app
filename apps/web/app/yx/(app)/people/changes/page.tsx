@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { ChangeActionSheet } from '@yukthix/ui/frame';
 import { ChangeDrawer, ChangeReview, ReasonDialog, draftForm, draftFromForm, orList, type ChangeDraft, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
@@ -47,6 +48,13 @@ export default function YxChangeActionPage() {
   const [reviewing, setReviewing] = useState<ChangeRecord | null>(null);
   const [rejecting, setRejecting] = useState<ChangeRecord | null>(null);
   const pending = (rows.data ?? []).filter((r) => r.status === 'pending').sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  // Founder 28 Oct 2026: inter-entity transfers sent from here wait too (the API lists only people the viewer reaches).
+  const router = useRouter();
+  const transfers = usePeople<{ id: string; name: string; effectiveDate: string; waitingFor: string[]; requestedAt: string }[]>(canManage ? '/restructures/pending-transfers' : null);
+  const waiting = [
+    ...pending.map((r) => ({ id: r.id, name: r.employeeName ?? 'Employee', kind: CHANGE_LABEL[r.changeType], effective: day(r.effectiveDate), note: r.waitingFor?.length ? `waiting for ${orList(r.waitingFor)}` : `raised ${dateText(r.requestedAt)}`, canOpen: canApprove })),
+    ...(transfers.data ?? []).map((t) => ({ id: t.id, name: t.name, kind: 'Inter-entity transfer', effective: day(t.effectiveDate), note: t.waitingFor.length ? `waiting for ${orList(t.waitingFor)}` : `raised ${dateText(t.requestedAt)}`, canOpen: true })),
+  ].sort((a, b) => a.effective.getTime() - b.effective.getTime());
   const what = (r: ChangeRecord) => `${CHANGE_LABEL[r.changeType].toLowerCase()} for ${r.employeeName ?? 'the employee'}`;
   return (
     <ChangeActionSheet
@@ -58,7 +66,7 @@ export default function YxChangeActionPage() {
         state: loadState(rows),
         onRetry: () => void rows.refetch(),
         people: subjects.map((p) => ({ id: p.id, name: p.name, role: p.designation ?? '', department: [p.department, p.location].filter(Boolean).join(' · ') })),
-        waiting: pending.map((r) => ({ id: r.id, name: r.employeeName ?? 'Employee', kind: CHANGE_LABEL[r.changeType], effective: day(r.effectiveDate), note: r.waitingFor?.length ? `waiting for ${orList(r.waitingFor)}` : `raised ${dateText(r.requestedAt)}`, canOpen: canApprove })),
+        waiting,
         drafts: (drafts.data ?? []).map((x) => ({ id: x.id, name: x.employeeName ?? 'Employee', kind: x.changeType ? CHANGE_LABEL[x.changeType] : null, savedAt: new Date(x.updatedAt) })),
         onOpenDraft: (draftId) => {
           const x = drafts.data?.find((d) => d.id === draftId);
@@ -67,7 +75,7 @@ export default function YxChangeActionPage() {
           setStarting(x.employeeId);
         },
         onStart: (personId) => setStarting(personId),
-        onOpenWaiting: (changeId) => setReviewing(pending.find((r) => r.id === changeId) ?? null),
+        onOpenWaiting: (openId) => (transfers.data?.some((t) => t.id === openId) ? router.push(`/yx/people/restructure/${id(openId)}`) : setReviewing(pending.find((r) => r.id === openId) ?? null)),
         children: (
           <>
             {starting && (

@@ -217,6 +217,12 @@ export class RestructureController {
     return this.restructures.setItem(ctx, await this.viewer(req), this.user(req), id, dto);
   }
 
+  @Get('pending-transfers')
+  @RequirePermissions('employee.change.manage')
+  async pendingTransfers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.restructures.pendingTransfers(ctx, await this.viewer(req));
+  }
+
   @Get(':id')
   @RequirePermissions('employee.change.manage')
   async get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

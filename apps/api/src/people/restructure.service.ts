@@ -10,6 +10,7 @@ import { displayName, EmployeeHistoryService, RequestUser, Viewer } from '../emp
 import type { ChangeRequestDto, EmployeeCreateDto } from '../employee-history/dto';
 import { FoldError } from '../employee-history/history-rules';
 import { withPayScope } from '../payroll/pay-access';
+import { holdersOf } from '../time/time-core';
 
 // People › Restructure (PPL-09) and the continuity checklist (PPL-10). A plan moves people inside a legal entity
 // (department, location, manager, cost centre) or from one legal entity to another (merge, close, demerge) on one
@@ -724,6 +725,32 @@ export class RestructureService {
     return this.history.run(ctx, async (tx, c) => {
       const rows = await tx.restructure.findMany({ where: { organizationId: c.organizationId }, orderBy: { requestedAt: 'desc' }, take: 100 });
       return Promise.all(rows.map((r) => this.summary(tx, c, v, r)));
+    });
+  }
+
+  /**
+   * Founder 28 Oct 2026: People > Change action lists the inter-entity transfers sent from there (one person) that still
+   * wait for approval, beside the job changes: only people the viewer's employee.change.manage reaches today, with who
+   * may approve (employee.change.manage and .approve over the person, never the sender or the person).
+   */
+  pendingTransfers(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const rows = await tx.restructure.findMany({ where: { organizationId: c.organizationId, kind: 'demerge', status: 'pending', decidedBy: null }, orderBy: { effectiveOn: 'asc' }, take: 100 });
+      const ones = rows.flatMap((r) => {
+        const ids = (r.plan as unknown as Partial<Plan>).employeeIds;
+        return ids?.length === 1 ? [{ r, employeeId: ids[0] }] : [];
+      });
+      const reached = await this.history.reachedIds(tx, c, v, 'employee.change.manage', ones.map((o) => o.employeeId));
+      const today = todayIst();
+      const out = [];
+      for (const { r, employeeId } of ones.filter((o) => reached.has(o.employeeId))) {
+        const approve = new Set(await holdersOf(tx, c.organizationId, 'employee.change.approve', employeeId, today));
+        const subject = (await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId }, select: { userId: true } }))?.userId ?? null;
+        const ids = (await holdersOf(tx, c.organizationId, 'employee.change.manage', employeeId, today)).filter((x) => approve.has(x) && x !== r.requestedBy && x !== subject);
+        const names = (await Promise.all(ids.map((x) => this.userName(tx, c, x)))).filter((x): x is string => Boolean(x)).sort((a, b) => a.localeCompare(b));
+        out.push({ id: r.id, employeeId, name: (await this.personName(tx, c, employeeId)) ?? '', effectiveDate: isoDate(r.effectiveOn), waitingFor: names, requestedAt: r.requestedAt });
+      }
+      return out;
     });
   }
 

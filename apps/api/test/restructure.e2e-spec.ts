@@ -327,4 +327,23 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     expect(out.status).toBe('scheduled');
     expect((await employment(ids.imran, ids.leTN))!.exitedOn).toBeNull();
   });
+  it('Change action lists inter-entity transfers still waiting, for people the viewer reaches, with who may approve (founder 28 Oct 2026)', async () => {
+    const one = (o: Record<string, unknown> = {}) => merge({ kind: 'demerge', fromEntityId: ids.leKF, intoEntityId: ids.leTN, locationMap: { [ids.locKF]: ids.locTN }, masterMap: {}, employeeIds: [ids.kiran], effectiveDate: addDays(today, 60), overrides: [], reason: 'Kiran moves to Tamil Nadu', ...o });
+    const waiting = (await api('hrA', 'post', '/people/restructures').send(one()).expect(201)).body.id;
+    const cancelled = (await api('hrA', 'post', '/people/restructures').send(one()).expect(201)).body.id;
+    const rejected = (await api('hrA', 'post', '/people/restructures').send(one()).expect(201)).body.id;
+    const approved = (await api('hrA', 'post', '/people/restructures').send(one()).expect(201)).body.id;
+    await api('hrA', 'post', `/people/restructures/${cancelled}/cancel`).send({ reason: 'Sent twice' }).expect(200);
+    await api('hr2A', 'post', `/people/restructures/${rejected}/reject`).send({ reason: 'Not this quarter' }).expect(200);
+    expect((await api('hr2A', 'post', `/people/restructures/${approved}/approve`).send({}).expect(200)).body.status).toBe('scheduled');
+    const list = (await api('hr2A', 'get', '/people/restructures/pending-transfers').expect(200)).body as { id: string; employeeId: string; name: string; waitingFor: string[] }[];
+    // Only the one still waiting: never cancelled, rejected, approved or many-person plans; the sender is not an approver.
+    expect(list.map((t) => t.id)).toEqual([waiting]);
+    expect(list[0]).toMatchObject({ employeeId: ids.kiran, effectiveDate: addDays(today, 60) });
+    expect(list[0].waitingFor.length).toBeGreaterThan(0);
+    expect(list[0].waitingFor.join(' ')).not.toMatch(/hrA-/);
+    await api('empA', 'get', '/people/restructures/pending-transfers').expect(403);
+    await api('payrollA', 'get', '/people/restructures/pending-transfers').expect(403);
+    expect((await api('adminB', 'get', '/people/restructures/pending-transfers').expect((r) => expect([200, 403]).toContain(r.status))).body).not.toContainEqual(expect.objectContaining({ id: waiting }));
+  });
 });
