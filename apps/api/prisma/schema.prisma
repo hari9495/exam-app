@@ -2776,6 +2776,10 @@ model PayAccessRequest {
   decisionNote      String?   @map("decision_note") @db.VarChar(500)
   grantId           String?   @map("grant_id") @db.Uuid
   validTo           DateTime? @map("valid_to") @db.Date
+  /// Ended before its last day (End access, or the grant revoked in Roles & access); validTo is then that day.
+  endedBy           String?   @map("ended_by") @db.Uuid
+  endedAt           DateTime? @map("ended_at") @db.Timestamptz(3)
+  endNote           String?   @map("end_note") @db.VarChar(500)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("pay_access_requests")

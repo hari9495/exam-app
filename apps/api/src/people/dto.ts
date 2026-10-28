@@ -271,6 +271,13 @@ export class PayAccessAskDto {
   reason!: string;
 }
 
+/** An HR person ends open access before its last day; the manager reads the reason. */
+export class PayAccessEndDto {
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
+
 /** An HR person approves (step 1 or 2 of 2) or refuses; on approval they may change how long and who it covers. */
 export class PayAccessDecisionDto {
   @IsIn(['approve', 'refuse'])
