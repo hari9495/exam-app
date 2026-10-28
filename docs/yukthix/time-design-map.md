@@ -636,23 +636,28 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager (Manager · open shifts) | feature not built |
-| Empty | feature not built |
-| Loading | feature not built |
-| Phone (Phone · eligible open shifts) | phone view, mobile app not built |
-| PhoneClaimed | phone view, mobile app not built |
-| PhoneBid | phone view, mobile app not built |
-| PhoneNone | phone view, mobile app not built |
+| Manager (Manager · open shifts) | /yx/time/open-shifts (`OpenShiftsScreen live`, open-shifts-live.tsx): the designed table (open, awarded, cancelled rows of the last 30 days), "Pick claimant" award dialog with the fair order and the bids that can't be picked (server reason), "Offer an open shift" dialog (location, date ≤ 120 days, shift, licence, award rule Segment from `roster.open_shift_rule`, bids close, note), "Cancel offer". `OpenShiftsPanel` is exported for the roster's Open shifts tab |
+| Empty | /yx/time/open-shifts with no open shifts → "No open shifts" + Offer |
+| Loading | /yx/time/open-shifts while loading |
+| Phone (Phone · eligible open shifts) | phone view, mobile app not built (API live: GET /time/me/open-shifts) |
+| PhoneClaimed | phone view, mobile app not built (API live: POST /time/me/open-shifts/:id/claim, /withdraw) |
+| PhoneBid | phone view, mobile app not built; the "rank patterns for next month" bid is not built (no pattern bidding in the API) |
+| PhoneNone | phone view, mobile app not built (API answers an empty list) |
+
+Bid windows tab (pattern bidding for next month) and "Remind eligible" / "Offer to all lines": feature not built (hidden in live). "Cancel offer" is added on the designed row buttons (no story of its own).
 
 ### TIM-38 · Standby and call-out
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager (Standby slots and call-out log) | feature not built |
-| Moved (After the shift is moved) | feature not built |
-| LogCallOut (Log call-out · rest check) | feature not built |
+| Manager (Standby slots and call-out log) | /yx/time/standby (`StandbyScreen live`, standby-live.tsx): week Segment, shift key, read-only roster grid (SB on standby days), call-out log with paid time (minimum from `standby.call_out_minimum_hours`), next shift and rest left (rule 1), "Rest N h" badge + "Move next shift" on the latest; a "Standby slots" card with Cancel for slots not started |
+| Moved (After the shift is moved) | /yx/time/standby after "Move next shift" → the row shows the new shift and full rest, no badge; toast "Shift moved" |
+| LogCallOut (Log call-out · rest check) | /yx/time/standby → Log call-out: person on standby (started slots), start, end, reason, source, Effect (paid, minimum); the rest shows in the toast and the log after saving |
+| SetStandby (Set standby) | /yx/time/standby → Set standby (new design story for the slot dialog: who, from, until, ≤ 24 h) |
 | Phone (Phone · employee on standby) | phone view, mobile app not built |
 | PhoneMoved | phone view, mobile app not built |
+
+Standby allowance per slot and call-out pay rates are payroll's (PAY on-call rules): the live header says so and shows no money.
 
 ### TIM-39 · Block-leave planner
 
