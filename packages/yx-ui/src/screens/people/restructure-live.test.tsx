@@ -113,6 +113,9 @@ describe('Restructure wizard (PPL-09)', () => {
     await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
     await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
     await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
+    await ue.click(screen.getByRole('textbox', { name: /Effective date/ }));
+    await ue.keyboard('01/11/2026{Enter}');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Merger');
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByRole('combobox', { name: 'Department in Kaveri Foods for Production' })).toHaveTextContent('Choose…');
     expect(screen.getByRole('combobox', { name: 'Department in Kaveri Foods for Quality' })).toHaveTextContent('quality');
@@ -246,6 +249,45 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(screen.getByRole('radio', { name: 'Pick people' })).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 700));
     expect(l.onPreview).not.toHaveBeenCalled();
+  });
+
+  it('Continue on an empty step 1 stays there, says what is missing under each field and puts the cursor in the first one', async () => {
+    const l = live();
+    wrap(<RestructureWizard live={l} />);
+    const next = screen.getByRole('button', { name: 'Continue' });
+    expect(next).toBeEnabled();
+    await ue.click(next);
+    for (const msg of ['Choose the legal entity.', 'Choose the legal entity people move into.', 'Choose the effective date.', 'Enter the reason.']) expect(screen.getByText(msg)).toBeInTheDocument();
+    expect(document.querySelector('[aria-current="step"]')).toHaveTextContent(/What moves/);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /From entity/ })).toHaveFocus());
+    // Filling a field takes its error away.
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Merger');
+    await ue.tab();
+    expect(screen.queryByText('Enter the reason.')).toBeNull();
+    expect(l.onPreview).not.toHaveBeenCalled();
+  });
+
+  it('moving people inside the entity has no Into entity, so it is not asked for', async () => {
+    wrap(<RestructureWizard live={live()} />);
+    await ue.click(screen.getByRole('radio', { name: /Move people inside the entity/ }));
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('Choose the legal entity.')).toBeInTheDocument();
+    expect(screen.queryByText('Choose the legal entity people move into.')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: /Into entity/ })).toBeNull();
+  });
+
+  it('a filled step 1 continues to Transfer options with no errors', async () => {
+    wrap(<RestructureWizard live={live()} />);
+    await ue.click(screen.getByRole('combobox', { name: /From entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
+    await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
+    await ue.click(screen.getByRole('textbox', { name: /Effective date/ }));
+    await ue.keyboard('01/11/2026{Enter}');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Merger');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(document.querySelector('[aria-current="step"]')).toHaveTextContent(/Transfer options/));
+    expect(screen.queryByText('Choose the legal entity.')).toBeNull();
   });
 
   it('a draft saved with picked people continues with them (inside one entity)', async () => {
