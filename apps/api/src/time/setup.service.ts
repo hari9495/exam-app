@@ -288,15 +288,19 @@ export class TimeSetupService {
   yearEndPreview(ctx: TenantContext, user: ScopeUser, yearEnd: string) {
     return this.run(ctx, user, false, async (tx, c) => {
       const rows = await this.leave.yearEndRows(tx, c, yearEnd);
-      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length };
+      // TIM-29: requests still waiting with days in the closing year are listed to decide first.
+      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length, pending: await this.leave.yearEndPending(tx, c, yearEnd) };
     });
   }
 
   /** Checked here; the posting runs on the BullMQ worker (idempotent by period key). */
-  async yearEndCheck(ctx: TenantContext, user: ScopeUser, yearEnd: string) {
+  async yearEndCheck(ctx: TenantContext, user: ScopeUser, yearEnd: string, acknowledgePending = false) {
     if (yearEnd > todayIst()) throw new BadRequestException('Run year end on or after the last day of the leave year.');
     return this.run(ctx, user, true, async (tx, c) => {
-      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd });
+      // TIM-29: pending requests block posting unless HR posts anyway (they stay pending into the new year).
+      const pending = await this.leave.yearEndPending(tx, c, yearEnd);
+      if (pending.length && !acknowledgePending) throw new ConflictException({ statusCode: 409, code: 'YEAR_END_PENDING', message: `${pending.length} leave ${pending.length === 1 ? 'request is' : 'requests are'} still waiting. Decide ${pending.length === 1 ? 'it' : 'them'} first, or post anyway and ${pending.length === 1 ? 'it stays' : 'they stay'} pending in the new year.`, pending: pending.length });
+      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd, pendingCarried: pending.length });
       return { organizationId: c.organizationId, userId: c.userId ?? null };
     });
   }

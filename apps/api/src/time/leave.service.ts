@@ -32,6 +32,7 @@ import {
 import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
+import { BLOCK_DATE_EXEMPT, factoriesElEligible, lastDayAfterLeave, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -78,6 +79,12 @@ export interface Plan {
   /** Stop the request (YX-LV-05). */
   blocks: string[];
   warnings: string[];
+  /** Leave v2: company block dates the leave touches (blocked or warned by leave.block_dates.mode). */
+  blockDates: { from: string; to: string; reason: string }[];
+  /** Leave v2: on notice, the last working day now and after this leave (leave.notice_period.leave). */
+  notice: { lastDay: string; newLastDay: string } | null;
+  /** Leave v2: shorter notice than the type asks (the type's noticeMode says block or warn). */
+  shortNotice: boolean;
 }
 
 @Injectable()
@@ -129,6 +136,8 @@ export class LeaveService implements OnModuleInit {
     const year = leaveYearOf(on, Number(await settingOn(tx, c, 'leave.year_start_month', f, on)));
     const sums = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
     const pending = new Map((await tx.leaveRequest.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId, status: 'pending' }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
+    // TIM-24: an encashment waiting for approval holds its days too, so they can't also be booked as leave.
+    for (const g of await tx.leaveEncashment.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId, status: 'pending' }, _sum: { days: true } })) pending.set(g.leaveTypeId, (pending.get(g.leaveTypeId) ?? 0) + num(g._sum.days));
     const taken = await tx.$queryRaw<{ id: string; days: number }[]>`
       SELECT r.leave_type_id::text AS id, sum(d.portion)::float AS days FROM leave_request_days d
       JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
@@ -192,8 +201,11 @@ export class LeaveService implements OnModuleInit {
     const locked = [...(await lockedDates(tx, org, f.employeeId, dto.from, dto.to))].sort();
     if (locked.length) blocks.push(`${new Date(`${locked[0]}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })} is locked for attendance and leave. Ask HR to record it.`);
     blocks.push(...(await this.eligibility(tx, org, f, t, rules, dto, today)));
+    const v2 = await this.v2Checks(tx, c, f, t, counted.days.filter((x) => x.portion > 0).map((x) => x.on), counted.total, dto, today, warnings);
+    blocks.push(...v2.blocks);
     if (dto.from < addDays(today, -60)) blocks.push('Leave more than 60 days back needs HR. Ask them to record it.');
-    if (rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays) blocks.push(`${t.name} needs ${daysText(rules.noticeDays)} notice.`);
+    const shortNotice = Boolean(rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays);
+    if (shortNotice) (rules.noticeMode === 'warn' ? warnings : blocks).push(rules.noticeMode === 'warn' ? `Short notice: ${t.name} asks for ${daysText(rules.noticeDays)} notice. Your approver sees this.` : `${t.name} needs ${daysText(rules.noticeDays)} notice.`);
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
@@ -228,7 +240,67 @@ export class LeaveService implements OnModuleInit {
           WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.employee_id <> ${f.employeeId}::uuid
             AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date`
       : [{ n: 0 }];
-    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings };
+    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings, blockDates: v2.blockDates, notice: v2.notice, shortNotice };
+  }
+
+  /**
+   * Leave v2 rules (29 Oct 2026), each a company setting with a default: company block dates, probation, leave during
+   * the notice period, and earned leave in a factory (Factories Act s.79: 240 days worked the year before). An HR
+   * eligibility override in force lets a person through the probation and Factories Act checks.
+   */
+  private async v2Checks(tx: Tx, c: CompanyContext, f: Facts, t: LeaveTypeRow, leaveOn: string[], total: number, dto: LeavePlanDto, today: string, warnings: string[]) {
+    const org = c.organizationId;
+    const blocks: string[] = [];
+    const setting = (key: string) => settingOn(tx, c, key, f, dto.from);
+    const override = await tx.leaveEligibilityOverride.findFirst({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, validUntil: { gte: asDate(today) } }, select: { id: true } });
+    // Company block dates (planned leave only: never sick or per-event leave).
+    let blockDates: Plan['blockDates'] = [];
+    if (!BLOCK_DATE_EXEMPT.includes(t.kind) && leaveOn.length) {
+      const rows = await tx.$queryRaw<{ from: string; to: string; reason: string }[]>`
+        SELECT from_on::text AS "from", to_on::text AS "to", reason FROM leave_block_dates
+        WHERE organization_id = ${org}::uuid AND removed_at IS NULL AND from_on <= ${leaveOn[leaveOn.length - 1]}::date AND to_on >= ${leaveOn[0]}::date
+          AND (scope_type = 'tenant' OR (scope_type = 'legal_entity' AND scope_id = ${f.legalEntityId}::uuid) OR (scope_type = 'location' AND scope_id = ${f.locationId}::uuid))
+        ORDER BY from_on`;
+      blockDates = rows.filter((b) => leaveOn.some((d) => d >= b.from && d <= b.to));
+      if (blockDates.length) {
+        const b = blockDates[0];
+        const text = `${rangeText(b.from, b.to)} is a company block date (${b.reason}).`;
+        if ((await setting('leave.block_dates.mode')) === 'warn') warnings.push(`${text} Your approver sees this.`);
+        else blocks.push(`${text} Planned leave can't be taken on it. Choose other dates or ask HR.`);
+      }
+    }
+    // Probation (the planned end date of the employment's probation).
+    const [prob] = await tx.$queryRaw<{ end: string }[]>`
+      SELECT p.planned_end_on::text AS end FROM probations p
+      JOIN employee_assignments a ON a.organization_id = p.organization_id AND a.employment_id = p.employment_id AND a.employee_id = ${f.employeeId}::uuid AND a.superseded_at IS NULL
+      WHERE p.organization_id = ${org}::uuid AND p.planned_end_on >= ${dto.from}::date LIMIT 1`;
+    if (prob && !override) {
+      const mode = await setting('leave.probation.leave');
+      if (!probationAllows(mode, t.kind)) blocks.push(`You are on probation until ${fmt(prob.end)}. ${mode === 'unpaid_only' ? 'Only unpaid leave' : 'Only casual, sick and unpaid leave'} can be taken until then.`);
+    }
+    // Leave during the notice period.
+    let notice: Plan['notice'] = null;
+    const [exit] = await tx.$queryRaw<{ lwd: string }[]>`
+      SELECT coalesce(approved_lwd, standard_lwd)::text AS lwd FROM exit_cases
+      WHERE organization_id = ${org}::uuid AND employee_id = ${f.employeeId}::uuid AND status IN ('submitted', 'accepted') ORDER BY submitted_on DESC LIMIT 1`;
+    if (exit && dto.to >= today) {
+      const mode = await setting('leave.notice_period.leave');
+      if (dto.to > exit.lwd) blocks.push(`Your last working day is ${fmt(exit.lwd)}. Leave can't go past it.`);
+      else if (mode === 'sick_and_unpaid_only' && !BLOCK_DATE_EXEMPT.includes(t.kind)) blocks.push('During your notice period only sick and unpaid leave can be taken. Ask HR if you need other leave.');
+      else {
+        notice = { lastDay: exit.lwd, newLastDay: lastDayAfterLeave(mode, exit.lwd, total) };
+        warnings.push(notice.newLastDay === exit.lwd ? `You are on notice. Your last working day stays ${fmt(exit.lwd)}.` : `You are on notice. This leave moves your last working day from ${fmt(exit.lwd)} to ${fmt(notice.newLastDay)} once HR confirms it.`);
+      }
+    }
+    // Earned leave in a factory: 240 days worked in the calendar year before (Factories Act 1948 s.79).
+    if (t.kind === 'earned' && !override && (await setting('attendance.factories_act')) === 'covered') {
+      const y = Number(dto.from.slice(0, 4)) - 1;
+      const prev = { prevYearStart: `${y}-01-01`, prevYearEnd: `${y}-12-31` };
+      const statuses = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(prev.prevYearStart), lte: asDate(prev.prevYearEnd) } }, select: { status: true } });
+      const e = factoriesElEligible({ ...prev, worked: daysWorked(statuses.map((x) => x.status)), joinedOn: f.joinedOn });
+      if (!e.ok) blocks.push(`Earned leave in a factory needs ${e.needed} days worked in ${y} (Factories Act). Ask HR if this is wrong.`);
+    }
+    return { blocks, blockDates, notice };
   }
 
   /**
@@ -270,7 +342,7 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
-  private async meFacts(tx: Tx, c: CompanyContext, userId: string | null | undefined): Promise<{ f: Facts; today: string }> {
+  async meFacts(tx: Tx, c: CompanyContext, userId: string | null | undefined): Promise<{ f: Facts; today: string }> {
     const id = await myEmployeeId(tx, c.organizationId, userId);
     const now = await factsOn(tx, c.organizationId, id, new Date().toISOString().slice(0, 10));
     const f = now ?? (await factsOn(tx, c.organizationId, id, addDays(new Date().toISOString().slice(0, 10), 1)));
@@ -303,6 +375,7 @@ export class LeaveService implements OnModuleInit {
       const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));
       const holidays = cal ? await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(year.start), lte: asDate(year.end) } }, orderBy: { holidayOn: 'asc' } }) : [];
       const chosen = new Set((await tx.optionalHolidayChoice.findMany({ where: { organizationId: org, employeeId: f.employeeId } })).map((x) => x.holidayId));
+      const limit = cal ? await this.optionalLimit(tx, c, f, cal, year.start, today) : null;
       return {
         employee: { id: f.employeeId, name: f.name, code: f.code },
         today,
@@ -310,7 +383,7 @@ export class LeaveService implements OnModuleInit {
         balances,
         requests: requests.map((r) => this.requestView(r, types.get(r.leaveTypeId), true)),
         holidays: {
-          calendar: cal ? { id: cal.id, name: cal.name, optionalLimit: cal.optionalLimit } : null,
+          calendar: cal && limit ? { id: cal.id, name: cal.name, optionalLimit: limit.limit, yearlyLimit: cal.optionalLimit, movedOn: limit.movedOn } : null,
           list: holidays.map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, chosen: chosen.has(h.id) })),
         },
       };
@@ -401,6 +474,9 @@ export class LeaveService implements OnModuleInit {
         ...(p.type.kind === 'maternity' && dto.expectedOn ? [{ label: 'Expected date', value: fmt(dto.expectedOn) }] : []),
         { label: 'Team', value: p.othersOff ? `${p.othersOff} ${p.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else in the team is off then' },
         ...(p.balanceAfter !== null ? [{ label: 'Balance after', value: String(p.balanceAfter) }] : []),
+        ...(p.shortNotice ? [{ label: 'Notice', value: `Short notice: the type asks for ${daysText(p.type.rules.noticeDays)}` }] : []),
+        ...(p.blockDates.length ? [{ label: 'Company block date', value: `${rangeText(p.blockDates[0].from, p.blockDates[0].to)} (${p.blockDates[0].reason})` }] : []),
+        ...(p.notice ? [{ label: 'Last working day', value: p.notice.newLastDay === p.notice.lastDay ? `Stays ${fmt(p.notice.lastDay)}` : `Moves from ${fmt(p.notice.lastDay)} to ${fmt(p.notice.newLastDay)}` }] : []),
         // YX-LV-09: approvers see the certificate's status only, never the file; a medical reason never.
         ...(req.certificate !== 'none' ? [{ label: 'Certificate', value: req.certificate === 'verified' ? 'Attached · verified' : 'To be given · pending' }] : []),
         ...(reason && !p.type.rules.medical ? [{ label: 'Reason', value: reason.slice(0, 300) }] : []),
@@ -444,6 +520,9 @@ export class LeaveService implements OnModuleInit {
     const t = await tx.leaveType.findFirstOrThrow({ where: { organizationId: r.organizationId, id: r.leaveTypeId } });
     if (hasBalance(t.kind)) {
       await tx.leaveLedgerEntry.create({ data: { organizationId: r.organizationId, employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, entryOn: r.fromOn, kind: 'taken', days: -num(r.days), requestId: r.id, periodKey: `tk:${r.id}`, reason: `${t.name} ${rangeText(from, to)}` } });
+    }
+    if (t.kind === 'maternity' && !(await tx.longAbsence.findFirst({ where: { organizationId: r.organizationId, requestId: r.id }, select: { id: true } }))) {
+      await tx.longAbsence.create({ data: { organizationId: r.organizationId, employeeId: r.employeeId, kind: 'maternity', fromOn: r.fromOn, toOn: r.toOn, plannedToOn: r.toOn, accrues: true, requestId: r.id, note: 'Maternity leave approved' } });
     }
     const emp = await tx.employee.findFirst({ where: { organizationId: r.organizationId, id: r.employeeId }, select: { userId: true } });
     // P03 Q3: an approver away on a full day of leave hands their approvals to the delegate they named, else to their
@@ -710,11 +789,48 @@ export class LeaveService implements OnModuleInit {
         const taken = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM optional_holiday_choices x JOIN holidays h ON h.organization_id = x.organization_id AND h.id = x.holiday_id
           WHERE x.organization_id = ${c.organizationId}::uuid AND x.employee_id = ${f.employeeId}::uuid AND h.holiday_on BETWEEN ${year.start}::date AND ${year.end}::date`;
-        if (taken[0].n >= cal.optionalLimit) throw new ConflictException(`You can choose ${cal.optionalLimit} optional holidays a year. Remove one first.`);
+        const { limit, movedOn } = await this.optionalLimit(tx, c, f, cal, year.start, today);
+        if (taken[0].n >= limit) throw new ConflictException(taken[0].n > limit ? `You have ${taken[0].n} optional holidays but the limit is now ${limit}. Remove ${taken[0].n - limit} first.` : `You can choose ${limit} optional ${limit === 1 ? 'holiday' : 'holidays'} this year${movedOn ? ` (prorated after your move on ${fmt(movedOn)})` : ''}. Remove one first.`);
         await tx.optionalHolidayChoice.upsert({ where: { organizationId_employeeId_holidayId: key }, create: key, update: {} });
       }
       await audit(tx, c, choose ? 'leave.optional_holiday.chosen' : 'leave.optional_holiday.removed', 'holiday', h.id, { employeeId: f.employeeId });
       return { holidayId: h.id, chosen: choose };
+    });
+  }
+
+  /**
+   * TIM-23: the optional-holiday limit for this leave year. Someone who moved to this calendar's office during the year
+   * gets the limit prorated by the months left (setting leave.optional_holiday.prorate_on_move, default yes).
+   */
+  private async optionalLimit(tx: Tx, c: CompanyContext, f: Facts, cal: { optionalLimit: number; locationId: string | null }, yearStart: string, today: string): Promise<{ limit: number; movedOn: string | null }> {
+    if (!cal.locationId || (await settingOn(tx, c, 'leave.optional_holiday.prorate_on_move', f, today)) !== 'yes') return { limit: cal.optionalLimit, movedOn: null };
+    // The first day of the current unbroken stretch at this location, when it began inside the leave year.
+    const [row] = await tx.$queryRaw<{ moved: string | null }[]>`
+      SELECT max(a.valid_from)::text AS moved FROM employee_assignments a
+      WHERE a.organization_id = ${c.organizationId}::uuid AND a.employee_id = ${f.employeeId}::uuid AND a.superseded_at IS NULL
+        AND a.location_id = ${cal.locationId}::uuid AND a.valid_from > ${yearStart}::date AND a.valid_from <= ${today}::date
+        AND EXISTS (SELECT 1 FROM employee_assignments b WHERE b.organization_id = a.organization_id AND b.employee_id = a.employee_id AND b.superseded_at IS NULL
+          AND b.location_id <> a.location_id AND b.valid_to = a.valid_from - 1)`;
+    const movedOn = row?.moved ?? null;
+    return { limit: optionalLimitAfterMove(cal.optionalLimit, yearStart, movedOn), movedOn };
+  }
+
+  /** TIM-21 (employee): my own ledger and the pending requests that will come off it. */
+  myLedger(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      const types = new Map((await this.types(tx, c.organizationId)).map((t) => [t.id, t]));
+      const rows = await tx.leaveLedgerEntry.findMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId }, orderBy: [{ entryOn: 'desc' }, { createdAt: 'desc' }], take: 300 });
+      const pending = await tx.leaveRequest.findMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId, status: 'pending' }, orderBy: { fromOn: 'asc' } });
+      const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+      return {
+        employee: { id: f.employeeId, name: f.name, code: f.code },
+        today,
+        year,
+        balances: await this.balancesIn(tx, c, f, today),
+        ledger: rows.map((r) => ({ id: r.id, on: dateOf(r.entryOn), type: types.get(r.leaveTypeId)?.code ?? '', kind: r.kind, days: num(r.days), reason: r.reason, at: r.createdAt })),
+        pending: pending.map((r) => ({ id: r.id, leaveTypeId: r.leaveTypeId, from: dateOf(r.fromOn), to: dateOf(r.toOn), days: num(r.days) })),
+      };
     });
   }
 
@@ -738,10 +854,11 @@ export class LeaveService implements OnModuleInit {
         if (!policy) continue;
         const ent = await this.entitlements(tx, f, local, policy.lines, [...types.values()]);
         const year = leaveYearOf(local, Number(await settingOn(tx, c, 'leave.year_start_month', f, local)));
+        const notEarning = (await tx.longAbsence.findMany({ where: { organizationId: org, employeeId: f.employeeId, accrues: false, toOn: { gte: asDate(year.start) } }, select: { fromOn: true, toOn: true } })).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
         const data = policy.lines.flatMap((l) => {
           const t = types.get(l.leaveTypeId);
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
-          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local }).map((d) => ({
+          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning }).map((d) => ({
             organizationId: org,
             employeeId: f.employeeId,
             leaveTypeId: t.id,
@@ -785,6 +902,21 @@ export class LeaveService implements OnModuleInit {
       }
     }
     return rows;
+  }
+
+  /**
+   * TIM-29: leave requests still waiting with days in the leave year ending `yearEnd`. Year end is posted only once
+   * they are decided, or (after the year) when HR posts anyway and they stay pending into the new year.
+   */
+  async yearEndPending(tx: Tx, c: CompanyContext, yearEnd: string) {
+    return tx.$queryRaw<{ id: string; employeeId: string; name: string; type: string; from: string; to: string; days: number }[]>`
+      SELECT r.id::text, r.employee_id::text AS "employeeId", concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name,
+             t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to", r.days::float AS days
+      FROM leave_requests r JOIN employees e ON e.organization_id = r.organization_id AND e.id = r.employee_id
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      WHERE r.organization_id = ${c.organizationId}::uuid AND r.status IN ('pending', 'cancel_pending') AND r.from_on <= ${yearEnd}::date
+        AND r.to_on > (${yearEnd}::date - interval '1 year')
+      ORDER BY r.from_on LIMIT 500`;
   }
 
   /** Posts the lapses of a previewed year end; run by the BullMQ worker, idempotent by period key. */

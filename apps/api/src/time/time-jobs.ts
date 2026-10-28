@@ -5,6 +5,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { AttendanceService } from './attendance.service';
 import { LeaveService } from './leave.service';
+import { LeaveV2Service } from './leave-v2.service';
 
 const QUEUE = 'time-jobs';
 
@@ -23,6 +24,7 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly leave: LeaveService,
     private readonly attendance: AttendanceService,
+    private readonly leaveV2: LeaveV2Service,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -54,7 +56,8 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
     let n = 0;
     for (const org of await this.companies()) {
       try {
-        n += name === 'accrue' ? await this.leave.accrue(org) : await this.attendance.evaluateCompany(org);
+        // Comp-off expiry runs with the accruals (both idempotent by period key).
+        n += name === 'accrue' ? (await this.leave.accrue(org)) + (await this.leaveV2.expireCompOff(org)) : await this.attendance.evaluateCompany(org);
       } catch (e) {
         this.logger.warn(`${name} ${org}: ${(e as Error).message}`);
       }

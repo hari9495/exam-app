@@ -308,6 +308,13 @@ export class YearEndDto {
   yearEnd!: string;
 }
 
+/** TIM-29 posting: HR may post with leave requests still waiting (they stay pending into the new year). */
+export class YearEndRunDto extends YearEndDto {
+  @IsOptional()
+  @IsBoolean()
+  acknowledgePending?: boolean;
+}
+
 // ------------------------------------------------------------------------------------------ batch 2: shifts and rosters
 
 const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'];

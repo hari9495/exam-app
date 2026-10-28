@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
@@ -265,8 +265,8 @@ export class TimeController {
   @Post('setup/year-end')
   @HttpCode(202)
   @RequirePermissions('leave.settings.manage')
-  async runYearEnd(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearEndDto) {
-    const ok = await this.setup.yearEndCheck(ctx, this.user(req), dto.yearEnd);
+  async runYearEnd(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearEndRunDto) {
+    const ok = await this.setup.yearEndCheck(ctx, this.user(req), dto.yearEnd, dto.acknowledgePending === true);
     await this.jobs.queueYearEnd(ok.organizationId, dto.yearEnd, ok.userId);
     return { queued: true };
   }

@@ -36,6 +36,26 @@ import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 // unless the company's policy waives it or HR waives it for the person, with a reason.
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
+
+/** The monthly gross and the gratuity wage (basic + DA) in force on a date; also read for leave encashment (TIM-24). */
+export async function payOn(tx: Tx, org: string, employmentId: string, on: string) {
+  const comp = await tx.compensation.findFirst({
+    where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] },
+    orderBy: { validFrom: 'desc' },
+  });
+  const pkg = comp ? await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId } }) : null;
+  const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: org, packageId: pkg.id } }) : [];
+  const comps = new Map((await tx.payComponent.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.componentId) } } })).map((x) => [x.id, x]));
+  let gross = D(0);
+  let gratuityWage = D(0);
+  for (const l of lines) {
+    const x = comps.get(l.componentId);
+    if (!x || x.kind !== 'earning' || x.statutory) continue;
+    gross = gross.add(l.monthly);
+    if (x.gratuityWage) gratuityWage = gratuityWage.add(l.monthly);
+  }
+  return { gross, gratuityWage };
+}
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 // Indian grouping of whole rupees ("1,23,456") from the digits themselves (no floats).
 const grouped = (i: string) => (i.length > 3 ? `${i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${i.slice(-3)}` : i);
@@ -340,23 +360,8 @@ export class FnfService implements OnModuleInit {
   }
 
   /** Monthly pay on a date: gross of the plain earnings, and the gratuity wage (components flagged for it). */
-  private async payOn(tx: Tx, org: string, employmentId: string, on: string) {
-    const comp = await tx.compensation.findFirst({
-      where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] },
-      orderBy: { validFrom: 'desc' },
-    });
-    const pkg = comp ? await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId } }) : null;
-    const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: org, packageId: pkg.id } }) : [];
-    const comps = new Map((await tx.payComponent.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.componentId) } } })).map((x) => [x.id, x]));
-    let gross = D(0);
-    let gratuityWage = D(0);
-    for (const l of lines) {
-      const x = comps.get(l.componentId);
-      if (!x || x.kind !== 'earning' || x.statutory) continue;
-      gross = gross.add(l.monthly);
-      if (x.gratuityWage) gratuityWage = gratuityWage.add(l.monthly);
-    }
-    return { gross, gratuityWage };
+  private payOn(tx: Tx, org: string, employmentId: string, on: string) {
+    return payOn(tx, org, employmentId, on);
   }
 
   // ------------------------------------------------------------------------------------------ reading and editing
