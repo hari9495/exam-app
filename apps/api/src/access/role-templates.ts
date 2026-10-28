@@ -69,6 +69,15 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
+    // Founder 28 Oct 2026 (option B): HR Admin cannot see pay, so pay changes are approved by HR people given this role.
+    key: 'hr_pay_approver',
+    name: 'HR Pay Approver',
+    typicalScope: 'legal_entity',
+    summary: 'Sees salaries and approves job changes that change pay (salary revisions, promotions with a raise) for the people in scope.',
+    cannot: 'Prepare pay changes or payroll, HR settings.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.change.approve'],
+  },
+  {
     key: 'hr_executive',
     name: 'HR Executive',
     typicalScope: 'location',
