@@ -12,7 +12,7 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = () => vi.fn(async () => ({}));
 
 describe('Overtime review (TIM-09 live)', () => {
-  const review = (o: Partial<LiveOtReview> = {}): LiveOtReview => ({ state: 'ready', data: OT_REVIEW, month: '2026-10', onMonth: vi.fn(), onOverride: ok(), onRetry: vi.fn(), ...o });
+  const review = (o: Partial<LiveOtReview> = {}): LiveOtReview => ({ state: 'ready', data: OT_REVIEW, month: '2026-10', onMonth: vi.fn(), onOverride: ok(), onDecide: ok(), onRetry: vi.fn(), ...o });
 
   it('HR pays over the limit only with a reason of a sentence', async () => {
     const live = review();

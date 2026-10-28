@@ -190,6 +190,7 @@ export class AttendanceOpsService {
         }
         return effects.get(k)!;
       };
+      const book = await ScheduleBook.load(tx, org);
       // Open days (with any request waiting), then days HR resolved this month.
       for (const d of open) {
         const on = dateOf(d.workOn);
@@ -209,6 +210,12 @@ export class AttendanceOpsService {
           mode: d.mode === 'timesheet' ? 'Timesheet' : 'Punch',
           detail: d.status === 'missing_out' ? `Checked in ${hhmm(d.firstIn ? minutesInto(on, fx.zone, d.firstIn) : null) ?? ''}, no check-out` : d.status === 'missing_in' ? 'Checked out, no check-in' : d.status === 'no_timesheet' ? 'No approved timesheet for the day' : 'No punches, leave or request',
           firstIn: d.firstIn,
+          inAt: d.firstIn ? hhmm(minutesInto(on, fx.zone, d.firstIn)) : null,
+          shiftEnd: await (async () => {
+            const f = await factsOn(tx, org, d.employeeId, on);
+            const sh = f ? ((d.shiftId ? book.shiftOn(d.shiftId, on) : null) ?? (await book.locationDay(f, on)).rule) : null;
+            return sh ? hhmm(sh.shiftEnd) : null;
+          })(),
           nudged: nudges.find((n) => n.employeeId === d.employeeId)?._count._all ?? 0,
           request: req ? { id: req.id, kind: req.kind, inMinute: req.inMinute, outMinute: req.outMinute, reason: req.reason, taskId: task?.id ?? null } : null,
           resolution: null,
@@ -221,7 +228,7 @@ export class AttendanceOpsService {
         if (seen.has(k) || rows.some((x) => x.id === k)) continue;
         seen.add(k);
         const p = byId.get(r.employeeId)!;
-        rows.push({ id: k, employeeId: r.employeeId, person: p.name, code: p.code, on, kind: 'Resolved by HR', status: 'Resolved', blocking: false, mode: 'Punch', detail: r.how === 'absent' ? 'Absent (unpaid)' : r.inMinute !== null ? `Present ${hhmm(r.inMinute)}–${hhmm(r.outMinute)}` : 'Present', firstIn: null, nudged: 0, request: null, resolution: { how: r.how, reason: r.reason, by: userNames.get(r.resolvedBy) ?? null, at: r.createdAt } });
+        rows.push({ id: k, employeeId: r.employeeId, person: p.name, code: p.code, on, kind: 'Resolved by HR', status: 'Resolved', blocking: false, mode: 'Punch', detail: r.how === 'absent' ? 'Absent (unpaid)' : r.inMinute !== null ? `Present ${hhmm(r.inMinute)}–${hhmm(r.outMinute)}` : 'Present', firstIn: null, inAt: null, shiftEnd: null, nudged: 0, request: null, resolution: { how: r.how, reason: r.reason, by: userNames.get(r.resolvedBy) ?? null, at: r.createdAt } });
       }
       return { month, today, scope: this.scope(v), canResolve: has(v, 'leave.approve') && !v.actingForOther, rows };
     });

@@ -745,6 +745,9 @@ export interface ExceptionsList {
     mode: 'Punch' | 'Timesheet';
     detail: string;
     firstIn: string | null;
+    /** The check-in on record and the shift's end, in the person's zone ("HH:MM"). */
+    inAt: string | null;
+    shiftEnd: string | null;
     nudged: number;
     request: { id: string; kind: string; inMinute: number | null; outMinute: number | null; reason: string; taskId: string | null } | null;
     resolution: { how: 'present' | 'absent'; reason: string; by: string | null; at: string } | null;

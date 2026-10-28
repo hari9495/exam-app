@@ -55,7 +55,7 @@ import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
 import { AttendanceRequestSheet } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
+import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -96,8 +96,8 @@ const STORY = {
   people: 'screens-people-ppl-01-·-directory--hr-employees',
   leaveReview: 'screens-time-tim-19-·-leave-request-detail--manager',
 };
-function LinkButton({ to, args, size, children }: { to: string; args?: string; size?: 'sm'; children: ReactNode }) {
-  return <Button size={size} asChild><a href={storyHref(to, args)} target="_top">{children}</a></Button>;
+function LinkButton({ to, args, size, href, children }: { to: string; args?: string; size?: 'sm'; /** Live: an app path instead of the story. */ href?: string; children: ReactNode }) {
+  return <Button size={size} asChild><a href={href ?? storyHref(to, args)} target={href ? undefined : '_top'}>{children}</a></Button>;
 }
 
 /** Saves rows as a CSV file in the browser. */
@@ -990,7 +990,12 @@ export interface TodayBoardProps {
   nudged?: string;
 }
 
-export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', defaultTab = 'board', nudged }: TodayBoardProps) {
+/** TIM-01 · Today board. The app passes `live` (Time › Today); stories show the sample. */
+export function TodayBoardScreen(p: TodayBoardProps & { live?: LiveTodayBoard }) {
+  return p.live ? <LiveTodayBoardScreen live={p.live} /> : <SampleTodayBoard {...p} />;
+}
+
+function SampleTodayBoard({ persona = 'mgr', state: stateProp = 'ready', defaultTab = 'board', nudged }: TodayBoardProps) {
   const [state, retry] = useViewState(stateProp);
   const user = userFor(persona);
   const hr = persona === 'hr';
@@ -999,54 +1004,97 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
   const setNotice = useSay();
   // A story that starts with a nudge already sent shows the same toast a real click gives.
   useEffect(() => { if (nudged) setNotice('1 nudge sent'); }, [nudged]); // eslint-disable-line react-hooks/exhaustive-deps
-  const count = (keys: BoardStatus[]) => countOf(people, keys);
-  const blocking = timeCounts(user).Exceptions;
-  const toNudge = people.filter((p) => needsNudge(p) && !sent.includes(p.id));
   const nudge = (ids: string[]) => {
     setSent([...sent, ...ids]);
     setNotice(`${ids.length} ${ids.length === 1 ? 'nudge' : 'nudges'} sent`);
   };
-  const scope = hr ? 'Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant' : `Your reports (${people.length})`;
+  return (
+    <TodayBoardView
+      user={user}
+      hr={hr}
+      people={people}
+      scope={hr ? 'Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant' : `Your reports (${people.length})`}
+      nowText={NOW_TEXT}
+      state={state}
+      onRetry={retry}
+      defaultTab={defaultTab}
+      sent={sent}
+      onNudge={nudge}
+      blocking={{ count: timeCounts(user).Exceptions, month: 'September', cutoff: SEP_CUTOFF }}
+      emptyWhere={hr ? 'at the Chennai office and Hosur plant' : 'in your team'}
+    />
+  );
+}
+
+/** One person on the board: the design's person, plus the live day they missed a check-out on (else the story's). */
+type BoardPerson = TeamPerson & { missedOutOn?: string | null };
+/** Where the board's buttons go: story links in Storybook, app paths live (null: not built, so no button). */
+interface BoardLinks { exceptions?: string | null; muster?: string | null; roster?: string | null; fieldMap?: string | null }
+
+function TodayBoardView({ user, hr, people, scope, nowText, state, onRetry, defaultTab = 'board', sent, onNudge, blocking, emptyWhere, links, sites, visitors = true }: {
+  user: ReturnType<typeof userFor>;
+  hr: boolean;
+  people: BoardPerson[];
+  scope: string;
+  nowText: ReactNode;
+  state: ViewState;
+  onRetry?: () => void;
+  defaultTab?: 'board' | 'field' | 'onsite';
+  sent: string[];
+  onNudge: (ids: string[]) => void;
+  blocking: { count: number; month: string; cutoff: Date };
+  emptyWhere: string;
+  links?: BoardLinks;
+  /** On site now: the sites to list (default: the story's locations). */
+  sites?: string[];
+  /** Visitors signed in at reception (the Visitors module); live: not built yet. */
+  visitors?: boolean;
+}) {
+  const setNotice = useSay();
+  const count = (keys: BoardStatus[]) => countOf(people, keys);
+  const toNudge = people.filter((p) => needsNudge(p) && !sent.includes(p.id));
   // Weekly off isn't rostered; the KPIs below add up to this number.
   const rostered = people.filter((p) => p.status !== 'off').length;
   const resting = count(['rest']);
+  const missed = (p: BoardPerson) => (p.missedOutOn !== undefined ? (p.missedOutOn ? `No check-out ${shortDate(isoDay(p.missedOutOn))}` : 'No check-out yesterday') : missedOutText(p));
+  const exceptionsLink = links ? links.exceptions : hr ? STORY.exceptionsHr : STORY.exceptionsMgr;
   // Shown on the board and on a day with no shifts: earlier days' exceptions still block payroll.
-  const blockingAlert = blocking > 0 && (
+  const blockingAlert = blocking.count > 0 && (
     <InlineAlert
       tone="danger"
-      title={<span className="yx-tim-row">{blocking} open exceptions block September payroll <DueBadge date={SEP_CUTOFF} /></span>}
-      actions={<LinkButton size="sm" to={hr ? STORY.exceptionsHr : STORY.exceptionsMgr}>Open exceptions</LinkButton>}
+      title={<span className="yx-tim-row">{blocking.count} open exceptions block {blocking.month} payroll <DueBadge date={blocking.cutoff} /></span>}
+      actions={exceptionsLink ? <LinkButton size="sm" to={exceptionsLink} href={links?.exceptions ?? undefined}>Open exceptions</LinkButton> : undefined}
     >
-      Missing punches and absences {hr ? 'at both sites' : 'in your team'} need fixing before the {shortDate(SEP_CUTOFF)} cut-off.
+      Missing punches and absences {hr ? 'at your sites' : 'in your team'} need fixing before the {shortDate(blocking.cutoff)} cut-off.
     </InlineAlert>
   );
   return (
     <TimePage active="Today" user={user}>
       <PageHeader
         title="Today"
-        description={state === 'empty' ? `${scope} · none rostered today` : <>{scope} · {NOW_TEXT}</>}
+        description={state === 'empty' ? `${scope} · none rostered today` : <>{scope} · {nowText}</>}
         actions={
           <div className="yx-tim-row">
             {state === 'ready' && (
-              <Button icon={Bell} onClick={() => (toNudge.length ? nudge(toNudge.map((p) => p.id)) : setNotice('Everyone who is not in yet has been nudged today.', 'default'))}>
+              <Button icon={Bell} onClick={() => (toNudge.length ? onNudge(toNudge.map((p) => p.id)) : setNotice('Everyone who is not in yet has been nudged today.', 'default'))}>
                 {toNudge.length ? `Nudge ${toNudge.length} ${toNudge.length === 1 ? 'person' : 'people'}` : 'Everyone nudged'}
               </Button>
             )}
-            {hr && <LinkButton to={STORY.muster}>Open muster</LinkButton>}
+            {hr && (links ? links.muster : true) && <LinkButton to={STORY.muster} href={links?.muster ?? undefined}>Open muster</LinkButton>}
           </div>
         }
       />
       {state === 'loading' ? (
         <LoadingBlock rows={8} />
       ) : state === 'error' ? (
-        <ErrorState title="Today's board didn't load" description="Punches are still being recorded. Try again in a moment." onRetry={retry} reference="TDY-19C0" />
+        <ErrorState title="Today's board didn't load" description="Punches are still being recorded. Try again in a moment." onRetry={onRetry} reference="TDY-19C0" />
       ) : state === 'empty' ? (
         <div className="yx-tim-stack">
           {blockingAlert}
           <EmptyState
             title="No one is rostered today"
-            description={`No one ${hr ? 'at the Chennai office and Hosur plant' : 'in your team'} has a shift today. The board fills when a shift starts.`}
-            action={<LinkButton to={STORY.roster}>Open roster</LinkButton>}
+            description={`No one ${emptyWhere} has a shift today. The board fills when a shift starts.`}
+            action={(links ? links.roster : true) ? <LinkButton to={STORY.roster} href={links?.roster ?? undefined}>Open roster</LinkButton> : undefined}
           />
         </div>
       ) : (
@@ -1054,7 +1102,7 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
           <TabsList aria-label="Today views">
             <TabsTrigger value="board">Board</TabsTrigger>
             <TabsTrigger value="field">Field</TabsTrigger>
-            {persona === 'hr' && <TabsTrigger value="onsite">On site now</TabsTrigger>}
+            {hr && <TabsTrigger value="onsite">On site now</TabsTrigger>}
           </TabsList>
           <TabsContent value="board">
             <div className="yx-tim-stack">
@@ -1094,8 +1142,8 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
                             <span className="yx-tim-muted">{personLine(p, usual)}</span>
                             {(p.status === 'missing' || needsNudge(p)) && (
                               <span className="yx-tim-row">
-                                {p.status === 'missing' && <Badge tone="danger">{missedOutText(p)}</Badge>}
-                                {sent.includes(p.id) ? <Badge tone="neutral">Nudged</Badge> : <Button size="sm" onClick={() => nudge([p.id])}>Nudge</Button>}
+                                {p.status === 'missing' && <Badge tone="danger">{missed(p)}</Badge>}
+                                {sent.includes(p.id) ? <Badge tone="neutral">Nudged</Badge> : needsNudge(p) && <Button size="sm" onClick={() => onNudge([p.id])}>Nudge</Button>}
                               </span>
                             )}
                           </span>
@@ -1117,11 +1165,11 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
             </div>
           </TabsContent>
           <TabsContent value="field">
-            <FieldSummary people={people} hr={hr} />
+            <FieldSummary people={people} hr={hr} mapHref={links ? links.fieldMap : undefined} />
           </TabsContent>
-          {persona === 'hr' && (
+          {hr && (
             <TabsContent value="onsite">
-              <OnSiteNow people={people} />
+              <OnSiteNow people={people} sites={sites} visitors={visitors} />
             </TabsContent>
           )}
         </Tabs>
@@ -1130,21 +1178,96 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
   );
 }
 
+/* ---------- live: /time/today (TIM-01) ---------- */
+
+/** A manager's team or HR's people (attendance.view in scope) today; nudges go to the server (once a day per person). */
+export interface LiveTodayBoard {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TodayBoard | null;
+  onNudge: (employeeId: string) => Promise<unknown>;
+  links: BoardLinks;
+}
+
+const LIVE_BOARD: Record<TodayBoard['people'][number]['status'], TeamPerson['status']> = { in: 'in', late: 'late', missing: 'missing', not_in: 'not_in', leave: 'leave', wfh: 'wfh', od: 'od', off: 'off', rest: 'off' };
+
+function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
+  const d = live.data;
+  const say = useSay();
+  const [sent, setSent] = useState<string[]>([]);
+  const people: BoardPerson[] = (d?.people ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    code: p.code ?? '',
+    role: p.role,
+    dept: p.dept,
+    location: p.status === 'in' || p.status === 'late' || p.status === 'missing' ? p.site : p.location,
+    status: LIVE_BOARD[p.status],
+    ...(p.inAt ? { inAt: p.inAt } : {}),
+    ...(p.detail ? { detail: p.detail } : {}),
+    ...(p.source ? { source: p.source } : {}),
+    mode: p.mode,
+    reportsTo: '',
+    missedOutOn: p.missedOutOn,
+  }));
+  const nudged = [...new Set([...sent, ...(d?.people ?? []).filter((p) => p.nudged).map((p) => p.id)])];
+  const nudge = async (ids: string[]) => {
+    let ok = 0;
+    const refused: string[] = [];
+    for (const id of ids) {
+      try {
+        await live.onNudge(id);
+        ok++;
+      } catch (e) {
+        refused.push(e instanceof Error ? e.message : 'Not sent');
+      }
+    }
+    setSent((s) => [...s, ...ids]);
+    if (ok) say(`${ok} ${ok === 1 ? 'nudge' : 'nudges'} sent`);
+    if (refused.length) say(refused[0], 'default');
+  };
+  const at = d ? new Date(d.at) : new Date();
+  const nowText = <span style={{ whiteSpace: 'nowrap' }}>{at.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'Asia/Kolkata' })} {formatDate(isoDay(d?.today ?? isoOf(at)))}, {fmt12(at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }))}</span>;
+  const scope = !d ? '' : d.scope === 'team' ? `Your reports (${people.length})` : d.scope === 'company' ? `Everyone (${people.length})` : `The people you look after (${people.length})`;
+  const state: ViewState = live.state === 'ready' ? (people.filter((p) => p.status !== 'off').length ? 'ready' : 'empty') : live.state === 'loading' ? 'loading' : 'error';
+  if (live.state === 'no-access') return <TimePage active="Today"><PageHeader title="Today" /><NoAccessState grantedBy="HR" what="today's board" /></TimePage>;
+  return (
+    <TodayBoardView
+      user={HR_ADMIN}
+      hr={d?.scope !== 'team'}
+      people={people}
+      scope={scope}
+      nowText={nowText}
+      state={state}
+      onRetry={live.onRetry}
+      sent={nudged}
+      onNudge={(ids) => void nudge(ids)}
+      blocking={{ count: d?.blocking ?? 0, month: d ? MONTH_LONG[Number(d.month.slice(5, 7)) - 1] : '', cutoff: isoDay(d?.lockableFrom ?? isoOf(new Date())) }}
+      emptyWhere={d?.scope === 'team' ? 'in your team' : 'in your scope'}
+      links={live.links}
+      sites={[...new Set(people.filter((p) => ['in', 'late', 'missing'].includes(p.status)).map((p) => p.location))]}
+      visitors={false}
+    />
+  );
+}
+
 /** Employees checked in at each site now (same people as the board), plus visitors signed in (Visitors module). */
-function OnSiteNow({ people }: { people: TeamPerson[] }) {
+function OnSiteNow({ people, sites: liveSites, visitors = true }: { people: TeamPerson[]; sites?: string[]; visitors?: boolean }) {
   const here = people.filter((p) => ['in', 'late', 'missing'].includes(p.status));
-  const guests = VISITS.filter((v) => v.status === 'On site');
-  const sites = LOCATIONS.map((l) => l.name).filter((s) => here.some((p) => p.location === s) || guests.some((v) => v.location === s));
+  // Live: visitors come from the Visitors module, which is not built yet, so only employees are listed.
+  const guests = visitors ? VISITS.filter((v) => v.status === 'On site') : [];
+  const sites = (liveSites ?? LOCATIONS.map((l) => l.name)).filter((s) => here.some((p) => p.location === s) || guests.some((v) => v.location === s));
   const at12 = (d: Date) => fmt12(toHHMM(d.getHours() * 60 + d.getMinutes()));
   return (
     <div className="yx-tim-stack">
-      <p className="yx-tim-muted">For emergencies: employees checked in at each site, plus visitors signed in at reception.</p>
+      <p className="yx-tim-muted">{visitors ? 'For emergencies: employees checked in at each site, plus visitors signed in at reception.' : 'For emergencies: employees checked in at each site and not checked out yet.'}</p>
+      {sites.length === 0 && <EmptyState compact title="No one is on site now" description="People show here once they check in at a site." />}
       {sites.map((site) => {
         const emp = here.filter((p) => p.location === site);
         const vis = guests.filter((v) => v.location === site);
         return (
           <Card key={site} title={`On site now · ${site}`}>
-            <Kpis items={[{ label: 'Employees in', value: emp.length }, { label: 'Visitors on site', value: vis.length }]} />
+            <Kpis items={[{ label: 'Employees in', value: emp.length }, ...(visitors ? [{ label: 'Visitors on site', value: vis.length }] : [])]} />
             <ul className="yx-tim-list" aria-label={`Employees at ${site}`}>
               {emp.map((p) => (
                 <li key={p.id}><span>{p.name}</span><span className="yx-tim-muted">In {fmt12(p.inAt!)}</span></li>
@@ -1179,7 +1302,7 @@ function OnSiteNow({ people }: { people: TeamPerson[] }) {
   );
 }
 
-function FieldSummary({ people, hr }: { people: TeamPerson[]; hr?: boolean }) {
+function FieldSummary({ people, hr, mapHref }: { people: TeamPerson[]; hr?: boolean; /** Live: the field-force map is not built yet (null: no button). */ mapHref?: string | null }) {
   const field = people.filter((p) => p.source === 'field');
   if (field.length === 0) return <EmptyState title="No one is on field duty today" description="People on duty away from the office show here with their visits." />;
   // Tracking comes from each person's own record; the live trail and visit counts exist only for FIELD_DAY's person.
@@ -1210,7 +1333,7 @@ function FieldSummary({ people, hr }: { people: TeamPerson[]; hr?: boolean }) {
               </li>
             ))}
           </ul>
-          <LinkButton size="sm" to={hr ? STORY.fieldHr : STORY.fieldMgr}>Open field map</LinkButton>
+          {mapHref !== null && <LinkButton size="sm" to={hr ? STORY.fieldHr : STORY.fieldMgr} href={mapHref}>Open field map</LinkButton>}
         </Card>
       </div>
     </div>
@@ -1707,7 +1830,12 @@ function AgeBadge({ date }: { date: Date }) {
   return <Badge tone={r.days < -7 ? 'danger' : 'neutral'}>{r.text}</Badge>;
 }
 
-export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', resolveOpen = false, rows = EXCEPTIONS, defaultSearch = '', defaultStatus = ['Open', 'Request pending'] }: ExceptionsProps) {
+/** TIM-04 · Attendance exceptions. The app passes `live` (Time › Exceptions); stories show the sample. */
+export function ExceptionsScreen(p: ExceptionsProps & { live?: LiveExceptions }) {
+  return p.live ? <LiveExceptionsScreen live={p.live} /> : <SampleExceptionsScreen {...p} />;
+}
+
+function SampleExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', resolveOpen = false, rows = EXCEPTIONS, defaultSearch = '', defaultStatus = ['Open', 'Request pending'] }: ExceptionsProps) {
   const [state, retry] = useViewState(stateProp);
   const user = userFor(persona);
   // A manager sees only her reports, never her own rows (those are on My attendance). The empty story has none.
@@ -2021,6 +2149,8 @@ export interface LiveMyAttendance {
   onOpenDay: (on: string) => Promise<DayCard>;
   /** Request work from home (TIM-07); without it only regularising is offered. */
   onWfh?: (input: WfhInput) => Promise<unknown>;
+  /** TIM-07 LateRequest: a day of a frozen or locked month goes as a late correction, paid in the next payroll. */
+  onLateCorrection?: (input: LateCorrectionInput) => Promise<unknown>;
   /** Open the request sheet at once (Home's "Request work from home" links here). */
   defaultRequest?: 'wfh' | 'regularise';
   /** Night work (founder decisions 9 Oct 2026): shown when loaded. */
@@ -2341,7 +2471,7 @@ function useLiveRequests(live: LiveMyAttendance) {
   const d = live.data;
   const node = (
     <>
-      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, onFix: live.onFix, onWfh: live.onWfh, onClose: () => setReq(null) }} />}
+      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, onFix: live.onFix, onWfh: live.onWfh, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
       <ConfirmDialog
         open={!!withdrawing}
         onOpenChange={(o) => !o && setWithdrawing(null)}
@@ -2843,6 +2973,213 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
           }
         />
       )}
+    </TimePage>
+  );
+}
+
+/* ---------- live: /time/exceptions (TIM-04) ---------- */
+
+/** HR's queue (attendance.view in scope) or a manager's team: the month's days that need a decision. */
+export interface LiveExceptions {
+  state: LoadState;
+  onRetry?: () => void;
+  data: ExceptionsList | null;
+  month: string;
+  onMonth: (month: string) => void;
+  /** HR resolves one or more days with a reason (leave.approve; checked per person on the server). */
+  onResolve: (input: ResolveInput) => Promise<unknown>;
+  /** A waiting fix the viewer approves (their task in the shared approvals engine). */
+  onDecideTask: (taskId: string, decision: 'approve' | 'reject', reason?: string) => Promise<unknown>;
+  /** Opened for one person (from their day or calendar). */
+  defaultSearch?: string;
+  musterHref?: string;
+}
+type LiveExceptionRow = ExceptionsList['rows'][number];
+
+/** A live row in the design's exception shape (the table, filters and resolve dialog read it). */
+const asException = (r: LiveExceptionRow): ExceptionRow => ({
+  id: r.id,
+  person: r.person,
+  code: r.code ?? '',
+  date: isoDay(r.on),
+  kind: r.kind as ExceptionRow['kind'],
+  detail: r.detail,
+  mode: r.mode,
+  nudged: r.nudged,
+  status: r.status,
+  blocking: r.blocking,
+  ...(r.request ? { requested: requestText(r.request), reason: r.request.reason } : {}),
+});
+const requestText = (q: NonNullable<LiveExceptionRow['request']>) =>
+  q.kind === 'full_day' ? 'Present all day' : [q.inMinute !== null ? `In ${fmt12(hm(q.inMinute))}` : '', q.outMinute !== null ? `out ${fmt12(hm(q.outMinute))}` : ''].filter(Boolean).join(', ');
+
+function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
+  const d = live.data;
+  const say = useSay();
+  const hr = Boolean(d?.canResolve);
+  const all = d?.rows ?? [];
+  const [filters, setFilters] = useState<FilterValue[]>([{ key: 'status', type: 'multi', values: ['Open', 'Request pending'] }]);
+  const [search, setSearch] = useState(live.defaultSearch ?? '');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [resolve, setResolve] = useState<LiveExceptionRow[] | null>(null);
+  const [review, setReview] = useState<LiveExceptionRow | null>(null);
+  const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
+  const { busy, error, run, clearError } = useRun();
+  const shown = useMemo(() => {
+    const st = filters.find((f) => f.key === 'status');
+    const kind = filters.find((f) => f.key === 'kind');
+    const ok = (f: FilterValue | undefined, v: string) => !f || f.type !== 'multi' || f.values.length === 0 || f.values.includes(v);
+    return all.filter((r) => ok(st, r.status) && ok(kind, r.kind) && r.person.toLowerCase().includes(search.toLowerCase()));
+  }, [all, filters, search]);
+  const blocking = all.filter((r) => r.status !== 'Resolved' && r.blocking).length;
+  const goMonth = (n: number) => {
+    if (n > 0 && d && live.month >= d.today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
+    setSelected([]);
+    live.onMonth(shiftMonth(live.month, n));
+  };
+  const cols: TableColumn<LiveExceptionRow>[] = [
+    { key: 'person', header: 'Employee', type: 'person', width: 220, value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.mode === 'Timesheet' ? `${r.code ?? ''} · timesheet` : (r.code ?? '') }) },
+    {
+      key: 'date',
+      header: 'Date',
+      type: 'date',
+      value: (r) => isoDay(r.on),
+      render: (r) => <span className="yx-tim-list__main" style={CELL}><span>{formatDate(isoDay(r.on))}</span>{r.status !== 'Resolved' && <span><Badge tone={-daysUntil(isoDay(r.on), isoDay(d!.today)) > 7 ? 'danger' : 'neutral'}>{relativeDue(isoDay(r.on), isoDay(d!.today)).text}</Badge></span>}</span>,
+    },
+    {
+      key: 'kind',
+      header: 'Exception',
+      width: 300,
+      hideable: false,
+      value: (r) => r.kind,
+      render: (r) => <span className="yx-tim-list__main" style={CELL}><strong>{nbHyphen(r.kind)}</strong><span className="yx-tim-muted">{nbHyphen(r.resolution ? `${r.detail} · ${r.resolution.reason}` : r.detail)}</span></span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      type: 'status',
+      value: (r) => r.status,
+      statusTone: (v) => STATUS_TONE[v as ExceptionRow['status']],
+      render: (r) => (
+        <span className="yx-tim-row">
+          <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>
+          {r.status !== 'Resolved' && <Badge tone={r.blocking ? 'danger' : 'neutral'}>{r.blocking ? 'Blocks payroll' : 'Not blocking'}</Badge>}
+        </span>
+      ),
+    },
+  ];
+  const decide = (decision: 'approve' | 'reject') => {
+    if (decision === 'reject' && !why.trim()) {
+      setTried(true);
+      document.getElementById('ex-review-why')?.focus();
+      return;
+    }
+    void run(decision, async () => {
+      await live.onDecideTask(review!.request!.taskId!, decision, decision === 'reject' ? why.trim() : undefined);
+      setReview(null);
+    });
+  };
+  const one = resolve?.length === 1 ? resolve[0] : null;
+  return (
+    <TimePage active="Exceptions">
+      <PageHeader
+        title="Attendance exceptions"
+        description={`${monthLong(live.month)} · ${d ? (d.scope === 'team' ? 'your team' : d.scope === 'company' ? 'everyone' : 'the people you look after') : ''} · fix these before payroll can be approved`}
+        status={live.state === 'ready' ? <Badge tone={blocking ? 'danger' : 'success'}>{blocking} blocking</Badge> : undefined}
+      />
+      <div className="yx-tim-row yx-tim-monthnav">
+        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth(-1)} />
+        <h2 className="yx-tim-h2" aria-live="polite">{monthLong(live.month)}</h2>
+        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
+      </div>
+      {live.state === 'no-access' ? (
+        <LiveStates state="no-access" what="attendance exceptions">{null}</LiveStates>
+      ) : (
+        <>
+          <FilterBar
+            fields={[
+              { key: 'status', label: 'Status', type: 'multi', options: ['Open', 'Request pending', 'Resolved'].map((v) => ({ value: v, label: v })) },
+              { key: 'kind', label: 'Exception', type: 'multi', options: ['Missing check-out', 'Missing check-in', 'No attendance', 'No approved timesheet'].map((v) => ({ value: v, label: v })) },
+            ]}
+            value={filters}
+            onChange={setFilters}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search people"
+          />
+          <DataTable
+            label="Attendance exceptions"
+            columns={cols}
+            rows={shown}
+            getRowId={(r) => r.id}
+            state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
+            onRetry={live.onRetry}
+            filtered={filters.length > 0 || !!search}
+            onClearFilters={() => { setFilters([]); setSearch(''); }}
+            empty={<EmptyState title="No open exceptions" description={`Every working day in ${monthLong(live.month)} has punches, leave or an approved request. Payroll is not blocked by attendance.`} action={live.musterHref ? <Button asChild><a href={live.musterHref}>Open muster</a></Button> : undefined} />}
+            selectable={hr}
+            isSelectable={(r) => (r.status === 'Open' ? true : r.status === 'Resolved' ? false : 'A request is waiting: decide it first')}
+            selectedIds={selected}
+            onSelectedChange={setSelected}
+            bulkActions={(ids) => {
+              const picked = all.filter((r) => ids.includes(r.id) && r.status === 'Open');
+              return <Button size="sm" onClick={() => (picked.length ? setResolve(picked) : say('Select people with an open exception.', 'default'))}>Resolve {picked.length} with reason</Button>;
+            }}
+            rowButtons={(r) =>
+              r.status === 'Resolved' ? null : r.status === 'Request pending' ? (
+                r.request?.taskId ? <Button size="sm" variant="review" onClick={() => { clearError(); setWhy(''); setTried(false); setReview(r); }}>Review request</Button> : <Button size="sm" onClick={() => { clearError(); setReview(r); }}>View request</Button>
+              ) : hr ? (
+                <Button size="sm" onClick={() => setResolve([r])}>Resolve</Button>
+              ) : null
+            }
+          />
+        </>
+      )}
+      <ResolveDialog
+        key={resolve?.map((r) => r.id).join()}
+        rows={resolve ? resolve.map(asException) : null}
+        onClose={() => setResolve(null)}
+        onResolved={() => setSelected([])}
+        live={{
+          recordedIn: one?.inAt ?? null,
+          shiftEnd: one?.shiftEnd ?? '18:30',
+          onSubmit: (how, inMinute, outMinute, reason) => live.onResolve({ days: (resolve ?? []).map((r) => ({ employeeId: r.employeeId, on: r.on })), how, inMinute, outMinute, reason }),
+        }}
+      />
+      <Dialog
+        open={!!review}
+        onOpenChange={(o) => !o && setReview(null)}
+        title={review ? `${review.request?.taskId ? 'Review' : 'View'} request · ${review.person}, ${formatDate(isoDay(review.on))}` : ''}
+        description={review ? `${review.kind}: ${review.detail}` : undefined}
+        footer={
+          review?.request?.taskId ? (
+            <>
+              <Button onClick={() => setReview(null)}>Cancel</Button>
+              <Button variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>Reject</Button>
+              <Button variant="approve" loading={busy === 'approve'} onClick={() => decide('approve')}>Approve</Button>
+            </>
+          ) : (
+            <Button onClick={() => setReview(null)}>Close</Button>
+          )
+        }
+      >
+        <div className="yx-tim-stack">
+          {error && <InlineAlert tone="danger" title="Not decided">{error}</InlineAlert>}
+          {review?.request && (
+            <ul className="yx-tim-list">
+              <li><span>Asked for</span><span className="yx-tim-muted">{requestText(review.request)}</span></li>
+              <li><span>Reason</span><span className="yx-tim-muted">{review.request.reason}</span></li>
+            </ul>
+          )}
+          {review?.request && !review.request.taskId && <p className="yx-tim-muted">Their approver decides this request.</p>}
+          {review?.request?.taskId && (
+            <FormField id="ex-review-why" label="Reason (needed to reject)" error={tried && !why.trim() ? 'Enter a reason to reject' : null}>
+              <TextArea rows={2} value={why} onChange={setWhy} maxLength={500} />
+            </FormField>
+          )}
+        </div>
+      </Dialog>
     </TimePage>
   );
 }
