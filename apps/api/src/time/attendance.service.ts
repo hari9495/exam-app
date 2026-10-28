@@ -438,10 +438,13 @@ export class AttendanceService implements OnModuleInit {
       const punches = await tx.punch.findMany({ where: { organizationId: c.organizationId, employeeId, workOn: asDate(on) }, orderBy: { punchedAt: 'asc' } });
       const names = new Map((await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: punches.map((p) => p.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
       const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: c.organizationId, employeeId, workOn: asDate(on) } } });
+      // The day's shift (the day card's shift bar and late mark); null on a weekly off.
+      const shift = (await (await ScheduleBook.load(tx, c.organizationId)).day(f, on)).shift;
       return {
         person: { name: f.name, code: f.code },
         on,
         zone: f.zone,
+        shift: shift ? { name: shift.name, start: shift.shiftStart, end: shift.shiftEnd, grace: shift.graceMinutes } : null,
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.
         punches: punches.map((p) => ({ ...this.punchView(p, names), minute: minutesInto(on, f.zone, p.punchedAt) })),

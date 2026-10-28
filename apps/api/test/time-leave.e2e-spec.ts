@@ -352,7 +352,9 @@ describe('Time and leave batch 1', () => {
       expect(me.next).toBe('out');
       expect(me.fences).toEqual([{ name: 'Bengaluru', lat: 12.9716, lng: 77.5946, radiusM: 150 }]);
       // Day cards: the manager in scope, never the peer or the other company.
-      await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200);
+      const card = (await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200)).body;
+      // The day's shift goes with the card (shift bar and late mark), or null on a weekly off.
+      expect(card.shift === null || (typeof card.shift.name === 'string' && typeof card.shift.start === 'number' && typeof card.shift.grace === 'number')).toBe(true);
       await api('peer', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
       await api('empB', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
     });
