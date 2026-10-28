@@ -376,7 +376,8 @@ export function RosterGrid({
                 Fix {blocking.length} {blocking.length === 1 ? 'conflict' : 'conflicts'} to publish
               </span>
             )}
-            <Button variant="primary" disabled={blocking.length > 0} aria-describedby={blocking.length ? blockedId : undefined} onClick={() => setConfirming(true)}>
+            {/* Never disabled (founder rule): with a conflict left, pressing goes to it; the line beside says why. */}
+            <Button variant="primary" aria-describedby={blocking.length ? blockedId : undefined} onClick={() => (blocking.length ? goTo(blocking[0]!) : setConfirming(true))}>
               Publish roster
             </Button>
           </div>

@@ -12,8 +12,8 @@ export default function YxMyOvertimePage() {
       state={timeState(ot)}
       onRetry={() => void ot.refetch()}
       data={ot.data ?? null}
-      onClaim={(input) => write('/me/overtime', 'POST', input)}
-      onWithdraw={(cid) => write(`/me/overtime/${encodeURIComponent(cid)}/withdraw`)}
+      onClaim={(input) => write('/me/overtime', 'POST', input, true, 'Overtime claim sent')}
+      onWithdraw={(cid) => write(`/me/overtime/${encodeURIComponent(cid)}/withdraw`, 'POST', undefined, true, 'Overtime claim withdrawn')}
     />
   );
 }

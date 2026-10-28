@@ -169,10 +169,12 @@ describe('RosterGrid', () => {
     expect(screen.getByText(/1 warning to check/)).toBeInTheDocument();
 
     // A rest gap blocks publishing until it is fixed.
-    expect(screen.getByRole('button', { name: 'Publish roster' })).toBeDisabled();
+    // Never disabled: pressing Publish goes to the conflict instead of asking to publish.
     expect(screen.getByText('Fix 1 conflict to publish')).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Go to cell' }));
+    grid.querySelector<HTMLElement>('[data-cell="0:0"]')!.focus();
+    await u.click(screen.getByRole('button', { name: 'Publish roster' }));
     expect(grid.querySelector('[data-cell="0:1"]')).toHaveFocus();
+    expect(screen.queryByText(/Publish the roster for/)).not.toBeInTheDocument();
     await u.keyboard('{Delete}');
     await u.click(screen.getByRole('button', { name: 'Publish roster' }));
     await u.click(screen.getByRole('button', { name: 'Publish roster' }));

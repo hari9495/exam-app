@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@yukthix/ui';
 import type { LoadState, Pin } from '@yukthix/ui/time';
 import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
@@ -12,16 +13,21 @@ export function useTime<T>(path: string | null) {
   return useQuery<T>({ queryKey: ['time', path], queryFn: () => apiFetch(`/time${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path), retry: false });
 }
 
-/** Calls the time API and refreshes every time query (and the approvals inbox, which leave requests land in). */
+/**
+ * Calls the time API and refreshes every time query (and the approvals inbox, which leave requests land in).
+ * `done`: the toast that says it worked (founder rule: success after an action is a toast).
+ */
 export function useTimeWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(path: string, method: 'POST' | 'PUT' = 'POST', body?: unknown, refresh = true): Promise<T> => {
+  const { toast } = useToast();
+  return async <T = unknown>(path: string, method: 'POST' | 'PUT' = 'POST', body?: unknown, refresh = true, done?: string): Promise<T> => {
     const result = await apiFetch(`/time${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     if (refresh) {
       await queryClient.invalidateQueries({ queryKey: ['time'] });
       await queryClient.invalidateQueries({ queryKey: ['workflow'] });
     }
+    if (done) toast({ tone: 'success', title: done });
     return result as T;
   };
 }

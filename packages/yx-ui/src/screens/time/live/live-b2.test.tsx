@@ -158,7 +158,10 @@ describe('Timesheet, periods, registers and the payroll feed', () => {
     await ue.click(screen.getByRole('button', { name: 'Lock' }));
     const dialog = screen.getByRole('dialog');
     expect(await within(dialog).findByText(/1 overtime claims still waiting/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Lock the month' })).toBeDisabled();
+    // Never disabled: pressed, it says why and does not lock.
+    await ue.click(within(dialog).getByRole('button', { name: 'Lock the month' }));
+    expect(within(dialog).getByText('Settle what is still waiting (listed below) before locking.')).toBeInTheDocument();
+    expect(onLock).not.toHaveBeenCalled();
     expect(screen.getByText('Can be locked from the 2nd of the next month')).toBeInTheDocument();
   });
 

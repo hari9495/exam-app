@@ -495,6 +495,7 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
   const withoutCalendar = data.locations.filter((l) => !data.calendars.some((c) => c.locationId === l.id));
   const errs = [...(!on ? [{ fieldId: 'hd-on', message: 'Choose the date.' }] : []), ...(!name.trim() ? [{ fieldId: 'hd-name', message: 'Name the holiday.' }] : [])];
   const saveErrors = useSaveErrors(errs);
+  const calErrors = useSaveErrors(!newFor ? [{ fieldId: 'hc-new', message: 'Choose the location the calendar is for.' }] : []);
   return (
     <div className="yx-tim-stack">
       {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
@@ -504,10 +505,17 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
         </FormField>
         {withoutCalendar.length > 0 && (
           <>
-            <FormField id="hc-new" label="New calendar for">
+            <FormField id="hc-new" label="New calendar for" error={calErrors.errorOf('hc-new')}>
               <Select value={newFor} onChange={setNewFor} options={withoutCalendar.map((l) => ({ value: l.id, label: l.name }))} />
             </FormField>
-            <Button disabled={!newFor} loading={busy === 'cal'} onClick={() => void run('cal', () => onCreateCalendar({ name: `${data.locations.find((l) => l.id === newFor)?.name ?? ''} holidays`, locationId: newFor!, optionalLimit: 2 }))}>
+            <Button
+              loading={busy === 'cal'}
+              onClick={() => {
+                // Never disabled (founder rule): pressed with no location, it says so and focuses the field.
+                if (!newFor) return (calErrors.reveal(), document.getElementById('hc-new')?.focus());
+                void run('cal', () => onCreateCalendar({ name: `${data.locations.find((l) => l.id === newFor)?.name ?? ''} holidays`, locationId: newFor, optionalLimit: 2 }));
+              }}
+            >
               Add calendar
             </Button>
           </>
@@ -553,10 +561,10 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
             <div className="yx-tim-form">
               <ErrorSummary errors={saveErrors.shownErrors} />
               <div className="yx-tim-row">
-                <FormField id="hd-on" label="Date" required>
+                <FormField id="hd-on" label="Date" required error={saveErrors.errorOf('hd-on')}>
                   <TextField type="date" value={on} onChange={setOn} />
                 </FormField>
-                <FormField id="hd-name" label="Name" required>
+                <FormField id="hd-name" label="Name" required error={saveErrors.errorOf('hd-name')}>
                   <TextField value={name} onChange={setName} maxLength={100} />
                 </FormField>
                 <FormField id="hd-kind" label="Kind">

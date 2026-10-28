@@ -11,7 +11,7 @@ export function LivePage({ title, description, actions, state, onRetry, what, gr
     <div className="yx-auth__page yx-tim-live">
       <PageHeader title={title} description={description} actions={state === 'ready' ? actions : undefined} />
       {state === 'loading' && (
-        <div className="yx-tim-stack" aria-busy="true" aria-label={`Loading ${what}`}>
+        <div className="yx-tim-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}>
           <Skeleton height={96} />
           <Skeleton height={240} />
         </div>

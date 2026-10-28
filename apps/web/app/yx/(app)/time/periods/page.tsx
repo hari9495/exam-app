@@ -20,8 +20,8 @@ export default function YxPeriodsPage() {
       year={year}
       onYear={setYear}
       onPreflight={(legalEntityId, month) => read<Preflight>(`/periods/preflight?legalEntityId=${encodeURIComponent(legalEntityId)}&month=${month}`)}
-      onLock={(legalEntityId, month) => write('/periods/lock', 'POST', { legalEntityId, month })}
-      onUnlock={(legalEntityId, month, reason) => write('/periods/unlock', 'POST', { legalEntityId, month, reason })}
+      onLock={(legalEntityId, month) => write('/periods/lock', 'POST', { legalEntityId, month }, true, 'Month locked')}
+      onUnlock={(legalEntityId, month, reason) => write('/periods/unlock', 'POST', { legalEntityId, month, reason }, true, 'Reopen request sent for approval')}
     />
   );
 }

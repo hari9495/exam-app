@@ -16,7 +16,7 @@ export default function YxOvertimeReviewPage() {
       data={review.data ?? null}
       month={month}
       onMonth={setMonth}
-      onOverride={(cid, reason) => write(`/overtime/${encodeURIComponent(cid)}/override`, 'POST', { reason })}
+      onOverride={(cid, reason) => write(`/overtime/${encodeURIComponent(cid)}/override`, 'POST', { reason }, true, 'Overtime over the limit will be paid')}
     />
   );
 }

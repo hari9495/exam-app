@@ -18,7 +18,7 @@ export default function YxLeaveBalancesPage() {
       onRetry={() => void balances.refetch()}
       data={balances.data ?? null}
       onLedger={(employeeId) => read<LedgerRow[]>(`/people/${id(employeeId)}/ledger`)}
-      onAdjust={(employeeId, input) => write(`/people/${id(employeeId)}/adjust`, 'POST', input)}
+      onAdjust={(employeeId, input) => write(`/people/${id(employeeId)}/adjust`, 'POST', input, true, 'Added to the ledger')}
     />
   );
 }

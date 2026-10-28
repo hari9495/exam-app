@@ -120,6 +120,9 @@ function LockDrawer({ target, onClose, onPreflight, onLock }: { target: { entity
     void run('pre', async () => setPre(await onPreflight(target.entity.id, target.month)));
   }, [target.entity.id, target.month]); // eslint-disable-line react-hooks/exhaustive-deps
   const blocked = Boolean(pre && (pre.pending.length || pre.exceptions));
+  // Never disabled (founder rule): pressed too early, it says why and focuses the summary.
+  const errors = !pre ? [{ fieldId: 'lock-ready', message: 'Wait a moment: the checks of the month are still running.' }] : blocked ? [{ fieldId: 'lock-ready', message: 'Settle what is still waiting (listed below) before locking.' }] : [];
+  const saveErrors = useSaveErrors(errors);
   return (
     <Drawer
       open
@@ -130,14 +133,14 @@ function LockDrawer({ target, onClose, onPreflight, onLock }: { target: { entity
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!pre || blocked}
             loading={busy === 'lock'}
-            onClick={() =>
+            onClick={() => {
+              if (errors.length) return saveErrors.reveal();
               void run('lock', async () => {
                 await onLock(target.entity.id, target.month);
                 onClose();
-              })
-            }
+              });
+            }}
           >
             Lock the month
           </Button>
@@ -145,12 +148,14 @@ function LockDrawer({ target, onClose, onPreflight, onLock }: { target: { entity
       }
     >
       <div className="yx-tim-form">
+        <ErrorSummary errors={saveErrors.shownErrors} title="Not ready to lock" />
         {busy === 'pre' && <Skeleton height={80} />}
         {error && <InlineAlert tone="danger" title="Not locked">{error}</InlineAlert>}
         {pre && (
           <>
             <p className="yx-tim-muted">{pre.people} people in this legal entity during the month. Every day is worked out again before the lock.</p>
             {blocked ? (
+              <div id="lock-ready" tabIndex={-1}>
               <InlineAlert tone="warning" title="Not ready to lock">
                 <ul className="yx-tim-list">
                   {pre.pending.map((x) => (
@@ -161,6 +166,7 @@ function LockDrawer({ target, onClose, onPreflight, onLock }: { target: { entity
                   {pre.exceptions > 0 && <li>{pre.exceptions} days with missing punches or timesheets</li>}
                 </ul>
               </InlineAlert>
+              </div>
             ) : (
               <InlineAlert tone="info" title="Ready to lock">
                 After the lock, attendance, leave, overtime, rosters and timesheets of the month can't change, and its payroll figures are frozen. You'll be asked to confirm it's you.

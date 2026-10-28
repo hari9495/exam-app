@@ -19,8 +19,8 @@ export default function YxTimesheetPage() {
       today={today}
       onWeek={setWeek}
       onSave={(w, lines) => write('/me/timesheet', 'PUT', { week: w, lines })}
-      onSubmit={(w) => write('/me/timesheet/submit', 'POST', { week: w })}
-      onWithdraw={(sid) => write(`/me/timesheet/${encodeURIComponent(sid)}/withdraw`)}
+      onSubmit={(w) => write('/me/timesheet/submit', 'POST', { week: w }, true, 'Week sent to the project manager')}
+      onWithdraw={(sid) => write(`/me/timesheet/${encodeURIComponent(sid)}/withdraw`, 'POST', undefined, true, 'Week withdrawn; you can change it')}
     />
   );
 }

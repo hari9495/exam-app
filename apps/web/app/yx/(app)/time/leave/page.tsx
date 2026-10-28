@@ -27,10 +27,10 @@ function MyLeave() {
       onRetry={() => void leave.refetch()}
       data={leave.data ?? null}
       onPreview={(input) => write<LeavePlan>('/me/leave/preview', 'POST', input, false)}
-      onApply={(input) => write('/me/leave', 'POST', input)}
-      onWithdraw={(rid) => write(`/me/leave/${id(rid)}/withdraw`)}
-      onCancel={(rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason })}
-      onChooseHoliday={(hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`)}
+      onApply={(input) => write('/me/leave', 'POST', input, true, 'Leave sent for approval')}
+      onWithdraw={(rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn')}
+      onCancel={(rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager')}
+      onChooseHoliday={(hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back')}
       onFindPeople={(q) => apiFetch(`/workflow/people?q=${id(q)}`, {}, accessToken ?? undefined) as Promise<PersonOption[]>}
       startApplying={apply}
     />

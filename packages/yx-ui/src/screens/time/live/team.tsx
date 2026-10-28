@@ -56,7 +56,7 @@ export function TeamLeaveScreen(p: TeamLeaveScreenProps) {
             </Button>
           </div>
           {d.people.length ? (
-            <div className="yx-tim-grid">
+            <div className="yx-tim-grid" tabIndex={0} role="region" aria-label="Team leave calendar, scrolls sideways">
               <table aria-label="Team leave calendar">
                 <thead>
                   <tr>

@@ -17,8 +17,8 @@ export default function YxRosterPage() {
       week={week}
       onWeek={setWeek}
       onCells={(cells) => write('/roster/cells', 'PUT', { cells })}
-      onCopy={(fromWeek, toWeek) => write('/roster/copy', 'POST', { fromWeek, toWeek })}
-      onPublish={(w) => write('/roster/publish', 'POST', { week: w })}
+      onCopy={(fromWeek, toWeek) => write('/roster/copy', 'POST', { fromWeek, toWeek }, true, 'Last week copied as a draft')}
+      onPublish={(w) => write('/roster/publish', 'POST', { week: w }, true, 'Roster published')}
     />
   );
 }

@@ -14,8 +14,8 @@ export default function YxMyShiftsPage() {
       onRetry={() => void mine.refetch()}
       data={mine.data ?? null}
       today={today}
-      onSwap={(input) => write('/me/swaps', 'POST', input)}
-      onWithdrawSwap={(sid) => write(`/me/swaps/${encodeURIComponent(sid)}/withdraw`)}
+      onSwap={(input) => write('/me/swaps', 'POST', input, true, 'Swap sent to your colleague')}
+      onWithdrawSwap={(sid) => write(`/me/swaps/${encodeURIComponent(sid)}/withdraw`, 'POST', undefined, true, 'Swap withdrawn')}
     />
   );
 }
