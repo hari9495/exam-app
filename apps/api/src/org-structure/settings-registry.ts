@@ -36,6 +36,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // reminder lead, the most it may run with extensions, and auto-confirmation (off unless the company opts in).
   'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
   'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
+  // PPL-06 (founder 20 Oct 2026): when a raise takes someone above their grade's pay range maximum (Structure › Grades),
+  // the company decides: warn and let the approver decide, cap the new pay at the maximum, or refuse until it is changed.
+  'pay.band.above_max': { label: 'A raise above the pay range maximum', scopes: ['tenant', 'legal_entity'], dated: false, values: ['warn', 'cap', 'block'], default: 'warn' },
+  // Founder queue 28 Oct 2026: what a promotion must move. 'either' (a new designation or grade) is the starting rule.
+  'promotion.must_change': { label: 'A promotion must change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['either', 'both', 'grade', 'designation'], default: 'either' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
   // Auto-confirmation is a system change with no approver (YX-SEC-11), so turning it on is the access admin's.
   'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off', guard: 'access.role.manage' },
@@ -92,6 +97,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
+  // Founder 28 Oct 2026: a manager's access to their team's pay lasts this long, and covers the whole team or the one person
+  // asked about, unless the approving HR person changes it on the request. HR decides (org.settings.manage).
+  'pay_access.days': { label: 'Team pay access lasts (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
+  'pay_access.scope': { label: 'Team pay access covers', scopes: ['tenant'], dated: false, values: ['team', 'person'], default: 'team' },
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.
   'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
   // P02 §7 / P08: employees see who viewed their Confidential and Special data (every view is recorded either way).
@@ -100,6 +109,23 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
+  // PPL-43: the day each financial year's BFSI declarations are due (designated persons).
+  'bfsi.declaration_due': { label: 'Annual BFSI declarations are due on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['04-30', '06-30', '09-30', '10-15', '12-31'], default: '10-15' },
+  // PPL-44: trading pre-clearance for designated persons: the quarterly value that needs it, how long an approval
+  // lasts (trading days) and how soon the compliance officer decides.
+  'bfsi.preclearance_threshold': { label: 'Pre-clearance is needed for trades in a quarter above (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['500000', '1000000', '2500000'], default: '1000000' },
+  'bfsi.preclearance_valid_days': { label: 'A pre-clearance is valid for (trading days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10'], default: '7' },
+  'bfsi.preclearance_decide_days': { label: 'The compliance officer decides within (working days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3'], default: '2' },
+  // PPL-45: reminders before a visa, permit or national ID expires (days before; the person is told each time).
+  'work_auth.reminder_days': { label: 'Remind before a work permit or visa expires (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['90,60,30', '60,30', '30', 'off'], default: '90,60,30' },
+  // PPL-04 / PPL-09 (P01 YX-ORG-17): where a move between legal entities starts (restructure plans and one-person moves);
+  // HR may change any of them for one plan or one person.
+  'transfer.leave': { label: 'Leave balance', scopes: ['tenant'], dated: false, values: ['carry', 'lapse'], default: 'carry' },
+  'transfer.service': { label: 'Service continuity', scopes: ['tenant'], dated: false, values: ['keep', 'restart'], default: 'keep' },
+  'transfer.code': { label: 'Employee code', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
+  'transfer.salary': { label: 'Salary structure', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
+  // PPL-32: an employee's own identity or bank change carries proof (a cancelled cheque, the PAN card, a gazette notice).
+  'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.
   'attendance.mode': {
     label: 'Attendance mode',

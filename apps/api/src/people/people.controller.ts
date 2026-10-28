@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -17,14 +17,22 @@ import {
   EmployeeCodeDto,
   ExtendProbationDto,
   LinkLoginDto,
+  EntityQueryDto,
   OrgChartQueryDto,
   ReasonDto,
   ReassignDto,
   ReportsQueryDto,
+  IncrementDto,
+  IncrementLetterPreviewDto,
 } from './dto';
 import { PeopleService } from './people.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { toResponse } from '../custom-fields/custom-fields-config.controller';
+import { CreateCustomFieldDto } from '../custom-fields/dto/create-custom-field.dto';
+import { UpdateCustomFieldDto } from '../custom-fields/dto/update-custom-field.dto';
 import { ProfileService } from './profile.service';
-import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { myDataPdf } from './my-data-pdf';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
 //   implicit grants (YX-SEC-04)   directory and org chart for employees of the company (Public fields, P02 Q4);
@@ -38,6 +46,7 @@ import { PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileReques
 //   employee.aadhaar.view         Aadhaar in full, each view audited (YX-SEC-08)
 //   employee.identity.manage      raise an identity / bank change for someone (the person raises their own)
 //   employee.identity.approve     approve or reject those changes (never one's own or about oneself, YX-SEC-11/13)
+//   org.settings.manage           define the company's employee fields (Additional details, P18)
 // Every key reaches only the people in its grants' scopes (P02 §4.3). Nothing here returns pay (founder rule R1).
 @Controller('people')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -47,6 +56,7 @@ export class PeopleController {
     private readonly people: PeopleService,
     private readonly bulk: BulkChangesService,
     private readonly profiles: ProfileService,
+    private readonly fields: CustomFieldsService,
   ) {}
 
   private viewer(req: Request) {
@@ -60,7 +70,7 @@ export class PeopleController {
 
   @Get('org-chart')
   async orgChart(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OrgChartQueryDto) {
-    return this.people.orgChart(ctx, await this.viewer(req), q.asOf);
+    return this.people.orgChart(ctx, await this.viewer(req), q.asOf, q.legalEntityId);
   }
 
   @Get('team')
@@ -111,6 +121,21 @@ export class PeopleController {
   }
 
   /** Who viewed my Confidential and Special data (P02 §7, P08). */
+  /** PPL-33: my data as a JSON or PDF file (my own record only; recorded). */
+  @Get('me/data')
+  async myData(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: MyDataDto) {
+    const data = await this.profiles.myData(ctx, await this.viewer(req));
+    const pdf = q.format === 'pdf';
+    res.set({ 'Content-Type': pdf ? 'application/pdf' : 'application/json', 'Content-Disposition': `attachment; filename="my-data.${pdf ? 'pdf' : 'json'}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(pdf ? await myDataPdf(data) : Buffer.from(JSON.stringify(data, null, 2)));
+  }
+
+  // PPL-32: my Change identity or bank details page (my own record only).
+  @Get('me/change-form')
+  async myChangeForm(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.profiles.myChangeForm(ctx, await this.viewer(req));
+  }
+
   @Get('me/access-log')
   async accessLog(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.profiles.accessLog(ctx, await this.viewer(req));
@@ -129,10 +154,78 @@ export class PeopleController {
     return this.profiles.reveal(ctx, await this.viewer(req), id, dto.field);
   }
 
+  /** PPL-03 Activity: who did what on the record; each kind only where the viewer may see it. */
+  @Get('employees/:id/activity')
+  async activity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.activity(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/work-phone')
+  async workPhone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkPhoneDto) {
+    ownSession(req);
+    return this.profiles.setWorkPhone(ctx, await this.viewer(req), id, dto.workPhone ?? null);
+  }
+
   @Put('employees/:id/personal')
   async updatePersonal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PersonalDetailsDto) {
     ownSession(req);
     return this.profiles.updatePersonal(ctx, await this.viewer(req), id, dto);
+  }
+
+  /** PPL-03 family and nominations (Personal): HR with employee.profile.edit; each scheme's shares total 100. */
+  @Put('employees/:id/family')
+  async updateFamily(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FamilyDto) {
+    ownSession(req);
+    return this.profiles.updateFamily(ctx, await this.viewer(req), id, dto);
+  }
+
+  /** PPL-03 emergency contacts (Personal): the person edits their own; HR with employee.profile.edit. */
+  @Put('employees/:id/emergency-contacts')
+  async emergencyContacts(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EmergencyContactsDto) {
+    ownSession(req);
+    return this.profiles.setEmergencyContacts(ctx, await this.viewer(req), id, dto);
+  }
+
+  /** PPL-03 Additional details: the company's employee fields, each value only where its class lets the viewer see it. */
+  @Get('employees/:id/custom-fields')
+  async customFields(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.customFields(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/custom-fields')
+  async setCustomFields(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CustomFieldValuesDto) {
+    ownSession(req);
+    return this.profiles.setCustomFields(ctx, await this.viewer(req), id, dto);
+  }
+
+  // ---- People settings: the employee fields themselves (org.settings.manage; values above) ----
+
+  @Get('custom-fields')
+  @RequirePermissions('org.settings.manage')
+  async listEmployeeFields(@CurrentTenant() ctx: TenantContext, @Query('includeArchived') includeArchived?: string) {
+    return (await this.fields.list(ctx, 'employee', includeArchived === 'true')).map(toResponse);
+  }
+
+  @Post('custom-fields')
+  @RequirePermissions('org.settings.manage')
+  async createEmployeeField(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CreateCustomFieldDto) {
+    ownSession(req);
+    if (dto.entityType !== 'employee') throw new BadRequestException('entityType must be employee');
+    return toResponse(await this.fields.create(ctx, dto));
+  }
+
+  @Put('custom-fields/:fieldId')
+  @RequirePermissions('org.settings.manage')
+  async updateEmployeeField(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('fieldId', ParseUUIDPipe) fieldId: string, @Body() dto: UpdateCustomFieldDto) {
+    ownSession(req);
+    return toResponse(await this.fields.update(ctx, fieldId, dto, ['employee']));
+  }
+
+  @Post('custom-fields/:fieldId/archive')
+  @RequirePermissions('org.settings.manage')
+  async archiveEmployeeField(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('fieldId', ParseUUIDPipe) fieldId: string) {
+    ownSession(req);
+    return this.fields.archive(ctx, fieldId, ['employee']);
   }
 
   /** Identity, bank and legal-name changes go to approval; asking needs a fresh second factor (P02 §4.5). */
@@ -172,8 +265,8 @@ export class PeopleController {
   // ---- probation (M01 §3.4) ----
 
   @Get('probations')
-  async probations(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.people.probations(ctx, await this.viewer(req));
+  async probations(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityQueryDto) {
+    return this.people.probations(ctx, await this.viewer(req), q.legalEntityId);
   }
 
   @Post('employees/:id/probation/extend')
@@ -203,6 +296,25 @@ export class PeopleController {
   async reassign(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ReassignDto) {
     ownSession(req);
     return this.bulk.reassign(ctx, await this.viewer(req), dto);
+  }
+
+  /** PPL-06 annual increment: pay changes, so both the change and the pay grant (R1). */
+  @Post('change-batches/increment')
+  @RequirePermissions('employee.change.manage', 'employee.salary.manage')
+  async increment(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: IncrementDto) {
+    ownSession(req);
+    return this.bulk.increment(ctx, await this.viewer(req), dto);
+  }
+
+  /** PPL-06 Letters step: one person's increment letter as a marked preview PDF (pay: both grants again, R1). */
+  @Post('change-batches/increment/letter-preview')
+  @HttpCode(200)
+  @RequirePermissions('employee.change.manage', 'employee.salary.manage')
+  async incrementLetter(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Body() dto: IncrementLetterPreviewDto) {
+    ownSession(req);
+    const f = await this.bulk.incrementLetterPreview(ctx, await this.viewer(req), dto);
+    res.set({ 'Content-Type': f.contentType, 'Content-Disposition': 'attachment; filename="preview.pdf"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
   }
 
   @Get('change-batches/:id')

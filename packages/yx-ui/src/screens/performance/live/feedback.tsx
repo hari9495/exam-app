@@ -243,6 +243,7 @@ function AskDialog({ about, people, onPeopleSearch, onClose, onSave }: { about: 
   const [chosen, setChosen] = useState<PersonOption[]>([]);
   const [question, setQuestion] = useState('');
   const [due, setDue] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -250,22 +251,23 @@ function AskDialog({ about, people, onPeopleSearch, onClose, onSave }: { about: 
       size="md"
       title="Ask for feedback"
       confirmLabel="Send requests"
-      confirmDisabled={!who || asked.length === 0 || asked.length > 10 || question.trim().length < 3}
       onConfirm={async () => {
+        setTried(true);
+        if (!who || asked.length === 0 || asked.length > 10 || question.trim().length < 3) return false;
         await onSave({ aboutEmployeeId: who!, askedEmployeeIds: asked, question: question.trim(), dueOn: due ? dayKey(due) : null });
         onClose();
       }}
     >
-      <FormField id="ask-about" label="About" required>
+      <FormField id="ask-about" label="About" required error={tried && !who ? 'Choose who the feedback is about.' : null}>
         <Select aria-label="About" value={who} onChange={setWho} options={about} searchable />
       </FormField>
-      <FormField id="ask-who" label="Ask" required helper="Up to 10 colleagues.">
+      <FormField id="ask-who" label="Ask" required error={!tried ? null : asked.length === 0 ? 'Choose at least one colleague.' : asked.length > 10 ? 'Choose up to 10 colleagues.' : null} rule="Up to 10 colleagues.">
         <MultiSelect aria-label="Colleagues to ask" value={asked} onChange={(ids) => {
           setChosen(withChosen(people, chosen).filter((x) => ids.includes(x.id)));
           setAsked(ids);
         }} options={withChosen(people, chosen).filter((x) => x.id !== who).map((x) => ({ value: x.id, label: x.name }))} onSearchChange={onPeopleSearch} searchPlaceholder="Search people" />
       </FormField>
-      <FormField id="ask-q" label="Question" required>
+      <FormField id="ask-q" label="Question" required error={tried && question.trim().length < 3 ? 'Enter a question of at least 3 characters.' : null}>
         <TextField value={question} onChange={setQuestion} maxLength={500} />
       </FormField>
       <FormField id="ask-due" label="By" optional>
@@ -277,6 +279,7 @@ function AskDialog({ about, people, onPeopleSearch, onClose, onSave }: { about: 
 
 function SealDialog({ item, onClose, onSeal }: { item: FeedbackItem; onClose: () => void; onSeal: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -285,14 +288,15 @@ function SealDialog({ item, onClose, onSeal }: { item: FeedbackItem; onClose: ()
       destructive
       title={`Seal feedback from ${item.from} to ${item.to}`}
       confirmLabel="Seal"
-      confirmDisabled={reason.trim().length < 3}
       onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) return false;
         await onSeal(reason.trim());
         onClose();
       }}
     >
       <Text as="p">It leaves every performance view and report. The two people see that HR removed it. The reason is recorded.</Text>
-      <FormField id="seal-reason" label="Reason" required>
+      <FormField id="seal-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -315,6 +319,7 @@ export function OneOnOnesScreen(p: OneOnOnesScreenProps) {
   const [planning, setPlanning] = useState(false);
   const [withId, setWithId] = useState<string | null>(null);
   const [on, setOn] = useState<Date | null>(null);
+  const [triedPlan, setTriedPlan] = useState(false);
   const columns: TableColumn<OneOnOneSummary>[] = [
     { key: 'with', header: 'With', value: (m) => m.with, width: 240, hideable: false },
     { key: 'on', header: 'On', value: (m) => m.on, render: (m) => <Text>{dateText(m.on)}</Text>, width: 140 },
@@ -329,7 +334,7 @@ export function OneOnOnesScreen(p: OneOnOnesScreenProps) {
       what="1:1s"
       actions={
         p.partners.length > 0 && (
-          <Button variant="primary" icon={Plus} onClick={() => setPlanning(true)}>
+          <Button variant="primary" icon={Plus} onClick={() => (setTriedPlan(false), setPlanning(true))}>
             Plan a 1:1
           </Button>
         )
@@ -356,16 +361,17 @@ export function OneOnOnesScreen(p: OneOnOnesScreenProps) {
           size="md"
           title="Plan a 1:1"
           confirmLabel="Plan"
-          confirmDisabled={!withId || !on}
           onConfirm={async () => {
+            setTriedPlan(true);
+            if (!withId || !on) return false;
             await p.onCreate({ withEmployeeId: withId!, on: dayKey(on!) });
             setPlanning(false);
           }}
         >
-          <FormField id="oo-with" label="With" required>
+          <FormField id="oo-with" label="With" required error={triedPlan && !withId ? 'Choose who the 1:1 is with.' : null}>
             <PersonPicker aria-label="With" value={withId} onChange={setWithId} people={p.partners.map((x) => ({ id: x.value, name: x.label }))} />
           </FormField>
-          <FormField id="oo-on" label="On" required helper="Open action items from your earlier 1:1s move to this one.">
+          <FormField id="oo-on" label="On" required error={triedPlan && !on ? 'Choose the date.' : null} helper="Open action items from your earlier 1:1s move to this one.">
             <DatePicker value={on} onChange={setOn} aria-label="1:1 date" />
           </FormField>
         </ConfirmDialog>

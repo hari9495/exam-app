@@ -11,11 +11,12 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplateUploadDto } from './dto';
+import { BulkLetterCheckDto, BulkLetterDto, ComposeTemplateDto, DiscardLetterDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, MyCertificateDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplatePreviewQueryDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
-//   letter.template.manage      Word templates: upload, starters, sample preview, switch on / off, download
+//   letter.template.manage      Word templates: upload, starters, sample preview, switch on / off, download (a test
+//                               render for a real person also needs letter.issue for them)
 //   letter.issue                preview and issue letters to people in scope; the register; the company's DSC upload
 //   letter.signatory.manage ⚡  who signs for each legal entity, with the signature image
 //   no key (self)               my letters, my acceptance; the file route decides per letter (self, or HR in scope)
@@ -61,6 +62,14 @@ export class LettersController {
     return this.letters.paragraphs(ctx, this.user(req), id);
   }
 
+  /** The bulk wizard's preview: each person will get the letter, or why not (nothing is kept). */
+  @Post('bulk/check')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  bulkCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BulkLetterCheckDto) {
+    return this.letters.bulkCheck(ctx, this.user(req), dto);
+  }
+
   @Post('bulk')
   @HttpCode(200)
   @RequirePermissions('letter.issue')
@@ -76,8 +85,8 @@ export class LettersController {
 
   @Get('templates/:id/preview')
   @RequirePermissions('letter.template.manage')
-  async templatePreview(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return out(res, await this.letters.templatePreview(ctx, this.user(req), id));
+  async templatePreview(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: TemplatePreviewQueryDto) {
+    return out(res, await this.letters.templatePreview(ctx, this.user(req), id, q.personId));
   }
 
   @Get('templates/:id/docx')
@@ -141,6 +150,37 @@ export class LettersController {
     return this.letters.issue(ctx, this.user(req), dto);
   }
 
+  /** PPL-15: issue a letter an event drafted (an offer withdrawn), after HR reviewed it. */
+  @Post(':id/issue')
+  @RequirePermissions('letter.issue')
+  issueDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.issueDraft(ctx, this.user(req), id);
+  }
+
+  /** PPL-15: the drafted letter as it would be issued (the issue preview, with its own words), for HR's review. */
+  @Post(':id/preview')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  async previewDraft(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return out(res, await this.letters.previewLetter(ctx, this.user(req), { draftId: id }));
+  }
+
+  /** PPL-15: a draft HR will not send, with the reason (kept for the audit). */
+  @Post(':id/discard')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  discard(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DiscardLetterDto) {
+    return this.letters.discardDraft(ctx, this.user(req), id, dto.reason);
+  }
+
+  /** A letter that could not be made, made again with its reference. */
+  @Post(':id/render')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  retryRender(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.retryRender(ctx, this.user(req), id);
+  }
+
   @Get('issued')
   @RequirePermissions('letter.issue')
   register(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('personId') personId?: string) {
@@ -155,10 +195,15 @@ export class LettersController {
     return this.letters.attachSignature(ctx, this.user(req), id, file?.buffer);
   }
 
+  @Get('me/certificates')
+  certificates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.letters.myCertificates(ctx, this.user(req));
+  }
+
   @Post('me/certificates')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  certificate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: StarterLetterDto) {
-    return this.letters.myCertificate(ctx, this.user(req), dto.letterType);
+  certificate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: MyCertificateDto) {
+    return this.letters.myCertificate(ctx, this.user(req), dto);
   }
 
   @Get('me')

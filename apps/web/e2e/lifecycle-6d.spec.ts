@@ -5,7 +5,7 @@ import { stepUp } from './fixtures/time-db';
 // Lifecycle batch 6d on the seeded Kaveri Foods demo: Lakshmi (HR) makes a fresh employee (add a joiner who starts
 // today, mark joined), starts an "End of contract" exit with today as the last working day, and sees the clearance and
 // the payroll hand-off (final dues two working days after the last day); Divya gets an instant employment certificate
-// from Me › My documents and finds it in My letters.
+// from Me › Documents and letters and finds it in the same list.
 // T+0 (the employment ends once the last day is over in India), the exit steps and the alumni login need the clock
 // and the emailed code: the API e2e (lifecycle-6d.e2e-spec.ts) covers them.
 
@@ -45,8 +45,9 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await pick(hr, sheet, 'Employment type', /Permanent/);
   await pick(hr, sheet, 'Manager', /Divya Raghunathan/);
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
-  await expect(hr.getByText(`${first} was added`)).toBeVisible({ timeout: 30_000 });
-  await hr.getByRole('row', { name: new RegExp(first) }).getByRole('button', { name: 'Checklist' }).click();
+  // The designed toast and board (PPL-11): a card opens the journey record.
+  await expect(hr.getByText(`${first} added`).first()).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('button', { name: `${first} Paul`, exact: true }).click();
   await hr.waitForURL(/\/yx\/people\/onboarding\/[^/]+$/);
   await hr.getByRole('button', { name: 'Mark joined' }).click();
   const join = hr.getByRole('dialog');
@@ -66,17 +67,22 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await start.getByRole('button', { name: 'Start exit' }).click();
   await hr.waitForURL(/\/yx\/people\/exits\/[^/]+$/);
   await expect(hr.getByText('Serving notice')).toBeVisible();
-  await expect(hr.getByRole('heading', { name: 'Payroll hand-off' })).toBeVisible();
-  await expect(hr.getByText('Final dues by')).toBeVisible();
-  // Clearance is open: the handover item waits for the manager.
-  const handover = hr.getByRole('row', { name: /Work and files handed over/ });
-  await expect(handover.getByText('To do')).toBeVisible();
+  // The designed case (PPL-19) walks the steps: Clearance is open and the handover item waits for the manager; the
+  // payroll hand-off shows at the F&F step once clearance is done (the API e2e covers the hand-off itself).
+  await expect(hr.getByRole('button', { name: 'Clearance In progress' })).toBeVisible();
+  await expect(hr.getByRole('listitem').filter({ hasText: 'Work and files handed over' }).getByText('Pending')).toBeVisible();
 
-  // Divya: an instant employment certificate.
+  // Divya: an instant employment certificate (PPL-31).
   const divya = await signedIn(browser, 'panel@demo-org.test');
   await divya.goto('/yx/me/documents');
-  await divya.getByRole('button', { name: 'Get an employment certificate' }).click();
-  await expect(divya.getByText('Your certificate is ready')).toBeVisible({ timeout: 30_000 });
+  await divya.getByRole('link', { name: 'Request a certificate' }).click();
+  await divya.getByRole('radio', { name: 'Employment certificate' }).click();
+  await divya.getByRole('combobox', { name: 'Purpose' }).click();
+  await divya.getByRole('option', { name: 'Home loan' }).click();
+  await divya.getByRole('button', { name: 'Generate certificate' }).click();
+  await expect(divya.getByText(/^Employment certificate ready · /)).toBeVisible({ timeout: 30_000 });
+  // The old My letters address opens the same page (PPL-30).
   await divya.goto('/yx/me/letters');
-  await expect(divya.getByText(/Employment certificate/).first()).toBeVisible();
+  await expect(divya).toHaveURL(/\/yx\/me\/documents$/);
+  await expect(divya.getByRole('table', { name: 'My documents' }).getByText(/Employment certificate/).first()).toBeVisible();
 });

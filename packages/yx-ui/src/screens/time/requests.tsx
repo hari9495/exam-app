@@ -1402,6 +1402,7 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
   const [confirm, setConfirm] = useState(false);
   // A legal decision needs an explicit pick: nothing is pre-selected.
   const [next, setNext] = useState<Legality | null>(null);
+  const [tried, setTried] = useState(false);
   const [editing, setEditing] = useState(false);
   const [eFrom, setEFrom] = useState<Date | null>(from);
   const [eTo, setETo] = useState<Date | null>(to);
@@ -1425,7 +1426,7 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
       : next === 'undetermined'
         ? `Pay for ${workerDays} worker-days is held while legality is undetermined.`
         : `${workerDays} worker-days are recalculated. ${payLine(type, next, days)}`;
-  const openLegality = () => { setNext(null); setConfirm(true); };
+  const openLegality = () => { setNext(null); setTried(false); setConfirm(true); };
   return (
     <TimePage active="Requests" user={HR_ADMIN}>
       <PageHeader
@@ -1474,12 +1475,18 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
         title={unset ? 'Set legality' : 'Change legality'}
         consequence={changeText}
         confirmLabel={unset ? 'Set legality' : 'Change legality'}
-        confirmDisabled={!next || next === legality}
-        onConfirm={() => { if (next) onLegality(next); setConfirm(false); }}
+        onConfirm={() => {
+          setTried(true);
+          if (!next || next === legality) return false;
+          onLegality(next);
+          setConfirm(false);
+        }}
       >
         <div className="yx-tim-stack">
-          <RadioGroup aria-label="Legality" value={next ?? ''} onChange={(v) => setNext(v as Legality)} options={LEGALITY.map((o) => ({ ...o, disabled: o.value === legality }))} />
-          {!next && <p className="yx-tim-muted">Pick a legality</p>}
+          <FormField label="Legality" hideLabel error={tried && (!next || next === legality) ? 'Pick a legality.' : null}>
+            <RadioGroup aria-label="Legality" value={next ?? ''} onChange={(v) => setNext(v as Legality)} options={LEGALITY.map((o) => ({ ...o, disabled: o.value === legality }))} />
+          </FormField>
+          {!next && !tried && <p className="yx-tim-muted">Pick a legality</p>}
         </div>
       </ConfirmDialog>
       <Dialog

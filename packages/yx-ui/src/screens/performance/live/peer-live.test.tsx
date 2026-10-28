@@ -61,7 +61,10 @@ describe('Peer feedback (PM5)', () => {
     render(<ReviewerBlocksScreen state="ready" blocks={[]} people={people} onSearch={vi.fn()} onBlock={onBlock} onEnd={vi.fn(ok)} />);
     await ue.click(screen.getByRole('button', { name: 'Block a pair' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Block' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Block' }));
+    expect(within(d).getByText('Choose the first person.')).toBeInTheDocument();
+    expect(within(d).getByText('Choose the other person.')).toBeInTheDocument();
+    expect(onBlock).not.toHaveBeenCalled();
     await ue.click(within(d).getByRole('combobox', { name: 'One person' }));
     await ue.click(screen.getByRole('option', { name: /Arjun/ }));
     await ue.click(within(d).getByRole('combobox', { name: 'The other person' }));

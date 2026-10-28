@@ -52,6 +52,8 @@ export interface FormFieldProps {
   optional?: boolean;
   /** Helper text below the control. */
   helper?: ReactNode;
+  /** The field's rule ("At least 3 characters."), shown before the helper and hidden while an error says the same. */
+  rule?: string;
   /** Error text: say what to do, e.g. "Enter a 10-character PAN like ABCDE1234F". */
   error?: string | null;
   disabled?: boolean;
@@ -61,15 +63,17 @@ export interface FormFieldProps {
   className?: string;
 }
 
-export function FormField({ label, children, required = false, optional, helper, error, disabled = false, hideLabel, id, className }: FormFieldProps) {
+export function FormField({ label, children, required = false, optional, helper, rule, error, disabled = false, hideLabel, id, className }: FormFieldProps) {
   const autoId = useId();
   const fieldId = id ?? `yx-field-${autoId}`;
   const [internalError, setInternalError] = useState<string | null>(null);
   // No error under a field while the person is typing in it (founder review 8 Oct 2026): it shows again when they
   // leave the field or press Save. One rule for every field, whatever set the error.
   const [typing, setTyping] = useState(false);
-  const shownError = typing ? null : error ?? internalError;
-  const helperId = helper ? `${fieldId}-helper` : undefined;
+  // The control's own message is about what was typed ("Choose a date on or after …"), so it beats the form's generic one.
+  const shownError = typing ? null : internalError ?? error;
+  const shownRule = shownError ? undefined : rule;
+  const helperId = helper || shownRule ? `${fieldId}-helper` : undefined;
   const errorId = shownError ? `${fieldId}-error` : undefined;
 
   return (
@@ -109,8 +113,10 @@ export function FormField({ label, children, required = false, optional, helper,
             <span>{shownError}</span>
           </p>
         )}
-        {helper && (
+        {helperId && (
           <p id={helperId} className="yx-field__helper">
+            {shownRule}
+            {shownRule && helper ? ' ' : null}
             {helper}
           </p>
         )}

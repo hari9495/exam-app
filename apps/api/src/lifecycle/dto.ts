@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { LIFE_EVENT_KINDS, type JourneyKind } from './starters';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -177,10 +177,12 @@ export class PostponeDto {
   @Matches(ISO)
   joiningOn!: string;
 
+  // PPL-15: the new date is enough; the audit log keeps the old and new dates.
+  @IsOptional()
   @trim()
   @IsString()
   @Length(3, 300)
-  reason!: string;
+  reason?: string;
 
   @IsInt()
   version!: number;
@@ -271,10 +273,12 @@ export class CancelJoinerDto {
   @IsIn(['did_not_join', 'reneged', 'withdrawn'])
   outcome!: 'did_not_join' | 'reneged' | 'withdrawn';
 
+  // PPL-15: only a company withdrawal must say why; did not join and reneged may.
+  @ValidateIf((o: CancelJoinerDto) => o.outcome === 'withdrawn' || o.reason !== undefined)
   @trim()
   @IsString()
   @Length(3, 500)
-  reason!: string;
+  reason?: string;
 
   @IsInt()
   version!: number;

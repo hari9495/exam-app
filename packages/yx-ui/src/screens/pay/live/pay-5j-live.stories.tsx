@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ArrearsScreen, FnfScreen, StatutoryHubScreen } from './compliance';
+import { ArrearsScreen, StatutoryHubScreen } from './compliance';
+import { FnfCalculator } from '../../people/exits';
 import { MyPayslipsScreen, MyTaxScreen } from './employee';
 import { GoLiveScreen } from './golive';
 import { PayInputsScreen } from './inputs';
@@ -129,7 +130,12 @@ export const Statutory: S = {
 };
 export const Fnf: S = {
   name: 'PPL-22 · Full and final',
-  render: () => <FnfScreen state="ready" settlements={FNF} nameOf={nameOf} onOpenRun={() => undefined} onHold={ok} onAdd={ok} onWaiveNotice={ok} onSecondRun={async () => ({ runId: 'r10' })} />,
+  render: () => (
+    <FnfCalculator
+      today={new Date(2026, 9, 19)}
+      live={{ state: 'ready', onRetry: () => undefined, settlements: FNF, nameOf, can: { manage: true, waiveNotice: true, prepare: true }, onOpenRun: () => undefined, onRecalculate: ok, onSubmit: ok, onHold: ok, onAdd: ok, onWaiveNotice: ok, onSecondRun: async () => ({ runId: 'r10' }) }}
+    />
+  ),
 };
 export const Arrears: S = {
   name: 'PAY-28 · Arrears and recoveries',

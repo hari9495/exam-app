@@ -96,6 +96,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
   const [removing, setRemoving] = useState<MfaFactor | null>(null);
   const [renaming, setRenaming] = useState<MfaFactor | null>(null);
   const [name, setName] = useState('');
+  const [tried, setTried] = useState(false);
   const [adding, setAdding] = useState<SetupMethod | null>(null);
   const { busy, error, run } = useStep();
   const show = (r: { recoveryCodes?: string[] }) => r.recoveryCodes?.length && setCodes(r.recoveryCodes);
@@ -135,7 +136,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
                 </div>
                 <span className="yx-auth__row">
                   {f.type === 'passkey' && (
-                    <Button size="sm" aria-label={`Rename ${f.label}`} onClick={() => { setName(f.label); setRenaming(f); }}>Rename</Button>
+                    <Button size="sm" aria-label={`Rename ${f.label}`} onClick={() => { setName(f.label); setTried(false); setRenaming(f); }}>Rename</Button>
                   )}
                   <Button size="sm" disabled={lastOne} title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => setRemoving(f)} aria-label={`Remove ${nameOf(f)}`}>
                     Remove
@@ -190,12 +191,13 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
         title="Rename passkey"
         consequence="A name that tells you which device it is on."
         confirmLabel="Save name"
-        confirmDisabled={!name.trim() || name.trim() === renaming?.label}
         onConfirm={async () => {
+          setTried(true);
+          if (!name.trim() || name.trim() === renaming?.label) return false;
           if (renaming) await onRenamePasskey(renaming, name.trim());
         }}
       >
-        <FormField label="Name" required>
+        <FormField label="Name" required error={!tried ? null : !name.trim() ? 'Enter a name.' : name.trim() === renaming?.label ? 'Enter a different name to save it.' : null}>
           <TextField value={name} onChange={setName} maxLength={64} />
         </FormField>
       </ConfirmDialog>

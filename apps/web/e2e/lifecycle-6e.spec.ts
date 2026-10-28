@@ -25,16 +25,21 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await hr.waitForURL((url) => !url.pathname.includes('sign-in'));
   await stepUp('hr@demo-org.test');
 
-  // The editor tab: a letter written in YukthiX, saved as a Word draft.
+  // The editor tab (PPL-29): a new template with a new letter type, written in YukthiX and saved as a Word draft.
   await hr.goto('/yx/settings/letters');
-  await hr.getByRole('button', { name: 'Write a letter' }).click();
-  const ed = hr.getByRole('dialog');
-  await ed.getByRole('textbox', { name: /Letter type/ }).fill(`note_${tag}`);
-  await ed.getByRole('textbox', { name: /^Name/ }).fill(`Note ${tag}`);
-  await ed.getByRole('textbox', { name: 'Paragraph 2' }).fill('Dear {{employee_name}}, thank you for your work this year.');
-  await ed.getByRole('button', { name: 'Save as a draft' }).click();
-  await expect(ed).toHaveCount(0);
-  await expect(hr.getByRole('row', { name: new RegExp(`Note ${tag}`) })).toBeVisible();
+  await hr.getByRole('button', { name: 'New template' }).click();
+  const nt = hr.getByRole('dialog');
+  await nt.getByRole('textbox', { name: /^Name/ }).fill(`Note ${tag}`);
+  await nt.getByRole('combobox', { name: 'Letter type' }).click();
+  await hr.getByPlaceholder('Search').fill(`Note ${tag}`);
+  await hr.getByRole('option', { name: /New letter type/ }).click();
+  await nt.getByRole('button', { name: 'Continue' }).click();
+  const body = hr.getByRole('textbox', { name: 'Letter body' });
+  await body.click();
+  await body.press('Control+End');
+  await hr.keyboard.type(' Thank you for your work this year.');
+  await hr.getByRole('button', { name: 'Save draft' }).click();
+  await expect(hr.getByText(`Note ${tag} version 1 saved as a draft`).first()).toBeVisible(); // the toast
 
   // A fresh joiner, then a batch; adding them moves them to the batch day; moving the batch moves them again.
   const first = `Camp${tag}`;
@@ -47,7 +52,7 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await pick(hr, sheet, 'Legal entity', /Tamil Nadu/);
   await pick(hr, sheet, 'Location', /Hosur/);
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
-  await expect(hr.getByText(`${first} was added`)).toBeVisible({ timeout: 30_000 });
+  await expect(hr.getByText(`${first} added`).first()).toBeVisible({ timeout: 30_000 }); // the designed toast
 
   await hr.goto('/yx/people/batches');
   await hr.getByRole('button', { name: 'New batch' }).click();
@@ -58,21 +63,24 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await nb.getByRole('textbox', { name: 'Joining day' }).press('Tab');
   await nb.getByRole('button', { name: 'Save batch' }).click();
   await expect(nb).toHaveCount(0);
-  const card = hr.locator('section').filter({ has: hr.getByRole('heading', { name: new RegExp(`Campus ${tag}`) }) });
-  await card.getByRole('button', { name: 'Add joiners' }).click();
+  // The designed list (PPL-14): the row's menu adds joiners; Change date moves the batch with a reason.
+  const row = hr.getByRole('row', { name: new RegExp(`Campus ${tag}`) });
+  await row.getByRole('button', { name: /actions|more/i }).click();
+  await hr.getByRole('menuitem', { name: 'Add joiners' }).click();
   const add = hr.getByRole('dialog');
   await add.getByRole('checkbox', { name: new RegExp(first) }).click();
   await add.getByRole('button', { name: 'Add joiners' }).click();
-  await expect(card.getByText(new RegExp(first))).toBeVisible();
-  await card.getByRole('button', { name: 'Change', exact: true }).click();
+  await expect(add).toHaveCount(0);
+  await row.getByRole('button', { name: 'Change date' }).click();
   const ch = hr.getByRole('dialog');
-  await ch.getByRole('textbox', { name: 'Joining day' }).fill(ddMmmYyyy(addDays(today, 35)));
-  await ch.getByRole('textbox', { name: 'Joining day' }).press('Tab');
+  await ch.getByRole('textbox', { name: /New joining date/ }).fill(ddMmmYyyy(addDays(today, 35)));
+  await ch.getByRole('textbox', { name: /New joining date/ }).press('Tab');
   await ch.getByRole('textbox', { name: /Why the day moves/ }).fill('Exams moved');
-  await ch.getByRole('button', { name: 'Save batch' }).click();
+  await ch.getByRole('button', { name: /^Move 1 member/ }).click();
   await expect(ch).toHaveCount(0);
   await hr.goto('/yx/people/onboarding');
-  await expect(hr.getByRole('row', { name: new RegExp(first) }).getByText(ddMmmYyyy(addDays(today, 35)).replace(/^0/, ''))).toBeVisible();
+  const joins = new Date(`${addDays(today, 35)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  await expect(hr.getByRole('article', { name: new RegExp(first) }).getByText(`joins ${joins}`)).toBeVisible();
 
   // Retrenchment: a permission request and the government's decision.
   await hr.goto('/yx/people/retrenchment');
@@ -84,7 +92,9 @@ test('letter editor → campus batch moves its joiner → retrenchment permissio
   await ir.getByRole('textbox', { name: /Reasons/ }).fill('A production line closes');
   await ir.getByRole('button', { name: 'Save request' }).click();
   await expect(ir).toHaveCount(0);
-  const req = hr.getByRole('listitem').filter({ hasText: `Labour Department ${tag}` });
+  // The designed page (PPL-40): requests are on the Government permission tab.
+  await hr.getByRole('tab', { name: /Government permission/ }).click();
+  const req = hr.getByRole('row', { name: new RegExp(`Labour Department ${tag}`) });
   await req.getByRole('button', { name: 'Record the decision' }).click();
   await hr.getByRole('dialog').getByRole('button', { name: 'Save decision' }).click();
   await expect(req.getByText('Granted')).toBeVisible();

@@ -10,7 +10,7 @@ import { CreateCustomFieldDto, CF_ENTITY_TYPES } from './dto/create-custom-field
 import { UpdateCustomFieldDto } from './dto/update-custom-field.dto';
 
 // Web consumes `options` as string[] directly -- parse optionsJson here so web stays dumb.
-function toResponse(def: CustomFieldDefinition) {
+export function toResponse(def: CustomFieldDefinition) {
   let options: string[] | null = null;
   if (def.optionsJson) {
     try {
@@ -30,19 +30,21 @@ function toResponse(def: CustomFieldDefinition) {
     options,
     required: def.required,
     showOnApply: def.showOnApply,
+    dataClass: def.dataClass,
     position: def.position,
     archivedAt: def.archivedAt,
     createdAt: def.createdAt,
   };
 }
 
+// The guard reads permissions from each handler, so every route names its own (a class-level decorator is ignored).
 @Controller('custom-fields')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePermissions('org:manage_settings')
 export class CustomFieldsConfigController {
   constructor(private readonly service: CustomFieldsService) {}
 
   @Get()
+  @RequirePermissions('org:manage_settings')
   async list(@CurrentTenant() tenant: TenantContext, @Query('entityType') entityType: string, @Query('includeArchived') includeArchived?: string) {
     if (!CF_ENTITY_TYPES.includes(entityType as any)) throw new BadRequestException('entityType must be candidate or job');
     const defs = await this.service.list(tenant, entityType as 'candidate' | 'job', includeArchived === 'true');
@@ -50,16 +52,21 @@ export class CustomFieldsConfigController {
   }
 
   @Post()
+  @RequirePermissions('org:manage_settings')
   async create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateCustomFieldDto) {
+    // Employee fields are People settings (org.settings.manage, /people/custom-fields).
+    if (!CF_ENTITY_TYPES.includes(dto.entityType as any)) throw new BadRequestException('entityType must be candidate or job');
     return toResponse(await this.service.create(tenant, dto));
   }
 
   @Patch(':id')
+  @RequirePermissions('org:manage_settings')
   async update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateCustomFieldDto) {
     return toResponse(await this.service.update(tenant, id, dto));
   }
 
   @Delete(':id')
+  @RequirePermissions('org:manage_settings')
   archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.service.archive(tenant, id);
   }

@@ -32,3 +32,5 @@
 @media (max-width: 767px) {
   .yx-docview__stage { height: calc(var(--yx-space-16) * 6); }
 }
+.yx-pdfpages { display: flex; flex-direction: column; gap: var(--yx-space-3); width: 100%; }
+.yx-pdfpages__page { display: block; width: 100%; height: auto; background: var(--yx-print-paper); box-shadow: var(--yx-shadow-sm); }

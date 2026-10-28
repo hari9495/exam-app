@@ -354,6 +354,7 @@ export function NineBox({ people: initial, onMove, readOnly, defaultPending }: N
   const [people, setPeople] = useState(initial);
   const [pending, setPending] = useState<{ id: string; performance: number; potential: number } | null>(defaultPending ?? null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const cells: [number, number][] = [];
   for (const pot of [3, 2, 1]) for (const perf of [1, 2, 3]) cells.push([perf, pot]);
@@ -434,21 +435,24 @@ export function NineBox({ people: initial, onMove, readOnly, defaultPending }: N
           if (!o) {
             setPending(null);
             setReason('');
+            setTried(false);
           }
         }}
         title={who && pending ? `Move ${who.name} to ${nineBoxLabel(pending.performance, pending.potential)}?` : 'Move person'}
         consequence="The change is recorded with the before and after position, your reason and your name."
         confirmLabel="Move with reason"
-        confirmDisabled={reason.trim().length < 10}
         onConfirm={() => {
+          setTried(true);
+          if (reason.trim().length < 10) return false;
           if (!pending) return;
           setPeople((ps) => ps.map((p) => (p.id === pending.id ? { ...p, performance: pending.performance as 1 | 2 | 3, potential: pending.potential as 1 | 2 | 3 } : p)));
           onMove?.(pending.id, pending.performance, pending.potential, reason);
           setPending(null);
           setReason('');
+          setTried(false);
         }}
       >
-        <FormField label="Reason" required helper="At least 10 characters. Visible to HR and the calibration group, never to the employee.">
+        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and the calibration group, never to the employee." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>

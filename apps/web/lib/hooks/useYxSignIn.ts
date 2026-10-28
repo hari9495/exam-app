@@ -45,6 +45,10 @@ export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try ano
 export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.";
 // The person closed the passkey prompt, or another ceremony replaced it: not an error to show.
 const isCancelled = (err: unknown) => err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError');
+// Refused faster than a person can close a prompt: the browser never showed one (an embedded browser, a blocked
+// or unfocused page). Founder test 27 Oct 2026: the button then seemed to do nothing.
+export const PASSKEY_BLOCKED = "This browser can't open a passkey here. Use your work email instead.";
+const NO_PROMPT_MS = 1000;
 
 // YukthiX sign-in without a company code (founder decision 7 Oct 2026). The API decides the company:
 // the web address, the company this device signed in to last (an HttpOnly cookie it reads itself),
@@ -255,12 +259,17 @@ export function useYxSignIn() {
     passkey: () =>
       run(PASSKEY_FAILED, async () => {
         let credential: unknown;
+        let asked = 0;
         try {
-          credential = await passkeySignInAssertion(false);
+          credential = await passkeySignInAssertion(false, () => (asked = Date.now()));
         } catch (err) {
           setAutofillRound((n) => n + 1); // offer passkeys in the autofill again
           if (!isCancelled(err)) throw err;
-          return; // the person closed the prompt: not an error
+          if (asked && (err as Error).name === 'NotAllowedError' && Date.now() - asked < NO_PROMPT_MS) {
+            console.warn('Passkey refused by the browser:', (err as Error).message);
+            setError(PASSKEY_BLOCKED);
+          }
+          return; // otherwise the person closed the prompt: not an error
         }
         await finishPasskey(credential).catch((err) => {
           setAutofillRound((n) => n + 1);

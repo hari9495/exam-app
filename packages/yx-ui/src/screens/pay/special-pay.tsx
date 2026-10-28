@@ -1085,6 +1085,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
   };
   const [remitted, setRemitted] = useState<Record<string, { on: Date; reference: string }>>({});
   const [marking, setMarking] = useState<{ union: string; on: Date | null; reference: string } | null>(null);
+  const [triedMark, setTriedMark] = useState(false);
   const paid = startOfToday >= PAY_CALENDAR.payDate;
   const unions: Remittance[] = useMemo(
     () => Array.from(new Set(deducting.map((c) => c.union))).map((u) => ({ union: u, members: deducting.filter((c) => c.union === u).length, total: deducting.filter((c) => c.union === u).reduce((a, c) => a + c.dues, 0), remitted: remitted[u] ?? null })),
@@ -1216,7 +1217,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
                     Statement
                   </Button>
                   {!u.remitted && (
-                    <Button size="sm" disabled={!paid} onClick={() => setMarking({ union: u.union, on: null, reference: '' })}>
+                    <Button size="sm" disabled={!paid} onClick={() => { setTriedMark(false); setMarking({ union: u.union, on: null, reference: '' }); }}>
                       Mark remitted
                     </Button>
                   )}
@@ -1232,8 +1233,9 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
         title={marking ? `Mark ${marking.union} dues remitted?` : ''}
         consequence={marking ? `${formatINR(unions.find((u) => u.union === marking.union)?.total ?? 0)} for September 2026.` : undefined}
         confirmLabel="Mark remitted"
-        confirmDisabled={!!markBlocked}
         onConfirm={() => {
+          setTriedMark(true);
+          if (markBlocked) return false;
           if (!marking?.on) return;
           setRemitted((r) => ({ ...r, [marking.union]: { on: marking.on as Date, reference: marking.reference.trim() } }));
           setMarking(null);
@@ -1241,10 +1243,10 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
       >
         {marking && (
           <div className="yx-pay-stack">
-            <FormField label="Paid on" required>
+            <FormField label="Paid on" required error={triedMark && !marking.on ? 'Enter the date it was paid.' : null}>
               <DatePicker value={marking.on} onChange={(v) => setMarking({ ...marking, on: v })} min={PAY_CALENDAR.payDate} max={TODAY} />
             </FormField>
-            <FormField label="Payment reference" required helper={markBlocked ?? undefined}>
+            <FormField label="Payment reference" required error={triedMark && !marking.reference.trim() ? 'Enter the payment reference.' : null}>
               <TextField value={marking.reference} onChange={(v) => setMarking({ ...marking, reference: v })} />
             </FormField>
           </div>

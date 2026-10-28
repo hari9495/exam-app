@@ -67,6 +67,8 @@ export interface AsOfView {
   payAccess: boolean;
   /** Present only when asked for ("Show pay"). */
   compensation: (Money & { validFrom: string; validTo: string | null }) | null;
+  /** PPL-03 Job tab: what is in force on the day (null values: not set). */
+  job?: { holidayCalendar: string | null; shiftPattern: string | null; noticePeriod: string | null; probationEndsOn: string | null } | null;
 }
 
 export interface ImpactLine {
@@ -83,6 +85,8 @@ export interface Impact {
   pay: ImpactLine[] | 'hidden';
   rebased: { changeId: string; changeType: ChangeType; effectiveDate: string; facts: ImpactLine[]; pay: ImpactLine[] | 'hidden' }[];
   retro: { from: string; months: string[] } | null;
+  /** Things to check before sending (e.g. a promotion that lowers pay); never a block. Empty without pay access. */
+  warnings?: string[];
 }
 
 export interface CostCentreShare {
@@ -126,6 +130,14 @@ export interface ChangeRecord {
   batchId?: string | null;
   payload: ChangePayload;
   impact: Impact | null;
+  /** Effective and scheduled changes: who raised it, who approved it, and the letter issued for it (HR and the person). */
+  requestedByName?: string | null;
+  decidedByName?: string | null;
+  letter?: { referenceNo: string; accepted: boolean } | null;
+  /** PPL-04: a pending change's approvers (names; "you" when the reader is one). */
+  waitingFor?: string[];
+  /** PPL-05: the new values by name ("Quality Lead", "G6"). */
+  newValues?: string[];
 }
 
 export interface HistoryRow {
@@ -163,6 +175,38 @@ export interface ChoiceOption {
   entities: string[];
 }
 
+/** PPL-04 inter-entity transfer options: as the restructure engine takes them (PPL-09), company defaults in Settings. */
+export interface TransferOptions {
+  leave: 'carry' | 'lapse';
+  service: 'keep' | 'restart';
+  code: 'keep' | 'new';
+  salary: 'keep' | 'new';
+}
+
+/** PPL-04: one person's move to another legal entity, sent as a one-person restructure. */
+export interface MoveInput {
+  employeeId: string;
+  fromEntityId: string;
+  intoEntityId: string;
+  effectiveDate: string;
+  locationId: string;
+  departmentId?: string;
+  designationId?: string;
+  employmentTypeId?: string;
+  options: TransferOptions;
+  reason: string;
+  overrideReason?: string;
+}
+
+/** The Change action's inter-entity transfer (HR only): the entities, the defaults, and the restructure calls. */
+export interface MoveHandlers {
+  entities: { value: string; label: string }[];
+  /** `current`: the person's department, designation and employment type today (a move must replace any not open to the new entity). */
+  onDefaults: (employeeId: string) => Promise<{ options: TransferOptions; employeeCode: string; serviceFrom: string; current: { departmentId: string | null; designationId: string | null; employmentTypeId: string | null } }>;
+  onPreview: (input: MoveInput) => Promise<Impact>;
+  onSubmit: (input: MoveInput) => Promise<void>;
+}
+
 /** What the change form can offer, already limited to live records. */
 export interface ChangeOptions {
   people: PersonOption[];
@@ -181,7 +225,12 @@ export interface ChangeOptions {
   types?: Exclude<ChangeType, 'join'>[];
   /** Who can be chosen as manager or dotted-line manager. Default: `people`. */
   managers?: PersonOption[];
+  /** Per legal entity: what a promotion must change (Settings › Job changes). Default: either. */
+  promotionMustChange?: Record<string, PromotionRule>;
 }
+
+/** The company's rule for a promotion: a new designation or grade, both, or only one of them. */
+export type PromotionRule = 'either' | 'both' | 'grade' | 'designation';
 
 /** G1 (gap pass C3): the three named service dates. */
 export interface ServiceDates {

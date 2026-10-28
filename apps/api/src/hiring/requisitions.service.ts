@@ -70,6 +70,13 @@ export class HiringRequisitionsService implements OnModuleInit {
     return (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id).filter((u) => !not.includes(u));
   }
 
+  /** Holders of ats.job.manage or pipeline:manage (recruiting), else the company's admins. */
+  private async jobManagers(tx: Tx, org: string, not: (string | null)[]) {
+    const none = '00000000-0000-0000-0000-000000000000';
+    const holders = [...new Set([...(await holdersOf(tx, org, 'ats.job.manage', none, todayIst())), ...(await holdersOf(tx, org, 'pipeline:manage', none, todayIst()))])].filter((u) => !not.includes(u));
+    return holders.length ? holders : this.admins(tx, org, not);
+  }
+
   /** Holders of ats.headcount.manage (finance / HR), else the company's admins. */
   private async planApprovers(tx: Tx, org: string, not: (string | null)[]) {
     const holders = (await holdersOf(tx, org, 'ats.headcount.manage', '00000000-0000-0000-0000-000000000000', todayIst())).filter((u) => !not.includes(u));
@@ -196,6 +203,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         payload: {},
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [userId]),
+        fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });
       notices = sub.notices;
       await tx.headcountPlan.update({ where: { id }, data: { status: 'submitted', wfRequestId: sub.id, version: { increment: 1 } } });
@@ -220,7 +228,7 @@ export class HiringRequisitionsService implements OnModuleInit {
     if (dto.replacementOfEmployeeId && !(await tx.employee.findFirst({ where: { organizationId: org, id: dto.replacementOfEmployeeId }, select: { id: true } }))) throw new BadRequestException('Choose an employee of this company.');
   }
 
-  async submit(ctx: TenantContext, userId: string, jobId: string): Promise<{ status: 'approved' | 'pending_approval'; requestId?: string }> {
+  async submit(ctx: TenantContext, userId: string, jobId: string, raisedByManager = false): Promise<{ status: 'approved' | 'pending_approval'; requestId?: string }> {
     let notices: Notice[] = [];
     let opened = false;
     const out = await this.run(ctx, async (tx, c) => {
@@ -245,6 +253,8 @@ export class HiringRequisitionsService implements OnModuleInit {
       const { resolved } = await resolveSteps(tx, { steps: chainSteps, submitterUserId: userId, gate: 'requisition', subjectId: job.id, organizationId: org });
       const steps: StepSpec[] = resolved.map((r) => ({ name: r.name, approvers: [{ kind: 'users', userIds: r.approverUserIds }], mode: 'any', selfApproval: 'never' }));
       if (check.extra) steps.push({ name: 'Outside the plan', approvers: [{ kind: 'users', userIds: (await this.planApprovers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never' });
+      // A manager's request never opens a job alone: without a route, recruiting (the job managers) approves it.
+      if (!steps.length && raisedByManager) steps.push({ name: 'Recruiting', approvers: [{ kind: 'users', userIds: (await this.jobManagers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never' });
       if (!steps.length) {
         // Neither a chain nor a reason for the extra step: the requisition opens at once (the older auto-pass).
         await tx.job.update({ where: { id: job.id }, data: { status: 'open' } });
@@ -269,6 +279,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         payload: {},
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [userId]),
+        fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });
       notices = sub.notices;
       await tx.job.update({ where: { id: job.id }, data: { status: 'pending_approval', wfRequestId: sub.id } });

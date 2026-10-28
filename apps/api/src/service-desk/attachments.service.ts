@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { createHash, hkdfSync, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
-import { fromBuffer } from 'file-type';
+import { fileTypeFromBuffer } from 'file-type';
 import { AuditService, BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
@@ -45,7 +45,7 @@ export async function checkFile(name: string, data: Buffer, allowed: readonly st
   if (data.length > maxMb * 1024 * 1024) return { ok: false, reason: `Files can be up to ${maxMb} MB.` };
   const ext = (name.match(/\.([A-Za-z0-9]{1,10})$/)?.[1] ?? '').toLowerCase();
   if (!ext || BLOCKED_TYPES.has(ext) || !allowed.map((x) => x.toLowerCase()).includes(ext)) return { ok: false, reason: `This desk accepts ${allowed.join(', ')} files only.` };
-  const sniffed = await fromBuffer(data);
+  const sniffed = await fileTypeFromBuffer(data);
   if (TEXT_TYPES[ext]) {
     // Text has no signature: refuse anything that looks binary or is not UTF-8.
     const text = data.toString('utf8');

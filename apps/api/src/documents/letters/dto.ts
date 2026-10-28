@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { BLOCK_KINDS, FONT_SIZES, HIGHLIGHTS, SAFE_LINK, TEXT_COLOURS, type Block } from './docx';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const bool = () => Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value));
@@ -30,11 +31,50 @@ export class TemplateUploadDto {
   @bool()
   @IsBoolean()
   companyDsc?: boolean;
+
+  /** A person holds one issued letter of this type; another is refused unless it is a correction. */
+  @IsOptional()
+  @bool()
+  @IsBoolean()
+  onePerPerson?: boolean;
+
+  /** PPL-29 "Use suggestion": JSON {"unknown": "known field"}; the server renames them in the file, then checks it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  fixes?: string;
+}
+
+/** PPL-29 test render: a real person instead of the sample data (the issuer's own checks apply). */
+export class TemplatePreviewQueryDto {
+  @IsOptional()
+  @IsUUID()
+  personId?: string;
 }
 
 export class StarterLetterDto {
   @Matches(LETTER_TYPE)
   letterType!: string;
+}
+
+/** PPL-31: an employee's own certificate. The words go on the letter only through its merge fields (escaped, never parsed). */
+const PLAIN = /^[^\p{Cc}]*$/u;
+export class MyCertificateDto {
+  @Matches(LETTER_TYPE)
+  letterType!: string;
+
+  @trim()
+  @IsString()
+  @Length(2, 80)
+  @Matches(PLAIN, { message: 'purpose is plain text on one line' })
+  purpose!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(160)
+  @Matches(PLAIN, { message: 'addressedTo is plain text on one line' })
+  addressedTo?: string;
 }
 
 export class SignatoryDto {
@@ -60,6 +100,11 @@ export class LetterPreviewDto {
   @IsOptional()
   @IsUUID()
   signatoryId?: string | null;
+
+  /** PPL-28: the template version HR picked; the server checks it is active, of this type and for the person's entity. */
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
 }
 
 export class IssueLetterDto extends LetterPreviewDto {
@@ -96,7 +141,8 @@ export class SignLetterDto {
 
 // ---- Lifecycle batch 6e: the editor tab (PPL-29) and the bulk wizard (PPL-28) ----
 
-export class ComposeParagraphDto {
+/** A run of the letter editor: marks, colours and sizes from the editor's presets only, links https or mailto only. */
+export class ComposeRunDto {
   @IsString()
   @MaxLength(2000)
   text!: string;
@@ -107,7 +153,52 @@ export class ComposeParagraphDto {
 
   @IsOptional()
   @IsBoolean()
-  heading?: boolean;
+  italic?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  underline?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  strike?: boolean;
+
+  @IsOptional()
+  @IsIn(TEXT_COLOURS, { message: `Text colour must be one of the editor's colours: ${TEXT_COLOURS.join(', ')}.` })
+  color?: string;
+
+  @IsOptional()
+  @IsIn(Object.keys(HIGHLIGHTS), { message: `Highlight must be one of the editor's highlights: ${Object.keys(HIGHLIGHTS).join(', ')}.` })
+  highlight?: string;
+
+  @IsOptional()
+  @IsIn(FONT_SIZES, { message: `Font size must be one of ${FONT_SIZES.join(', ')} points.` })
+  size?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @Matches(SAFE_LINK, { message: 'A link must start with https:// or mailto:.' })
+  link?: string;
+}
+
+export class ComposeParagraphDto {
+  @IsOptional()
+  @IsIn(BLOCK_KINDS, { message: `A paragraph is one of: ${BLOCK_KINDS.join(', ')}.` })
+  kind?: Block['kind'];
+
+  /** List items only: 0 to 3. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  level?: number;
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ComposeRunDto)
+  runs!: ComposeRunDto[];
 }
 
 export class ComposeTemplateDto {
@@ -128,6 +219,10 @@ export class ComposeTemplateDto {
   @IsBoolean()
   personSigns!: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  onePerPerson?: boolean;
+
   @IsArray()
   @ArrayMaxSize(80)
   @ValidateNested({ each: true })
@@ -135,12 +230,32 @@ export class ComposeTemplateDto {
   paragraphs!: ComposeParagraphDto[];
 }
 
-export class BulkLetterDto {
-  @Matches(LETTER_TYPE)
-  letterType!: string;
+/** PPL-28 bulk issue: who gets the letter. "no_appointment": current employees with no appointment letter in YukthiX. */
+export class BulkLetterCheckDto {
+  @IsUUID()
+  templateId!: string;
 
+  @IsIn(['people', 'no_appointment'])
+  source!: 'people' | 'no_appointment';
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
   @IsUUID('all', { each: true })
-  personIds!: string[];
+  personIds?: string[];
+}
+
+export class BulkLetterDto extends BulkLetterCheckDto {
+  /** The typed confirmation, "ISSUE 38 LETTERS": the server counts the 38 again. */
+  @IsString()
+  @MaxLength(40)
+  confirm!: string;
+}
+
+/** PPL-15: why HR discards a drafted letter (kept for the audit). */
+export class DiscardLetterDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
 }

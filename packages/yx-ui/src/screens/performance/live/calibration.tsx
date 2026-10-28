@@ -30,8 +30,9 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
   const [tolerance, setTolerance] = useState<number | null>(10);
   const total = bands.reduce((t, b) => t + (shares[b] ?? 0), 0);
   const ok = name.trim().length >= 2 && fac && (withGuide === 'no' || (Math.round(total * 10) === 1000 && tolerance !== null));
+  const [tried, setTried] = useState(false);
   return (
-    <Card title="Calibration" actions={onCreate && <Button icon={Plus} onClick={() => setAdding(true)}>Open a session</Button>}>
+    <Card title="Calibration" actions={onCreate && <Button icon={Plus} onClick={() => (setTried(false), setAdding(true))}>Open a session</Button>}>
       {sessions.length === 0 ? (
         <EmptyState compact title="No calibration sessions." description="Open one when managers have finished their reviews." />
       ) : (
@@ -47,14 +48,16 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
         </ul>
       )}
       {adding && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Open a calibration session" confirmLabel="Open" confirmDisabled={!ok} onConfirm={async () => {
+        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Open a calibration session" confirmLabel="Open" onConfirm={async () => {
+          setTried(true);
+          if (!ok) return false;
           await onCreate!({ name: name.trim(), facilitatorUserId: fac!, departmentIds: depts, guide: withGuide === 'yes' ? { bands: bands.map((b) => ({ label: b, share: shares[b] ?? 0 })), tolerance: tolerance! } : null });
           setAdding(false);
         }}>
-          <FormField id="cs-name" label="Name" required>
+          <FormField id="cs-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
             <TextField value={name} onChange={setName} maxLength={100} />
           </FormField>
-          <FormField id="cs-fac" label="Facilitator" required>
+          <FormField id="cs-fac" label="Facilitator" required error={tried && !fac ? 'Choose the facilitator.' : null}>
             <Select aria-label="Facilitator" value={fac} onChange={setFac} options={facilitators} searchable />
           </FormField>
           <FormField id="cs-dept" label="Departments" optional helper="Leave empty for every finished review of the cycle.">
@@ -70,8 +73,8 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
                   <NumberField value={shares[b] ?? null} onChange={(x) => setShares((s) => ({ ...s, [b]: x }))} min={0} max={100} decimals />
                 </FormField>
               ))}
-              <Text as="p" tone={Math.round(total * 10) === 1000 ? 'secondary' : 'danger'} size="sm">{`Shares add up to ${total} of 100. A guide only: it never blocks sign-off.`}</Text>
-              <FormField id="cs-tol" label="Tolerance (points)">
+              <Text as="p" tone={Math.round(total * 10) === 1000 ? 'secondary' : 'danger'} size="sm">{tried && Math.round(total * 10) !== 1000 ? `Make the shares add up to 100 (now ${total}).` : `Shares add up to ${total} of 100. A guide only: it never blocks sign-off.`}</Text>
+              <FormField id="cs-tol" label="Tolerance (points)" error={tried && tolerance === null ? 'Enter the tolerance.' : null}>
                 <NumberField value={tolerance} onChange={setTolerance} min={0} max={50} />
               </FormField>
             </>
@@ -215,8 +218,11 @@ function MoveDialog({ row, band: initial, bands, min, max, onClose, onSave }: { 
   const [score, setScore] = useState<number | null>(row.score);
   const [reason, setReason] = useState('');
   const ok = reason.trim().length >= 3 && (how === 'band' ? Boolean(band) && band !== row.band : score !== null && score >= min && score <= max);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Move ${row.employee}`} confirmLabel="Move" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Move ${row.employee}`} confirmLabel="Move" onConfirm={async () => {
+      setTried(true);
+      if (!ok) return false;
       await onSave({ ...(how === 'band' ? { toBand: band! } : { toScore: score! }), reason: reason.trim() });
       onClose();
     }}>
@@ -225,15 +231,15 @@ function MoveDialog({ row, band: initial, bands, min, max, onClose, onSave }: { 
         <Segment label="Move to" value={how} onChange={setHow} options={[{ value: 'band', label: 'A band' }, { value: 'score', label: 'A score' }]} />
       </FormField>
       {how === 'band' ? (
-        <FormField id="mv-band" label="Band" required>
+        <FormField id="mv-band" label="Band" required error={!tried ? null : !band ? 'Choose the band.' : band === row.band ? 'Choose a different band.' : null}>
           <Select aria-label="Band" value={band} onChange={setBand} options={bands.map((x) => ({ value: x, label: x }))} />
         </FormField>
       ) : (
-        <FormField id="mv-score" label="Score" required>
+        <FormField id="mv-score" label="Score" required error={tried && (score === null || score < min || score > max) ? `Enter a score from ${min} to ${max}.` : null}>
           <NumberField value={score} onChange={setScore} min={min} max={max} decimals />
         </FormField>
       )}
-      <FormField id="mv-reason" label="Reason" required helper="Recorded with your name; HR and the reports see it.">
+      <FormField id="mv-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null} helper="Recorded with your name; HR and the reports see it.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>

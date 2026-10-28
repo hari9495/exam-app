@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PersonWorkspace } from './record';
-import { d, TODAY } from './people-data';
+import { ARJUN, ARJUN_CUSTOM_VALUES, EMPLOYEE_FIELDS, d, TODAY } from './people-data';
+import { CustomFieldsDrawer, EmployeeFieldsScreen } from './custom-fields';
+import { ContactsDrawer, FamilyDrawer } from './family';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -25,3 +27,25 @@ export const AsOfFuture: S = { name: 'History · as on 1 Oct 2026 (scheduled)', 
 export const Loading: S = { name: '· loading', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} state="loading" /> };
 export const LoadError: S = { name: '· error', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} state="error" /> };
 export const NotFound: S = { name: '· not found (restricted or missing)', render: () => <PersonWorkspace persona="mgr" relation="other" today={TODAY} state="not-found" /> };
+// Family and nominees (founder 22 Oct 2026): HR edits family and nominations together; the person edits emergency contacts.
+export const EditFamily: S = {
+  name: 'HR · edit family and nominees',
+  render: () => <FamilyDrawer name="Arjun Kulkarni" initial={{ members: ARJUN.family, nominations: ARJUN.nominations }} onSave={async () => undefined} onClose={() => undefined} />,
+};
+export const EditContacts: S = {
+  name: 'Employee · edit emergency contacts',
+  render: () => <ContactsDrawer initial={ARJUN.emergency} onSave={async () => undefined} onClose={() => undefined} />,
+};
+// Additional details (P18 custom fields): HR edits each field with its own input; settings define them with a class.
+export const EditCustomFields: S = {
+  name: 'HR · edit additional details',
+  render: () => <CustomFieldsDrawer fields={ARJUN_CUSTOM_VALUES} onSave={async () => undefined} onClose={() => undefined} />,
+};
+export const CustomFieldsSettings: S = {
+  name: 'Settings · custom fields',
+  render: () => <EmployeeFieldsScreen state="ready" fields={EMPLOYEE_FIELDS} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
+};
+export const CustomFieldsSettingsEmpty: S = {
+  name: 'Settings · custom fields (none yet)',
+  render: () => <EmployeeFieldsScreen state="ready" fields={[]} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
+};

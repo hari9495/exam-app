@@ -91,6 +91,11 @@ export interface SubmitInput {
   payloadFields: FieldDef[];
   /** Who approves a step nobody else can (e.g. the desk's leads). The company's HR Admins are told when it happens. */
   fallbackUserIds: string[];
+  /**
+   * How the HR Admins' notice names those people and what to check, per module. Default (HR fallbacks: leave, time,
+   * performance, exits): "HR" and the person's manager.
+   */
+  fallbackWording?: { who: string; check: string };
   /** 'high' for this request only (e.g. a costly order): it then never auto-approves or auto-rejects on timeout. */
   risk?: 'high';
 }
@@ -100,12 +105,15 @@ export interface SubmitInput {
  * step's internal name ("Leave: Manager: …"). `who` is the person the request is from; a title that already starts with
  * their name ("Arjun Kulkarni: Casual leave, 21 Oct (1 day)") is not repeated.
  */
-export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
+export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text' | 'reason'>, who: string | null, toRequester: boolean): string {
   const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
-  const asks = who ? `${who} asks for ${what}` : `A request waits for you: ${what}`;
+  // A request about the asker themself ("Resignation of Arjun Kulkarni") reads "Resignation from Arjun Kulkarni".
+  const about = who && what.endsWith(` of ${who}`) ? `${what.slice(0, -(who.length + 4))} from ${who}` : null;
+  const asks = about ?? (who ? `${who} asks for ${what}` : `A request waits for you: ${what}`);
   if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
   if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
-  if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;
+  // To the person who asked: what was decided (and for whom, as the title says), then why it was turned down.
+  if (n.type === 'workflow.approval.decided' && toRequester) return n.text === 'Approved' ? `${what} approved` : `${what} not approved${n.reason ? `: ${n.reason}` : ''}`;
   return `${n.text}: ${n.title}`;
 }
 
@@ -120,9 +128,13 @@ export interface Notice {
   actor?: string | null;
   /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
   toRequester?: string;
+  /** Why it was not approved (the approver's reason, or the timeout), told to the person who asked. */
+  reason?: string | null;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
+/** The no-approver notice for modules whose fallback approvers are HR. */
+export const DEFAULT_FALLBACK = { who: 'HR', check: "Check the person's manager on their record" };
 const hours = (h: number) => h * 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -208,10 +220,35 @@ export function verdict(s: Pick<FrozenStep, 'need' | 'rejectOn'>, n: number, app
   return 'open';
 }
 
+/** One row of "what waits for me" (GET /workflow/approvals/inbox). */
+export interface InboxItem {
+  taskId: string;
+  requestId: string;
+  type: string;
+  title: string;
+  /** Label / value pairs, as a request stores them. */
+  summary: Prisma.JsonValue;
+  requester: string;
+  raisedBy: string | null;
+  onBehalfOf: string | null;
+  person: string;
+  step: { index: number; of: number; name: string; need: number; approvers: number };
+  dueAt: Date | null;
+  submittedAt: Date;
+  decideAt: string | null;
+}
+
+/**
+ * Approvals a module decides in its own flow rather than as a workflow request (e.g. job changes, P06), that still wait
+ * for this person. Their rows join the inbox and its counts, and always link to the module's page to decide (decideAt).
+ */
+export type InboxSource = (tx: Tx, ctx: CompanyContext, userId: string) => Promise<InboxItem[]>;
+
 @Injectable()
 export class ApprovalsEngine {
   private readonly logger = new Logger(ApprovalsEngine.name);
   private readonly types = new Map<string, RequestType>();
+  private readonly sources: InboxSource[] = [];
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
@@ -228,6 +265,16 @@ export class ApprovalsEngine {
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
     this.types.set(t.key, t);
+  }
+
+  /** A module adds what waits in its own approval flow to everyone's inbox (once, at start-up). */
+  registerInboxSource(source: InboxSource) {
+    this.sources.push(source);
+  }
+
+  /** The rows the registered sources hold for this person (the inbox and the side-menu count both use it). */
+  async sourceItems(tx: Tx, ctx: CompanyContext, userId: string): Promise<InboxItem[]> {
+    return (await Promise.all(this.sources.map((s) => s(tx, ctx, userId)))).flat();
   }
 
   /** The person-facing name of a request type ("Leave", "Expense claim"), for search results. */
@@ -349,7 +396,7 @@ export class ApprovalsEngine {
     await AuditService.recordIn(tx, ctx, { actorUserId: input.raisedByUserId ?? input.requesterUserId, action: 'workflow.request.submitted', entityType: 'wf_request', entityId: req.id, metadata: { type: type.key, subjectType: input.subjectType, subjectId: input.subjectId, steps: steps.map((s) => ({ name: s.name, approvers: s.approverIds, state: s.state })) } });
     const notices: Notice[] = [];
     // Founder decision 9 Oct 2026: the leads approve it, and HR Admins hear about it so they can fix the data behind it.
-    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so the desk's team leads got it. Check the manager or cost-centre owner` });
+    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so ${(input.fallbackWording ?? DEFAULT_FALLBACK).who} got it. ${(input.fallbackWording ?? DEFAULT_FALLBACK).check}` });
     const after = await this.advance(tx, ctx, req.id, notices);
     return { id: req.id, status: after.status, notices };
   }
@@ -401,7 +448,8 @@ export class ApprovalsEngine {
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
     await this.type(req.requestType).onDecided(tx, after, outcome);
-    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId });
+    const why = outcome === 'rejected' ? await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['rejected', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' }, select: { reason: true } }) : null;
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId, reason: why?.reason ?? null });
     return after;
   }
 
@@ -645,7 +693,7 @@ export class ApprovalsEngine {
       const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.map((t) => t.onBehalfOfUserId)));
       const personIds = [...new Set([...reqs.values()].map((r) => r.subjectPersonId).filter((x): x is string => Boolean(x)))];
       const persons = new Map((personIds.length ? await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : []).map((p) => [p.id, p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ')]));
-      return tasks
+      const items: InboxItem[] = tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
           const r = reqs.get(t.requestId)!;
@@ -668,6 +716,7 @@ export class ApprovalsEngine {
             decideAt: this.types.get(r.requestType)?.decideOnlyVia ?? null,
           };
         });
+      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
     });
   }
 

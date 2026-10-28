@@ -1,6 +1,6 @@
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { BlobStorageService, OrgSecretsCryptoService } from '@exam-platform/shared';
-import { FileStore, s3FromEnv } from './file-store';
+import { FileStore, foreignLocalStore, s3FromEnv } from './file-store';
 
 // The shared file store (lifecycle 6a, D9 / D10) with an S3-compatible bucket: what reaches the bucket is never the
 // readable bytes, refs are "s3:<key>", and a read decrypts back to the original. The bucket is an in-memory stand-in
@@ -35,5 +35,19 @@ describe('FileStore on an S3-compatible bucket', () => {
     expect(ref).toBe('s3:org/o1/documents/f1');
     expect(bucket.get('org/o1/documents/f1')!.includes(data)).toBe(false);
     expect((await store.get(ref)).equals(data)).toBe(true);
+  });
+});
+
+// Demo scripts run from one worktree against another app's database: its files must go where that app reads them.
+describe('foreignLocalStore', () => {
+  const own = 'PORT=3001\nDATABASE_URL="postgresql://u@h:5432/examapp_gaps"\n';
+  it('refuses another app’s database while files would land in this folder', () => {
+    expect(foreignLocalStore({ DATABASE_URL: 'postgresql://u@h:5432/examapp_org' }, own)).toMatch(/PAY_LOCAL_FILES_DIR/);
+  });
+  it('allows this folder’s own database, a named folder, or a shared store', () => {
+    expect(foreignLocalStore({ DATABASE_URL: 'postgresql://u@h:5432/examapp_gaps' }, own)).toBeNull();
+    expect(foreignLocalStore({}, own)).toBeNull();
+    expect(foreignLocalStore({ DATABASE_URL: 'postgresql://u@h:5432/examapp_org', PAY_LOCAL_FILES_DIR: 'C:/x/.pay-files' }, own)).toBeNull();
+    expect(foreignLocalStore({ DATABASE_URL: 'postgresql://u@h:5432/examapp_org', S3_BUCKET: 'b' }, own)).toBeNull();
   });
 });

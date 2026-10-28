@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { payScope } from '../payroll/pay-access';
+import { PAY_RUN_EDITABLE, payScope, withPayScope } from '../payroll/pay-access';
 import { daysFrom, wagesDueBy } from './exit-rules';
 
 // LIFE-4.05 the payroll hand-off (design §11): one frozen record per exit case, a new revision whenever something
@@ -11,11 +11,11 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export type SettlementCause = 'accepted' | 'lwd_changed' | 'recovery' | 'asset_returned' | 'exited' | 'hold' | 'payees';
 
-/** The days the person's calendar is closed around a date (their location's calendar, else the company's). */
-async function holidaysNear(tx: Tx, org: string, locationId: string | null, from: string): Promise<Set<string>> {
+/** The days the person's calendar is closed from a date (to 20 days on, or `to`): their location's calendar, else the company's. */
+export async function holidaysNear(tx: Tx, org: string, locationId: string | null, from: string, to?: string): Promise<Set<string>> {
   const cal = (locationId && (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId } }))) || (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));
   if (!cal) return new Set();
-  const until = new Date(new Date(`${from}T00:00:00Z`).getTime() + 20 * 86_400_000);
+  const until = to ? new Date(`${to}T00:00:00Z`) : new Date(new Date(`${from}T00:00:00Z`).getTime() + 20 * 86_400_000);
   const rows = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, halfDay: false, holidayOn: { gte: new Date(`${from}T00:00:00Z`), lte: until } }, select: { holidayOn: true } });
   return new Set(rows.map((r) => iso(r.holidayOn)));
 }
@@ -31,13 +31,13 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
   const items = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId } });
   const recoveries = [];
   for (const i of items) {
-    if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title: i.title, amount: i.recoveryAmount.toFixed(2), reason: i.recoveryReason, status: 'recorded' });
-    else if (i.status === 'open' && i.assetAssignmentId) {
-      // Not returned yet: payroll sees the book value as a possible recovery until it comes back or is signed off.
-      const x = await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId } });
-      const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { cost: true } }) : null;
-      recoveries.push({ source: 'asset', title: i.title, amount: asset?.cost?.toFixed(2) ?? null, reason: 'Not returned yet', status: 'open' });
-    }
+    // An asset's line names the asset itself ("Dell Latitude 5440 (KF-LT-0002)") and the condition it came back in.
+    const x = i.assetAssignmentId ? await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId } }) : null;
+    const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { name: true, tag: true, cost: true } }) : null;
+    const title = asset ? `${asset.name} (${asset.tag})` : i.title;
+    if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title, amount: i.recoveryAmount.toFixed(2), reason: x?.returnCondition ?? i.recoveryReason, status: 'recorded' });
+    // Not returned yet: payroll sees the book value as a possible recovery until it comes back or is signed off.
+    else if (i.status === 'open' && x) recoveries.push({ source: 'asset', title, amount: asset?.cost?.toFixed(2) ?? null, reason: 'Not returned yet', status: 'open' });
   }
   // M05 XP-4.06: expense advances not yet settled go to F&F (M01 Q7); from the last day on they are marked as such.
   const advances = await tx.expenseAdvance.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ['paid', 'to_fnf'] } } });
@@ -91,4 +91,28 @@ export async function settlementOf(tx: Tx, org: string, exitCaseId: string, lega
   const rows = await tx.exitSettlementInput.findMany({ where: { organizationId: org, exitCaseId }, orderBy: { revision: 'desc' } });
   await payScope(tx, []);
   return rows;
+}
+
+/** The exit's F&F settlement, read under payroll's guard: finalised once settled or once its run is submitted. */
+export async function fnfStateOf(tx: Tx, org: string, exitCaseId: string, legalEntityId: string) {
+  return withPayScope(tx, [legalEntityId], async () => {
+    const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, exitCaseId, status: { not: 'cancelled' } } });
+    if (!f) return null;
+    const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId }, select: { status: true } }) : null;
+    return { id: f.id, finalised: f.status === 'settled' || Boolean(run && !PAY_RUN_EDITABLE.includes(run.status)) };
+  });
+}
+
+/**
+ * A withdrawn exit: the open F&F made at acceptance is cancelled with its system lines, or the person would stay out of
+ * the regular pay run (a leaver is paid through F&F). A finalised one is left to payroll.
+ */
+export async function cancelFnfIn(tx: Tx, org: string, exitCaseId: string, legalEntityId: string): Promise<boolean> {
+  const f = await fnfStateOf(tx, org, exitCaseId, legalEntityId);
+  if (!f || f.finalised) return false;
+  await withPayScope(tx, [legalEntityId], async () => {
+    await tx.fnfSettlement.update({ where: { id: f.id }, data: { status: 'cancelled', version: { increment: 1 } } });
+    await tx.oneTimePay.updateMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, status: 'approved' }, data: { status: 'cancelled' } });
+  });
+  return true;
 }

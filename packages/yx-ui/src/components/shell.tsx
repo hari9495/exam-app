@@ -1,5 +1,7 @@
 import {
+  Children,
   createContext,
+  isValidElement,
   forwardRef,
   useCallback,
   useContext,
@@ -410,17 +412,57 @@ export function SidePanel({ title, children }: SidePanelProps) {
   );
 }
 
-/** A labelled group of links, e.g. "Favourites", "Saved views", "Records". Omit label for the first group. */
+const groupKey = (label: string) => `yx-nav-closed:${label}`;
+const readClosed = (label: string) => {
+  try {
+    return localStorage.getItem(groupKey(label)) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * A labelled group of links, e.g. "Onboarding", "Changes". Omit label for the first group (always open).
+ * A labelled group opens and closes from its header and remembers that in this browser; the group holding the
+ * page you are on always stays open (founder, 21 Oct 2026).
+ */
 export function PanelGroup({ label, children }: { label?: ReactNode; children: ReactNode }) {
   const id = useId();
+  const listId = useId();
+  const key = typeof label === 'string' ? label : null;
+  const [closed, setClosed] = useState(false);
+  useEffect(() => setClosed(key ? readClosed(key) : false), [key]);
+  const holdsActive = Children.toArray(children).some((c) => isValidElement<{ active?: boolean }>(c) && !!c.props.active);
+  const open = !label || !closed || holdsActive;
+  const toggle = () => {
+    const next = !closed;
+    setClosed(next);
+    try {
+      if (key) localStorage.setItem(groupKey(key), next ? '1' : '0');
+    } catch {
+      /* private mode: the choice lasts until reload */
+    }
+  };
   return (
-    <div className="yx-panel__group" role="group" aria-labelledby={label ? id : undefined}>
+    <div className="yx-panel__group" role="group" aria-labelledby={label ? id : undefined} data-closed={!open || undefined}>
       {label && (
-        <div className="yx-panel__group-label" id={id}>
-          {label}
-        </div>
+        <button
+          type="button"
+          className="yx-panel__group-label"
+          id={id}
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-disabled={holdsActive || undefined}
+          title={holdsActive ? 'The page you are on is in this section' : undefined}
+          onClick={() => !holdsActive && toggle()}
+        >
+          <span className="yx-panel__group-text">{label}</span>
+          <Icon icon={open ? ChevronDown : ChevronRight} className="yx-panel__group-chevron" />
+        </button>
       )}
-      <ul className="yx-panel__list">{children}</ul>
+      <ul className="yx-panel__list" id={listId} hidden={!open}>
+        {children}
+      </ul>
     </div>
   );
 }
@@ -567,7 +609,7 @@ export function ProfileMenu({
           <Avatar name={name} src={photoUrl} size={32} />
         </MenuTrigger>
       </Tooltip>
-      <MenuContent align="end">
+      <MenuContent align="end" className="yx-profile-menu">
         <div className="yx-profile-menu__who">
           <span className="yx-profile-menu__name">{name}</span>
           {email && <span className="yx-profile-menu__email">{email}</span>}
@@ -878,6 +920,8 @@ export function useCommandPaletteShortcut(onToggle: () => void) {
 export interface Crumb {
   label: string;
   href?: string;
+  /** For a page held in screen state rather than its own address: the link runs this instead of navigating. */
+  onClick?: () => void;
 }
 
 /** Deep pages only (object → sub-object, §12). Last item is the current page. More than 4 collapses the middle into "…". */
@@ -889,7 +933,7 @@ export function Breadcrumbs({ items, max = 4 }: { items: Crumb[]; max?: number }
   const current = items[items.length - 1];
   const link = (c: Crumb) => (
     <li key={`${c.label}-${c.href}`} className="yx-crumbs__item">
-      <a className="yx-crumbs__link" href={c.href}>
+      <a className="yx-crumbs__link" href={c.href} onClick={c.onClick && ((e) => (e.preventDefault(), c.onClick!()))}>
         {c.label}
       </a>
       <Icon icon={ChevronRight} className="yx-crumbs__sep" />

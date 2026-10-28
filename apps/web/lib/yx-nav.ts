@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue';
 
 export interface NavLink {
   id: string;
@@ -39,6 +39,10 @@ export interface NavInput {
   clearance: boolean;
   tasks: boolean;
   firstDays: boolean;
+  /** The side-menu counts include Possible same person: company-wide HR (the server decides). */
+  samePerson?: boolean;
+  /** A designated person (BFSI): their annual declarations (the server decides). */
+  designated?: boolean;
 }
 
 const L = (id: string, label: string, href: string, count?: CountKey): NavLink => ({ id, label, href, ...(count ? { count } : {}) });
@@ -70,14 +74,11 @@ export function buildNav(n: NavInput): NavArea[] {
         L('search', 'Search', '/yx/search'),
         ...when(!support, L('my-requests', 'My requests', '/yx/me/requests')),
       ]),
+      // The designed Me menu (PPL-30 MeFrame, founder 26 Oct 2026). Personal settings are in the avatar menu (accountLinks).
       ...sec('Me', [
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
         ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-letters', 'My letters', '/yx/me/letters')),
-        ...when(!support, L('delegation', 'Delegation', '/yx/me/delegation')),
-        ...when(!support, L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
-        ...when(employee, L('my-data', 'My data', '/yx/me/privacy'), L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language'), L('resign', 'Resign', '/yx/me/resignation')),
-        L('me', 'My security', ME_SECURITY),
+        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations'), ...when(Boolean(n.designated), L('my-annual-declarations', 'Annual declarations', '/yx/me/annual-declarations', 'declarationsDue'), L('my-preclearance', 'Trading pre-clearance', '/yx/me/pre-clearance')), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };
@@ -91,33 +92,51 @@ export function buildNav(n: NavInput): NavArea[] {
       ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
       ...sec(team ? 'For my team' : 'Onboarding', [
         ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
-        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard'), L('batches', 'Batches', '/yx/people/batches')),
-        ...when(hr || manager, L('probation', 'Probation', '/yx/people/probation')),
+        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
+        // Probation decisions are HR's (employee.change.manage) or the manager's; payroll does no HR work (founder 21 Oct 2026).
+        ...when(manager || has('employee.change.manage'), L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
+        ...when(onboardView, L('buddies', 'Buddies', '/yx/people/buddies')),
         ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
         ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
-        ...when(team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+        ...when(team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
         ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
       ]),
       ...sec('Changes', [
-        ...when(!team && (hr || has('request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        ...when(!team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled')),
+        ...when(has('employee.change.manage'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+        // Founder decision 21 Oct 2026: HR plans and approves restructures; payroll does no HR work, yet opens the done ones
+        // to keep its continuity checklist (28 Oct 2026).
+        ...when(any('employee.change.manage', 'payroll.run.prepare'), L('restructure', 'Restructure', '/yx/people/restructure')),
+        ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
         ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
         ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
+        // PPL-50: HR decides managers' requests to see their team's pay (two HR people each).
+        ...when(has('employee.pay_access.approve'), L('pay-access', 'Team pay access', '/yx/people/pay-access')),
       ]),
       ...sec('Exits', [
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance')),
+        // Same F&F page as Pay's, at a People address so HR stays in the People menu (founder decision 26 Oct 2026).
+        ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/people/fnf')),
+        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
         ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
-        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
       ]),
       ...sec(undefined, [
         ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
         ...when(has('letter.issue'), L('letters', 'Letters', '/yx/people/letters')),
         ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
+        ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
       ]),
       // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-      ...sec('More', when(!support && has('employee.change.manage'), L('desk-people', 'Possible same person', '/yx/desk/people'))),
+      ...sec('More', [
+        ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
+        ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+        ...when(has('document.manage'), L('reverification', 'Re-verification', '/yx/people/reverification')),
+        ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
+        ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations'), L('pre-clearance', 'Pre-clearance requests', '/yx/people/pre-clearance')),
+      ]),
     ],
   };
 
@@ -276,7 +295,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
-        ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings')),
+        ...when(settingsAdmin, L('access-settings', 'Access and privacy', '/yx/settings/access-settings'), L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         ...when(has('lifecycle.journey.template.manage'), L('checklists', 'Onboarding checklists', '/yx/settings/checklists')),
         ...when(adminRole, L('settings', 'Security settings', '/yx/settings/security'), L('identity-providers', 'Single sign-on providers', '/yx/settings/identity-providers')),
         ...when(adminRole || n.role === 'auditor', L('activity', 'Login activity', '/yx/admin/login-activity')),
@@ -302,17 +321,29 @@ export function buildNav(n: NavInput): NavArea[] {
   return [home, people, time, pays, compliance, hire, performance, helpdesk, settings].filter((a) => a.sections.some((s) => s.items.length));
 }
 
-/** The area and link a path belongs to: the longest link that is the path or a parent of it. */
+/** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two
+ * areas (People › F&F is Payroll's page) belongs to the area whose own paths it is under. */
 export function activeLink(areas: NavArea[], pathname: string): { area: NavArea; link: NavLink } | null {
   let best: { area: NavArea; link: NavLink } | null = null;
+  const home = (a: NavArea) => pathname.startsWith(`/yx/${a.id}`);
   for (const area of areas)
     for (const s of area.sections)
       for (const link of s.items)
-        if ((pathname === link.href || pathname.startsWith(`${link.href}/`)) && (!best || link.href.length > best.link.href.length)) best = { area, link };
+        if ((pathname === link.href || pathname.startsWith(`${link.href}/`)) && (!best || link.href.length > best.link.href.length || (link.href.length === best.link.href.length && home(area) && !home(best.area)))) best = { area, link };
   return best;
 }
 
-/** The person's own pages for the account menu (founder decision 15 Oct 2026: "Me" in the avatar menu). */
-export function meLinks(areas: NavArea[]): NavLink[] {
-  return areas.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items ?? [];
+/**
+ * The avatar menu's personal settings (founder decisions 15 and 26 Oct 2026): delegation, notification preferences, my
+ * assets (the Me menu in the design has no place for them), language and my security.
+ */
+export function accountLinks(n: Pick<NavInput, 'support' | 'employee'>): NavLink[] {
+  return [
+    ...when(!n.support, L('delegation', 'Delegation', '/yx/me/delegation'), L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
+    ...when(n.employee, L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language')),
+    L('me', 'My security', ME_SECURITY),
+  ];
 }
+
+/** The menu plus the avatar menu's pages under Account, so the command palette still finds them. */
+export const withAccount = (areas: NavArea[], n: Pick<NavInput, 'support' | 'employee'>): NavArea[] => areas.map((a) => (a.id === 'home' ? { ...a, sections: [...a.sections, { label: 'Account', items: accountLinks(n) }] } : a));

@@ -2,10 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { JobChangesScreen, type JobChangesScreenProps } from './job-changes';
-import { changeInput, ImpactPanel, type ChangeDraft } from './history-kit';
+import { ChangeDrawer, changeInput, DesignImpact, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
-import { AS_OF, AS_OF_PAY, CHANGES, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
+import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, IMPACT_LOWERS_PAY, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 const draft = (over: Partial<ChangeDraft>): ChangeDraft => ({ employeeId: 'p-arjun', changeType: 'promotion', effectiveDate: new Date(2026, 10, 1), values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: 'Promotion', overrideReason: '', ...over });
@@ -29,28 +28,9 @@ function History(over: Partial<PersonHistoryScreenProps>) {
   );
 }
 
-function Changes(over: Partial<JobChangesScreenProps>) {
-  return (
-    <JobChangesScreen
-      state="ready"
-      today={TODAY_ISO}
-      rows={CHANGES}
-      canApprove
-      canManage
-      personHref={(id) => `/people/${id}`}
-      onPreview={vi.fn().mockResolvedValue(IMPACT)}
-      onApprove={ok()}
-      onReject={ok()}
-      onCancel={ok()}
-      onReschedule={ok()}
-      {...over}
-    />
-  );
-}
-
 describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
-  it('5c-D2: a promotion or a correction can set the skill class (a dated job fact)', () => {
-    expect(changeInput(draft({ values: { skillClass: 'skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { skillClass: 'skilled' } });
+  it('5c-D2: a new designation or a correction can set the skill class (a dated job fact)', () => {
+    expect(changeInput(draft({ changeType: 'redesignation', values: { designationId: 'des-sr', skillClass: 'skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr', skillClass: 'skilled' } });
     expect(changeInput(draft({ changeType: 'correction', values: { skillClass: 'highly_skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { skillClass: 'highly_skilled' } });
   });
 
@@ -63,24 +43,77 @@ describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
       reason: 'Promotion',
     });
     expect(changeInput(draft({ changeType: 'salary_revision', payMode: 'percent', pay: '7.5' }), OPTIONS).input?.payload).toEqual({ compensation: { increasePercent: '7.5' } });
-    expect(changeInput(draft({ changeType: 'transfer', values: { costCentreId: 'cc-eng' } }), OPTIONS).input?.payload).toEqual({ assignment: { costCentres: [{ costCentreId: 'cc-eng', percent: '100' }] } });
+    expect(changeInput(draft({ changeType: 'transfer', values: { locationId: 'loc-chn' } }), OPTIONS).input?.payload).toEqual({ assignment: { locationId: 'loc-chn' } });
     expect(changeInput(draft({ changeType: 'confirmation' }), OPTIONS).input?.payload).toEqual({ status: 'confirmed' });
   });
 
   it('without pay access pay is never sent; a salary revision then cannot be built', () => {
     const noPay = { ...OPTIONS, canPay: false };
-    expect(changeInput(draft({ values: { designationId: 'des-sr' }, pay: '780000' }), noPay).input?.payload).toEqual({ assignment: { designationId: 'des-sr' } });
+    expect(changeInput(draft({ values: { designationId: 'des-sr', gradeId: 'g-g3' }, pay: '780000' }), noPay).input?.payload).toEqual({ assignment: { designationId: 'des-sr', gradeId: 'g-g3' } });
     expect(changeInput(draft({ changeType: 'salary_revision', pay: '780000' }), noPay).errors.map((e) => e.fieldId)).toContain('ch-pay');
   });
 
   it('asks for what is missing, and an override reason before the retro limit', () => {
     const { errors } = changeInput(draft({ employeeId: null, changeType: null, effectiveDate: null, reason: '' }), OPTIONS);
     expect(errors.map((e) => e.fieldId)).toEqual(['ch-person', 'ch-type', 'ch-date', 'ch-reason']);
-    expect(changeInput(draft({ values: {} }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-values']);
-    expect(changeInput(draft({ values: { designationId: 'x' }, pay: '12abc' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-pay']);
-    const early = draft({ values: { designationId: 'x' }, effectiveDate: new Date(2026, 2, 31) });
+    expect(changeInput(draft({ values: {} }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-designationId']);
+    expect(changeInput(draft({ values: {} }), OPTIONS, 'both').errors.map((e) => e.fieldId)).toEqual(['ch-designationId', 'ch-gradeId']);
+    expect(changeInput(draft({ changeType: 'confirmation' as never, values: {} }), OPTIONS).errors).toEqual([]);
+    expect(changeInput(draft({ values: { designationId: 'x', gradeId: 'g' }, pay: '12abc' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-pay']);
+    const early = draft({ values: { designationId: 'x', gradeId: 'g' }, effectiveDate: new Date(2026, 2, 31) });
     expect(changeInput(early, OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-override']);
     expect(changeInput({ ...early, overrideReason: 'Board approved backdating' }, OPTIONS).input?.overrideReason).toBe('Board approved backdating');
+  });
+});
+
+describe('inter-entity transfer (PPL-04, a one-person restructure)', () => {
+  const moveDraft = (over: Partial<ChangeDraft>) => draft({ changeType: 'entity_transfer', reason: 'Chennai sales now sit under the TN entity', ...over });
+  const options = { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' } as const;
+
+  it('sends the new entity, location and options; asks for the entity and location first', () => {
+    expect(moveInput(moveDraft({ entityId: 'le-tn', values: { locationId: 'loc-hsr' }, transfer: { ...options, leave: 'lapse' } }), OPTIONS, 'le-kf').input).toEqual({ employeeId: 'p-arjun', fromEntityId: 'le-kf', intoEntityId: 'le-tn', effectiveDate: '2026-11-01', locationId: 'loc-hsr', options: { ...options, leave: 'lapse' }, reason: 'Chennai sales now sit under the TN entity' });
+    expect(moveInput(moveDraft({ values: {} }), OPTIONS, 'le-kf').errors.map((e) => e.fieldId)).toEqual(['ch-entity', 'ch-locationId']);
+  });
+
+  it('a department, designation or employment type only for the old entity is required (never labelled optional)', () => {
+    const plant = { value: 'et-plant', label: 'Fixed-term (plant)', entities: ['le-tn'] };
+    const shared = { value: 'et-perm', label: 'Permanent', entities: [] };
+    const o = { ...OPTIONS, employmentTypes: [plant, shared] };
+    expect(moveNeeds({ departmentId: null, designationId: null, employmentTypeId: 'et-plant' }, o, 'le-kf')).toEqual(['employmentTypeId']);
+    expect(moveNeeds({ employmentTypeId: 'et-perm' }, o, 'le-kf')).toEqual([]);
+    expect(moveNeeds({ employmentTypeId: 'et-plant' }, o, null)).toEqual([]);
+    const d = moveDraft({ entityId: 'le-kf', values: { locationId: 'loc-blr' }, transfer: options });
+    expect(moveInput(d, OPTIONS, 'le-tn', ['employmentTypeId']).errors).toEqual([{ fieldId: 'ch-employmentTypeId', message: 'Choose the new employment type' }]);
+    expect(moveInput({ ...d, values: { locationId: 'loc-blr', employmentTypeId: 'et-perm' } }, OPTIONS, 'le-tn', ['employmentTypeId']).input).toMatchObject({ employmentTypeId: 'et-perm' });
+  });
+
+  it('the options start on the company defaults, named for the person (code, service start)', async () => {
+    const legalEntities = [{ value: 'le-kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'le-tn', label: 'Kaveri Foods (Tamil Nadu)' }];
+    const onDefaults = vi.fn().mockResolvedValue({ options, employeeCode: 'KF-0142', serviceFrom: '2019-07-14', current: { departmentId: null, designationId: null, employmentTypeId: null } });
+    const move = { entities: legalEntities, onDefaults, onPreview: vi.fn().mockResolvedValue(IMPACT), onSubmit: ok() };
+    render(<ChangeDrawer options={OPTIONS} employeeId="p-arjun" initial={moveDraft({})} onPreview={vi.fn()} onSubmit={ok()} onClose={vi.fn()} move={move} />);
+    expect(await screen.findByText('Transfer options')).toBeTruthy();
+    expect(await screen.findByRole('radio', { name: 'Keep KF-0142' })).toHaveProperty('ariaChecked', 'true');
+    expect(screen.getByRole('radio', { name: 'Continue from 14 Jul 2019' })).toBeTruthy();
+    expect(onDefaults).toHaveBeenCalledWith('p-arjun');
+  });
+});
+
+describe('a promotion that lowers pay: a warning, never a block', () => {
+  it('the raiser sees it before sending and the approver before approving; none when pay goes up', () => {
+    const { unmount } = render(<DesignImpact impact={IMPACT_LOWERS_PAY} />);
+    expect(screen.getByText('Check before you send')).toBeTruthy();
+    expect(screen.getByText(/lowers the annual CTC/)).toBeTruthy();
+    unmount();
+    render(<ImpactPanel impact={IMPACT_LOWERS_PAY} />);
+    expect(screen.getByText('Check before you approve')).toBeTruthy();
+  });
+
+  it('no warning on a raise, or on an older impact without warnings', () => {
+    render(<DesignImpact impact={{ ...IMPACT, warnings: [] }} />);
+    expect(screen.queryByText(/Check before/)).toBeNull();
+    render(<ImpactPanel impact={IMPACT} />);
+    expect(screen.queryByText(/Check before/)).toBeNull();
   });
 });
 
@@ -145,66 +178,17 @@ describe('PersonHistoryScreen (P06 §4.7, §7)', () => {
     expect(screen.getByText('Choose a person to see their job history.')).toBeTruthy();
   });
 
-  it('Change opens the form; it previews before it can be sent (YX-HIS-11)', async () => {
+  it('Change opens the form; it cannot be sent before the impact is previewed (YX-HIS-11)', async () => {
     const onPreview = vi.fn().mockResolvedValue(IMPACT);
     const onSubmit = ok();
     render(<History change={{ options: OPTIONS, onPreview, onSubmit }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Change' }));
-    const send = await screen.findByRole('button', { name: 'Send for approval' });
-    expect(send.hasAttribute('disabled')).toBe(true);
-    await userEvent.click(screen.getByRole('button', { name: 'Preview impact' }));
+    // PPL-04: the impact previews by itself once the form is complete; Send before that shows what is missing
+    expect(screen.queryByRole('button', { name: 'Preview impact' })).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Send for approval' }));
     expect((await screen.findAllByText('Choose the kind of change')).length).toBeGreaterThan(0);
     expect(onPreview).not.toHaveBeenCalled();
-  });
-});
-
-describe('JobChangesScreen (PPL-05; YX-SEC-11, YX-HIS-06, Q7)', () => {
-  it('lists changes waiting for approval; Review shows the impact; approving confirms the recalculation', async () => {
-    const onApprove = ok();
-    const onPreview = vi.fn().mockResolvedValue(IMPACT);
-    render(<Changes onApprove={onApprove} onPreview={onPreview} />);
-    const table = screen.getByRole('table', { name: 'Job changes' });
-    expect(within(table).getByText('Rahul Sharma')).toBeTruthy();
-    expect(within(table).queryByText(/Promotion after the 2026 review/)).toBeNull();
-    const row = [...table.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Rahul Sharma')) as HTMLElement;
-    await userEvent.click(within(row).getByRole('button', { name: 'Review' }));
-    expect(onPreview).toHaveBeenCalledWith('c-rahul');
-    await userEvent.click(await screen.findByRole('button', { name: 'Approve and recalculate' }));
-    await waitFor(() => expect(onApprove).toHaveBeenCalledWith('c-rahul', true));
-  });
-
-  it('reject asks for a reason first', async () => {
-    const onReject = ok();
-    render(<Changes onReject={onReject} />);
-    const row = [...screen.getByRole('table', { name: 'Job changes' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Kavya Reddy')) as HTMLElement;
-    await userEvent.click(within(row).getByRole('button', { name: 'Review' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Reject' }));
-    const confirm = await screen.findByRole('button', { name: 'Reject change' });
-    expect(confirm.hasAttribute('disabled')).toBe(true);
-    await userEvent.type(screen.getByRole('textbox'), 'Not this year');
-    await userEvent.click(confirm);
-    await waitFor(() => expect(onReject).toHaveBeenCalledWith('c-kavya', 'Not this year'));
-  });
-
-  it('scheduled changes can be cancelled with a reason; done ones have no actions', async () => {
-    const onCancel = ok();
-    const { unmount } = render(<Changes defaultView="scheduled" onCancel={onCancel} />);
-    const row = [...screen.getByRole('table', { name: 'Job changes' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Promotion')) as HTMLElement;
-    await userEvent.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Cancel change' }));
-    await userEvent.type(screen.getByRole('textbox'), 'Review postponed');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel change' }));
-    await waitFor(() => expect(onCancel).toHaveBeenCalledWith('c-promo', 'Review postponed'));
-    unmount();
-    render(<Changes defaultView="done" />);
-    const done = screen.getByRole('table', { name: 'Job changes' });
-    expect(within(done).queryByRole('button', { name: /More actions|Actions|Review/ })).toBeNull();
-  });
-
-  it('without approve or manage grants: a read-only list', () => {
-    render(<Changes canApprove={false} canManage={false} />);
-    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'New change' })).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });
 
@@ -296,7 +280,7 @@ describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
     expect(changeInput(draft({ ...t, hours: 'set', hoursValue: '24.25' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-hours']);
     expect(changeInput(draft({ ...t, hours: 'set', hoursValue: '90' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-hours']);
     // A promotion never carries hours, whatever the draft holds.
-    expect(changeInput(draft({ values: { designationId: 'des-sr' }, hours: 'set', hoursValue: '24' }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr' } });
+    expect(changeInput(draft({ values: { designationId: 'des-sr', gradeId: 'g-g3' }, hours: 'set', hoursValue: '24' }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr', gradeId: 'g-g3' } });
   });
 
   it('the hire form sends hours only when given', () => {
@@ -322,5 +306,72 @@ describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
     await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'cquired company');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ continuousServiceFrom: null, reason: 'Acquired company' }));
+  });
+});
+
+describe('PPL-04 change drawer: fields per type, the route line, drafts', () => {
+  const open = (initial: Partial<ChangeDraft>, extra: Record<string, unknown> = {}) => {
+    const props = { onPreview: vi.fn().mockReturnValue(new Promise(() => undefined)), onSubmit: ok(), onRoute: vi.fn().mockResolvedValue(['Priya Nair', 'Lakshmi Venkatesan']), onSaveDraft: ok(), onClose: vi.fn(), ...extra };
+    render(<ChangeDrawer options={OPTIONS} employeeId="p-arjun" initial={draft({ effectiveDate: null, reason: '', ...initial })} {...props} />);
+    return props;
+  };
+  const fields = () => screen.queryAllByRole('combobox').map((x) => x.getAttribute('aria-label'));
+
+  it('a transfer asks only for the new location, and needs it', async () => {
+    open({ changeType: 'transfer' });
+    expect(fields()).toContain('New location');
+    for (const f of ['New department', 'New manager', 'New cost centre', 'New designation']) expect(fields()).not.toContain(f);
+    expect(screen.queryByText('Dotted-line managers')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Choose the new location')).length).toBeGreaterThan(0);
+  });
+
+  it("a promotion follows the company's rule (designation or grade by default); a manager change needs the new manager, with dotted lines", async () => {
+    open({ changeType: 'promotion' });
+    expect(fields()).toEqual(expect.arrayContaining(['New designation', 'New grade']));
+    expect(fields()).not.toContain('New skill class');
+    expect(screen.getByText('Choose a new designation, a new grade, or both.')).toBeTruthy();
+    const errs = (values: Record<string, string>, rule?: 'either' | 'both' | 'grade' | 'designation') => changeInput(draft({ values, pay: '' }), OPTIONS, rule).errors.map((e) => e.fieldId);
+    expect(errs({ designationId: 'des-sr' })).toEqual([]);
+    expect(errs({ gradeId: 'g-g3' })).toEqual([]);
+    expect(errs({})).toEqual(['ch-designationId']);
+    expect(errs({ designationId: 'des-sr' }, 'both')).toEqual(['ch-gradeId']);
+    expect(errs({ designationId: 'des-sr' }, 'grade')).toEqual(['ch-gradeId']);
+    expect(errs({ gradeId: 'g-g3' }, 'designation')).toEqual(['ch-designationId']);
+    expect(changeInput(draft({ changeType: 'manager_change', values: {}, dotted: ['p-x'] }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-managerEmployeeId']);
+  });
+
+  it("marks what the person's entity requires: both, when the company's rule says so", async () => {
+    const entity = PEOPLE.find((p) => p.id === 'p-arjun')!.legalEntityId!;
+    const props = { onPreview: vi.fn().mockReturnValue(new Promise(() => undefined)), onSubmit: ok(), onClose: vi.fn() };
+    render(<ChangeDrawer options={{ ...OPTIONS, promotionMustChange: { [entity]: 'both' } }} employeeId="p-arjun" initial={draft({ effectiveDate: null, reason: '', changeType: 'promotion', values: { designationId: 'des-sr' } })} {...props} />);
+    expect(screen.queryByText('Choose a new designation, a new grade, or both.')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Choose the new grade')).length).toBeGreaterThan(0);
+  });
+
+  it('starts with the route: who decides, recomputed when pay goes on the change', async () => {
+    const p = open({ changeType: 'promotion' });
+    expect(await screen.findByText('Goes to Priya Nair or Lakshmi Venkatesan.')).toBeTruthy();
+    expect(p.onRoute).toHaveBeenCalledWith('p-arjun', null, false);
+    expect(routeLine([])).toBeNull();
+    expect(orList(['A', 'B', 'C'])).toBe('A, B or C');
+    expect(orList(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C or 2 others');
+  });
+
+  it('without a route keeps the general sentence; with pay asks again', async () => {
+    const p = open({ changeType: 'salary_revision', pay: '780000' }, { onRoute: vi.fn().mockResolvedValue([]) });
+    await waitFor(() => expect(p.onRoute).toHaveBeenCalledWith('p-arjun', null, true));
+    expect(screen.getByText(/Someone who approves job changes decides it/)).toBeTruthy();
+  });
+
+  it('Save draft keeps the half-filled form; a saved form opens as it was', async () => {
+    const p = open({ changeType: 'transfer', values: { locationId: 'loc-x' }, effectiveDate: new Date(2026, 10, 2) });
+    await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(p.onSaveDraft).toHaveBeenCalled());
+    const saved = draftForm(p.onSaveDraft.mock.calls[0][0]);
+    expect(saved).toMatchObject({ changeType: 'transfer', effectiveDate: '2026-11-02', values: { locationId: 'loc-x' } });
+    expect(draftFromForm(JSON.parse(JSON.stringify(saved))).effectiveDate).toEqual(new Date(2026, 10, 2));
+    expect(p.onClose).toHaveBeenCalled();
   });
 });

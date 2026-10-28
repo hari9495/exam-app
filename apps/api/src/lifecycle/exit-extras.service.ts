@@ -10,9 +10,12 @@ import { LettersService } from '../documents/letters/letters.service';
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { settingFor } from '../people/probation';
 import { holdersOf } from '../time/time-core';
+import { EmailService } from '../email/email.service';
 import { ExitsService } from './exits.service';
-import { addDaysIso } from './exit-rules';
+import { DEATH_CLAIMS, addDaysIso } from './exit-rules';
 import { freezeSettlementIn } from './settlement';
+import { withPayScope } from '../payroll/pay-access';
+import { showDate } from '../people/employee-import';
 
 // Lifecycle batch 6e, the exit special cases (M01 §3.7; design §16.5):
 //   death         (LIFE-5.04, YX-LC-16) the payees: the nominations, else legal heirs with a succession certificate;
@@ -25,7 +28,6 @@ import { freezeSettlementIn } from './settlement';
 //                 policy says auto-exit, opens the end-of-contract exit; HR extends or converts instead;
 //   retrenchment  (LIFE-5.07, YX-LC-27) the government permission requests (retrenchment, lay-off, closure), a closure's
 //                 bulk exits; VRS schemes.
-// The M03 salary hold of an absconding employee is not built yet: the step says so and HR is told.
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
@@ -53,6 +55,7 @@ export class ExitExtrasService {
     private readonly exits: ExitsService,
     private readonly letters: LettersService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -129,6 +132,73 @@ export class ExitExtrasService {
     });
   }
 
+  // ------------------------------------------------------------------------------------------ death: the flow's facts (PPL-23)
+
+  private async deathCase(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const k = await this.managedCase(tx, c, v, id);
+    if (k.exitType !== 'death') throw new BadRequestException('This is not a death in service.');
+    return k;
+  }
+
+  /** HR users who may run this case: the choices for the family's compassionate contact. */
+  private async contactsIn(tx: Tx, org: string, employeeId: string) {
+    const ids = await holdersOf(tx, org, 'lifecycle.exit.manage', employeeId, todayIst());
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } });
+    return users.map((u) => ({ value: u.id, label: u.name || u.email }));
+  }
+
+  /** What the death-in-service flow shows besides the case: their job, the family's contact, the certificate, the claim forms. */
+  async death(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const k = await this.deathCase(tx, c, v, id);
+      const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: k.employmentId }, orderBy: { validFrom: 'desc' }, select: { designationId: true, locationId: true } });
+      const job = a?.designationId ? await tx.designation.findFirst({ where: { organizationId: org, id: a.designationId }, select: { name: true } }) : null;
+      const place = a?.locationId ? await tx.location.findFirst({ where: { organizationId: org, id: a.locationId }, select: { name: true } }) : null;
+      const cert = await tx.document.findFirst({ where: { organizationId: org, personId: k.personId, typeKey: 'death_certificate' }, orderBy: { createdAt: 'desc' }, select: { status: true } });
+      const claims = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId: k.id, department: 'hr', title: { in: [...DEATH_CLAIMS] } }, select: { id: true } });
+      return {
+        about: [job?.name, place?.name].filter(Boolean).join(', ') || null,
+        contactUserId: k.familyContactUserId,
+        contacts: await this.contactsIn(tx, org, k.employeeId),
+        certificate: cert ? { status: cert.status } : null,
+        claimItemIds: claims.map((x) => x.id),
+      };
+    });
+  }
+
+  async setFamilyContact(ctx: TenantContext, user: ScopeUser, id: string, userId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const k = await this.deathCase(tx, c, v, id);
+      if (!(await this.contactsIn(tx, c.organizationId, k.employeeId)).some((x) => x.value === userId)) throw new BadRequestException('Choose someone who can run this case.');
+      await tx.exitCase.update({ where: { id: k.id }, data: { familyContactUserId: userId } });
+      await audit(tx, c, 'exit.family_contact.set', 'exit_case', k.id, { from: k.familyContactUserId, to: userId });
+      return { ok: true };
+    });
+  }
+
+  /** Emails each payee with an email the link to their own login (the alumni portal's one-time code). */
+  async sendPayeeAccess(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    const x = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const k = await this.deathCase(tx, c, v, id);
+      const to = (await tx.exitPayee.findMany({ where: { organizationId: org, exitCaseId: k.id, removedAt: null, email: { not: null } }, select: { name: true, email: true } })).filter((p) => p.email);
+      if (!to.length) throw new BadRequestException('No payee has an email. Add one under Payees; they sign in with it.');
+      const o = await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true, slug: true } });
+      await audit(tx, c, 'exit.payees.access_sent', 'exit_case', k.id, { count: to.length });
+      return { org, to, o };
+    });
+    const link = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}/yx/alumni/${encodeURIComponent(x.o.slug)}`;
+    const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+    for (const p of x.to) {
+      await this.email.send({ to: p.email!, organizationId: x.org, subject: `${x.o.name}: your documents`, html: `<p>Dear ${esc(p.name)},</p><p>${esc(x.o.name)} has documents for you: the F&amp;F statement, Form 16 and claim papers as HR releases them. Sign in here: <a href="${esc(link)}">${esc(link)}</a></p><p>Use this email address; we send you a one-time code.</p>` });
+    }
+    return { sent: x.to.length };
+  }
+
   // ------------------------------------------------------------------------------------------ absconding (LIFE-5.05)
 
   private async timelineSteps(tx: Tx, c: CompanyContext, legalEntityId: string, lastPresentOn: string): Promise<Step[]> {
@@ -172,12 +242,40 @@ export class ExitExtrasService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const rows = await tx.abscondingTimeline.findMany({ where: { organizationId: org }, orderBy: { createdAt: 'desc' }, take: 200 });
+      // The policy is the starter timeline unless the company (or the person's entity) changed the days.
+      const edited = await tx.setting.findMany({ where: { organizationId: org, key: 'absconding.days' }, select: { scopeType: true, scopeId: true } });
       const out = [];
       for (const t of rows) {
         const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: t.employeeId } });
         const own = await ownOf(tx, c, v);
         if (own.employeeId === emp.id || !(await reachesPerson(tx, c, v, 'lifecycle.exit.manage', emp.personId, own))) continue;
-        out.push({ id: t.id, employeeId: t.employeeId, name: displayName(emp), lastPresentOn: iso(t.lastPresentOn), status: t.status, stoppedReason: t.stoppedReason, exitCaseId: t.exitCaseId, version: t.version, steps: (t.steps as unknown as Step[]).map((s) => ({ ...s, label: STEP_LABEL[s.key] })) });
+        const [job] = await tx.$queryRaw<{ legal_entity_id: string; designation: string | null; location: string | null }[]>`
+          SELECT a.legal_entity_id::text, d.name AS designation, l.name AS location FROM employee_assignments a
+          LEFT JOIN designations d ON d.organization_id = a.organization_id AND d.id = a.designation_id
+          LEFT JOIN locations l ON l.organization_id = a.organization_id AND l.id = a.location_id
+          WHERE a.organization_id = ${org}::uuid AND a.employment_id = ${t.employmentId}::uuid AND a.superseded_at IS NULL
+          ORDER BY a.valid_from DESC LIMIT 1`;
+        const absent = await tx.attendanceDay.findFirst({ where: { organizationId: org, employeeId: t.employeeId, workOn: { gt: t.lastPresentOn }, status: 'absent' }, orderBy: { workOn: 'asc' }, select: { workOn: true } });
+        const hold = await withPayScope(tx, [job.legal_entity_id], () => tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: t.employmentId, reasonCode: 'absconding', createdAt: { gte: t.createdAt } }, orderBy: { createdAt: 'desc' }, select: { releasedAt: true } }));
+        const steps = (t.steps as unknown as Step[]).map((s) => ({ ...s, label: STEP_LABEL[s.key] }));
+        out.push({
+          id: t.id,
+          employeeId: t.employeeId,
+          name: displayName(emp),
+          designation: job.designation,
+          location: job.location,
+          lastPresentOn: iso(t.lastPresentOn),
+          firstAbsentOn: absent ? iso(absent.workOn) : addDaysIso(iso(t.lastPresentOn), 1),
+          policy: edited.some((s) => s.scopeType === 'tenant' || s.scopeId === job.legal_entity_id) ? 'Starter template v1 (company-edited)' : 'Starter template v1',
+          // The hold step's day, as its note says (a sweep that ran late does not move the date HR sees).
+          salaryHeldSince: hold && !hold.releasedAt ? (steps.find((s) => s.key === 'hold')?.dueOn ?? null) : null,
+          salaryReleased: Boolean(hold?.releasedAt),
+          status: t.status,
+          stoppedReason: t.stoppedReason,
+          exitCaseId: t.exitCaseId,
+          version: t.version,
+          steps,
+        });
       }
       return { today: todayIst(), rows: out };
     });
@@ -189,7 +287,9 @@ export class ExitExtrasService {
       const t = await this.timelineOr404(tx, c, v, id);
       if (t.status !== 'running' || t.version !== dto.version) throw new ConflictException('This timeline is not running or changed meanwhile.');
       await tx.abscondingTimeline.update({ where: { id }, data: { status: 'stopped', stoppedReason: dto.reason.trim(), version: { increment: 1 } } });
-      // The salary hold is released with the M03 hold, when payroll is built; the attendance fix stays with M02.
+      // The person is back: the absconding salary hold is released (the held pay goes in the next payment).
+      const job = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: t.employmentId }, select: { legalEntityId: true } });
+      await withPayScope(tx, [job.legalEntityId], () => tx.payrollWithhold.updateMany({ where: { organizationId: c.organizationId, employmentId: t.employmentId, reasonCode: 'absconding', trigger: 'exit', releasedAt: null }, data: { releasedAt: new Date(), releasedBy: c.userId ?? null } }));
       await audit(tx, c, 'absconding.stopped', 'employee', t.employeeId, { timelineId: id, reason: dto.reason.trim() });
       return { ok: true };
     });
@@ -201,6 +301,14 @@ export class ExitExtrasService {
       const t = await this.timelineOr404(tx, c, v, id);
       if (t.status !== 'stopped' || t.version !== dto.version) throw new ConflictException('This timeline is not stopped or changed meanwhile.');
       await tx.abscondingTimeline.update({ where: { id }, data: { status: 'running', stoppedReason: null, version: { increment: 1 } } });
+      // Still absent: the salary hold released on stop comes back when day 3 has passed.
+      if ((t.steps as unknown as Step[]).some((s) => s.key === 'hold' && s.doneAt)) {
+        const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: t.employmentId } });
+        await withPayScope(tx, [e.legalEntityId], async () => {
+          if (!(await tx.payrollWithhold.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, releasedAt: null }, select: { id: true } })))
+            await tx.payrollWithhold.create({ data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}` } });
+        });
+      }
       await audit(tx, c, 'absconding.resumed', 'employee', t.employeeId, { timelineId: id });
     });
     await this.runTimeline(ctx.organizationId!, id);
@@ -242,7 +350,12 @@ export class ExitExtrasService {
       for (const s of steps) {
         if (s.doneAt || s.dueOn > today) continue;
         if (s.key === 'hold') {
-          s.note = 'Salary hold: payroll holds come with M03. HR and the manager were told.';
+          // A real payroll hold (founder 25 Oct 2026: the note said holds would come later, but the salary was still paid).
+          await withPayScope(tx, [e.legalEntityId], async () => {
+            const open = await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: e.id, releasedAt: null }, select: { id: true } });
+            if (!open) await tx.payrollWithhold.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: t.employeeId, employmentId: e.id, reasonCode: 'absconding', trigger: 'exit', note: `Absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}` } });
+          });
+          s.note = `Salary on hold in payroll from ${showDate(s.dueOn)}. HR and the manager were told.`;
         } else if (s.key === 'abandoned') {
           if (!e.exitedOn) exitCaseId = await this.exits.openSystemExitIn(tx, c, t.employeeId, 'absconding', iso(t.lastPresentOn), `Deemed abandonment: absent without leave since ${addDaysIso(iso(t.lastPresentOn), 1)}`);
           status = 'abandoned';

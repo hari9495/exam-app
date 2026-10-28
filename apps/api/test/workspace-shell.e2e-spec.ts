@@ -29,7 +29,7 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
-  type Who = 'adminA' | 'adminB' | 'hrA' | 'arjunA' | 'outsiderA';
+  type Who = 'adminA' | 'adminB' | 'hrA' | 'arjunA' | 'outsiderA' | 'plantHrA';
   const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const ctx = (k: 'A' | 'B') => ({ organizationId: org[k].id, isSuperAdmin: false });
@@ -70,12 +70,15 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
       ['hrA', 'A', 'panel', hr],
       ['arjunA', 'A', 'panel', null],
       ['outsiderA', 'A', 'panel', null],
+      ['plantHrA', 'A', 'panel', null],
     ];
     for (const [name, k, role, permissionProfileId] of roster) {
       users[name] = (await tenantPrisma.forTenant(ctx(k), (tx) => tx.user.create({ data: { organizationId: org[k].id, email: email(name), passwordHash, role, permissionProfileId, name: `${name} ${NAME}` } }))).id;
       token[name] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: email(name), password: PASSWORD }).expect(200)).body.accessToken;
     }
 
+    // A plant HR: the same HR keys, granted over one legal entity only.
+    await tenantPrisma.forTenant(ctx('A'), (tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.plantHrA, permissionProfileId: hr, scopeType: 'legal_entity', legalEntityId: ids.leA, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Plant HR' } }));
     const hire = async (who: Who, k: 'A' | 'B', body: Record<string, unknown>) =>
       (
         await api(who, 'post', '/people/employees')
@@ -153,10 +156,13 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     const hr = await search('hrA', WORD);
     expect(hr.people).toHaveLength(1);
     expect(hr.people[0].href).toBe(`/yx/people/profile?person=${ids.zA}`);
+    // The code with its legal entity's name next to it (founder 28 Oct 2026).
+    expect(hr.people[0].secondary).toMatch(/^\S+ · Entity A( · |$)/);
     const emp = await search('arjunA', WORD);
     expect(emp.people).toHaveLength(1);
     expect(emp.people[0].href).toMatch(/^\/yx\/people\/directory\?q=/);
     expect(emp.people[0].secondary).not.toMatch(/EMP|\d{3}/);
+    expect(emp.people[0].secondary).toMatch(/^Entity A( · |$)/);
   });
 
   it('people: someone with no employee record and no HR key gets no people at all', async () => {
@@ -241,6 +247,17 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     const hr = (await api('hrA', 'get', '/workspace/counts').expect(200)).body;
     expect(hr.documentsToVerify).toBe(0);
     expect(hr.exitCases).toBe(0);
+    // People menu counts (PPL designs): each only with its page's key.
+    expect(arjun.readyToOnboard).toBeUndefined();
+    expect(arjun.possibleSamePerson).toBeUndefined();
+    expect(hr.readyToOnboard).toBeUndefined(); // no lifecycle.onboarding.manage
+    expect(hr.probationsDue).toBe(0); // company-wide profile grant
+    expect(hr.possibleSamePerson).toBe(0);
+    expect(hr.clearanceToDo).toBe(0);
+    // Possible same person is company-wide HR work: a scoped HR gets no count, so no menu item (PPL-36 audit).
+    const plant = (await api('plantHrA', 'get', '/workspace/counts').expect(200)).body;
+    expect(plant.possibleSamePerson).toBeUndefined();
+    await api('plantHrA', 'get', '/desk/people/possible-duplicates').expect(403);
     const b = (await api('adminB', 'get', '/workspace/counts').expect(200)).body;
     expect(b.approvals).toBe(0);
     expect(b.notifications).toBe(0);

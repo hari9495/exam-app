@@ -138,7 +138,7 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'post', `/lifecycle/me/assets/${mine[0].assignmentId}/acknowledge`).expect(200);
     await api('sita', 'post', `/lifecycle/me/assets/${mine[1].assignmentId}/acknowledge`).expect(404);
     const list = (await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows;
-    expect(list.find((r: { id: string }) => r.id === ids.laptop).holder.name).toMatch(/Ravi/);
+    expect(list.find((r: { id: string }) => r.id === ids.laptop).holder).toMatchObject({ name: expect.stringMatching(/Ravi/), condition: 'New' });
   });
 
   it('resignation: notice from the policy in force today; the manager then HR accept; on notice with checklist, clearance and interview', async () => {
@@ -182,7 +182,7 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.eventOutbox.count({ where: { eventType: 'exit.lwd.changed', payload: { path: ['exitCaseId'], equals: ids.raviCase } } }))).toBe(1);
   });
 
-  it('clearance: owners see only their items; a return clears its item; a lost asset becomes a recovery; all done → cleared', async () => {
+  it('clearance: owners see only their items; a return clears its item; a lost asset becomes a recovery; all done â†’ cleared', async () => {
     const mgrItems = (await api('mgr', 'get', '/lifecycle/clearance/mine').expect(200)).body.rows;
     expect(mgrItems.map((i: { department: string }) => i.department)).toEqual(['manager_handover']);
     await api('ravi', 'get', '/lifecycle/clearance/mine').expect(200).expect((r) => expect(r.body.rows).toHaveLength(0));
@@ -190,15 +190,25 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', version: handover.version }).expect(404);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'waive', version: handover.version }).expect(400);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', note: 'All files moved', version: handover.version }).expect(200);
-    await api('hr', 'post', `/lifecycle/assets/${ids.laptop}/return`).send({ returnedOn: today, condition: 'Good', status: 'in_stock' }).expect(200);
-    await api('hr', 'post', `/lifecycle/assets/${ids.phone}/return`).send({ returnedOn: today, condition: 'Not handed back', status: 'lost' }).expect(200);
+    // Signing off the laptop's clearance item (nothing owed) records the return too (founder 23 Oct 2026).
+    const k0 = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
+    const lt = k0.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));
+    await api('hr', 'post', `/lifecycle/clearance/${lt.id}/sign-off`).send({ action: 'clear', note: 'Handed back, good', version: lt.version }).expect(200);
+    expect(await inA((tx) => tx.asset.findFirstOrThrow({ where: { id: ids.laptop } }))).toMatchObject({ status: 'in_stock' });
+    expect(await inA((tx) => tx.assetAssignment.findFirst({ where: { assetId: ids.laptop, returnedOn: null } }))).toBeNull();
+    // Not returned, charged in the same form (founder 24 Oct 2026): the recovery goes on the F&F and signs the item off.
+    await api('hr', 'post', `/lifecycle/assets/${ids.phone}/return`).send({ returnedOn: today, condition: 'Not handed back', status: 'lost', recoveryAmount: '15000.00' }).expect(200);
     let k = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     const laptopItem = k.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));
     const phoneItem = k.clearance.find((i: { title: string }) => i.title.includes('Galaxy'));
     expect(laptopItem.status).toBe('cleared');
-    expect(phoneItem.status).toBe('open');
-    await api('hr', 'post', `/lifecycle/clearance/${phoneItem.id}/sign-off`).send({ action: 'clear', recoveryAmount: '15000.00', version: phoneItem.version }).expect(400);
-    await api('hr', 'post', `/lifecycle/clearance/${phoneItem.id}/sign-off`).send({ action: 'clear', recoveryAmount: '15000.00', recoveryReason: 'Phone not returned (book value)', version: phoneItem.version }).expect(200);
+    expect(phoneItem).toMatchObject({ status: 'cleared', recoveryAmount: '15000.00' });
+    // PPL-22: payroll's line names the asset and the condition it came back in, once each.
+    const handoff = await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.exitSettlementInput.findFirstOrThrow({ where: { exitCaseId: ids.raviCase, supersededAt: null } });
+    });
+    expect(handoff.recoveries).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'asset', title: `Galaxy A35 (PH-${run})`, reason: 'Not returned: Not handed back', amount: '15000.00', status: 'recorded' })]));
     for (const i of k.clearance.filter((x: { status: string; department: string }) => x.status === 'open' && x.department !== 'asset' && x.department !== 'manager_handover')) {
       await api('hr', 'post', `/lifecycle/clearance/${i.id}/sign-off`).send({ action: 'clear', version: i.version }).expect(200);
     }
@@ -208,11 +218,18 @@ describe('Lifecycle batch 6c', () => {
   });
 
   it('exit interview: the answers stay HR-only; the manager learns only that it is done (API and raw query)', async () => {
+    // The leaver was told it is ready when the exit was accepted (founder 24 Oct 2026).
+    await automation.dispatch().catch(() => undefined);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.ravi, type: 'exit.interview.sent' } }))).toBeGreaterThan(0);
     const form = (await api('ravi', 'get', '/lifecycle/me/exit-interview').expect(200)).body;
     expect(form.status).toBe('sent');
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager' } }).expect(400);
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager', would_return: 'no', rating: 2, change: 'Fewer late calls' } }).expect(200);
     await api('ravi', 'put', '/lifecycle/me/exit-interview').send({ answers: { main_reason: 'manager', would_return: 'no', rating: 2 } }).expect(409);
+    // HR who owns the exit is told the answers are in; the manager is not (founder 24 Oct 2026).
+    const told = await inA((tx) => tx.userNotification.findMany({ where: { contextText: { contains: 'answered the exit interview' } }, select: { recipientUserId: true } }));
+    expect(told.length).toBeGreaterThan(0);
+    expect(told.some((t) => t.recipientUserId === users.mgr)).toBe(false);
     const m = (await api('mgr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     expect(m.interview).toBe('submitted');
     expect(JSON.stringify(m)).not.toMatch(/Fewer late calls|"main_reason"/);
@@ -276,13 +293,22 @@ describe('Lifecycle batch 6c', () => {
 
   it('probation review: the manager extends within the maximum; ending it opens an exit another HR person approves', async () => {
     const list = (await api('mgr', 'get', '/people/probations').expect(200)).body.rows;
-    expect(list.find((r: { employeeId: string }) => r.employeeId === emp.arun).canReview).toBe(true);
+    expect(list.find((r: { employeeId: string }) => r.employeeId === emp.arun)).toMatchObject({ canReview: true, designation: expect.any(String), manager: `Divya ${run}` });
+    expect((await api('ravi', 'get', '/people/probations').expect(200)).body.rows).toEqual([]); // a colleague without the team or the key sees no one
+    expect((await api('adminB', 'get', '/people/probations').expect(200)).body.rows).toEqual([]);
     await api('ravi', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 2, comments: 'Needs more time' }).expect(404);
     await api('arun', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'confirm', comments: 'I am great' }).expect(403);
     expect((await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 12, comments: 'Too long' }).expect(400)).body.message).toMatch(/at most 12 months/);
     await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 2, comments: 'Needs more time on the line', rating: 3 }).expect(200);
+    // PPL-16: HR decides with the same review (its job-change grant reaches Arun); payroll's keys do not.
+    await api('hr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'extend', months: 1, comments: 'One more month on the line', rating: 3 }).expect(200);
     const arunJob = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.arun } }));
-    expect((await inA((tx) => tx.probation.findFirstOrThrow({ where: { employmentId: arunJob.id } }))).extendedMonths).toBe(2);
+    expect((await inA((tx) => tx.probation.findFirstOrThrow({ where: { employmentId: arunJob.id } }))).extendedMonths).toBe(3);
+    // A missed review went to HR (escalated on the end date): the manager no longer reviews, HR does (founder 23 Oct 2026).
+    await inA((tx) => tx.probation.updateMany({ where: { employmentId: arunJob.id }, data: { escalatedOn: new Date() } }));
+    expect((await api('mgr', 'get', '/people/probations').expect(200)).body.rows.find((r: { employeeId: string }) => r.employeeId === emp.arun).canReview).toBe(false);
+    expect((await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'confirm', comments: 'Late review' }).expect(403)).body.message).toMatch(/went to HR/);
+    await inA((tx) => tx.probation.updateMany({ where: { employmentId: arunJob.id }, data: { escalatedOn: null } }));
     await api('mgr', 'post', `/lifecycle/probations/${emp.arun}/review`).send({ outcome: 'terminate', comments: 'Safety rules not followed' }).expect(200);
     const k = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { employeeId: emp.arun } }));
     expect(k).toMatchObject({ exitType: 'probation_termination', status: 'submitted' });
@@ -292,9 +318,106 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.probationReview.count({ where: { exitCaseId: k.id } }))).toBe(1);
   });
 
+  it('PPL-03: a manager reads their team memberâ€™s assets and leave balances; a peer, another company: not found', async () => {
+    const tag = `TB-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Tablet', name: 'Tab A9', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
+    const assets = (await api('mgr', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.rows;
+    expect(assets).toEqual([expect.objectContaining({ tag, name: 'Tab A9', condition: 'New', acknowledged: false })]);
+    await api('meena', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404); // a peer
+    await api('sita', 'get', `/lifecycle/people/${emp.mgr}/assets`).expect(404); // not one's manager
+    expect((await api('sita', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.rows).toHaveLength(1); // self
+    expect((await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows.find((r: { tag: string }) => r.tag === tag).holder.name).toMatch(/Sita/); // HR unchanged
+    await api('adminB', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    const time = (path: string, who: Who) => request(server()).get(`/api/v1/time${path}`).set('Authorization', `Bearer ${token[who]}`);
+    await time(`/people/${emp.sita}/balances`, 'mgr').expect(200);
+    await time(`/people/${emp.sita}/balances`, 'sita').expect(200);
+    await time(`/people/${emp.sita}/balances`, 'meena').expect(404);
+    await time(`/people/${emp.sita}/balances`, 'adminB').expect(404);
+  });
+
+  it("asset returns go to the IT and Admin team on the exit checklist, not the issuer (the issuer only when there is no team)", async () => {
+    const o = { organizationId: org.A.id };
+    await inA(async (tx) => {
+      const g = await tx.userGroup.create({ data: { ...o, name: `IT and Admin team ${run}` } });
+      await tx.userGroupMember.create({ data: { ...o, groupId: g.id, userId: users.it } });
+      await tx.journeyTemplateTask.updateMany({ where: { ...o, ownerType: { in: ['it', 'admin'] } }, data: { ownerGroupId: g.id } });
+    });
+    const neha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Neha', familyName: run, employeeCode: 'EX-007', joinedOn: '2026-04-06', workEmail: `neha@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const tag = `MS-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Surface Pro', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: neha, issuedOn: today, condition: 'New' }).expect(200);
+    await api('hr', 'post', '/lifecycle/exits').send({ employeeId: neha, exitType: 'end_of_contract', lwd: addDays(today, 20), reasonText: 'Contract ends' }).expect(201);
+    const item = (who: Who) => api(who, 'get', '/lifecycle/clearance/mine').expect(200).then((r) => (r.body.rows as { title: string }[]).find((i) => i.title.includes(tag)));
+    expect(await item('it')).toBeTruthy();
+    expect(await item('hr')).toBeUndefined(); // HR issued it, but IT takes it back
+  });
+
+  it('HR withdraws an exit HR started (founder 28 Oct 2026): the checklist and clearance stop, the asset stays; refusals', async () => {
+    const hireOne = async (given: string, code: string) =>
+      (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: run, employeeCode: code, joinedOn: '2026-04-06', workEmail: `${code.toLowerCase()}@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const exit = async (employeeId: string, exitType: string, lwd = addDays(today, 30)) => (await api('hr', 'post', '/lifecycle/exits').send({ employeeId, exitType, lwd, reasonText: 'Recorded by mistake' }).expect(201)).body;
+    const withdraw = (who: Who, id: string, body: object) => api(who, 'post', `/lifecycle/exits/${id}/withdraw`).send(body);
+
+    // Positive: an end of contract with an asset out.
+    const leela = await hireOne('Leela', 'EX-008');
+    const tag = `WD-${run}`;
+    const asset = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Latitude 5450', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${asset}/issue`).send({ employeeId: leela, issuedOn: today, condition: 'New' }).expect(200);
+    const k = await exit(leela, 'end_of_contract');
+    expect(k.status).toBe('accepted');
+    await withdraw('hr', k.id, {}).expect(400); // the reason is required
+    await withdraw('hr', k.id, { reason: 'x' }).expect(400);
+    await withdraw('mgr', k.id, { reason: 'Not mine to undo' }).expect(403); // no lifecycle.exit.manage
+    await withdraw('adminB', k.id, { reason: 'Another company' }).expect(404);
+    const done = (await withdraw('hr', k.id, { reason: 'Contract was renewed last week' }).expect(200)).body;
+    expect(done).toMatchObject({ status: 'withdrawn', withdrawalReason: 'Contract was renewed last week' });
+    expect(done.clearance.length).toBeGreaterThan(0);
+    expect(done.clearance.every((i: { status: string }) => i.status === 'waived')).toBe(true);
+    const row = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { id: k.id } }));
+    expect(row).toMatchObject({ withdrawnBy: users.hr, withdrawalReason: 'Contract was renewed last week' });
+    const journey = await inA((tx) => tx.journey.findFirstOrThrow({ where: { subjectType: 'exit_case', subjectId: k.id } }));
+    expect(journey.status).toBe('cancelled');
+    expect(await inA((tx) => tx.journeyTask.count({ where: { journeyId: journey.id, status: { in: ['open', 'waiting'] } } }))).toBe(0);
+    expect((await inA((tx) => tx.assetAssignment.findFirstOrThrow({ where: { assetId: asset } }))).returnedOn).toBeNull(); // still with her
+    const ev = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'exit.case.withdrawn', entityId: k.id } }));
+    expect(ev.actorUserId).toBe(users.hr);
+    expect(JSON.parse(ev.metadataJson!)).toMatchObject({ before: 'accepted', by: users.hr, reason: 'Contract was renewed last week' });
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, recipientUserId: users.mgr, type: 'exit.case.update', entityId: k.id } }))).toBe(1);
+    expect((await withdraw('hr', k.id, { reason: 'Once more' }).expect(400)).body.message).toMatch(/already withdrawn/);
+
+    // A termination still waiting for the second HR approval: its approval request ends too.
+    const t = await exit(await hireOne('Tara', 'EX-009'), 'termination');
+    expect(t.status).toBe('submitted');
+    await withdraw('hr', t.id, { reason: 'Wrong person picked' }).expect(200);
+    const tRow = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { id: t.id } }));
+    expect(tRow.status).toBe('withdrawn');
+    expect((await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: tRow.wfRequestId! } }))).status).toBe('withdrawn');
+    expect(await inA((tx) => tx.wfTask.count({ where: { requestId: tRow.wfRequestId!, status: 'open' } }))).toBe(0);
+
+    // Allowed on the last working day itself (as an employee's resignation); refused once it has passed.
+    const late = await exit(await hireOne('Usha', 'EX-010'), 'retirement');
+    await inA((tx) => tx.exitCase.update({ where: { id: late.id }, data: { approvedLwd: new Date(`${addDays(today, -1)}T00:00:00Z`) } }));
+    expect((await withdraw('hr', late.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/last working day has passed/);
+    await inA((tx) => tx.exitCase.update({ where: { id: late.id }, data: { approvedLwd: new Date(`${today}T00:00:00Z`) } }));
+    await withdraw('hr', late.id, { reason: 'Still the last day' }).expect(200);
+
+    // Refused: the F&F finalised; an employee's resignation.
+    const paid = await exit(await hireOne('Vani', 'EX-011'), 'end_of_contract');
+    await inA(async (tx) => {
+      const e = await tx.employment.findFirstOrThrow({ where: { employeeId: paid.employeeId } });
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: paid.employeeId, employmentId: e.id, exitCaseId: paid.id, exitType: 'end_of_contract', inputRevision: 1, lwd: new Date(`${addDays(today, 30)}T00:00:00Z`), deadline: new Date(`${addDays(today, 32)}T00:00:00Z`), status: 'settled' } });
+    });
+    expect((await withdraw('hr', paid.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/full and final/);
+    expect((await withdraw('hr', ids.raviCase, { reason: 'Not HR to undo' }).expect(400)).body.message).toMatch(/employee/);
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);
+    expect((await api('hr', 'get', '/lifecycle/exits').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.raviCase)).toMatchObject({ manager: `Divya ${run}` });
+    expect((await api('sita', 'get', '/lifecycle/exits').expect(200)).body.rows).toEqual([]); // a colleague without the key: no one else's case
     expect((await api('adminB', 'get', '/lifecycle/assets').expect(200)).body.rows).toHaveLength(0);
     await api('adminB', 'post', `/lifecycle/assets/${ids.laptop}/issue`).send({ employeeId: emp.ravi, issuedOn: today, condition: 'Fine' }).expect(404);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.exitCase.count())).toBe(0);

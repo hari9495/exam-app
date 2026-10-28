@@ -8,11 +8,15 @@ import type { ScopeUser } from '../access/scope';
 import { AutomationService } from '../rules-engine/automation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { gratuityDue, inForce, retrenchment } from '../statutory/evaluator';
+import { gratuityDue, inForce, retrenchment, serviceYears } from '../statutory/evaluator';
+import { workingDaysUntil } from '../lifecycle/exit-rules';
+import { holidaysNear } from '../lifecycle/settlement';
+import { LettersService } from '../documents/letters/letters.service';
+import type { LetterFnf } from '../documents/letters/fields';
 import { hashValue, sealValue } from '../people/profile.service';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
-import { entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
+import { PAY_RUN_EDITABLE, entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { FNF_COMPONENTS } from './starter';
 import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 
@@ -33,9 +37,23 @@ import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+// Indian grouping of whole rupees ("1,23,456") from the digits themselves (no floats).
+const grouped = (i: string) => (i.length > 3 ? `${i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${i.slice(-3)}` : i);
+// "₹1,23,456.78" for the statement letter.
+const inr = (x: Prisma.Decimal) => {
+  const [i, f] = x.toFixed(2).split('.');
+  return `₹${grouped(i)}.${f}`;
+};
+/** Money inside an explanation ("₹26000.00 a month") written as the page writes it ("₹26,000 a month", "₹1,008.33"). */
+export const moneyText = (s: string) => s.replace(/₹(\d+)(?:\.(\d{2}))?/g, (_m, i: string, f?: string) => `₹${grouped(i)}${f && f !== '00' ? `.${f}` : ''}`);
 type Settlement = Prisma.FnfSettlementGetPayload<object>;
 type Payee = { kind: string; name: string; relation: string; sharePercent: string; accountEnc?: string | null; accountHash?: string | null; accountLast4?: string | null; ifsc?: string | null };
-const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
+const EDITABLE = PAY_RUN_EDITABLE;
+// The reason on the lines worked out here (a line payroll adds carries its own reason).
+const WORKED_OUT = 'Full and final settlement';
+// Wage lines: paid within the 2-working-day deadline (Code on Wages s.17(2)); gratuity has its own 30 days.
+const WAGE = ['leave_encashment', 'bonus', 'notice_pay'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class FnfService implements OnModuleInit {
@@ -48,13 +66,73 @@ export class FnfService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly rules: StatutoryRulesService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly letters: LettersService,
   ) {}
 
   onModuleInit() {
     this.automation.subscribe(async (ev) => {
+      if (ev.type === 'payroll.fnf.run_approved' && typeof ev.payload.fnfSettlementId === 'string' && typeof ev.payload.runId === 'string')
+        await this.issueStatement(ev.organizationId, ev.payload.fnfSettlementId, ev.payload.runId).catch((e: Error) => this.logger.warn(`F&F statement for ${ev.payload.fnfSettlementId}: ${e.message}`));
       if (ev.type !== 'exit.settlement_inputs.ready' || typeof ev.payload.exitCaseId !== 'string') return;
       await this.fromInputs(ev.organizationId, ev.payload.exitCaseId).catch((e: Error) => this.logger.error(`F&F for exit ${ev.payload.exitCaseId}: ${e.message}`));
     });
+  }
+
+  /** "FNF-2026-0041": gap-free per company and year (the counter row is held by this transaction, like letter numbers). */
+  private async runReference(tx: Tx, org: string) {
+    const year = Number(todayIst().slice(0, 4));
+    const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
+      INSERT INTO payroll_run_counters (organization_id, kind, year, last_no) VALUES (${org}::uuid, 'fnf', ${year}, 1)
+      ON CONFLICT (organization_id, kind, year) DO UPDATE SET last_no = payroll_run_counters.last_no + 1 RETURNING last_no AS n`;
+    return `FNF-${year}-${String(n).padStart(4, '0')}`;
+  }
+
+  /**
+   * PPL-22: the F&F statement letter, issued by the system into the person's letters when an F&F run is approved (once
+   * per run). A second run's statement supersedes the first. Needs the company's active "F&F statement" template.
+   */
+  async issueStatement(org: string, settlementId: string, runId: string) {
+    const x = await this.tenantPrisma.forTenant(this.sys(org), async (tx) => {
+      // The system reads the settlement under the pay guard of the company's entities, then of its own entity only.
+      await payScope(tx, (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id));
+      const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, id: settlementId } });
+      if (!f || (f.runId !== runId && f.secondRunId !== runId)) return null;
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, id: f.employeeId }, select: { personId: true } });
+      if (!emp?.personId) return null;
+      if (await tx.letterIssue.findFirst({ where: { organizationId: org, letterType: 'fnf_statement', subjectType: 'payroll_run', subjectId: runId, status: { notIn: ['rejected', 'withdrawn'] } }, select: { id: true } })) return null;
+      const previous = await tx.letterIssue.findFirst({ where: { organizationId: org, personId: emp.personId, letterType: 'fnf_statement', status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { id: true } });
+      await payScope(tx, [f.legalEntityId]);
+      return { personId: emp.personId, supersedesId: previous?.id ?? null, fnf: await this.statement(tx, org, f) };
+    });
+    if (!x) return null;
+    return this.letters.issueSystem({ organizationId: org, isSuperAdmin: false, userId: null }, { letterType: 'fnf_statement', personId: x.personId, subjectType: 'payroll_run', subjectId: runId, supersedesId: x.supersedesId, fnf: x.fnf });
+  }
+
+  /** The statement's figures: every approved F&F payslip of the settlement (first and second run), as the settlement view adds them. */
+  private async statement(tx: Tx, org: string, f: Settlement): Promise<LetterFnf> {
+    const runs = await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [f.runId, f.secondRunId].filter((x): x is string => !!x) }, status: { in: ['approved', 'paid'] } }, orderBy: { createdAt: 'asc' } });
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, runId: { in: runs.map((r) => r.id) }, employmentId: f.employmentId, status: 'approved' }, select: { id: true } });
+    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) } }, orderBy: [{ payslipId: 'asc' }, { position: 'asc' }] });
+    const st = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: [...new Set(lines.map((l) => l.componentCode))] } }, select: { code: true, statutory: true } })).map((c) => [c.code.toLowerCase(), c.statutory]));
+    const statOf = (code: string) => st.get(code.toLowerCase()) ?? null;
+    const sum = (xs: typeof lines) => xs.reduce((t, l) => t.add(l.amount), D(0));
+    const earned = lines.filter((l) => l.kind === 'earning' || l.kind === 'reimbursement');
+    const ded = lines.filter((l) => l.kind === 'deduction');
+    const earnings = sum(earned);
+    const recoveries = sum(ded.filter((l) => !statOf(l.componentCode)));
+    const tds = sum(ded.filter((l) => statOf(l.componentCode) === 'tds'));
+    const statutory = sum(ded.filter((l) => statOf(l.componentCode) && statOf(l.componentCode) !== 'tds'));
+    const net = earnings.sub(recoveries).sub(tds).sub(statutory).add(sum(lines.filter((l) => l.componentCode === 'net_rounding')));
+    return {
+      run: runs.map((r) => r.reference ?? r.id).join(' and '),
+      lines: [...earned.map((l) => `${l.name} ${inr(l.amount)}`), ...ded.map((l) => `less ${l.name} ${inr(l.amount)}`)].join('; ') || 'None',
+      earnings: inr(earnings),
+      recoveries: inr(recoveries),
+      tds: inr(tds),
+      statutory: inr(statutory),
+      netLabel: net.lt(0) ? 'Net amount to be recovered from you' : 'Net payable to you',
+      net: inr(net.abs()),
+    };
   }
 
   private sys(org: string) {
@@ -107,6 +185,7 @@ export class FnfService implements OnModuleInit {
               periodEnd: asDate(to),
               runType: 'offcycle',
               offcycleKind: 'fnf',
+              reference: await this.runReference(tx, org),
               preparedBy: SYSTEM,
             },
           });
@@ -149,17 +228,11 @@ export class FnfService implements OnModuleInit {
       if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(encashDaily.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(encashDaily).toFixed(2)} a day.` });
     }
     // Gratuity on the last wage (basic and DA), by the law in force on the last day.
-    const gratRs = inForce(rules, 'IN.SS-CODE', ['IN'], lwd) ?? inForce(rules, 'IN.GRATUITY', ['IN'], lwd);
-    if (gratRs?.values.kind === 'gratuity') {
-      const type = await tx.employeeAssignment.findFirst({
-        where: { organizationId: org, employmentId: em.id, supersededAt: null, validFrom: { lte: f.lwd } },
-        orderBy: { validFrom: 'desc' },
-        select: { employmentTypeId: true },
-      });
-      const cat = type ? (await tx.employmentType.findFirst({ where: { organizationId: org, id: type.employmentTypeId }, select: { category: true } }))?.category : null;
-      const g = gratuityDue(gratRs, { lastWage: pay.gratuityWage, joined: dateOf(em.joinedOn), lastDay: lwd, fixedTerm: cat === 'fixed_term', death: f.exitType === 'death' });
+    const grat = await this.gratuityTerms(tx, org, f, em.joinedOn);
+    if (grat) {
+      const g = gratuityDue(grat.rs, { ...grat.terms, lastWage: pay.gratuityWage });
       if (g.eligible && g.amount.gt(0))
-        items.push({ code: 'gratuity', amount: g.amount, label: `Gratuity for ${g.years} years on the last wage ₹${pay.gratuityWage.toFixed(2)} (${gratRs.statute} ${gratRs.version}).` });
+        items.push({ code: 'gratuity', amount: g.amount, label: `Gratuity for ${g.years} years on the last wage ₹${pay.gratuityWage.toFixed(2)} (${grat.rs.statute} ${grat.rs.version}).` });
     }
     // Retrenchment (IR Code): compensation, notice pay in lieu, the re-skilling fund; held without the permission it needs.
     const rt = k.retrenchment as { noticeMode?: string; workers?: number } | null;
@@ -211,7 +284,7 @@ export class FnfService implements OnModuleInit {
       items.push({
         code: 'fnf_recovery',
         amount: D(r.amount!),
-        label: `${r.title}${r.reason ? `: ${r.reason}` : ''}`.slice(0, 200),
+        label: `${r.title}${r.reason ? ` · ${r.reason}` : ''}`.slice(0, 200),
         hold: r.status === 'open' ? 'Not returned or signed off yet.' : undefined,
       });
     for (const i of items) {
@@ -228,7 +301,7 @@ export class FnfService implements OnModuleInit {
           periodStart: asDate(monthStart),
           source: 'fnf',
           sourceRef: f.id,
-          reason: 'Full and final settlement',
+          reason: WORKED_OUT,
           label: i.label.slice(0, 200),
           holdReason: i.hold?.slice(0, 300) ?? null,
           status: 'approved',
@@ -237,6 +310,33 @@ export class FnfService implements OnModuleInit {
         },
       });
     }
+    // M05: approved expense claims queued for payroll and not paid by an approved payslip yet are paid in the F&F run
+    // (the claim is marked paid when the run is paid, as for any payroll run).
+    if (f.runId) {
+      const queued = (await tx.expensePayment.findMany({ where: { organizationId: org, employeeId: f.employeeId, route: 'payroll', status: 'queued' }, select: { oneTimePayIds: true } })).flatMap((p) => p.oneTimePayIds);
+      const onSlips = queued.length ? await tx.payslipLine.findMany({ where: { organizationId: org, sourceRef: { in: queued } }, select: { sourceRef: true, payslipId: true } }) : [];
+      const approved = new Set((await tx.payslip.findMany({ where: { organizationId: org, id: { in: onSlips.map((l) => l.payslipId) }, status: 'approved' }, select: { id: true } })).map((s) => s.id));
+      const paid = new Set(onSlips.filter((l) => approved.has(l.payslipId)).map((l) => l.sourceRef));
+      await tx.oneTimePay.updateMany({
+        where: { organizationId: org, id: { in: queued.filter((x) => !paid.has(x)) }, employmentId: f.employmentId, source: 'm05', status: 'approved', runId: null, holdReason: null },
+        data: { runId: f.runId, periodStart: asDate(monthStart) },
+      });
+    }
+  }
+
+  /** The gratuity rules in force on the last day and the leaver's terms for them (fixed term, death in service). */
+  private async gratuityTerms(tx: Tx, org: string, f: Settlement, joinedOn: Date) {
+    const lwd = dateOf(f.lwd);
+    const rules = await this.rules.published();
+    const rs = inForce(rules, 'IN.SS-CODE', ['IN'], lwd) ?? inForce(rules, 'IN.GRATUITY', ['IN'], lwd);
+    if (rs?.values.kind !== 'gratuity') return null;
+    const type = await tx.employeeAssignment.findFirst({
+      where: { organizationId: org, employmentId: f.employmentId, supersededAt: null, validFrom: { lte: f.lwd } },
+      orderBy: { validFrom: 'desc' },
+      select: { employmentTypeId: true },
+    });
+    const cat = type ? (await tx.employmentType.findFirst({ where: { organizationId: org, id: type.employmentTypeId }, select: { category: true } }))?.category : null;
+    return { rs, terms: { joined: dateOf(joinedOn), lastDay: lwd, fixedTerm: cat === 'fixed_term', death: f.exitType === 'death' } };
   }
 
   /** Monthly pay on a date: gross of the plain earnings, and the gratuity wage (components flagged for it). */
@@ -268,27 +368,114 @@ export class FnfService implements OnModuleInit {
   }
 
   private async view(tx: Tx, org: string, f: Settlement) {
-    const items = await tx.oneTimePay.findMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, status: 'approved' }, orderBy: { createdAt: 'asc' } });
+    const runs = [f.runId, f.secondRunId].filter((x): x is string => !!x);
+    // The settlement's lines, and the expense claims paid in its runs.
+    const items = await tx.oneTimePay.findMany({
+      where: { organizationId: org, status: 'approved', OR: [{ source: 'fnf', sourceRef: f.id }, ...(runs.length ? [{ source: 'm05', employmentId: f.employmentId, runId: { in: runs } }] : [])] },
+      orderBy: { createdAt: 'asc' },
+    });
     const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId } }) : null;
     const slip = run
       ? await tx.payslip.findFirst({ where: { organizationId: org, runId: run.id, employmentId: f.employmentId, status: { in: ['draft', 'approved'] }, calcVersion: run.calcVersion } })
       : null;
     const net = slip?.net ?? null;
     const today = todayIst();
+    const lwd = dateOf(f.lwd);
+    const deadline = dateOf(f.deadline);
+    const slipLines = slip ? await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: slip.id }, orderBy: { position: 'asc' } }) : [];
+    // Each line says whether it is paid or recovered (a recovery is never shown as "To pay").
+    const codes = [...new Set([...items.map((i) => i.componentCode), ...slipLines.map((l) => l.componentCode)])];
+    const comps = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: codes } }, select: { code: true, kind: true, name: true, statutory: true } })).map((c) => [c.code.toLowerCase(), c]));
+    const comp = (code: string) => comps.get(code.toLowerCase());
+    const kindOf = (code: string) => (comp(code)?.kind === 'deduction' ? ('deduction' as const) : comp(code)?.kind === 'employer' ? ('employer' as const) : ('earning' as const));
+    const explain = (i: (typeof items)[number]) => {
+      const e = explained(i);
+      return { ...e, title: moneyText(e.title), how: moneyText(e.how) };
+    };
+    const explained = (i: (typeof items)[number]) => {
+      const name = comp(i.componentCode)?.name ?? i.componentCode;
+      if (i.source === 'm05') return { title: `Pending reimbursement: ${i.reason.replace(/^Expense claim: /, '')}`, how: 'An approved expense claim not paid yet: it is paid with this settlement.', auto: true };
+      if (i.reason !== WORKED_OUT) return { title: i.label ?? name, how: `Added by payroll: ${i.reason}`, auto: false };
+      if (i.componentCode === 'fnf_recovery') return { title: i.label ?? name, how: 'Recorded in the exit clearance; pulled automatically and refreshed until the run is approved.', auto: true };
+      return { title: name, how: i.label ?? name, auto: false };
+    };
+    // The payslip is current when it pays exactly the unheld lines now in the run (else the run needs recalculating).
+    const ids = new Set(items.map((i) => i.id));
+    const paidHere = new Map(slipLines.filter((l) => l.sourceRef && ids.has(l.sourceRef)).map((l) => [l.sourceRef!, l.amount]));
+    const refs = slipLines.map((l) => l.sourceRef).filter((x): x is string => !!x && UUID.test(x));
+    const gone = refs.length ? await tx.oneTimePay.count({ where: { organizationId: org, id: { in: refs }, OR: [{ status: { not: 'approved' } }, { holdReason: { not: null } }] } }) : 0;
+    const current = !!slip && gone === 0 && items.filter((i) => i.runId === run!.id && !i.holdReason).every((i) => paidHere.get(i.id)?.eq(i.amount));
+    // The payslip's own lines: salary to the last day, statutory deductions, TDS, loans (shown only while current).
+    const salary = current
+      ? slipLines
+          .filter((l) => !(l.sourceRef && ids.has(l.sourceRef)) && ['earning', 'reimbursement', 'deduction'].includes(l.kind))
+          .map((l) => {
+            const st = comp(l.componentCode)?.statutory;
+            return { code: l.componentCode, name: l.name, group: l.kind !== 'deduction' ? ('earning' as const) : st === 'tds' ? ('tds' as const) : st ? ('statutory' as const) : ('recovery' as const), amount: l.amount.toFixed(2), how: moneyText(l.explanation) };
+          })
+      : null;
+    const sum = (xs: Prisma.Decimal[]) => xs.reduce((t, x) => t.add(x), D(0));
+    const unheld = items.filter((i) => !i.holdReason);
+    const counted = salary ? unheld.filter((i) => paidHere.has(i.id)) : unheld;
+    const of = (k: 'earning' | 'deduction') => sum(counted.filter((i) => kindOf(i.componentCode) === k).map((i) => i.amount));
+    const group = (k: string) => sum((salary ?? []).filter((l) => l.group === k).map((l) => D(l.amount)));
+    const earnings = of('earning').add(group('earning'));
+    const recoveries = of('deduction').add(group('recovery'));
+    const wageLines = sum(counted.filter((i) => WAGE.includes(i.componentCode)).map((i) => i.amount)).add(sum(slipLines.filter((l) => salary && l.kind === 'earning' && !(l.sourceRef && ids.has(l.sourceRef))).map((l) => l.amount)));
+    const rounding = sum(slipLines.filter((l) => l.componentCode === 'net_rounding').map((l) => l.amount));
+    const money = (x: Prisma.Decimal) => (salary ? x.toFixed(2) : null);
+    // Working days to the deadline on the person's holiday calendar (the days lifecycle counted it with).
+    const place = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: f.employmentId, supersededAt: null, validFrom: { lte: f.lwd } }, orderBy: { validFrom: 'desc' }, select: { locationId: true } });
+    const [a, b] = today < deadline ? [today, deadline] : [deadline, today];
+    const workingDaysLeft = workingDaysUntil(today, deadline, await holidaysNear(tx, org, place?.locationId ?? null, a, b));
+    // Gratuity: the service counted, whether it is due, and by when (within 30 days of falling due, PG Act s.7(3)).
+    const em = await tx.employment.findFirst({ where: { organizationId: org, id: f.employmentId }, select: { joinedOn: true } });
+    const grat = em ? await this.gratuityTerms(tx, org, f, em.joinedOn) : null;
+    const service = grat ? serviceYears(grat.terms.joined, lwd) : null;
+    const due = grat ? gratuityDue(grat.rs, { ...grat.terms, lastWage: 0 }) : null;
     return {
       id: f.id,
       employeeId: f.employeeId,
       exitCaseId: f.exitCaseId,
       exitType: f.exitType,
-      lwd: dateOf(f.lwd),
-      deadline: dateOf(f.deadline),
-      overdue: f.status === 'open' && dateOf(f.deadline) < today && run?.status !== 'approved',
+      lwd,
+      deadline,
+      overdue: f.status === 'open' && deadline < today && run?.status !== 'approved',
+      workingDaysLeft,
       status: f.status,
       runId: f.runId,
+      runReference: run?.reference ?? null,
       runStatus: run?.status ?? null,
       secondRunId: f.secondRunId,
       net: net?.toFixed(2) ?? null,
-      items: items.map((i) => ({ id: i.id, componentCode: i.componentCode, amount: i.amount.toFixed(2), label: i.label, held: i.holdReason, inRun: i.runId, byPayroll: i.createdBy !== SYSTEM })),
+      items: items.map((i) => ({
+        id: i.id,
+        componentCode: i.componentCode,
+        kind: kindOf(i.componentCode),
+        amount: i.amount.toFixed(2),
+        label: i.label,
+        ...explain(i),
+        wage: WAGE.includes(i.componentCode),
+        claim: i.source === 'm05',
+        held: i.holdReason,
+        // The short tag for a hold the system made (lines() holds only for these two); payroll's own holds say why in full.
+        heldTag: i.holdReason && i.source === 'fnf' && i.createdBy === SYSTEM ? (i.componentCode === 'fnf_recovery' ? 'not returned yet' : 'permission needed') : null,
+        inRun: i.runId,
+        byPayroll: i.source === 'fnf' && i.createdBy !== SYSTEM,
+      })),
+      // null until the run's payslip pays exactly these lines (worked out when the run is calculated).
+      salary,
+      totals: {
+        earnings: earnings.toFixed(2),
+        wageLines: wageLines.toFixed(2),
+        recoveries: recoveries.toFixed(2),
+        tds: money(group('tds')),
+        statutory: money(group('statutory')),
+        rounding: money(rounding),
+        net: money(earnings.sub(recoveries).sub(group('tds')).sub(group('statutory')).add(rounding)),
+        held: sum(items.filter((i) => i.holdReason && kindOf(i.componentCode) === 'earning').map((i) => i.amount)).toFixed(2),
+      },
+      gratuity: service && due ? { eligible: due.eligible, years: service.completed, months: service.months % 12, counted: service.counted, minYears: due.minYears, dueBy: addDays(lwd, 30) } : null,
       // Death in service: who is paid and how much each gets of the net (accounts shown by their last four digits only).
       payees: ((f.payees as Payee[]) ?? []).map((p) => ({
         kind: p.kind,
@@ -348,6 +535,8 @@ export class FnfService implements OnModuleInit {
         const row = await tx.oneTimePay.findFirst({ where: { organizationId: org, id: x.id, source: 'fnf', sourceRef: f.id, status: 'approved' } });
         if (!row) throw new NotFoundException('Not found');
         if (firstDone && !second && row.runId) throw new ConflictException('This line was paid in the F&F run.');
+        if (x.holdReason && (WAGE.includes(row.componentCode) || (await tx.payComponent.findFirst({ where: { organizationId: org, code: row.componentCode } }))?.kind !== 'earning'))
+          throw new BadRequestException('Only a non-wage payment can be held: wage lines are due within 2 working days, and a recovery is not paid.');
         await tx.oneTimePay.update({
           where: { id: row.id },
           data: {
@@ -470,6 +659,7 @@ export class FnfService implements OnModuleInit {
           periodEnd: asDate(to),
           runType: 'offcycle',
           offcycleKind: 'fnf',
+          reference: await this.runReference(tx, org),
           preparedBy: v.userId!,
         },
       });

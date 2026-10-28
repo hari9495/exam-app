@@ -78,7 +78,11 @@ describe('Payroll batch 5b', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5B Org ${k}`, slug: `pay5b-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
@@ -296,7 +300,16 @@ describe('Payroll batch 5b', () => {
     const mine = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(mine).toMatchObject({ annualCtc: '726000.00', package: { entryMode: 'ctc' } });
     expect(mine.lines.length).toBeGreaterThan(5);
-    expect((await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body.changeId).toBe(ch.changeId);
+    // PPL-03 Pay tab (founder 22 Oct 2026): the lines the CTC counts total the header CTC; employer lines carry their basis.
+    const counted = (mine.lines as { annual: string; inCtc: boolean }[]).filter((l) => l.inCtc).reduce((s, l) => s + Number(l.annual), 0);
+    expect(Math.abs(counted - Number(mine.annualCtc))).toBeLessThan(0.5);
+    expect(mine.lines.find((l: { code: string }) => l.code === 'pf_employer')).toMatchObject({ inCtc: true, basis: '12% of ₹15,000' });
+    expect(mine.lines.find((l: { code: string }) => l.code === 'gratuity_provision')).toMatchObject({ inCtc: false });
+    const seen = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
+    expect(seen.changeId).toBe(ch.changeId);
+    // PPL-03 Pay tab: the last approved payslip and the tax regime come with the same grant (none yet here).
+    expect(seen).toMatchObject({ lastNetPay: null });
+    expect(seen).toHaveProperty('taxRegime');
     await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation`).expect(404);

@@ -15,7 +15,7 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5b.
   'statutory_registrations', 'entity_statutory_options', 'pay_groups', 'pay_group_members', 'pay_components', 'salary_templates', 'salary_template_versions', 'salary_template_lines', 'compensation_packages', 'compensation_lines', 'employee_statutory', 'establishment_coverage', 'pay_import_batches', 'opening_balances', 'as_paid_lines', 'previous_employment_income', 'payslip_layouts',
   // Batch 5c.
-  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
+  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'payroll_run_counters', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
   // Batch 5d.
   'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
   // Batch 5e.
@@ -33,7 +33,9 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5i.
   'special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
-const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
+const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines',
+  // PPL-30 share links.
+  'document_shares'];
 // M05 expenses E2: claims, their lines, the approvers' changes and the flags (§5.8).
 const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_line_changes', 'expense_flags', 'trips', 'trip_legs', 'trip_bookings', 'expense_advances', 'advance_settlements', 'expense_payments', 'expense_payout_batches', 'expense_event_receipts', 'expense_journals'];
 // M06 PM3: feedback and 1:1s (M06-BUILD-DESIGN 5.10).
@@ -50,9 +52,17 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   // M10 AT2: headcount plans.
   'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
+// People (PPL-17 buddies, PPL-30 succession): personal rows.
+const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successors',
+  // PPL-09 and PPL-10: restructures, the people they move and the continuity checklist.
+  'restructures', 'restructure_people', 'continuity_items', 'restructure_drafts',
+  // PPL-04 change drafts may hold proposed pay.
+  'employee_change_drafts',
+  // PPL-07: saved employee imports (also restricted to the person who saved them).
+  'employee_import_drafts'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
-const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
+const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
 describe('PostgreSQL row-level security (app role)', () => {
   let prisma: PrismaService;
@@ -483,7 +493,7 @@ describe('PostgreSQL row-level security (app role)', () => {
   // P01 §4.4 employee core + P06 dated facts (YX-ORG-14, YX-HIS-01/07): forced-RLS tenant tables whose
   // composite keys stop a row pointing at another company's row; dated rows come only from approved changes
   // and are never rewritten or removed by the app role.
-  const HISTORY_TABLES = ['assignment_cost_centres', 'compensations', 'employee_assignments', 'employee_changes', 'employees', 'employment_status_periods', 'employments'];
+  const HISTORY_TABLES = ['assignment_cost_centres', 'compensations', 'employee_assignments', 'employee_change_drafts', 'employee_changes', 'employees', 'employment_status_periods', 'employments'];
 
   it('the employee and history tables are forced-RLS tenant tables', async () => {
     const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
@@ -512,6 +522,7 @@ describe('PostgreSQL row-level security (app role)', () => {
         tx.employeeChange.create({ data: { organizationId: orgB, employeeId: employee.id, employmentId: employment.id, changeType: 'join', effectiveDate: day('2026-04-01'), status, payload: {}, reason: 'join', ...(status === 'effective' ? { appliedAt: new Date() } : {}) } });
       const join = await change('effective');
       const pending = await change('pending');
+      await tx.employeeChangeDraft.create({ data: { organizationId: orgB, createdBy: userB, employeeId: employee.id, changeType: 'transfer', form: {} } });
       const assignment = await tx.employeeAssignment.create({
         data: { organizationId: orgB, legalEntityId: entity.id, employeeId: employee.id, employmentId: employment.id, validFrom: day('2026-04-01'), locationId: location.id, departmentId: department.id, designationId: designation.id, employmentTypeId: type.id, changeId: join.id },
       });
@@ -676,7 +687,7 @@ describe('PostgreSQL row-level security (app role)', () => {
 
   // Access, visibility and privacy (step 2d): scoped role grants (P02 §4.2–4.3), Personal details, encrypted
   // identifiers and bank accounts (§4.4), identity / bank change requests (§4.5).
-  const ACCESS_TABLES = ['employee_bank_accounts', 'employee_identifiers', 'employee_personal_details', 'employee_profile_requests', 'role_grants'];
+  const ACCESS_TABLES = ['employee_bank_accounts', 'employee_emergency_contacts', 'employee_family_members', 'employee_identifiers', 'employee_personal_details', 'employee_profile_requests', 'role_grants'];
 
   it('the access and privacy tables are forced-RLS tenant tables', async () => {
     const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
@@ -704,7 +715,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {
@@ -718,6 +729,8 @@ describe('PostgreSQL row-level security (app role)', () => {
       const person = await tx.person.create({ data: { ...o, givenName: 'Bea' } });
       const employee = await tx.employee.create({ data: { ...o, personId: person.id, givenName: 'Bea' } });
       await tx.employeePersonalDetails.create({ data: { ...o, employeeId: employee.id, personalEmail: `bea-${tag}@b.test` } });
+      await tx.employeeFamilyMember.create({ data: { ...o, employeeId: employee.id, name: 'Ben B', relation: 'Spouse' } });
+      await tx.employeeEmergencyContact.create({ data: { ...o, employeeId: employee.id, name: 'Ben B', relation: 'Spouse', phone: '+919845022872', position: 0 } });
       await tx.employeeIdentifiers.create({ data: { ...o, employeeId: employee.id, legalName: 'Bea B', panEnc: 'x.y.z', panHash: 'a'.repeat(64), panLast4: '123F' } });
       const bank = await tx.employeeBankAccount.create({ data: { ...o, employeeId: employee.id, purpose: 'salary', holderName: 'Bea', accountEnc: 'x.y.z', accountHash: 'b'.repeat(64), accountLast4: '6789', ifsc: 'HDFC0001234', usableFrom: new Date() } });
       const request = await tx.employeeProfileRequest.create({ data: { ...o, employeeId: employee.id, kind: 'pan', proposedEnc: 'x.y.z', proposedDisplay: {}, reason: 'new PAN', requestedBy: userB } });
@@ -734,11 +747,13 @@ describe('PostgreSQL row-level security (app role)', () => {
         ...counts,
         grant: await tx.$executeRaw`UPDATE role_grants SET status = 'revoked' WHERE id = ${b.grant}::uuid`,
         personal: await tx.$executeRaw`UPDATE employee_personal_details SET personal_email = 'x@a.test' WHERE employee_id = ${b.employee}::uuid`,
+        family: await tx.$executeRaw`UPDATE employee_family_members SET name = 'Hacked' WHERE employee_id = ${b.employee}::uuid`,
+        contacts: await tx.$executeRaw`UPDATE employee_emergency_contacts SET phone = '+911111111111' WHERE employee_id = ${b.employee}::uuid`,
         ids: await tx.$executeRaw`UPDATE employee_identifiers SET legal_name = 'Hacked' WHERE employee_id = ${b.employee}::uuid`,
         request: await tx.$executeRaw`UPDATE employee_profile_requests SET status = 'approved' WHERE id = ${b.request}::uuid`,
       };
     });
-    expect(seenByA).toEqual({ ...Object.fromEntries(ACCESS_TABLES.map((t) => [t, 0])), grant: 0, personal: 0, ids: 0, request: 0 });
+    expect(seenByA).toEqual({ ...Object.fromEntries(ACCESS_TABLES.map((t) => [t, 0])), grant: 0, personal: 0, family: 0, contacts: 0, ids: 0, request: 0 });
     // B's rows cannot be planted from A, nor A's rows point at B's user, role, entity or employee, even with the bypass.
     await expect(tenantPrisma.forTenant(asA(), (tx) => tx.employeeIdentifiers.create({ data: { organizationId: orgB, employeeId: b.employee } }))).rejects.toThrow(RLS_VIOLATION);
     const a = await tenantPrisma.forTenant(asA(), async (tx) => {
@@ -752,6 +767,7 @@ describe('PostgreSQL row-level security (app role)', () => {
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.roleGrant.create({ data: { organizationId: orgA, userId: a.user, permissionProfileId: b.profile, scopeType: 'tenant', validFrom: day, status: 'active', reason: 'x' } }))).rejects.toThrow(/role_grants_profile_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.roleGrant.create({ data: { organizationId: orgA, userId: a.user, permissionProfileId: a.profile, scopeType: 'legal_entity', legalEntityId: b.entity, validFrom: day, status: 'active', reason: 'x' } }))).rejects.toThrow(/role_grants_entity_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeePersonalDetails.create({ data: { organizationId: orgA, employeeId: b.employee } }))).rejects.toThrow(/employee_personal_details_employee_fkey|Foreign key/);
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeFamilyMember.create({ data: { organizationId: orgA, employeeId: b.employee, name: 'x', relation: 'x' } }))).rejects.toThrow(/employee_family_members_employee_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeBankAccount.create({ data: { organizationId: orgA, employeeId: b.employee, purpose: 'salary', holderName: 'x', accountEnc: 'x', accountHash: 'c'.repeat(64), accountLast4: '0000', ifsc: 'HDFC0001234', usableFrom: day } }))).rejects.toThrow(/employee_bank_accounts_employee_fkey|Foreign key/);
       await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employeeProfileRequest.create({ data: { organizationId: orgA, employeeId: b.employee, kind: 'pan', proposedEnc: 'x', proposedDisplay: {}, reason: 'x', requestedBy: a.user } }))).rejects.toThrow(/employee_profile_requests_employee_fkey|Foreign key/);
     }

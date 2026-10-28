@@ -6,6 +6,8 @@ import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { ProfileService } from '../people/profile.service';
 import { DocumentsService } from '../documents/documents.service';
+import { LettersService } from '../documents/letters/letters.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService } from './portal.service';
@@ -34,6 +36,8 @@ export class JoiningService {
     private readonly portal: PreboardingPortalService,
     private readonly desk: DeskJourneysService,
     private readonly extras: OnboardingExtrasService,
+    private readonly letters: LettersService,
+    private readonly pipeline: PipelineService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -155,14 +159,16 @@ export class JoiningService {
   }
 
   /** YX-LC-12: did not join / reneged / offer withdrawn, in one audited action; nothing is deleted. */
-  async cancel(ctx: TenantContext, user: ScopeUser, id: string, dto: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason: string; version: number }) {
+  async cancel(ctx: TenantContext, user: ScopeUser, id: string, dto: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason?: string; version: number }) {
     const v = await this.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const pb = await this.joiner(tx, c, v, id, 'lifecycle.onboarding.manage');
       if (pb.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (dto.outcome === 'did_not_join' && iso(pb.joiningOn) > todayIst()) throw new BadRequestException('"Did not join" is for on or after the joining day. Before it, use reneged or offer withdrawn.');
-      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason.trim().slice(0, 500), version: { increment: 1 } } });
+      // PPL-15 (founder 27 Oct 2026): a withdrawal comes with its letter, drafted (from the joiner's planned job, so before it is cancelled) for HR to review and issue in People › Letters.
+      const letter = dto.outcome === 'withdrawn' ? await this.letters.draftIn(tx, c, pb.personId, 'offer_withdrawal', dto.reason?.trim() || null) : null;
+      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
       const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
       const tickets: string[] = [];
@@ -179,12 +185,33 @@ export class JoiningService {
       await tx.letterIssue.updateMany({ where: { organizationId: org, id: { in: pending.map((l) => l.id) } }, data: { status: 'withdrawn' } });
       await tx.signatureRequest.updateMany({ where: { organizationId: org, personId: pb.personId, status: 'open' }, data: { status: 'cancelled' } });
       if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: dto.outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
-      await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length });
+      await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome: dto.outcome } } });
-      return { tickets, org };
+      return { tickets, org, offerId: pb.offerId };
     });
     await this.desk.stopFor({ organizationId: res.org, isSuperAdmin: false } as CompanyContext, res.tickets, `The joiner's onboarding was cancelled (${dto.outcome.replace(/_/g, ' ')}).`).catch(() => undefined);
+    if (res.offerId && user.userId) await this.unwindHire(ctx, user.userId, res.offerId, dto.outcome);
     return { ok: true };
+  }
+
+  /**
+   * PPL-15 (founder 27 Oct 2026): the candidate leaves the hired (or offer) stage in Hiring, as withdrawn or reneged, which
+   * frees the headcount-plan slot (a slot counts hired candidates), and a closed requisition opens again. Through the ATS's
+   * own moves (no message goes to the candidate); a status named for the outcome in the job's pipeline is used when the
+   * company has one, else the rejected stage with the reason.
+   */
+  private async unwindHire(ctx: TenantContext, actorUserId: string, offerId: string, outcome: 'did_not_join' | 'reneged' | 'withdrawn') {
+    const found = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const offer = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { pipelineEntryId: true } });
+      const entry = offer ? await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: offer.pipelineEntryId }, include: { status: { include: { stage: true } }, job: { select: { id: true, status: true, pipelineId: true } } } }) : null;
+      if (!entry || !['hired', 'offer'].includes(entry.status?.stage.category ?? '')) return null;
+      const status = entry.job.pipelineId ? await tx.pipelineStatus.findFirst({ where: { stage: { pipelineId: entry.job.pipelineId, category: 'rejected' }, name: { contains: outcome === 'withdrawn' ? 'withdraw' : 'renege', mode: 'insensitive' } } }) : null;
+      return { entryId: entry.id, job: entry.job, statusId: status?.id ?? null };
+    });
+    if (!found) return;
+    const reason = outcome === 'withdrawn' ? 'Offer withdrawn by the company' : outcome === 'reneged' ? 'Reneged after accepting the offer' : 'Did not join';
+    await this.pipeline.patchEntry(ctx, actorUserId, found.entryId, found.statusId ? { statusId: found.statusId, reason } : { rejected: true, reason }, { skipComms: true });
+    if (found.job.status === 'closed') await this.pipeline.updateJob(ctx, actorUserId, found.job.id, { status: 'open' });
   }
 
   // ------------------------------------------------------------------------------------------ BGV (LIFE-2.03)
@@ -252,12 +279,14 @@ export class JoiningService {
       const out = [];
       for (const o of offers.filter((x) => !taken.has(x.id))) {
         const cand = await tx.candidate.findFirst({ where: { organizationId: org, id: o.candidateId }, select: { name: true, email: true, phone: true } });
-        const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: org, id: o.pipelineEntryId }, select: { job: { select: { title: true } } } });
+        const entry = await tx.pipelineEntry.findFirst({ where: { organizationId: org, id: o.pipelineEntryId }, select: { job: { select: { title: true, location: true, locationId: true } } } });
         if (!cand) continue;
+        // PPL-12: the job's place (the location master's name, else the job's free text).
+        const place = entry?.job.locationId ? (await tx.location.findFirst({ where: { organizationId: org, id: entry.job.locationId }, select: { name: true } }))?.name : null;
         const persons = await tx.person.findMany({ where: { organizationId: org, primaryEmail: cand.email, status: 'active' }, select: { id: true } });
         const emp = await tx.employee.findFirst({ where: { organizationId: org, OR: [{ personId: { in: persons.map((p) => p.id) } }, { workEmail: cand.email }] }, select: { id: true } });
         const current = emp ? await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }) : null;
-        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
+        out.push({ offerId: o.id, name: cand.name, email: cand.email, phone: cand.phone, startDate: iso(o.startDate), jobTitle: entry?.job.title ?? '', location: place ?? entry?.job.location ?? null, acceptedOn: o.respondedAt ? o.respondedAt.toISOString().slice(0, 10) : null, personType: current ? 'internal' : emp ? 'ex_employee' : 'new' });
       }
       return out;
     });

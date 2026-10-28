@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { AlertCircle, Check, ChevronDown, Circle, Clock, Lock } from 'lucide-react';
+import { AlertCircle, Ban, Check, ChevronDown, Circle, Clock, Lock } from 'lucide-react';
 import { Button, Link } from './button';
 import { Heading, Icon, type IconComponent } from './foundations';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
@@ -22,15 +22,16 @@ export function useNarrow(maxWidth = 767) {
 
 /* ------------------------------------------------------------------ Stepper (§19) */
 
-export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo';
+export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo' | 'open' | 'stopped';
 
 export interface StepperStep {
   id: string;
   title: string;
   /** One short line under the title in the step list. */
   description?: string;
-  /** Force a status. Otherwise steps before the current one are done and later ones are to do. */
-  status?: 'error' | 'locked' | 'done';
+  /** Force a status. Otherwise a step is done once passed (a later step was reached), and to do until then. */
+  /** "open": visited but not finished ("Open · 4 of 6 signed off"), never shown as Done. "stopped": the process ended before this step (a withdrawn exit); it can still be opened to read. */
+  status?: 'error' | 'locked' | 'done' | 'open' | 'stopped';
   /** Why the step is locked or what to fix: "Add company details first". */
   statusNote?: string;
   /** The fix for an error step ("Fix LWF registration"), shown as the button in its alert. */
@@ -62,8 +63,12 @@ export interface StepperProps {
   finishBlocked?: string;
   /** Why Continue can't run on the current step yet ("Upload a file first"). Disables it and says so beside it. */
   continueBlocked?: string;
-  /** Force the phone layout (stories, narrow panels). Default: below 768 px. */
-  layout?: 'auto' | 'mobile';
+  /**
+   * Force the phone layout (stories, narrow panels). Default: below 768 px.
+   * horizontal: the step list runs across the top and the wizard fills the rest of the page; a long step scrolls inside
+   * its own box with the footer in view, so the page fits without a page scroll bar (R-fit). Phone layout still applies below 1024 px.
+   */
+  layout?: 'auto' | 'mobile' | 'horizontal';
   /** Show the title as the page heading (h1) above the steps, for wizards that are the whole page. */
   showTitle?: boolean;
 }
@@ -76,6 +81,8 @@ const STATUS: Record<StepStatus, { icon: IconComponent; text: string }> = {
   error: { icon: AlertCircle, text: 'Needs changes' },
   locked: { icon: Lock, text: 'Locked' },
   todo: { icon: Circle, text: 'Not started' },
+  open: { icon: Circle, text: 'Open' },
+  stopped: { icon: Ban, text: 'Stopped' },
 };
 
 /** Vertical wizard for processes with a real order (§19): onboarding, payroll run, company setup. */
@@ -117,7 +124,7 @@ export function Stepper({
   }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusOf = (s: StepperStep, i: number): StepStatus =>
-    s.status ?? (i === index ? 'current' : i < index || i <= furthest ? 'done' : 'todo');
+    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : i < Math.max(index, furthest) ? 'done' : 'todo');
   const canOpen = (s: StepperStep, i: number) => s.status !== 'locked' && i <= Math.max(furthest, index);
   // A locked step can't be opened from the list, from Continue or from Back (B7).
   const go = (i: number) => {
@@ -148,10 +155,11 @@ export function Stepper({
               className="yx-stepper__step"
               aria-current={i === index ? 'step' : undefined}
               disabled={!canOpen(s, i)}
-              onClick={() => go(i)}
+              // Jumping forward from the list checks the current step the way Continue does; going back stays free.
+              onClick={() => (i > index && (continueBlocked || onContinue?.(step.id) === false) ? undefined : go(i))}
             >
               <span className="yx-stepper__marker">
-                {st === 'todo' || st === 'current' ? <span aria-hidden="true">{i + 1}</span> : <Icon icon={icon} />}
+                {st === 'todo' || st === 'current' || st === 'open' ? <span aria-hidden="true">{i + 1}</span> : <Icon icon={icon} />}
               </span>
               <span className="yx-stepper__text">
                 <span className="yx-stepper__title">{s.title}</span>
@@ -191,7 +199,7 @@ export function Stepper({
   );
 
   return (
-    <div className="yx-stepper" data-layout={narrow ? 'mobile' : 'desktop'}>
+    <div className="yx-stepper" data-layout={narrow ? 'mobile' : layout === 'horizontal' ? 'horizontal' : 'desktop'}>
       {showTitle && (
         <Heading level={1} className="yx-stepper__pagetitle">
           {title}
@@ -224,8 +232,9 @@ export function Stepper({
         ))}
         <footer className="yx-stepper__foot">
           {onSaveAndExit && <Button onClick={onSaveAndExit}>Save and exit</Button>}
-          <span className="yx-stepper__spacer" />
+          {/* Back on the left, so a blocked reason has room on one line next to Continue (founder, 21 Oct 2026). */}
           {index > 0 && <Button onClick={() => go(index - 1)}>Back</Button>}
+          <span className="yx-stepper__spacer" />
           {last ? (
             <>
               {finishBlocked && (

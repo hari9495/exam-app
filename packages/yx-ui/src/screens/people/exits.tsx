@@ -1,28 +1,34 @@
 // PPL-18 Resignation · PPL-19 Exit cases · PPL-20 Clearance · PPL-21 Exit interview · PPL-22 F&F calculator
 // PPL-23 Death in service · PPL-24 Absconding timeline (M01 §3.7, §3.8; YX-LC-04…23).
-import { useState } from 'react';
-import { Mail, Pause, Play, RefreshCw, Upload } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Mail, MoreHorizontal, Pause, Play, RefreshCw, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
-import { Button } from '../../components/button';
+import { Button, IconButton } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
+import { FieldRow, FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { ApprovalTimeline } from '../../components/timeline';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
 import { ConfirmDialog } from '../../components/overlay';
-import { MenuItem } from '../../components/menu';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noticeOutcome, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
-import { DueCountdown, ExplainedLines, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
+import { PayeesDialog } from './live/special';
+import type { AbscondingRow, Choice, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem, Payee, Payees } from './live/types';
+import { Segment } from './people-kit';
+import { useRun } from '../org/org-kit';
+import type { FnfSettlementView, FnfSlipLine } from '../pay/live/types-5j';
 
 /* ================================================================== PPL-18 resignation */
 
@@ -117,13 +123,13 @@ export function ResignationPhone({ today, requested = null }: { today: Date; req
 
 /* ================================================================== PPL-19 exit cases */
 
-type ExitRow = (typeof EXIT_CASES)[number];
+export type ExitRow = (typeof EXIT_CASES)[number];
 const EXIT_STAGES = ['Approval and notice', 'Clearance', 'Exit interview', 'F&F', 'Documents'];
 
 /** F&F is due 2 working days after the last working day; once the case reaches Documents it is paid. */
-function fnfState(r: ExitRow, today: Date): { text: string; late: boolean } | null {
+function fnfState(r: ExitRow, today: Date, holidays: Date[] = HOLIDAYS): { text: string; late: boolean } | null {
   if (EXIT_STAGES.indexOf(r.stage) >= EXIT_STAGES.indexOf('Documents')) return null;
-  const due = addWorkingDays(r.lwd, 2, HOLIDAYS);
+  const due = addWorkingDays(r.lwd, 2, holidays);
   const over = daysBetween(due, today);
   return over > 0 ? { text: `F&F overdue by ${over} ${over === 1 ? 'day' : 'days'}`, late: true } : { text: `F&F due ${formatDate(due)}`, late: false };
 }
@@ -139,8 +145,8 @@ function LwdCell({ date, today }: { date: Date; today: Date }) {
   );
 }
 
-function StageCell({ r, today }: { r: ExitRow; today: Date }) {
-  const fnf = fnfState(r, today);
+function StageCell({ r, today, holidays }: { r: ExitRow; today: Date; holidays?: Date[] }) {
+  const fnf = fnfState(r, today, holidays);
   return (
     <span className="yx-ppl__type">
       <Badge tone="info">{r.stage}</Badge>
@@ -150,28 +156,44 @@ function StageCell({ r, today }: { r: ExitRow; today: Date }) {
 }
 
 // PPL-19
-export function ExitCasesList({ rows, persona = 'hr', state = 'ready', today = TODAY }: { rows: ExitRow[]; persona?: Persona; state?: 'ready' | 'loading'; today?: Date }) {
+/** The live app's exit cases (design audit step 3). */
+export interface LiveExits {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  onOpen: (id: string) => void;
+  onStart?: () => void;
+  children?: ReactNode;
+}
+
+export function ExitCasesList({ rows, persona = 'hr', state: ownState = 'ready', today = TODAY, live }: { rows: ExitRow[]; persona?: Persona; state?: 'ready' | 'loading'; today?: Date; live?: LiveExits }) {
   const hr = persona === 'hr';
-  const shown = hr ? rows : rows.filter((r) => r.manager === ME.name);
+  // Live: the API already limits the list to the cases the viewer may see.
+  const shown = hr || live ? rows : rows.filter((r) => r.manager === ME.name);
+  const state = live ? (live.state === 'error' ? 'ready' : live.state) : ownState;
   const narrow = useNarrow();
   const flag = (r: ExitRow) => (r.flags ? <Badge tone={r.flagTone ?? 'warning'}>{r.flags}</Badge> : null);
   const open = (r: ExitRow) => (
-    <Button size="sm" onClick={() => {}} aria-label={`Open case for ${r.name}`}>
+    <Button size="sm" onClick={() => live?.onOpen(r.id)} aria-label={`Open case for ${r.name}`}>
       Open case
     </Button>
   );
   const cols: TableColumn<ExitRow>[] = [
     { key: 'name', header: 'Leaver', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: `${r.code} · ${r.type}` }), width: 210 },
     { key: 'lwd', header: 'Last working day', type: 'date', value: (r) => r.lwd, render: (r) => <LwdCell date={r.lwd} today={today} />, width: 160 },
-    { key: 'stage', header: 'Stage', value: (r) => EXIT_STAGES.indexOf(r.stage), render: (r) => <StageCell r={r} today={today} />, width: 170 },
+    // shortcut: live F&F due counts working days without the company's holidays; pass them if a holiday falls in the 2 days.
+    { key: 'stage', header: 'Stage', value: (r) => EXIT_STAGES.indexOf(r.stage), render: (r) => <StageCell r={r} today={today} holidays={live ? [] : undefined} />, width: 170 },
     ...(hr ? [{ key: 'manager', header: 'Manager', value: (r: ExitRow) => r.manager, width: 160, optional: true } as TableColumn<ExitRow>] : []),
     ...(hr ? [{ key: 'flags', header: 'Flags', value: (r: ExitRow) => r.flags, render: flag, width: 170 } as TableColumn<ExitRow>] : []),
   ];
   const empty = <EmptyState title="No open exits" description="Resignations and other exits appear here once raised." />;
   return (
     <PeopleFrame active="Exit cases" persona={persona}>
-      <PageHeader title="Exit cases" description="From approval and notice to clearance, exit interview, F&F and documents." actions={hr ? <Button variant="primary">Start exit</Button> : undefined} />
-      {narrow && state === 'ready' ? (
+      <PageHeader title="Exit cases" description="From approval and notice to clearance, exit interview, F&F and documents." actions={live ? (live.onStart ? <Button variant="primary" onClick={live.onStart}>Start exit</Button> : undefined) : hr ? <Button variant="primary">Start exit</Button> : undefined} />
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the exit cases" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the exit cases" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : narrow && state === 'ready' ? (
         shown.length === 0 ? (
           empty
         ) : (
@@ -183,7 +205,7 @@ export function ExitCasesList({ rows, persona = 'hr', state = 'ready', today = T
                   {r.type} · {r.code}
                 </span>
                 <LwdCell date={r.lwd} today={today} />
-                <StageCell r={r} today={today} />
+                <StageCell r={r} today={today} holidays={live ? [] : undefined} />
                 {hr && flag(r)}
                 {open(r)}
               </li>
@@ -196,15 +218,18 @@ export function ExitCasesList({ rows, persona = 'hr', state = 'ready', today = T
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
-          state={state}
+          state={state === 'loading' ? 'loading' : 'ready'}
           defaultSort={{ key: 'lwd', dir: 'asc' }}
-          onRowClick={() => {}}
+          onRowClick={(r) => live?.onOpen(r.id)}
           rowButtons={open}
-          rowActions={() => <MenuItem>Open F&F</MenuItem>}
+          // Live: F&F opens inside the case.
+          rowActions={live ? undefined : () => <MenuItem>Open F&F</MenuItem>}
+          {...(live && hr ? { onExport: exportCsv('exit-cases', shown, cols) } : {})}
           empty={empty}
-          onExport={hr ? () => {} : undefined}
+          onExport={hr && !live ? () => {} : undefined}
         />
       )}
+      {live?.children}
     </PeopleFrame>
   );
 }
@@ -227,8 +252,307 @@ const CASE_FACTS = {
   },
 };
 
+/* ------------------------------------------------------------------ PPL-19 case workspace, live (design audit step 3) */
+
+const LIVE_STATUS: Record<ExitWorkspace['status'], { label: string; tone: 'warning' | 'info' | 'success' | 'neutral' }> = {
+  submitted: { label: 'Waiting for acceptance', tone: 'warning' },
+  accepted: { label: 'Serving notice', tone: 'warning' },
+  rejected: { label: 'Not accepted', tone: 'neutral' },
+  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
+  cleared: { label: 'Cleared', tone: 'info' },
+  exited: { label: 'Exited', tone: 'neutral' },
+  closed: { label: 'Closed', tone: 'neutral' },
+};
+const LIVE_DEPT: Record<ClearanceItem['department'], string> = { manager_handover: 'Handover', it: 'IT', admin: 'Admin', finance: 'Finance', hr: 'HR', asset: 'Asset', custom: 'Other' };
+const LIVE_STEP: Record<ExitStep['status'], string> = { pending: 'Pending', held: 'Held', done: 'Done', failed: 'Failed', manual: 'Done' };
+const LIVE_WHEN: Record<ExitStep['timing'], string> = { at_lwd: 'On the last day', t0: 'After the last day', cleared: 'When cleared' };
+const isoDay = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+
+function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps; persona: Persona }) {
+  const d = p.data;
+  const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | 'withdraw' | null>(null);
+  const [signing, setSigning] = useState<ClearanceItem | null>(null);
+  const [manual, setManual] = useState<ExitStep | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  if (p.state !== 'ready' || !d)
+    return (
+      <PeopleFrame active="Exit cases" persona={persona}>
+        {p.state === 'error' ? (
+          <ErrorState title="We couldn't load this exit" description="Check your connection and try again." onRetry={p.onRetry} />
+        ) : p.state === 'no-access' ? (
+          <EmptyState title="Not found" description="This exit doesn't exist or you can't open it." action={<Button onClick={p.onBack}>All exit cases</Button>} />
+        ) : (
+          <ListSkeleton label="Loading the exit" />
+        )}
+      </PeopleFrame>
+    );
+  const today = isoDay(p.today);
+  const first = d.name.split(' ')[0];
+  const lwd = isoDay(d.lastDay);
+  const steps = p.steps ?? [];
+  const letters = steps.filter((s) => /letter/i.test(s.label));
+  const deprov = steps.filter((s) => !/letter/i.test(s.label));
+  const done = d.clearance.filter((c) => c.status !== 'open').length;
+  const fnfDue = p.handoff?.current ? isoDay(p.handoff.current.wagesDueBy) : addWorkingDays(lwd, 2, []);
+  const fnfLate = daysBetween(fnfDue, today) > 0 && !p.handoff?.settledOutside;
+  const canSign = d.can.manage && ['accepted', 'cleared'].includes(d.status);
+  // HR undoes an exit HR started, up to and on the last working day like an employee's resignation (the server also refuses once the F&F is finalised).
+  const canWithdraw = Boolean(p.onWithdraw) && d.can.manage && d.initiatedBy === 'company' && ['submitted', 'accepted', 'cleared'].includes(d.status) && lwd >= today;
+  // A withdrawn exit: the steps after approval did not finish and never will.
+  const stopped = d.status === 'withdrawn' ? { status: 'stopped' as const, statusNote: 'exit withdrawn' } : {};
+  const current = d.status === 'submitted' || d.status === 'withdrawn' ? 'approval' : d.status === 'accepted' && d.clearance.some((c) => c.status === 'open') ? 'clearance' : d.status === 'accepted' && d.interview === 'sent' ? 'interview' : d.status === 'exited' || d.status === 'closed' ? 'documents' : 'fnf';
+  const stepRow = (s: ExitStep): ChecklistRow => ({
+    id: s.handler,
+    title: s.label,
+    owner: LIVE_WHEN[s.timing],
+    status: LIVE_STEP[s.status],
+    note: s.status === 'manual' ? 'Done by hand' : (s.lastError ?? undefined),
+    action:
+      (s.status === 'failed' || s.status === 'pending') && (p.onRetryStep || p.onStepDone) ? (
+        <>
+          {p.onRetryStep && (
+            <Button
+              size="sm"
+              icon={RefreshCw}
+              loading={retrying === s.handler}
+              onClick={async () => {
+                setRetrying(s.handler);
+                try {
+                  await p.onRetryStep!(s);
+                } finally {
+                  setRetrying(null);
+                }
+              }}
+            >
+              Retry
+            </Button>
+          )}
+          {p.onStepDone && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setNote('');
+                setTried(false);
+                setManual(s);
+              }}
+            >
+              Done by hand
+            </Button>
+          )}
+        </>
+      ) : undefined,
+  });
+  const flags = d.hr ? Object.entries(d.hr.openCaseFlags) : [];
+  return (
+    <PeopleFrame active="Exit cases" persona={persona}>
+      <ObjectHeader
+        name={`${d.name} · ${d.typeLabel.toLowerCase()}`}
+        avatarName={d.name}
+        person
+        secondary={`${d.employeeCode ? `${d.employeeCode} · ` : ''}submitted ${formatDate(isoDay(d.submittedOn))} · last working day ${formatDate(lwd)}`}
+        status={<Badge tone={LIVE_STATUS[d.status].tone}>{LIVE_STATUS[d.status].label}</Badge>}
+        facts={[
+          ...(d.initiatedBy === 'employee' ? [{ label: 'Notice', value: d.noticeLabel }] : []),
+          ...(d.hr ? [{ label: 'Backfill', value: d.hr.backfillRequested ? 'Asked for' : 'Not asked for' }, { label: 'Rehire eligible', value: d.hr.rehireEligible === null ? 'Not decided' : d.hr.rehireEligible ? 'Yes' : 'No' }, { label: 'Regretted exit', value: d.hr.regretted === null ? 'Not decided' : d.hr.regretted ? 'Yes (HR only)' : 'No (HR only)' }] : []),
+        ]}
+        // Message: no messaging in the live app yet (left out).
+        actions={
+          <>
+            {d.journeyId && (
+              <Button asChild>
+                <a href={p.checklistHref(d.journeyId)}>Offboarding checklist</a>
+              </Button>
+            )}
+            {d.can.manage && d.status === 'accepted' && !d.pendingChange && <Button onClick={() => setAsk('notice')}>Change last day</Button>}
+            {canWithdraw && <Button onClick={() => setAsk('withdraw')}>Withdraw exit</Button>}
+          </>
+        }
+      />
+      {d.lettersHeld && d.hr && (
+        <InlineAlert tone="warning" title="Relieving and experience letters are held">
+          {d.hr.holdReason ?? 'HR holds the letters.'} F&F wage lines still go out within 2 working days.
+        </InlineAlert>
+      )}
+      {d.status === 'withdrawn' && (
+        <InlineAlert tone="info" title="This exit was withdrawn">
+          {d.withdrawalReason ?? `${first} stays with the company.`}
+        </InlineAlert>
+      )}
+      {d.pendingChange && (
+        <InlineAlert tone="info" title={d.pendingChange.kind === 'withdrawal' ? 'Withdrawal waiting for a decision' : 'A new last day is waiting for approval'}>
+          {d.pendingChange.lwd ? `Asked for ${formatDate(isoDay(d.pendingChange.lwd))}.` : 'The manager and HR decide.'}
+        </InlineAlert>
+      )}
+      <Stepper
+        title="Exit case"
+        defaultCurrent={current}
+        finishLabel="Close exit case"
+        finishBlocked="Payroll closes the case once the F&F is settled."
+        steps={[
+          {
+            id: 'approval',
+            title: 'Approval and notice',
+            ...(d.status === 'withdrawn' ? { status: 'done' as const } : {}),
+            summary: d.status === 'submitted' ? 'Waiting for the manager and HR' : `Accepted · last working day ${formatDate(lwd)}`,
+            content: (
+              <div className="yx-ppl__stack">
+                <dl className="yx-ppl__dl">
+                  <div className="yx-ppl__dl-row"><dt>Started</dt><dd>{formatDate(isoDay(d.submittedOn))}</dd></div>
+                  {d.initiatedBy === 'employee' && <div className="yx-ppl__dl-row"><dt>Notice</dt><dd>{d.noticeLabel}</dd></div>}
+                  <div className="yx-ppl__dl-row"><dt>Last working day</dt><dd>{formatDate(lwd)}</dd></div>
+                  {d.reasonText && <div className="yx-ppl__dl-row"><dt>Reason</dt><dd>{d.reasonText}</dd></div>}
+                </dl>
+                {d.noticeArrangement?.map((a, i) => (
+                  <Text key={i} tone="secondary" size="sm" as="p">
+                    {`${a.kind === 'early_release' ? 'Early release' : a.kind === 'buyout' ? `Buy-out (${a.buyoutDays} days, paid by the ${a.buyoutBy})` : 'New last day'}: ${formatDate(isoDay(a.from))} → ${formatDate(isoDay(a.to))}. ${a.reason}`}
+                  </Text>
+                ))}
+              </div>
+            ),
+          },
+          {
+            id: 'clearance',
+            title: 'Clearance',
+            // Items still open: the step stays "Open · 4 of 6 signed off", never "Done" because it was visited.
+            ...(d.clearance.length && done < d.clearance.length ? { status: 'open' as const, statusNote: `${done} of ${d.clearance.length} signed off` } : {}),
+            ...stopped,
+            summary: d.clearance.length ? `${done} of ${d.clearance.length} signed off` : 'Starts when the exit is accepted',
+            content: d.clearance.length ? (
+              <StatusChecklist
+                label="Clearance"
+                rows={d.clearance.map(
+                  (c): ChecklistRow => ({
+                    id: c.id,
+                    title: `${LIVE_DEPT[c.department]}: ${c.title}`,
+                    owner: c.owner,
+                    status: c.status === 'cleared' ? 'Done' : c.status === 'waived' ? 'Skipped' : 'Pending',
+                    note: c.recoveryAmount ? `Recovery ${formatINR(Number(c.recoveryAmount))} to F&F${c.recoveryReason ? ` · ${c.recoveryReason}` : ''}` : (c.note ?? undefined),
+                    action: canSign && c.status === 'open' ? <Button size="sm" onClick={() => setSigning(c)}>Sign off</Button> : undefined,
+                  }),
+                )}
+              />
+            ) : (
+              <Text as="p">Clearance starts when the exit is accepted.</Text>
+            ),
+          },
+          {
+            id: 'interview',
+            title: 'Exit interview',
+            ...stopped,
+            summary: d.interview === 'submitted' ? 'Done' : d.interview === 'sent' ? `Sent to ${first}, not done yet` : d.interview === 'skipped' ? 'Skipped' : 'Not sent',
+            content: (
+              <div className="yx-ppl__stack">
+                <Text as="p">{d.interview === 'submitted' ? `${first} answered the exit interview.` : d.interview === 'sent' ? `${first} has the exit interview and has not answered yet.` : d.interview === 'skipped' ? 'The exit interview was skipped.' : `No exit interview for this ${d.typeLabel.toLowerCase()}.`}</Text>
+                {d.can.interview && d.interview === 'submitted' && (
+                  <div>
+                    <Button onClick={() => setAsk('interview')}>Open interview</Button>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: 'fnf',
+            title: 'F&F',
+            ...stopped,
+            summary: d.status === 'withdrawn' ? 'No F&F' : p.handoff?.settledOutside ? `Settled outside on ${formatDate(isoDay(p.handoff.settledOutside.on))}` : `Due ${formatDate(fnfDue)}`,
+            content: d.status === 'withdrawn' ? (
+              <Text as="p">No F&amp;F: the exit was withdrawn, so {first} stays and is paid in the regular payroll.</Text>
+            ) : (
+              <div className="yx-ppl__stack">
+                {p.handoff?.settledOutside ? null : fnfLate ? (
+                  <InlineAlert tone="danger" title={`F&F was due ${formatDate(fnfDue)}`}>
+                    Pay it now; the law allows 2 working days after the last working day.
+                  </InlineAlert>
+                ) : (
+                  <Text as="p">Due {formatDate(fnfDue)}, 2 working days after the last working day.</Text>
+                )}
+                {p.handoff && <HandoffCard h={p.handoff} today={p.today} onSettled={p.onSettledOutside} />}
+              </div>
+            ),
+          },
+          {
+            id: 'documents',
+            title: 'Documents',
+            summary: d.lettersHeld ? 'Letters held' : 'Relieving and experience letters',
+            status: d.lettersHeld ? 'locked' : undefined,
+            statusNote: d.lettersHeld ? 'Held by HR' : undefined,
+            ...stopped,
+            content: letters.length ? (
+              <StatusChecklist label="Exit documents" rows={letters.map(stepRow)} />
+            ) : (
+              <Text as="p">{d.lettersHeld ? 'The relieving and experience letters are held by HR.' : 'The relieving and experience letters are made after the last working day.'}</Text>
+            ),
+          },
+        ]}
+      />
+      <div className="yx-ppl__grid2">
+        <Card title="Deprovisioning">
+          {deprov.length ? <StatusChecklist label="Deprovisioning" rows={deprov.map(stepRow)} /> : <Text as="p" className="yx-ppl__muted">{p.steps ? 'The steps run on and after the last working day.' : 'HR sees the deprovisioning steps.'}</Text>}
+        </Card>
+        <Card title="Open cases and holds" actions={d.can.confidential && d.hr ? <Button size="sm" onClick={() => setAsk('hr')}>Edit</Button> : undefined}>
+          {d.hr ? (
+            flags.length || d.lettersHeld ? (
+              <ul className="yx-ppl__successors">
+                {flags.map(([k, v]) => (
+                  <li key={k}>
+                    <span>{k.toUpperCase() === 'POSH' ? 'POSH case' : `${k[0].toUpperCase()}${k.slice(1)}`}</span>
+                    <Badge tone="warning">{v.replace(/_/g, ' ')}</Badge>
+                  </li>
+                ))}
+                <li>
+                  <span>Letters</span>
+                  <Badge tone={d.lettersHeld ? 'warning' : 'success'}>{d.lettersHeld ? 'Held' : 'Not held'}</Badge>
+                </li>
+              </ul>
+            ) : (
+              <Text as="p">No open cases or plans. Nothing is held.</Text>
+            )
+          ) : (
+            <Text as="p" className="yx-ppl__muted">HR handles case checks for exits.</Text>
+          )}
+        </Card>
+      </div>
+      {ask === 'notice' && <NoticeDialog d={d} today={p.today} onClose={() => setAsk(null)} onNotice={p.onNotice} />}
+      {ask === 'withdraw' && p.onWithdraw && (
+        <WithdrawExitDialog
+          name={d.name}
+          approvalPending={d.status === 'submitted'}
+          onClose={() => setAsk(null)}
+          onWithdraw={p.onWithdraw}
+        />
+      )}
+      {ask === 'hr' && d.hr && <HrFactsDialog d={d} onClose={() => setAsk(null)} onSave={p.onHrFacts} />}
+      {ask === 'interview' && <InterviewDialog onClose={() => setAsk(null)} load={p.onInterview} onNotes={p.onInterviewNotes} />}
+      {signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={p.onSignOff} />}
+      {manual && p.onStepDone && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setManual(null)}
+          title={`${manual.label}: done by hand?`}
+          consequence="Say what you did. It is kept on the record."
+          confirmLabel="Mark done"
+          onConfirm={async () => {
+            setTried(true);
+            if (note.trim().length < 3) return false;
+            await p.onStepDone!(manual, note.trim());
+            setManual(null);
+          }}
+        >
+          <FormField id="xs-note" label="What you did" required error={tried && note.trim().length < 3 ? 'Enter what you did, at least 3 characters.' : null}>
+            <TextArea value={note} onChange={setNote} rows={2} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </PeopleFrame>
+  );
+}
+
 // PPL-19 · case workspace
-export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', variant = 'standard', today }: { persona?: Persona; current?: string; variant?: 'standard' | 'held'; today: Date }) {
+export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', variant = 'standard', today, live }: { persona?: Persona; current?: string; variant?: 'standard' | 'held'; today: Date; live?: ExitCaseScreenProps }) {
+  if (live) return <LiveExitCaseWorkspace live={live} persona={persona} />;
   const hr = persona === 'hr';
   const held = variant === 'held';
   const name = held ? 'Neha Ghosh' : MEERA.name;
@@ -356,35 +680,69 @@ export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', varia
 
 type Clear = (typeof CLEARANCE)[number];
 
+/** The live app's clearance (design audit step 3): sign-offs for leavers that I or my team own. */
+export interface LiveClearance {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  rows: MyClearanceItem[];
+  onSignOff: ExitCaseScreenProps['onSignOff'];
+}
+
 // PPL-20
-export function ClearanceSignoffs({ owner }: { owner?: string }) {
-  const rows = owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
-  const cols: TableColumn<Clear>[] = [
-    { key: 'dept', header: 'Department', value: (r) => r.dept, width: 190 },
-    { key: 'item', header: 'Items', value: (r) => r.item, width: 320 },
-    { key: 'owner', header: 'Owner', type: 'person', value: (r) => r.owner, person: (r) => ({ name: r.owner }), width: 200 },
+export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: LiveClearance }) {
+  const [signing, setSigning] = useState<MyClearanceItem | null>(null);
+  const [all, setAll] = useState(false);
+  type Row = Clear & { person?: string; lastDay?: Date };
+  const liveRows: Row[] = (live?.rows ?? [])
+    .filter((r) => all || r.status === 'open')
+    .map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.title, status: r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : 'Pending', recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
+  const rows: Row[] = live ? liveRows : owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
+  const cols: TableColumn<Row>[] = [
+    ...(live ? [{ key: 'person', header: 'Leaver', type: 'person', value: (r: Row) => r.person ?? '', person: (r: Row) => ({ name: r.person ?? '', secondary: r.lastDay ? `Last day ${formatDate(r.lastDay)}` : undefined }), width: 210 } as TableColumn<Row>] : []),
+    { key: 'dept', header: 'Department', value: (r) => r.dept, width: live ? 130 : 190 },
+    { key: 'item', header: 'Items', value: (r) => r.item, ...(live ? { render: (r: Row) => <span className="yx-ppl__type"><span>{r.item}</span><span className="yx-ppl__sub">{r.owner}</span></span> } : {}), width: 320 },
+    // Live: the owner is you or your team, shown under the item instead of its own column.
+    ...(live ? [] : [{ key: 'owner', header: 'Owner', type: 'person', value: (r: Row) => r.owner, person: (r: Row) => ({ name: r.owner }), width: 200 } as TableColumn<Row>]),
     { key: 'recovery', header: 'Recovery', type: 'money', value: (r) => r.recovery, total: 'sum', width: 130 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Blocked' ? 'danger' : 'warning'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Blocked' ? 'danger' : v === 'Waived' ? 'neutral' : 'warning'), width: 120 },
   ];
   const open = CLEARANCE.filter((c) => c.status !== 'Done').length;
+  const liveOpen = (live?.rows ?? []).filter((r) => r.status === 'open').length;
   return (
-    <PeopleFrame active="Clearance" persona={owner ? 'mgr' : 'hr'}>
-      <PageHeader title={owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'} description={`Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`} />
-      {!owner && <InlineAlert tone="warning">{open} of {CLEARANCE.length} sign-offs open. Finance is blocked on an unclaimed advance of {formatINR(5000)}.</InlineAlert>}
-      <DataTable
-        label="Clearance sign-offs"
-        columns={cols}
-        rows={rows}
-        getRowId={(r) => r.id}
-        rowButtons={(r) => (r.status === 'Done' ? null : <Button size="sm">Sign off</Button>)}
-        rowActions={() => (
-          <>
-            <MenuItem>Add recovery</MenuItem>
-            <MenuItem>Add note</MenuItem>
-          </>
-        )}
-        empty={<EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
+    <PeopleFrame active="Clearance" persona={owner || live ? 'mgr' : 'hr'}>
+      <PageHeader
+        title={live ? 'Clearance: your sign-offs' : owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'}
+        description={live ? `${liveOpen} ${liveOpen === 1 ? 'sign-off is' : 'sign-offs are'} open for people leaving that you or your team look after. Open items block F&F finalisation, not the exit itself.` : `Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`}
       />
+      {!owner && !live && <InlineAlert tone="warning">{open} of {CLEARANCE.length} sign-offs open. Finance is blocked on an unclaimed advance of {formatINR(5000)}.</InlineAlert>}
+      {live && (
+        <Segment label="Show" value={all ? 'all' : 'open'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />
+      )}
+      {live?.state === 'error' ? (
+        <ErrorState title="We couldn't load your sign-offs" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <DataTable
+          label="Clearance sign-offs"
+          columns={cols}
+          rows={rows}
+          getRowId={(r) => r.id}
+          state={live?.state === 'loading' ? 'loading' : 'ready'}
+          rowButtons={(r) => (r.status !== 'Pending' && r.status !== 'Blocked' ? null : <Button size="sm" onClick={live ? () => setSigning(live.rows.find((x) => x.id === r.id) ?? null) : undefined}>Sign off</Button>)}
+          // Live: a recovery and a note are part of the sign-off.
+          rowActions={
+            live
+              ? undefined
+              : () => (
+                  <>
+                    <MenuItem>Add recovery</MenuItem>
+                    <MenuItem>Add note</MenuItem>
+                  </>
+                )
+          }
+          empty={<EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
+        />
+      )}
+      {live && signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={live.onSignOff} />}
     </PeopleFrame>
   );
 }
@@ -508,8 +866,366 @@ export function fnfLinesFor(variant: FnfVariant): FnfLine[] {
   ];
 }
 
+const EXIT: Record<string, string> = { resignation: 'Resignation', termination: 'Termination', retrenchment: 'Retrenchment', death: 'Death in service', retirement: 'Retirement', end_of_contract: 'End of contract', absconding: 'Absconding', probation_termination: 'Probation not confirmed', vrs: 'Voluntary retirement' };
+const RUN_STATUS: Record<string, string> = { draft: 'Draft', reopened: 'Draft', calculating: 'Calculating', calculated: 'Calculated', submitted: 'Pending approval', in_review: 'Pending approval', approved: 'Approved', paid: 'Paid', void: 'Void' };
+// Lines payroll can add on a settlement (FNF_COMPONENTS in the API); the company's other components are added in Pay inputs.
+const ADDABLE = [
+  { value: 'fnf_recovery', label: 'Settlement recovery' },
+  { value: 'notice_pay', label: 'Notice pay' },
+  { value: 'leave_encashment', label: 'Leave encashment' },
+  { value: 'gratuity', label: 'Gratuity' },
+  { value: 'deduction_refund', label: 'Refund of over-deducted contributions' },
+];
+const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
+const amountOf = (s: string | null) => (s === null ? 0 : Number(s));
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/** The live app's F&F settlements (PPL-22): the designed calculator, one settlement at a time, with its real actions. */
+export interface LiveFnf {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  settlements: FnfSettlementView[];
+  nameOf: (employeeId: string) => string;
+  /** payroll.fnf.manage edits lines; payroll.notice.waive waives a notice (5j-D2); payroll.run.prepare calculates and submits the run. */
+  can: { manage: boolean; waiveNotice: boolean; prepare: boolean };
+  onOpenRun: (runId: string) => void;
+  onRecalculate: (s: FnfSettlementView) => Promise<unknown>;
+  onSubmit: (s: FnfSettlementView) => Promise<unknown>;
+  onHold: (s: FnfSettlementView, itemId: string, holdReason: string | null, reason: string) => Promise<unknown>;
+  onAdd: (s: FnfSettlementView, line: { componentCode: string; amount: string; label: string }, reason: string) => Promise<unknown>;
+  onWaiveNotice: (s: FnfSettlementView, reason: string) => Promise<unknown>;
+  onSecondRun: (s: FnfSettlementView) => Promise<{ runId: string }>;
+}
+
+/** Settlement lines and the run's payslip lines as the designed explained lines. */
+function liveLines(s: FnfSettlementView, lwd: Date) {
+  const items = s.items.map((i): FnfLine & { group: string } => ({
+    id: i.id,
+    group: i.kind === 'deduction' ? 'recovery' : i.kind,
+    kind: i.kind === 'deduction' ? 'recovery' : 'earning',
+    label: i.title,
+    amount: amountOf(i.amount),
+    how: i.how,
+    auto: i.auto || undefined,
+    wage: i.wage || undefined,
+    held: !!i.held || undefined,
+    heldTag: i.held ? (i.heldTag ? `Held: ${i.heldTag}` : 'Held') : undefined,
+    heldReason: i.held ?? undefined,
+    byPayroll: i.byPayroll || undefined,
+  }));
+  const slip = s.salary ?? [];
+  const pay = slip.filter((l) => l.group === 'earning');
+  // Salary to the last day is one line, explained component by component; until the run is calculated it has no amount.
+  const salary: FnfLine = {
+    id: 'salary',
+    kind: 'earning',
+    label: `Salary to the last working day (${formatDate(lwd)})`,
+    amount: pay.reduce((t, l) => t + amountOf(l.amount), 0),
+    how: s.salary ? pay.map((l) => `${l.name} ${formatINR(amountOf(l.amount))}: ${l.how}`).join(' ') : 'Worked out from attendance to the last day when the F&F run is calculated.',
+    wage: true,
+  };
+  const slipLine = (k: FnfSlipLine['group'], kind: FnfLine['kind']) => slip.filter((l) => l.group === k).map((l, n): FnfLine => ({ id: `${k}-${n}`, kind, label: l.name, amount: amountOf(l.amount), how: l.how }));
+  // As the design: only TDS is under Tax; PF, ESI, PT and LWF are statutory deductions of their own.
+  const tax: FnfLine[] = s.salary ? slipLine('tds', 'tax') : [{ id: 'tds', kind: 'tax', label: 'TDS on final income', amount: 0, how: 'Worked out on the final income for the year when the F&F run is calculated.' }];
+  return {
+    earnings: [salary, ...items.filter((l) => l.group === 'earning')],
+    recoveries: [...items.filter((l) => l.group === 'recovery'), ...slipLine('recovery', 'recovery')],
+    tax,
+    statutory: slipLine('statutory', 'tax'),
+    employer: items.filter((l) => l.group === 'employer'),
+  };
+}
+
+function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'hold'; itemId: string } | { kind: 'waive' } | { kind: 'add' } | null>(null);
+  const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
+  const [line, setLine] = useState<{ componentCode: string | null; amount: string; label: string }>({ componentCode: null, amount: '', label: '' });
+  const { busy, error, run } = useRun();
+  const s = live.settlements.find((x) => x.id === pick) ?? live.settlements[0];
+  const frame = (body: ReactNode) => <PeopleFrame active="F&F">{body}</PeopleFrame>;
+  if (live.state === 'no-access') return frame(<NoAccessState what="the full and final settlements" grantedBy="your payroll admin" />);
+  if (live.state === 'error') return frame(<ErrorState title="We couldn't load the settlements" description="Check your connection and try again." onRetry={live.onRetry} />);
+  if (live.state === 'loading') return frame(<ListSkeleton label="Loading settlements" />);
+  if (!s)
+    return frame(
+      <>
+        <PageHeader title="Full and final settlements" description="A settlement is made when an exit is accepted, with the deadline of two working days after the last day." />
+        <EmptyState title="No settlements" description="A settlement appears here when an exit is accepted." />
+      </>,
+    );
+  const who = live.nameOf(s.employeeId);
+  const first = who.split(' ')[0];
+  const lwd = isoDay(s.lwd);
+  const t = s.totals;
+  const lines = liveLines(s, lwd);
+  const editable = s.status === 'open' && live.can.manage;
+  // As the API: lines change while the run is not submitted for approval; the run is calculated from draft or calculated.
+  const runOpen = !s.runStatus || ['draft', 'calculated', 'in_review', 'reopened'].includes(s.runStatus);
+  const canCalc = ['draft', 'calculated', 'reopened'].includes(s.runStatus ?? '');
+  const firstDone = s.runStatus === 'approved' || s.runStatus === 'paid';
+  const held = amountOf(t.held);
+  const net = t.net === null ? null : amountOf(t.net);
+  const netLabel = net !== null && net < 0 ? 'Net recoverable' : 'Net payable';
+  const pending = 'Worked out when the run is calculated';
+  const g = s.gratuity;
+  const item = (id: string) => s.items.find((i) => i.id === id);
+  const lineAction = (l: FnfLine) => {
+    const i = item(l.id);
+    if (!i || i.claim || !editable) return null;
+    if (i.held)
+      return (
+        <Button size="sm" loading={busy === `release-${i.id}`} onClick={() => void run(`release-${i.id}`, () => live.onHold(s, i.id, null, 'Released for payment'))}>
+          Release
+        </Button>
+      );
+    // Only a non-wage payment may wait (gratuity, reimbursements): wage lines are due in 2 working days, and a recovery is not paid.
+    if (firstDone || !runOpen || i.kind !== 'earning' || i.wage) return null;
+    return (
+      <Button
+        size="sm"
+        onClick={() => {
+          setWhy('');
+          setTried(false);
+          setDialog({ kind: 'hold', itemId: i.id });
+        }}
+      >
+        Hold
+      </Button>
+    );
+  };
+  const more = [
+    s.runId && live.can.manage && <MenuItem key="run" onSelect={() => live.onOpenRun(s.runId!)}>Open F&F run</MenuItem>,
+    s.secondRunId && <MenuItem key="second" onSelect={() => live.onOpenRun(s.secondRunId!)}>Open second run</MenuItem>,
+    editable && firstDone && !s.secondRunId && (
+      <MenuItem key="make" onSelect={() => void run('second', async () => live.onOpenRun((await live.onSecondRun(s)).runId))}>
+        Make second run
+      </MenuItem>
+    ),
+    editable && (runOpen || firstDone) && (
+      <MenuItem
+        key="add"
+        onSelect={() => {
+          setWhy('');
+          setTried(false);
+          setLine({ componentCode: null, amount: '', label: '' });
+          setDialog({ kind: 'add' });
+        }}
+      >
+        Add a line
+      </MenuItem>
+    ),
+    s.status === 'open' && live.can.waiveNotice && s.exitType === 'resignation' && !s.noticeWaived && !firstDone && (
+      <MenuItem
+        key="waive"
+        onSelect={() => {
+          setWhy('');
+          setTried(false);
+          setDialog({ kind: 'waive' });
+        }}
+      >
+        Waive notice recovery
+      </MenuItem>
+    ),
+  ].filter(Boolean);
+  const lineOk = !!line.componentCode && MONEY.test(line.amount) && Number(line.amount) > 0 && line.label.trim().length >= 3 && why.trim().length >= 5;
+  return frame(
+    <>
+      {live.settlements.length > 1 && (
+        <div className="yx-ppl__row">
+          <span className="yx-ppl__head-select">
+            <Select aria-label="Settlement for" size="sm" value={s.id} onChange={(v) => setPick(v)} options={live.settlements.map((x) => ({ value: x.id, label: `${live.nameOf(x.employeeId)} · ${EXIT[x.exitType] ?? x.exitType}` }))} />
+          </span>
+        </div>
+      )}
+      <ObjectHeader
+        name={`F&F · ${who}`}
+        avatarName={who}
+        person
+        secondary={`${EXIT[s.exitType] ?? s.exitType} · last working day ${formatDate(lwd)}${s.runReference ? ` · off-cycle run ${s.runReference}` : ''}`}
+        // A calculated run whose lines changed since has no current payslip: it needs recalculating before approval.
+        status={<StatusBadge status={s.status === 'settled' ? 'Settled' : s.overdue ? 'Overdue' : s.runStatus === 'calculated' && !s.salary ? 'Needs recalculating' : (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft')} />}
+        actions={
+          <>
+            {live.can.prepare && s.runId && (
+              <Button icon={RefreshCw} disabled={!canCalc} loading={busy === 'calc'} onClick={() => void run('calc', () => live.onRecalculate(s))}>
+                Recalculate
+              </Button>
+            )}
+            {live.can.prepare && s.runId && (
+              <Button variant="primary" disabled={s.runStatus !== 'calculated' || !s.salary} loading={busy === 'submit'} onClick={() => void run('submit', () => live.onSubmit(s))}>
+                Send for approval
+              </Button>
+            )}
+            {more.length > 0 && (
+              <Menu>
+                <MenuTrigger asChild>
+                  <IconButton icon={MoreHorizontal} label="More settlement actions" />
+                </MenuTrigger>
+                <MenuContent align="end">{more}</MenuContent>
+              </Menu>
+            )}
+          </>
+        }
+      />
+      {error && <InlineAlert tone="danger" title="This didn't go through">{error}</InlineAlert>}
+      <div className="yx-ppl__row">
+        {s.status === 'open' && !firstDone && <DueCountdown due={isoDay(s.deadline)} today={today} left={s.workingDaysLeft} label="Wages due on exit by" />}
+        {g && (
+          <Text size="sm" tone="secondary">
+            {s.exitType === 'death'
+              ? `Gratuity: due on death in service whatever the length of service. Due within 30 days, by ${formatDate(isoDay(g.dueBy))}.`
+              : g.eligible
+                ? `Gratuity: ${plural(g.years, 'year')} ${plural(g.months, 'month')} counts as ${plural(g.counted, 'year')}${g.counted > g.years ? ' (6 months or more rounds up)' : ''}. Due within 30 days, by ${formatDate(isoDay(g.dueBy))}.`
+                : `Gratuity: not due. ${plural(g.years, 'year')} ${plural(g.months, 'month')} of service; gratuity needs ${plural(g.minYears, 'year')}.`}
+          </Text>
+        )}
+      </div>
+      {s.overdue && (
+        <InlineAlert tone="danger" title="Wages on exit are overdue" actions={s.runId && live.can.manage ? <Button size="sm" variant="primary" onClick={() => live.onOpenRun(s.runId!)}>Pay wage lines now ({formatINR(amountOf(t.wageLines))})</Button> : undefined}>
+          The Code on Wages needs them paid within 2 working days of the last working day. Open clearance items don't move the date. Pay the wage lines now in the F&F run and hold the rest for a second run.
+        </InlineAlert>
+      )}
+      {held > 0 && (
+        <InlineAlert tone="warning" title="Part of this F&F is held">
+          Wage lines can't be held beyond the legal deadline. Pay them now; the held lines wait until they are released and are paid in a second run.
+        </InlineAlert>
+      )}
+      {s.noticeWaived && <InlineAlert tone="info" title="Notice recovery waived">{s.noticeWaived.reason}</InlineAlert>}
+      <div className="yx-ppl__split yx-ppl__split--aside-first">
+        <div className="yx-ppl__stack">
+          {held > 0 ? (
+            <div className="yx-ppl__stack">
+              <div className="yx-ppl__total">
+                <span>Pay now</span>
+                <strong>{net === null ? '—' : formatINR(net)}</strong>
+              </div>
+              <div className="yx-ppl__total">
+                <span>Held back</span>
+                <strong>{formatINR(held)}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="yx-ppl__total">
+              <span>{netLabel}</span>
+              <strong>{net === null ? '—' : formatINR(Math.abs(net))}</strong>
+            </div>
+          )}
+          {net === null && <Text size="sm" tone="secondary" as="p">{`${pending}: salary to the last day, TDS and the net.`}</Text>}
+          <Card title="Totals">
+            <dl className="yx-ppl__sum-rows">
+              <div><dt>Earnings</dt><dd>{formatINR(amountOf(t.earnings))}</dd></div>
+              <div data-sub><dt>of which wage lines</dt><dd>{formatINR(amountOf(t.wageLines))}</dd></div>
+              <div><dt>Recoveries</dt><dd>{formatINR(amountOf(t.recoveries))}</dd></div>
+              <div><dt>TDS</dt><dd>{t.tds === null ? '—' : formatINR(amountOf(t.tds))}</dd></div>
+              {amountOf(t.statutory) !== 0 && <div><dt>Statutory deductions</dt><dd>{formatINR(amountOf(t.statutory))}</dd></div>}
+              {amountOf(t.rounding) !== 0 && <div><dt>Rounding</dt><dd>{formatINR(amountOf(t.rounding))}</dd></div>}
+              <div><dt>{netLabel}</dt><dd><strong>{net === null ? '—' : formatINR(Math.abs(net))}</strong></dd></div>
+            </dl>
+          </Card>
+          {s.payees.length > 0 && (
+            <Card title="Paid to">
+              <ul className="yx-ppl__stack">
+                {s.payees.map((x) => (
+                  <li key={`${x.name}-${x.relation}`}>
+                    {x.name} ({x.relation}) · {x.sharePercent}%{x.accountLast4 ? ` · account ending ${x.accountLast4}` : ' · no bank account yet'}
+                    {x.amount ? ` · ${formatINR(amountOf(x.amount))}` : ''}
+                  </li>
+                ))}
+              </ul>
+              {s.taxNote && <Text size="sm" tone="secondary" as="p">{s.taxNote}</Text>}
+            </Card>
+          )}
+          <Card title="After approval">
+            <Text as="p">Payment goes in the bank file; the F&F statement letter goes to {first}'s documents. Changes after payment follow corrections.</Text>
+          </Card>
+        </div>
+        <div className="yx-ppl__main">
+          <Text size="sm" tone="secondary" as="p">Open a line to see how it's worked out.</Text>
+          <ExplainedLines title="Earnings" lines={lines.earnings} action={lineAction} />
+          <ExplainedLines title="Recoveries" lines={lines.recoveries} action={lineAction} />
+          <ExplainedLines title="Statutory deductions" lines={lines.statutory} />
+          <ExplainedLines title="Tax" lines={lines.tax} />
+          <ExplainedLines title="Paid by the company" lines={lines.employer} action={lineAction} />
+        </div>
+      </div>
+      {dialog?.kind === 'hold' && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Hold "${item(dialog.itemId)?.title ?? 'this line'}"?`}
+          consequence="It is left out of the F&F run and paid in a second run once released."
+          confirmLabel="Hold"
+          onConfirm={async () => {
+            setTried(true);
+            if (why.trim().length < 5) return false;
+            await live.onHold(s, dialog.itemId, why.trim(), why.trim());
+          }}
+        >
+          <FormField id="fnf-why" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+            <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {dialog?.kind === 'waive' && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Waive the notice recovery for ${who}?`}
+          consequence="The notice recovery line goes and is not recovered in this settlement."
+          confirmLabel="Waive"
+          onConfirm={async () => {
+            setTried(true);
+            if (why.trim().length < 5) return false;
+            await live.onWaiveNotice(s, why.trim());
+          }}
+        >
+          <FormField id="fnf-waive" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+            <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {dialog?.kind === 'add' && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setDialog(null)}
+          size="md"
+          title={`Add a line to ${first}'s settlement`}
+          consequence={firstDone ? 'The F&F run is approved: the line is paid in a second run.' : 'The line goes in the F&F run. Recalculate the run to update the totals.'}
+          confirmLabel="Add line"
+          onConfirm={async () => {
+            setTried(true);
+            if (!lineOk) return false;
+            await live.onAdd(s, { componentCode: line.componentCode!, amount: line.amount, label: line.label.trim() }, why.trim());
+          }}
+        >
+          <FieldRow>
+            <FormField id="fnf-code" label="Line" required error={tried && !line.componentCode ? 'Choose the line.' : null}>
+              <Select aria-label="Line" value={line.componentCode} onChange={(v) => setLine({ ...line, componentCode: v })} options={ADDABLE} />
+            </FormField>
+            <FormField id="fnf-amount" label="Amount" required rule="Rupees, up to 2 decimals." error={tried && !(MONEY.test(line.amount) && Number(line.amount) > 0) ? 'Enter an amount above 0, up to 2 decimals.' : null}>
+              <TextField value={line.amount} onChange={(v) => setLine({ ...line, amount: v.trim() })} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+          </FieldRow>
+          <FormField id="fnf-label" label="What it is" required error={tried && line.label.trim().length < 3 ? 'Enter what it is, at least 3 characters.' : null}>
+            <TextField value={line.label} onChange={(v) => setLine({ ...line, label: v })} maxLength={200} />
+          </FormField>
+          <FormField id="fnf-reason" label="Why" required error={tried && why.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+            <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </>,
+  );
+}
+
 // PPL-22
-export function FnfCalculator({ variant = 'standard', today }: { variant?: FnfVariant; today: Date }) {
+export function FnfCalculator(props: { variant?: FnfVariant; today: Date; live?: LiveFnf }) {
+  return props.live ? <LiveFnfCalculator today={props.today} live={props.live} /> : <SampleFnfCalculator today={props.today} variant={props.variant} />;
+}
+
+function SampleFnfCalculator({ variant = 'standard', today }: { variant?: FnfVariant; today: Date }) {
   const lines = fnfLinesFor(variant);
   const t = fnfTotals(lines);
   const absconding = variant === 'absconding';
@@ -548,7 +1264,7 @@ export function FnfCalculator({ variant = 'standard', today }: { variant?: FnfVa
         )}
         {variant === 'standard' && (
           <Text size="sm" tone="secondary">
-            Gratuity: {years} years {months} months counts as {years + (months >= 6 ? 1 : 0)} years (more than 6 months rounds up). Due within 30 days.
+            Gratuity: {years} years {months} months counts as {years + (months >= 6 ? 1 : 0)} years (6 months or more rounds up). Due within 30 days.
           </Text>
         )}
       </div>
@@ -612,8 +1328,215 @@ export function FnfCalculator({ variant = 'standard', today }: { variant?: FnfVa
 
 /* ================================================================== PPL-23 death in service */
 
+/** The live death in service (PPL-23): the designed five steps with the case, its payees, the F&F and the letters. */
+export interface LiveDeath {
+  state: 'ready' | 'loading' | 'error' | 'not-found';
+  onRetry: () => void;
+  name: string;
+  /** "Maintenance Supervisor, Hosur plant". */
+  about: string | null;
+  diedOn: Date;
+  contact: string | null;
+  contacts: Choice[];
+  onContact: (userId: string) => Promise<unknown>;
+  certificate: { status: string } | null;
+  onCertificate: (file: File) => Promise<unknown>;
+  payees: Payees | null;
+  successionDocuments: Choice[];
+  onSuccession: (file: File) => Promise<unknown>;
+  onPayees: (payees: Payee[]) => Promise<unknown>;
+  /** The F&F settlement; undefined when the viewer may not see pay, null when there is none yet. */
+  settlement?: FnfSettlementView | null;
+  claims: ClearanceItem[];
+  letters: ExitStep[];
+  onAccess: () => Promise<unknown>;
+  onBack: () => void;
+  onFinish?: () => Promise<unknown>;
+  /** Why Send F&F for approval cannot run yet. */
+  finishBlocked?: string;
+}
+
+const CERT: Record<string, string> = { uploaded: 'waiting for verification', verified: 'certificate verified', rejected: 'certificate rejected' };
+const CLAIM: Record<ClearanceItem['status'], string> = { open: 'Pending', cleared: 'Done', waived: 'Skipped' };
+
+function LiveDeathInService({ live }: { live: LiveDeath }) {
+  const [editing, setEditing] = useState(false);
+  const { busy, error, run } = useRun();
+  if (live.state !== 'ready')
+    return (
+      <PeopleFrame active="Exit cases">
+        {live.state === 'error' ? <ErrorState title="We couldn't load this case" description="Check your connection and try again." onRetry={live.onRetry} /> : live.state === 'not-found' ? <EmptyState title="Not found" description="This case doesn't exist or you can't open it." /> : <ListSkeleton label="Loading the case" />}
+      </PeopleFrame>
+    );
+  const payees = live.payees?.payees ?? [];
+  const heirs = !payees.some((p) => p.kind === 'nominee');
+  const s = live.settlement;
+  const bank = (name: string) => {
+    const b = s?.payees.find((x) => x.name === name);
+    return b?.accountLast4 ? `XXXX ${b.accountLast4}` : null;
+  };
+  const shares = payees.map((p) => Number(p.sharePercent));
+  const dues = s ? liveLines(s, live.diedOn).earnings.filter((l) => l.amount > 0) : [];
+  const paidTo = (amount: number) => {
+    if (!live.payees?.complete) return 'When the payees make 100 %';
+    if (payees.length === 1) return payees[0].name;
+    const parts = splitByShares(amount, shares);
+    return payees.map((p, i) => `${p.name.split(' ')[0]} ${formatINR(parts[i])}`).join(' · ');
+  };
+  const contactName = live.contacts.find((c) => c.value === live.contact)?.label.split(',')[0];
+  const certText = live.certificate ? (CERT[live.certificate.status] ?? 'certificate on file') : 'certificate not uploaded';
+  const claimsDone = live.claims.filter((c) => c.status !== 'open').length;
+  const issued = live.letters.filter((l) => l.status === 'done' || l.status === 'manual').length;
+  return (
+    <PeopleFrame active="Exit cases">
+      <PageHeader title={`Death in service · Late ${live.name}`} description={`${live.about ? `${live.about}. ` : ''}Access was revoked at once. No exit interview and no employee sign-offs.${contactName ? ` Compassionate contact: ${contactName}.` : ''}`} />
+      {error && (
+        <InlineAlert tone="danger" title="That didn't work">
+          {error}
+        </InlineAlert>
+      )}
+      <Stepper
+        title="Death in service"
+        defaultCurrent="payees"
+        finishLabel="Send F&F for approval"
+        onFinish={live.onFinish ? () => void run('finish', live.onFinish!) : undefined}
+        finishing={busy === 'finish'}
+        finishBlocked={live.finishBlocked}
+        onSaveAndExit={live.onBack}
+        steps={[
+          {
+            id: 'details',
+            title: 'Details and certificate',
+            summary: `Date of death ${formatDate(live.diedOn)} · ${certText}`,
+            content: (
+              <div className="yx-ppl__form">
+                <FormField label="Date of death" required helper="As recorded when the case was opened.">
+                  <DatePicker value={live.diedOn} onChange={() => {}} disabled />
+                </FormField>
+                <FormField label="Death certificate" required helper={live.certificate ? `On file: ${certText}.` : undefined}>
+                  <FileUpload upload={(file) => live.onCertificate(file).then(() => undefined)} accept={['.pdf', '.jpg', '.png']} maxSize={10 * 1024 * 1024} multiple={false} />
+                </FormField>
+                <FormField label="Compassionate contact for the family" required>
+                  <Select options={live.contacts} value={live.contact} onChange={(v) => v && void run('contact', () => live.onContact(v))} disabled={busy === 'contact'} />
+                </FormField>
+              </div>
+            ),
+          },
+          {
+            id: 'payees',
+            title: 'Payees',
+            status: live.payees?.complete ? undefined : 'error',
+            statusNote: live.payees?.complete ? undefined : 'The shares do not make 100 % yet',
+            summary: heirs ? `${plural(payees.length, 'legal heir')} · succession certificate needed` : `${plural(payees.length, 'nominee')} per nominations`,
+            content: (
+              <div className="yx-ppl__stack">
+                {heirs && (
+                  <InlineAlert tone="warning" title="No valid nomination on file">
+                    Pay legal heirs once HR verifies a succession or legal-heir certificate. The deadline doesn't move; the case records why payment is pending.
+                  </InlineAlert>
+                )}
+                {payees.length > 0 && (
+                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                    <table className="yx-ppl__impact">
+                      <thead>
+                        <tr>
+                          <th scope="col">Payee</th>
+                          <th scope="col">Scheme</th>
+                          <th scope="col">Share</th>
+                          {s !== undefined && <th scope="col">Bank account</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payees.map((p) => (
+                          <tr key={p.id ?? p.name}>
+                            <td>
+                              {p.name}
+                              <Text size="sm" tone="secondary" as="div">{`${p.relation}${p.kind === 'legal_heir' ? ' (legal heir)' : ''}`}</Text>
+                            </td>
+                            <td>All dues</td>
+                            <td className="yx-ppl__num">{Number(p.sharePercent)}%</td>
+                            {s !== undefined && <td>{bank(p.name) ? <><span className="yx-mono">{bank(p.name)}</span> <StatusBadge status="Pending verification" /></> : <span className="yx-mono">Not given yet</span>}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {heirs && (
+                  <FormField label="Succession or legal-heir certificate" required>
+                    <FileUpload upload={(file) => live.onSuccession(file).then(() => undefined)} accept={['.pdf']} maxSize={10 * 1024 * 1024} multiple={false} />
+                  </FormField>
+                )}
+                <div>
+                  <Button onClick={() => setEditing(true)}>Change payees</Button>
+                </div>
+                {editing && <PayeesDialog current={payees} documents={live.successionDocuments} onClose={() => setEditing(false)} onSave={live.onPayees} />}
+              </div>
+            ),
+          },
+          {
+            id: 'dues',
+            title: 'Dues and split',
+            summary: s ? `${plural(dues.length, 'line')} split ${shares.join(' / ')}` : 'Worked out by payroll',
+            content: (
+              <div className="yx-ppl__stack">
+                {s ? (
+                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                    <table className="yx-ppl__impact">
+                      <thead>
+                        <tr>
+                          <th scope="col">Line</th>
+                          <th scope="col">Amount</th>
+                          <th scope="col">Paid to</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dues.map((l) => (
+                          <tr key={l.id}>
+                            <td>{l.label}</td>
+                            <td className="yx-ppl__num">{formatINR(l.amount)}</td>
+                            <td>{paidTo(l.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Text as="p">{s === null ? 'The F&F settlement is not made yet. It starts once the case is accepted.' : 'Payroll works out the dues and splits them by these shares.'}</Text>
+                )}
+                <Text size="sm" tone="secondary" as="p">Recoveries only as HR confirms. Form 16 goes to the legal heir.</Text>
+              </div>
+            ),
+          },
+          { id: 'forms', title: 'Claim forms', summary: `${claimsDone} of ${live.claims.length} done`, content: <StatusChecklist label="Claim forms" rows={live.claims.map((c) => ({ id: c.id, title: c.title, owner: c.owner, status: CLAIM[c.status], note: c.note ?? undefined }))} /> },
+          {
+            id: 'letters',
+            title: 'Letters and access',
+            summary: `${issued} of ${plural(live.letters.length, 'letter')} issued · nominee logins`,
+            content: (
+              <div className="yx-ppl__stack">
+                <StatusChecklist label="Letters to next of kin" rows={live.letters.map((l) => ({ id: l.handler, title: l.label, status: l.status === 'done' || l.status === 'manual' ? 'Issued' : LIVE_STEP[l.status], note: l.lastError ?? undefined }))} />
+                <InlineAlert tone="info">Each nominee gets an OTP login to view and download only the F&F statement, Form 16 and claim documents HR releases.</InlineAlert>
+                <div>
+                  <Button icon={Mail} loading={busy === 'access'} onClick={() => void run('access', live.onAccess)}>
+                    Send nominee access
+                  </Button>
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
+    </PeopleFrame>
+  );
+}
+
 // PPL-23
-export function DeathInServiceFlow({ current = 'payees', noNomination = false }: { current?: string; noNomination?: boolean }) {
+export function DeathInServiceFlow(props: { current?: string; noNomination?: boolean; live?: LiveDeath }) {
+  return props.live ? <LiveDeathInService live={props.live} /> : <SampleDeathInService {...props} />;
+}
+
+function SampleDeathInService({ current = 'payees', noNomination = false }: { current?: string; noNomination?: boolean }) {
   const g = gratuity(28000, 50, { death: true });
   const gratuityParts = splitByShares(g.amount, [70, 30]);
   const payees = noNomination
@@ -765,8 +1688,110 @@ export function DeathInServiceFlow({ current = 'payees', noNomination = false }:
 
 /* ================================================================== PPL-24 absconding */
 
+/** The live app's absconding timelines (design audit step 3): the designed timeline, one person at a time. */
+export interface LiveAbsconding {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  rows: AbscondingRow[];
+  onStart: () => void;
+  onStop: (r: AbscondingRow) => void;
+  onResume: (r: AbscondingRow) => void;
+  onDispatch: (r: AbscondingRow, key: string) => void;
+  onOpenExit: (exitCaseId: string) => void;
+  /** Dialogs the page opens. */
+  children?: ReactNode;
+}
+
+function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbsconding }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const r = live.rows.find((x) => x.id === pick) ?? live.rows.find((x) => x.status === 'running') ?? live.rows[0];
+  const lastPresent = r ? isoDay(r.lastPresentOn) : null;
+  const absentDays = lastPresent ? Math.max(0, daysBetween(lastPresent, today)) : 0;
+  const steps = r?.steps ?? [];
+  const rows: ChecklistRow[] = steps.map((s) => ({
+    id: s.key,
+    title: `Day ${s.day}: ${s.label}`,
+    due: isoDay(s.dueOn),
+    status: s.doneAt ? 'Done' : r!.status === 'stopped' ? 'Not needed' : 'Scheduled',
+    note: (s.dispatchRef ? `Sent by registered post ${s.dispatchRef}` : s.note) ?? undefined,
+    action:
+      s.doneAt && (s.key === 'notice_1' || s.key === 'notice_2') && !s.dispatchRef ? (
+        <Button size="sm" icon={Upload} onClick={() => live.onDispatch(r!, s.key)}>
+          Add dispatch proof
+        </Button>
+      ) : undefined,
+  }));
+  return (
+    <PeopleFrame active="Exit cases">
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the absconding timelines" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the absconding timelines" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'loading' ? (
+        <ListSkeleton label="Loading absconding timelines" />
+      ) : !r ? (
+        <>
+          <PageHeader title="Absconding" description="Unauthorised absence follows the company's timeline: a salary hold and alert, two notices, then deemed abandonment. Stop it at any step if they come back." />
+          <EmptyState title="No absconding timelines" description="Start one when someone stops coming to work without telling anyone." action={<Button variant="primary" onClick={live.onStart}>Start a timeline</Button>} />
+        </>
+      ) : (
+        <>
+          {live.rows.length > 1 && (
+            <div className="yx-ppl__row">
+              <span className="yx-ppl__head-select">
+                <Select aria-label="Timeline for" size="sm" value={r.id} onChange={(v) => setPick(v)} options={live.rows.map((x) => ({ value: x.id, label: `${x.name} · ${ABSC[x.status].label.toLowerCase()}` }))} />
+              </span>
+            </div>
+          )}
+          <ObjectHeader
+            name={`Absconding · ${r.name}`}
+            avatarName={r.name}
+            person
+            secondary={[r.designation, r.location, `first absent ${formatDate(isoDay(r.firstAbsentOn))}`, `last present ${formatDate(lastPresent!)}`].filter(Boolean).join(' · ')}
+            status={<Badge tone={ABSC[r.status].tone}>{ABSC[r.status].label}</Badge>}
+            facts={[
+              { label: 'Day of unauthorised absence', value: r.status === 'stopped' ? 'Stopped' : String(absentDays) },
+              { label: 'Policy', value: r.policy },
+              // No salary fact before the day-3 hold: nothing has happened to the pay yet.
+              ...(r.salaryHeldSince ? [{ label: 'Salary', value: `On hold since ${formatDate(isoDay(r.salaryHeldSince)).replace(/ \d{4}$/, '')}` }] : r.salaryReleased ? [{ label: 'Salary', value: 'Released' }] : []),
+            ]}
+            actions={
+              <>
+                <Button onClick={live.onStart}>Start a timeline</Button>
+                {r.status === 'stopped' ? (
+                  <Button icon={Play} variant="primary" onClick={() => live.onResume(r)}>
+                    Resume timeline
+                  </Button>
+                ) : r.status === 'running' ? (
+                  <Button icon={Pause} onClick={() => live.onStop(r)}>
+                    Stop timeline
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+          {r.status === 'abandoned' && (
+            <InlineAlert tone="warning" title="Deemed abandonment" actions={r.exitCaseId ? <Button size="sm" onClick={() => live.onOpenExit(r.exitCaseId!)}>Open exit case</Button> : undefined}>
+              An exit case of type absconding opened with the last day present as the last working day.
+            </InlineAlert>
+          )}
+          {r.status === 'stopped' && r.stoppedReason && <InlineAlert tone="success" title="Stopped">{r.stoppedReason}</InlineAlert>}
+          <StatusChecklist label="Absconding steps" rows={rows} today={today} />
+        </>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
+}
+
+const ABSC: Record<AbscondingRow['status'], { label: string; tone: 'info' | 'neutral' | 'danger' }> = { running: { label: 'In progress', tone: 'info' }, stopped: { label: 'Stopped', tone: 'neutral' }, abandoned: { label: 'Deemed abandoned', tone: 'danger' } };
+
 // PPL-24
-export function AbscondingTimeline({ today, stopped = false, stopOpen = false }: { today: Date; stopped?: boolean; stopOpen?: boolean }) {
+export function AbscondingTimeline(props: { today: Date; stopped?: boolean; stopOpen?: boolean; live?: LiveAbsconding }) {
+  return props.live ? <LiveAbscondingTimeline today={props.today} live={props.live} /> : <SampleAbscondingTimeline {...props} />;
+}
+
+function SampleAbscondingTimeline({ today, stopped = false, stopOpen = false }: { today: Date; stopped?: boolean; stopOpen?: boolean }) {
   const first = new Date(2026, 8, 21);
   const s = abscondingState(first, today, undefined, stopped);
   const [open, setOpen] = useState(stopOpen);

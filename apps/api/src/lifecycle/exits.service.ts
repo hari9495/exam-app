@@ -15,7 +15,7 @@ import { JourneysService as DeskJourneysService } from '../service-desk/journeys
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { LastDayService } from './last-day.service';
-import { freezeSettlementIn } from './settlement';
+import { cancelFnfIn, fnfStateOf, freezeSettlementIn } from './settlement';
 import { daysFrom, CLEARANCE_STARTER, DEATH_CLAIMS, EXIT_INTERVIEW_FORM_VERSION, IR_PERMISSION_THRESHOLD, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
 
 // Lifecycle batch 6c (design §10): probation reviews, resignations, notice changes and company-started exits.
@@ -152,7 +152,7 @@ export class ExitsService implements OnModuleInit {
         await this.tellClearanceOwners(ctx, ev.payload.exitCaseId);
       }
       if (ev.type === 'exit.case.withdrawn' && Array.isArray(ev.payload.tickets)) {
-        await this.desk.stopFor(ctx, ev.payload.tickets.filter((t): t is string => typeof t === 'string'), 'The resignation was withdrawn.').catch(() => undefined);
+        await this.desk.stopFor(ctx, ev.payload.tickets.filter((t): t is string => typeof t === 'string'), ev.payload.exitType && ev.payload.exitType !== 'resignation' ? 'The exit was withdrawn.' : 'The resignation was withdrawn.').catch(() => undefined);
       }
     });
   }
@@ -245,6 +245,7 @@ export class ExitsService implements OnModuleInit {
       initiatedBy: k.initiatedBy,
       reasonCode: opts.reasonVisible ? k.reasonCode : null,
       reasonText: opts.reasonVisible ? k.reasonText : null,
+      withdrawalReason: opts.reasonVisible ? k.withdrawalReason : null,
       submittedOn: iso(k.submittedOn),
       requestedLwd: isoOrNull(k.requestedLwd),
       noticePeriod: k.noticePeriod,
@@ -347,8 +348,8 @@ export class ExitsService implements OnModuleInit {
       if (!k) throw new NotFoundException('You have no resignation to withdraw.');
       if (k.status === 'submitted') {
         if (k.wfRequestId) await this.approvals.withdraw(tx, c, k.wfRequestId, c.userId ?? null, reason.trim());
-        await tx.exitCase.update({ where: { id: k.id }, data: { status: 'withdrawn', withdrawnAt: new Date(), version: { increment: 1 } } });
-        await audit(tx, c, 'exit.case.withdrawn', 'exit_case', k.id, { before: 'submitted' });
+        await tx.exitCase.update({ where: { id: k.id }, data: { status: 'withdrawn', withdrawnAt: new Date(), withdrawnBy: c.userId ?? null, withdrawalReason: reason.trim(), version: { increment: 1 } } });
+        await audit(tx, c, 'exit.case.withdrawn', 'exit_case', k.id, { before: 'submitted', by: c.userId ?? null, reason: reason.trim() });
         await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.withdrawn', payload: { exitCaseId: k.id, employeeId: k.employeeId, tickets: [] } } });
         return 'withdrawn' as const;
       }
@@ -399,6 +400,37 @@ export class ExitsService implements OnModuleInit {
     });
     if (notices.length) await this.approvals.send(ctx, notices);
     return this.get(ctx, user, out);
+  }
+
+  /**
+   * HR undoes an exit HR started (founder 28 Oct 2026): same key and scope as starting one, before the last working day
+   * and before the F&F is finalised. A resignation (or VRS) is withdrawn only by the employee, through its own flow.
+   */
+  async withdrawCompanyExit(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
+    const v = await this.viewer(user);
+    const told = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { k, a } = await this.caseOr404(tx, c, v, id);
+      if (!a.manage) throw new ForbiddenException('Only HR withdraws an exit.');
+      if (k.initiatedBy !== 'company') throw new BadRequestException('Only the employee withdraws their resignation, from their own page.');
+      if (!LIVE.includes(k.status)) throw new BadRequestException(k.status === 'withdrawn' ? 'This exit is already withdrawn.' : 'This exit is over and can no longer be withdrawn.');
+      // Founder 28 Oct 2026: like an employee's resignation, HR may withdraw up to and on the last working day.
+      if (iso(k.approvedLwd ?? k.standardLwd) < todayIst()) throw new BadRequestException('The last working day has passed, so this exit can no longer be withdrawn.');
+      const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: k.employmentId } });
+      if ((await fnfStateOf(tx, c.organizationId, k.id, e.legalEntityId))?.finalised) throw new BadRequestException('The full and final settlement is already finalised, so this exit can no longer be withdrawn.');
+      await this.withdrawIn(tx, c, k.id, { userId: c.userId ?? null, reason: reason.trim() });
+      // The manager always hears; the person only if they were told (an exit still waiting for approval was not).
+      const m = (await this.assignmentOn(tx, c.organizationId, e.id, todayIst()))?.managerEmployeeId;
+      const managerUser = m ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: m }, select: { userId: true } }))?.userId ?? null) : null;
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: k.employeeId } });
+      return { who: displayName(emp), label: TYPE_LABEL[k.exitType as ExitType], managerUser, personUser: k.status === 'submitted' ? null : emp.userId, actor: c.userId ?? null };
+    });
+    const tell = (to: string | null, text: string, link: string) =>
+      to && to !== told.actor
+        ? this.notifications.notifySystem(ctx, [to], 'exit.case.update', { entityType: 'exit_case', entityId: id, contextText: text, linkPath: link }, { subject: text, html: '<p>An exit was withdrawn in YukthiX.</p>' }).catch(() => undefined)
+        : undefined;
+    await tell(told.managerUser, `HR withdrew the exit of ${told.who} (${told.label.toLowerCase()})`, `/yx/people/exits/${id}`);
+    await tell(told.personUser, 'HR withdrew your exit. You stay with the company.', '/yx/me/resignation');
+    return this.get(ctx, user, id);
   }
 
   private async openCompanyCase(tx: Tx, c: CompanyContext, emp: Prisma.EmployeeGetPayload<object>, dto: CompanyExitDto): Promise<Case> {
@@ -520,7 +552,9 @@ export class ExitsService implements OnModuleInit {
     // Death in service (YX-LC-16): the family's claim forms are tasks on the case; the nominations become the payees.
     if (k.exitType === 'death') {
       if (owner) for (const title of DEATH_CLAIMS) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId: id, department: 'hr', title, ownerUserId: owner } });
-      const noms = await tx.employeeNomination.findMany({ where: { organizationId: org, employeeId: k.employeeId, scheme: { in: ['gratuity', 'all'] } } });
+      // PPL-23: the case's HR owner is the family's compassionate contact until HR picks someone else.
+      if (owner) await tx.exitCase.update({ where: { id }, data: { familyContactUserId: owner } });
+      const noms = await tx.employeeNomination.findMany({ where: { organizationId: org, employeeId: k.employeeId, scheme: { in: ['gratuity', 'all'] }, supersededAt: null } });
       if (noms.length && !(await tx.exitPayee.findFirst({ where: { organizationId: org, exitCaseId: id }, select: { id: true } }))) {
         await tx.exitPayee.createMany({ data: noms.map((n) => ({ organizationId: org, exitCaseId: id, kind: 'nominee', name: n.name, relation: n.relation, sharePercent: n.sharePercent })) });
       }
@@ -532,14 +566,24 @@ export class ExitsService implements OnModuleInit {
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.accepted', payload: { exitCaseId: id, employeeId: k.employeeId, lastDay: lwd, journeyId, exitType: k.exitType } } });
   }
 
-  /** One clearance item per asset the leaver still holds (returning it clears the item). */
+  /**
+   * One clearance item per asset the leaver still holds (returning it clears the item). Founder queue 28 Oct 2026: it
+   * goes to the IT and Admin team (the team on the exit checklist's IT, else Admin, task); without one, to whoever issued
+   * the asset, else the case owner.
+   */
   async assetItemsIn(tx: Tx, org: string, exitCaseId: string, personId: string, owner: string | null) {
     const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId, returnedOn: null } });
+    if (!open.length) return;
+    const journey = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: exitCaseId }, select: { id: true } });
+    const team = journey
+      ? ((await tx.journeyTask.findFirst({ where: { organizationId: org, journeyId: journey.id, ownerType: { in: ['it', 'admin'] }, assigneeGroupId: { not: null } }, orderBy: { ownerType: 'desc' }, select: { assigneeGroupId: true } }))?.assigneeGroupId ?? null)
+      : null;
     for (const x of open) {
       if (await tx.clearanceItem.findFirst({ where: { organizationId: org, exitCaseId, assetAssignmentId: x.id }, select: { id: true } })) continue;
       const asset = await tx.asset.findFirstOrThrow({ where: { organizationId: org, id: x.assetId } });
-      const keeper = (await tx.assetAssignment.findFirst({ where: { organizationId: org, id: x.id }, select: { issuedBy: true } }))?.issuedBy ?? owner;
-      if (keeper) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'asset', title: `Return ${asset.name} (${asset.tag})`.slice(0, 150), ownerUserId: keeper, assetAssignmentId: x.id } });
+      const keeper = x.issuedBy ?? owner;
+      const to = team ? { ownerUserId: null, ownerGroupId: team } : keeper ? { ownerUserId: keeper, ownerGroupId: null } : null;
+      if (to) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'asset', title: `Return ${asset.name} (${asset.tag})`.slice(0, 150), ...to, assetAssignmentId: x.id } });
     }
   }
 
@@ -637,17 +681,24 @@ export class ExitsService implements OnModuleInit {
     return tx.exitCase.updateMany({ where: { organizationId: org, id }, data: { changeKind: null, changeWfRequestId: null, changePayload: Prisma.DbNull, version: { increment: 1 } } });
   }
 
-  /** An approved withdrawal: the notice ends today (back to the status before), the checklist and clearance stop. */
-  async withdrawIn(tx: Tx, c: CompanyContext, id: string) {
+  /**
+   * A withdrawal: the notice ends today (back to the status before), the checklist, clearance, interview and an open F&F
+   * stop. An approved resignation withdrawal, or HR undoing an exit HR started (`by`, also from "submitted": its approval
+   * request ends too). Who and why stay on the case and in the audit event.
+   */
+  async withdrawIn(tx: Tx, c: CompanyContext, id: string, by?: { userId: string | null; reason: string }) {
     const org = c.organizationId;
-    const k = await tx.exitCase.findFirst({ where: { organizationId: org, id, status: { in: ['accepted', 'cleared'] } } });
+    const k = await tx.exitCase.findFirst({ where: { organizationId: org, id, status: { in: by ? LIVE : ['accepted', 'cleared'] } } });
     if (!k) return;
-    await tx.exitCase.update({ where: { id }, data: { status: 'withdrawn', withdrawnAt: new Date(), changeKind: null, changeWfRequestId: null, changePayload: Prisma.DbNull, version: { increment: 1 } } });
+    const reason = by?.reason ?? (k.changePayload as { reason?: string } | null)?.reason ?? null;
+    const what = k.exitType === 'resignation' ? 'Resignation withdrawn' : 'Exit withdrawn';
+    if (k.status === 'submitted' && k.wfRequestId) await this.approvals.withdraw(tx, c, k.wfRequestId, by?.userId ?? null, reason ?? what);
+    await tx.exitCase.update({ where: { id }, data: { status: 'withdrawn', withdrawnAt: new Date(), withdrawnBy: by?.userId ?? null, withdrawalReason: reason, changeKind: null, changeWfRequestId: null, changePayload: Prisma.DbNull, version: { increment: 1 } } });
     const e = await tx.employment.findFirstOrThrow({ where: { organizationId: org, id: k.employmentId } });
     const today = todayIst();
     if ((await this.statusOn(tx, org, e.id, today)) === 'notice') {
       const before = (await this.statusOn(tx, org, e.id, iso(k.submittedOn))) ?? 'confirmed';
-      await this.systemChange(tx, c, e, 'notice_withdrawal', before === 'notice' ? 'confirmed' : before, today, 'Resignation withdrawn');
+      await this.systemChange(tx, c, e, 'notice_withdrawal', before === 'notice' ? 'confirmed' : before, today, what);
     }
     const tickets: string[] = [];
     const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: id, status: { not: 'cancelled' } } });
@@ -657,10 +708,12 @@ export class ExitsService implements OnModuleInit {
       await tx.journeyTask.updateMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, data: { status: 'cancelled', version: { increment: 1 } } });
       await tx.journey.update({ where: { id: j.id }, data: { status: 'cancelled' } });
     }
-    await tx.clearanceItem.updateMany({ where: { organizationId: org, exitCaseId: id, status: 'open' }, data: { status: 'waived', note: 'Resignation withdrawn', signedOffAt: new Date(), version: { increment: 1 } } });
+    await tx.clearanceItem.updateMany({ where: { organizationId: org, exitCaseId: id, status: 'open' }, data: { status: 'waived', note: what, signedOffAt: new Date(), version: { increment: 1 } } });
     await tx.exitInterview.updateMany({ where: { organizationId: org, exitCaseId: id, status: 'sent' }, data: { status: 'skipped' } });
-    await audit(tx, c, 'exit.case.withdrawn', 'exit_case', id, { before: 'accepted', deskRequests: tickets.length });
-    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.withdrawn', payload: { exitCaseId: id, employeeId: k.employeeId, tickets } } });
+    const fnfCancelled = await cancelFnfIn(tx, org, id, e.legalEntityId);
+    await audit(tx, c, 'exit.case.withdrawn', 'exit_case', id, { before: k.status, by: by?.userId ?? null, reason, deskRequests: tickets.length, fnfCancelled });
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.withdrawn', payload: { exitCaseId: id, employeeId: k.employeeId, exitType: k.exitType, tickets } } });
+    return k;
   }
 
   /** An approved notice change: the new last day and the arrangement; the checklist moves (YX-LC-13); one event. */
@@ -692,6 +745,16 @@ export class ExitsService implements OnModuleInit {
     if (users.length)
       await this.notifications
         .notifySystem(ctx, users, 'exit.clearance.assigned', { entityType: 'exit_case', entityId: exitCaseId, contextText: who ? `Clearance sign-off for ${who}, who is leaving` : 'A leaver needs your clearance sign-off', linkPath: '/yx/people/clearance' }, { subject: 'A clearance sign-off is waiting for you', html: '<p>A clearance item for someone leaving is waiting for you in YukthiX.</p>' })
+        .catch(() => undefined);
+    // The leaver is told their exit interview is ready (founder 24 Oct 2026: it was only reachable from Me > Resign).
+    const leaver = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const iv = await tx.exitInterview.findFirst({ where: { organizationId: ctx.organizationId, exitCaseId, status: 'sent' }, select: { id: true } });
+      const k = iv && (await tx.exitCase.findFirst({ where: { organizationId: ctx.organizationId, id: exitCaseId }, select: { employeeId: true } }));
+      return k ? (await tx.employee.findFirst({ where: { organizationId: ctx.organizationId, id: k.employeeId }, select: { userId: true } }))?.userId ?? null : null;
+    });
+    if (leaver)
+      await this.notifications
+        .notifySystem(ctx, [leaver], 'exit.interview.sent', { entityType: 'exit_case', entityId: exitCaseId, contextText: 'Your exit interview is ready. Only HR reads your answers.', linkPath: '/yx/me/exit-interview' }, { subject: 'Your exit interview is ready', html: '<p>Your exit interview is ready in YukthiX. Only HR reads your answers.</p>' })
         .catch(() => undefined);
   }
 
@@ -801,6 +864,13 @@ export class ExitsService implements OnModuleInit {
         tx.clearanceItem.groupBy({ by: ['exitCaseId', 'status'], where: { organizationId: org, exitCaseId: { in: ids } }, _count: { _all: true } }),
         tx.exitInterview.findMany({ where: { organizationId: org, exitCaseId: { in: ids } }, select: { exitCaseId: true, status: true } }),
       ]);
+      // The leaver's manager (the latest assignment of the employment that ends): the list's Manager column.
+      const assigns = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: shown.map((x) => x.k.employmentId) }, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, managerEmployeeId: true } });
+      const bosses = await tx.employee.findMany({ where: { organizationId: org, id: { in: assigns.map((a) => a.managerEmployeeId).filter((x): x is string => Boolean(x)) } } });
+      const managerOf = (employmentId: string) => {
+        const m = bosses.find((b) => b.id === assigns.find((a) => a.employmentId === employmentId)?.managerEmployeeId);
+        return m ? displayName(m) : null;
+      };
       const out = shown.map(({ k, manage }) => {
         const mine = items.filter((i) => i.exitCaseId === k.id);
         return {
@@ -809,6 +879,7 @@ export class ExitsService implements OnModuleInit {
           employeeCode: jobs.find((j) => j.id === k.employmentId)?.employeeCode ?? null,
           clearance: { open: mine.filter((i) => i.status === 'open').reduce((n, i) => n + i._count._all, 0), total: mine.reduce((n, i) => n + i._count._all, 0) },
           interview: ivs.find((i) => i.exitCaseId === k.id)?.status ?? null,
+          manager: managerOf(k.employmentId),
           canManage: manage,
         };
       });
@@ -887,6 +958,7 @@ export class ExitsService implements OnModuleInit {
     const v = await this.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Reviews are made by the manager, signed in as themselves.');
     let notices: Notice[] = [];
+    let confirmation: Parameters<EmployeeHistoryService['tellApprovers']>[1] | null = null;
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const own = await ownOf(tx, c, v);
@@ -901,6 +973,8 @@ export class ExitsService implements OnModuleInit {
       await this.history.lockEmployment(tx, c, e.id);
       const p = await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id } });
       if (!p) throw new NotFoundException('No such probation.');
+      // A missed review went to HR on the end date: from then HR decides, not the manager (who is told the outcome).
+      if (isManager && p.escalatedOn && !(await this.history.reaches(tx, c, v, 'employee.change.manage', employeeId, today))) throw new ForbiddenException('This review went to HR when the probation ended. HR decides now; you are told the outcome.');
       const state = await this.people.confirmationState(tx, c, e.id);
       if (state.confirmedFrom) throw new ConflictException('The probation is already confirmed.');
       if (state.pendingChangeId) throw new ConflictException('A confirmation is already waiting for approval.');
@@ -912,6 +986,7 @@ export class ExitsService implements OnModuleInit {
         const ch = await tx.employeeChange.create({ data: { organizationId: org, employeeId, employmentId: e.id, changeType: 'confirmation', effectiveDate: asDate(from < today ? today : from), status: 'pending', payload: { status: 'confirmed' }, reason: `Probation review: ${dto.comments.trim()}`.slice(0, 1000), requestedBy: c.userId ?? null } });
         await audit(tx, c, 'employee.change.requested', 'employee', employeeId, { changeId: ch.id, changeType: 'confirmation', effectiveDate: from, via: 'probation_review' });
         changeId = ch.id;
+        confirmation = ch;
       } else if (dto.outcome === 'extend') {
         if (!dto.months) throw new BadRequestException('Say by how many months.');
         await this.people.extendIn(tx, c, e, p, dto.months, dto.comments);
@@ -927,6 +1002,8 @@ export class ExitsService implements OnModuleInit {
       return { org, employeeId, name: displayName(emp), outcome: dto.outcome, hr: await this.hrDeciders(tx, org, employeeId, [c.userId]) };
     });
     if (notices.length) await this.approvals.send(ctx, notices);
+    // The confirmation waits for whoever approves job changes: their bell says so (and their Approvals inbox lists it).
+    if (confirmation) await this.history.tellApprovers(ctx, confirmation);
     const words = { confirm: 'recommended confirming', extend: 'extended', terminate: 'recommended ending' }[res.outcome];
     await this.notifications
       .notifySystem({ organizationId: res.org, isSuperAdmin: false }, res.hr, 'probation.review.done', { entityType: 'employee', entityId: res.employeeId, contextText: `A probation was reviewed: ${words}`, linkPath: '/yx/people/probation' }, { subject: 'A probation review was made', html: '<p>A manager reviewed a probation. See it in YukthiX.</p>' })

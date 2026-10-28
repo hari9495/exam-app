@@ -7,7 +7,8 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 //   - department heads (implicit "Dept head" view, YX-SEC-04): Lakshmi heads People;
 //   - a scoped role grant: a Plant HR Executive (plant-hr@demo-org.test) for the Hosur plant only (§4.3);
 //   - Personal details, identifiers and bank accounts for Divya and Arjun (encrypted, masked, §4.4);
-//   - a pending reimbursement-account change raised by Divya herself, for Payroll to approve (§4.5).
+//   - a pending reimbursement-account change raised by Divya herself, for Payroll to approve (§4.5);
+//   - Arjun's family, nominees and emergency contacts (PPL-03, Personal).
 // Idempotent: each part is skipped once present.
 
 type Tx = Prisma.TransactionClient;
@@ -41,6 +42,8 @@ export async function seedAccess(tx: Tx, organizationId: string, actors: { admin
       data: { ...org, userId: plantHr.id, permissionProfileId: role.id, scopeType: 'location', locationId: hosur.id, validFrom: new Date('2026-09-01T00:00:00Z'), status: 'active', reason: 'Plant HR for the Hosur plant', grantedBy: actors.admin },
     });
   }
+
+  await seedFamily(tx, organizationId, arjun);
 
   if (await tx.employeePersonalDetails.findFirst({ where: { ...org, employeeId: divya } })) return;
   const seal = (emp: string, v: string) => sealValue(crypto, organizationId, emp, v);
@@ -91,5 +94,25 @@ export async function seedAccess(tx: Tx, organizationId: string, actors: { admin
       reason: 'Travel claims to my savings account',
       requestedBy: actors.panel,
     },
+  });
+}
+
+/** PPL-03: Arjun's family, nominations (shares total 100 per scheme) and emergency contacts. Skipped once he has a family. */
+export async function seedFamily(tx: Tx, organizationId: string, employeeId: string): Promise<void> {
+  const o = { organizationId, employeeId };
+  if (await tx.employeeFamilyMember.findFirst({ where: o })) return;
+  const member = (position: number, name: string, relation: string, dob: string | null, dependant: boolean) =>
+    tx.employeeFamilyMember.create({ data: { ...o, position, name, relation, dateOfBirth: dob ? new Date(`${dob}T00:00:00Z`) : null, dependant } });
+  const shalini = await member(0, 'Shalini Kulkarni', 'Spouse', '1999-11-02', true);
+  await member(1, 'Aarav Kulkarni', 'Son', '2024-01-19', true);
+  const suman = await member(2, 'Suman Kulkarni', 'Mother', '1968-08-07', true);
+  const nominate = (scheme: string, m: { id: string; name: string; relation: string }, sharePercent: number) => ({ ...o, scheme, familyMemberId: m.id, name: m.name, relation: m.relation, sharePercent, source: 'hr' });
+  await tx.employeeNomination.updateMany({ where: { ...o, supersededAt: null }, data: { supersededAt: new Date() } });
+  await tx.employeeNomination.createMany({ data: [nominate('pf', shalini, 100), nominate('gratuity', shalini, 60), nominate('gratuity', suman, 40), nominate('group_term', shalini, 100)] });
+  await tx.employeeEmergencyContact.createMany({
+    data: [
+      { ...o, position: 0, name: 'Shalini Kulkarni', relation: 'Spouse', phone: '+919845022872' },
+      { ...o, position: 1, name: 'Vinod Kulkarni', relation: 'Brother', phone: '+919900144120' },
+    ],
   });
 }

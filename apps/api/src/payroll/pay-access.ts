@@ -102,6 +102,9 @@ export async function requireEntity(tx: Tx, c: CompanyContext, v: Viewer, key: P
   if (!(await entitiesFor(tx, c, v, key)).includes(entityId)) throw new NotFoundException('Not found');
 }
 
+/** Pay run statuses whose lines may still change (after them a run is submitted or approved). */
+export const PAY_RUN_EDITABLE: readonly string[] = ['draft', 'calculated', 'in_review', 'reopened'];
+
 /** Tells the database pay guard which legal entities this transaction may read and write (transaction-local). */
 export async function payScope(tx: Tx, entityIds: readonly string[]) {
   await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${entityIds.join(',')}}`}, true)`;

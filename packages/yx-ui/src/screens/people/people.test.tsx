@@ -11,6 +11,7 @@ import {
   fnfTotals,
   gratuity,
   isIban,
+  ifscBank,
   isIfsc,
   isPan,
   matchPersons,
@@ -27,6 +28,7 @@ import {
   withinWindow,
   workingDaysUntil,
 } from './people-logic';
+import { ToastProvider } from '../../components/notify';
 import { d, HOLIDAYS, MATCHES, MEERA_FNF, ONBOARDING_TASKS, SPLITS, TODAY, WORKFORCE } from './people-data';
 import { BulkChangesWizard, ChangeActionSheet, EmployeeImportWizard, RestructureWizard, incrementPreview, SAMPLE_IMPORT, ScheduledChangesScreen } from './changes';
 import { DirectoryScreen } from './directory';
@@ -132,6 +134,13 @@ describe('identity and bank checks', () => {
     expect(isIban('AE07 0331 2345 6789 0123 457')).toBe(false);
     expect(isIban('GB82 WEST 1234 5698 7654 32')).toBe(true);
   });
+  it('names the bank from the IFSC, offline; nothing for a bad IFSC or a bank not on the list', () => {
+    expect(ifscBank('SBIN0012765')).toBe('State Bank of India');
+    expect(ifscBank(' hdfc0001234 ')).toBe('HDFC Bank');
+    expect(ifscBank('SBIN1012765')).toBeNull(); // the fifth character is not zero
+    expect(ifscBank('SBIN')).toBeNull();
+    expect(ifscBank('ZZZZ0001234')).toBeNull();
+  });
   it('splits net pay: fixed, then percent, remainder; max 3 accounts', () => {
     const r = splitNetPay(49812, SPLITS);
     expect(r.ok).toBe(true);
@@ -204,6 +213,10 @@ describe('screens', () => {
     await u.click(screen.getByRole('button', { name: /Show PAN/ }));
     expect(screen.getByText('AKDPK4821M')).toBeTruthy();
     expect(screen.getByText(/You viewed PAN/)).toBeTruthy();
+    // Hide again, like a password field.
+    await u.click(screen.getByRole('button', { name: 'Hide PAN' }));
+    expect(screen.getByText('XXXXXX821M')).toBeTruthy();
+    expect(screen.queryByText('AKDPK4821M')).toBeNull();
   });
 
   it('probation: extending past the maximum shows an error', () => {
@@ -216,9 +229,11 @@ describe('screens', () => {
     render(<ScheduledChangesScreen rows={SCHEDULED} today={TODAY} defaultCancelId="s2" />);
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Cancel change' });
-    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await u.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 5 characters.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
     await u.type(within(dialog).getByRole('textbox'), 'Transfer postponed by the client');
-    expect(confirm.hasAttribute('disabled')).toBe(false);
+    expect(within(dialog).queryByText('Enter a reason of at least 5 characters.')).toBeNull();
   });
 
   it('international bank: invalid IBAN blocks sending', () => {
@@ -228,14 +243,15 @@ describe('screens', () => {
   });
 });
 
-// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook).
+// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook, which mounts the
+// ToastProvider for every story, as the app does).
 const STORY_MODULES = import.meta.glob('./*.stories.tsx', { eager: true }) as Record<string, Record<string, { render?: () => JSX.Element; name?: string }>>;
 describe('all People stories render', () => {
   for (const [file, mod] of Object.entries(STORY_MODULES)) {
     for (const [key, story] of Object.entries(mod)) {
       if (key === 'default' || !story?.render) continue;
       it(`${file} · ${story.name ?? key}`, () => {
-        const { unmount } = render(story.render!());
+        const { unmount } = render(<ToastProvider>{story.render!()}</ToastProvider>);
         unmount();
       });
     }

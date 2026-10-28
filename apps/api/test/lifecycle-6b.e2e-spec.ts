@@ -17,6 +17,7 @@ import { buildDocx } from '../src/documents/letters/docx';
 import { BGV_NOTICE } from '../src/lifecycle/portal.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { PipelinesService } from '../src/pipeline/pipelines.service';
 
 // Lifecycle batch 6b end to end against the real database (forced RLS, the app role) and Redis: Word templates (safety,
 // unknown fields with "did you mean", the preview gate), the pre-boarding portal (code sign-in, sealed and masked
@@ -142,17 +143,17 @@ describe('Lifecycle batch 6b', () => {
   // ------------------------------------------------------------------------------------------ templates (LIFE-2.04)
 
   it('Word templates: unsafe or unknown placeholders are refused; a template goes live only after its preview', async () => {
-    const macro = new PizZip(buildDocx([{ text: 'Hi {{employee_name}}' }]));
+    const macro = new PizZip(buildDocx([{ runs: [{ text: 'Hi {{employee_name}}' }] }]));
     macro.file('[Content_Types].xml', macro.file('[Content_Types].xml')!.asText().replace('wordprocessingml.document.main+xml', 'wordprocessingml.document.main+xml"/><Override PartName="/word/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject'));
     macro.file('word/vbaProject.bin', 'x');
     const up = (buf: Buffer) => api('hr', 'post', '/letters/templates').field('letterType', 'custom_note').field('name', 'Note').field('requiresApproval', 'false').field('personSigns', 'false').attach('file', buf, 'note.docx');
     expect((await up(macro.generate({ type: 'nodebuffer' }) as Buffer).expect(400)).body.code).toBe('TEMPLATE_REFUSED');
-    const linked = new PizZip(buildDocx([{ text: 'Hi' }]));
+    const linked = new PizZip(buildDocx([{ runs: [{ text: 'Hi' }] }]));
     linked.file('word/_rels/document.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="http://evil.test/x.png" TargetMode="External"/></Relationships>');
     expect((await up(linked.generate({ type: 'nodebuffer' }) as Buffer).expect(400)).body.message).toMatch(/outside the file/);
-    const typo = await up(buildDocx([{ text: 'Dear {{emp_nme}}' }])).expect(400);
+    const typo = await up(buildDocx([{ runs: [{ text: 'Dear {{emp_nme}}' }] }])).expect(400);
     expect(typo.body.message).toMatch(/did you mean \{\{employee_name\}\}/);
-    expect((await up(buildDocx([{ text: 'Dear {{employee.name}}' }])).expect(400)).body.message).toMatch(/not a field name/);
+    expect((await up(buildDocx([{ runs: [{ text: 'Dear {{employee.name}}' }] }])).expect(400)).body.message).toMatch(/not a field name/);
     // The starters: a draft until its sample preview was seen.
     for (const letterType of ['appointment', 'confirmation', 'welcome']) {
       const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
@@ -173,6 +174,55 @@ describe('Lifecycle batch 6b', () => {
     await api('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.signer).field('title', 'Head of HR').expect(403);
     await markSteppedUp(tenantPrisma, token.adminA);
     await api('adminA', 'post', '/letters/signatories').field('legalEntityId', ids.entity).field('userId', users.signer).field('title', 'Head of HR').expect(201);
+  });
+
+  it('PPL-29: a suggestion fixes a typo; several templates per letter type; a test render for a real person; starters offer a new revision', async () => {
+    const up = (name: string, buf: Buffer, fixes?: string) => {
+      const r = api('adminA', 'post', '/letters/templates').field('letterType', 'custom_note').field('name', name).field('requiresApproval', 'false').field('personSigns', 'false');
+      return (fixes ? r.field('fixes', fixes) : r).attach('file', buf, 'note.docx');
+    };
+    // "Use suggestion": the server renames the placeholder in the file, then checks it like any upload.
+    const typo = buildDocx([{ runs: [{ text: 'Dear {{emp_nme}}, from {{legal_entity}}' }] }]);
+    expect((await up('Short note', typo).expect(400)).body.errors).toEqual({ emp_nme: 'employee_name' });
+    await up('Short note', typo, JSON.stringify({ emp_nme: 'pan_number' })).expect(400);
+    await up('Short note', typo, 'not json').expect(400);
+    const a = (await up('Short note', typo, JSON.stringify({ emp_nme: 'employee_name' })).expect(201)).body;
+    expect(a.fields).toEqual(['employee_name', 'legal_entity']);
+    // "One per person" is the company's policy on each template: off unless HR sets it; the starters come with it set where it fits.
+    expect(a.onePerPerson).toBe(false);
+    const once = api('adminA', 'post', '/letters/templates').field('letterType', 'transfer').field('name', 'Transfer letter').field('requiresApproval', 'false').field('personSigns', 'false').field('onePerPerson', 'true');
+    expect((await once.attach('file', buildDocx([{ runs: [{ text: 'Dear {{employee_name}}' }] }]), 'note.docx').expect(201)).body).toMatchObject({ onePerPerson: true, status: 'draft' });
+    // Two templates of one letter type are in use together; a new version replaces only its own template.
+    const b = (await up('Long note', buildDocx([{ runs: [{ text: 'Dear {{employee_name}}, with thanks from {{legal_entity}}' }] }])).expect(201)).body;
+    const a2 = (await up('Short note', buildDocx([{ runs: [{ text: 'Hello {{employee_name}}' }] }])).expect(201)).body;
+    expect([a.version, b.version, a2.version]).toEqual([1, 1, 2]);
+    for (const t of [a, b, a2]) {
+      await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+      await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    }
+    const notes = (await api('adminA', 'get', '/letters/templates').expect(200)).body.templates.filter((t: { letterType: string }) => t.letterType === 'custom_note');
+    expect(notes.map((t: { name: string; version: number; status: string }) => `${t.name} v${t.version} ${t.status}`).sort()).toEqual(['Long note v1 active', 'Short note v2 active']);
+    // The test render with a real person: the issuer's checks and the no-blanks rule apply; viewing it allows switching on.
+    const divya = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }));
+    const c2 = (await up('Third note', buildDocx([{ runs: [{ text: 'Dear {{employee_name}} ({{employee_code}}), {{designation}}' }] }])).expect(201)).body;
+    await api('mgr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(403);
+    const pdf = await api('hr', 'get', `/letters/templates/${c2.id}/preview?personId=${divya.personId}`).expect(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    await api('adminA', 'post', `/letters/templates/${c2.id}/activate`).expect(200);
+    const blank = (await api('hr', 'get', `/letters/templates/${ids.tpl_appointment}/preview?personId=${divya.personId}`).expect(400)).body;
+    expect(blank.code).toBe('LETTER_FIELDS_MISSING');
+    expect(blank.errors).toHaveProperty('manager_name');
+    // A company that added an older starter is offered the new one as a draft; the one in use stays in use.
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_confirmation }, data: { starterRevision: 1 } }));
+    const starter = (k: string) => api('adminA', 'get', '/letters/templates').then((r) => r.body.starters.find((s: { letterType: string }) => s.letterType === k));
+    expect(await starter('confirmation')).toMatchObject({ added: true, update: true });
+    expect(await starter('appointment')).toMatchObject({ added: true, update: false, onePerPerson: true });
+    expect(await starter('employment_certificate')).toMatchObject({ onePerPerson: false });
+    const fresh = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'confirmation' }).expect(201)).body;
+    expect(fresh).toMatchObject({ version: 2, status: 'draft', onePerPerson: true });
+    expect(fresh.fields).toEqual(expect.arrayContaining(['reference_no', 'legal_entity_address', 'legal_entity_cin']));
+    expect((await api('adminA', 'get', '/letters/templates').expect(200)).body.templates.find((t: { id: string }) => t.id === ids.tpl_confirmation).status).toBe('active');
+    expect(await starter('confirmation')).toMatchObject({ update: false });
   });
 
   // ------------------------------------------------------------------------------------------ portal (LIFE-2.01 / 2.02)
@@ -249,7 +299,12 @@ describe('Lifecycle batch 6b', () => {
     // A confirmation letter needs an employee code the joiner does not have yet: never a silent blank.
     expect((await api('hr', 'post', '/letters/issue').send({ letterType: 'confirmation', personId: row.personId }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
     await api('mgr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(403);
-    const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, subjectType: 'preboarding', subjectId: ids.joiner }).expect(201)).body;
+    // The template HR picks (PPL-28) must be an active one of this type: another type's template is refused.
+    expect((await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_confirmation }).expect(400)).body.message).toMatch(/not active/);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: 'not-a-uuid' }).expect(400);
+    await api('mgr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment }).expect(403);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment }).expect(200);
+    const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, templateId: ids.tpl_appointment, subjectType: 'preboarding', subjectId: ids.joiner }).expect(201)).body;
     expect(l.status).toBe('pending_approval');
     await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(409);
     const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { assigneeUserId: users.signer, status: 'open' } }));
@@ -259,7 +314,7 @@ describe('Lifecycle batch 6b', () => {
     expect(issued.referenceNo).toMatch(new RegExp(`^LB${run.slice(0, 4).toUpperCase()}/APT/\\d{4}/000001$`));
     ids.letter = l.id;
     ids.code = issued.verifyCode!;
-    expect((await request(server()).get(`/api/v1/public/pay/verify/${issued.verifyCode}`).expect(200)).body).toMatchObject({ company: 'Life6B Org A', kind: 'Appointment letter', name: `Kavya ${run}`, status: 'current' });
+    expect((await request(server()).get(`/api/v1/public/pay/verify/${issued.verifyCode}`).expect(200)).body).toMatchObject({ company: 'Life Foods Pvt Ltd', kind: 'Appointment letter', name: `Kavya ${run}`, status: 'current' });
     // An issued letter never changes (database trigger).
     await expect(inA((tx) => tx.letterIssue.update({ where: { id: l.id }, data: { sha256: 'a'.repeat(64) } }))).rejects.toThrow(/never changes/);
     expect(await drain(async () => (await api('hr', 'get', `/lifecycle/journeys/${ids.journey}`).expect(200)).body.tasks.find((t: { key: string }) => t.key === 'appointment_letter').status === 'done')).toBe(true);
@@ -283,6 +338,8 @@ describe('Lifecycle batch 6b', () => {
     await addJoiner('Ravi', `ravi-${run}@mail.test`);
     const other = await signIn(`ravi-${run}@mail.test`);
     await portal('get', `/letters/${ids.letter}/file`, other).expect(404);
+    // One appointment letter per person (PPL-28): another is refused, naming the one issued; a correction replaces it.
+    expect((await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId }).expect(409)).body.message).toBe(`Already issued: ${l.referenceNo}. Use Issue a correction to replace it.`);
     // A correction: a new number, the old one superseded on the public page.
     const fix = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, supersedesId: ids.letter }).expect(201)).body;
     const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { assigneeUserId: users.signer, status: 'open' } }));
@@ -290,6 +347,61 @@ describe('Lifecycle batch 6b', () => {
     expect(await drain(async () => (await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: fix.id } }))).status === 'issued')).toBe(true);
     expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: fix.id } }))).referenceNo).toMatch(/000002$/);
     expect((await request(server()).get(`/api/v1/public/pay/verify/${ids.code}`).expect(200)).body.status).toBe('superseded');
+  });
+
+  it('a signatory who asks for their own letter: a company admin approves (no "no approver" warning); not approved, the asker hears why', async () => {
+    // Founder test 26 Oct 2026 (PPL-28): HR is the entity's signatory and issues the letter herself.
+    await inA((tx) => tx.signatory.updateMany({ where: { legalEntityId: ids.entity }, data: { userId: users.hr } }));
+    try {
+      const held = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: row.personId, letterType: 'appointment', status: 'issued' } }));
+      const l = (await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, supersedesId: held.id }).expect(201)).body;
+      const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: l.id } }));
+      expect((req.steps as { approverIds: string[] }[])[0].approverIds).toEqual([users.adminA]);
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'workflow.approval.no_approver', entityId: req.id } }))).toBe(0);
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req.id, status: 'open' } }));
+      await api('adminA', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'reject', reason: 'test only' }).expect(200);
+      const bell = await inA((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.hr, type: 'workflow.approval.decided', entityId: req.id } }));
+      expect(bell.contextText).toBe(`Appointment letter for Kavya ${run} not approved: test only`);
+      // The register keeps the letter, marked not approved (never left "pending approval").
+      expect((await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === l.id)).toMatchObject({ status: 'rejected' });
+    } finally {
+      await inA((tx) => tx.signatory.updateMany({ where: { legalEntityId: ids.entity }, data: { userId: users.signer } }));
+    }
+  });
+
+  it('PPL-28 bulk issue: the preview lists who fails and why; the issue checks everything again and needs the typed count', async () => {
+    const divya = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }))).personId;
+    const outsider = (await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.person.create({ data: { organizationId: org.B.id, givenName: 'Other', familyName: run } }))).id;
+    const body = { templateId: ids.tpl_appointment, source: 'people', personIds: [row.personId, divya, outsider, row.personId] };
+    await api('mgr', 'post', '/letters/bulk/check').send(body).expect(403);
+    const check = (await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body;
+    expect(check.letterType).toBe('appointment');
+    expect(check.rows).toHaveLength(3);
+    // Founder test 26 Oct 2026: Kavya already holds an issued appointment letter, so she is listed as a failure.
+    const held = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: row.personId, letterType: 'appointment', status: 'issued' } }));
+    expect(check.rows[0]).toEqual({ personId: row.personId, name: `Kavya ${run}`, ready: false, reason: `Already issued: ${held.referenceNo}. Use Issue a correction to replace it.` });
+    expect(check.rows[1]).toMatchObject({ personId: divya, ready: false });
+    expect(check.rows[1].reason).toMatch(/Missing: .*manager/);
+    // Another company's person is refused and never named.
+    expect(check.rows[2]).toEqual({ personId: outsider, name: null, ready: false, reason: 'You cannot issue letters to this person.' });
+    // The go-live source: current employees with no appointment letter (Divya), only with an appointment template.
+    const golive = (await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_appointment, source: 'no_appointment' }).expect(200)).body;
+    expect(golive.rows.map((r: { personId: string }) => r.personId)).toEqual([divya]);
+    await api('hr', 'post', '/letters/bulk/check').send({ templateId: ids.tpl_confirmation, source: 'no_appointment' }).expect(400);
+    // A company that lets appointment letters repeat (its template's policy): Kavya can get another.
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_appointment }, data: { onePerPerson: false } }));
+    expect((await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body.rows[0]).toMatchObject({ personId: row.personId, ready: true });
+    // No typed confirmation, or the wrong count: nothing is issued.
+    await api('hr', 'post', '/letters/bulk').send(body).expect(400);
+    expect((await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 3 LETTERS' }).expect(400)).body.code).toBe('BULK_CONFIRM');
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: row.personId, status: 'pending_approval' } }))).toBe(0);
+    expect((await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 1 LETTER' }).expect(200)).body).toEqual({ issued: 1, failed: [] });
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: row.personId, status: 'pending_approval' } }))).toBe(1);
+    expect(await inA((tx) => tx.letterIssue.count({ where: { personId: { in: [divya, outsider] } } }))).toBe(0);
+    // A replay of the same request is checked again: Kavya's letter is now on its way, so no one passes.
+    expect((await api('hr', 'post', '/letters/bulk/check').send(body).expect(200)).body.rows[0]).toMatchObject({ ready: false, reason: expect.stringMatching(/already on its way/) });
+    await api('hr', 'post', '/letters/bulk').send({ ...body, confirm: 'ISSUE 1 LETTER' }).expect(400);
+    await inA((tx) => tx.letterTemplate.update({ where: { id: ids.tpl_appointment }, data: { onePerPerson: true } }));
   });
 
   // ------------------------------------------------------------------------------------------ joining and cancelling (LIFE-2.08)
@@ -324,19 +436,95 @@ describe('Lifecycle batch 6b', () => {
     await portal('get', '/me', t).expect(401);
   });
 
+  it('PPL-15 Change status: the new date alone postpones; only withdrawing the offer must give a reason', async () => {
+    const j = await addJoiner('Arun', `arun-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/postpone`).send({ joiningOn: addDays(joining, 7), reason: 'x', version: pb.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/postpone`).send({ joiningOn: addDays(joining, 7), version: pb.version }).expect(200);
+    const now = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', version: now.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: '  ', version: now.version }).expect(400);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'reneged', version: now.version }).expect(200);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }))).toMatchObject({ status: 'cancelled', outcome: 'reneged', outcomeReason: null });
+    // The checklist header reads the joiner's own state (cancelled, why), never a countdown (PPL-15).
+    expect((await api('hr', 'get', `/lifecycle/journeys/${j.journeyId}`).expect(200)).body.joiner).toEqual({ status: 'cancelled', outcome: 'reneged', joined: false });
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: now.version + 1 }).expect(409);
+  });
+
+  it('PPL-15 withdrawing an offer drafts the withdrawal letter (the template must be on); HR issues it from Letters', async () => {
+    const j = await addJoiner('Nila', `nila-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    const off = await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'The role was closed', version: pb.version }).expect(400);
+    expect(off.body.message).toMatch(/no active offer withdrawal template/);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }))).toMatchObject({ status: 'invited' });
+    const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType: 'offer_withdrawal' }).expect(201)).body;
+    await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+    await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'The role was closed', version: pb.version }).expect(200);
+    const draft = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pb.personId, letterType: 'offer_withdrawal' } }));
+    expect(draft).toMatchObject({ status: 'draft', referenceNo: null, fileId: null });
+    expect((await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === draft.id)).toMatchObject({ status: 'draft', referenceNo: null });
+    // HR reviews it first: the issue preview with the draft's own words (PPL-15), never numbered.
+    const review = await api('hr', 'post', `/letters/${draft.id}/preview`).expect(200);
+    expect(review.headers['content-type']).toMatch(/application\/pdf/);
+    expect((await api('adminB', 'post', `/letters/${draft.id}/preview`)).status).toBeGreaterThanOrEqual(400);
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: draft.id } }))).referenceNo).toBeNull();
+    // Only someone who issues letters, once.
+    await api('adminB', 'post', `/letters/${draft.id}/issue`).expect(403);
+    const issued = (await api('hr', 'post', `/letters/${draft.id}/issue`).expect(201)).body;
+    expect(issued).toMatchObject({ id: draft.id, status: 'issued', referenceNo: expect.stringMatching(/\/OWD\//) });
+    await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+  });
+
+  it('PPL-15 HR discards a drafted letter with a reason (kept for the audit); a letter that could not be made says why and is made again', async () => {
+    const j = await addJoiner('Ilango', `ilango-${run}@mail.test`);
+    const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+    await markSteppedUp(tenantPrisma, token.hr);
+    await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Headcount frozen', version: pb.version }).expect(200);
+    const draft = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pb.personId, letterType: 'offer_withdrawal' } }));
+    await api('hr', 'post', `/letters/${draft.id}/discard`).send({}).expect(400);
+    await api('adminB', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Not needed' }).expect(403);
+    expect((await api('hr', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Told the candidate by phone' }).expect(200)).body).toMatchObject({ status: 'discarded', referenceNo: null });
+    expect(await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: draft.id } }))).toMatchObject({ status: 'discarded', discardReason: 'Told the candidate by phone' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'letter.discarded', entityId: draft.id } }))).toBe(1);
+    await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+    await api('hr', 'post', `/letters/${draft.id}/discard`).send({ reason: 'Again' }).expect(404);
+
+    // A letter stuck "being made" with the system's error: HR reads it in plain words and tries again.
+    const k = await addJoiner('Malar', `malar-${run}@mail.test`);
+    const kpb = (await api('hr', 'get', `/lifecycle/joiners/${k.id}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${k.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: kpb.version }).expect(200);
+    const stuck = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: kpb.personId, letterType: 'offer_withdrawal' } }));
+    await inA((tx) => tx.letterIssue.update({ where: { id: stuck.id }, data: { status: 'rendering', renderError: "ENOENT: no such file or directory, open '/srv/app/.pay-files/org/t'" } }));
+    const listed = (await api('hr', 'get', '/letters/issued').expect(200)).body.find((x: { id: string }) => x.id === stuck.id);
+    expect(listed).toMatchObject({ status: 'rendering', renderError: expect.stringMatching(/^The letter template file is missing from storage/) });
+    expect(listed.renderError).not.toMatch(/ENOENT|pay-files/);
+    await api('adminB', 'post', `/letters/${stuck.id}/render`).expect(403);
+    const made = (await api('hr', 'post', `/letters/${stuck.id}/render`).expect(200)).body;
+    expect(made).toMatchObject({ status: 'issued', renderError: null, referenceNo: expect.stringMatching(/\/OWD\//) });
+    await api('hr', 'post', `/letters/${stuck.id}/render`).expect(409);
+  });
+
   it('accepted offers wait in Ready to onboard; one becomes a joiner once; a current employee is not onboarded', async () => {
     const offers = await inA(async (tx) => {
       const o = { organizationId: org.A.id };
-      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', createdById: users.hr } });
+      const job = await tx.job.create({ data: { ...o, title: 'Quality Inspector', location: 'Hosur plant', createdById: users.hr } });
       const make = async (name: string, mail: string) => {
         const cand = await tx.candidate.create({ data: { ...o, name, email: mail } });
         const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual' } });
-        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', letterSubject: 'Offer', letterBody: 'Offer' } })).id;
+        return (await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', respondedAt: new Date('2026-10-01T09:00:00Z'), letterSubject: 'Offer', letterBody: 'Offer' } })).id;
       };
       return { fresh: await make(`Asha ${run}`, `asha-${run}@mail.test`), internal: await make(`Divya ${run}`, `mgr@life6b-${run}.test`) };
     });
     const ready = (await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body;
-    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector' });
+    expect(ready.find((r: { offerId: string }) => r.offerId === offers.fresh)).toMatchObject({ personType: 'new', jobTitle: 'Quality Inspector', location: 'Hosur plant', acceptedOn: '2026-10-01' });
+    await api('mgr', 'get', '/lifecycle/ready-to-onboard').expect(403);
+    // The side menu's count (PPL-12 design): accepted offers not yet onboarded, only for those who onboard.
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr}`).expect(200)).body.readyToOnboard).toBe(ready.length);
+    expect((await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.mgr}`).expect(200)).body.readyToOnboard).toBeUndefined();
+    expect((await api('adminB', 'get', '/lifecycle/ready-to-onboard').expect(200)).body).toEqual([]);
     expect(ready.find((r: { offerId: string }) => r.offerId === offers.internal)).toMatchObject({ personType: 'internal' });
     const body = { givenName: 'Asha', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr };
     await api('hr', 'post', `/lifecycle/ready-to-onboard/${offers.fresh}`).send(body).expect(201);
@@ -345,11 +533,131 @@ describe('Lifecycle batch 6b', () => {
     expect((await api('hr', 'get', '/lifecycle/ready-to-onboard').expect(200)).body.some((r: { offerId: string }) => r.offerId === offers.fresh)).toBe(false);
   });
 
+  it('PPL-15 unwinding a joiner from an offer moves the candidate out of hired in Hiring (no message to them) and reopens a closed requisition', async () => {
+    const pipe = await app.get(PipelinesService).getDefaultPipeline({ organizationId: org.A.id, isSuperAdmin: false });
+    const status = (category: string) => pipe.stages.find((st) => st.category === category)!.statuses[0].id;
+    // The company keeps a "Withdrawn" status in its rejected stage: a withdrawal lands there; reneging uses the stage itself.
+    const rejected = pipe.stages.find((st) => st.category === 'rejected')!;
+    const withdrawn = (await inA((tx) => tx.pipelineStatus.create({ data: { organizationId: org.A.id, stageId: rejected.id, name: 'Withdrawn by us', position: 5 } }))).id;
+    const hired = async (name: string, jobStatus: string) =>
+      inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        const job = await tx.job.create({ data: { ...o, title: `Line Lead ${name}`, status: jobStatus, closedAt: jobStatus === 'closed' ? new Date() : null, createdById: users.hr, pipelineId: pipe.id } });
+        const cand = await tx.candidate.create({ data: { ...o, name: `${name} ${run}`, email: `${name.toLowerCase()}-${run}@mail.test` } });
+        const pe = await tx.pipelineEntry.create({ data: { ...o, jobId: job.id, candidateId: cand.id, enteredVia: 'manual', statusId: status('hired') } });
+        const offer = await tx.offer.create({ data: { ...o, pipelineEntryId: pe.id, candidateId: cand.id, compensation: '600000', startDate: new Date(`${joining}T00:00:00Z`), expiresAt: new Date(Date.now() + 86_400_000), status: 'accepted', respondedAt: new Date(), letterSubject: 'Offer', letterBody: 'Offer' } });
+        return { job: job.id, entry: pe.id, offer: offer.id };
+      });
+    const onboard = async (x: { offer: string }, given: string) => (await api('hr', 'post', `/lifecycle/ready-to-onboard/${x.offer}`).send({ givenName: given, familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr, designationId: ids.desig }).expect(201)).body.id as string;
+    const entry = (id: string) => inA((tx) => tx.pipelineEntry.findFirstOrThrow({ where: { id }, include: { status: { include: { stage: true } } } }));
+    const a = await hired('Gopal', 'closed');
+    const ja = await onboard(a, 'Gopal');
+    const pbA = (await api('hr', 'get', `/lifecycle/joiners/${ja}`).expect(200)).body;
+    expect(pbA.requisition).toEqual({ title: 'Line Lead Gopal', planned: false });
+    await markSteppedUp(tenantPrisma, token.hr);
+    const sent = email.send.mock.calls.length;
+    await api('hr', 'post', `/lifecycle/joiners/${ja}/cancel`).send({ outcome: 'reneged', version: pbA.version }).expect(200);
+    const ea = await entry(a.entry);
+    expect(ea).toMatchObject({ rejected: true, rejectedReason: 'Reneged after accepting the offer', statusId: status('rejected') });
+    expect(await inA((tx) => tx.job.findFirstOrThrow({ where: { id: a.job } }))).toMatchObject({ status: 'open', closedAt: null });
+    expect(email.send.mock.calls.slice(sent).some((call: [{ to: string }]) => /gopal-/.test(call[0].to))).toBe(false);
+
+    const b = await hired('Hema', 'open');
+    const jb = await onboard(b, 'Hema');
+    const pbB = (await api('hr', 'get', `/lifecycle/joiners/${jb}`).expect(200)).body;
+    const sentB = email.send.mock.calls.length;
+    await api('hr', 'post', `/lifecycle/joiners/${jb}/cancel`).send({ outcome: 'withdrawn', reason: 'Budget frozen', version: pbB.version }).expect(200);
+    expect(await entry(b.entry)).toMatchObject({ rejected: true, statusId: withdrawn });
+    expect(await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: b.offer } }))).toMatchObject({ status: 'withdrawn' });
+    // No rejection message went to either candidate.
+    expect(email.send.mock.calls.slice(sentB).some((call: [{ to: string }]) => /hema-/.test(call[0].to))).toBe(false);
+    // A direct joiner (no offer) has no requisition.
+    const direct = await addJoiner('Omana', `omana-${run}@mail.test`);
+    expect((await api('hr', 'get', `/lifecycle/joiners/${direct.id}`).expect(200)).body.requisition).toBeNull();
+
+    // Started from Hiring without a designation: the withdrawal letter names the offered job; the joiner stays as it is.
+    const k = await hired('Kiran', 'open');
+    const jk = (await api('hr', 'post', `/lifecycle/ready-to-onboard/${k.offer}`).send({ givenName: 'Kiran', familyName: run, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    const pbK = (await api('hr', 'get', `/lifecycle/joiners/${jk}`).expect(200)).body;
+    await api('hr', 'post', `/lifecycle/joiners/${jk}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: pbK.version }).expect(200);
+    const letterK = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { personId: pbK.personId, letterType: 'offer_withdrawal' } }));
+    await api('hr', 'post', `/letters/${letterK.id}/preview`).expect(200);
+    expect(await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: jk } }))).toMatchObject({ designationId: null });
+    // A direct joiner without a designation: the refusal says what to add and where.
+    const bare = (await api('hr', 'post', '/lifecycle/joiners').send({ givenName: 'Velu', familyName: run, email: `velu-${run}@mail.test`, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.dept, employmentTypeId: ids.perm }).expect(201)).body as { id: string };
+    const pbV = (await api('hr', 'get', `/lifecycle/joiners/${bare.id}`).expect(200)).body;
+    const refused = await api('hr', 'post', `/lifecycle/joiners/${bare.id}/cancel`).send({ outcome: 'withdrawn', reason: 'Role closed', version: pbV.version }).expect(400);
+    expect(refused.body.message).toBe('This letter cannot be made yet. Add the designation first: Pre-boarding forms › Add job details.');
+  });
+
+  it('PPL-31 my certificate: instant with number and code, or HR approves first (approve and reject reach the bell); only my own, only switched-on kinds', async () => {
+    for (const letterType of ['employment_certificate', 'address_proof', 'noc']) {
+      const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
+      await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
+      await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
+    }
+    const divya = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.mgrEmp }, select: { personId: true } }))).personId;
+    const cert = (body: Record<string, unknown>) => api('mgr', 'post', '/letters/me/certificates').send(body);
+    // The kinds the company switched on, in the design's order; the salary certificate is not switched on here.
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body).toEqual([
+      { letterType: 'address_proof', name: 'Address proof', requiresApproval: false, pending: null },
+      { letterType: 'employment_certificate', name: 'Employment certificate', requiresApproval: false, pending: null },
+      { letterType: 'noc', name: 'No objection certificate (NOC)', requiresApproval: true, pending: null },
+    ]);
+    // Instant: issued at once with a gap-free number and a public check code; the person's words are on it (sealed).
+    const l = (await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'The Branch Manager, Canara Bank, Hosur' }).expect(201)).body;
+    expect(l).toMatchObject({ status: 'issued', personId: divya, referenceNo: expect.stringMatching(/\/0{5}1$/), verifyCode: expect.any(String) });
+    expect((await request(server()).get(`/api/v1/public/pay/verify/${l.verifyCode}`).expect(200)).body).toMatchObject({ kind: 'Employment certificate', name: `Divya ${run}`, status: 'current' });
+    const row = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: l.id } }));
+    expect(row.dataEnc).not.toContain('Canara');
+    expect((await api('mgr', 'get', '/letters/me').expect(200)).body.letters.some((x: { id: string }) => x.id === l.id)).toBe(true);
+    // A certificate can be asked for again (not "one per person"): the next number.
+    expect((await cert({ letterType: 'employment_certificate', purpose: 'Visa application' }).expect(201)).body).toMatchObject({ status: 'issued', referenceNo: expect.stringMatching(/\/0{5}2$/) });
+    // Blank fields block it (no home address recorded); limits and plain text on the person's words; nothing else accepted.
+    expect((await cert({ letterType: 'address_proof', purpose: 'Rental agreement' }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
+    await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'x'.repeat(161) }).expect(400);
+    await cert({ letterType: 'employment_certificate', purpose: 'Home\nloan' }).expect(400);
+    await cert({ letterType: 'employment_certificate' }).expect(400);
+    // Only for myself: naming another person is refused, and someone with no job here gets none.
+    await cert({ letterType: 'employment_certificate', purpose: 'Home loan', personId: row.personId }).expect(400);
+    expect((await api('hr', 'post', '/letters/me/certificates').send({ letterType: 'employment_certificate', purpose: 'Home loan' }).expect(403)).body.message).toMatch(/current employees/);
+    await api('hr', 'get', '/letters/me/certificates').expect(403);
+    // A kind the company did not switch on, or one that is not a certificate, is refused.
+    expect((await cert({ letterType: 'salary_certificate', purpose: 'Home loan' }).expect(400)).body.message).toMatch(/does not offer/);
+    await cert({ letterType: 'relieving', purpose: 'Home loan' }).expect(400);
+    // NOC: to the entity's signatory through the approvals engine; the person sees who holds it; one at a time.
+    const noc = (await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(201)).body;
+    expect(noc).toMatchObject({ status: 'pending_approval', referenceNo: null });
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body.find((k: { letterType: string }) => k.letterType === 'noc').pending).toEqual({ requestedAt: expect.any(String), approvers: [`signer ${run}`] });
+    await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(409);
+    const req = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: noc.id } }));
+    expect(req.summary).toEqual(expect.arrayContaining([{ label: 'Purpose', value: 'Visa application' }]));
+    let task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req.id, status: 'open' } }));
+    await api('signer', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'reject', reason: 'Ask after your probation review' }).expect(200);
+    const no = await inA((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.mgr, type: 'workflow.approval.decided', entityId: req.id } }));
+    expect(no).toMatchObject({ linkPath: '/yx/me/documents/certificate', contextText: expect.stringMatching(/not approved: Ask after your probation review$/) });
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: noc.id } }))).status).toBe('rejected');
+    // Asked again and approved: numbered, issued and in the bell.
+    const again = (await cert({ letterType: 'noc', purpose: 'Visa application' }).expect(201)).body;
+    const req2 = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: again.id } }));
+    task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: req2.id, status: 'open' } }));
+    await api('signer', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+    expect(await drain(async () => (await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: again.id } }))).status === 'issued')).toBe(true);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.mgr, type: 'letter.ready', entityId: again.id } }))).toBe(1);
+    expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body.find((k: { letterType: string }) => k.letterType === 'noc').pending).toBeNull();
+  });
+
   it('two companies stay apart: B reads nothing of A by API, query or portal', async () => {
     await api('adminB', 'get', `/letters/${ids.letter}/file`).expect(404);
     expect((await api('adminB', 'get', '/letters/templates').expect(200)).body.templates).toEqual([]);
     const counts = await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, async (tx) => [await tx.letterIssue.count(), await tx.letterTemplate.count(), await tx.consentRecord.count(), await tx.bgvCheck.count(), await tx.preboardingPortalSession.count(), await tx.signatureRequest.count()]);
     expect(counts).toEqual([0, 0, 0, 0, 0, 0]);
     await request(server()).get(`/api/v1/portal/join/${org.B.slug}/me`).set('X-Join-Portal', ids.portal).expect(401);
+    // A's HR cannot pick B's active template for a letter (PPL-28 template choice).
+    const tplB = (await api('adminB', 'post', '/letters/templates/starter').send({ letterType: 'appointment' }).expect(201)).body.id as string;
+    await api('adminB', 'get', `/letters/templates/${tplB}/preview`).expect(200);
+    await api('adminB', 'post', `/letters/templates/${tplB}/activate`).expect(200);
+    await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
+    await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
   });
 });

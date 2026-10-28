@@ -5,6 +5,8 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { ROLE_PERMISSIONS } from '../prisma/seed';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { EmployeeHistoryService } from '../src/employee-history/employee-history.service';
@@ -109,8 +111,9 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } }))).id;
     const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro']);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']);
-    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage']);
-    const payApprover = await profile('Payroll Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
+    // Founder 28 Oct 2026: job changes (pay included) are approved by HR only; payroll holds no approve key.
+    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage']);
+    const payApprover = await profile('HR Pay Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     const clerk = await profile('HR Clerk', ['employee.change.manage']);
     const passwordHash = await argon2.hash(PASSWORD);
     const people: [Who, 'A' | 'B', string, string | null][] = [
@@ -600,6 +603,162 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('divyaA', 'put', `/people/employees/${ids.arjun}/service-dates`).send({ continuousServiceFrom: null, reason: 'Mine' }).expect(403);
       expect((await api('hrA', 'put', `/people/employees/${ids.lakshmi}/service-dates`).send({ continuousServiceFrom: null, reason: 'Undo' }).expect(200)).body).toMatchObject({ continuousServiceFrom: joinOld, source: 'joining' });
       await read('outsiderA', ids.lakshmi).expect(404);
+    });
+  });
+
+  describe('PPL-04 change action: required fields, the approval route, drafts, the transfer impact', () => {
+    const in20 = addDays(today, 20);
+    beforeAll(async () => {
+      // Approvers are shown by name (the users here had none).
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        // The HR Approver without pay again (an earlier test granted it), so the pay route differs.
+        await tx.permissionProfile.updateMany({ where: { organizationId: org.A.id, name: 'HR Approver' }, data: { permissionsJson: JSON.stringify(['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']) } });
+        for (const [who, name] of [['approverA', 'Asha Approver'], ['payApproverA', 'Priya Payapprover'], ['payrollA', 'Pavan Payroll'], ['hrA', 'Hema HR']] as const) await tx.user.update({ where: { id: users[who] }, data: { name } });
+        ids.maa = (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: ids.kf, name: 'Chennai', code: 'MAA', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata', geoLat: '12.98', geoLng: '80.24', geoRadiusM: 200 } })).id;
+        await tx.holidayCalendar.create({ data: { organizationId: org.A.id, name: 'Karnataka 2026', locationId: ids.blr } });
+        await tx.holidayCalendar.create({ data: { organizationId: org.A.id, name: 'Tamil Nadu 2026', locationId: ids.maa } });
+      });
+      ids.nisha = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Nisha', joinedOn: today, overrideReason: undefined })).expect(201)).body.id;
+    });
+    const change = (extra: Record<string, unknown>) => ({ employeeId: ids.nisha, changeType: 'transfer', effectiveDate: in20, payload: { assignment: { locationId: ids.maa } }, reason: 'Chennai accounts', ...extra });
+
+    it('a transfer needs a new location or department, a promotion a new designation or grade (not the ones already in force)', async () => {
+      const no = async (body: Record<string, unknown>, msg: RegExp) => expect((await api('hrA', 'post', '/people/changes').send(change(body)).expect(400)).body.message).toMatch(msg);
+      await no({ payload: { assignment: { dottedLineManagerIds: [] } } }, /transfer needs a new location or department/);
+      await no({ payload: { assignment: { locationId: ids.blr } } }, /needs a new location: that is the one in force/);
+      await no({ changeType: 'promotion', payload: { assignment: { skillClass: 'skilled' } } }, /promotion needs a new designation or grade/);
+      await no({ changeType: 'promotion', payload: { assignment: { designationId: ids.analyst, gradeId: ids.g2 } } }, /new designation or grade: that is the one in force/);
+      // The preview checks the same.
+      await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { dottedLineManagerIds: [] } } })).expect(400);
+    });
+
+    it("the company's promotion rule (promotion.must_change) per entity: the form reads it, the server enforces it", async () => {
+      const rules = () => api('hrA', 'get', '/people/changes/rules').expect(200).then((r) => r.body.promotionMustChange[ids.kf]);
+      expect(await rules()).toBe('either');
+      const set = (await api('adminA', 'put', '/org/settings').send({ key: 'promotion.must_change', scopeType: 'legal_entity', scopeId: ids.kf, value: 'both' }).expect(200)).body;
+      try {
+        expect(await rules()).toBe('both');
+        const promo = (assignment: Record<string, string>) => change({ changeType: 'promotion', payload: { assignment } });
+        expect((await api('hrA', 'post', '/people/changes').send(promo({ designationId: ids.lead })).expect(400)).body.message).toMatch(/rule: a promotion needs a new grade \(both change\)/);
+        expect((await api('hrA', 'post', '/people/changes/preview').send(promo({ gradeId: ids.g3 })).expect(400)).body.message).toMatch(/needs a new designation/);
+        await api('hrA', 'post', '/people/changes/preview').send(promo({ designationId: ids.lead, gradeId: ids.g3 })).expect(201);
+        await api('outsiderA', 'get', '/people/changes/rules').expect(403);
+      } finally {
+        await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
+      }
+    });
+
+    it('a promotion that lowers pay is warned about in the preview (not refused); a raise is not; without pay access no warning', async () => {
+      const joined = (await api('payrollA', 'post', '/people/employees').send(join({ givenName: 'Ravi', joinedOn: today, overrideReason: undefined, compensation: { annualCtc: '600000' } })).expect(201)).body;
+      const ravi = joined.id;
+      await markSteppedUp(tenantPrisma, token.payApproverA);
+      await api('payApproverA', 'post', `/people/changes/${joined.payChangeId}/approve`).send({}).expect(201);
+      const promo = (annualCtc: string) => ({ employeeId: ravi, changeType: 'promotion', effectiveDate: in20, payload: { assignment: { designationId: ids.lead }, compensation: { annualCtc } }, reason: 'Team lead' });
+      const lower = (await api('payrollA', 'post', '/people/changes/preview').send(promo('550000')).expect(201)).body.impact;
+      expect(lower.warnings).toEqual(['This promotion lowers the annual CTC. Check the new pay before you send it.']);
+      expect((await api('payrollA', 'post', '/people/changes/preview').send(promo('700000')).expect(201)).body.impact.warnings).toEqual([]);
+      // Without pay on the change (HR without pay access): the pay stays, nothing to warn about.
+      expect((await api('hrA', 'post', '/people/changes/preview').send({ ...promo('1'), payload: { assignment: { designationId: ids.lead } } }).expect(201)).body.impact.warnings).toEqual([]);
+      // Still allowed: sent for approval as usual.
+      const sent = (await api('payrollA', 'post', '/people/changes').send(promo('550000')).expect(201)).body;
+      await api('payrollA', 'post', `/people/changes/${sent.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
+    it('the transfer impact lists what the new location carries: holidays, PT state with its slab, LWF, geofence', async () => {
+      const { impact } = (await api('hrA', 'post', '/people/changes/preview').send(change({})).expect(201)).body;
+      expect(impact.facts).toEqual(
+        expect.arrayContaining([
+          { fact: 'Location', from: 'Bengaluru', to: 'Chennai' },
+          { fact: 'Holiday calendar', from: 'Karnataka 2026', to: 'Tamil Nadu 2026' },
+          { fact: 'Professional tax state', from: 'Karnataka (monthly slab)', to: 'Tamil Nadu (half-yearly slab)' },
+          { fact: 'Labour welfare fund', from: 'Karnataka', to: 'Tamil Nadu' },
+          { fact: 'Geofence', from: 'No geofence', to: 'Chennai, 200 m' },
+        ]),
+      );
+      // Within the same state only what really moves: no PT or LWF row.
+      const mys = (await api('hrA', 'post', '/people/changes/preview').send(change({ payload: { assignment: { locationId: ids.mys } } })).expect(201)).body.impact.facts.map((f: { fact: string }) => f.fact);
+      expect(mys).not.toContain('Professional tax state');
+      expect(mys).not.toContain('Labour welfare fund');
+    });
+
+    it('the route names who decides, never the raiser; with pay only those who see pay; a waiting change says who it waits for', async () => {
+      const route = (who: Who, q: string) => api(who, 'get', `/people/changes/route?employeeId=${ids.nisha}${q}`);
+      expect((await route('hrA', '').expect(200)).body.approvers).toEqual(['Asha Approver', 'Priya Payapprover']);
+      expect((await route('hrA', '&pay=true').expect(200)).body.approvers).toEqual(['Priya Payapprover']);
+      await route('outsiderA', '').expect(403);
+      await api('adminB', 'get', `/people/changes/route?employeeId=${ids.nisha}`).expect(404);
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      const row = (who: Who) => api(who, 'get', '/people/changes?status=pending').expect(200).then((r) => r.body.find((x: { id: string }) => x.id === raised.id));
+      expect(await row('hrA')).toMatchObject({ waitingFor: ['Asha Approver', 'Priya Payapprover'], requestedByName: 'Hema HR', newValues: ['Chennai'] });
+      expect((await row('approverA')).waitingFor).toEqual(['you', 'Priya Payapprover']);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
+    it('founder 28 Oct 2026: job changes are approved by HR only: payroll and the System Admin are refused and never named', async () => {
+      for (const t of ['payroll_admin', 'payroll_approver']) expect(ROLE_TEMPLATES.find((x) => x.key === t)!.permissions).not.toContain('employee.change.approve');
+      expect(ROLE_PERMISSIONS.org_admin).not.toContain('employee.change.approve');
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      expect((await api('hrA', 'get', `/people/changes/route?employeeId=${ids.nisha}&pay=true`).expect(200)).body.approvers).not.toContain('Pavan Payroll');
+      expect((await api('hrA', 'get', '/people/changes?status=pending').expect(200)).body.find((x: { id: string }) => x.id === raised.id).waitingFor).not.toContain('Pavan Payroll');
+      for (const who of ['payrollA', 'adminA'] as const) {
+        await markSteppedUp(tenantPrisma, token[who]);
+        await api(who, 'post', `/people/changes/${raised.id}/approve`).send({}).expect(403);
+        await api(who, 'post', `/people/changes/${raised.id}/reject`).send({ reason: 'No' }).expect(403);
+      }
+      // HR still approves.
+      await markSteppedUp(tenantPrisma, token.approverA);
+      await api('approverA', 'post', `/people/changes/${raised.id}/approve`).send({}).expect(201);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
+    it("a waiting change shows in its approvers' Approvals inbox, count and bell; never the raiser's; gone once cancelled", async () => {
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      type Row = { requestId: string; type: string; person: string; decideAt: string | null };
+      const inbox = (who: Who) => api(who, 'get', '/workflow/approvals/inbox').expect(200).then((r) => (r.body as Row[]).find((x) => x.requestId === raised.id));
+      expect(await inbox('approverA')).toMatchObject({ type: 'Job change', person: 'Nisha', decideAt: '/yx/people/scheduled' });
+      expect(await inbox('hrA')).toBeUndefined();
+      expect(await inbox('outsiderA')).toBeUndefined();
+      expect((await api('approverA', 'get', '/workspace/counts').expect(200)).body.approvals).toBeGreaterThanOrEqual(1);
+      const bell = (await api('approverA', 'get', '/notifications').expect(200)).body as { type: string; entityId: string; contextText: string }[];
+      expect(bell.find((n) => n.entityId === raised.id)).toMatchObject({ type: 'employee.change.approval_needed', contextText: expect.stringMatching(/^Nisha · transfer on .* waits for your approval$/) });
+      expect(((await api('hrA', 'get', '/notifications').expect(200)).body as { entityId: string }[]).some((n) => n.entityId === raised.id)).toBe(false);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+      expect(await inbox('approverA')).toBeUndefined();
+    });
+
+    it("new people get codes in their entity's own series (YX-ORG-16): the prefix, else E; a bad prefix is refused", async () => {
+      const entity = (prefix: string | null) => api('adminA', 'put', `/org/legal-entities/${ids.kf}`).send({ name: 'Kaveri Foods', shortName: 'KFPL', employeeCodePrefix: prefix });
+      await entity('kf').expect(400);
+      await entity('KF-').expect(200);
+      try {
+        // One more than the highest code in the series: KF-0057 was typed at hire earlier in this file.
+        expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Prefix', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toBe('KF-0058');
+      } finally {
+        await entity(null).expect(200);
+      }
+      expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Plain', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toMatch(/^E\d{4}$/);
+    });
+
+    it('drafts: only the raiser sees and edits theirs; another company gets 404; sending removes the draft', async () => {
+      const form = { changeType: 'transfer', values: { locationId: ids.maa }, reason: 'Half done' };
+      const saved = (await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, changeType: 'transfer', form }).expect(201)).body;
+      expect(saved).toMatchObject({ employeeId: ids.nisha, employeeName: 'Nisha', changeType: 'transfer', form });
+      await api('hrA', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, changeType: 'transfer', form: { ...form, reason: 'Nearly done' } }).expect(200);
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body.map((d: { id: string; form: { reason: string } }) => [d.id, d.form.reason])).toEqual([[saved.id, 'Nearly done']]);
+      // Someone else in the company, even with the same rights: not theirs.
+      expect((await api('payrollA', 'get', '/people/changes/drafts').expect(200)).body).toEqual([]);
+      await api('payrollA', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, form }).expect(404);
+      // Another company: neither the draft nor the person exists there.
+      await api('adminB', 'put', `/people/changes/drafts/${saved.id}`).send({ employeeId: ids.nisha, form }).expect(404);
+      await api('adminB', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form }).expect(404);
+      await api('outsiderA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form }).expect(403);
+      await api('hrA', 'post', '/people/changes/drafts').send({ employeeId: ids.nisha, form: { big: 'x'.repeat(20001) } }).expect(400);
+      // Sent through the normal path (its checks apply), then gone.
+      await api('hrA', 'post', '/people/changes').send(change({ draftId: saved.id, payload: { assignment: { locationId: ids.blr } } })).expect(400);
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body).toHaveLength(1);
+      const sent = (await api('hrA', 'post', '/people/changes').send(change({ draftId: saved.id })).expect(201)).body;
+      expect((await api('hrA', 'get', '/people/changes/drafts').expect(200)).body).toEqual([]);
+      await api('hrA', 'post', `/people/changes/${sent.id}/cancel`).send({ reason: 'Test done' }).expect(201);
     });
   });
 });

@@ -753,8 +753,10 @@ function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boo
       setState('done');
       toast({ tone: 'success', title: `Reminder sent to ${name}`, description: 'They get a notification, and an email if they allow it.' });
     } catch (e) {
-      setState('idle');
-      toast({ tone: 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+      // Already reminded (409): nothing went wrong, so a warning, and the button says it is done.
+      const conflict = (e as { status?: number })?.status === 409;
+      setState(conflict ? 'done' : 'idle');
+      toast({ tone: conflict ? 'warning' : 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
     }
   };
   return (
@@ -1309,8 +1311,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     heading: 'People',
     prefix: '@',
     items: [
-      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · QA Engineer · Quality', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
-      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Brand Manager · Sales', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
+      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · Kaveri Foods Pvt Ltd (Tamil Nadu) · QA Engineer · Quality · Chennai office', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
+      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Kaveri Foods Pvt Ltd · Brand Manager · Sales · Bengaluru head office', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
       { id: 'pp3', label: 'Ananya Kulkarni', secondary: 'Candidate · Quality Analyst', icon: Users, keywords: pfx('@', ['Ananya Kulkarni']) },
     ],
   },

@@ -7,6 +7,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
+import { lapsedWorkPermits } from '../people/work-auth.service';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { StatutoryRulesService } from '../statutory/statutory.service';
@@ -174,7 +175,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private view(r: Run) {
-    return { id: r.id, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
+    return { id: r.id, reference: r.reference, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
   }
 
   async list(ctx: TenantContext, user: ScopeUser, month?: string, entityId?: string | null) {
@@ -370,6 +371,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const treaty = await withPayScope(tx, all, () => tx.taxWorkspace.findMany({ where: { organizationId: org, employeeId: { in: ids }, taxYear: ty, dtaaCountry: { not: null } }, select: { employeeId: true, dtaaCountry: true } }));
     for (const x of treaty) found.push({ employeeId: x.employeeId, checkKey: 'tax_dtaa', severity: 'warn', message: `${nameOf(x.employeeId)}: claims treaty (DTAA) relief with ${x.dtaaCountry}; TDS is worked out without it. Check it by hand.` });
     for (const x of elsewhere) found.push({ employeeId: x.employeeId, checkKey: 'tax_continuity', severity: 'info', message: `${nameOf(x.employeeId)}: pay from another entity of the company this tax year is counted for tax.` });
+    // PPL-10: what is still open after a move into this entity (PF, ESI, tax, pay) shows here until done.
+    const moved = await tx.continuityItem.groupBy({ by: ['employeeId'], where: { organizationId: org, legalEntityId: run.legalEntityId, status: 'open', employeeId: { in: ids } }, _count: { _all: true } });
+    for (const x of moved) found.push({ employeeId: x.employeeId, checkKey: 'transfer_continuity', severity: 'warn', message: `${nameOf(x.employeeId)}: ${x._count._all} continuity ${x._count._all === 1 ? 'item is' : 'items are'} open after the move to this entity (People › Restructure).` });
     const lop = await withPayScope(tx, [run.legalEntityId], () => tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: ids } } }));
     const days = Number(monthRange(month).to.slice(8));
     for (const l of lop) if (D(l.lopDays).gt(days)) found.push({ employeeId: l.employeeId, checkKey: 'lop_too_many', severity: 'block', message: `${nameOf(l.employeeId)}: ${l.lopDays.toString()} loss-of-pay days in a ${days}-day month.` });
@@ -389,6 +393,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, statute: cv.statute, status: { in: ['on', 'applied_awaited'] } } });
       if (!reg) found.push({ employeeId: null, checkKey: `coverage_${cv.statute}`, severity: 'block', blocks: 'approval', waivable: false, message: `The entity has ${cv.headcount} people and is covered by ${cv.statute}, but no registration is recorded.` });
     }
+    // PPL-45: an expired employment visa or work permit for the entity's country holds approval (WPS files fail on it).
+    const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: run.legalEntityId }, select: { country: true } })).country;
+    for (const id of await lapsedWorkPermits(tx, org, country, ids, run.periodEnd)) found.push({ employeeId: id, checkKey: 'work_permit_expired', severity: 'block', blocks: 'approval', message: `${nameOf(id)}: the employment visa or work permit has expired. Record the renewal on their record before approval.` });
     await tx.runValidation.createMany({
       data: found.map((f) => {
         const w = old.find((o) => o.checkKey === f.checkKey && o.employeeId === f.employeeId);
@@ -981,6 +988,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         await tx.oneTimePay.updateMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, runId: run.id, holdReason: { not: null } }, data: { runId: null } });
         const held = await tx.oneTimePay.count({ where: { organizationId: org, employmentId: f.employmentId, source: 'fnf', sourceRef: f.id, status: 'approved', holdReason: { not: null } } });
         if (!held && (f.secondRunId === run.id || !f.secondRunId)) await tx.fnfSettlement.update({ where: { id: f.id }, data: { status: 'settled', version: { increment: 1 } } });
+        // PPL-22: the F&F statement letter goes to the person's documents (FnfService issues it).
+        await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payroll.fnf.run_approved', payload: { fnfSettlementId: f.id, runId: run.id } } });
       }
     if (run.runType !== 'regular') {
       await audit(tx, c, 'payroll.run.approved', 'payroll_run', run.id, { calcVersion: run.calcVersion, people: slips.length, net: slips.reduce((t, s) => t.add(s.net), D(0)).toFixed(2), offcycle: run.offcycleKind });

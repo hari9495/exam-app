@@ -250,6 +250,11 @@ export class ReturnAssetDto {
 
   @IsIn(['in_stock', 'in_repair', 'lost'])
   status!: 'in_stock' | 'in_repair' | 'lost';
+
+  /** Damage or loss charged to a leaver: a recovery line on their F&F (signs off the clearance item with it). */
+  @IsOptional()
+  @Matches(MONEY)
+  recoveryAmount?: string | null;
 }
 
 export class ManualStepDto {
@@ -277,6 +282,11 @@ export class RehireDto {
 
   @IsInt()
   version!: number;
+}
+
+export class FamilyContactDto {
+  @IsUUID()
+  userId!: string;
 }
 
 export class BuddyDto {

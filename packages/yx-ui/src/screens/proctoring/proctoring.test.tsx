@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   blueprintCell,
@@ -191,8 +191,11 @@ describe('components', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'End attempt' }));
     const confirm = await screen.findByRole('alertdialog').catch(() => screen.getAllByRole('dialog').at(-1)!);
     const btn = within(confirm).getByRole('button', { name: 'End attempt' });
-    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(await within(confirm).findByText('Enter a reason of at least 10 characters. It is saved in the audit log.')).toBeInTheDocument();
+    expect(confirm).toBeInTheDocument();
     fireEvent.change(within(confirm).getByRole('textbox'), { target: { value: 'Second person seen three times' } });
-    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
   });
 });

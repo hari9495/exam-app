@@ -45,7 +45,7 @@ export async function resolveScopedGrants(
     // Active today in India time (the company calendar; P01 entities are IST-based until P21 lands).
     const grants = await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.$queryRaw<{ scope_type: GrantScopeType; target: string | null; permissions_json: string }[]>`
-        SELECT g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id)::text AS target, p.permissions_json
+        SELECT g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id, g.employee_id)::text AS target, p.permissions_json
         FROM role_grants g
         JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
         WHERE g.organization_id = ${organizationId}::uuid AND g.user_id = ${userId}::uuid AND g.status = 'active'

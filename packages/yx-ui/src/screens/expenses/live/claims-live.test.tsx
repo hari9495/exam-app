@@ -136,7 +136,9 @@ describe('Claim review (EXP-03)', () => {
     const amount = within(dlg).getByRole('textbox', { name: /Approve/ });
     await ue.clear(amount);
     await ue.type(amount, '5000');
-    expect(within(dlg).getByRole('button', { name: 'Save amount' })).toBeDisabled();
+    await ue.click(within(dlg).getByRole('button', { name: 'Save amount' }));
+    expect(within(dlg).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onApproveAmount).not.toHaveBeenCalled();
     await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Hotel cap Tier 1');
     await ue.click(within(dlg).getByRole('button', { name: 'Save amount' }));
     expect(onApproveAmount).toHaveBeenCalledWith('l1', '5000.00', 'Hotel cap Tier 1');
@@ -152,7 +154,9 @@ describe('Claim review (EXP-03)', () => {
     expect(screen.getByText('Manager')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Send back' }));
     let dlg = screen.getByRole('dialog');
-    expect(within(dlg).getByRole('button', { name: 'Send back' })).toBeDisabled();
+    await ue.click(within(dlg).getByRole('button', { name: 'Send back' }));
+    expect(within(dlg).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
     await ue.type(within(dlg).getByRole('textbox'), 'Add the hotel bill');
     await ue.click(within(dlg).getByRole('button', { name: 'Send back' }));
     expect(onDecide).toHaveBeenCalledWith('send_back', 'Add the hotel bill');

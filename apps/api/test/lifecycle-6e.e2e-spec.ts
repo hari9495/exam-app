@@ -117,7 +117,7 @@ describe('Lifecycle batch 6e', () => {
     emp.buddy = await hire('Bala', 'SF-002', { userId: users.buddy });
     await api('adminA', 'post', '/lifecycle/journey-templates/from-starter').send({ starterKey: 'onboarding_standard' }).expect(201);
     await api('adminA', 'post', '/lifecycle/journey-templates/from-starter').send({ starterKey: 'offboarding_standard' }).expect(201);
-    for (const letterType of ['letter_of_intent', 'condolence', 'absconding_notice', 'relieving', 'experience', 'employment_certificate']) {
+    for (const letterType of ['letter_of_intent', 'condolence', 'absconding_notice', 'relieving', 'experience', 'employment_certificate', 'appointment']) {
       const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
       await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
       await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
@@ -142,6 +142,13 @@ describe('Lifecycle batch 6e', () => {
   it('rehire (Priya): the same record and code, no probation after a short break, one option overridden with a reason', async () => {
     emp.priya = await hire('Priya', 'SF-010');
     const old = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.priya } }));
+    // PPL-28: an appointment letter is "one per person" for each employment. Instant and not e-signed here, to keep it short.
+    await inA((tx) => tx.letterTemplate.updateMany({ where: { letterType: 'appointment' }, data: { requiresApproval: false, personSigns: false } }));
+    const priyaPerson = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.priya } }))).personId;
+    const appoint = () => api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: priyaPerson });
+    const first = (await appoint().expect(201)).body;
+    expect(first).toMatchObject({ status: 'issued' });
+    expect((await appoint().expect(409)).body.message).toBe(`Already issued: ${first.referenceNo}. Use Issue a correction to replace it.`);
     // She left (absconding is recorded at once with a past day; rehire is off until HR says otherwise).
     const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.priya, exitType: 'absconding', lwd: addDays(today, -10), reasonText: 'Stopped coming' }).expect(201)).body;
     await lastDay.sweepCase(org.A.id, k.id, new Date());
@@ -159,6 +166,12 @@ describe('Lifecycle batch 6e', () => {
     expect(joined).toMatchObject({ employeeId: emp.priya, employeeCode: 'SF-010' });
     const fresh = await inA((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: emp.priya, exitedOn: null } }));
     expect(fresh.rehireOf).toBe(old.id);
+    // The new job gets its own appointment letter without a correction; a second one for it is still refused.
+    const second = (await appoint().expect(201)).body;
+    expect(second).toMatchObject({ status: 'issued' });
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: second.id } }))).employmentId).toBe(fresh.id);
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: first.id } }))).status).toBe('issued');
+    expect((await appoint().expect(409)).body.message).toBe(`Already issued: ${second.referenceNo}. Use Issue a correction to replace it.`);
     const st = await inA((tx) => tx.employmentStatusPeriod.findFirstOrThrow({ where: { employmentId: fresh.id, supersededAt: null } }));
     expect(st.status).toBe('confirmed');
     expect(await inA((tx) => tx.probation.count({ where: { employmentId: fresh.id } }))).toBe(0);
@@ -182,13 +195,19 @@ describe('Lifecycle batch 6e', () => {
     }
     const loi = (await api('hr', 'post', `/lifecycle/batches/${batch.id}/loi`).expect(200)).body;
     expect(loi).toMatchObject({ issued: 2, failed: [] });
+    // PPL-14 "Offers issued": no appointment letter yet; the issued letters of intent are counted per batch.
+    const after = (await api('hr', 'get', '/lifecycle/batches').expect(200)).body.rows.find((x: { id: string }) => x.id === batch.id);
+    const intents = await inA((tx) => tx.letterIssue.count({ where: { personId: { in: after.members.map((m: { personId: string }) => m.personId) }, letterType: 'letter_of_intent', status: 'issued' } }));
+    expect(after).toMatchObject({ offersIssued: 0, lettersOfIntent: intents });
     // The buddy: not the manager; the day-30 check-in then goes to the buddy.
     const pa = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: a.id } }));
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.mgr, version: pa.version }).expect(400);
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.buddy, version: pa.version }).expect(200);
     const checkin = await inA((tx) => tx.journeyTask.findFirstOrThrow({ where: { journeyId: a.journeyId, key: 'buddy_checkin' } }));
     expect(checkin).toMatchObject({ assigneeUserId: users.buddy, dueOn: new Date(`${addDays(today, 75)}T00:00:00Z`) });
-    expect((await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.some((t: { id: string }) => t.id === checkin.id)).toBe(true);
+    const mine = (await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { id: string }) => t.id === checkin.id);
+    // PPL-47: each task names whose checklist it is, so HR can upload or issue the letter from My checklist tasks.
+    expect(mine).toMatchObject({ personId: expect.any(String), subject: { type: expect.any(String), id: expect.any(String) } });
   });
 
   it('death in service: nominations 60 / 40 become the payees in the hand-off; the family signs in and reads the letter', async () => {
@@ -229,6 +248,28 @@ describe('Lifecycle batch 6e', () => {
     await api('hr', 'post', `/lifecycle/exits/${k.id}/settled-outside`).send({ settledOn: today, reason: 'Paid to the legal heir' }).expect(200);
   });
 
+  it('PPL-23: the flow’s facts; the family contact is someone who may run the case; payees get their login by email', async () => {
+    emp.ravi = await hire('Ravi', 'SF-022');
+    const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.ravi, exitType: 'death', lwd: addDays(today, -1), reasonText: 'Passed away' }).expect(201)).body;
+    const d = (await api('hr', 'get', `/lifecycle/exits/${k.id}/death`).expect(200)).body;
+    expect(d).toMatchObject({ contactUserId: expect.any(String), certificate: null });
+    expect(d.claimItemIds).toHaveLength(5);
+    expect(d.contacts.map((c: { value: string }) => c.value)).toEqual(expect.arrayContaining([users.hr, users.hr2]));
+    expect(d.contacts.map((c: { value: string }) => c.value)).not.toContain(users.mgr);
+    await api('mgr', 'get', `/lifecycle/exits/${k.id}/death`).expect(403);
+    await api('adminB', 'get', `/lifecycle/exits/${k.id}/death`).expect(404);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: users.mgr }).expect(400);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: 'not-a-user' }).expect(400);
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/death/contact`).send({ userId: users.hr2 }).expect(200);
+    expect((await api('hr', 'get', `/lifecycle/exits/${k.id}/death`).expect(200)).body.contactUserId).toBe(users.hr2);
+    await api('hr', 'post', `/lifecycle/exits/${k.id}/payees/access`).expect(400);
+    const mail = `uma-${run}@mail.test`;
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/payees`).send({ payees: [{ kind: 'nominee', name: 'Uma', relation: 'Wife', sharePercent: '100', email: mail }] }).expect(200);
+    email.send.mockClear();
+    expect((await api('hr', 'post', `/lifecycle/exits/${k.id}/payees/access`).expect(200)).body).toEqual({ sent: 1 });
+    expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: mail, html: expect.stringContaining(`/yx/alumni/${org.A.slug}`) }));
+  });
+
   it("absconding (Anil): day 3 / 7 / 14 / 21 steps, deemed abandonment with LWD = last day present; a timeline stops on return", async () => {
     emp.anil = await hire('Anil', 'SF-030');
     const lastPresent = addDays(today, -22);
@@ -239,6 +280,8 @@ describe('Lifecycle batch 6e', () => {
     row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
     expect(row.status).toBe('abandoned');
     expect(row.steps.every((s: { doneAt: string | null }) => s.doneAt)).toBe(true);
+    // The header (PPL-24 design): role and place, first day absent (no attendance: the next day), policy, salary hold.
+    expect(row).toMatchObject({ designation: 'Operator', location: 'Bengaluru', firstAbsentOn: addDays(lastPresent, 1), policy: 'Starter template v1', salaryHeldSince: addDays(lastPresent, 3), salaryReleased: false });
     const k = (await api('hr', 'get', `/lifecycle/exits/${row.exitCaseId}`).expect(200)).body;
     expect(k).toMatchObject({ exitType: 'absconding', lastDay: lastPresent, status: 'accepted' });
     expect(k.hr.rehireEligible).toBe(false);
@@ -249,12 +292,25 @@ describe('Lifecycle batch 6e', () => {
     emp.ajay = await hire('Ajay', 'SF-031');
     const t2 = (await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.ajay, lastPresentOn: addDays(today, -4) }).expect(201)).body;
     await extras.runTimeline(org.A.id, t2.id, today);
+    // Attendance names the first day absent; the entity's own days make the policy company-edited.
+    await inA(async (tx) => {
+      await tx.attendanceDay.create({ data: { organizationId: org.A.id, employeeId: emp.ajay, workOn: new Date(`${addDays(today, -2)}T00:00:00Z`), mode: 'punch', status: 'absent' } });
+      await tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'legal_entity', scopeId: ids.entity, key: 'absconding.days', value: '3,7,14,21' } });
+    });
     let r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
     expect(r2.steps.map((s: { doneAt: string | null }) => Boolean(s.doneAt))).toEqual([true, false, false, false]);
+    expect(r2).toMatchObject({ firstAbsentOn: addDays(today, -2), policy: 'Starter template v1 (company-edited)', salaryHeldSince: addDays(today, -1) });
+    // Day 3 places a real payroll hold; stopping on return releases it (founder 25 Oct 2026).
+    const hold = () => inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.findFirst({ where: { employeeId: emp.ajay, reasonCode: 'absconding' } }); });
+    expect(await hold()).toMatchObject({ trigger: 'exit', releasedAt: null });
     await api('hr', 'post', `/lifecycle/absconding/${t2.id}/stop`).send({ reason: 'Came back, was in hospital', version: r2.version }).expect(200);
+    expect((await hold())?.releasedAt).toBeTruthy();
     await extras.runTimeline(org.A.id, t2.id, addDays(today, 30));
     r2 = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t2.id);
-    expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null });
+    expect(r2).toMatchObject({ status: 'stopped', exitCaseId: null, salaryHeldSince: null, salaryReleased: true });
+    // Resumed (still absent): the hold comes back.
+    await api('hr', 'post', `/lifecycle/absconding/${t2.id}/resume`).send({ version: r2.version }).expect((r) => expect([200, 201]).toContain(r.status));
+    expect(await inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.count({ where: { employeeId: emp.ajay, reasonCode: 'absconding', releasedAt: null } }); })).toBe(1);
   });
 
   it('contract end: reminders at 30 and 7 days, an exit only when the policy says so; retirement opens months ahead', async () => {
@@ -313,13 +369,27 @@ describe('Lifecycle batch 6e', () => {
   });
 
   it('the letter editor saves Word without a new library; the bulk wizard issues to many', async () => {
-    const t = (await api('adminA', 'post', '/letters/templates/compose').send({ letterType: 'notice_board', name: 'Notice', requiresApproval: false, personSigns: false, paragraphs: [{ text: '{{legal_entity}}', heading: true }, { text: 'Dear {{employee_name}},' }, { text: 'Thank you.', bold: true }] }).expect(201)).body;
+    const compose = (letterType: string, paragraphs: object[]) => api('adminA', 'post', '/letters/templates/compose').send({ letterType, name: 'Notice', requiresApproval: false, personSigns: false, paragraphs });
+    const paragraphs = [
+      { kind: 'heading', runs: [{ text: '{{legal_entity}}' }] },
+      { kind: 'normal', runs: [{ text: 'Dear ' }, { text: '{{employee_name}}', bold: true }, { text: ',' }] },
+      { kind: 'bullet', level: 0, runs: [{ text: 'Read the ', italic: true }, { text: 'policies', link: 'https://kaveri.example/policies' }] },
+      { kind: 'numbered', level: 1, runs: [{ text: 'Thank you.', underline: true, strike: true, color: '#2F5496', highlight: '#00FFFF', size: 14 }] },
+      { kind: 'quote', runs: [{ text: 'Quoted' }] },
+    ];
+    const t = (await compose('notice_board', paragraphs).expect(201)).body;
     expect(t).toMatchObject({ source: 'editor', status: 'draft', fields: expect.arrayContaining(['legal_entity', 'employee_name']) });
     const back = (await api('adminA', 'get', `/letters/templates/${t.id}/paragraphs`).expect(200)).body;
-    expect(back.paragraphs).toEqual([{ text: '{{legal_entity}}', bold: true, heading: true }, { text: 'Dear {{employee_name}},', bold: false, heading: false }, { text: 'Thank you.', bold: true, heading: false }]);
-    await api('adminA', 'post', '/letters/templates/compose').send({ letterType: 'bad_one', name: 'Bad', requiresApproval: false, personSigns: false, paragraphs: [{ text: 'Dear {{emp_nme}}' }] }).expect(400);
+    expect(back.paragraphs).toEqual(paragraphs);
+    await compose('bad_one', [{ runs: [{ text: 'Dear {{emp_nme}}' }] }]).expect(400);
+    // An emptied editor still sends one blank paragraph (founder test 27 Oct 2026): refused, no new version.
+    expect((await compose('notice_board', [{ kind: 'normal', runs: [] }, { kind: 'normal', runs: [{ text: '  ' }] }]).expect(400)).body.message).toMatch(/empty/);
+    for (const [run, why] of [[{ color: '#123456' }, /Text colour/], [{ size: 72 }, /Font size/], [{ link: 'http://kaveri.example' }, /https/], [{ font: 'Comic Sans' }, /font should not exist/]] as const) {
+      expect(JSON.stringify((await compose('bad_one', [{ runs: [{ text: 'x', ...run }] }]).expect(400)).body.message)).toMatch(why);
+    }
     const people = await inA((tx) => tx.employee.findMany({ where: { id: { in: [emp.buddy, emp.kavi] } }, select: { personId: true } }));
-    const bulk = (await api('hr', 'post', '/letters/bulk').send({ letterType: 'employment_certificate', personIds: people.map((x) => x.personId) }).expect(200)).body;
+    const cert = (await api('hr', 'get', '/letters/templates').expect(200)).body.templates.find((x: { letterType: string; status: string }) => x.letterType === 'employment_certificate' && x.status === 'active');
+    const bulk = (await api('hr', 'post', '/letters/bulk').send({ templateId: cert.id, source: 'people', personIds: people.map((x) => x.personId), confirm: 'ISSUE 2 LETTERS' }).expect(200)).body;
     expect(bulk).toMatchObject({ issued: 2, failed: [] });
   });
 

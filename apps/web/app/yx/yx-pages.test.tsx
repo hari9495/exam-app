@@ -19,6 +19,8 @@ import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
 import YxApprovalsPage from './(app)/approvals/page';
+import YxNotFound from './not-found';
+import YxError from './error';
 import { ToastProvider } from '@yukthix/ui';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }), useSearchParams: () => new URLSearchParams() }));
@@ -26,7 +28,7 @@ jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), API_BASE: 'https
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
-jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
+jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { id: 'u-divya', name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
 jest.mock('@simplewebauthn/browser', () => ({
   startAuthentication: jest.fn(),
   startRegistration: jest.fn(),
@@ -427,6 +429,17 @@ describe('/yx/sign-in (email first, no company code)', () => {
       expect(login).toHaveBeenCalledWith('', expect.any(String));
     });
 
+    it('a browser that refuses without showing a prompt says so', async () => {
+      route({ 'GET /auth/remembered-company': { company: null }, 'GET /auth/sign-in-options': { ...WAYS, passkey: true }, 'POST /auth/passkey/options': { challenge: 'chal-1' } });
+      const refused = () => Object.assign(new Error('not allowed'), { name: 'NotAllowedError' });
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      start.mockRejectedValueOnce(refused());
+      render(<YxSignInPage />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }));
+      expect(await screen.findByText("This browser can't open a passkey here. Use your work email instead.")).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
     it('a passkey the site no longer knows: the browser is asked to forget it, and the page says so', async () => {
       const signalUnknownCredential = jest.fn().mockResolvedValue(undefined);
       Object.defineProperty(window, 'PublicKeyCredential', { value: { signalUnknownCredential }, configurable: true });
@@ -479,11 +492,13 @@ describe('/yx/sign-in (email first, no company code)', () => {
         'POST /auth/passkey/options': { challenge: 'chal-3' },
         'POST /auth/passkey/verify': new Error(PASSKEY_FAILED),
       });
-      start.mockRejectedValueOnce(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' }));
+      // The person closes the prompt after a moment (an instant refusal means no prompt was shown).
+      start.mockImplementationOnce(() => new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' })), 1100)));
       render(<YxSignInPage />);
       const button = await screen.findByRole('button', { name: 'Sign in with a passkey' });
       await userEvent.click(button);
       await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      await new Promise((r) => setTimeout(r, 1200));
       expect(screen.queryByRole('alert')).toBeNull();
       start.mockResolvedValue(CREDENTIAL);
       await userEvent.click(button);
@@ -835,7 +850,7 @@ describe('/yx layout', () => {
     const rail = screen.getByRole('navigation', { name: 'Areas' });
     expect(within(rail).getAllByRole('link').map((a) => a.getAttribute('aria-label'))).toEqual(['Home', 'Helpdesk']);
     const home = screen.getByRole('navigation', { name: 'Home' });
-    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
+    expect(within(home).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
     expect(within(home).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
   });
@@ -912,15 +927,22 @@ describe('/yx layout', () => {
     (usePathname as jest.Mock).mockReturnValue('/yx/settings/security');
     route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2026-01-01T00:00:00Z' } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByRole('link', { name: 'Set it up now' })).toHaveAttribute('href', '/yx/me/security');
+    expect(await screen.findByRole('link', { name: 'Set it up' })).toHaveAttribute('href', '/yx/me/security');
+    // Past the deadline it cannot be hidden.
+    expect(screen.queryByRole('button', { name: 'Hide until tomorrow' })).toBeNull();
   });
 
   it('reminds an admin in the grace period, with the date, and lets them work', async () => {
     (usePathname as jest.Mock).mockReturnValue('/yx/settings/security');
     route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2099-10-21T00:00:00Z' } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(await screen.findByText(/Set it up by 21 Oct 2099/)).toBeInTheDocument();
+    expect(await screen.findByText(/by 21 Oct 2099/)).toBeInTheDocument();
     expect(screen.getByText('page')).toBeInTheDocument();
+    // One line, hidden for the rest of the day with the close button (founder 20 Oct 2026).
+    await userEvent.click(screen.getByRole('button', { name: 'Hide until tomorrow' }));
+    expect(screen.queryByText(/by 21 Oct 2099/)).toBeNull();
+    expect(Object.keys(window.localStorage).some((k) => k.includes('mfa:u-divya'))).toBe(true);
+    window.localStorage.clear();
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {
@@ -968,5 +990,48 @@ describe('/yx/approvals', () => {
     wrap(<ToastProvider><YxApprovalsPage /></ToastProvider>);
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     expect(await screen.findByText('Approved: Arjun Kulkarni: Casual leave, 27 Oct (1 day)')).toBeInTheDocument();
+  });
+
+  it('a decision updates the side-menu Approvals count without a reload', async () => {
+    const TASK = { taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Casual leave', summary: [], requester: 'Arjun Kulkarni', raisedBy: null, onBehalfOf: null, step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: NOW };
+    let decided = false;
+    (usePathname as jest.Mock).mockReturnValue('/yx/approvals');
+    route({
+      'GET /auth/mfa': MFA,
+      'GET /rbac/me/permissions': [],
+      get 'GET /workspace/counts'() {
+        return { approvals: decided ? 1 : 2, notifications: 0 };
+      },
+      'GET /workflow/approvals/inbox': [TASK],
+      'GET /workflow/delegations': [],
+      get 'POST /workflow/approvals/tasks/t1/decide'() {
+        decided = true;
+        return {};
+      },
+    });
+    wrap(<ToastProvider><YxAppLayout><YxApprovalsPage /></YxAppLayout></ToastProvider>);
+    const home = screen.getByRole('navigation', { name: 'Home' });
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('1'));
+  });
+});
+
+describe('/yx not found and error screens', () => {
+  it('say YukthiX, never Prudent Hire, and lead back to YukthiX home', async () => {
+    const retry = jest.fn();
+    const { unmount } = render(<YxNotFound />);
+    expect(screen.getByRole('heading', { name: "We couldn't find that page" })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    unmount();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<YxError error={Object.assign(new Error('boom'), { digest: 'abc123' })} retry={retry} />);
+    expect(screen.getByRole('heading', { name: "This page didn't load" })).toBeInTheDocument();
+    expect(screen.getByText('Reference: abc123')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to YukthiX home' })).toHaveAttribute('href', '/yx/home');
+    expect(document.body.textContent).not.toMatch(/Prudent Hire/);
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
   });
 });

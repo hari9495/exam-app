@@ -1,4 +1,4 @@
-import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, tryAgainIn, yxAuthMessage, yxProofError } from './yx-auth-messages';
+import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, lockWaitSeconds, tryAgainIn, yxAuthMessage, yxProofError } from './yx-auth-messages';
 
 const httpError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
@@ -23,6 +23,16 @@ describe('YukthiX sign-in words', () => {
     // Precise enough to count down on screen.
     expect(tryAgainIn(1781)).toBe('Too many tries. Try again in 29 min 41 sec.');
     expect(tryAgainIn(3900)).toBe('Too many tries. Try again in 1 h 5 min.');
+  });
+
+  it('the code-send limit with its wait: the real time left, not "a minute"', () => {
+    const codes = (retryAfterSeconds: unknown) => Object.assign(httpError(429, 'Please wait before asking for another code.'), { body: { retryAfterSeconds } });
+    expect(yxAuthMessage(codes(3054), 'x')).toBe('Too many tries. Try again in 50 min 54 sec.');
+    expect(lockWaitSeconds(codes(3054))).toBe(3054);
+    // No usable wait: the plain throttle words, and no countdown.
+    expect(yxAuthMessage(codes(undefined), 'x')).toBe(TOO_MANY_TRIES);
+    expect(lockWaitSeconds(codes(0))).toBeNull();
+    expect(lockWaitSeconds(httpError(400, 'Please wait before asking for another code.'))).toBeNull();
   });
 
   it('a wrong password reads the same as an unknown email; other messages pass through', () => {

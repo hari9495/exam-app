@@ -86,6 +86,14 @@ export const IMPACT: Impact = {
   retro: null,
 };
 
+/** A promotion whose new pay is lower than today's: allowed, with a warning before it is sent. */
+export const IMPACT_LOWERS_PAY: Impact = {
+  ...IMPACT,
+  pay: [{ fact: 'Annual CTC', from: 'INR 583200.00', to: 'INR 560000.00' }],
+  rebased: [],
+  warnings: ['This promotion lowers the annual CTC. Check the new pay before you send it.'],
+};
+
 const choice = (value: string, label: string, entities: string[] = []) => ({ value, label, entities });
 export const OPTIONS: ChangeOptions = {
   people: PEOPLE,

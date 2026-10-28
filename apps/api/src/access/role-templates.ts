@@ -14,12 +14,15 @@ export interface RoleTemplate {
   permissions: readonly string[];
 }
 
+/** Not a template: the company role team pay access grants use (employee.salary.view only; its keys cannot be edited). */
+export const PAY_ACCESS_ROLE = 'pay_access';
+
 const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // M02 leave and attendance (step 4): HR reads in scope; HR Admin also sets up, adjusts, approves and handles Special
 // medical data.
 const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
 // M01 lifecycle batch 6a: joiners and their checklists in scope, person documents (each type still needs its class key).
-const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'payroll.notice.waive'];
+const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.signatory.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'payroll.notice.waive'];
 const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage', 'letter.issue', 'lifecycle.exit.view'];
 // Batch 2: rosters in scope (HR Executive too), locking attendance months and maternity / paternity overrides (HR Admin).
 const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
@@ -60,8 +63,19 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     name: 'HR Admin',
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
-    cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+    cannot: 'Pay, payroll approval.',
+    // Founder 27 Oct 2026: HR admins see Special data (the identity panel, Aadhaar in full); every look is recorded.
+    // Founder 28 Oct 2026: HR approves a manager's request to see their team's pay (two different HR people).
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+  },
+  {
+    // Founder 28 Oct 2026 (option B): HR Admin cannot see pay, so pay changes are approved by HR people given this role.
+    key: 'hr_pay_approver',
+    name: 'HR Pay Approver',
+    typicalScope: 'legal_entity',
+    summary: 'Sees salaries and approves job changes that change pay (salary revisions, promotions with a raise) for the people in scope.',
+    cannot: 'Prepare pay changes or payroll, HR settings.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.change.approve'],
   },
   {
     key: 'hr_executive',
@@ -75,17 +89,21 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     key: 'payroll_admin',
     name: 'Payroll Admin',
     typicalScope: 'legal_entity',
-    summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
-    cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
+    summary: 'Pay, pay ranges and entity tax identifiers; reads approved bank details to pay people.',
+    // Founder 21 Oct 2026: payroll does not do HR work (job changes, adding people, probation, the annual increment,
+    // changing pay) and does not approve bank or identity changes (HR does).
+    // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
+    cannot: 'HR settings, job changes or approving them, adding people, probation decisions, approving bank and identity changes.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
     name: 'Payroll Approver',
     typicalScope: 'legal_entity',
-    summary: 'Checks and approves pay changes, bank account changes and payroll files prepared by others; the first check of a request to reopen a locked month.',
-    cannot: 'Prepare pay changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
+    summary: 'Checks and approves payroll runs, loans and payroll files prepared by others; the first check of a request to reopen a locked month.',
+    // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
+    cannot: 'Prepare pay changes, approve job changes.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
   },
   {
     key: 'finance',

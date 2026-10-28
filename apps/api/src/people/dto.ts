@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { MAX_BULK_CSV_LENGTH } from './bulk-csv';
+import { SETTINGS } from '../org-structure/settings-registry';
 
 // Request bodies and queries for the people core. Every field is whitelisted (the global pipe refuses
 // anything else).
@@ -40,11 +41,23 @@ export class DirectoryQueryDto {
   offset?: number;
 }
 
+/** The top bar's legal entity: only that entity's people. */
+export class EntityQueryDto {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
 export class OrgChartQueryDto {
   @IsOptional()
   @IsDateString({ strict: true })
   @Matches(DATE, { message: 'asOf is a date (YYYY-MM-DD)' })
   asOf?: string;
+
+  /** The top bar's legal entity: only that entity's people (PPL-02, founder 20 Oct 2026). */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class ReportsQueryDto {
@@ -130,6 +143,101 @@ export class ReassignDto {
   dryRun?: boolean;
 }
 
+/** A raise: more than 0 and at most 100 per cent, up to two decimals. */
+const RAISE = /^(?:100(?:\.0{1,2})?|[1-9]\d?(?:\.\d{1,2})?|0\.(?:[1-9]\d?|0[1-9]))$/;
+
+export class RatingRaiseDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  band!: string;
+
+  @Matches(RAISE, { message: 'percent is more than 0 and at most 100, with up to 2 decimals' })
+  percent!: string;
+}
+
+export class PersonRaiseDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(RAISE, { message: 'percent is more than 0 and at most 100, with up to 2 decimals' })
+  percent!: string;
+}
+
+/** PPL-06 annual increment: the people, the rule, a raise per person where HR changed it. */
+export class IncrementDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsDateString({ strict: true })
+  @Matches(DATE, { message: 'effectiveDate is a date (YYYY-MM-DD)' })
+  effectiveDate!: string;
+
+  /** Confirmed employees who joined before this date. */
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(DATE, { message: 'joinedBefore is a date (YYYY-MM-DD)' })
+  joinedBefore?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  departmentIds?: string[];
+
+  /** Ratings from this review cycle; by default the latest with released ratings in the entity. */
+  @IsOptional()
+  @IsUUID()
+  reviewCycleId?: string;
+
+  @IsIn(['rating', 'percent'])
+  mode!: 'rating' | 'percent';
+
+  @IsOptional()
+  @Matches(RAISE, { message: 'percent is more than 0 and at most 100, with up to 2 decimals' })
+  percent?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => RatingRaiseDto)
+  byRating?: RatingRaiseDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => PersonRaiseDto)
+  overrides?: PersonRaiseDto[];
+
+  /** People to hold at the top of their pay range (the warn or block rule; under "cap" the company caps everyone). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID('all', { each: true })
+  capped?: string[];
+
+  /** The increment letter template; letters are made only once the batch is approved. */
+  @IsOptional()
+  @IsUUID()
+  letterTemplateId?: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  reason!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+export class IncrementLetterPreviewDto extends IncrementDto {
+  @IsUUID()
+  employeeId!: string;
+}
+
 export class BatchListQueryDto {
   @IsOptional()
   @IsIn(['pending', 'approved', 'rejected', 'cancelled'])
@@ -144,5 +252,52 @@ export class BatchApproveDto {
   @IsOptional()
   @IsString()
   @MaxLength(1000)
+  note?: string;
+}
+
+/** Founder 28 Oct 2026: a manager asks to see the pay of their whole team or of one person in it. */
+export class PayAccessAskDto {
+  @IsIn(['team', 'person'])
+  scope!: 'team' | 'person';
+
+  /** The one person (scope 'person'); left out for the whole team. */
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** An HR person ends open access before its last day; the manager reads the reason. */
+export class PayAccessEndDto {
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** An HR person approves (step 1 or 2 of 2) or refuses; on approval they may change how long and who it covers. */
+export class PayAccessDecisionDto {
+  @IsIn(['approve', 'refuse'])
+  decision!: 'approve' | 'refuse';
+
+  @IsOptional()
+  @IsIn(SETTINGS['pay_access.days'].values)
+  days?: string;
+
+  @IsOptional()
+  @IsIn(['team', 'person'])
+  scope?: 'team' | 'person';
+
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  /** Required to refuse. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   note?: string;
 }

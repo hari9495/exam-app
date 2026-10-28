@@ -9,7 +9,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { ConfirmDialog } from '../../components/overlay';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useRun } from '../org/org-kit';
@@ -227,7 +227,7 @@ function SpaceDrawer({ space, desks, onClose, onSave }: { space?: KbSpace; desks
         <FormField label="Name" required>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Web address" required helper="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
+        <FormField label="Web address" required rule="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={40} />
         </FormField>
         <FormField label="Who can read it">
@@ -537,7 +537,7 @@ function EditorCard(props: KnowledgeScreenProps & { article: KbArticle }) {
           </span>
         )}
         <FormField label="Article" required helper="A block shows as {{block:key}} here; readers see its current text.">
-          <RichTextEditor value={body} onChange={setBody} mergeFields={[]} placeholder="Write the article" />
+          <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} placeholder="Write the article" />
         </FormField>
         <FormField label="What changed" optional helper="A short note for the reviewer.">
           <TextField value={note} onChange={setNote} maxLength={300} />
@@ -624,6 +624,7 @@ function VersionsCard({ article: a }: { article: KbArticle }) {
 function ActionsCard(props: KnowledgeScreenProps & { article: KbArticle }) {
   const a = props.article;
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const { busy, error, run } = useRun();
   return (
     <Card title="Actions">
@@ -649,11 +650,15 @@ function ActionsCard(props: KnowledgeScreenProps & { article: KbArticle }) {
               title="Mark this article out of date?"
               consequence="Its owner and followers see the reason. Publishing a new version clears the mark."
               confirmLabel="Mark out of date"
-              confirmDisabled={reason.trim().length < 3}
-              onConfirm={async () => { await props.onFlag(a.id, reason.trim()); setReason(''); }}
+              onOpenChange={(o) => !o && setTried(false)}
+              onConfirm={async () => {
+                setTried(true);
+                if (reason.trim().length < 3) return false;
+                await props.onFlag(a.id, reason.trim()); setReason('');
+              }}
               trigger={<Button size="sm">Mark out of date</Button>}
             >
-              <FormField label="What is wrong" required>
+              <FormField label="What is wrong" required error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
                 <TextField value={reason} onChange={setReason} maxLength={300} />
               </FormField>
             </ConfirmDialog>
@@ -931,7 +936,7 @@ function SnippetDrawer({ kind, item, onClose, onSave }: { kind: 'block' | 'templ
           </FormField>
         )}
         <FormField label="Text" required>
-          <RichTextEditor value={body} onChange={setBody} mergeFields={[]} placeholder="Write the text" />
+          <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} placeholder="Write the text" />
         </FormField>
       </div>
     </Drawer>

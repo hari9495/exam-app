@@ -7,9 +7,13 @@ import { TextArea } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { Dialog } from '../../components/overlay';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { DeskPage, when } from './desk-kit';
 import type { ApprovalHistory, ApprovalTask, Delegation, PickKind, PickOption } from './esm-types';
+
+/** A request's plain dates (2026-11-22) read as everywhere else: 22 Nov 2026. */
+const shown = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(new Date(`${v}T00:00:00`)) : v);
 import { LivePicker } from './service-form';
 import type { LoadState } from './types';
 
@@ -50,6 +54,11 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
   }, [focus, props.tasks.length]);
   const [rejecting, setRejecting] = useState<ApprovalTask | null>(null);
   const [reason, setReason] = useState('');
+  // Closing the box drops what was typed: the next "Do not approve" starts empty (founder 26 Oct 2026).
+  const closeReject = () => {
+    setRejecting(null);
+    setReason('');
+  };
   const [delegate, setDelegate] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(new Date());
   const [to, setTo] = useState<Date | null>(null);
@@ -95,7 +104,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                         {t.summary.map((s) => (
                           <div key={s.label}>
                             <dt>{s.label}</dt>
-                            <dd>{s.value}</dd>
+                            <dd>{shown(s.value)}</dd>
                           </div>
                         ))}
                       </dl>
@@ -213,20 +222,19 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
       </div>
       <Dialog
         open={Boolean(rejecting)}
-        onOpenChange={(o) => !o && setRejecting(null)}
-        title={`Not approve ${rejecting?.title ?? ''}?`}
-        description="Say why. The person who asked sees your reason."
+        onOpenChange={(o) => !o && closeReject()}
+        title="Do not approve this request?"
+        description={`${rejecting?.title ?? ''}. Say why. The person who asked sees your reason.`}
         footer={
           <>
-            <Button onClick={() => setRejecting(null)}>Cancel</Button>
+            <Button onClick={closeReject}>Cancel</Button>
             <Button
               variant="danger"
               disabled={!reason.trim() || busy === 'reject'}
               onClick={() =>
                 void run('reject', async () => {
                   await props.onDecide(rejecting!, 'reject', reason.trim());
-                  setRejecting(null);
-                  setReason('');
+                  closeReject();
                 })
               }
             >

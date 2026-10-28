@@ -51,23 +51,30 @@
   gap: var(--yx-space-3);
   padding: var(--yx-space-3) var(--yx-space-3) var(--yx-space-3) var(--yx-space-4);
   border-radius: var(--yx-radius-card);
-  background: var(--yx-color-bg-inverse);
-  color: var(--yx-color-text-inverse);
-  box-shadow: var(--yx-shadow-popover);
+  /* One colour per meaning (founder, 22 Oct 2026): blue info, green done, orange warning, red error. */
+  --yx-toast-bg: var(--yx-color-info-bg);
+  --yx-toast-edge: var(--yx-color-info-border);
+  --yx-toast-ink: var(--yx-color-info-text);
+  background: var(--yx-toast-bg);
+  color: var(--yx-color-text);
+  border: var(--yx-border-width) solid var(--yx-toast-edge);
+  box-shadow: inset var(--yx-space-1) 0 0 var(--yx-toast-ink), var(--yx-shadow-popover);
   font-size: var(--yx-text-sm);
   line-height: var(--yx-leading-sm);
   animation: yx-toast-in var(--yx-duration-toast) var(--yx-ease-out);
 }
-.yx-toast > .yx-icon { flex: none; margin-top: var(--yx-space-half); }
+.yx-toast > .yx-icon { flex: none; margin-top: var(--yx-space-half); color: var(--yx-toast-ink); }
+.yx-toast[data-tone="success"] { --yx-toast-bg: var(--yx-color-success-bg); --yx-toast-edge: var(--yx-color-success-border); --yx-toast-ink: var(--yx-color-success-text); }
+.yx-toast[data-tone="warning"] { --yx-toast-bg: var(--yx-color-warning-bg); --yx-toast-edge: var(--yx-color-warning-border); --yx-toast-ink: var(--yx-color-warning-text); }
+.yx-toast[data-tone="error"] { --yx-toast-bg: var(--yx-color-danger-bg); --yx-toast-edge: var(--yx-color-danger-border); --yx-toast-ink: var(--yx-color-danger-text); }
 .yx-toast__body { flex: 1; min-width: 0; padding-top: var(--yx-space-half); }
 .yx-toast__title { margin: 0; font-weight: var(--yx-weight-medium); }
-.yx-toast__desc { margin: var(--yx-space-half) 0 0; opacity: 0.8; }
-.yx-toast[data-tone="error"] { box-shadow: inset var(--yx-space-1) 0 0 var(--yx-color-danger-action), var(--yx-shadow-popover); }
-.yx-toast .yx-button { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); }
-.yx-toast .yx-button[data-icon-only] { border-color: transparent; background: transparent; color: var(--yx-color-text-inverse); }
-/* On the dark toast, hover draws the outline thicker (text) or adds one (icon) instead of the light-surface tint. */
-.yx-toast .yx-button:hover, .yx-toast .yx-button[data-icon-only]:hover { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-text-inverse); }
-.yx-toast .yx-button:focus-visible { outline-color: var(--yx-color-text-inverse); }
+.yx-toast__desc { margin: var(--yx-space-half) 0 0; color: var(--yx-color-text-secondary); }
+.yx-toast .yx-button { background: transparent; color: var(--yx-toast-ink); border-color: var(--yx-toast-ink); }
+.yx-toast .yx-button[data-icon-only] { border-color: transparent; background: transparent; color: var(--yx-color-text-secondary); }
+/* Hover draws the outline thicker (text) or adds one (icon) in the toast's own colour. */
+.yx-toast .yx-button:hover, .yx-toast .yx-button[data-icon-only]:hover { background: transparent; color: var(--yx-toast-ink); border-color: var(--yx-toast-ink); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-toast-ink); }
+.yx-toast .yx-button:focus-visible { outline-color: var(--yx-toast-ink); }
 @keyframes yx-toast-in { from { opacity: 0; transform: translateY(calc(-1 * var(--yx-space-2))); } to { opacity: 1; transform: none; } }
 
 /* ---------- Page banner (§25) ---------- */

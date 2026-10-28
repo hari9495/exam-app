@@ -49,7 +49,7 @@ function scopeSql(c: CompanyContext, s: { type: string; id: string | null }, emp
 
 /** The union of a key's explicit scopes as a datemultirange expression. Report scopes need the viewer's record. */
 function grantMultirange(c: CompanyContext, v: Viewer, key: string, emp: Prisma.Sql, own: string | null): Prisma.Sql {
-  const scopes = (v.scopes.get(key) ?? []).filter((s) => own || (s.type !== 'all_reports' && s.type !== 'direct_reports'));
+  const scopes = (v.scopes.get(key) ?? []).filter((s) => own || (s.type !== 'all_reports' && s.type !== 'direct_reports' && s.type !== 'one_report'));
   return scopes.length ? Prisma.join(scopes.map((s) => scopeSql(c, s, emp, own)), ' + ') : none;
 }
 

@@ -158,7 +158,7 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
                   )}
                   {it.status === 'done' && (
                     <>
-                      <Icon icon={CheckCircle2} /> Uploaded · {formatBytes(it.file.size)}
+                      <Icon icon={CheckCircle2} /> Uploaded{it.file.size > 0 && ` · ${formatBytes(it.file.size)}`}
                     </>
                   )}
                   {it.status === 'error' && (

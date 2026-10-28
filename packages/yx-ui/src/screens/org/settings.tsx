@@ -40,11 +40,23 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'probation.auto_confirm_after_days': { off: 'Never (HR confirms)', '0': 'On the end date', '7': '7 days after', '15': '15 days after', '30': '30 days after' },
   'access.manager.view_scope': { all_reports: 'Everyone under them', direct_reports: 'Direct reports only' },
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
+  'employee.profile_change.proof': { required: 'Required', optional: 'Optional' },
   'home.pay_on_employee_home': { off: 'Not shown', on: 'Shown, hidden until the employee asks' },
   'attendance.mode': { punch: 'Punch in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' },
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
   'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
   'work.normal_week_hours': { pack: 'From the country pack' },
+  'pay.band.above_max': { warn: 'Warn only', cap: 'Cap at the maximum', block: 'Block' },
+  'promotion.must_change': { either: 'Designation or grade', both: 'Both', grade: 'Grade only', designation: 'Designation only' },
+  'bfsi.declaration_due': { '04-30': '30 April', '06-30': '30 June', '09-30': '30 September', '10-15': '15 October', '12-31': '31 December' },
+  'bfsi.preclearance_threshold': { '500000': '₹5,00,000', '1000000': '₹10,00,000', '2500000': '₹25,00,000' },
+  'work_auth.reminder_days': { '90,60,30': '90, 60 and 30 days before', '60,30': '60 and 30 days before', '30': '30 days before', off: 'No reminders' },
+  'transfer.leave': { carry: 'Carry over', lapse: 'Lapse' },
+  'transfer.service': { keep: 'Continue from original joining date', restart: 'Restart' },
+  'transfer.code': { keep: 'Keep', new: 'New in target series' },
+  'transfer.salary': { keep: 'Keep', new: 'Assign new' },
+  'pay_access.scope': { team: 'Their whole team', person: 'Only the person asked about' },
+  'pay_access.days': { '7': '7 days', '15': '15 days', '30': '30 days', '60': '60 days', '90': '90 days' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
@@ -61,9 +73,14 @@ export interface SettingsSection {
 /** Settings group 1 (Organisation) and group 2 (People & Access). Codes and master ownership live on Legal entities. */
 export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection[]> = {
   organisation: [
-    { title: 'Job changes', description: 'How far back HR may date a change without a System Admin.', keys: ['employee_change.retro_limit'] },
+    { title: 'Job changes', description: 'How far back HR may date a change without a System Admin, and what a promotion must change (a new designation, a new grade, or both).', keys: ['employee_change.retro_limit', 'promotion.must_change'] },
+    { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
+    { title: 'Team pay access', description: 'A manager can ask to see the pay of their team, with a reason. Two different HR people approve; the access ends by itself. The approving HR person can change the length and who it covers on each request.', keys: ['pay_access.days', 'pay_access.scope'] },
+    { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },
+    { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
+    { title: 'Regulated declarations', description: 'For designated persons (BFSI): when each financial year’s holdings, related persons and conflicts are due, and the trading pre-clearance rules.', keys: ['bfsi.declaration_due', 'bfsi.preclearance_threshold', 'bfsi.preclearance_valid_days', 'bfsi.preclearance_decide_days'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
   access: [

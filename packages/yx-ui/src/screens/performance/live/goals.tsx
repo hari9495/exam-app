@@ -155,6 +155,7 @@ function PeriodDialog({ onClose, onSave }: { onClose: () => void; onSave: GoalsS
   const [name, setName] = useState('');
   const [from, setFrom] = useState<Date | null>(null);
   const [to, setTo] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -162,19 +163,20 @@ function PeriodDialog({ onClose, onSave }: { onClose: () => void; onSave: GoalsS
       size="md"
       title="Add a goal period"
       confirmLabel="Add period"
-      confirmDisabled={name.trim().length < 2 || !from || !to || dayKey(to) <= dayKey(from)}
       onConfirm={async () => {
+        setTried(true);
+        if (name.trim().length < 2 || !from || !to || dayKey(to) <= dayKey(from)) return false;
         await onSave({ name: name.trim(), fromOn: dayKey(from!), toOn: dayKey(to!) });
         onClose();
       }}
     >
-      <FormField id="gp-name" label="Name" required helper="For example H2 FY 2026-27.">
+      <FormField id="gp-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null} helper="For example H2 FY 2026-27.">
         <TextField value={name} onChange={setName} maxLength={80} />
       </FormField>
-      <FormField id="gp-from" label="Starts on" required>
+      <FormField id="gp-from" label="Starts on" required error={tried && !from ? 'Choose the start date.' : null}>
         <DatePicker value={from} onChange={setFrom} aria-label="Period starts on" />
       </FormField>
-      <FormField id="gp-to" label="Ends on" required>
+      <FormField id="gp-to" label="Ends on" required error={!tried ? null : !to ? 'Choose the end date.' : from && dayKey(to) <= dayKey(from) ? 'Choose an end date after the start date.' : null}>
         <DatePicker value={to} onChange={setTo} min={from ?? undefined} aria-label="Period ends on" />
       </FormField>
     </ConfirmDialog>
@@ -487,12 +489,15 @@ function CheckInDrawer({ goal, onClose, onSave }: { goal: GoalDetail; onClose: (
 
 function DropDialog({ onClose, onDrop }: { onClose: () => void; onDrop: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Drop this goal?" consequence="It stays on record as dropped. Goals aligned to it keep working without a parent." confirmLabel="Drop the goal" destructive confirmDisabled={reason.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Drop this goal?" consequence="It stays on record as dropped. Goals aligned to it keep working without a parent." confirmLabel="Drop the goal" destructive onConfirm={async () => {
+      setTried(true);
+      if (reason.trim().length < 3) return false;
       await onDrop(reason.trim());
       onClose();
     }}>
-      <FormField id="dr-reason" label="Why" required>
+      <FormField id="dr-reason" label="Why" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -501,12 +506,15 @@ function DropDialog({ onClose, onDrop }: { onClose: () => void; onDrop: (reason:
 
 function CascadeDialog({ team, onClose, onCascade }: { team: Choice[]; onClose: () => void; onCascade: (ids: string[]) => Promise<unknown> }) {
   const [person, setPerson] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Cascade this goal" consequence="They get a draft copy aligned to this goal, to change and send to you." confirmLabel="Cascade" confirmDisabled={!person} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Cascade this goal" consequence="They get a draft copy aligned to this goal, to change and send to you." confirmLabel="Cascade" onConfirm={async () => {
+      setTried(true);
+      if (!person) return false;
       await onCascade([person!]);
       onClose();
     }}>
-      <FormField id="cs-person" label="To" required>
+      <FormField id="cs-person" label="To" required error={tried && !person ? 'Choose the person.' : null}>
         <Select aria-label="Cascade to" value={person} onChange={setPerson} options={team} searchable />
       </FormField>
     </ConfirmDialog>

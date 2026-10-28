@@ -392,6 +392,41 @@ export class AttendanceService implements OnModuleInit {
     });
   }
 
+  /**
+   * PPL-03 Time tab: one person's month as the muster shows it (same scope: the person, their managers, attendance.view
+   * in scope): present days, late marks, missing punches with their regularisation, and the shift pattern this week.
+   */
+  async personMonth(ctx: TenantContext, user: ScopeUser, employeeId: string, month: string) {
+    const { from, to } = monthRange(month);
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = v.userId && !v.actingForOther ? ((await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      await mustSee(tx, c, v, own, 'attendance.view', employeeId, to);
+      const f = (await factsOn(tx, org, employeeId, to)) ?? (await factsOn(tx, org, employeeId, from));
+      if (!f) throw new NotFoundException('Not found');
+      const today = todayIn(f.zone);
+      const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to < today ? to : today) } }, orderBy: { workOn: 'asc' } });
+      const fixes = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved', 'rejected'] } }, orderBy: { createdAt: 'desc' } });
+      const missing = days.filter((d) => d.status === 'missing_in' || d.status === 'missing_out' || d.regularised);
+      const on = to < today ? to : today;
+      const book = await ScheduleBook.load(tx, org);
+      const p = book.patternOn(f, on);
+      const monday = addDays(on, -((new Date(`${on}T00:00:00Z`).getUTCDay() + 6) % 7));
+      const day = await book.day(f, on);
+      return {
+        month,
+        present: days.reduce((n, d) => n + (d.status === 'present' ? 1 : d.status === 'half_day' ? 0.5 : 0), 0),
+        late: days.filter((d) => (d.lateMinutes ?? 0) > 0).map((d) => dateOf(d.workOn)),
+        missing: missing.map((d) => {
+          const fix = fixes.find((r) => dateOf(r.workOn) === dateOf(d.workOn));
+          return { on: dateOf(d.workOn), regularisation: d.regularised ? 'approved' : (fix?.status ?? null) };
+        }),
+        shift: { pattern: p ? book.patternName(p.patternId) : null, weekOf: monday, name: day.shift?.name ?? null, start: day.shift?.shiftStart ?? null, end: day.shift?.shiftEnd ?? null },
+      };
+    });
+  }
+
   /** A day card (TIM-03, YX-AT-15): punches with source, distance and verdict, to viewers in scope. */
   async dayCard(ctx: TenantContext, user: ScopeUser, employeeId: string, on: string) {
     const v = await this.viewer(user);

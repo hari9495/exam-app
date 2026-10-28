@@ -48,4 +48,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'candidate-retention', cron: '45 21 * * *' },
   // M10 AT5: due rejection messages and scorecard reminders, every 5 minutes.
   { id: 'hiring-due', cron: '*/5 * * * *' },
+  // PPL-07: saved employee imports are deleted 30 days after they were saved.
+  { id: 'import-drafts-retention', cron: '15 22 * * *' },
 ];

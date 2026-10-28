@@ -210,7 +210,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
       >
         <div className="yx-screen">
           {live.banner}
-          {live.breadcrumbs && live.breadcrumbs.length > 1 && <Breadcrumbs items={live.breadcrumbs} />}
+          {live.breadcrumbs && live.breadcrumbs.length > 1 && <div className="yx-screen__crumbs"><Breadcrumbs items={live.breadcrumbs} /></div>}
           <InLiveFrame.Provider value={true}>{children}</InLiveFrame.Provider>
         </div>
       </AppShell>

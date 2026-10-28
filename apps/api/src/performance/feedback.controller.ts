@@ -35,6 +35,12 @@ export class PerformanceFeedbackController {
     return this.svc.list(ctx, this.user(req), 'employee', employeeId);
   }
 
+  /** PPL-03: received and given counts this quarter for the record's Performance tab; the service checks who may ask. */
+  @Get('feedback/employee/:employeeId/counts')
+  counts(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.svc.counts(ctx, this.user(req), employeeId);
+  }
+
   @Post('feedback')
   @Throttle(PUBLIC_API_THROTTLE)
   give(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: FeedbackDto) {

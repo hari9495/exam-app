@@ -39,7 +39,10 @@ describe('Headcount plans (AT2)', () => {
     render(<HeadcountPlansScreen {...p} />);
     await ue.click(screen.getByRole('button', { name: 'New plan' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Save' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Save' }));
+    expect(within(d).getByText('Choose the department.')).toBeInTheDocument();
+    expect(within(d).getByText('Choose the designation.')).toBeInTheDocument();
+    expect(p.onSave).not.toHaveBeenCalled();
     await ue.click(within(d).getByRole('combobox', { name: 'Department' }));
     await ue.click(screen.getByRole('option', { name: 'Finance' }));
     await ue.click(within(d).getByRole('combobox', { name: 'Line 1: designation' }));
@@ -101,7 +104,9 @@ describe('Requisitions in the jobs list (AT2)', () => {
     const d = screen.getByRole('dialog');
     await ue.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Buyer');
     await ue.click(within(d).getByRole('checkbox', { name: /Outside the headcount plan/ }));
-    expect(within(d).getByRole('button', { name: 'Create' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Create' }));
+    expect(within(d).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(p.onCreate).not.toHaveBeenCalled();
     await ue.type(within(d).getByRole('textbox', { name: /Why outside the plan/ }), 'New client');
     await ue.click(within(d).getByRole('button', { name: 'Create' }));
     expect(p.onCreate).toHaveBeenCalledWith(expect.objectContaining({ requisitionReason: 'new', outsidePlan: true, outsidePlanReason: 'New client' }));

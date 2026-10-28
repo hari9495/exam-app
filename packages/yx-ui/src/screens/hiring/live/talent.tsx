@@ -165,15 +165,18 @@ function NewListDialog(p: { onClose: () => void; onCreate: TalentPoolsScreenProp
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'pool' | 'hotlist'>('pool');
   const [description, setDescription] = useState('');
+  const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title="New list" confirmLabel="Create list" confirmDisabled={!name.trim()} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} title="New list" confirmLabel="Create list" onConfirm={async () => {
+      setTried(true);
+      if (!name.trim()) return false;
       await p.onCreate({ name: name.trim(), kind, description: description.trim() || null });
       p.onClose();
     }}>
       <FormField id="tl-kind" label="Kind">
         <Segment label="Kind" value={kind} onChange={setKind} options={[{ value: 'pool', label: 'Talent pool' }, { value: 'hotlist', label: 'Hotlist' }]} />
       </FormField>
-      <FormField id="tl-name" label="Name" required>
+      <FormField id="tl-name" label="Name" required error={tried && !name.trim() ? 'Enter the list name.' : null}>
         <TextField value={name} onChange={setName} maxLength={120} />
       </FormField>
       <FormField id="tl-desc" label="Description" optional>

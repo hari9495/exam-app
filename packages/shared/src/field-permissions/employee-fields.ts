@@ -70,6 +70,12 @@ export const CONFIDENTIAL_KEYS: readonly string[] = [
   'pay.range.view',
   'pay.range.manage',
   'org.entity.statutory.manage',
+  // People › Succession (PPL-26): HR and leadership only.
+  'succession.manage',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer (designated persons' holdings and trades).
+  'compliance.declaration.manage',
 ];
 export const holdsConfidential = (keys: readonly string[]) => keys.some((k) => CONFIDENTIAL_KEYS.includes(k));
 
@@ -83,4 +89,10 @@ export const isGrantOnlyKey = (key: string) => /^(employee\.|pay\.|org\.entity\.
 /** "•••• 6789": the last four only (P02 §4.4 masked level). */
 export function maskTail(last4: string | null | undefined): string | null {
   return last4 ? `•••• ${last4}` : null;
+}
+
+/** The People designs' masks (PPL-03 record, PPL-36/37, PPL-43, PPL-46): the hidden part as X in the identifier's shape. */
+const SHAPE = { pan: 'XXXXXX', uan: 'XXXXXXXX', passport: 'XXXX', account: 'XXXX XXXX ' } as const;
+export function maskShaped(kind: keyof typeof SHAPE, last4: string | null | undefined): string | null {
+  return last4 ? `${SHAPE[kind]}${last4}` : null;
 }

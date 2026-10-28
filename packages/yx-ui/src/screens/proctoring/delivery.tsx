@@ -53,7 +53,7 @@ const INV_COLS: TableColumn<InvitationRow>[] = [
   { key: 'id', header: 'Invitation', type: 'id', value: (r) => r.id, width: 110 },
   { key: 'test', header: 'Test', value: (r) => r.test, width: 220 },
   { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => INV_TONE[v as InvitationRow['status']], groupable: true, width: 130 },
-  { key: 'slot', header: 'Slot (candidate time)', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
+  { key: 'slot', header: 'Slot (candidate time)', type: 'date', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
   { key: 'acc', header: 'Accommodation', value: (r) => r.accommodation ?? '', width: 170 },
   { key: 'reminders', header: 'Reminders sent', type: 'number', value: (r) => r.reminders, width: 120 },
 ];
@@ -411,6 +411,7 @@ export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, c
         </Card>
       )}
       {approved && <InlineAlert tone="success">Approved {formatClock(c.needsApproval)} extra by Neha Joshi on 28 Sep, 11:06 am. Reason: "Area-wide outage confirmed by the college."</InlineAlert>}
+      {/* confirmDisabled kept: the reason field is on the page behind the dialog, not in it; the dialog says what to fix. */}
       <ConfirmDialog open={open} onOpenChange={setOpen} title={`Approve ${formatClock(c.needsApproval)} extra time for Ananya Rao?`} consequence="The timer adds this time when she resumes after the face re-check. This is audited." confirmLabel="Approve extra time" onConfirm={() => setOpen(false)} confirmDisabled={reason.trim().length < 10}>
         {reason.trim().length < 10 && <p className="yx-prc-small yx-prc-danger">Enter a reason of at least 10 characters first.</p>}
       </ConfirmDialog>

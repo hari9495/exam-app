@@ -51,12 +51,16 @@ describe('approvalSubject (email subjects in plain words, founder review 19 Oct 
   it('says who asks for what, never the step name, and never names them twice', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ title: 'Loan of ₹50,000.00', text: 'Loan: Payroll approval', type: 'workflow.approval.needed' }, 'Meera Iyer', false)).toBe('Meera Iyer asks for Loan of ₹50,000.00');
+    // Founder 23 Oct 2026: never "Arjun Kulkarni asks for Resignation of Arjun Kulkarni".
+    expect(approvalSubject({ title: 'Resignation of Arjun Kulkarni', text: 'Exit: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Resignation from Arjun Kulkarni');
   });
   it('reminders, escalations and the decision sent to the person who asked', () => {
     expect(approvalSubject({ ...leave, text: 'Still waiting for you: Manager', type: 'workflow.approval.reminder' }, 'Arjun Kulkarni', false)).toBe('Still waiting for your approval: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ ...leave, text: 'Escalated to you: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Escalated to you: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
-    expect(approvalSubject({ ...leave, text: 'Approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Approved: your request for Casual leave, 21 Oct (1 day)');
-    expect(approvalSubject({ ...leave, text: 'Not approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Not approved: your request for Casual leave, 21 Oct (1 day)');
+    expect(approvalSubject({ ...leave, text: 'Approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) approved');
+    expect(approvalSubject({ ...leave, text: 'Not approved', type: 'workflow.approval.decided', reason: 'Team is short that week' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) not approved: Team is short that week');
+    // Founder test 26 Oct 2026 (PPL-28): what, for whom, and why; never "your request for … to approve".
+    expect(approvalSubject({ title: 'Appointment letter for Arjun Kulkarni', text: 'Not approved', type: 'workflow.approval.decided', reason: 'test only' }, 'Lakshmi Venkatesan', true)).toBe('Appointment letter for Arjun Kulkarni not approved: test only');
   });
   it('without a known person it still reads plainly', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, null, false)).toBe('A request waits for you: Arjun Kulkarni: Casual leave, 21 Oct (1 day)');

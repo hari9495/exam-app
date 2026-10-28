@@ -1,12 +1,12 @@
 // PPL-04 Change action · PPL-05 Scheduled changes · PPL-06 Bulk changes wizard · PPL-07 Employee import
-// PPL-09 Bulk transfer / restructure wizard · PPL-10 Inter-entity continuity checklist (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
-import { useMemo, useState } from 'react';
+// PPL-09 Bulk transfer / restructure wizard (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
+import { useMemo, useState, type ReactNode } from 'react';
 import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
 import { Button } from '../../components/button';
-import { Card, ObjectHeader, PageHeader } from '../../components/shell';
+import { Card, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -18,11 +18,15 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
+import { DocumentViewer } from '../../components/document';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
+import { LiveIncrementWizard, type LiveIncrement } from './increment';
+import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
+import { LiveRestructureWizard, type LiveRestructure } from './restructure';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
-import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -54,17 +58,28 @@ const IMPACT: Record<string, ImpactRow[]> = {
     { fact: 'Geofence', now: 'MG Road, 150 m', next: 'Taramani, 200 m' },
     { fact: 'Payroll proration', now: 'October', next: 'Segments: 1–4 Oct Bengaluru, 5–31 Oct Chennai' },
   ],
+  // As the live dry run reports a one-person move (founder 27 Oct 2026: every job fact that changes).
   'Inter-entity transfer': [
     { fact: 'Legal entity', now: 'Kaveri Foods Pvt Ltd', next: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },
     { fact: 'Employee code', now: 'KF-0088', next: 'KF-0088 (kept)' },
+    { fact: 'Location', now: 'Bengaluru head office', next: 'Chennai office' },
+    { fact: 'Employment type', now: 'Fixed-term (plant)', next: 'Permanent' },
     { fact: 'PF', now: 'Same UAN', next: 'Same UAN · transfer tracked on the checklist' },
-    { fact: 'Tax', now: 'YTD ₹4,12,000', next: 'Form 12B carried into the new entity' },
+    { fact: 'Tax', now: 'Pay and tax so far this year', next: 'Form 12B carried into the new entity' },
     { fact: 'Leave balance', now: '11.5 days PL', next: 'Carried over' },
+    { fact: 'Continuous service', now: '—', next: 'Continues from 14 Jul 2019' },
+    { fact: 'Salary structure', now: '—', next: 'Kept' },
   ],
 };
 
 function approvalSteps(kind: string, persona: Persona): ApprovalStep[] {
   const raiser = persona === 'mgr' ? 'Divya Raghunathan' : 'Lakshmi Venkatesan';
+  // A move to another entity is a one-person restructure: another HR person approves it in People › Restructure.
+  if (kind === 'Inter-entity transfer')
+    return [
+      { id: 'c0', label: 'Raised', status: 'done', approver: raiser, at: new Date(2026, 8, 29, 9, 40) },
+      { id: 'c1', label: 'HR, in People › Restructure', status: 'current', approver: 'Priya Nair' },
+    ];
   if (kind === 'Promotion')
     return [
       { id: 'a0', label: 'Raised', status: 'done', approver: raiser, at: new Date(2026, 8, 29, 9, 40) },
@@ -95,10 +110,36 @@ const REASON: Partial<Record<ChangeKind, string>> = {
 const MGR_KINDS: ChangeKind[] = ['Promotion', 'Transfer', 'Manager change', 'Contract extension'];
 const CURRENT_CTC = 690000;
 const BAND_MID = 820000;
+/** Half-filled changes the raiser saved ("Save draft"); only they see them. */
+const DRAFTS = [{ id: 'd1', name: 'Rohit Menon', kind: 'Transfer', savedAt: new Date(2026, 9, 20) }];
+type DraftRow = { id: string; name: string; kind: string | null; savedAt: Date };
+function DraftList({ drafts, onOpen }: { drafts: DraftRow[]; onOpen?: (id: string) => void }) {
+  if (!drafts.length) return null;
+  return (
+    <StatusChecklist
+      label="Your drafts"
+      rows={drafts.map(
+        (dr): ChecklistRow => ({
+          id: dr.id,
+          title: `${dr.name}${dr.kind ? ` · ${dr.kind}` : ''}`,
+          status: 'Draft',
+          note: `Saved ${formatDate(dr.savedAt)}`,
+          action: (
+            <Button size="sm" onClick={() => onOpen?.(dr.id)}>
+              Open
+            </Button>
+          ),
+        }),
+      )}
+    />
+  );
+}
 /** Changes already raised and waiting for someone. */
 const IN_PROGRESS = [
   { id: 'w1', name: 'Nisha Rao', kind: 'Manager change', effective: new Date(2026, 10, 2), waitingFor: 'Karthik Subramanian', mine: true },
   { id: 'w2', name: 'Aisha Khan', kind: 'Manager change', effective: new Date(2026, 9, 12), waitingFor: 'Lakshmi Venkatesan', mine: false },
+  // Founder 28 Oct 2026: an inter-entity transfer sent from here waits too; Open goes to People › Restructure.
+  { id: 'w3', name: 'Rahul Sharma', kind: 'Inter-entity transfer', effective: new Date(2026, 10, 1), waitingFor: 'Karthik Subramanian or Lakshmi Venkatesan', mine: false },
 ];
 
 export interface ChangeActionSheetProps {
@@ -111,10 +152,89 @@ export interface ChangeActionSheetProps {
   payrollProcessedTo?: Date;
   /** The side panel starts open (stories); false shows the page itself. */
   startOpen?: boolean;
+  /** What a promotion must change (Settings › Job changes): designation or grade (default), both, or one of them. */
+  promotionMustChange?: 'either' | 'both' | 'grade' | 'designation';
+  live?: LiveChangeAction;
+}
+
+/** The live app's Change action page (design audit step 3): pick a person, start the change; what waits for approval. */
+export interface LiveChangeAction {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  people: { id: string; name: string; role: string; department: string }[];
+  /** `note`: who it waits for ("waiting for Karthik Subramanian"), else when it was raised. */
+  waiting: { id: string; name: string; kind: string; effective: Date; note: string; canOpen: boolean }[];
+  /** The viewer's own saved drafts. */
+  drafts?: DraftRow[];
+  onOpenDraft?: (id: string) => void;
+  onStart: (personId: string) => void;
+  onOpenWaiting: (id: string) => void;
+  /** The change form and the review drawer the page opens. */
+  children?: ReactNode;
+}
+
+function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveChangeAction }) {
+  const mgr = persona === 'mgr';
+  const [whoId, setWhoId] = useState<string | null>(null);
+  return (
+    <PeopleFrame active="Change action" persona={persona}>
+      <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
+      {live.state === 'no-access' ? (
+        <NoAccessState what="the changes" grantedBy="your HR admin" />
+      ) : live.state === 'error' ? (
+        <ErrorState title="We couldn't load the changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : (
+        <div className="yx-ppl__grid2">
+          <Card title="Start a change">
+            <div className="yx-ppl__stack">
+              <FormField label="Person" required>
+                <PersonPicker people={live.people.map((p) => ({ id: p.id, name: p.name, role: p.role, department: p.department }))} value={whoId} onChange={setWhoId} placeholder="Find a person" />
+              </FormField>
+              <div>
+                <Button variant="primary" disabled={!whoId} onClick={() => whoId && live.onStart(whoId)}>
+                  Start change
+                </Button>
+              </div>
+              <DraftList drafts={live.drafts ?? []} onOpen={live.onOpenDraft} />
+            </div>
+          </Card>
+          <Card title={`Waiting for approval (${live.waiting.length})`}>
+            {live.state === 'loading' ? (
+              <ListSkeleton label="Loading changes waiting for approval" rows={2} />
+            ) : live.waiting.length ? (
+              <StatusChecklist
+                label="Changes waiting for approval"
+                rows={live.waiting.map(
+                  (w): ChecklistRow => ({
+                    id: w.id,
+                    title: `${w.name} · ${w.kind}`,
+                    status: 'Pending approval',
+                    note: `Effective ${formatDate(w.effective)} · ${w.note}`,
+                    action: w.canOpen ? (
+                      <Button size="sm" onClick={() => live.onOpenWaiting(w.id)}>
+                        Open
+                      </Button>
+                    ) : undefined,
+                  }),
+                )}
+              />
+            ) : (
+              <Text tone="secondary">Nothing is waiting.</Text>
+            )}
+          </Card>
+        </div>
+      )}
+      {live.children}
+    </PeopleFrame>
+  );
 }
 
 // PPL-04
-export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true }: ChangeActionSheetProps) {
+export function ChangeActionSheet(props: ChangeActionSheetProps) {
+  return props.live ? <LiveChangeActionPage persona={props.persona} live={props.live} /> : <SampleChangeActionSheet {...props} />;
+}
+
+function SampleChangeActionSheet({ persona, kind: kindProp, effective: effectiveProp, today, payGrant = false, payrollProcessedTo, startOpen = true, promotionMustChange = 'either' }: ChangeActionSheetProps) {
   const mgr = persona === 'mgr';
   const people = CHANGE_PEOPLE.filter((p) => !mgr || p.mine);
   const [open, setOpen] = useState(startOpen);
@@ -123,7 +243,7 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
   const [effective, setEffective] = useState<Date | null>(effectiveProp);
   const [ctc, setCtc] = useState<number | null>(780000);
   const [reason, setReason] = useState(REASON[kindProp] ?? '');
-  const [options, setOptions] = useState({ leave: 'carry', service: 'continue', code: 'keep', fnf: 'none', salary: 'keep' });
+  const [options, setOptions] = useState({ leave: 'carry', service: 'continue', code: 'keep', salary: 'keep' });
   const narrow = useNarrow();
   const showPay = persona === 'hr' || payGrant;
   const retro = effective && daysBetween(effective, today) > 0;
@@ -156,6 +276,7 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
                 Start change
               </Button>
             </div>
+            <DraftList drafts={DRAFTS.filter(() => !mgr)} onOpen={() => setOpen(true)} />
           </div>
         </Card>
         <Card title={`Waiting for approval (${waiting.length})`}>
@@ -207,10 +328,10 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
             </FormField>
             {kind === 'Promotion' && (
               <>
-                <FormField label="New designation" required>
+                <FormField label="New designation" required={promotionMustChange === 'both' || promotionMustChange === 'designation'} optional={promotionMustChange === 'grade'} helper={promotionMustChange === 'either' ? 'Choose a new designation, a new grade, or both.' : undefined}>
                   <Select options={[{ value: 'ql', label: 'Quality Lead' }, { value: 'qe', label: 'Quality Engineer' }]} value="ql" onChange={() => {}} />
                 </FormField>
-                <FormField label="New grade" required>
+                <FormField label="New grade" required={promotionMustChange === 'both' || promotionMustChange === 'grade'} optional={promotionMustChange === 'designation'}>
                   <Select options={[{ value: 'G6', label: showPay ? 'G6 · ₹6,80,000 to ₹9,60,000' : 'G6' }]} value="G6" onChange={() => {}} />
                 </FormField>
                 {showPay ? (
@@ -234,13 +355,32 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
               </FormField>
             )}
             {kind === 'Inter-entity transfer' && (
+              <>
+                <FormField label="New legal entity" required>
+                  <Select options={[{ value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="tn" onChange={() => {}} />
+                </FormField>
+                <FormField label="New location" required>
+                  <Select options={[{ value: 'maa', label: 'Chennai office' }]} value="maa" onChange={() => {}} />
+                </FormField>
+                <FormField label="New department" optional>
+                  <Select options={[{ value: 'sales', label: 'Sales' }]} value={null} onChange={() => {}} placeholder="No change" clearable />
+                </FormField>
+                <FormField label="New designation" optional>
+                  <Select options={[{ value: 'ae', label: 'Account Executive' }]} value={null} onChange={() => {}} placeholder="No change" clearable />
+                </FormField>
+                <FormField label="New employment type" required helper="Fixed-term (plant) is only for Kaveri Foods Pvt Ltd: choose one for the new entity.">
+                  <Select options={[{ value: 'perm', label: 'Permanent' }]} value="perm" onChange={() => {}} />
+                </FormField>
+              </>
+            )}
+            {kind === 'Inter-entity transfer' && (
               <Card title="Transfer options">
                 <div className="yx-ppl__stack">
                   <Text size="sm" tone="secondary" as="p">
                     Company defaults are selected. Change them for this transfer only.
                   </Text>
                   <FormField label="Leave balance">
-                    <RadioGroup value={options.leave} onChange={(v) => setOptions({ ...options, leave: v })} options={[{ value: 'carry', label: 'Carry over' }, { value: 'encash', label: 'Encash at old entity' }, { value: 'lapse', label: 'Lapse' }]} orientation="horizontal" />
+                    <RadioGroup value={options.leave} onChange={(v) => setOptions({ ...options, leave: v })} options={[{ value: 'carry', label: 'Carry over' }, { value: 'lapse', label: 'Lapse' }]} orientation="horizontal" />
                   </FormField>
                   <FormField label="Service continuity (gratuity, seniority, notice)">
                     <RadioGroup value={options.service} onChange={(v) => setOptions({ ...options, service: v })} options={[{ value: 'continue', label: 'Continue from 14 Jul 2019' }, { value: 'restart', label: 'Restart' }]} orientation="horizontal" />
@@ -248,14 +388,11 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
                   <FormField label="Employee code">
                     <RadioGroup value={options.code} onChange={(v) => setOptions({ ...options, code: v })} options={[{ value: 'keep', label: 'Keep KF-0088' }, { value: 'new', label: 'New code in the target series' }]} orientation="horizontal" />
                   </FormField>
-                  <FormField label="Settlement at the old entity">
-                    <RadioGroup value={options.fnf} onChange={(v) => setOptions({ ...options, fnf: v })} options={[{ value: 'none', label: 'None (amounts move over)' }, { value: 'full', label: 'Full and final settlement' }]} orientation="horizontal" />
-                  </FormField>
                   <FormField label="Salary structure">
                     <RadioGroup value={options.salary} onChange={(v) => setOptions({ ...options, salary: v })} options={[{ value: 'keep', label: 'Keep' }, { value: 'new', label: 'Assign new' }]} orientation="horizontal" />
                   </FormField>
                   <Text size="sm" tone="secondary" as="p">
-                    A continuity checklist opens on this change: UAN transfer, ESI IP, Form 12B, declarations, loans, leave ledger and gratuity.
+                    There is no settlement at the old entity. HR approves the move in People › Restructure. A continuity checklist opens on it: UAN transfer, ESI IP, Form 12B, declarations, loans, leave and gratuity.
                   </Text>
                 </div>
               </Card>
@@ -328,7 +465,7 @@ export function ChangeActionSheet({ persona, kind: kindProp, effective: effectiv
 
 /* ================================================================== PPL-05 scheduled changes */
 
-type Sched = (typeof SCHEDULED)[number];
+export type Sched = (typeof SCHEDULED)[number];
 type Win = 30 | 60 | 90;
 
 /** Effective date plus "in 2 days"; amber within a week. */
@@ -343,7 +480,19 @@ function EffectiveCell({ date, today }: { date: Date; today: Date }) {
 }
 
 // PPL-05
-export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean }) {
+/** The live app's scheduled changes (design audit step 3). */
+export interface LiveScheduled {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry: () => void;
+  onEdit?: (id: string) => void;
+  onReview?: (id: string) => void;
+  onOpen: (id: string) => void;
+  onCancel?: (id: string, reason: string) => Promise<void>;
+  onStart?: () => void;
+  children?: ReactNode;
+}
+
+export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaultCancelId, canSeePay = true, live }: { rows: Sched[]; today: Date; defaultWindow?: Win; defaultCancelId?: string; canSeePay?: boolean; live?: LiveScheduled }) {
   const [win, setWin] = useState<Win>(defaultWindow);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [showPay, setShowPay] = useState(false);
@@ -365,14 +514,15 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
       {r.status === 'Pending approval' && (
         <>
           <Badge tone="warning">Pending approval</Badge>
-          <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>
+          {r.waitingFor && <span className="yx-ppl__sub">Waiting for {r.waitingFor}</span>}
         </>
       )}
     </span>
   );
   const summaryCell = (r: Sched) => (
     <span className="yx-ppl__type">
-      <span>{r.summary}</span>
+      {/* Only pay changes: the pay line alone, no empty job line. */}
+      {!(r.summary === '—' && payText(r)) && <span>{r.summary}</span>}
       {payText(r) && <span className="yx-ppl__sub">{payText(r)}</span>}
     </span>
   );
@@ -383,12 +533,27 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
     { key: 'summary', header: 'What changes', value: (r) => r.summary, render: summaryCell, width: 225 },
     { key: 'raisedBy', header: 'Raised by', value: (r) => r.raisedBy, width: 170 },
   ];
-  const edit = () => (
-    <Button size="sm" icon={Pencil}>
-      Edit
-    </Button>
-  );
-  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={<Button variant="primary">Start change</Button>} />;
+  const edit = (r: Sched) =>
+    live ? (
+      r.status === 'Pending approval' && live.onReview ? (
+        <Button size="sm" variant="review" onClick={() => live.onReview!(r.id)}>
+          Review
+        </Button>
+      ) : live.onEdit ? (
+        <Button size="sm" icon={Pencil} onClick={() => live.onEdit!(r.id)}>
+          Edit
+        </Button>
+      ) : null
+    ) : (
+      <Button size="sm" icon={Pencil}>
+        Edit
+      </Button>
+    );
+  const start = live ? live.onStart : () => {};
+  const empty = <EmptyState title={pendingOnly ? 'Nothing is waiting for approval' : `No changes in the next ${win} days`} description="Changes you schedule for a future date appear here until they apply." action={start ? <Button variant="primary" onClick={start}>Start change</Button> : undefined} />;
+  const [cancelling, setCancelling] = useState(false);
+  const [tried, setTried] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   return (
     <PeopleFrame active="Scheduled">
       <PageHeader
@@ -402,20 +567,28 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           ) : undefined
         }
       />
-      <div className="yx-ppl__filterbar">
-        <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
+      {live?.state !== 'no-access' && (
+        <div className="yx-ppl__filterbar">
+          <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
         <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>
           {pendingOnly && <Icon icon={Check} size="sm" />}
-          Only pending approval ({pending.length})
-        </button>
-      </div>
+            Only pending approval ({pending.length})
+          </button>
+        </div>
+      )}
       {showPay && <Text size="sm" tone="secondary" as="p">Pay is showing. Each time you show it is recorded.</Text>}
       {revision && earlier && (
         <InlineAlert tone="warning" title={`${revision.name} has two changes`} actions={<Button size="sm">Open revision</Button>}>
           His {revision.summary.replace('Market correction ', '')} revision on {formatDate(revision.effective)} is worked out on his pay after the {formatDate(earlier.effective)} {earlier.type.toLowerCase()}. Check the amounts before it applies.
         </InlineAlert>
       )}
-      {narrow ? (
+      {live?.state === 'no-access' ? (
+        <NoAccessState what="the scheduled changes" grantedBy="your HR admin" />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load the scheduled changes" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live?.state === 'loading' ? (
+        <ListSkeleton label="Loading scheduled changes" />
+      ) : narrow ? (
         shown.length === 0 ? (
           empty
         ) : (
@@ -426,7 +599,7 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
                 {changeCell(r)}
                 {summaryCell(r)}
                 <EffectiveCell date={r.effective} today={today} />
-                {edit()}
+                {edit(r)}
               </li>
             ))}
           </ul>
@@ -437,36 +610,60 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
           columns={cols}
           rows={shown}
           getRowId={(r) => r.id}
+          {...(live ? { onExport: exportCsv('scheduled-changes', shown, cols) } : {})}
           empty={empty}
           rowButtons={edit}
           rowActions={(r) => (
             <>
-              <MenuItem>Open change</MenuItem>
-              <MenuItem icon={XCircle} destructive onSelect={() => setCancelId(r.id)}>
-                Cancel change
-              </MenuItem>
+              <MenuItem onSelect={live ? () => live.onOpen(r.id) : undefined}>{live ? 'Open record' : 'Open change'}</MenuItem>
+              {(!live || live.onCancel) && (
+                <MenuItem icon={XCircle} destructive onSelect={() => (setTried(false), setCancelId(r.id))}>
+                  Cancel change
+                </MenuItem>
+              )}
             </>
           )}
           defaultSort={{ key: 'effective', dir: 'asc' }}
           defaultColumnState={{ hidden: ['raisedBy'] }}
-          onExport={() => {}}
+          // Export: no export of scheduled changes in the live app yet (left out).
+          {...(live ? {} : { onExport: () => {} })}
         />
       )}
       <ConfirmDialog
         open={!!cancelRow}
         onOpenChange={(o) => !o && setCancelId(null)}
-        title={`Cancel ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
-        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. The approvers are told, and the cancelled change stays on the timeline.` : ''}
+        title={`Cancel the ${cancelRow?.type.toLowerCase()} for ${cancelRow?.name}?`}
+        consequence={cancelRow ? `${cancelRow.summary} won't happen on ${formatDate(cancelRow.effective)}. ${live ? 'The cancelled change stays on the timeline.' : 'The approvers are told, and the cancelled change stays on the timeline.'}` : ''}
         confirmLabel="Cancel change"
         cancelLabel="Keep change"
         destructive
-        confirmDisabled={reason.trim().length < 5}
-        onConfirm={() => setCancelId(null)}
+        // Only while the cancel request runs; the reason is checked on click.
+        confirmDisabled={cancelling}
+        onConfirm={async () => {
+          setTried(true);
+          if (reason.trim().length < 5) return false;
+          if (live?.onCancel && cancelRow) {
+            setCancelling(true);
+            setCancelError(null);
+            try {
+              await live.onCancel(cancelRow.id, reason.trim());
+            } catch (e) {
+              setCancelError(e instanceof Error ? e.message : 'The change was not cancelled. Try again.');
+              setCancelling(false);
+              throw e;
+            }
+            setCancelling(false);
+          }
+          setReason('');
+          setCancelId(null);
+        }}
       >
-        <FormField label="Reason" required helper="At least 5 characters. Shown to the approvers.">
+        <FormField label="Reason" required rule="At least 5 characters." helper="Shown to the approvers." error={tried && reason.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={2} />
         </FormField>
+        {cancelError && <InlineAlert tone="danger" title={cancelError} />}
       </ConfirmDialog>
+      {live?.children}
     </PeopleFrame>
   );
 }
@@ -493,29 +690,55 @@ export function incrementPreview(pct: Record<string, number>, custom: Record<str
 }
 
 // PPL-06
-export function BulkChangesWizard({ current = 'people', confirmOpen = false }: { current?: string; confirmOpen?: boolean }) {
+export function BulkChangesWizard(props: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean; live?: LiveIncrement }) {
+  return props.live ? <LiveIncrementWizard live={props.live} /> : <SampleBulkChangesWizard {...props} />;
+}
+
+/** The company's rule for a raise above the grade's pay range maximum (Settings › Company rules › Pay ranges). */
+export type BandPolicy = 'warn' | 'cap' | 'block';
+
+/** What the Preview step says about people above the band maximum, per company rule. */
+export function bandNotice(policy: BandPolicy, above: number, held: number): { tone: 'warning' | 'danger' | 'info'; title: string; text: string } | null {
+  const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
+  if (policy === 'cap') return held ? { tone: 'info', title: `${people(held)} held at the band maximum`, text: 'Company rule: a raise never goes above the band maximum. Change it in Settings › Company rules.' } : null;
+  if (!above) return null;
+  if (policy === 'block') return { tone: 'danger', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Company rule: raises above the band maximum are not sent. Cap them or lower their raise.' };
+  return { tone: 'warning', title: `${people(above)} ${above === 1 ? 'goes' : 'go'} above the band maximum`, text: 'Cap them, change their raise in the table, or leave them for the approver as exceptions.' };
+}
+
+function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode: startMode = 'rating', bandPolicy = 'warn', letterOpen: startLetter = false }: { current?: string; confirmOpen?: boolean; mode?: 'rating' | 'percent'; bandPolicy?: BandPolicy; letterOpen?: boolean }) {
   const allDepts = useMemo(() => [...new Set(INCREMENT_ROWS.map((r) => r.department))].sort(), []);
-  const [type, setType] = useState<string | null>('inc');
+  const [type] = useState<string | null>('inc');
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [joinedBefore, setJoinedBefore] = useState<Date | null>(new Date(2026, 3, 1));
   const [depts, setDepts] = useState<string[]>(allDepts);
   const [pct, setPct] = useState(INCREMENT_PCT);
+  const [mode, setMode] = useState<'rating' | 'percent'>(startMode);
+  const [everyone, setEveryone] = useState<number | null>(6);
+  const [cycle, setCycle] = useState<string | null>('fy26');
   const [custom, setCustom] = useState<Record<string, number>>({});
   const [capped, setCapped] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(confirmOpen);
   const [leftOutOpen, setLeftOutOpen] = useState(false);
-  const [letterOpen, setLetterOpen] = useState(false);
+  const [letterOpen, setLetterOpen] = useState(startLetter);
+  const [letterFor, setLetterFor] = useState<string | null>(null);
   // The wizard's content column is narrow, so cards take over below 1024 px.
   const narrow = useNarrow(1023);
   const chosen = useMemo(() => INCREMENT_ROWS.filter((r) => depts.includes(r.department)), [depts]);
-  const rows = useMemo(() => incrementPreview(pct, custom, capped, chosen), [pct, custom, capped, chosen]);
+  const rule = useMemo(() => (mode === 'rating' ? pct : { Exceeds: everyone ?? 0, Meets: everyone ?? 0, Below: everyone ?? 0 }), [mode, pct, everyone]);
+  const rows = useMemo(() => {
+    const out = incrementPreview(rule, custom, capped, chosen);
+    // Under the "cap" rule everyone above the band is held at its maximum.
+    return bandPolicy === 'cap' ? incrementPreview(rule, custom, [...capped, ...out.filter((r) => r.flag).map((r) => r.id)], chosen) : out;
+  }, [rule, custom, capped, chosen, bandPolicy]);
   const before = rows.reduce((s, r) => s + r.ctc, 0);
   const after = rows.reduce((s, r) => s + r.next, 0);
   const flaggedRows = rows.filter((r) => r.flag);
   const typeLabel = BULK_TYPES.find((t) => t.value === type)?.label ?? 'Bulk change';
   const cap = (ids: string[]) => setCapped([...new Set([...capped, ...ids])]);
+  const notice = bandNotice(bandPolicy, flaggedRows.length, rows.filter((r) => r.capped).length);
   const capBtn = (r: IncRow) =>
-    r.flag ? (
+    r.flag && bandPolicy !== 'cap' ? (
       <Button size="sm" onClick={() => cap([r.id])}>
         Cap at band max
       </Button>
@@ -540,16 +763,16 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
       width: 150,
     },
   ];
-  const first = rows[0];
+  const first = rows.find((r) => r.id === letterFor) ?? rows[0];
   return (
     <PeopleFrame active="Bulk changes">
-      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person and letters in bulk." />
+      <PageHeader title={typeLabel} description="One approval for everyone, a preview per person, new pay rounded to whole rupees." />
       <Stepper
         title="Bulk change"
         defaultCurrent={current}
         finishLabel={`Send for approval (${rows.length} people)`}
+        finishBlocked={bandPolicy === 'block' && flaggedRows.length ? `${flaggedRows.length} above the band maximum: cap them first.` : undefined}
         onFinish={() => setConfirm(true)}
-        onSaveAndExit={() => {}}
         review={{ description: 'Check the totals before you send this for one approval.' }}
         steps={[
           {
@@ -558,23 +781,23 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
             summary: `${rows.length} employees · ${depts.length === allDepts.length ? 'all departments' : depts.join(', ')} · Kaveri Foods Pvt Ltd · effective ${effective ? formatDate(effective) : '—'}`,
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Change type" required>
-                  <Select options={BULK_TYPES} value={type} onChange={setType} />
-                </FormField>
                 <FormField label="Legal entity" required>
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }]} value="kf" onChange={() => {}} />
                 </FormField>
-                <FormField label="Effective date" required>
+                <FormField label="Effective date" required helper="Payroll pays arrears for a date in a month already paid.">
                   <DatePicker value={effective} onChange={setEffective} />
                 </FormField>
-                <FormField label="Departments" required>
+                <FormField label="Departments" optional helper="Leave empty for everyone.">
                   <MultiSelect options={allDepts.map((d) => ({ value: d, label: d }))} value={depts} onChange={setDepts} />
                 </FormField>
-                <FormField label="Confirmed employees who joined before" required>
+                <FormField label="Confirmed employees who joined before" optional>
                   <DatePicker value={joinedBefore} onChange={setJoinedBefore} />
                 </FormField>
+                <FormField label="Reason" required helper="Kept on each person's job history.">
+                  <TextArea rows={2} defaultValue="Annual increment" maxLength={1000} />
+                </FormField>
                 <InlineAlert tone="info" actions={<Button size="sm" onClick={() => setLeftOutOpen(true)}>See who</Button>}>
-                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} people on notice are left out.
+                  {rows.length} people match. {INCREMENT_LEFT_OUT.length} are left out.
                 </InlineAlert>
               </div>
             ),
@@ -582,8 +805,30 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
           {
             id: 'rule',
             title: 'Set the rule',
-            summary: `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%`,
+            summary: mode === 'rating' ? `Exceeds ${pct.Exceeds}% · Meets ${pct.Meets}% · Below ${pct.Below}%` : `${everyone ?? 0}% for everyone`,
             content: (
+              <div className="yx-ppl__form">
+                <Segment
+                  label="Raise by"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: 'rating', label: 'By rating' },
+                    { value: 'percent', label: 'Same for everyone' },
+                  ]}
+                />
+                {mode === 'percent' ? (
+                  <FormField label="Raise for everyone" required>
+                    <NumberField value={everyone} onChange={setEveryone} decimals suffix="%" />
+                  </FormField>
+                ) : (
+                  <>
+                    <FormField label="Ratings from" required>
+                      <Select options={[{ value: 'fy26', label: 'FY 2025-26 annual review' }]} value={cycle} onChange={setCycle} />
+                    </FormField>
+                    <InlineAlert tone="warning" title="1 person has no rating">
+                      They get no raise by rating. Use &quot;Same for everyone&quot;, or see who under Choose people.
+                    </InlineAlert>
               <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Increase by rating">
                 <table className="yx-ppl__impact">
                   <thead>
@@ -611,6 +856,9 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
                   </tbody>
                 </table>
               </div>
+                  </>
+                )}
+              </div>
             ),
           },
           {
@@ -619,13 +867,9 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
             summary: `${formatINR(before)} → ${formatINR(after)} (${formatINR(after - before)} more a year) · ${flaggedRows.length ? `${flaggedRows.length} above band` : 'all within band'}`,
             content: (
               <div className="yx-ppl__stack">
-                {flaggedRows.length > 0 && (
-                  <InlineAlert
-                    tone="warning"
-                    title={`${flaggedRows.length} ${flaggedRows.length === 1 ? 'person goes' : 'people go'} above the band maximum`}
-                    actions={<Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button>}
-                  >
-                    Cap them, change their raise in the table, or leave them for the approver as exceptions.
+                {notice && (
+                  <InlineAlert tone={notice.tone} title={notice.title} actions={bandPolicy !== 'cap' && flaggedRows.length ? <Button size="sm" onClick={() => cap(flaggedRows.map((r) => r.id))}>Cap all {flaggedRows.length} at band maximum</Button> : undefined}>
+                    {notice.text}
                   </InlineAlert>
                 )}
                 {narrow ? (
@@ -661,18 +905,21 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
           {
             id: 'letters',
             title: 'Letters',
-            summary: 'Increment letter (template v3) · to each person’s documents and a notification',
+            summary: 'Increment letter (version 3) · to each person’s documents and an email, once approved',
             content: (
               <div className="yx-ppl__form">
-                <FormField label="Letter template" required>
-                  <Select options={[{ value: 'inc3', label: 'Increment letter v3 (approval required)' }]} value="inc3" onChange={() => {}} />
+                <FormField label="Letter template" required helper={<>Change the wording or the merge fields in <a className="yx-link" href="#settings-letters">Settings › Letter templates</a>.</>}>
+                  <Select options={[{ value: 'inc3', label: 'Increment letter (version 3)' }]} value="inc3" onChange={() => {}} />
+                </FormField>
+                <FormField label="Preview the letter for" optional>
+                  <Select options={rows.map((r) => ({ value: r.id, label: r.name }))} value={letterFor ?? rows[0]?.id ?? null} onChange={setLetterFor} searchable />
                 </FormField>
                 <div>
                   <Button icon={FileText} onClick={() => setLetterOpen(true)}>
-                    Preview a letter
+                    Preview letter
                   </Button>
                 </div>
-                <InlineAlert tone="info">Letters are issued after approval and apply on {effective ? formatDate(effective) : 'the effective date'}. Failures are listed for retry.</InlineAlert>
+                <InlineAlert tone="info">Letters are made only after the change is approved, from the approved pay. Each person finds theirs in My documents and letters and gets an email.</InlineAlert>
               </div>
             ),
           },
@@ -687,19 +934,18 @@ export function BulkChangesWizard({ current = 'people', confirmOpen = false }: {
         onConfirm={() => setConfirm(false)}
       />
       <Dialog open={leftOutOpen} onOpenChange={setLeftOutOpen} title="Left out of this change" footer={<Button onClick={() => setLeftOutOpen(false)}>Close</Button>}>
-        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'On notice', note: p.why }))} />
+        <StatusChecklist label="People left out" rows={INCREMENT_LEFT_OUT.map((p, i): ChecklistRow => ({ id: `lo${i}`, title: p.name, status: 'Left out', note: p.why }))} />
       </Dialog>
-      <Dialog open={letterOpen} onOpenChange={setLetterOpen} size="md" title={`Increment letter · ${first?.name ?? ''}`} footer={<Button onClick={() => setLetterOpen(false)}>Close</Button>}>
-        {first && (
-          <div className="yx-ppl__stack">
-            <Text as="p">Dear {first.name.split(' ')[0]},</Text>
-            <Text as="p">
-              Following your annual review, your annual CTC is revised from {formatINR(first.ctc)} to {formatINR(first.next)} ({first.pct}%), effective {effective ? formatDate(effective) : 'the effective date'}. Your grade stays {first.grade}.
-            </Text>
-            <Text as="p">Lakshmi Venkatesan · HR Business Partner · Kaveri Foods Pvt Ltd</Text>
-          </div>
-        )}
-      </Dialog>
+      {letterOpen && first && (
+        <DocumentViewer
+          inDrawer
+          open
+          onOpenChange={setLetterOpen}
+          fileName={`Increment letter, ${first.name}.pdf`}
+          mimeType="application/pdf"
+          versions={[{ id: 'p', label: 'Preview', url: INCREMENT_LETTER_PDF, uploadedBy: 'Preview, not issued', uploadedAt: new Date(2026, 9, 20), size: 1300 }]}
+        />
+      )}
     </PeopleFrame>
   );
 }
@@ -733,7 +979,11 @@ const FILE_COLUMNS: { column: string; sample: string; field: string }[] = [
 const FIXABLE: Record<string, keyof ImportRow> = { Name: 'name', PAN: 'pan', 'Manager code': 'manager', 'Joining date': 'joined' };
 
 // PPL-07
-export function EmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload' }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean }) {
+export function EmployeeImportWizard(props: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean; live?: LiveImport }) {
+  return props.live ? <LiveEmployeeImport live={props.live} /> : <SampleEmployeeImportWizard {...props} />;
+}
+
+function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SAMPLE_IMPORT, fileLoaded = current !== 'upload', saved = false }: { current?: string; rows?: ImportRow[]; fileLoaded?: boolean; saved?: boolean }) {
   const [hasFile, setHasFile] = useState(fileLoaded);
   const [mapping, setMapping] = useState<Record<string, string>>(Object.fromEntries(FILE_COLUMNS.map((c) => [c.column, c.field])));
   const [edits, setEdits] = useState<Record<number, Partial<ImportRow>>>({});
@@ -767,6 +1017,13 @@ export function EmployeeImportWizard({ current = 'upload', rows: initialRows = S
             summary: hasFile ? `kaveri-joiners-oct.xlsx · ${initialRows.length} rows · Kaveri Foods Pvt Ltd` : 'No file yet',
             content: (
               <div className="yx-ppl__form">
+                {saved && !hasFile && (
+                  <SavedImportNotice
+                    draft={{ fileName: 'kaveri-joiners-oct.xlsx', rows: initialRows.length, entity: 'Kaveri Foods Pvt Ltd', step: 'validate', savedAt: '2026-10-21T09:40:00Z', keptUntil: '2026-11-20T09:40:00Z' }}
+                    onResume={() => setHasFile(true)}
+                    onDiscard={async () => {}}
+                  />
+                )}
                 <FormField label="Legal entity" required helper="New people join this entity and get codes in its series (KF).">
                   <Select options={[{ value: 'kf', label: 'Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="kf" onChange={() => {}} />
                 </FormField>
@@ -895,11 +1152,18 @@ export function EmployeeImportWizard({ current = 'upload', rows: initialRows = S
 
 /* ================================================================== PPL-09 restructure */
 
-type RestructureAction = 'merge' | 'close' | 'demerge';
+type RestructureAction = 'merge' | 'close' | 'demerge' | 'within';
 const FROM_ENTITY = 'Kaveri Foods Pvt Ltd (Tamil Nadu)';
 const INTO_ENTITY = 'Kaveri Foods Pvt Ltd';
 /** Who is in the old entity, by location and department. */
 const MOVE_LOCATIONS: Record<string, number> = { 'Hosur plant': 64, 'Chennai office': 32 };
+/** "Pick people": the people of the old entity (name · code, location underneath). */
+const MOVE_PEOPLE: { name: string; code: string; location: string }[] = [
+  { name: 'Divya Raghunathan', code: 'KFT-0012', location: 'Chennai office' },
+  { name: 'Arjun Mehta', code: 'KFT-0027', location: 'Hosur plant' },
+  { name: 'Selvi Perumal', code: 'KFT-0031', location: 'Chennai office' },
+  { name: 'Imran Sheikh', code: 'KFT-0044', location: 'Hosur plant' },
+];
 const MOVE_DEPTS: [string, number][] = [['Operations', 40], ['Quality', 22], ['Sales', 18], ['Finance', 8], ['People', 4], ['Engineering', 4]];
 const TRANSFER_DEFAULTS: { key: string; label: string; options: string[] }[] = [
   { key: 'leave', label: 'Leave balance', options: ['Carry over', 'Encash at old entity', 'Lapse'] },
@@ -915,20 +1179,28 @@ const INITIAL_OVERRIDES = [
 ];
 
 // PPL-09
-export function RestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean }) {
+export function RestructureWizard(props: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; action?: RestructureAction; picked?: string[]; live?: LiveRestructure }) {
+  return props.live ? <LiveRestructureWizard live={props.live} /> : <SampleRestructureWizard {...props} />;
+}
+
+function SampleRestructureWizard({ current = 'scope', payrollLocked = true, confirmOpen = false, action: startAction = 'merge', picked: startPicked }: { current?: string; payrollLocked?: boolean; confirmOpen?: boolean; action?: RestructureAction; picked?: string[] }) {
   const [confirm, setConfirm] = useState(confirmOpen);
   const [step, setStep] = useState(current);
-  const [action, setAction] = useState<RestructureAction>('merge');
+  const [action, setAction] = useState<RestructureAction>(startAction);
+  // Who moves (part of the entity, or inside it): everyone at chosen locations, or only the people picked.
+  const [by, setBy] = useState<'location' | 'people'>(startPicked ? 'people' : 'location');
+  const [picked, setPicked] = useState<string[]>(startPicked ?? []);
   const [effective, setEffective] = useState<Date | null>(new Date(2026, 9, 1));
   const [locations, setLocations] = useState<string[]>(['Chennai office']);
   const [defaults, setDefaults] = useState<Record<string, string>>(Object.fromEntries(TRANSFER_DEFAULTS.map((o) => [o.key, o.options[0]])));
   const [overrides, setOverrides] = useState(INITIAL_OVERRIDES);
   const [addOpen, setAddOpen] = useState(false);
-  const moving = action === 'demerge' ? locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0) : 96;
+  const part = action === 'demerge' || action === 'within';
+  const moving = part ? (by === 'people' ? picked.length : locations.reduce((n, l) => n + (MOVE_LOCATIONS[l] ?? 0), 0)) : 96;
   const date = effective ? formatDate(effective) : 'the effective date';
   const heading =
-    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
-  const closes = action !== 'demerge';
+    action === 'merge' ? `Merge ${FROM_ENTITY} into ${INTO_ENTITY}` : action === 'close' ? `Close ${FROM_ENTITY}` : action === 'within' ? `Move people inside ${FROM_ENTITY}` : `Move part of ${FROM_ENTITY} to ${INTO_ENTITY}`;
+  const closes = action === 'merge' || action === 'close';
   const beforeRows: ChecklistRow[] = [
     { id: 'b1', title: `${moving} employments ready to move`, status: 'Ready' },
     { id: 'b2', title: '3 open onboarding and exit journeys will move with them', status: 'Ready' },
@@ -968,9 +1240,10 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
   );
   return (
     <PeopleFrame active="Restructure">
-      <PageHeader title={heading} description={`Moves ${moving} employments with one preview and one approval${closes ? ', then closes the old entity' : ''}.`} />
+      <PageHeader title={heading} description={`Moves ${moving} ${moving === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then closes the old entity' : ''}.`} />
       <Stepper
         title="Restructure"
+        layout="horizontal"
         current={step}
         onCurrentChange={setStep}
         finishLabel="Send for approval"
@@ -982,35 +1255,54 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
           {
             id: 'scope',
             title: 'What moves',
-            summary: `${moving} people · ${action === 'demerge' ? locations.join(', ') : 'Hosur plant and Chennai office'} · into ${INTO_ENTITY} · ${date}`,
+            summary: `${moving} people · ${part ? (by === 'people' ? picked.join(', ') : locations.join(', ')) : 'Hosur plant and Chennai office'} · into ${INTO_ENTITY} · ${date}`,
             content: (
-              <div className="yx-ppl__form">
-                <FormField label="Action" required>
-                  <RadioGroup
-                    value={action}
-                    onChange={(v) => setAction(v as RestructureAction)}
-                    options={[
-                      { value: 'merge', label: 'Merge into another entity' },
-                      { value: 'close', label: 'Close the entity (exits or transfers)' },
-                      { value: 'demerge', label: 'Move part of the entity to another one' },
-                    ]}
-                  />
-                </FormField>
-                <FormField label="From entity" required>
-                  <Select options={[{ value: 'tn', label: `${FROM_ENTITY} · 96 people` }]} value="tn" onChange={() => {}} />
-                </FormField>
-                <FormField label={action === 'close' ? 'Transfer people to' : 'Into entity'} required>
-                  <Select options={[{ value: 'ka', label: `${INTO_ENTITY} · 152 people` }]} value="ka" onChange={() => {}} />
-                </FormField>
-                {action === 'demerge' && (
-                  <FormField label="Who moves" required helper="Everyone at the chosen locations moves.">
-                    <MultiSelect options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
+              <div className="yx-ppl__stack">
+                <div className="yx-ppl__form-cols">
+                  <FormField label="Action" required>
+                    <RadioGroup
+                      value={action}
+                      onChange={(v) => setAction(v as RestructureAction)}
+                      options={[
+                        { value: 'merge', label: 'Merge into another entity' },
+                        { value: 'close', label: 'Close the entity (transfers)' },
+                        { value: 'demerge', label: 'Move part of the entity to another one' },
+                        { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
+                      ]}
+                    />
                   </FormField>
-                )}
-                <FormField label="Effective date" required>
-                  <DatePicker value={effective} onChange={setEffective} />
-                </FormField>
-                {action !== 'demerge' && (
+                  <div className="yx-ppl__form">
+                    <FormField label="From entity" required>
+                      <Select options={[{ value: 'tn', label: `${FROM_ENTITY} · 96 people` }]} value="tn" onChange={() => {}} />
+                    </FormField>
+                    <FormField label={action === 'close' ? 'Transfer people to' : 'Into entity'} required>
+                      <Select options={[{ value: 'ka', label: `${INTO_ENTITY} · 152 people` }]} value="ka" onChange={() => {}} />
+                    </FormField>
+                  </div>
+                  {part && (
+                    <>
+                      <FormField label="Who moves" required>
+                        <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]))} options={[{ value: 'location', label: 'By location' }, { value: 'people', label: 'Pick people' }]} />
+                      </FormField>
+                      {by === 'location' ? (
+                        <FormField label="Locations" required helper="Everyone at the chosen locations moves.">
+                          <MultiSelect aria-label="Locations" placeholder="Locations" options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
+                        </FormField>
+                      ) : (
+                        <FormField label="People" required helper="Only the people you pick move.">
+                          <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" options={MOVE_PEOPLE.map((p) => ({ value: p.name, label: `${p.name} · ${p.code}`, description: p.location }))} value={picked} onChange={setPicked} />
+                        </FormField>
+                      )}
+                    </>
+                  )}
+                  <FormField label="Effective date" required>
+                    <DatePicker value={effective} onChange={setEffective} />
+                  </FormField>
+                  <FormField label="Reason" required helper="Shown on every person's job history.">
+                    <TextArea rows={2} />
+                  </FormField>
+                </div>
+                {!part && (
                   <Card title={`Who moves (${moving})`}>
                     <dl className="yx-ppl__dl">
                       {Object.entries(MOVE_LOCATIONS).map(([l, n]) => (
@@ -1035,7 +1327,7 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
             content: (
               <div className="yx-ppl__stack">
                 <Text as="p">Company defaults are selected for everyone. Change a default, or give one person their own option with a reason.</Text>
-                <div className="yx-ppl__form">
+                <div className="yx-ppl__form-cols">
                   {TRANSFER_DEFAULTS.map((o) => (
                     <FormField key={o.key} label={o.label}>
                       <Select options={o.options.map((v) => ({ value: v, label: v }))} value={defaults[o.key]} onChange={(v) => v && setDefaults({ ...defaults, [o.key]: v })} />
@@ -1132,35 +1424,6 @@ export function RestructureWizard({ current = 'scope', payrollLocked = true, con
           </FormField>
         </div>
       </Dialog>
-    </PeopleFrame>
-  );
-}
-
-/* ================================================================== PPL-10 continuity checklist */
-
-// PPL-10
-export function ContinuityChecklistPanel({ allDone = false, today }: { allDone?: boolean; today: Date }) {
-  const [open, setOpen] = useState(true);
-  const st = (s: string) => (allDone ? 'Done' : s);
-  const rows: ChecklistRow[] = [
-    { id: 'u', title: 'PF UAN transfer (same UAN, Form 13 or EPFO auto-transfer)', owner: 'Payroll · Suresh Pillai', due: new Date(2026, 9, 20), status: st('In progress'), note: 'Claim ID 13-TN-2026-88412 submitted 6 Oct' },
-    { id: 'e', title: 'ESI IP number carried (same IP)', owner: 'Payroll', due: new Date(2026, 9, 10), status: st('Done') },
-    { id: 'f', title: 'Form 12B auto-filled from old employment YTD (₹4,12,000 income, ₹18,400 TDS)', owner: 'Payroll', due: new Date(2026, 9, 10), status: st('Done') },
-    { id: 'd', title: 'Declarations and proofs copied to the new tax workspace', owner: 'Payroll', due: new Date(2026, 9, 15), status: st('Pending') },
-    { id: 'l', title: 'Salary advance ADV-2026-0031 re-parented (option: no F&F)', owner: 'Finance · Deepa Rao', due: new Date(2026, 9, 10), status: st('Pending') },
-    { id: 'v', title: 'Leave-ledger transfer entries (out 11.5 PL, in 11.5 PL)', owner: 'HR', due: new Date(2026, 9, 5), status: st('Done') },
-    { id: 'g', title: 'Gratuity: service continues, one payout at final exit', owner: 'Payroll', status: st('Done') },
-  ];
-  const open_ = rows.filter((r) => r.status !== 'Done').length;
-  return (
-    <PeopleFrame active="Change action">
-      <ObjectHeader name="Inter-entity transfer · Rahul Sharma" icon={Pencil} secondary="Kaveri Foods Pvt Ltd → Kaveri Foods Pvt Ltd (Tamil Nadu) · effective 5 Oct 2026" status={<StatusBadge status="Approved" />} actions={<Button onClick={() => setOpen(true)}>Continuity checklist</Button>} />
-      <Drawer open={open} onOpenChange={setOpen} title="Continuity checklist" subtitle={open_ ? `${open_} items open · shown in payroll pre-flight` : 'All items done'} footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
-        <div className="yx-ppl__stack">
-          {open_ > 0 && <InlineAlert tone="warning">Open items show in October payroll pre-flight for the new entity.</InlineAlert>}
-          <StatusChecklist label="Continuity items" rows={rows} today={today} />
-        </div>
-      </Drawer>
     </PeopleFrame>
   );
 }

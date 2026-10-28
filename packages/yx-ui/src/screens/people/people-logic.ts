@@ -105,6 +105,11 @@ export interface FnfLine {
   wage?: boolean;
   /** Held by company policy (an open case); never a wage line. */
   held?: boolean;
+  /** Live: the short held tag ("Held", "Held: permission needed") and the full reason, shown in the opened line. */
+  heldTag?: string;
+  heldReason?: string;
+  /** Live: added or changed by payroll. */
+  byPayroll?: boolean;
 }
 export function fnfTotals(lines: FnfLine[]) {
   const sum = (k: FnfLine['kind']) => lines.filter((l) => l.kind === k).reduce((s, l) => s + l.amount, 0);
@@ -143,7 +148,8 @@ export function retrenchmentCompensation(avgDailyPay: number, serviceMonths: num
 /** Split an amount by percentage shares so the parts add up exactly (last payee takes the rounding). */
 export function splitByShares(amount: number, shares: number[]): number[] {
   const total = shares.reduce((s, x) => s + x, 0);
-  if (total !== 100) throw new Error('Shares must add up to 100%');
+  // Decimal shares (33.33 / 33.33 / 33.34) add up to 100 only within float error.
+  if (Math.abs(total - 100) > 1e-6) throw new Error('Shares must add up to 100%');
   const parts = shares.map((s) => Math.floor((amount * s) / 100));
   parts[parts.length - 1] += amount - parts.reduce((s, x) => s + x, 0);
   return parts;
@@ -223,12 +229,28 @@ export const isPan = (v: string) => PAN_RE.test(v.trim().toUpperCase());
 export const isIfsc = (v: string) => IFSC_RE.test(v.trim().toUpperCase());
 export const isUan = (v: string) => /^\d{12}$/.test(v.replace(/\s/g, ''));
 
+/**
+ * The bank behind an IFSC: its first four letters are the RBI bank code. A bundled list of the banks most people use,
+ * so nothing is looked up online. shortcut: no branch names and no small co-operative / regional rural banks; bundle the
+ * full RBI IFSC list if the founder wants the branch too.
+ */
+const IFSC_BANKS: Record<string, string> = {
+  AIRP: 'Airtel Payments Bank', AUBL: 'AU Small Finance Bank', BARB: 'Bank of Baroda', BDBL: 'Bandhan Bank', BKID: 'Bank of India',
+  CBIN: 'Central Bank of India', CITI: 'Citibank', CIUB: 'City Union Bank', CNRB: 'Canara Bank', CSBK: 'CSB Bank', DBSS: 'DBS Bank India',
+  DCBL: 'DCB Bank', DEUT: 'Deutsche Bank', DLXB: 'Dhanlaxmi Bank', ESFB: 'Equitas Small Finance Bank', FDRL: 'Federal Bank', HDFC: 'HDFC Bank',
+  HSBC: 'HSBC', ICIC: 'ICICI Bank', IDFB: 'IDFC FIRST Bank', IDIB: 'Indian Bank', INDB: 'IndusInd Bank', IOBA: 'Indian Overseas Bank',
+  IPOS: 'India Post Payments Bank', JAKA: 'Jammu and Kashmir Bank', KARB: 'Karnataka Bank', KKBK: 'Kotak Mahindra Bank', KVBL: 'Karur Vysya Bank',
+  MAHB: 'Bank of Maharashtra', PSIB: 'Punjab and Sind Bank', PUNB: 'Punjab National Bank', PYTM: 'Paytm Payments Bank', RATN: 'RBL Bank',
+  SBIN: 'State Bank of India', SCBL: 'Standard Chartered Bank', SIBL: 'South Indian Bank', TMBL: 'Tamilnad Mercantile Bank', UBIN: 'Union Bank of India',
+  UCBA: 'UCO Bank', UJVN: 'Ujjivan Small Finance Bank', UTIB: 'Axis Bank', YESB: 'Yes Bank',
+};
+/** "State Bank of India" for a well-formed SBIN… IFSC; null when it is not an IFSC or the bank is not on the list. */
+export const ifscBank = (v: string): string | null => (isIfsc(v) ? (IFSC_BANKS[v.trim().toUpperCase().slice(0, 4)] ?? null) : null);
+
 /** IBAN mod-97 with country length (YX-GLB-08). */
 const IBAN_LEN: Record<string, number> = { AE: 23, SA: 24, GB: 22, DE: 22, FR: 27, NL: 18 };
-export function isIban(raw: string): boolean {
-  const v = raw.replace(/\s+/g, '').toUpperCase();
-  const len = IBAN_LEN[v.slice(0, 2)];
-  if (!len || v.length !== len || !/^[A-Z0-9]+$/.test(v)) return false;
+/** ISO 13616 check digits: the IBAN read as a number, country and check digits moved to the end, leaves 1 mod 97. */
+function mod97(v: string): boolean {
   const moved = v.slice(4) + v.slice(0, 4);
   let rem = 0;
   for (const ch of moved) {
@@ -236,6 +258,21 @@ export function isIban(raw: string): boolean {
     for (const d of n) rem = (rem * 10 + Number(d)) % 97;
   }
   return rem === 1;
+}
+export function isIban(raw: string): boolean {
+  const v = raw.replace(/\s+/g, '').toUpperCase();
+  const len = IBAN_LEN[v.slice(0, 2)];
+  if (!len || v.length !== len || !/^[A-Z0-9]+$/.test(v)) return false;
+  return mod97(v);
+}
+/** PPL-46 live: what is wrong with an IBAN for an account in `country` (the API checks every country's length too). */
+export function ibanProblem(raw: string, country: string | null): string | null {
+  const v = raw.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(v)) return 'Enter the IBAN: the country code, two check digits, then the account number.';
+  if (country && v.slice(0, 2) !== country) return `The IBAN of an account in this country starts with ${country}.`;
+  const len = IBAN_LEN[v.slice(0, 2)];
+  if (len && v.length !== len) return `Enter a ${len}-character IBAN starting with ${v.slice(0, 2)}.`;
+  return mod97(v) ? null : 'The check digits do not match. Check the IBAN for a typo.';
 }
 export const isBic = (v: string) => /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.trim().toUpperCase());
 

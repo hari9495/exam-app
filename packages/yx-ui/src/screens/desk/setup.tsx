@@ -9,7 +9,7 @@ import { NumberField, TextField, TimeField } from '../../components/inputs';
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Dialog } from '../../components/overlay';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -696,7 +696,7 @@ function RepliesTab(props: TabProps) {
               <Select value={scStatus} onChange={setScStatus} clearable options={d.statuses.filter((s) => s.active).map((s) => ({ value: s.id, label: s.label }))} />
             </FormField>
             <FormField label="Reply to send" optional>
-              <RichTextEditor value={scReply} onChange={setScReply} mergeFields={[]} />
+              <RichTextEditor hide={STYLE_TOOLS} value={scReply} onChange={setScReply} mergeFields={[]} />
             </FormField>
             <div className="yx-ops-row">
               <Button disabled={!scName.trim()} loading={busy === 'scenario'} onClick={() => void run('scenario', async () => { await props.onSaveScenario(null, { name: scName.trim(), actions: { ...(scStatus ? { statusId: scStatus } : {}), ...(scReply.replace(/<[^>]*>/g, '').trim() ? { reply: scReply } : {}) } }); setScName(''); setScReply(''); setScStatus(null); })}>
@@ -731,7 +731,7 @@ function RepliesTab(props: TabProps) {
               <TextField value={title} onChange={setTitle} maxLength={100} />
             </FormField>
             <FormField label="Reply" required>
-              <RichTextEditor value={body} onChange={setBody} mergeFields={[]} />
+              <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} />
             </FormField>
           </div>
         </Dialog>

@@ -64,6 +64,11 @@ export class ScheduleBook {
     return this.roster.get(k)!;
   }
 
+  /** A shift pattern's name (PPL-03 Job tab). */
+  patternName(id: string): string | null {
+    return this.patterns.get(id)?.name ?? null;
+  }
+
   /** The pattern cell for the person on a date: undefined when no pattern applies (then the location decides). */
   patternOn(f: Facts, on: string): { cell: string | null; patternId: string } | undefined {
     const r = resolveSetting(

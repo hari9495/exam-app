@@ -99,7 +99,11 @@ describe('Payroll batch 5a', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5A Org ${k}`, slug: `pay5a-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],

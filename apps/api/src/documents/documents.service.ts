@@ -6,7 +6,8 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from './files.service';
-import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
+import { CLASS_KEY, ownOf, reachesDocument, reachesPerson } from './person-access';
+import { covers, implicitPeriods } from '../access/scope';
 
 // LIFE-1.03 person documents (P05 §4.2; YX-DOC-04/05/06/17): typed documents of a person (an employee or a joiner:
 // they follow the person from before day one into the record), with versions, a verification queue and expiry.
@@ -16,7 +17,9 @@ import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
 //   - a re-upload is a new version and goes back to the queue (YX-DOC-05);
 //   - expiring types remind the person at the type's days and turn "expired" on the day (P04 scheduler).
 
-const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view'] as const;
+const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view', 'employee.disability.view'] as const;
+/** PPL-38 (founder 27 Oct 2026): the HR diversity role keeps disability certificates with its own Special key. */
+const DISABILITY_CERT = 'disability_certificate';
 type DocType = Prisma.DocumentTypeGetPayload<object>;
 type Doc = Prisma.DocumentGetPayload<object>;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,6 +64,13 @@ export class DocumentsService {
     return t;
   }
 
+  /** Who uploaded the current file (HR for the person, or the person): the latest version's uploader. */
+  private async uploaderName(tx: Tx, org: string, documentId: string) {
+    const v = await tx.documentVersion.findFirst({ where: { organizationId: org, documentId }, orderBy: { version: 'desc' }, select: { uploadedBy: true } });
+    const u = v?.uploadedBy ? await tx.user.findFirst({ where: { organizationId: org, id: v.uploadedBy }, select: { name: true, email: true } }) : null;
+    return u ? u.name || u.email : null;
+  }
+
   private async personName(tx: Tx, org: string, personId: string) {
     const p = await tx.person.findFirst({ where: { organizationId: org, id: personId } });
     if (!p) throw new NotFoundException('No such person.');
@@ -71,12 +81,31 @@ export class DocumentsService {
   private async may(tx: Tx, c: CompanyContext, v: Viewer, action: 'view' | 'manage', t: DocType, personId: string) {
     const own = await ownOf(tx, c, v);
     if (action === 'view' && own.personId === personId) return { self: true, own };
+    if (t.key === DISABILITY_CERT && !v.actingForOther && (await reachesPerson(tx, c, v, 'employee.disability.view', personId, own))) return { self: false, own };
     if (!(await reachesDocument(tx, c, v, action === 'view' ? 'document.view' : 'document.manage', t.sensitivity, personId, own))) {
       // Managing implies viewing (a verifier must open the file).
       if (action === 'view' && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own))) return { self: false, own };
+      // PPL-03: a manager (the implicit view) reads the team's Public and Internal documents only (a licence, a
+      // certificate); never Personal (photo, medical), Confidential or Special (founder 22 Oct 2026: need to know).
+      if (action === 'view' && (t.sensitivity === 'public' || t.sensitivity === 'internal') && (await this.managesPerson(tx, c, own.employeeId, personId))) return { self: false, own };
       throw new ForbiddenException('You cannot see this document.');
     }
     return { self: false, own };
+  }
+
+  private async managesPerson(tx: Tx, c: CompanyContext, own: string | null, personId: string) {
+    if (!own) return false;
+    const e = await tx.employee.findFirst({ where: { organizationId: c.organizationId, personId }, select: { id: true } });
+    return Boolean(e && e.id !== own && covers(await implicitPeriods(tx, c, own, e.id), todayIst()));
+  }
+
+  /** PPL-03 Documents tab for a manager: the team member's Public and Internal documents, nothing to manage. */
+  async forTeam(ctx: TenantContext, user: ScopeUser, personId: string) {
+    const v = await this.viewer(user);
+    const ok = await inCompany(this.tenantPrisma, ctx, async (tx, c) => this.managesPerson(tx, c, (await ownOf(tx, c, v)).employeeId, personId));
+    if (!ok) throw new NotFoundException('Not found');
+    const out = await this.forPerson(ctx, user, personId);
+    return { ...out, askable: [], canManage: false };
   }
 
   private view(d: Doc, t: DocType, extra: { person?: string; file?: { name: string; scanStatus: string; size: number } | null; versions?: number } = {}) {
@@ -121,7 +150,7 @@ export class DocumentsService {
       const types = await this.types(tx, org);
       const docs = await tx.document.findMany({ where: { organizationId: org, personId } });
       const out = [];
-      const askable: { key: string; name: string }[] = [];
+      const askable: { key: string; name: string; expiryTracked: boolean }[] = [];
       let canManage = false;
       for (const t of types) {
         const seen = await this.may(tx, c, v, 'view', t, personId).then(
@@ -136,8 +165,8 @@ export class DocumentsService {
         const d = docs.find((x) => x.typeKey === t.key);
         if (d && seen) {
           const f = await this.fileOf(tx, org, d);
-          out.push(this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }));
-        } else if (!d && manage) askable.push({ key: t.key, name: t.name });
+          out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null, uploadedBy: await this.uploaderName(tx, org, d.id) });
+        } else if (!d && manage) askable.push({ key: t.key, name: t.name, expiryTracked: t.expiryTracked });
       }
       return { person, personId, documents: out, askable, canManage };
     });
@@ -165,7 +194,7 @@ export class DocumentsService {
         const r = await this.may(tx, c, v, 'manage', t, d.personId).catch(() => null);
         if (!r || r.self || r.own.personId === d.personId) continue;
         const f = await this.fileOf(tx, org, d);
-        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString() });
+        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString(), uploadedBy: await this.uploaderName(tx, org, d.id) });
       }
       return out;
     });
@@ -282,9 +311,11 @@ export class DocumentsService {
       await audit(tx, c, dto.decision === 'verify' ? 'document.verified' : 'document.rejected', 'document', id, { typeKey: d.typeKey });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: dto.decision === 'verify' ? 'document.verified' : 'document.rejected', payload: { documentId: id, personId: d.personId, typeKey: d.typeKey } } });
       const owner = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId, userId: { not: null } }, select: { userId: true } });
-      return { owner: owner?.userId ?? null, typeName: t.name };
+      return { owner: owner?.userId ?? null, typeName: t.name, typeKey: t.key };
     });
-    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: '/yx/me/documents' }).catch(() => undefined);
+    // A disability certificate is uploaded again from the person's declaration (PPL-38).
+    const link = res.typeKey === DISABILITY_CERT ? '/yx/me/declarations' : '/yx/me/documents';
+    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: link }).catch(() => undefined);
     return { ok: true };
   }
 
@@ -302,7 +333,11 @@ export class DocumentsService {
       // Earlier versions are for HR only (YX-DOC-05).
       if (r.self && ver.id !== d.currentVersionId) throw new ForbiddenException('Earlier versions are kept for HR.');
       const f = await tx.file.findFirstOrThrow({ where: { organizationId: org, id: ver.fileId } });
-      if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
+      if (!r.self && t.key === DISABILITY_CERT) {
+        // Recorded as the declarations list records a look, so the person sees it in "Who accessed my data".
+        const e = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId }, select: { id: true } });
+        if (e) await audit(tx, c, 'employee.disability.viewed', 'employee', e.id, { what: 'certificate' });
+      } else if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
       return f;
     });
     return { file: await this.files.bytes(row), name: row.fileName, contentType: row.mime };

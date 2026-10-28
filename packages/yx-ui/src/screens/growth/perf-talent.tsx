@@ -64,6 +64,7 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
   const [changes, setChanges] = useState(initialChanges);
   const [pending, setPending] = useState(pendingMove ?? null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const counted = people.filter((p) => !p.protectedLeave);
   const actual = distribution(counted.map((p) => p.rating));
   const who = pending ? people.find((p) => p.id === pending.id) : null;
@@ -194,21 +195,24 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
           if (!o) {
             setPending(null);
             setReason('');
+            setTried(false);
           }
         }}
         title={who && pending ? `Change ${who.name} from ${who.rating} to ${pending.to}?` : 'Change rating'}
         consequence="The before and after rating, your reason and your name are recorded. The employee sees only the released rating."
         confirmLabel="Change rating"
-        confirmDisabled={reason.trim().length < 10}
         onConfirm={() => {
+          setTried(true);
+          if (reason.trim().length < 10) return false;
           if (!pending || !who) return;
           setChanges((c) => [{ id: `c${c.length + 1}`, person: who.name, from: who.rating, to: pending.to, reason, by: persona === 'hr' ? 'Lakshmi Venkatesan' : 'Karthik Subramanian', at: TODAY }, ...c]);
           setPeople((ps) => ps.map((p) => (p.id === pending.id ? { ...p, rating: pending.to } : p)));
           setPending(null);
           setReason('');
+          setTried(false);
         }}
       >
-        <FormField label="Reason" required helper="At least 10 characters. Visible to HR and this calibration group.">
+        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and this calibration group." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>

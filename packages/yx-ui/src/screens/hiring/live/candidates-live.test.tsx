@@ -18,7 +18,9 @@ describe('Candidates list (AT4)', () => {
     const d = screen.getByRole('dialog');
     await ue.type(within(d).getByLabelText(/^Name/), 'Divya S');
     await ue.type(within(d).getByLabelText(/^Email/), 'divya@');
-    expect(within(d).getByRole('button', { name: 'Add candidate' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Add candidate' }));
+    expect(within(d).getByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
     await ue.type(within(d).getByLabelText(/^Email/), 'example.com');
     await ue.click(within(d).getByRole('button', { name: 'Add candidate' }));
     expect(onCreate).toHaveBeenCalledWith({ name: 'Divya S', email: 'divya@example.com', phone: undefined, customFields: undefined });
@@ -56,7 +58,9 @@ describe('Candidate profile (AT4)', () => {
     expect(screen.getByText(/Kept until/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Place legal hold' }));
     const d = screen.getByRole('dialog');
-    expect(within(d).getByRole('button', { name: 'Place hold' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Place hold' }));
+    expect(within(d).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onHold).not.toHaveBeenCalled();
     await ue.type(within(d).getByLabelText(/Reason/), 'Labour court case');
     await ue.click(within(d).getByRole('button', { name: 'Place hold' }));
     expect(onHold).toHaveBeenCalledWith(true, 'Labour court case');

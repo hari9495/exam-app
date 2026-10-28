@@ -87,7 +87,7 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
 });
 
 describe('approvals inbox (P03)', () => {
-  const TASK: ApprovalTask = { taskId: 't1', requestId: 'r1', type: 'Service request', title: 'New laptop for Arjun', summary: [{ label: 'Item', value: 'New laptop' }], requester: 'Arjun', raisedBy: null, onBehalfOf: 'Divya', step: { index: 1, of: 2, name: 'Your manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: '2026-10-08T05:00:00Z' };
+  const TASK: ApprovalTask = { taskId: 't1', requestId: 'r1', type: 'Service request', title: 'New laptop for Arjun', summary: [{ label: 'Item', value: 'New laptop' }, { label: 'Needed by', value: '2026-11-22' }], requester: 'Arjun', raisedBy: null, onBehalfOf: 'Divya', step: { index: 1, of: 2, name: 'Your manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: '2026-10-08T05:00:00Z' };
 
   it('the request a notice points at is marked and scrolled into view', () => {
     const scroll = vi.fn();
@@ -107,6 +107,7 @@ describe('approvals inbox (P03)', () => {
   it('approve at once; not approving needs a reason; delegated tasks say for whom', async () => {
     const onDecide = vi.fn(async () => undefined);
     render(<ApprovalsScreen state="ready" tasks={[TASK]} history={null} delegations={[]} onDecide={onDecide} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
+    expect(screen.getByText('22 Nov 2026')).toBeInTheDocument(); // a plain date reads as everywhere else, never 2026-11-22
     expect(screen.getByText(/you answer for Divya/)).toBeInTheDocument();
     // Approve is the designed approve button; "Do not approve" is plain until the reason dialog (founder review 20 Oct).
     expect(screen.getByRole('button', { name: 'Approve' })).toHaveAttribute('data-variant', 'approve');
@@ -114,8 +115,13 @@ describe('approvals inbox (P03)', () => {
     await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Do not approve' })).toBeDisabled();
-    await ue.type(within(dialog).getByRole('textbox'), 'Not this quarter');
-    await ue.click(within(dialog).getByRole('button', { name: 'Do not approve' }));
+    // Cancel drops the typed reason: opening again starts empty.
+    await ue.type(within(dialog).getByRole('textbox'), 'test only');
+    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
+    expect(within(await screen.findByRole('dialog')).getByRole('textbox')).toHaveValue('');
+    await ue.type(within(screen.getByRole('dialog')).getByRole('textbox'), 'Not this quarter');
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Do not approve' }));
     expect(onDecide).toHaveBeenCalledWith(TASK, 'reject', 'Not this quarter');
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onDecide).toHaveBeenCalledWith(TASK, 'approve', '');

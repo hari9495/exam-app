@@ -1,14 +1,19 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, covers, coversRange, grantPeriods, grantPeriodsFor, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, started, tenantWide, Viewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ApprovalsEngine, InboxItem } from '../workflow/approvals-engine.service';
 import { audit, CompanyContext, companyContext, mapDbError, Tx } from '../org-structure/org-structure.service';
-import { addDays, asDate, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
+import { addDays, asDate, IN_STATES, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
-import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
+import { ChangeDraftDto, ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
+import { holdersOf } from '../time/time-core';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
-import { startProbation } from '../people/probation';
+import { settingFor, startProbation } from '../people/probation';
+import { noticeLabel } from '../lifecycle/exit-rules';
+import { factsOn as timeFactsOn } from '../time/time-core';
+import { ScheduleBook } from '../time/schedule';
 import { serviceDates as datesFor, Spell } from './service-dates';
 import { payScope, withPayScope } from '../payroll/pay-access';
 import { normalWeekAt, readerLanguage, SubjectType, translated } from '../global/global-data';
@@ -28,6 +33,8 @@ import {
   label,
   localToday,
   payloadProblem,
+  unchangedProblem,
+  promotionRuleProblem,
   reach,
   Reach,
   Segment,
@@ -59,6 +66,20 @@ export const HISTORY_KEYS = [
   'employee.identity.manage',
   'employee.identity.approve',
   'employee.aadhaar.view',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer, for the designated persons in scope.
+  'compliance.declaration.manage',
+  // PPL-06: the annual increment reads released ratings where this reaches.
+  'perf.review.view',
+  // PPL-03 Activity: documents and letters on a person's record, only where these reach.
+  'document.view',
+  'document.manage',
+  'letter.issue',
+  // PPL-02 Position view: open job openings for whoever runs hiring.
+  'pipeline:manage',
+  // PPL-02: future dates on the org chart (scheduled, unannounced changes).
+  'org.structure.view',
 ] as const;
 export type Key = (typeof HISTORY_KEYS)[number];
 export type { Viewer } from '../access/scope';
@@ -131,14 +152,19 @@ class Rollback<T> extends Error {
 }
 
 @Injectable()
-export class EmployeeHistoryService {
+export class EmployeeHistoryService implements OnModuleInit {
   private readonly logger = new Logger(EmployeeHistoryService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications?: NotificationsService,
+    private readonly engine?: ApprovalsEngine,
   ) {}
+
+  onModuleInit() {
+    this.engine?.registerInboxSource((tx, c, userId) => this.waitingFor(tx, c, userId));
+  }
 
   /** The asker's keys with their scopes, resolved as the permissions guard resolves them (P02 YX-SEC-03). */
   viewer(user: RequestUser): Promise<Viewer> {
@@ -408,12 +434,35 @@ export class EmployeeHistoryService {
         assignment: facts.assignment && row ? { validFrom: isoDate(row.validFrom), validTo: iso(row.validTo), changeId: row.changeId, ...this.describe(facts.assignment, await this.names(tx, c, [facts.assignment], true)), ...(await this.fte(tx, c, facts.assignment, on)) } : null,
         status: st ? { status: st.status, validFrom: isoDate(st.validFrom), validTo: iso(st.validTo), changeId: st.changeId } : null,
         payAccess: covers(a.payPeriods, on),
+        // PPL-03 Job tab: the holiday calendar, shift pattern, notice period and probation end in force on the day.
+        job: facts.assignment && !recordedAt ? await this.jobExtras(tx, c, employeeId, e, facts.assignment, st?.status ?? null, on) : null,
         compensation: showPay && pay ? { currency: pay.currency, annualCtc: pay.annualCtc.toFixed(2), validFrom: isoDate(pay.validFrom), validTo: iso(pay.validTo), changeId: pay.changeId } : null,
       };
     });
   }
 
+  /** What the Job tab adds to the assignment (founder 22 Oct 2026); null where nothing applies. */
+  private async jobExtras(tx: Tx, c: CompanyContext, employeeId: string, e: { id: string; legalEntityId: string }, f: { locationId: string; employmentTypeId?: string | null; gradeId?: string | null }, status: string | null, on: string) {
+    const org = c.organizationId;
+    const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId }, select: { name: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { name: true } }));
+    const tf = await timeFactsOn(tx, org, employeeId, on);
+    let shiftPattern: string | null = null;
+    if (tf) {
+      const book = await ScheduleBook.load(tx, org);
+      const p = book.patternOn(tf, on);
+      shiftPattern = p ? book.patternName(p.patternId) : `${(await book.locationDay(tf, on)).base.shiftName} (location default)`;
+    }
+    const notice = await settingFor(tx, c, status === 'probation' ? 'exit.notice.probation' : 'exit.notice.confirmed', { legalEntityId: e.legalEntityId, employmentTypeId: f.employmentTypeId ?? undefined, gradeId: f.gradeId ?? undefined }, on);
+    const probation = await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id }, select: { plannedEndOn: true } });
+    return { holidayCalendar: cal?.name ?? null, shiftPattern, noticePeriod: notice ? noticeLabel(notice) : null, probationEndsOn: probation ? isoDate(probation.plannedEndOn) : null };
+  }
+
   // ================= service dates (G1, gap pass C3) =================
+
+  /** The three service dates of one employment (G1). */
+  async serviceDatesOf(tx: Tx, c: CompanyContext, e: Employment) {
+    return datesFor(await this.spells(tx, c, e.employeeId), e.id);
+  }
 
   private async spells(tx: Tx, c: CompanyContext, employeeId: string): Promise<Spell[]> {
     const list = await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'asc' } });
@@ -491,12 +540,26 @@ export class EmployeeHistoryService {
       });
       const showPay = a.pay && withPay;
       const payRows = showPay ? rows.compensation.filter((r) => inPay(r.validFrom, r.validTo)) : [];
+      // PPL-03: who raised and who approved each effective or scheduled change, and its letter (letters for HR and the person).
+      const sched = changes.filter((ch) => ch.status === 'scheduled' || ch.status === 'effective');
+      const userIds = sched.flatMap((ch) => [ch.decidedBy, ch.requestedBy].filter((x): x is string => Boolean(x)));
+      const deciders = userIds.length ? await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [];
+      const letters = sched.length && (a.hr || a.self) ? await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, subjectType: 'change', subjectId: { in: sched.map((ch) => ch.id) }, status: 'issued' }, select: { subjectId: true, referenceNo: true, acceptedAt: true } }) : [];
+      const nameOf = (id: string | null) => {
+        const u = id ? deciders.find((x) => x.id === id) : undefined;
+        return u ? u.name || u.email : null;
+      };
+      const extra = (ch: (typeof all)[number]) => {
+        if (ch.status !== 'scheduled' && ch.status !== 'effective') return {};
+        const l = letters.find((x) => x.subjectId === ch.id && x.referenceNo);
+        return { decidedByName: nameOf(ch.decidedBy), requestedByName: nameOf(ch.requestedBy), letter: l ? { referenceNo: l.referenceNo, accepted: Boolean(l.acceptedAt) } : null };
+      };
       if (payRows.length) await this.auditPayView(tx, c, a, employeeId, 'history');
       return {
         employee: await this.header(tx, c, employeeId, e),
         payAccess: a.pay,
         // An impact speaks about other dates (later changes it recalculated): HR only. Pay on a change only where pay is in scope.
-        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay ? a.payPeriods : [], a.hrPeriods), ...(a.hr ? {} : { impact: null }) })),
+        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay ? a.payPeriods : [], a.hrPeriods), ...(a.hr ? {} : { impact: null }), ...extra(ch) })),
         assignment: rows.assignment.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), ...this.describe(assignmentValues(r), names) })),
         status: rows.status.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), status: r.status })),
         compensation: payRows.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })),
@@ -896,19 +959,58 @@ export class EmployeeHistoryService {
     const after = dates.map((d) => this.factsOn(afterRows, d));
     const names = await this.names(tx, c, [...before, ...after].flatMap((f) => (f.assignment ? [f.assignment] : [])));
     const own = this.diff(before[0], after[0], names);
+    own.facts.splice(own.facts.findIndex((f) => f.fact === 'Location') + 1, 0, ...(await this.locationEffects(tx, c, e, before[0].assignment?.locationId, after[0].assignment?.locationId, date)));
     const rebased = later
       .map((l) => {
         const i = dates.indexOf(isoDate(l.effectiveDate));
         return { changeId: l.id, changeType: l.changeType, effectiveDate: dates[i], ...this.diff(before[i], after[i], names) };
       })
       .filter((r) => r.facts.length || r.pay.length);
+    // Founder queue 28 Oct 2026: a promotion may lower pay, but whoever raises it is warned first (not a block).
+    const [was, will] = [before[0].compensation, after[0].compensation];
+    const lowersPay = ch.changeType === 'promotion' && was && will && was.currency === will.currency && new Prisma.Decimal(will.annualCtc).lt(was.annualCtc);
     return {
       effectiveDate: date,
       ...own,
+      warnings: lowersPay ? ['This promotion lowers the annual CTC. Check the new pay before you send it.'] : [],
       rebased,
       // P06 §4.5: past periods the change touches, for payroll arrears / recoveries (Q4).
       retro: date < today ? { from: date, months: affectedMonths(date, today) } : null,
     };
+  }
+
+  /**
+   * PPL-04 transfer impact (P06 §4.3): what a new location carries with it on the date: the holiday calendar, the
+   * professional tax state (with its slab basis), the labour welfare fund state and the geofence. Only rows that
+   * really change; PT / LWF follow the location unless the person's statutory profile fixes the state (as payroll does).
+   */
+  async locationEffects(tx: Tx, c: CompanyContext, e: Employment, fromId: string | undefined, toId: string | undefined, date: string) {
+    if (!fromId || !toId || fromId === toId) return [];
+    const org = c.organizationId;
+    const day = asDate(date);
+    const locs = await tx.location.findMany({ where: { organizationId: org, id: { in: [fromId, toId] } }, select: { id: true, name: true, state: true, geoLat: true, geoLng: true, geoRadiusM: true } });
+    const from = locs.find((l) => l.id === fromId);
+    const to = locs.find((l) => l.id === toId);
+    if (!from || !to) return [];
+    const out: { fact: string; from: string | null; to: string | null }[] = [];
+    const push = (fact: string, a: string | null, b: string | null) => a !== b && out.push({ fact, from: a, to: b });
+    const calendar = async (locationId: string) =>
+      ((await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId }, select: { name: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { name: true } })))?.name ?? null;
+    push('Holiday calendar', await calendar(from.id), await calendar(to.id));
+    const profile = await tx.employeeStatutory.findFirst({ where: { organizationId: org, employmentId: e.id, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] }, select: { ptState: true, lwfState: true } });
+    const rule = (statute: string, state: string) =>
+      tx.statutoryRuleSet.findFirst({ where: { statute, jurisdiction: state, status: 'published', validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] }, orderBy: { validFrom: 'desc' }, select: { values: true } });
+    const stateName = (s: string) => IN_STATES[s] ?? s;
+    const pt = async (state: string) => {
+      const basis = ((await rule('IN.PT', state))?.values as { basis?: string } | undefined)?.basis;
+      return basis ? `${stateName(state)} (${basis.replace(/_/g, '-')} slab)` : `${stateName(state)} (no professional tax)`;
+    };
+    if (!profile?.ptState) push('Professional tax state', await pt(from.state), await pt(to.state));
+    const lwf = async (state: string) => ((await rule('IN.LWF', state)) ? stateName(state) : `${stateName(state)} (no labour welfare fund)`);
+    if (!profile?.lwfState) push('Labour welfare fund', await lwf(from.state), await lwf(to.state));
+    const fence = (l: typeof from) => (l.geoLat !== null && l.geoLng !== null && l.geoRadiusM ? `${l.name}, ${l.geoRadiusM} m` : 'No geofence');
+    push('Geofence', fence(from), fence(to));
+    return out;
   }
 
   private diff(b: Facts, a: Facts, n: Awaited<ReturnType<EmployeeHistoryService['names']>>) {
@@ -919,8 +1021,7 @@ export class EmployeeHistoryService {
     const da = b.assignment ? this.describe(b.assignment, n) : null;
     const db = a.assignment ? this.describe(a.assignment, n) : null;
     push('Location', da?.location.name, db?.location.name);
-    // Derived effects the location carries (P06 §4.3): professional tax / LWF state and the clock it runs on.
-    push('State (professional tax, LWF, holidays)', da?.location.state, db?.location.state);
+    // The location's knock-on effects (holidays, PT, LWF, geofence) are added by locationEffects; here the clock.
     push('Time zone', da?.location.timezone, db?.location.timezone);
     push('Department', da?.department?.name, db?.department?.name);
     push('Designation', da?.designation?.name, db?.designation?.name);
@@ -933,7 +1034,9 @@ export class EmployeeHistoryService {
     push('Dotted-line managers (visibility only)', dotted(da), dotted(db));
     const ccs = (d: typeof da) => d?.costCentres.map((x) => `${x.code} ${x.percent}%`).join(', ') || null;
     push('Cost centres', ccs(da), ccs(db));
-    push('Employment status', b.status?.status, a.status?.status);
+    // Shown as the status badges read: "Probation → Confirmed", "Notice".
+    const word = (x: string | undefined) => (x ? x.charAt(0).toUpperCase() + x.slice(1) : x);
+    push('Employment status', word(b.status?.status), word(a.status?.status));
     const money = (p: CompensationValues | null) => (p ? `${p.currency} ${p.annualCtc}` : null);
     const pay = (money(b.compensation) ?? null) !== (money(a.compensation) ?? null) ? [{ fact: 'Annual CTC', from: money(b.compensation), to: money(a.compensation) }] : [];
     return { facts, pay };
@@ -958,6 +1061,12 @@ export class EmployeeHistoryService {
     if (!covers(periods, today)) throw new NotFoundException('No open employment for that employee');
   }
 
+  /** The company's rule for what a promotion must move (promotion.must_change, per legal entity). */
+  private async checkPromotionRule(tx: Tx, c: CompanyContext, e: Employment, payload: ChangePayload, now: { designationId: string; gradeId: string | null } | null) {
+    const problem = promotionRuleProblem(await settingFor(tx, c, 'promotion.must_change', { legalEntityId: e.legalEntityId }), payload, now);
+    if (problem) throw new BadRequestException(problem);
+  }
+
   /** Validate and store a requested change (pending). */
   async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto) {
     const payload = toPayload(dto.payload);
@@ -971,6 +1080,15 @@ export class EmployeeHistoryService {
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);
     await this.checkRefs(tx, c, e, payload);
+    // PPL-04: a transfer to where the person already works (or a promotion to the same job) changes nothing.
+    const day = asDate(dto.effectiveDate);
+    const now = await tx.employeeAssignment.findFirst({
+      where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
+      select: { locationId: true, departmentId: true, designationId: true, gradeId: true },
+    });
+    const unchanged = unchangedProblem(dto.changeType, payload, now);
+    if (unchanged) throw new BadRequestException(unchanged);
+    if (dto.changeType === 'promotion') await this.checkPromotionRule(tx, c, e, payload, now);
     const ch = await tx.employeeChange.create({
       data: {
         organizationId: c.organizationId,
@@ -1054,8 +1172,13 @@ export class EmployeeHistoryService {
   requestChange(ctx: TenantContext, v: Viewer, dto: ChangeRequestDto) {
     return this.run(ctx, async (tx, c) => {
       const { ch } = await this.createChange(tx, c, v, dto);
+      // Sent from a saved draft: the draft has done its job (only the raiser's own, never someone else's).
+      if (dto.draftId) await tx.employeeChangeDraft.deleteMany({ where: { organizationId: c.organizationId, id: dto.draftId, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' } });
       await audit(tx, c, 'employee.change.requested', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: dto.effectiveDate, touchesPay: Boolean(dto.payload.compensation) });
-      return (await this.viewChanges(tx, c, v, [ch], 'change'))[0];
+      return { ch, view: (await this.viewChanges(tx, c, v, [ch], 'change'))[0] };
+    }).then(async ({ ch, view }) => {
+      await this.tellApprovers(ctx, ch);
+      return view;
     });
   }
 
@@ -1090,10 +1213,181 @@ export class EmployeeHistoryService {
       });
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.employeeId))] } } });
       const views = await this.viewChanges(tx, c, v, rows, 'change');
-      return views.map((view) => {
+      // PPL-04: who a pending change waits for (the approvers' names only).
+      const waiting = new Map<string, string[]>();
+      for (const r of rows.filter((x) => x.status === 'pending')) {
+        waiting.set(r.id, await this.approverNames(tx, c, r.employeeId, r.requestedBy, Boolean((r.payload as ChangePayload).compensation), isoDate(r.effectiveDate)));
+      }
+      // PPL-05 "What changes": the new values by name (a pending change has no stored impact yet), and who raised it.
+      const asked = views.map((x) => ({ costCentres: [], dottedLineManagerIds: [], ...(x.payload.assignment ?? {}) }) as AssignmentValues);
+      const n = await this.names(tx, c, asked, true);
+      const raisers = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.requestedBy).filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } });
+      return views.map((view, i) => {
         const p = people.find((x) => x.id === view.employeeId);
-        return { ...view, employeeName: p ? displayName(p) : null };
+        const a = asked[i];
+        const mgr = a.managerEmployeeId ? n.managers.get(a.managerEmployeeId) : undefined;
+        const newValues = [
+          a.designationId && n.designations.get(a.designationId)?.name,
+          a.gradeId && n.grades.get(a.gradeId)?.name,
+          a.locationId && n.locations.get(a.locationId)?.name,
+          a.departmentId && n.departments.get(a.departmentId)?.name,
+          a.employmentTypeId && n.types.get(a.employmentTypeId)?.name,
+          mgr && displayName(mgr),
+          view.payload.status && view.payload.status[0].toUpperCase() + view.payload.status.slice(1),
+        ].filter((x): x is string => Boolean(x));
+        return {
+          ...view,
+          employeeName: p ? displayName(p) : null,
+          requestedByName: raisers.find((u) => u.id === view.requestedBy)?.name?.trim() || null,
+          newValues,
+          ...(waiting.has(view.id) ? { waitingFor: waiting.get(view.id) } : {}),
+        };
       });
+    });
+  }
+
+  /**
+   * PPL-04 approval route: a change is decided by a holder of employee.change.approve whose grant reaches the person
+   * (with pay, one who also sees pay, R1), never by whoever raised it nor the person it is about (YX-SEC-11). Names
+   * only, as the approvals inbox shows a requester their approvers; "you" when the reader is one of them.
+   */
+  async approverNames(tx: Tx, c: CompanyContext, employeeId: string, raisedBy: string | null, pay: boolean, date: string): Promise<string[]> {
+    const ids = await this.approverIds(tx, c, employeeId, raisedBy, pay, date);
+    if (!ids.length) return [];
+    const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, name: true } });
+    const names = users.filter((u) => u.id !== c.userId && u.name?.trim()).map((u) => u.name!.trim()).sort((a, b) => a.localeCompare(b));
+    return users.some((u) => u.id === c.userId) ? ['you', ...names] : names;
+  }
+
+  /** The logins who may decide a change (see approverNames). */
+  async approverIds(tx: Tx, c: CompanyContext, employeeId: string, raisedBy: string | null, pay: boolean, date: string): Promise<string[]> {
+    const org = c.organizationId;
+    const today = todayIst();
+    // shortcut: holdersOf checks the grant on one day (the later of today and the change date), not the whole span the change shapes.
+    const on = date > today ? date : today;
+    let ids = await holdersOf(tx, org, 'employee.change.approve', employeeId, on);
+    if (pay) {
+      const sees = new Set(await holdersOf(tx, org, 'employee.salary.view', employeeId, on));
+      ids = ids.filter((id) => sees.has(id));
+    }
+    const subject = (await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } }))?.userId ?? null;
+    return ids.filter((id) => id !== raisedBy && id !== subject);
+  }
+
+  /**
+   * Founder queue 28 Oct 2026: a change waiting for an approver shows in their Approvals inbox (and its count), not only on
+   * People > Scheduled. Batch changes are decided as a batch on their own page, so they stay out.
+   * shortcut: the route is worked out per pending change (at most 200); fine for a company's open changes, index it if that grows.
+   */
+  async waitingFor(tx: Tx, c: CompanyContext, userId: string): Promise<InboxItem[]> {
+    const org = c.organizationId;
+    const rows = await tx.employeeChange.findMany({ where: { organizationId: org, status: 'pending', batchId: null }, orderBy: [{ requestedAt: 'asc' }], take: 200 });
+    const mine: { r: (typeof rows)[number]; approvers: number }[] = [];
+    for (const r of rows) {
+      const ids = await this.approverIds(tx, c, r.employeeId, r.requestedBy, Boolean((r.payload as ChangePayload).compensation), isoDate(r.effectiveDate));
+      if (ids.includes(userId)) mine.push({ r, approvers: ids.length });
+    }
+    if (!mine.length) return [];
+    const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: mine.map((m) => m.r.employeeId) } } });
+    const raisers = await tx.user.findMany({ where: { organizationId: org, id: { in: mine.map((m) => m.r.requestedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+    return mine.map(({ r, approvers }) => {
+      const p = people.find((x) => x.id === r.employeeId);
+      const who = p ? displayName(p) : '';
+      const what = label(r.changeType as ChangeType);
+      const from = isoDate(r.effectiveDate);
+      const raiser = raisers.find((u) => u.id === r.requestedBy);
+      return {
+        taskId: r.id,
+        requestId: r.id,
+        type: 'Job change',
+        title: `${who}: ${what[0].toUpperCase()}${what.slice(1)} from ${from}`,
+        summary: [{ label: 'Effective', value: from }, { label: 'Reason', value: r.reason }],
+        requester: raiser ? raiser.name?.trim() || raiser.email : '',
+        raisedBy: null,
+        onBehalfOf: null,
+        person: who,
+        step: { index: 1, of: 1, name: 'Approval', need: 1, approvers },
+        dueAt: null,
+        submittedAt: r.requestedAt,
+        decideAt: '/yx/people/scheduled',
+      };
+    });
+  }
+
+  /** Founder queue 28 Oct 2026: whoever may decide a new change hears of it in their bell (and email), after commit. */
+  async tellApprovers(ctx: TenantContext, ch: { id: string; employeeId: string; changeType: string; effectiveDate: Date; requestedBy: string | null; payload: unknown }) {
+    if (!this.notifications) return;
+    const { to, who } = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const c = companyContext(ctx);
+      const p = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: ch.employeeId } });
+      return { to: await this.approverIds(tx, c, ch.employeeId, ch.requestedBy, Boolean((ch.payload as ChangePayload).compensation), isoDate(ch.effectiveDate)), who: p ? displayName(p) : '' };
+    });
+    if (!to.length) return;
+    await this.notifications
+      .notify(ctx, ch.requestedBy ?? '00000000-0000-0000-0000-000000000000', to, 'employee.change.approval_needed', { entityType: 'employee_change', entityId: ch.id, contextText: `${who} · ${label(ch.changeType as ChangeType)} on ${isoDate(ch.effectiveDate)} waits for your approval`, linkPath: '/yx/people/scheduled' })
+      .catch((err: unknown) => this.logger.error(err));
+  }
+
+  /** PPL-04: may the viewer raise a change for this person today (HR's scope, or a manager for their team)? 404 if not. */
+  async mustRaiseFor(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    // Company-wide grants reach everyone, so first: is this a person of the caller's company at all (forced RLS)?
+    if (!(await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId }, select: { id: true } }))) throw new NotFoundException('No open employment for that employee');
+    if (await this.reaches(tx, c, v, 'employee.change.manage', employeeId, todayIst())) return;
+    // A promotion is a type managers may raise, so this checks only the team (and answers 404 / 403 as a raise would).
+    await this.checkOnBehalf(tx, c, v, 'promotion', employeeId);
+  }
+
+  private async mayRaiseFor(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string): Promise<boolean> {
+    return this.mustRaiseFor(tx, c, v, employeeId).then(
+      () => true,
+      () => false,
+    );
+  }
+
+  /** The route line before a change is sent: who will decide it. */
+  changeRoute(ctx: TenantContext, v: Viewer, q: { employeeId: string; effectiveDate?: string; pay?: string }) {
+    return this.run(ctx, async (tx, c) => {
+      await this.mustRaiseFor(tx, c, v, q.employeeId);
+      return { approvers: await this.approverNames(tx, c, q.employeeId, c.userId ?? null, q.pay === 'true', q.effectiveDate ?? todayIst()) };
+    });
+  }
+
+  /** PPL-04: per legal entity, what a promotion must change (promotion.must_change), so the form marks what is required. */
+  changeRules(ctx: TenantContext) {
+    return this.run(ctx, async (tx, c) => {
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      const promotionMustChange: Record<string, string> = {};
+      for (const x of entities) promotionMustChange[x.id] = await settingFor(tx, c, 'promotion.must_change', { legalEntityId: x.id });
+      return { promotionMustChange };
+    });
+  }
+
+  // ---- PPL-04 drafts: the raiser's own half-filled changes (forced RLS; only the raiser reads or writes them) ----
+
+  private async draftView(tx: Tx, c: CompanyContext, d: Prisma.EmployeeChangeDraftGetPayload<object>) {
+    const p = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: d.employeeId } });
+    return { id: d.id, employeeId: d.employeeId, employeeName: p ? displayName(p) : null, changeType: d.changeType, form: d.form, updatedAt: d.updatedAt };
+  }
+
+  listDrafts(ctx: TenantContext, v: Viewer) {
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.employeeChangeDraft.findMany({ where: { organizationId: c.organizationId, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' }, orderBy: { updatedAt: 'desc' }, take: 50 });
+      const out = [];
+      // A draft for someone the raiser no longer reaches stays out of sight (P02 §4.3).
+      for (const d of rows) if (await this.mayRaiseFor(tx, c, v, d.employeeId)) out.push(await this.draftView(tx, c, d));
+      return out;
+    });
+  }
+
+  saveDraft(ctx: TenantContext, v: Viewer, id: string | null, dto: ChangeDraftDto) {
+    return this.run(ctx, async (tx, c) => {
+      if (JSON.stringify(dto.form).length > 20000) throw new BadRequestException('The draft is too large.');
+      await this.mustRaiseFor(tx, c, v, dto.employeeId);
+      const data = { employeeId: dto.employeeId, changeType: dto.changeType ?? null, form: dto.form as Prisma.InputJsonObject, updatedAt: new Date() };
+      if (!id) return this.draftView(tx, c, await tx.employeeChangeDraft.create({ data: { ...data, organizationId: c.organizationId, createdBy: c.userId! } }));
+      const { count } = await tx.employeeChangeDraft.updateMany({ where: { organizationId: c.organizationId, id, createdBy: c.userId ?? '00000000-0000-0000-0000-000000000000' }, data });
+      if (!count) throw new NotFoundException('Draft not found');
+      return this.draftView(tx, c, await tx.employeeChangeDraft.findFirstOrThrow({ where: { organizationId: c.organizationId, id } }));
     });
   }
 
@@ -1216,6 +1510,14 @@ export class EmployeeHistoryService {
         if (date < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
         await this.checkReach(tx, c, v, e, date, dto.overrideReason ?? fresh.overrideReason);
         await this.checkRefs(tx, c, e, payload);
+        if (fresh.changeType === 'promotion') {
+          const day = asDate(date);
+          const now = await tx.employeeAssignment.findFirst({
+            where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, changeId: { not: fresh.id }, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
+            select: { designationId: true, gradeId: true },
+          });
+          await this.checkPromotionRule(tx, c, e, payload, now);
+        }
       }
       const updated = await tx.employeeChange.update({
         where: { id },
@@ -1300,7 +1602,7 @@ export class EmployeeHistoryService {
 
   /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
   /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
-  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null, opts: { transfer?: boolean } = {}) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
@@ -1346,6 +1648,8 @@ export class EmployeeHistoryService {
       await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);
       await this.checkRefs(tx, c, e, payload);
       await addRole(tx, c, personId, 'employee', { table: 'employments', id: e.id }, e.joinedOn);
+      // Letters asked for while the person was joining (appointment, letter of intent) are for this employment (PPL-28).
+      await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, personId, employmentId: null }, data: { employmentId: e.id } });
       if (dto.userId) await addRole(tx, c, personId, 'login', { table: 'users', id: dto.userId }, e.joinedOn);
       // M01 §3.4: a joiner on probation gets the company's probation plan.
       if (dto.status === 'probation') await startProbation(tx, c, e.id, dto.joinedOn, { legalEntityId: entity.id, employmentTypeId: payload.assignment?.employmentTypeId, gradeId: payload.assignment?.gradeId });
@@ -1368,9 +1672,10 @@ export class EmployeeHistoryService {
       await this.rebuild(tx, c, e, dto.joinedOn, join.id);
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
-      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
-      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08).
-      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
+      await audit(tx, c, opts.transfer ? 'employee.transferred_in' : 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false, ...(rehireOf ? { from: rehireOf } : {}) });
+      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08). A move
+      // between legal entities (PPL-09) is not a new joiner, so it starts no joiner journey.
+      if (!opts.transfer) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({
@@ -1466,7 +1771,8 @@ function toPayload(p: { assignment?: object; status?: string; compensation?: obj
  * changes it rebased only on dates `desk` covers, so a preview is no window onto periods outside one's scope.
  */
 export function scopeImpact(impact: Record<string, unknown>, desk: readonly Period[], pay: readonly Period[]): Record<string, unknown> {
-  const strip = (x: Record<string, unknown>) => (covers(pay, String(x.effectiveDate)) ? x : { ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [] });
+  // Without pay access the pay lines are hidden, and so are the warnings about pay.
+  const strip = (x: Record<string, unknown>) => (covers(pay, String(x.effectiveDate)) ? x : { ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [], ...('warnings' in x ? { warnings: [] } : {}) });
   const rebased = Array.isArray(impact.rebased) ? (impact.rebased as Record<string, unknown>[]).filter((r) => covers(desk, String(r.effectiveDate))).map(strip) : [];
   return { ...strip(impact), rebased };
 }

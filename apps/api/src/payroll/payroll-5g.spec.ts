@@ -3,6 +3,7 @@ import { join } from 'path';
 import { checkShape, gratuityDue, inForce, runGolden, serviceYears, type GoldenCase, type RuleSet } from '../statutory/evaluator';
 import { calculatePayslip } from './calc';
 import { staleRuleUses } from './arrears.service';
+import { moneyText } from './fnf.service';
 import { RULES, snapshot } from './regression/fixtures';
 import type { TaxInputs } from './tax';
 
@@ -29,9 +30,9 @@ const tax: TaxInputs = {
 
 describe('batch 5g: exit pay and off-cycle payslips', () => {
   it('counts service as the laws do: whole years, a part year over six months counts', () => {
-    expect(serviceYears('2020-01-01', '2024-12-31')).toEqual({ completed: 4, counted: 5 });
-    expect(serviceYears('2020-01-01', '2025-05-31')).toEqual({ completed: 5, counted: 5 });
-    expect(serviceYears('2020-01-15', '2020-07-13')).toEqual({ completed: 0, counted: 0 });
+    expect(serviceYears('2020-01-01', '2024-12-31')).toEqual({ completed: 4, counted: 5, months: 59 });
+    expect(serviceYears('2020-01-01', '2025-05-31')).toEqual({ completed: 5, counted: 5, months: 64 });
+    expect(serviceYears('2020-01-15', '2020-07-13')).toEqual({ completed: 0, counted: 0, months: 5 });
   });
 
   it('gratuity: 15/26 of the last wage per year after five years, any service on death, up to the cap', () => {
@@ -84,5 +85,14 @@ describe('batch 5g: exit pay and off-cycle payslips', () => {
     expect(r.lines.find((l) => l.code === 'overpayment_recovery')?.amount).toBe('5000.00');
     // Snapshots from before 5g (no overpayments field) calculate as before.
     expect(calculatePayslip(snapshot(), RULES).recoveries.overpayments).toEqual([]);
+  });
+});
+
+// PPL-22: money inside an F&F line's explanation reads like the rest of the page.
+describe('F&F explanations', () => {
+  it('groups rupees the Indian way and drops zero paise', () => {
+    expect(moneyText('₹26000.00 a month × 19 of 30 days.')).toBe('₹26,000 a month × 19 of 30 days.');
+    expect(moneyText('Earned leave: 7.50 days at ₹1066.67 a day; gratuity on ₹1234567.00.')).toBe('Earned leave: 7.50 days at ₹1,066.67 a day; gratuity on ₹12,34,567.');
+    expect(moneyText('Already ₹1,008.33 and ₹600.')).toBe('Already ₹1,008.33 and ₹600.');
   });
 });

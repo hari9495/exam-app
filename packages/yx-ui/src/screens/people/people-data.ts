@@ -2,6 +2,7 @@
 import { DEPARTMENT_HEADS, EMPLOYEES, HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
 import type { OrgPerson } from '../../components/orgchart';
 import type { FieldClass, FnfLine, JourneyTask, PaySplit } from './people-logic';
+import type { PayAccessRow } from './pay-access';
 
 export { EMPLOYEES, ME, TODAY };
 export const HOLIDAYS = HOLIDAYS_2026.map((h) => h.date);
@@ -20,6 +21,8 @@ export interface WorkforceRow {
   /** The department and those above it, top first (live app): filtering a parent finds everyone under it. */
   departmentPath?: string[];
   location: string;
+  /** The legal entity that employs them (founder 28 Oct 2026: shown with the code, whose prefix is per entity). */
+  entity?: string;
   manager: string;
   email: string;
   phone: string;
@@ -44,6 +47,9 @@ const orgManagerOf = (id: string) => {
 const CW_FIRST = ['Murugan', 'Selvi', 'Ravi', 'Anbu', 'Lakshmanan', 'Kannan', 'Vasanthi', 'Senthil', 'Pooja', 'Ganesh', 'Mani', 'Jaya'];
 const CW_LAST = ['K', 'Perumal', 'Shankar', 'Durai', 'Ramasamy', 'Velu', 'Arumugam'];
 const slug = (n: string) => n.toLowerCase().replace(/[^a-z]+/g, '.').replace(/\.$/, '');
+
+/** The demo's two entities: the Tamil Nadu sites are KFPL-TN, everything else KFPL. */
+const entityAt = (location: string) => (location === 'Hosur plant' || location === 'Chennai office' ? 'Kaveri Foods Pvt Ltd (Tamil Nadu)' : 'Kaveri Foods Pvt Ltd');
 
 export const WORKFORCE: WorkforceRow[] = [
   ...EMPLOYEES.map((e) => ({
@@ -105,7 +111,7 @@ export const WORKFORCE: WorkforceRow[] = [
     status: 'On assignment',
     via: ['Brindavan Retail Ltd', 'Nilgiri Logistics', 'Coromandel Textiles'][i % 3],
   })),
-];
+].map((r) => ({ ...r, entity: entityAt(r.location) }));
 
 export const WORKFORCE_COUNTS = {
   Employee: WORKFORCE.filter((w) => w.kind === 'Employee').length,
@@ -194,6 +200,10 @@ export interface FieldRow {
   /** Masked form when the viewer may only see it masked. */
   masked?: string;
   mono?: boolean;
+  /** Live: ask the server for the full value (a recorded look). */
+  reveal?: () => Promise<string>;
+  /** Live: the server says whether the viewer may see it in full (no Show button when false). */
+  canReveal?: boolean;
 }
 
 export const ARJUN = {
@@ -229,27 +239,43 @@ export const ARJUN = {
     { label: 'Salary account', value: 'Canara Bank · 1122 0045 6789 · CNRB0001234', masked: 'Canara Bank · XXXX XXXX 6789', cls: 'Confidential', mono: true },
     { label: 'Passport', value: 'Z4417728 · expires 08 Feb 2031', masked: 'XXXX7728 · expires 08 Feb 2031', cls: 'Confidential', mono: true },
   ] as FieldRow[],
+  // Family and nominees (PPL-03): nominees point at family members by position; EPS has no nominee yet.
   family: [
-    { name: 'Shalini Kulkarni', relation: 'Spouse', dob: '02 Nov 1994', dependent: true },
-    { name: 'Aarav Kulkarni', relation: 'Son', dob: '19 Jan 2022', dependent: true },
-    { name: 'Suman Kulkarni', relation: 'Mother', dob: '07 Aug 1963', dependent: true },
+    { name: 'Shalini Kulkarni', relation: 'Spouse', dateOfBirth: d(1994, 11, 2), dependant: true },
+    { name: 'Aarav Kulkarni', relation: 'Son', dateOfBirth: d(2022, 1, 19), dependant: true },
+    { name: 'Suman Kulkarni', relation: 'Mother', dateOfBirth: d(1963, 8, 7), dependant: true },
+    { name: 'Vinod Kulkarni', relation: 'Brother', dateOfBirth: null, dependant: false },
   ],
   nominations: [
-    { scheme: 'PF', name: 'Shalini Kulkarni', share: 100 },
-    { scheme: 'Gratuity', name: 'Shalini Kulkarni', share: 60 },
-    { scheme: 'Gratuity', name: 'Suman Kulkarni', share: 40 },
-    { scheme: 'Group term insurance', name: 'Shalini Kulkarni', share: 100 },
-  ],
+    { scheme: 'pf', member: 0, name: 'Shalini Kulkarni', share: 100 },
+    { scheme: 'gratuity', member: 0, name: 'Shalini Kulkarni', share: 60 },
+    { scheme: 'gratuity', member: 2, name: 'Suman Kulkarni', share: 40 },
+    { scheme: 'group_term', member: 0, name: 'Shalini Kulkarni', share: 100 },
+  ] as { scheme: string; member: number | null; name: string; share: number }[],
+  expectedSchemes: ['pf', 'eps', 'gratuity'],
+  familyNote: 'Marital status changed on 2 Feb 2020. Nominations were reviewed after that change.',
   emergency: [
     { name: 'Shalini Kulkarni', relation: 'Spouse', phone: '+91 98450 22872' },
     { name: 'Vinod Kulkarni', relation: 'Brother', phone: '+91 99001 44120' },
   ],
   custom: [
     { label: 'Forklift licence number', value: 'TN70 2019 0004412', cls: 'Internal' as FieldClass, selfEdit: false },
-    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: true },
+    { label: 'T-shirt size', value: 'L', cls: 'Public' as FieldClass, selfEdit: false },
     { label: 'Blood group', value: 'B positive', cls: 'Personal' as FieldClass, selfEdit: true },
   ],
 };
+
+/** The company's employee fields (Settings › Custom fields) and Arjun's values on them, as the API sends them. */
+export const EMPLOYEE_FIELDS = [
+  { id: 'cf1', label: 'Forklift licence number', fieldType: 'text' as const, options: null, dataClass: 'internal' as const },
+  { id: 'cf2', label: 'T-shirt size', fieldType: 'select' as const, options: ['S', 'M', 'L', 'XL'], dataClass: 'public' as const },
+  { id: 'cf3', label: 'Blood group', fieldType: 'select' as const, options: ['A positive', 'B positive', 'O positive', 'AB positive'], dataClass: 'personal' as const },
+];
+export const ARJUN_CUSTOM_VALUES = [
+  { ...EMPLOYEE_FIELDS[0], required: false, value: 'TN70 2019 0004412', canEdit: true },
+  { ...EMPLOYEE_FIELDS[1], required: false, value: 'L', canEdit: true },
+  { ...EMPLOYEE_FIELDS[2], required: false, value: 'B positive', canEdit: true },
+];
 
 /** Dated job history (P06), newest first, with a scheduled promotion and a correction. */
 export interface JobChange {
@@ -343,8 +369,11 @@ export const INCREMENT_LEFT_OUT = [
   { name: 'Meera Iyer', why: 'Resigned · last day 19 Oct 2026' },
   { name: 'Ravi Kumar', why: 'Resigned · last day 30 Oct 2026' },
   { name: 'Sathish Kumar', why: 'Resigned · last day 14 Nov 2026' },
+  { name: 'Nikhil Rao', why: 'No released rating in FY 2025-26 annual review.' },
 ];
 export const INCREMENT_PCT: Record<string, number> = { Exceeds: 12, Meets: 8, Below: 3 };
+/** A sample increment letter PDF for the Letters step's preview (the live app shows the real one). */
+export const INCREMENT_LETTER_PDF = 'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MjkgPj4Kc3RyZWFtCkJUIC9GMSAxMiBUZiA3MiA3NjAgVGQgKEthdmVyaSBGb29kcyBQdnQgTHRkKSBUaiAwIC0yNiBUZCAoUmV2aXNpb24gb2YgeW91ciBwYXkpIFRqIDAgLTIyIFRkIChEYXRlOiAyMCBPY3RvYmVyIDIwMjYpIFRqIDAgLTIyIFRkIChEZWFyIEJhbGEgU2VsdmFtIChLRi0wMDExKSwpIFRqIDAgLTIyIFRkIChGb2xsb3dpbmcgeW91ciBhbm51YWwgcmV2aWV3LCB5b3VyIGFubnVhbCBDVEMgaXMgcmV2aXNlZCBmcm9tIFJzIDgsMjQsMDAwKSBUaiAwIC0xNiBUZCAodG8gUnMgOSwyMiw5MDAgKDEyJSksIGVmZmVjdGl2ZSAxIE9jdG9iZXIgMjAyNi4gQWxsIG90aGVyIHRlcm1zIHN0YXkgdGhlIHNhbWUuKSBUaiAwIC0yNiBUZCAoRm9yIEthdmVyaSBGb29kcyBQdnQgTHRkKSBUaiAwIC0xNiBUZCAoTGFrc2htaSBWZW5rYXRlc2FuLCBIZWFkIG9mIEhSKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDcyMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjc5MQolJUVPRgo=';
 
 /* ------------------------------------------------------------------ onboarding (PPL-11..17) */
 
@@ -504,6 +533,7 @@ export const TEMPLATES = [
   { id: 'tp3', type: 'Salary certificate', name: 'Salary certificate (instant)', source: 'In-app editor', languages: 'English, Hindi', version: 3, status: 'Active', approval: false },
   { id: 'tp4', type: 'Relieving', name: 'Relieving and experience', source: 'Uploaded Word', languages: 'English', version: 1, status: 'Draft', approval: true },
   { id: 'tp5', type: 'Absconding notice 1', name: 'Absconding notice 1 (starter)', source: 'Starter template', languages: 'English, Tamil', version: 1, status: 'Active', approval: false },
+  { id: 'tp6', type: 'Offer', name: 'Offer letter, old format', source: 'Uploaded Word', languages: 'English', version: 2, status: 'Not in use', approval: true },
 ];
 
 export const MY_DOCS = [
@@ -548,13 +578,19 @@ export const VRS = {
   ],
 };
 
-export const REVERIFY = [
-  { id: 'rv1', name: 'Arjun Kulkarni', trigger: 'Periodic, every 3 years', last: d(2023, 10, 20), due: d(2026, 10, 20), consent: 'Given 22 Sep 2026', result: 'In progress', partner: 'BGV-8812' },
-  { id: 'rv2', name: 'Priya Nair', trigger: 'Client mandate: Brindavan Retail Ltd', last: d(2024, 1, 5), due: d(2026, 10, 1), consent: 'Not yet asked', result: 'Not started', partner: '' },
-  { id: 'rv3', name: 'Rohit Bhat', trigger: 'Role change into Payroll (sensitive)', last: d(2022, 6, 2), due: d(2026, 9, 1), consent: 'Refused 3 Sep 2026', result: 'HR review', partner: '' },
-  { id: 'rv4', name: 'Deepa Rao', trigger: 'Periodic, every 3 years', last: d(2023, 8, 14), due: d(2026, 8, 14), consent: 'Given 1 Aug 2026', result: 'Adverse: HR review', partner: 'BGV-8790' },
-  { id: 'rv5', name: 'Imran Qureshi', trigger: 'Periodic, every 3 years', last: d(2024, 2, 1), due: d(2027, 2, 1), consent: '—', result: 'Clear (last cycle)', partner: 'BGV-7104' },
+// PPL-42: re-verification rules and who is due on TODAY (29 Sep 2026).
+export const REVERIF_RULES = [
+  { id: 'rr1', typeName: 'PAN card', everyMonths: 36, legalEntity: null, departments: ['Finance', 'Payroll'], designations: [], onRoleChange: true, validFrom: '2026-04-01', validTo: null, active: true, canManage: true },
+  { id: 'rr2', typeName: 'Background check report', everyMonths: 24, legalEntity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', departments: ['Quality'], designations: [], onRoleChange: false, validFrom: '2026-07-01', validTo: null, active: true, canManage: true },
+  { id: 'rr3', typeName: 'Bank proof (cancelled cheque or passbook)', everyMonths: 12, legalEntity: null, departments: [], designations: [], onRoleChange: false, validFrom: '2025-04-01', validTo: '2026-03-31', active: false, canManage: true },
 ];
+export const REVERIF_ROWS = [
+  { id: 'rv1', ruleId: 'rr1', employeeId: 'e1', name: 'Arjun Kulkarni', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2023-10-20', due: '2026-10-20', status: 'due soon', request: 'asked', askedAt: '2026-09-22T10:00:00Z', documentId: 'd1' },
+  { id: 'rv2', ruleId: 'rr1', employeeId: 'e2', name: 'Priya Nair', typeName: 'PAN card', why: 'Moved into the role on 1 Sep 2026', lastVerified: '2024-01-05', due: '2026-09-01', status: 'overdue', request: 'not asked', askedAt: null, documentId: 'd2' },
+  { id: 'rv3', ruleId: 'rr2', employeeId: 'e3', name: 'Rohit Bhat', typeName: 'Background check report', why: 'Every 24 months', lastVerified: '2024-08-14', due: '2026-08-14', status: 'overdue', request: 'uploaded', askedAt: '2026-08-01T10:00:00Z', documentId: 'd3' },
+  { id: 'rv4', ruleId: 'rr1', employeeId: 'e4', name: 'Deepa Rao', typeName: 'PAN card', why: 'Every 36 months', lastVerified: null, due: '2026-10-12', status: 'due soon', request: 'not asked', askedAt: null, documentId: null },
+  { id: 'rv5', ruleId: 'rr1', employeeId: 'e5', name: 'Imran Qureshi', typeName: 'PAN card', why: 'Every 36 months', lastVerified: '2024-02-01', due: '2027-02-01', status: 'not due', request: 'not asked', askedAt: null, documentId: 'd5' },
+] as const;
 
 /* ------------------------------------------------------------------ identity (PPL-34, 36, 37) */
 
@@ -601,3 +637,62 @@ export const TEAM_TODAY = [
 ];
 
 export const CUSTOM_FIELDS_NOTE = 'Custom fields come from the employee field set (P18); each has a class and a self-edit flag.';
+
+/** PPL-47: checklist tasks given to Divya's team across joiners, leavers and life events. */
+const task = (id: string, journeyId: string, person: string, journeyKind: 'onboarding' | 'offboarding' | 'new_manager', anchorOn: string, title: string, dueOn: string, kind: 'tick' | 'form' | 'document' | 'letter', extra: Partial<{ overdue: boolean; status: 'open' | 'waiting'; locked: boolean; canSkip: boolean }> = {}) => ({
+  id, key: id, title, kind, ownerType: 'manager' as const, ownerLabel: 'Manager', assignee: 'Divya Raghunathan', dueOn, dueOffsetDays: 0, status: extra.status ?? ('open' as const), overdue: extra.overdue ?? false, required: true, locked: extra.locked ?? false, form: null, documentType: null, answers: null,
+  link: null, completedAt: null, completedBy: null, skipReason: null, canComplete: extra.status !== 'waiting', canSkip: extra.canSkip ?? false, version: 1, journeyId, journeyKind, person, anchorOn,
+});
+export const CHECKLIST_TASKS = [
+  task('t1', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Welcome call with the new hire', '2026-09-30', 'tick', { overdue: true }),
+  task('t2', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Plan the first week', '2026-10-02', 'form'),
+  task('t3', 'j1', 'Kavya Reddy', 'onboarding', '2026-10-05', 'Day-30 check-in', '2026-11-04', 'tick', { status: 'waiting' }),
+  task('t4', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Handover plan', '2026-10-12', 'form'),
+  task('t5', 'j2', 'Meera Iyer', 'offboarding', '2026-10-19', 'Manager sign-off on clearance', '2026-10-17', 'tick', { canSkip: true }),
+  task('t6', 'j3', 'Imran Qureshi', 'new_manager', '2026-10-15', 'One-to-one with each new report', '2026-10-22', 'tick'),
+];
+
+/** PPL-48: running life-event checklists. */
+export const LIFE_JOURNEYS = [
+  { id: 'l1', kind: 'new_manager' as const, kindLabel: 'New manager', person: 'Imran Qureshi', anchorOn: '2026-10-15', progress: 40 },
+  { id: 'l2', kind: 'transfer' as const, kindLabel: 'Transfer', person: 'Sana Menon', anchorOn: '2026-10-03', progress: 75 },
+  { id: 'l3', kind: 'parental_leave' as const, kindLabel: 'Parental leave', person: 'Priya Nair', anchorOn: '2026-11-02', progress: 20 },
+  { id: 'l4', kind: 'return_to_work' as const, kindLabel: 'Return to work', person: 'Deepa Ghosh', anchorOn: '2026-09-21', progress: 100 },
+];
+
+/** PPL-49: retirements in the next year and contracts ending in 90 days. */
+export const UPCOMING_EXITS = [
+  { employeeId: 'u1', name: 'Imran Qureshi', kind: 'contract_end' as const, on: '2026-10-31' },
+  { employeeId: 'u2', name: 'Manoj Patil', kind: 'retirement' as const, on: '2026-10-31' },
+  { employeeId: 'u3', name: 'Sana Menon', kind: 'contract_end' as const, on: '2026-12-15' },
+  { employeeId: 'u4', name: 'Lakshmanan Durai', kind: 'retirement' as const, on: '2027-06-30' },
+];
+
+/* ------------------------------------------------------------------ PPL-50 team pay access */
+
+const TEAM: { id: string; name: string }[] = ['Arjun Kulkarni', 'Kavya Reddy', 'Meera Krishnan', 'Pradeep Nair', 'Sneha Iyer', 'Vikram Rao'].map((name, i) => ({ id: `t${i + 1}`, name }));
+const asked = (r: Partial<PayAccessRow> & Pick<PayAccessRow, 'id' | 'state'>): PayAccessRow => ({
+  manager: { id: 'o7', name: 'Divya Raghunathan' },
+  scope: 'person',
+  person: TEAM[0],
+  covers: TEAM[0].name,
+  reason: 'Retention case: Arjun has an outside offer and I need his current pay to propose a counter.',
+  days: 30,
+  askedAt: '2026-10-27T09:40:00Z',
+  first: null,
+  decided: null,
+  ended: null,
+  validTo: null,
+  canDecide: false,
+  canEnd: false,
+  ...r,
+});
+/** Sample requests in each state; the HR person (Lakshmi) may decide the first two and end pa4; pa3 waits for another HR person (she gave approval 1). */
+export const PAY_ACCESS_ROWS: PayAccessRow[] = [
+  asked({ id: 'pa1', state: 'first', canDecide: true, team: TEAM }),
+  asked({ id: 'pa2', state: 'second', manager: { id: 'o12', name: 'Ramesh Gowda' }, scope: 'team', person: null, covers: 'their whole team (6 people)', reason: 'Annual increment planning for the Hosur line.', days: 15, askedAt: '2026-10-26T11:05:00Z', first: { by: 'Karthik Subramanian', at: '2026-10-27T10:15:00Z', note: 'Only for the increment cycle.' }, canDecide: true, team: TEAM }),
+  asked({ id: 'pa3', state: 'second', manager: { id: 'o14', name: 'Neha Joshi' }, person: TEAM[3], covers: TEAM[3].name, reason: 'Promotion case for the staffing desk.', askedAt: '2026-10-25T08:20:00Z', first: { by: 'Lakshmi Venkatesan', at: '2026-10-26T09:00:00Z', note: null } }),
+  asked({ id: 'pa4', state: 'active', manager: { id: 'o9', name: 'Vikram Rao' }, scope: 'team', person: null, covers: 'their whole team (4 people)', reason: 'Budget for next year.', askedAt: '2026-10-01T07:30:00Z', first: { by: 'Lakshmi Venkatesan', at: '2026-10-01T10:00:00Z', note: null }, decided: { by: 'Karthik Subramanian', at: '2026-10-02T06:45:00Z', note: null }, validTo: '2026-10-31', canEnd: true }),
+  asked({ id: 'pa5', state: 'ended', manager: { id: 'o11', name: 'Anjali Iyer' }, person: { id: 't9', name: 'Ritu Sharma' }, covers: 'Ritu Sharma', reason: 'Counter-offer.', days: 15, askedAt: '2026-08-04T07:30:00Z', first: { by: 'Karthik Subramanian', at: '2026-08-04T09:00:00Z', note: null }, decided: { by: 'Lakshmi Venkatesan', at: '2026-08-05T06:45:00Z', note: null }, validTo: '2026-08-19' }),
+  asked({ id: 'pa6', state: 'refused', manager: { id: 'o13', name: 'Prakash Menon' }, scope: 'team', person: null, covers: 'their whole team (12 people)', reason: 'Want to compare pay across the plant.', askedAt: '2026-09-12T07:30:00Z', decided: { by: 'Lakshmi Venkatesan', at: '2026-09-12T12:10:00Z', note: 'Pay across the plant is a payroll report, not team access.' } }),
+];

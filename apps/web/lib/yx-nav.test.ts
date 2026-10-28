@@ -1,4 +1,4 @@
-import { activeLink, buildNav, meLinks, type NavInput } from './yx-nav';
+import { accountLinks, activeLink, buildNav, type NavInput } from './yx-nav';
 
 // The menu by product area (design audit step 1). These replace the old WorkspaceShell menu tests: each link shows to
 // exactly the people who may open its page, by the same keys as before.
@@ -9,10 +9,10 @@ const labels = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.i
 const sections = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.map((s) => s.label ?? '') ?? [];
 
 describe('buildNav: areas', () => {
-  it('someone with no keys and no record: Home (Home, Approvals, My security) and the Helpdesk; nothing unbuilt', () => {
+  it('someone with no keys and no record: Home (Home, Approvals, Notifications, Search, My requests) and the Helpdesk; nothing unbuilt', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
-    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests', 'Delegation', 'Notification preferences', 'My security']);
+    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
     expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Service catalogue', 'Chat with us']);
   });
 
@@ -32,9 +32,19 @@ describe('buildNav: areas', () => {
 });
 
 describe('buildNav: People', () => {
+  it('payroll does no HR work: no Probation, Change action, Bulk changes or Import (founder 21 Oct 2026)', () => {
+    const n = nav(['employee.profile.view', 'employee.change.approve', 'employee.salary.manage', 'payroll.fnf.manage']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Scheduled', 'Job history', 'F&F']);
+  });
+
+  it('a menu item never shows where the page says no access: Possible same person only when the server counts it', () => {
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage']), 'people')).not.toContain('Possible same person');
+    expect(labels(nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true }), 'people')).toContain('Possible same person');
+  });
+
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {
-    const n = nav(['employee.profile.view', 'employee.change.manage']);
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Bulk changes', 'Job history', 'Possible same person']);
+    const n = nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true });
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
     expect(labels(n, 'home')).toContain('Profile');
   });
@@ -51,10 +61,10 @@ describe('buildNav: People', () => {
   });
 
   it('lifecycle pages follow their keys and the person own tasks', () => {
-    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Life events']);
-    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Life events', 'My checklist tasks']);
+    expect(labels(nav(['lifecycle.onboarding.view']), 'people')).toEqual(['Onboarding board', 'Buddies', 'Life events']);
+    expect(labels(nav(['lifecycle.onboarding.manage']), 'people')).toEqual(['Onboarding board', 'Ready to onboard', 'Batches', 'Buddies', 'Life events', 'My checklist tasks']);
     expect(labels(nav(['lifecycle.exit.manage', 'employee.profile.view']), 'people')).toEqual(expect.arrayContaining(['Exit cases', 'Clearance', 'Retirements and contracts', 'Absconding', 'VRS schemes']));
-    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters']);
+    expect(labels(nav(['document.manage']), 'people')).toEqual(['Documents & letters', 'Re-verification']); // PPL-42 under More
     expect(nav(['document.manage'])[1].sections[0].items[0].count).toBe('documentsToVerify');
     expect(labels(nav([], { tasks: true }), 'people')).toEqual(['My checklist tasks']);
   });
@@ -98,7 +108,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
-    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'My letters', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'Change requests', 'Declarations', 'Privacy', 'My exit']);
     expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
@@ -112,11 +122,30 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields']);
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
 
+  it('Restructure: HR plans it; payroll opens the done ones for its checklist (founder 28 Oct 2026); others do not see it', () => {
+    expect(labels(nav(['employee.change.approve', 'payroll.run.prepare']), 'people')).toContain('Restructure');
+    expect(labels(nav(['employee.change.approve']), 'people')).not.toContain('Restructure');
+    expect(labels(nav(['employee.change.manage']), 'people')).toContain('Restructure');
+  });
+  it('the rest of the designed People menu: Succession, Union register and F&F (Payroll page) by their keys', () => {
+    expect(labels(nav(['succession.manage']), 'people')).toEqual(['Succession']);
+    // PPL-38: the HR diversity role.
+    expect(labels(nav(['employee.disability.view']), 'people')).toEqual(['Declarations']);
+    // PPL-43 / PPL-44: the compliance officer.
+    expect(labels(nav(['compliance.declaration.manage']), 'people')).toEqual(['Regulated declarations', 'Pre-clearance requests']);
+    expect(labels(nav(['lifecycle.exit.manage']), 'people')).toEqual(expect.arrayContaining(['Union register', 'VRS schemes']));
+    const hr = nav(['employee.profile.view', 'payroll.fnf.manage']);
+    expect(labels(hr, 'people')).toContain('F&F');
+    expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('F&F');
+    // One F&F page, two addresses: the menu stays in the area it was opened from.
+    expect(activeLink(hr, '/yx/people/fnf')?.area.id).toBe('people');
+    expect(activeLink(hr, '/yx/payroll/fnf')?.area.id).toBe('pay');
+  });
   it('a System Admin finds security, Support access, Emails and Contact YukthiX', () => {
     const n = nav(['org.support_access.approve', 'notification.template.manage', 'org.yukthix_support.raise'], { role: 'org_admin' });
     expect(labels(n, 'settings')).toEqual(['Security settings', 'Single sign-on providers', 'Login activity', 'Support access', 'Emails', 'Text messages (SMS)', 'Contact YukthiX']);
@@ -133,7 +162,10 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/performance')?.link.label).toBe('Goals');
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
-  it('Me pages for the account menu', () => {
-    expect(meLinks(n).map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'My letters', 'Delegation', 'Notification preferences', 'My data', 'My assets', 'Language', 'Resign', 'My security']);
+  it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
+    expect(n.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'Change requests', 'Declarations', 'Privacy', 'My exit']);
+    expect(activeLink(n, '/yx/me/letters')).toBeNull();
+    expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Language', 'My security']);
+    expect(accountLinks({ support: true, employee: false }).map((l) => l.label)).toEqual(['My security']);
   });
 });

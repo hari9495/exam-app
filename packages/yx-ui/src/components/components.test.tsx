@@ -50,6 +50,32 @@ describe('FormField', () => {
     expect(input).toHaveAttribute('aria-required', 'true');
     expect(input).toHaveAccessibleDescription(/Enter an email.*We send payslips here/);
   });
+  it('the rule shows before the helper and hides while an error says the same, also while typing', async () => {
+    const u = userEvent.setup();
+    function Reason() {
+      const [v, setV] = useState('');
+      return (
+        <FormField label="Reason" required rule="At least 5 characters." helper="Shown to the approvers." error={v.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+          <TextField value={v} onChange={setV} />
+        </FormField>
+      );
+    }
+    const { rerender } = render(
+      <FormField label="Reason" rule="At least 5 characters." helper="Shown to the approvers.">
+        <TextField value="" onChange={() => {}} />
+      </FormField>,
+    );
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+    rerender(<Reason />);
+    expect(screen.getByText('Enter a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(screen.getByText('Shown to the approvers.')).toBeInTheDocument();
+    expect(screen.queryByText(/At least 5 characters\./)).toBeNull();
+    // While typing the error steps aside, so the rule comes back: never an empty line under the field.
+    await u.type(screen.getByLabelText(/Reason/), 'ab');
+    expect(screen.queryByText('Enter a reason of at least 5 characters.')).toBeNull();
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+  });
+
   it('error summary links focus the field', async () => {
     render(
       <>
@@ -201,6 +227,18 @@ describe('Select', () => {
     await u.click(await screen.findByRole('option', { name: /Earned leave/ }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
   });
+  it('multi-select: the × on a chip removes that choice without opening the list', async () => {
+    const u = userEvent.setup();
+    function M() {
+      const [v, setV] = useState<string[]>(['cl', 'el']);
+      return <MultiSelect aria-label="Types" options={opts} value={v} onChange={setV} />;
+    }
+    render(<M />);
+    await u.click(screen.getByRole('button', { name: /^Remove Earned leave/ }));
+    expect(screen.queryByRole('button', { name: /^Remove Earned leave/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Remove / })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Types' })).toHaveAttribute('aria-expanded', 'false');
+  });
   it('multi-select hands its search to the host when it searches the server', async () => {
     const u = userEvent.setup();
     const onSearchChange = vi.fn();
@@ -268,6 +306,22 @@ describe('DatePicker', () => {
     await u.type(screen.getByLabelText('Last day'), '31 Aug 2026');
     await u.click(screen.getByText('elsewhere'));
     expect(screen.getByText('Choose a date on or after 1 Sep 2026')).toBeInTheDocument();
+  });
+
+  it("says why a typed date is refused, over the form's own required message", async () => {
+    const u = userEvent.setup();
+    render(
+      <>
+        <FormField label="New joining date" required error="Pick the new joining date.">
+          <DatePicker value={null} onChange={() => {}} min={new Date(2026, 10, 11)} />
+        </FormField>
+        <button>elsewhere</button>
+      </>,
+    );
+    await u.type(screen.getByLabelText(/New joining date/), '03 Nov 2026');
+    await u.click(screen.getByText('elsewhere'));
+    expect(screen.getByText('Choose a date on or after 11 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Pick the new joining date.')).toBeNull();
   });
 });
 
@@ -372,5 +426,14 @@ describe('MethodCards', () => {
     expect(passkey).toHaveAttribute('aria-busy', 'true');
     expect(passkey).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Authenticator app' })).toBeDisabled();
+  });
+});
+
+describe('NoAccessState', () => {
+  it('names who grants access in one sentence; a note stays its own sentence (people audit c)', async () => {
+    const { NoAccessState } = await import('./feedback');
+    render(<NoAccessState what="the annual increment" grantedBy="HR" note="It needs the salary grant and the right to change jobs." />);
+    expect(screen.getByText("You don't have access to the annual increment")).toBeInTheDocument();
+    expect(screen.getByText('It needs the salary grant and the right to change jobs. Ask HR to give you access.')).toBeInTheDocument();
   });
 });

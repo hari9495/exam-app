@@ -216,12 +216,12 @@ export function gratuity(rs: RuleSet, i: { gratuityWage: Prisma.Decimal.Value })
 }
 
 /** Years of service as the gratuity and retrenchment laws count them: whole years, and a part year over six months counts. */
-export function serviceYears(from: string, to: string): { completed: number; counted: number } {
+export function serviceYears(from: string, to: string): { completed: number; counted: number; months: number } {
   const [y1, m1, d1] = from.split('-').map(Number);
   const [y2, m2, d2] = to.split('-').map(Number);
   const months = (y2 - y1) * 12 + (m2 - m1) - (d2 + 1 < d1 ? 1 : 0);
   const completed = Math.floor(months / 12);
-  return { completed, counted: completed + (months % 12 >= 6 ? 1 : 0) };
+  return { completed, counted: completed + (months % 12 >= 6 ? 1 : 0), months };
 }
 
 /**
@@ -234,7 +234,7 @@ export function gratuityDue(rs: RuleSet, i: { lastWage: Prisma.Decimal.Value; jo
   const min = i.fixedTerm && v.fixedTermMinYears !== null && v.fixedTermMinYears !== undefined ? Number(v.fixedTermMinYears) : Number(v.minYears);
   const eligible = !!i.death || y.completed >= min;
   const amount = eligible ? Prisma.Decimal.min(D(v.cap as string), money(D(i.lastWage).mul(Number(v.daysPerYear)).div(Number(v.monthDays)).mul(y.counted))) : ZERO;
-  return { eligible, years: y.counted, amount: money(amount), citation: cite(rs) };
+  return { eligible, years: y.counted, minYears: min, amount: money(amount), citation: cite(rs) };
 }
 
 /** Founder decision 5g-D3: the part of an exit payment exempt from tax (up to the rule's limit); 0 for other components. */

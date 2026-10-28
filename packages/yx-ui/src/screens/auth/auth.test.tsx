@@ -608,9 +608,11 @@ describe('LoginActivityScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Unlock ramesh.g@kaverifoods.in' }));
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Unlock account' });
-    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 10 characters.')).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText(/Reason/), 'too short');
-    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(onUnlock).not.toHaveBeenCalled();
     await userEvent.type(within(dialog).getByLabelText(/Reason/), ' - called him back on his desk phone');
     await userEvent.click(confirm);
     expect(onUnlock).toHaveBeenCalledWith(ORG_EVENTS.data[1], 'too short - called him back on his desk phone');
@@ -932,7 +934,9 @@ describe('passkey as a sign-in method', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Rename Office laptop' }));
     const dialog = screen.getByRole('dialog', { name: 'Rename passkey' });
     const field = within(dialog).getByRole('textbox', { name: /Name/ });
-    expect(within(dialog).getByRole('button', { name: 'Save name' })).toBeDisabled(); // unchanged
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save name' })); // unchanged
+    expect(within(dialog).getByText('Enter a different name to save it.')).toBeInTheDocument();
+    expect(onRenamePasskey).not.toHaveBeenCalled();
     await userEvent.clear(field);
     await userEvent.type(field, 'Work laptop');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save name' }));

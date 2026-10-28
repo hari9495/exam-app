@@ -13,15 +13,16 @@ export function isRecordVisibilityGoverned(role: string | null | undefined): boo
 
 /**
  * Who a role grant covers (P02 §3). `tenant` is the whole company; the others narrow it to an entity, a
- * location, a department subtree, or the grantee's own reports (relative to their employee record).
+ * location, a department subtree, or the grantee's own reports (relative to their employee record), or one named report
+ * ('one_report', from a manager's pay access request: that person only, while they report to the grantee).
  * The implicit grants (YX-SEC-04: self, manager, dotted line, department head) are computed, never stored.
  */
-export const GRANT_SCOPE_TYPES = ['tenant', 'legal_entity', 'location', 'department_subtree', 'all_reports', 'direct_reports'] as const;
+export const GRANT_SCOPE_TYPES = ['tenant', 'legal_entity', 'location', 'department_subtree', 'all_reports', 'direct_reports', 'one_report'] as const;
 export type GrantScopeType = (typeof GRANT_SCOPE_TYPES)[number];
 
 export interface GrantScope {
   type: GrantScopeType;
-  /** The entity, location or department; null for tenant and the report scopes. */
+  /** The entity, location, department or (one_report) employee; null for tenant and the other report scopes. */
   id: string | null;
 }
 
@@ -56,6 +57,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
   // M05 expenses E2: claims are about people, scoped like their records; finance checks them per legal entity.
   if (key === 'expense.claim.view') return GRANT_SCOPE_TYPES;
+  // PPL-43 / PPL-44: the compliance officer works for the designated persons of their entities, like employee records.
+  if (key === 'compliance.declaration.manage') return GRANT_SCOPE_TYPES;
   // M06 PM2: goals are about people, scoped like their records; periods and company goals are company-wide.
   if (key === 'perf.goal.view') return GRANT_SCOPE_TYPES;
   // PM4: reviews are about people, scoped like their records; cycles are company-wide for now.

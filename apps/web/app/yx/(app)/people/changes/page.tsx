@@ -1,37 +1,142 @@
 'use client';
 
-import { JobChangesScreen, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
-import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
-import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useToast } from '@yukthix/ui';
+import { ChangeActionSheet } from '@yukthix/ui/frame';
+import { ChangeDrawer, ChangeReview, ReasonDialog, draftForm, draftFromForm, orList, type ChangeDraft, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
+import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
+import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
+import { chartPeople, useChangeOptions, useMove, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
+import { CHANGE_LABEL } from '../../../../../lib/yx-changes';
 
 const id = encodeURIComponent;
+type SavedDraft = { id: string; employeeId: string; employeeName: string | null; changeType: ChangeRecord['changeType'] | null; form: Record<string, unknown>; updatedAt: string };
+const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+const dateText = (iso: string) => day(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-// People › Job changes (P06 §7, PPL-05). Approving is a step-up action (apiFetch asks the person to confirm
-// it's them, then resends); the API refuses anyone approving their own change (YX-SEC-11).
-export default function YxJobChangesPage() {
+// People › Change action (PPL-04, design audit step 3; P06 §4.3): pick a person and raise a promotion, transfer,
+// manager change, pay revision or correction; what waits for approval opens the review. Approving is a step-up action
+// and never one's own change (YX-SEC-11). A manager with request.raise_on_behalf raises for their team; HR approves.
+export default function YxChangeActionPage() {
+  const { toast } = useToast();
   const perms = useYxPermissions();
-  const rows = usePeople<ChangeRecord[]>('/changes');
+  const today = todayIst();
   const canManage = perms.has('employee.change.manage');
-  const people = usePeople<PersonOption[]>(canManage ? '/employees' : null);
-  const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canManage);
-  const write = usePeopleWrite();
+  const canApprove = perms.has('employee.change.approve');
+  const onBehalf = !canManage && perms.has('request.raise_on_behalf');
+  const rows = usePeople<ChangeRecord[]>('/changes');
+  const employees = usePeople<PersonOption[]>(canManage ? '/employees' : null);
+  const team = usePeople<{ managerId: string | null; members: TeamMember[] }>(onBehalf ? '/team' : null);
+  const chart = usePeople<OrgChartData>(onBehalf ? '/org-chart' : null);
+  const everyone = chartPeople(chart.data);
+  const subjects: PersonOption[] = canManage ? (employees.data ?? []) : everyone.filter((p) => (team.data?.members ?? []).some((m) => m.id === p.id && m.relation !== 'dotted'));
+  const options = useChangeOptions(subjects, perms.has('employee.salary.manage'), canManage || onBehalf);
   const raise = useRaiseChange();
+  const move = useMove(subjects, canManage);
+  const write = usePeopleWrite();
+  const [starting, setStarting] = useState<string | null>(null);
+  // PPL-04 "Save draft": the viewer's own drafts; one opened carries on where it was left.
+  const drafts = usePeople<SavedDraft[]>(canManage || onBehalf ? '/changes/drafts' : null);
+  const [draft, setDraft] = useState<{ id: string; form: ChangeDraft } | null>(null);
+  const closeDrawer = () => {
+    setStarting(null);
+    setDraft(null);
+  };
+  // Opened from a person's record ("Propose a change"): the change form for that person.
+  useEffect(() => setStarting(new URLSearchParams(window.location.search).get('person')), []);
+  const [reviewing, setReviewing] = useState<ChangeRecord | null>(null);
+  const [rejecting, setRejecting] = useState<ChangeRecord | null>(null);
+  const pending = (rows.data ?? []).filter((r) => r.status === 'pending').sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  // Founder 28 Oct 2026: inter-entity transfers sent from here wait too (the API lists only people the viewer reaches).
+  const router = useRouter();
+  const transfers = usePeople<{ id: string; name: string; effectiveDate: string; waitingFor: string[]; requestedAt: string }[]>(canManage ? '/restructures/pending-transfers' : null);
+  const waiting = [
+    ...pending.map((r) => ({ id: r.id, name: r.employeeName ?? 'Employee', kind: CHANGE_LABEL[r.changeType], effective: day(r.effectiveDate), note: r.waitingFor?.length ? `waiting for ${orList(r.waitingFor)}` : `raised ${dateText(r.requestedAt)}`, canOpen: canApprove })),
+    ...(transfers.data ?? []).map((t) => ({ id: t.id, name: t.name, kind: 'Inter-entity transfer', effective: day(t.effectiveDate), note: t.waitingFor.length ? `waiting for ${orList(t.waitingFor)}` : `raised ${dateText(t.requestedAt)}`, canOpen: true })),
+  ].sort((a, b) => a.effective.getTime() - b.effective.getTime());
+  const what = (r: ChangeRecord) => `${CHANGE_LABEL[r.changeType].toLowerCase()} for ${r.employeeName ?? 'the employee'}`;
   return (
-    <JobChangesScreen
-      state={loadState(rows)}
-      onRetry={() => void rows.refetch()}
-      today={todayIst()}
-      rows={rows.data ?? []}
-      canApprove={perms.has('employee.change.approve')}
-      canManage={canManage}
-      personHref={(employeeId) => `/yx/people/history?person=${id(employeeId)}`}
-      batchHref={(batchId) => `/yx/people/bulk-changes?batch=${id(batchId)}`}
-      onPreview={(changeId) => write<Impact>('GET', `/changes/${id(changeId)}/preview`)}
-      onApprove={async (changeId, confirmRebase) => void (await write('POST', `/changes/${id(changeId)}/approve`, { confirmRebase }))}
-      onReject={async (changeId, reason) => void (await write('POST', `/changes/${id(changeId)}/reject`, { reason }))}
-      onCancel={async (changeId, reason) => void (await write('POST', `/changes/${id(changeId)}/cancel`, { reason, confirmRebase: true }))}
-      onReschedule={async (changeId, effectiveDate) => void (await write('PUT', `/changes/${id(changeId)}`, { effectiveDate }))}
-      newChange={canManage ? { options, ...raise } : undefined}
+    <ChangeActionSheet
+      persona={canManage ? 'hr' : 'mgr'}
+      kind="Promotion"
+      effective={day(today)}
+      today={day(today)}
+      live={{
+        state: loadState(rows),
+        onRetry: () => void rows.refetch(),
+        people: subjects.map((p) => ({ id: p.id, name: p.name, role: p.designation ?? '', department: [p.department, p.location].filter(Boolean).join(' · ') })),
+        waiting,
+        drafts: (drafts.data ?? []).map((x) => ({ id: x.id, name: x.employeeName ?? 'Employee', kind: x.changeType ? CHANGE_LABEL[x.changeType] : null, savedAt: new Date(x.updatedAt) })),
+        onOpenDraft: (draftId) => {
+          const x = drafts.data?.find((d) => d.id === draftId);
+          if (!x) return;
+          setDraft({ id: x.id, form: { ...draftFromForm(x.form), employeeId: x.employeeId } });
+          setStarting(x.employeeId);
+        },
+        onStart: (personId) => setStarting(personId),
+        onOpenWaiting: (openId) => (transfers.data?.some((t) => t.id === openId) ? router.push(`/yx/people/restructure/${id(openId)}`) : setReviewing(pending.find((r) => r.id === openId) ?? null)),
+        children: (
+          <>
+            {starting && (
+              <ChangeDrawer
+                options={{ ...options, ...(onBehalf ? { managers: everyone, types: ['promotion', 'transfer', 'redesignation', 'manager_change'] } : {}) }}
+                key={draft?.id ?? starting}
+                employeeId={starting}
+                initial={draft?.form}
+                onPreview={raise.onPreview}
+                onRoute={raise.onRoute}
+                move={
+                  move && {
+                    ...move,
+                    onSubmit: async (m) => {
+                      await move.onSubmit(m);
+                      toast({ tone: 'success', title: `Inter-entity transfer for ${subjects.find((s) => s.id === m.employeeId)?.name ?? 'the employee'} sent for approval`, description: 'HR approves it in People › Restructure.' });
+                    },
+                  }
+                }
+                onSubmit={async (input) => {
+                  await raise.onSubmit(input, draft?.id);
+                  toast({ tone: 'success', title: `${CHANGE_LABEL[input.changeType]} for ${subjects.find((s) => s.id === input.employeeId)?.name ?? 'the employee'} sent for approval` });
+                }}
+                onSaveDraft={async (d) => {
+                  // A move is no job change type: the form keeps it, the draft's type stays empty.
+                  const body = { employeeId: starting, ...(d.changeType && d.changeType !== 'entity_transfer' ? { changeType: d.changeType } : {}), form: draftForm(d) };
+                  await (draft ? write('PUT', `/changes/drafts/${id(draft.id)}`, body) : write('POST', '/changes/drafts', body));
+                  toast({ tone: 'success', title: `Draft saved for ${subjects.find((s) => s.id === starting)?.name ?? 'the employee'}` });
+                }}
+                onClose={closeDrawer}
+              />
+            )}
+            {reviewing && !rejecting && (
+              <ChangeReview
+                row={reviewing}
+                onPreview={(changeId) => write<Impact>('GET', `/changes/${id(changeId)}/preview`)}
+                onApprove={async (confirmRebase) => {
+                  await write('POST', `/changes/${id(reviewing.id)}/approve`, { confirmRebase });
+                  toast({ tone: 'success', title: `The ${what(reviewing)} was approved` });
+                }}
+                onReject={() => setRejecting(reviewing)}
+                onClose={() => setReviewing(null)}
+              />
+            )}
+            {rejecting && (
+              <ReasonDialog
+                ask={{ kind: 'reject', row: rejecting }}
+                act={async (reason) => {
+                  await write('POST', `/changes/${id(rejecting.id)}/reject`, { reason });
+                  toast({ tone: 'success', title: `The ${what(rejecting)} was rejected` });
+                }}
+                onDone={() => {
+                  setRejecting(null);
+                  setReviewing(null);
+                }}
+                onClose={() => setRejecting(null)}
+              />
+            )}
+          </>
+        ),
+      }}
     />
   );
 }

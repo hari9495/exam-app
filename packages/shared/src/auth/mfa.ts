@@ -50,6 +50,12 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  // People › Succession (Confidential).
+  'succession.manage',
+  // PPL-38: disability declarations (Special).
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer.
+  'compliance.declaration.manage',
   'payroll.period.view',
   'payroll.period.reopen',
   'payroll.period.reopen.approve',

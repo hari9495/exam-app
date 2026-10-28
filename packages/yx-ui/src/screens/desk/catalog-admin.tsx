@@ -5,7 +5,7 @@ import { Checkbox } from '../../components/choice';
 import { ConditionBuilder } from '../../components/condition';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
@@ -248,7 +248,7 @@ function ItemEditor(props: CatalogAdminProps & { item: CatalogItemAdmin; onClose
                 </FormField>
               </div>
               <FormField label="What it is and how it works">
-                <RichTextEditor value={draft.bodyHtml ?? ''} onChange={(bodyHtml) => set({ bodyHtml })} mergeFields={[]} placeholder="Describe the item" />
+                <RichTextEditor hide={STYLE_TOOLS} value={draft.bodyHtml ?? ''} onChange={(bodyHtml) => set({ bodyHtml })} mergeFields={[]} placeholder="Describe the item" />
               </FormField>
               <MediaEditor media={draft.media ?? []} onChange={(media) => set({ media })} />
             </div>

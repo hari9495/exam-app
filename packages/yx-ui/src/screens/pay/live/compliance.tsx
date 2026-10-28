@@ -15,12 +15,13 @@ import { ReasonDrawer, rupees } from './runs';
 import { EntityPicker } from './setup';
 import type { Confirmation, LoadState } from './types';
 import type { SetupEntity } from './types-5b';
-import type { FilingRow, FnfSettlementView, HubCard, Recovery, StatutoryHub, TdsReturnRow, Worksheet } from './types-5j';
+import type { FilingRow, HubCard, Recovery, StatutoryHub, TdsReturnRow, Worksheet } from './types-5j';
 
 // Compliance and exits, wired (PAY-10.04 for CMP-01 … CMP-08, PPL-22; batch 5f and 5g APIs): the statutory hub for a legal
 // entity and month (PF, ESI, PT, LWF and TDS with their due dates), each file made, uploaded and filed (step-up and the
-// typed phrase); the quarterly TDS return (reconcile, the official file, the .fvu the filer's FVU made, filed); full and
-// final settlements; arrears worksheets, rule-change proposals and overpayment recoveries.
+// typed phrase); the quarterly TDS return (reconcile, the official file, the .fvu the filer's FVU made, filed); arrears
+// worksheets, rule-change proposals and overpayment recoveries. Full and final settlements are the designed PPL-22
+// calculator (people/exits.tsx FnfCalculator).
 
 const FILING: Record<string, { label: string; tone: BadgeTone }> = {
   not_generated: { label: 'Not made yet', tone: 'neutral' },
@@ -474,162 +475,6 @@ export function FileButton({ label, accept, ariaLabel, loading, onFile }: { labe
         }}
       />
     </>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ F&F (PPL-22)
-
-const EXIT: Record<string, string> = { resignation: 'Resignation', termination: 'Termination', retrenchment: 'Retrenchment', death: 'Death in service', retirement: 'Retirement', end_of_contract: 'End of contract', absconding: 'Absconding', probation_termination: 'Probation not confirmed', vrs: 'Voluntary retirement' };
-
-export interface FnfScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  settlements: FnfSettlementView[] | null;
-  nameOf: (employeeId: string) => string;
-  /** payroll.fnf.manage edits; payroll.notice.waive (HR too) waives a notice (5j-D2). Default: both. */
-  can?: { manage: boolean; waiveNotice: boolean };
-  onOpenRun: (runId: string) => void;
-  onHold: (s: FnfSettlementView, itemId: string, holdReason: string | null, reason: string) => Promise<unknown>;
-  onAdd: (s: FnfSettlementView, line: { componentCode: string; amount: string; label: string }, reason: string) => Promise<unknown>;
-  onWaiveNotice: (s: FnfSettlementView, reason: string) => Promise<unknown>;
-  onSecondRun: (s: FnfSettlementView) => Promise<{ runId: string }>;
-}
-
-export function FnfScreen(p: FnfScreenProps) {
-  const [open, setOpen] = useState<string | null>(null);
-  const s = p.settlements?.find((x) => x.id === open) ?? null;
-  return (
-    <LivePage title="Full and final settlements" description="Made when an exit is accepted, with the deadline of two working days after the last day. Lines that cannot be paid yet are held and paid in a second run." state={p.state} onRetry={p.onRetry} what="settlements" grantedBy="your payroll admin">
-      {p.settlements && !p.settlements.length && <EmptyState title="No settlements" description="A settlement appears here when an exit is accepted." />}
-      {p.settlements && p.settlements.length > 0 && (
-        <table className="yx-tim-table" aria-label="Settlements">
-          <thead>
-            <tr>
-              <th scope="col">Person</th>
-              <th scope="col">Exit</th>
-              <th scope="col">Last day</th>
-              <th scope="col">Pay by</th>
-              <th scope="col">Status</th>
-              <th scope="col">
-                <span className="yx-visually-hidden">Open</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.settlements.map((x) => (
-              <tr key={x.id}>
-                <th scope="row">{p.nameOf(x.employeeId)}</th>
-                <td>{EXIT[x.exitType] ?? x.exitType}</td>
-                <td>{dateText(x.lwd)}</td>
-                <td>
-                  {dateText(x.deadline)} {x.overdue && <Badge tone="danger">Late</Badge>}
-                </td>
-                <td>
-                  <Badge tone={x.status === 'settled' ? 'success' : 'warning'}>{x.status === 'settled' ? 'Settled' : 'Open'}</Badge>
-                </td>
-                <td>
-                  <Button size="sm" onClick={() => setOpen(x.id)} aria-label={`Open the settlement of ${p.nameOf(x.employeeId)}`}>
-                    Open
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {s && <FnfDrawer s={s} {...p} onClose={() => setOpen(null)} />}
-    </LivePage>
-  );
-}
-
-function FnfDrawer({ s, onClose, ...p }: FnfScreenProps & { s: FnfSettlementView; onClose: () => void }) {
-  const [holding, setHolding] = useState<string | null>(null);
-  const [waiving, setWaiving] = useState(false);
-  const { busy, error, run } = useRun();
-  const can = p.can ?? { manage: true, waiveNotice: true };
-  const editable = s.status === 'open' && can.manage;
-  return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} title={`${p.nameOf(s.employeeId)} · ${EXIT[s.exitType] ?? s.exitType}`} subtitle={`Last day ${dateText(s.lwd)} · pay by ${dateText(s.deadline)}`} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
-      <div className="yx-tim-stack">
-        {error && (
-          <InlineAlert tone="danger" title="This didn't go through">
-            {error}
-          </InlineAlert>
-        )}
-        {s.overdue && <InlineAlert tone="danger" title="Past the deadline">Pay the undisputed lines now; hold anything in dispute for the second run.</InlineAlert>}
-        <section aria-label="Settlement lines">
-          <h3 className="yx-pay-section-title">Lines</h3>
-          {s.items.length ? (
-            <table className="yx-tim-table" aria-label="Settlement lines">
-              <tbody>
-                {s.items.map((i) => (
-                  <tr key={i.id}>
-                    <th scope="row">{i.label ?? i.componentCode}</th>
-                    <td>{rupees(i.amount)}</td>
-                    <td>{i.held ? <Badge tone="warning">Held: {i.held}</Badge> : <Badge tone="success">To pay</Badge>}</td>
-                    <td>
-                      {editable &&
-                        (i.held ? (
-                          <Button size="sm" loading={busy === `r-${i.id}`} onClick={() => void run(`r-${i.id}`, () => p.onHold(s, i.id, null, 'Released for payment'))}>
-                            Release
-                          </Button>
-                        ) : (
-                          s.runStatus !== 'approved' && (
-                            <Button size="sm" onClick={() => setHolding(i.id)}>
-                              Hold
-                            </Button>
-                          )
-                        ))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="yx-tim-note">No settlement lines beyond salary to the last day.</p>
-          )}
-        </section>
-        {s.payees.length > 0 && (
-          <section aria-label="Payees">
-            <h3 className="yx-pay-section-title">Paid to</h3>
-            <ul className="yx-tim-list">
-              {s.payees.map((x) => (
-                <li key={x.name}>
-                  {x.name} ({x.relation}) · {x.sharePercent}%{x.accountLast4 ? ` · account ending ${x.accountLast4}` : ' · no bank account yet'}
-                  {x.amount ? ` · ${rupees(x.amount)}` : ''}
-                </li>
-              ))}
-            </ul>
-            {s.taxNote && <p className="yx-tim-note">{s.taxNote}</p>}
-          </section>
-        )}
-        {s.noticeWaived && <InlineAlert tone="info" title="Notice recovery waived">{s.noticeWaived.reason}</InlineAlert>}
-        <div className="yx-tim-row">
-          {s.runId && can.manage && (
-            <Button variant="primary" onClick={() => p.onOpenRun(s.runId!)}>
-              Open F&F run
-            </Button>
-          )}
-          {s.secondRunId && <Button onClick={() => p.onOpenRun(s.secondRunId!)}>Open second run</Button>}
-          {s.status === 'open' && can.waiveNotice && s.exitType === 'resignation' && !s.noticeWaived && s.runStatus !== 'approved' && <Button onClick={() => setWaiving(true)}>Waive notice recovery</Button>}
-          {editable && s.runStatus === 'approved' && !s.secondRunId && (
-            <Button
-              loading={busy === 'second'}
-              onClick={() =>
-                void run('second', async () => {
-                  const r = await p.onSecondRun(s);
-                  p.onOpenRun(r.runId);
-                })
-              }
-            >
-              Make second run
-            </Button>
-          )}
-        </div>
-      </div>
-      {holding && <ReasonDrawer title="Hold this line?" subtitle="It is paid in the second run once released." label="Why" confirm="Hold" onClose={() => setHolding(null)} onSave={(why) => p.onHold(s, holding, why, why)} />}
-      {waiving && <ReasonDrawer title="Waive the notice recovery?" label="Why" confirm="Waive" onClose={() => setWaiving(false)} onSave={(why) => p.onWaiveNotice(s, why)} />}
-    </Drawer>
   );
 }
 

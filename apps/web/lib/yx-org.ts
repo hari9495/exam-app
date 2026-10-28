@@ -16,11 +16,18 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'employee.salary.view',
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
   'employee.identity.manage',
   'employee.identity.approve',
+  // PPL-34: the Identity panel is Special class.
+  'employee.aadhaar.view',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer.
+  'compliance.declaration.manage',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
@@ -92,6 +99,7 @@ export const YX_KEYS = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  'succession.manage',
   'asset.view',
   'asset.manage',
   // M05 expenses E1.
@@ -158,6 +166,7 @@ export const YX_KEYS = [
   'results:view',
   // AT2: headcount plans and the hiring approval routes.
   'ats.headcount.manage',
+  'ats.requisition.raise',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

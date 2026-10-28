@@ -1,14 +1,16 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { OrgSecretsCryptoService, TenantContext, maskTail } from '@exam-platform/shared';
+import { OrgSecretsCryptoService, TenantContext, maskShaped, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
-import { covers } from '../access/scope';
+import { covers, has } from '../access/scope';
+import { serializeCustomFieldValues, upsertCustomFieldValues, type CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
+import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-field.dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
 import { settingFor } from './probation';
-import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
 
 // The employee's own data beyond job facts (P02 §4.4–4.5; P01 §4.4; M01 §3.1, Q4):
 //   Personal      the person and HR holding employee.personal.view in scope; the person edits it directly,
@@ -22,13 +24,18 @@ import { KIND_FIELDS, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, R
 // Nothing is shown while acting for someone else (P02 YX-SEC-20).
 
 type Kind = RequestKind;
-type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic';
-const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic'];
+type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport';
+const INTL = 'bank_international';
+const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic', 'passport'];
 const BANK: Record<string, 'salary' | 'reimbursement'> = { bank_salary: 'salary', bank_reimbursement: 'reimbursement' };
-const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
+const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport', bank_international: 'Salary account abroad' };
+/** PPL-32: the document type that proves each kind of change (UAN and ESIC have none). */
+export const PROOF_TYPE: Partial<Record<Kind, string>> = { bank_salary: 'bank_proof', bank_reimbursement: 'bank_proof', pan: 'pan_card', aadhaar: 'aadhaar', legal_name: 'name_change_proof', passport: 'passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
 /** Views of someone's Confidential / Special data, shown to them in "Who accessed my data" (P02 §7, P08). */
-export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed'] as const;
+export const SENSITIVE_VIEW_ACTIONS = ['employee.pay.viewed', 'employee.identity.viewed', 'employee.aadhaar.viewed', 'employee.identity_checks.viewed', 'employee.disability.viewed', 'compliance.declaration.viewed'] as const;
+/** PPL-33 Context: where the look happened, from what each view records. */
+const PAY_CONTEXT: Record<string, string> = { as_of: 'Your record, as on a date', history: 'Your job history', segments: 'Your pay history', change: 'A change to your job or pay', batch: 'A bulk change', impact: 'Checking a change before it was made' };
 
 type Proposal = { [K in keyof ProposedValueDto]?: string };
 type PersonalRow = Prisma.EmployeePersonalDetailsGetPayload<object>;
@@ -64,7 +71,7 @@ export class ProfileService {
     return plain.slice(prefix.length);
   }
 
-  private hash(c: CompanyContext, kind: Identifier | 'bank', value: string): string {
+  private hash(c: CompanyContext, kind: Identifier | 'bank' | 'iban', value: string): string {
     return hashValue(this.crypto, c.organizationId, kind, value);
   }
 
@@ -87,6 +94,7 @@ export class ProfileService {
       const details = personal ? await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId } }) : null;
       return {
         employeeId,
+        personId: employee.personId,
         name: displayName(employee),
         self: a.self,
         employeeCode: employment?.employeeCode ?? null,
@@ -99,14 +107,28 @@ export class ProfileService {
           pay: covers(a.payPeriods, today),
         },
         personal: personal ? this.personalView(details) : null,
+        // PPL-03 family, nominations and emergency contacts: Personal class, like the details above.
+        family: personal ? await this.familyView(tx, c, employeeId) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
+        // Internal class: the work phone and email (PPL-03 key facts, Message).
+        work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
+        // Internal: the birthday as the directory shows it (day and month), unless the person hides it.
+        birthday: internal ? await this.birthday(tx, c, employeeId) : null,
         can: {
           editPersonal: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.profile.edit', employeeId))),
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
           reveal: !v.actingForOther && identity,
+          editWork: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
+          // Family and nominations decide who is paid (YX-LC-16): HR changes them, the person asks HR.
+          editFamily: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
         },
       };
     });
+  }
+
+  private async birthday(tx: Tx, c: CompanyContext, employeeId: string) {
+    const d = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { dateOfBirth: true, hideBirthday: true } });
+    return d?.dateOfBirth && !d.hideBirthday ? isoDate(d.dateOfBirth).slice(5) : null;
   }
 
   private personalView(d: PersonalRow | null) {
@@ -122,6 +144,7 @@ export class ProfileService {
       postalCode: d?.postalCode ?? null,
       country: d?.country ?? null,
       hideBirthday: d?.hideBirthday ?? false,
+      maritalStatus: d?.maritalStatus ?? null,
     };
   }
 
@@ -129,6 +152,7 @@ export class ProfileService {
   private async identityView(tx: Tx, c: CompanyContext, employeeId: string) {
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, employeeId, validTo: null }, orderBy: { purpose: 'asc' } });
+    const abroad = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
     const pending = await tx.employeeProfileRequest.findMany({ where: { organizationId: c.organizationId, employeeId, status: 'pending' }, select: { id: true, kind: true } });
     return {
       legalName: ids?.legalName ?? null,
@@ -136,7 +160,11 @@ export class ProfileService {
       aadhaar: maskTail(ids?.aadhaarLast4),
       uan: maskTail(ids?.uanLast4),
       esic: maskTail(ids?.esicLast4),
+      passport: maskTail(ids?.passportLast4),
+      passportExpiresOn: ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null,
       bankAccounts: banks.map((b) => ({ purpose: b.purpose, holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4), usableFrom: b.usableFrom })),
+      // PPL-46: the salary account abroad, the IBAN masked like any account number.
+      internationalAccount: abroad ? { country: abroad.country, iban: maskShaped('account', abroad.ibanLast4), bic: abroad.bic, currency: abroad.currency, usableFrom: abroad.usableFrom } : null,
       pending: pending.map((p) => ({ requestId: p.id, kind: p.kind })),
     };
   }
@@ -193,6 +221,7 @@ export class ProfileService {
       set('country', dto.country ?? null);
       set('stateCode', dto.stateCode ?? null);
       set('hideBirthday', dto.hideBirthday ?? false);
+      set('maritalStatus', dto.maritalStatus ?? null);
       const country = (data.country !== undefined ? data.country : current?.country) as string | null;
       const state = (data.stateCode !== undefined ? data.stateCode : current?.stateCode) as string | null;
       if (country && !isCountry(country)) throw new BadRequestException('Unknown country');
@@ -216,6 +245,157 @@ export class ProfileService {
     return out.view;
   }
 
+  // ================= family, nominations, emergency contacts (PPL-03; Personal) =================
+
+  /** The family, the current nominations and the emergency contacts; nominee names follow the family member. */
+  private async familyView(tx: Tx, c: CompanyContext, employeeId: string) {
+    const o = { organizationId: c.organizationId, employeeId };
+    const members = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+    const nominations = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null }, orderBy: { createdAt: 'asc' } });
+    const contacts = await tx.employeeEmergencyContact.findMany({ where: o, orderBy: { position: 'asc' } });
+    const statutory = await tx.employeeStatutory.findFirst({ where: { ...o, validTo: null }, orderBy: { validFrom: 'desc' }, select: { pf: true, eps: true } });
+    const marital = await tx.auditLog.findFirst({
+      where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, action: 'employee.personal.updated', metadataJson: { contains: '"maritalStatus"' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const reviewedAt = nominations.reduce<Date | null>((m, n) => (!m || n.createdAt > m ? n.createdAt : m), null);
+    return {
+      members: members.map((m) => ({ id: m.id, name: m.name, relation: m.relation, dateOfBirth: m.dateOfBirth ? isoDate(m.dateOfBirth) : null, dependant: m.dependant })),
+      nominations: nominations.map((n) => {
+        const m = members.find((x) => x.id === n.familyMemberId);
+        return { scheme: n.scheme, familyMemberId: n.familyMemberId, name: m?.name ?? n.name, relation: m?.relation ?? n.relation, sharePercent: Number(n.sharePercent) };
+      }),
+      // Schemes the person should name a nominee for: gratuity always; PF and EPS only while covered.
+      expectedSchemes: ['gratuity', ...(statutory?.pf === 'yes' ? ['pf', ...(statutory.eps ? ['eps'] : [])] : [])],
+      contacts: contacts.map((x) => ({ name: x.name, relation: x.relation, phone: x.phone })),
+      maritalChangedAt: marital?.createdAt.toISOString() ?? null,
+      nominationsReviewedAt: reviewedAt?.toISOString() ?? null,
+    };
+  }
+
+  /** Family and nominations together (nominees are family members; each scheme's shares total 100). HR only. */
+  updateFamily(ctx: TenantContext, v: Viewer, employeeId: string, dto: FamilyDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (a.self) throw new ForbiddenException('HR keeps your family and nominations. Ask HR to change them.');
+      if (!(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing family and nominations needs employee.profile.edit for this person.');
+      const problem = nominationProblem(dto.members.length, dto.nominations);
+      if (problem) throw new BadRequestException(problem);
+      const today = todayIst();
+      if (dto.members.some((m) => m.dateOfBirth && (m.dateOfBirth > today || m.dateOfBirth < '1900-01-01'))) throw new BadRequestException('A date of birth must be a real past date.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const current = await tx.employeeFamilyMember.findMany({ where: { ...o, removedAt: null }, select: { id: true } });
+      if (dto.members.some((m) => m.id && !current.some((x) => x.id === m.id))) throw new BadRequestException('A family member is not on this record.');
+      const by = c.userId ?? null;
+      const ids: string[] = [];
+      for (const [position, m] of dto.members.entries()) {
+        const data = { name: m.name.trim(), relation: m.relation.trim(), dateOfBirth: m.dateOfBirth ? new Date(`${m.dateOfBirth}T00:00:00Z`) : null, dependant: m.dependant, position, updatedBy: by };
+        ids.push(m.id ? (await tx.employeeFamilyMember.update({ where: { id: m.id }, data })).id : (await tx.employeeFamilyMember.create({ data: { ...o, ...data } })).id);
+      }
+      const removed = current.filter((x) => !ids.includes(x.id)).map((x) => x.id);
+      if (removed.length) await tx.employeeFamilyMember.updateMany({ where: { ...o, id: { in: removed } }, data: { removedAt: new Date(), updatedBy: by } });
+      // Nominations are replaced only when they changed, so "reviewed" stays the date they were last decided.
+      const key = (r: { scheme: string; familyMemberId: string | null; sharePercent: unknown }) => `${r.scheme}:${r.familyMemberId}:${Number(r.sharePercent).toFixed(2)}`;
+      const before = await tx.employeeNomination.findMany({ where: { ...o, supersededAt: null } });
+      const next = dto.nominations.map((n) => ({ scheme: n.scheme, familyMemberId: ids[n.member], sharePercent: n.sharePercent, member: dto.members[n.member] }));
+      const nominationsChanged = before.map(key).sort().join('|') !== next.map(key).sort().join('|');
+      if (nominationsChanged) {
+        await tx.employeeNomination.updateMany({ where: { ...o, supersededAt: null }, data: { supersededAt: new Date() } });
+        if (next.length) await tx.employeeNomination.createMany({ data: next.map((n) => ({ ...o, scheme: n.scheme, familyMemberId: n.familyMemberId, name: n.member.name.trim(), relation: n.member.relation.trim(), sharePercent: n.sharePercent, source: 'hr' })) });
+      }
+      // P08: what changed and by whom, never the values (Personal data stays out of the log).
+      await audit(tx, c, 'employee.family.updated', 'employee', employeeId, { members: ids.length, removed: removed.length, nominationsChanged, by: 'hr' });
+      return this.familyView(tx, c, employeeId);
+    });
+  }
+
+  /** Emergency contacts, in calling order: the person edits their own directly; HR with employee.profile.edit. */
+  setEmergencyContacts(ctx: TenantContext, v: Viewer, employeeId: string, dto: EmergencyContactsDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (!a.self && !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing emergency contacts needs employee.profile.edit for this person.');
+      const o = { organizationId: c.organizationId, employeeId };
+      const rows = dto.contacts.map((x, position) => ({ ...o, name: x.name.trim(), relation: x.relation.trim(), phone: e164(x.phone), position, updatedBy: c.userId ?? null }));
+      await tx.employeeEmergencyContact.deleteMany({ where: o });
+      if (rows.length) await tx.employeeEmergencyContact.createMany({ data: rows });
+      await audit(tx, c, 'employee.emergency_contacts.updated', 'employee', employeeId, { count: rows.length, by: a.self ? 'self' : 'hr' });
+      return (await this.familyView(tx, c, employeeId)).contacts;
+    });
+  }
+
+  /** Work phone (Internal): HR with employee.profile.edit for the person; the person asks HR (it is the company's line). */
+  setWorkPhone(ctx: TenantContext, v: Viewer, employeeId: string, workPhone: string | null) {
+    return this.history.run(ctx, async (tx, c) => {
+      await this.history.access(tx, c, v, employeeId);
+      if (v.actingForOther || !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing the work phone needs employee.profile.edit for this person.');
+      let phone: string | null = null;
+      if (workPhone?.trim()) {
+        try {
+          phone = e164(workPhone);
+        } catch {
+          throw new BadRequestException('That phone number is not valid.');
+        }
+      }
+      await tx.employee.update({ where: { id: employeeId }, data: { workPhone: phone } });
+      await audit(tx, c, 'employee.work_phone.updated', 'employee', employeeId, { cleared: phone === null });
+      return { workPhone: phone };
+    });
+  }
+
+  /**
+   * PPL-03 Activity: who did what on this person's record, newest first, each kind only where the viewer may see it:
+   * job changes (raised, decided; never pay values) for anyone who may open the record; identity and bank change
+   * requests (the kind, never values) for the person and identity keys; documents for the person and document keys;
+   * letters for the person and letter.issue. Twenty at most.
+   */
+  activity(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      const org = c.organizationId;
+      const may = async (keys: Parameters<ProfileService['can']>[3][]) => a.self || (await Promise.all(keys.map((k) => this.can(tx, c, v, k, employeeId)))).some(Boolean);
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: employeeId }, select: { personId: true } });
+      const out: { id: string; kind: 'change' | 'approval' | 'comment'; actorId: string | null; at: Date; text: string }[] = [];
+      const TYPE: Record<string, string> = { join: 'the joining', promotion: 'a promotion', transfer: 'a transfer', redesignation: 'a new designation', manager_change: 'a manager change', salary_revision: 'a salary revision', employment_type_change: 'an employment type change', confirmation: 'a confirmation', correction: 'a correction', notice: 'a notice period', notice_withdrawal: 'a resignation withdrawal', exit: 'the exit' };
+      const day = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      const changes = await tx.employeeChange.findMany({ where: { organizationId: org, employeeId }, orderBy: { requestedAt: 'desc' }, take: 20 });
+      for (const ch of changes) {
+        const what = `${TYPE[ch.changeType] ?? 'a change'} from ${day(ch.effectiveDate)}`;
+        out.push({ id: `ch-r-${ch.id}`, kind: 'change', actorId: ch.requestedBy, at: ch.requestedAt, text: `Raised ${what}` });
+        if (ch.decidedAt && ['approved', 'scheduled', 'effective', 'rejected'].includes(ch.status)) out.push({ id: `ch-d-${ch.id}`, kind: 'approval', actorId: ch.decidedBy, at: ch.decidedAt, text: `${ch.status === 'rejected' ? 'Rejected' : 'Approved'} ${what}` });
+      }
+      if (await may(['employee.identity.view', 'employee.identity.manage', 'employee.identity.approve'])) {
+        const reqs = await tx.employeeProfileRequest.findMany({ where: { organizationId: org, employeeId }, orderBy: { createdAt: 'desc' }, take: 10 });
+        for (const r of reqs) {
+          const label = (LABEL[r.kind as Kind] ?? r.kind).toLowerCase();
+          out.push({ id: `pr-r-${r.id}`, kind: 'change', actorId: r.requestedBy, at: r.createdAt, text: `Asked to change the ${label}` });
+          if (r.decidedAt && (r.status === 'approved' || r.status === 'rejected')) out.push({ id: `pr-d-${r.id}`, kind: 'approval', actorId: r.decidedBy, at: r.decidedAt, text: `${r.status === 'approved' ? 'Approved' : 'Rejected'} the ${label} change` });
+        }
+      }
+      if (await may(['document.view', 'document.manage'])) {
+        // Only document classes the viewer may see: Personal with employee.personal.view, Confidential / Special with identity.
+        const classes = a.self ? null : ['public', 'internal', ...((await this.can(tx, c, v, 'employee.personal.view', employeeId)) ? ['personal'] : []), ...((await this.can(tx, c, v, 'employee.identity.view', employeeId)) ? ['confidential', 'special'] : [])];
+        const allTypes = await tx.documentType.findMany({ where: { OR: [{ organizationId: org }, { organizationId: null }] }, select: { key: true, name: true, sensitivity: true } });
+        const seen = allTypes.filter((t) => !classes || classes.includes(t.sensitivity)).map((t) => t.key);
+        const docs = await tx.document.findMany({ where: { organizationId: org, personId: emp.personId, typeKey: { in: seen } }, orderBy: { createdAt: 'desc' }, take: 10 });
+        const name = (k: string) => (allTypes.find((t) => t.key === k)?.name ?? k.replace(/_/g, ' ')).toLowerCase();
+        const versions = await tx.documentVersion.findMany({ where: { organizationId: org, documentId: { in: docs.map((d) => d.id) } }, orderBy: { createdAt: 'desc' } });
+        for (const d of docs) {
+          for (const ver of versions.filter((x) => x.documentId === d.id)) out.push({ id: `dv-${ver.id}`, kind: 'comment', actorId: ver.uploadedBy, at: ver.createdAt, text: `Uploaded the ${name(d.typeKey)}` });
+          if (d.verifiedAt) out.push({ id: `dk-${d.id}`, kind: 'approval', actorId: d.verifiedBy, at: d.verifiedAt, text: `${d.status === 'rejected' ? 'Sent back' : 'Verified'} the ${name(d.typeKey)}` });
+        }
+      }
+      if (await may(['letter.issue'])) {
+        const letters = await tx.letterIssue.findMany({ where: { organizationId: org, personId: emp.personId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 10 });
+        for (const l of letters) if (l.issuedAt) out.push({ id: `li-${l.id}`, kind: 'approval', actorId: l.issuedBy, at: l.issuedAt, text: `Issued the ${l.title.split(':')[0].toLowerCase()}${l.referenceNo ? ` (${l.referenceNo})` : ''}` });
+      }
+      out.sort((x, y) => y.at.getTime() - x.at.getTime());
+      const top = out.slice(0, 20);
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: top.flatMap((e) => (e.actorId ? [e.actorId] : [])) } }, select: { id: true, name: true, email: true } });
+      return { entries: top.map((e) => ({ id: e.id, kind: e.kind, actor: e.actorId ? (users.find((u) => u.id === e.actorId)?.name || users.find((u) => u.id === e.actorId)?.email || 'Someone') : null, at: e.at.toISOString(), text: e.text })) };
+    });
+  }
+
   // ================= identity / bank / legal name: change with approval (§4.5, YX-SEC-13) =================
 
   private proposal(kind: Kind, value: ProposedValueDto): Proposal {
@@ -233,6 +413,8 @@ export class ProfileService {
   private display(kind: Kind, p: Proposal): Record<string, string | null> {
     if (kind === 'legal_name') return { legalName: p.legalName ?? null };
     if (BANK[kind]) return { holderName: p.holderName ?? null, ifsc: p.ifsc ?? null, account: maskTail(last4(p.accountNumber ?? '')) };
+    if (kind === 'passport') return { value: maskTail(last4(p.passport ?? '')), expiresOn: p.passportExpiresOn ?? null };
+    if (kind === INTL) return { country: p.country ?? null, iban: maskShaped('account', last4(p.iban ?? '')), bic: p.bic ?? null, currency: p.currency ?? null };
     return { value: maskTail(last4(p[kind as Identifier] ?? '')) };
   }
 
@@ -241,20 +423,28 @@ export class ProfileService {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return b ? { holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4) } : null;
     }
+    if (kind === INTL) {
+      const b = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
+      return b ? { country: b.country, iban: maskShaped('account', b.ibanLast4), bic: b.bic, currency: b.currency } : null;
+    }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (!ids) return null;
     if (kind === 'legal_name') return ids.legalName ? { legalName: ids.legalName } : null;
     const tail = ids[`${kind as Identifier}Last4`];
+    if (kind === 'passport') return tail ? { value: maskTail(tail), expiresOn: ids.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null } : null;
     return tail ? { value: maskTail(tail) } : null;
   }
 
   /** The person themselves, or HR holding employee.identity.manage in scope (raising on their behalf). Step-up at the route. */
   requestChange(ctx: TenantContext, v: Viewer, employeeId: string, dto: ProfileRequestDto) {
     const p = this.proposal(dto.kind, dto.value);
+    if (dto.kind === INTL && !p.iban!.startsWith(p.country!)) throw new BadRequestException('The IBAN must be from the country of the account.');
     return this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
       if (!a.self && !(await this.can(tx, c, v, 'employee.identity.manage', employeeId))) throw new ForbiddenException('Raising an identity or bank change for someone else needs employee.identity.manage.');
       if (await this.sameAsOnFile(tx, c, employeeId, dto.kind, p)) throw new BadRequestException('That is already the value on file.');
+      await this.checkProof(tx, c, employeeId, a.self, dto);
+      if (dto.effectiveOn && (dto.kind !== 'legal_name' || dto.effectiveOn > todayIst())) throw new BadRequestException('The effective date is for a legal name, on or before today.');
       let row: RequestRow;
       try {
         row = await tx.employeeProfileRequest.create({
@@ -265,7 +455,9 @@ export class ProfileService {
             proposedEnc: this.seal(c, employeeId, JSON.stringify(p)),
             proposedDisplay: this.display(dto.kind, p),
             currentDisplay: (await this.currentDisplay(tx, c, employeeId, dto.kind)) ?? Prisma.DbNull,
-            reason: dto.reason.trim(),
+            reason: dto.reason?.trim() || null,
+            proofDocumentId: dto.proofDocumentId ?? null,
+            effectiveOn: dto.effectiveOn ? new Date(`${dto.effectiveOn}T00:00:00Z`) : null,
             requestedBy: c.userId!,
             // YX-SEC-13: the "previous contact" is the one on file now, before anything else changes.
             notifyContacts: await this.contactsOnFile(tx, c, employeeId),
@@ -275,8 +467,47 @@ export class ProfileService {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(`A ${LABEL[dto.kind]} change is already waiting for approval.`);
         throw e;
       }
-      await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind: dto.kind, by: a.self ? 'self' : 'hr' });
-      return this.requestView(row, new Map(), new Map(), v);
+      await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind: dto.kind, by: a.self ? 'self' : 'hr', proof: Boolean(dto.proofDocumentId) });
+      return this.requestView(row, new Map(), new Map(), v, new Map());
+    });
+  }
+
+  /**
+   * PPL-32: the proof must be the person's own document of the kind's type; the company decides whether the person must
+   * add one (employee.profile_change.proof). HR raising a change for someone has seen the proof and may attach it.
+   */
+  private async checkProof(tx: Tx, c: CompanyContext, employeeId: string, self: boolean, dto: ProfileRequestDto) {
+    const type = PROOF_TYPE[dto.kind];
+    if (!dto.proofDocumentId) {
+      if (!self || !type) return;
+      const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'desc' } });
+      if ((await settingFor(tx, c, 'employee.profile_change.proof', { legalEntityId: employment?.legalEntityId ?? '' })) === 'required') throw new BadRequestException(`Add the proof for the ${LABEL[dto.kind].toLowerCase()} change.`);
+      return;
+    }
+    const e = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employeeId }, select: { personId: true } });
+    const doc = type && e.personId ? await tx.document.findFirst({ where: { organizationId: c.organizationId, id: dto.proofDocumentId, personId: e.personId, typeKey: type } }) : null;
+    if (!doc) throw new BadRequestException('That proof is not a document of this kind on the person\'s record.');
+  }
+
+  /** PPL-32: my own page: what is on file now (masked), whether proof is required, how long a new bank account waits. */
+  myChangeForm(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.history.ownEmployeeId(tx, c, v);
+      if (!own || v.actingForOther) throw new NotFoundException('You have no employee record in this company.');
+      const e = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: own }, select: { personId: true } });
+      const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own }, orderBy: { joinedOn: 'desc' } });
+      const scope = { legalEntityId: employment?.legalEntityId ?? '' };
+      const kinds = Object.keys(LABEL) as Kind[];
+      const current: Record<string, Awaited<ReturnType<ProfileService["currentDisplay"]>>> = {};
+      for (const k of kinds) current[k] = await this.currentDisplay(tx, c, own, k);
+      return {
+        employeeId: own,
+        personId: e.personId,
+        proofRequired: (await settingFor(tx, c, 'employee.profile_change.proof', scope)) === 'required',
+        proofTypes: PROOF_TYPE,
+        coolingHours: Number(await settingFor(tx, c, 'employee.bank_change.cooling_hours', scope)),
+        current,
+      };
     });
   }
 
@@ -309,8 +540,14 @@ export class ProfileService {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return Boolean(b && b.accountHash === this.hash(c, 'bank', `${p.ifsc}:${p.accountNumber}`) && b.holderName === p.holderName);
     }
+    if (kind === INTL) {
+      const b = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
+      return Boolean(b && b.ibanHash === this.hash(c, 'iban', p.iban!) && b.bic === p.bic && b.currency === p.currency);
+    }
     const ids = await tx.employeeIdentifiers.findFirst({ where: { organizationId: c.organizationId, employeeId } });
     if (kind === 'legal_name') return ids?.legalName === p.legalName;
+    // A renewed passport may keep its number: the expiry is part of what is on file.
+    if (kind === 'passport') return ids?.passportHash === this.hash(c, 'passport', p.passport!) && (ids?.passportExpiresOn ? isoDate(ids.passportExpiresOn) : null) === p.passportExpiresOn;
     return ids?.[`${kind as Identifier}Hash`] === this.hash(c, kind as Identifier, p[kind as Identifier]!);
   }
 
@@ -329,6 +566,11 @@ export class ProfileService {
       const rows = await tx.employeeProfileRequest.findMany({ where: { organizationId: c.organizationId, id: { in: ids.map((r) => r.id) } }, orderBy: { createdAt: 'desc' } });
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } } });
       const users = await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: rows.flatMap((r) => [r.requestedBy, r.decidedBy].filter((x): x is string => Boolean(x))) } }, select: { id: true, name: true, email: true } });
+      // A new bank account's first pay day after the cooling period (PPL-32 timeline).
+      const banks = [
+        ...(await tx.employeeBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } })),
+        ...(await tx.employeeIntlBankAccount.findMany({ where: { organizationId: c.organizationId, requestId: { in: rows.map((r) => r.id) } }, select: { requestId: true, usableFrom: true } })),
+      ];
       return {
         rows: rows.map((r) =>
           this.requestView(
@@ -336,13 +578,14 @@ export class ProfileService {
             new Map(people.map((p) => [p.id, displayName(p)])),
             new Map(users.map((u) => [u.id, u.name || u.email])),
             v,
+            new Map(banks.map((b) => [b.requestId!, b.usableFrom])),
           ),
         ),
       };
     });
   }
 
-  private requestView(r: RequestRow, names: Map<string, string>, users: Map<string, string>, v: Viewer) {
+  private requestView(r: RequestRow, names: Map<string, string>, users: Map<string, string>, v: Viewer, usable: Map<string, Date>) {
     return {
       id: r.id,
       employeeId: r.employeeId,
@@ -360,6 +603,9 @@ export class ProfileService {
       decidedAt: r.decidedAt,
       decisionNote: r.decisionNote,
       overrideReason: r.overrideReason,
+      proofDocumentId: r.proofDocumentId,
+      effectiveOn: r.effectiveOn ? isoDate(r.effectiveOn) : null,
+      usableFrom: usable.get(r.id) ?? null,
     };
   }
 
@@ -370,9 +616,12 @@ export class ProfileService {
     return r;
   }
 
-  /** Decided by someone who is neither the requester nor the person (YX-SEC-11) and whose approval grant reaches them. */
+  /**
+   * Decided by HR (founder 21 Oct 2026: bank and identity changes are approved by HR only): the approval grant and HR's
+   * identity grant both reach the person; never the requester or the person (YX-SEC-11). Payroll keeps read access.
+   */
   private async mayDecide(tx: Tx, c: CompanyContext, v: Viewer, r: RequestRow) {
-    if (!(await this.can(tx, c, v, 'employee.identity.approve', r.employeeId))) throw new NotFoundException('Request not found');
+    if (!(await this.can(tx, c, v, 'employee.identity.approve', r.employeeId)) || !(await this.can(tx, c, v, 'employee.identity.manage', r.employeeId))) throw new NotFoundException('Request not found');
     if (r.requestedBy === c.userId) throw new ForbiddenException('You raised this change, so someone else decides it (YX-SEC-11).');
     if ((await this.history.ownEmployeeId(tx, c, v)) === r.employeeId) throw new ForbiddenException('A change to your own details is decided by someone else (YX-SEC-11).');
     if (r.status !== 'pending') throw new ConflictException(`This request is ${r.status}.`);
@@ -417,11 +666,31 @@ export class ProfileService {
             requestId: r.id,
           },
         });
+      } else if (kind === INTL) {
+        const old = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId, validTo: null } });
+        if (old) await tx.employeeIntlBankAccount.update({ where: { id: old.id }, data: { validTo: now } });
+        const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId }, orderBy: { joinedOn: 'desc' } });
+        const hours = Number(await settingFor(tx, c, 'employee.bank_change.cooling_hours', { legalEntityId: employment?.legalEntityId ?? '' }));
+        await tx.employeeIntlBankAccount.create({
+          data: {
+            organizationId: c.organizationId,
+            employeeId: r.employeeId,
+            country: p.country!,
+            ibanEnc: this.seal(c, r.employeeId, p.iban!),
+            ibanHash: this.hash(c, 'iban', p.iban!),
+            ibanLast4: last4(p.iban!),
+            bic: p.bic!,
+            currency: p.currency!,
+            validFrom: now,
+            usableFrom: old ? new Date(now.getTime() + hours * 3_600_000) : now,
+            requestId: r.id,
+          },
+        });
       } else {
         const data: Record<string, unknown> =
           kind === 'legal_name'
             ? { legalName: p.legalName }
-            : { [`${kind}Enc`]: this.seal(c, r.employeeId, p[kind as Identifier]!), [`${kind}Hash`]: this.hash(c, kind as Identifier, p[kind as Identifier]!), [`${kind}Last4`]: last4(p[kind as Identifier]!) };
+            : { [`${kind}Enc`]: this.seal(c, r.employeeId, p[kind as Identifier]!), [`${kind}Hash`]: this.hash(c, kind as Identifier, p[kind as Identifier]!), [`${kind}Last4`]: last4(p[kind as Identifier]!), ...(kind === 'passport' ? { passportExpiresOn: new Date(`${p.passportExpiresOn}T00:00:00Z`) } : {}) };
         await tx.employeeIdentifiers.upsert({
           where: { organizationId_employeeId: { organizationId: c.organizationId, employeeId: r.employeeId } },
           create: { organizationId: c.organizationId, employeeId: r.employeeId, ...data },
@@ -450,8 +719,13 @@ export class ProfileService {
 
   /** YX-EMP-02: other employees with an open employment holding the same value. Names only for people the approver's view reaches. */
   private async duplicates(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string, kind: Kind, p: Proposal) {
-    if (kind === 'legal_name' || kind === 'esic' || (!BANK[kind] && !IDENTIFIERS.includes(kind as Identifier))) return [];
-    const others = BANK[kind]
+    if (kind === 'legal_name' || kind === 'esic' || (!BANK[kind] && kind !== INTL && !IDENTIFIERS.includes(kind as Identifier))) return [];
+    const others = kind === INTL
+      ? await tx.$queryRaw<{ id: string }[]>`
+          SELECT DISTINCT b.employee_id::text AS id FROM employee_intl_bank_accounts b
+          WHERE b.organization_id = ${c.organizationId}::uuid AND b.valid_to IS NULL AND b.employee_id <> ${employeeId}::uuid
+            AND b.iban_hash = ${this.hash(c, 'iban', p.iban!)}`
+      : BANK[kind]
       ? await tx.$queryRaw<{ id: string }[]>`
           SELECT DISTINCT b.employee_id::text AS id FROM employee_bank_accounts b
           WHERE b.organization_id = ${c.organizationId}::uuid AND b.valid_to IS NULL AND b.employee_id <> ${employeeId}::uuid
@@ -493,6 +767,125 @@ export class ProfileService {
     });
   }
 
+  // ================= Additional details: the company's own employee fields (PPL-03, P18) =================
+  /**
+   * Which data classes of the company's employee fields the viewer reads and edits on this person (P02 §4.4), the
+   * same rules as the record's own fields: Public to anyone the directory serves (colleagues too); Internal to the
+   * person and those who may open the record (HR in scope, managers); Personal to the person and
+   * employee.personal.view; Confidential to the person and employee.identity.view, masked. HR edits with
+   * employee.profile.edit what they read; the person edits their own Personal fields (§4.5). Anyone else: 404.
+   */
+  private async fieldAccess(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    let a: Awaited<ReturnType<EmployeeHistoryService['access']>> | null = null;
+    try {
+      a = await this.history.access(tx, c, v, employeeId);
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      // A colleague: the person must exist and the viewer be served by the directory (HR or an employee here).
+      const exists = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } });
+      if (!exists || !(has(v, 'employee.profile.view') || (await this.history.ownEmployeeId(tx, c, v)))) throw e;
+    }
+    const self = Boolean(a?.self);
+    const read = new Set<CustomFieldDataClass>(['public']);
+    if (a && (self || covers(a.periods, todayIst()))) read.add('internal');
+    if (self || (await this.can(tx, c, v, 'employee.personal.view', employeeId))) read.add('personal');
+    if (self || (await this.can(tx, c, v, 'employee.identity.view', employeeId))) read.add('confidential');
+    const edit = new Set<CustomFieldDataClass>();
+    if (!v.actingForOther) {
+      if (self) edit.add('personal');
+      else if (await this.can(tx, c, v, 'employee.profile.edit', employeeId)) read.forEach((k) => edit.add(k));
+    }
+    return { self, read, edit };
+  }
+
+  private async employeeFields(tx: Tx, c: CompanyContext) {
+    return tx.customFieldDefinition.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', archivedAt: null }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+  }
+
+  private async fieldsView(tx: Tx, c: CompanyContext, employeeId: string, access: { read: Set<CustomFieldDataClass>; edit: Set<CustomFieldDataClass> }) {
+    const defs = (await this.employeeFields(tx, c)).filter((d) => access.read.has(d.dataClass as CustomFieldDataClass));
+    if (!defs.length) return { fields: [] };
+    // Only the values of the fields the viewer may read are fetched at all.
+    const rows = await tx.customFieldValue.findMany({ where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, definitionId: { in: defs.map((d) => d.id) } } });
+    const values = serializeCustomFieldValues(rows, defs as CustomFieldDefinitionLite[]);
+    return {
+      fields: defs.map((d, i) => {
+        const value = values[i].value;
+        return {
+          id: d.id,
+          label: d.label,
+          fieldType: d.fieldType,
+          options: d.optionsJson ? (JSON.parse(d.optionsJson) as string[]) : null,
+          required: d.required,
+          dataClass: d.dataClass,
+          // Confidential: the last four only, like PAN and bank (P02 §4.4 masked level).
+          value: d.dataClass === 'confidential' && value !== null ? maskTail(last4(String(value))) : value,
+          canEdit: access.edit.has(d.dataClass as CustomFieldDataClass),
+        };
+      }),
+    };
+  }
+
+  customFields(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => this.fieldsView(tx, c, employeeId, await this.fieldAccess(tx, c, v, employeeId)));
+  }
+
+  /** Sets the given fields only; each must be one the viewer edits. Audited with the field keys, never values (P08). */
+  setCustomFields(ctx: TenantContext, v: Viewer, employeeId: string, dto: CustomFieldValuesDto) {
+    return this.history.run(ctx, async (tx, c) => {
+      const access = await this.fieldAccess(tx, c, v, employeeId);
+      const ids = Object.keys(dto.values);
+      const defs = (await this.employeeFields(tx, c)).filter((d) => ids.includes(d.id) && access.edit.has(d.dataClass as CustomFieldDataClass));
+      // Unknown, archived, hidden and read-only fields get one answer, so a field's existence is not leaked.
+      if (!ids.length || defs.length !== ids.length) throw new ForbiddenException('You may not change one or more of these fields.');
+      await upsertCustomFieldValues(tx, c.organizationId, 'employee', employeeId, defs as CustomFieldDefinitionLite[], dto.values);
+      await audit(tx, c, 'employee.custom_fields.updated', 'employee', employeeId, { fields: defs.map((d) => d.key), by: access.self ? 'self' : 'hr' });
+      return this.fieldsView(tx, c, employeeId, access);
+    });
+  }
+
+  // ================= my data (PPL-33) =================
+
+  /**
+   * My data as a file: what my record holds about me (identifiers masked, as the record shows them; the full value is a
+   * recorded reveal on the record), my documents and letters (not their files), my change requests and who viewed my
+   * sensitive data. Recorded in the audit log.
+   */
+  async myData(ctx: TenantContext, v: Viewer) {
+    const own = await this.history.run(ctx, (tx, c) => this.history.ownEmployeeId(tx, c, v));
+    if (!own || v.actingForOther) throw new NotFoundException('You have no employee record in this company.');
+    const p = await this.profile(ctx, v, own);
+    const requests = (await this.listRequests(ctx, v, undefined)).rows.filter((r) => r.employeeId === own);
+    const access = await this.accessLog(ctx, v);
+    return this.history.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const docs = p.personId ? await tx.document.findMany({ where: { organizationId: org, personId: p.personId }, orderBy: { createdAt: 'asc' }, select: { typeKey: true, status: true, expiresOn: true, createdAt: true } }) : [];
+      const types = await this.docTypeNames(tx, org, docs.map((d) => d.typeKey));
+      const letters = p.personId ? await tx.letterIssue.findMany({ where: { organizationId: org, personId: p.personId, status: 'issued' }, orderBy: { issuedAt: 'asc' }, select: { title: true, referenceNo: true, issuedAt: true } }) : [];
+      await audit(tx, c, 'employee.data.exported', 'employee', own, {});
+      return {
+        company: access.company,
+        exportedOn: todayIst(),
+        name: p.name,
+        employeeCode: p.employeeCode,
+        joinedOn: p.joinedOn,
+        work: p.work ?? null,
+        personal: p.personal,
+        identity: p.identity,
+        documents: docs.map((d) => ({ type: types.get(d.typeKey) ?? d.typeKey, status: d.status, addedOn: isoDate(d.createdAt), expiresOn: d.expiresOn ? isoDate(d.expiresOn) : null })),
+        letters: letters.map((l) => ({ title: l.title, reference: l.referenceNo, issuedOn: l.issuedAt ? isoDate(l.issuedAt) : null })),
+        changeRequests: requests.map((r) => ({ change: r.label, status: r.status, askedOn: isoDate(r.requestedAt), decidedOn: r.decidedAt ? isoDate(r.decidedAt) : null })),
+        viewedBy: access.entries.map((e) => ({ who: e.who, role: e.role, what: e.what, context: e.context, at: e.at.toISOString() })),
+      };
+    });
+  }
+
+  /** Document type names: the shared types, then the company's own (which win). */
+  private async docTypeNames(tx: Tx, org: string, keys: string[]) {
+    const rows = await tx.documentType.findMany({ where: { key: { in: keys }, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: { organizationId: { sort: 'asc', nulls: 'first' } }, select: { key: true, name: true } });
+    return new Map(rows.map((t) => [t.key, t.name]));
+  }
+
   // ================= who accessed my data (P02 §7, P08) =================
 
   /** Views of the signed-in person's Confidential / Special data by others; the company may hide the list (never the recording). */
@@ -500,23 +893,56 @@ export class ProfileService {
     return this.history.run(ctx, async (tx, c) => {
       const own = await this.history.ownEmployeeId(tx, c, v);
       if (!own) throw new NotFoundException('You have no employee record in this company.');
+      const org = c.organizationId;
+      const company = (await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true } })).name;
       const enabled = (await settingFor(tx, c, 'privacy.who_accessed', { legalEntityId: '' })) === 'on';
-      if (!enabled) return { enabled, entries: [] };
+      if (!enabled) return { enabled, company, entries: [] };
+      // PPL-33: looks at my Confidential documents (PAN card, bank proof…) count too.
+      const me = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: own }, select: { personId: true } });
+      const docs = me.personId ? await tx.document.findMany({ where: { organizationId: org, personId: me.personId }, select: { id: true, typeKey: true } }) : [];
+      const types = await this.docTypeNames(tx, org, docs.map((d) => d.typeKey));
       const rows = await tx.auditLog.findMany({
-        where: { organizationId: c.organizationId, entityType: 'employee', entityId: own, action: { in: [...SENSITIVE_VIEW_ACTIONS] }, NOT: { actorUserId: v.userId } },
+        where: {
+          organizationId: org,
+          OR: [
+            { entityType: 'employee', entityId: own, action: { in: [...SENSITIVE_VIEW_ACTIONS] } },
+            { entityType: 'document', entityId: { in: docs.map((d) => d.id) }, action: 'document.viewed' },
+          ],
+          NOT: { actorUserId: v.userId },
+        },
         orderBy: { createdAt: 'desc' },
         take: 200,
       });
+      // Who they are to me: my manager, else their designation today.
+      const actors = [...new Set(rows.map((r) => r.actorUserId).filter((x): x is string => Boolean(x)))];
+      const staff = await tx.employee.findMany({ where: { organizationId: org, userId: { in: actors } }, select: { id: true, userId: true } });
+      const mine = await tx.employment.findFirst({ where: { organizationId: org, employeeId: own, exitedOn: null }, select: { id: true } });
+      const myManager = mine ? (await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: mine.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { managerEmployeeId: true } }))?.managerEmployeeId : null;
+      const jobs = await tx.employment.findMany({ where: { organizationId: org, employeeId: { in: staff.map((s) => s.id) }, exitedOn: null }, select: { id: true, employeeId: true } });
+      const now = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: jobs.map((j) => j.id) }, supersededAt: null }, orderBy: { validFrom: 'asc' }, select: { employmentId: true, designationId: true } });
+      const titles = new Map((await tx.designation.findMany({ where: { organizationId: org, id: { in: now.map((a) => a.designationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      // The latest assignment wins (ordered oldest first).
+      const titleOf = new Map(now.map((a) => [jobs.find((j) => j.id === a.employmentId)!.employeeId, a.designationId ? (titles.get(a.designationId) ?? null) : null]));
+      const roleOf = (userId: string | null) => {
+        const s = staff.find((x) => x.userId === userId);
+        if (!s) return null;
+        return s.id === myManager ? 'Your manager' : (titleOf.get(s.id) ?? null);
+      };
+      const docType = new Map(docs.map((d) => [d.id, types.get(d.typeKey) ?? 'A document']));
       return {
         enabled,
+        company,
         entries: rows.map((r) => {
           const meta = r.metadataJson ? (JSON.parse(r.metadataJson) as Record<string, unknown>) : {};
+          const doc = r.entityType === 'document';
           return {
             id: r.id,
             at: r.createdAt,
             who: r.actorName || r.actorEmail || 'YukthiX system',
-            what: r.action === 'employee.pay.viewed' ? 'Pay' : r.action === 'employee.aadhaar.viewed' ? 'Aadhaar' : (FIELD_LABEL[String(meta.field)] ?? 'Identity details'),
-            className: r.action === 'employee.aadhaar.viewed' ? 'special' : 'confidential',
+            role: roleOf(r.actorUserId),
+            what: doc ? docType.get(r.entityId!)! : r.action === 'employee.pay.viewed' ? 'Pay' : r.action === 'employee.aadhaar.viewed' ? 'Aadhaar' : r.action === 'employee.identity_checks.viewed' ? 'Identity checks' : r.action === 'employee.disability.viewed' ? 'Disability declaration' : r.action === 'compliance.declaration.viewed' ? 'Annual declaration (holdings and related persons)' : (FIELD_LABEL[String(meta.field)] ?? 'Identity details'),
+            context: doc ? 'Your documents' : r.action === 'employee.pay.viewed' ? (PAY_CONTEXT[String(meta.what)] ?? 'Your record') : r.action === 'employee.identity_checks.viewed' ? 'The identity panel on your record' : r.action === 'employee.disability.viewed' ? 'Disability declarations list' : r.action === 'compliance.declaration.viewed' ? 'Compliance review' : 'Shown in full on your record',
+            className: ['employee.aadhaar.viewed', 'employee.identity_checks.viewed', 'employee.disability.viewed'].includes(r.action) ? 'special' : 'confidential',
           };
         }),
       };

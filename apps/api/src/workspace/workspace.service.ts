@@ -1,4 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { samePersonPairs } from '../people/same-person.service';
+import { cycleOf } from '../people/bfsi.service';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
@@ -358,7 +360,8 @@ export class WorkspaceService {
       const page = await this.people.directory(ctx, v, { q, limit: LIMIT });
       return page.people.map((p) => {
         const hr = 'employeeCode' in p;
-        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.designation?.name, p.department?.name].filter(Boolean);
+        // Founder 28 Oct 2026: the legal entity's name next to the code (whose prefix is per entity), and the place.
+        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.legalEntity?.name, p.designation?.name, p.department?.name, p.location?.name].filter(Boolean);
         return { id: p.id, label: p.name, secondary: parts.join(' · '), href: hr ? `/yx/people/profile?person=${enc(p.id)}` : `/yx/people/directory?q=${enc(p.name)}` };
       });
     } catch (e) {
@@ -410,10 +413,12 @@ export class WorkspaceService {
   }
 
   /** Counts for the side menu, each only for someone who may open the page it sits on. */
-  async counts(ctx: TenantContext, user: RequestUser): Promise<Record<string, number>> {
+  async counts(ctx: TenantContext, user: RequestUser, entityId: string | null = null): Promise<Record<string, number>> {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    // Possible same person is company-wide HR work (the page checks the same): a plant HR's scoped key does not count.
+    const linksPeople = !support && keys.has('employee.change.manage') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.change.manage']), 'employee.change.manage');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -421,8 +426,46 @@ export class WorkspaceService {
       const out: Record<string, number> = {};
       out.approvals = await one(Prisma.sql`SELECT count(*) AS n FROM wf_tasks t JOIN wf_requests r ON r.id = t.request_id
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
+      // Plus what waits in the modules' own approval flows (job changes), as the Approvals page lists them.
+      if (!support) out.approvals += (await this.service(ApprovalsEngine).sourceItems(tx, c, me)).length;
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
+      // PPL-43: a designated person's annual declaration still to submit (absent for everyone else).
+      const own = await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (!support && own && (await tx.bfsiDesignation.count({ where: { organizationId: org, employeeId: own.id } }))) {
+        out.declarationsDue = (await tx.bfsiDeclaration.count({ where: { organizationId: org, employeeId: own.id, cycle: cycleOf(todayIst()), status: 'submitted' } })) ? 0 : 1;
+      }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
+      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
+      // count leaves out reviews that went to HR, which only HR decides) (company-wide
+      // for HR whose profile grant is, else the person's own direct reports); my open clearance sign-offs; logins that may
+      // be someone already on record. Each is gated by the same key as its page.
+      if (keys.has('lifecycle.onboarding.manage')) {
+        out.readyToOnboard = await one(Prisma.sql`SELECT count(*) AS n FROM offers o WHERE o.organization_id = ${org}::uuid AND o.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM preboardings p WHERE p.organization_id = o.organization_id AND p.offer_id = o.id AND p.status <> 'cancelled')`);
+      }
+      const today = todayIst();
+      // shortcut: the company-wide review lead (probation.review_lead_days); an entity's own lead is not applied here.
+      const lead = Number((await tx.setting.findFirst({ where: { organizationId: org, key: 'probation.review_lead_days', scopeType: 'tenant' }, select: { value: true } }))?.value ?? 15);
+      const hrWide = keys.has('employee.profile.view') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.profile.view']), 'employee.profile.view');
+      const mine = hrWide ? null : await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (hrWide || mine) {
+        out.probationsDue = await one(Prisma.sql`SELECT count(*) AS n FROM probations pr
+          JOIN employments m ON m.organization_id = pr.organization_id AND m.id = pr.employment_id AND m.exited_on IS NULL
+            ${entityId ? Prisma.sql`AND m.legal_entity_id = ${entityId}::uuid` : Prisma.empty}
+          JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
+            AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
+          WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
+            AND NOT EXISTS (SELECT 1 FROM employee_changes ch WHERE ch.organization_id = pr.organization_id AND ch.employment_id = pr.employment_id AND ch.change_type = 'confirmation' AND ch.status = 'pending')
+            ${mine ? Prisma.sql`AND pr.escalated_on IS NULL AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
+              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
+      }
+      out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
+        WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
+          AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
+      if (linksPeople) {
+        // PPL-36: the designed list's own pairs (People › More › Possible same person).
+        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM (${samePersonPairs(org)}) pairs`);
+      }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });
       if (!support && keys.has('desk.ticket.work')) out.myTickets = await one(Prisma.sql`SELECT count(*) AS n FROM sd_tickets t WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.system_state NOT IN ('solved', 'closed')`);

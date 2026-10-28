@@ -1,27 +1,196 @@
 // PPL-03 Person record workspace (DESIGN-SYSTEM §13, M01 §3.1, P06 §7, P05 §7) with
 // PPL-34 Identity panel · PPL-35 Person roles panel · PPL-45 Work authorisations tab · PPL-46 International bank details.
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Download, FileText, History, IdCard, Mail, MessageSquare, Plus, ShieldCheck, Upload } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { getCountries } from 'libphonenumber-js';
+import { AlertTriangle, Download, FileText, History, IdCard, Landmark, Mail, MessageSquare, Phone, Plus, ShieldCheck, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
-import { Breadcrumbs, Card, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { Badge } from '../../components/display';
+import { Breadcrumbs, Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { MenuItem } from '../../components/menu';
+import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
-import { FormField } from '../../components/field';
-import { TextField, NumberField } from '../../components/inputs';
+import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { Drawer } from '../../components/drawer';
+import { TextArea, TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
-import { formatDate, formatINR, formatPhone } from '../../lib/format';
-import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type PaySplit, type Persona, type Relation } from './people-logic';
-import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type JobChange } from './people-data';
-import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
+import { dayKey } from '../../lib/dates';
+import { errorText } from '../org/org-kit';
+import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
+import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
+import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { FamilyCards, type RecordFamily } from './family';
+import { PayAccessDialog, PayAccessNote, type PayAccessRow } from './pay-access';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
 export type RecordPanel = 'activity' | 'identity' | 'roles';
+
+/** A document on the person's checklist (Documents tab). */
+export interface RecordDoc {
+  /** Live document id; the sample uses the type. */
+  id?: string;
+  type: string;
+  cls: FieldClass;
+  status: string;
+  on: Date | null;
+  versions: number;
+  by?: string;
+  expires?: Date | null;
+}
+export interface RecordAsset {
+  tag: string;
+  name: string;
+  issued: Date;
+  condition: string;
+  ack: string;
+}
+export interface RecordRole {
+  role: string;
+  from: Date;
+  to: Date | null;
+  link: string;
+}
+export interface RecordFact {
+  label: string;
+  value: ReactNode;
+}
+export interface RecordEvent {
+  label: string;
+  date?: Date;
+  tone?: BadgeTone;
+  note?: string;
+}
+
+/** Pay tab, live: no pay access; pay access but not yet asked ("Show pay", founder rule R1); or shown. */
+export type LiveRecordPay =
+  | { kind: 'none'; grantedBy: string; note?: string }
+  | { kind: 'ask'; onShow: () => void; busy?: boolean; error?: string | null }
+  | {
+      kind: 'shown';
+      ctc: number;
+      currency: string;
+      from: Date;
+      /** e.g. "₹7,80,000 from 1 Oct 2026 (scheduled)". */
+      next?: string;
+      /** The lines the CTC counts: the table's total is `ctc`, so the header and the table always agree. */
+      lines: { label: string; monthly: number }[];
+      /** Employer costs outside the CTC (e.g. a gratuity provision the template keeps out), shown under the total. */
+      outside?: { label: string; monthly: number }[];
+      banks: FieldRow[];
+      /** null: no payslip yet. */
+      lastNet?: { amount: number; note: string } | null;
+      /** null: no regime chosen for the tax year yet. */
+      taxRegime?: { label: string; note: string } | null;
+    };
+
+/** The Performance tab: the current goal period's goals, the last shared review and the next 1:1. */
+export interface RecordPerformance {
+  period: string | null;
+  goals: { id: string; title: string; status: string; tone: BadgeTone }[];
+  lastReview: string | null;
+  nextOneOnOne: string | null;
+  /** "3 received · 1 given" this quarter; null while unknown (the line is then left out). */
+  feedback?: string | null;
+  onOpenGoals?: () => void;
+}
+
+/** PPL-34 Identity panel, live: HR's identity checks on the person (Special class; opening it is recorded). */
+export interface LiveIdentity {
+  state: 'idle' | 'loading' | 'error' | 'ready';
+  /** Opening the panel loads it (each load is a recorded view). */
+  onOpen: () => void;
+  onRetry: () => void;
+  checks: { kind: 'day1' | 'attested' | 'requested'; at: Date; by: string | null; note: string | null }[];
+  /** The photo IDs HR may ask a fresh copy of. */
+  idTypes: { key: string; name: string }[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onReverify?: (typeKey: string) => Promise<void>;
+  onAttest?: (note: string) => Promise<void>;
+}
+
+export const WORK_AUTH_KINDS = ['employment_visa', 'residence_visa', 'work_permit', 'national_id'] as const;
+export type WorkAuthKind = (typeof WORK_AUTH_KINDS)[number];
+const WORK_AUTH_KIND: Record<WorkAuthKind | 'passport', string> = { employment_visa: 'Employment visa', residence_visa: 'Residence visa', work_permit: 'Work permit', national_id: 'National ID', passport: 'Passport' };
+const REGION = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRY_OPTIONS = getCountries()
+  .map((c) => ({ value: c as string, label: REGION.of(c) ?? c }))
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+/** PPL-45 Work authorisations tab, live (HR with identity access; numbers masked to the last four). */
+export interface LiveWorkAuth {
+  rows: { id: string; kind: WorkAuthKind | 'passport'; country: string | null; number: string; sponsor: string | null; occupation: string | null; expires: Date; remindedDays: number[] }[];
+  /** Today's designation: an employment visa or permit for another occupation is flagged. */
+  designation: string | null;
+  /** The company's reminder days, largest first. */
+  reminderDays: number[];
+  /** Only with the right to change identity details; the page shows the success toast. */
+  onAdd?: (input: { kind: WorkAuthKind; country: string; number: string; sponsor?: string; occupation?: string; issuedOn?: string; expiresOn: string }) => Promise<void>;
+}
+
+/** The live app's data and actions for PPL-03 (design audit step 3). Stories leave it out and keep the sample record. */
+export interface LiveRecord {
+  directoryHref: string;
+  name: string;
+  role: string;
+  department: string;
+  location: string;
+  code: string;
+  manager: string;
+  joined: Date | null;
+  grade: string | null;
+  badges: { label: string; tone: BadgeTone }[];
+  facts: RecordFact[];
+  events: RecordEvent[];
+  /** Personal fields (null: the viewer may not see them). */
+  personal: FieldRow[] | null;
+  identity: FieldRow[] | null;
+  /** Identity and bank changes waiting for approval. */
+  pending: { id: string; label: string; detail: string; onWithdraw?: () => void }[];
+  onEditPersonal?: () => void;
+  onRequestChange?: () => void;
+  /** Family, nominees and emergency contacts (Personal; null: the viewer may not see them). */
+  family?: RecordFamily | null;
+  /** Additional details: the company's own fields the viewer may see (none: no card); onEdit when one is theirs to change. */
+  custom?: { rows: CustomField[]; onEdit?: () => void } | null;
+  job: [string, string][] | null;
+  scheduled: { title: string; body: string }[];
+  pastChanges: number;
+  pay: LiveRecordPay;
+  /** PPL-50: a manager's access to this person's pay (their newest request covering them; onRequest when they may ask). */
+  payAccess?: { latest: PayAccessRow | null; onRequest?: () => void } | null;
+  /** null: no Time tab (no leave access). */
+  time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
+  documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
+  assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
+  /** `company` names the company in the Person roles panel (PPL-35). */
+  history: { rows: JobChange[]; roles: RecordRole[]; company?: string } | null;
+  asOf: Date | null;
+  onAsOf: (d: Date | null) => void;
+  onStartChange?: () => void;
+  /** Header "Message": writes to the person (their work email). Not on one's own record. */
+  onMessage?: () => void;
+  /** PPL-46: the salary account abroad (HR menu, or the person's Pay tab). */
+  onBankAbroad?: () => void;
+  /** HR menu: change the work phone (Internal). */
+  onEditWorkPhone?: () => void;
+  /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
+  activity?: ActivityEntry[] | null;
+  /** Work authorisations tab (HR with identity access). */
+  workAuth?: LiveWorkAuth | null;
+  /** HR menu "Identity panel" (only for HR holding the Special key for the person). */
+  identityPanel?: LiveIdentity;
+  /** Performance tab (only for viewers who may see this person's goals or reviews). */
+  performance?: RecordPerformance | null;
+  onIssueLetter?: () => void;
+  onRetry?: () => void;
+  /** Dialogs and drawers the page opens. */
+  children?: ReactNode;
+}
 
 export interface PersonWorkspaceProps {
   persona: Persona;
@@ -30,12 +199,15 @@ export interface PersonWorkspaceProps {
   defaultTab?: RecordTab;
   /** Manager holds the P02 Q3 salary grant. */
   payGrant?: boolean;
+  /** PPL-50 (design): the manager's newest team pay access request covering this person. */
+  payAccess?: PayAccessRow | null;
   defaultAsOf?: Date | null;
   panel?: RecordPanel;
   /** Person works abroad: shows the Work authorisations tab and international bank details (P21). */
   international?: boolean;
   identityState?: 'consented' | 'refused' | 'mismatch';
   state?: 'ready' | 'loading' | 'error' | 'not-found';
+  live?: LiveRecord;
 }
 
 /** Role as it was (or will be) on a date, from the dated history (P06 §4.7). */
@@ -52,134 +224,258 @@ const ACTIVITY: ActivityEntry[] = [
   { id: 'ac4', kind: 'change', actor: { name: 'Arjun Kulkarni' }, at: new Date(2026, 8, 12, 18, 2), text: 'Updated emergency contact', changes: [{ field: 'Emergency contact 2', from: 'Suman Kulkarni', to: 'Vinod Kulkarni' }] },
 ];
 
+const SAMPLE_JOB: [string, string][] = [
+  ['Designation', ARJUN.role],
+  ['Grade', ARJUN.grade],
+  ['Department', ARJUN.department],
+  ['Location', ARJUN.location],
+  ['Manager', ARJUN.manager],
+  ['Secondary manager', ARJUN.dottedManager],
+  ['Employment type', ARJUN.type],
+  ['Probation', 'Confirmed on 12 Sep 2021'],
+  ['Holiday calendar', 'Tamil Nadu 2026'],
+  ['Shift pattern', 'Rotational (A / B / C)'],
+  ['Cost centre', 'QA-HSR-01'],
+  ['Notice period', '60 days'],
+];
+
 // PPL-03
-export function PersonWorkspace({ persona, relation, today, defaultTab = 'overview', payGrant = false, defaultAsOf = null, panel = 'activity', international = false, identityState = 'consented', state = 'ready' }: PersonWorkspaceProps) {
+export function PersonWorkspace({ persona, relation, today, defaultTab = 'overview', payGrant = false, payAccess = null, defaultAsOf = null, panel = 'activity', international = false, identityState = 'consented', state = 'ready', live }: PersonWorkspaceProps) {
   const [tab, setTab] = useState<RecordTab>(defaultTab);
-  const [asOf, setAsOf] = useState<Date | null>(defaultAsOf);
+  const [asking, setAsking] = useState(false);
+  const [payShown, setPayShown] = useState(false);
+  const [ownAsOf, setOwnAsOf] = useState<Date | null>(defaultAsOf);
+  const asOf = live ? live.asOf : ownAsOf;
+  const setAsOf = live ? live.onAsOf : setOwnAsOf;
   const [revealed, setRevealed] = useState<string[]>([]);
-  const [side, setSide] = useState<RecordPanel>(panel);
+  // Live: Activity once it has loaded (when the viewer may see any), else the person's roles; the menu switches.
+  const [chosenSide, setSide] = useState<RecordPanel | null>(live ? null : panel);
+  const side: RecordPanel = chosenSide ?? (live?.activity ? 'activity' : 'roles');
   const self = relation === 'self';
-  const role = asOf ? roleAsOf(asOf) : ARJUN.role;
+  const name = live?.name ?? ARJUN.name;
+  const first = name.split(' ')[0];
+  const role = live ? live.role : asOf ? roleAsOf(asOf) : ARJUN.role;
   const probationDone = true;
 
   if (state === 'not-found')
     return (
       <PeopleFrame active="Directory" persona={persona}>
-        <EmptyState title="Not found" description="This record doesn't exist or you can't open it. Check the link or search the directory." action={<Button>Back to directory</Button>} />
+        <EmptyState title="Not found" description="This record doesn't exist or you can't open it. Check the link or search the directory." action={<Button onClick={live ? () => window.location.assign(live.directoryHref) : undefined}>Back to directory</Button>} />
       </PeopleFrame>
     );
   if (state === 'error')
     return (
       <PeopleFrame active="Directory" persona={persona}>
-        <ErrorState title="We couldn't load Arjun Kulkarni's record" description="Retry in a moment. Nothing you entered was lost." onRetry={() => {}} reference="REF-PPL03-19C4" />
+        <ErrorState title={live ? "We couldn't load this record" : "We couldn't load Arjun Kulkarni's record"} description="Retry in a moment. Nothing you entered was lost." onRetry={live?.onRetry ?? (() => {})} reference={live ? undefined : 'REF-PPL03-19C4'} />
       </PeopleFrame>
     );
 
-  const actions =
-    persona === 'hr' ? (
-      <>
-        <Button icon={MessageSquare}>Message</Button>
-        <Button variant="primary">Start change</Button>
-      </>
-    ) : persona === 'mgr' ? (
-      <>
-        <Button icon={MessageSquare}>Message</Button>
-        <Button variant="primary">Propose a change</Button>
-      </>
-    ) : (
-      <Button variant="primary">Request a change</Button>
-    );
+  const changeButton = live ? (
+    persona === 'hr' && live.onStartChange ? (
+      <Button variant="primary" onClick={live.onStartChange}>Start change</Button>
+    ) : persona === 'mgr' && live.onStartChange ? (
+      <Button variant="primary" onClick={live.onStartChange}>Propose a change</Button>
+    ) : self && live.onRequestChange ? (
+      <Button variant="primary" onClick={live.onRequestChange}>Request a change</Button>
+    ) : null
+  ) : null;
+  // Message writes to the person at their work email (there is no in-app chat).
+  const actions = live ? (
+    <>
+      {live.onMessage && (
+        <Button icon={MessageSquare} onClick={live.onMessage}>
+          Message
+        </Button>
+      )}
+      {changeButton}
+    </>
+  ) : persona === 'hr' ? (
+    <>
+      <Button icon={MessageSquare}>Message</Button>
+      <Button variant="primary">Start change</Button>
+    </>
+  ) : persona === 'mgr' ? (
+    <>
+      <Button icon={MessageSquare}>Message</Button>
+      <Button variant="primary">Propose a change</Button>
+    </>
+  ) : (
+    <Button variant="primary">Request a change</Button>
+  );
 
+  const docCount = live ? live.documents?.rows.length || undefined : ARJUN_DOCS.length;
+  const assetCount = live ? live.assets?.rows.length || undefined : ARJUN_ASSETS.length;
   const tabs: { id: RecordTab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'job', label: 'Job' },
+    ...(!live || live.job ? [{ id: 'job' as const, label: 'Job' }] : []),
     { id: 'pay', label: 'Pay' },
-    { id: 'time', label: 'Time' },
-    { id: 'documents', label: 'Documents', count: ARJUN_DOCS.length },
-    { id: 'performance', label: 'Performance' },
-    { id: 'learning', label: 'Learning' },
-    { id: 'assets', label: 'Assets', count: ARJUN_ASSETS.length },
-    { id: 'history', label: 'History' },
-    ...(international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
+    ...(!live || live.time ? [{ id: 'time' as const, label: 'Time' }] : []),
+    ...(!live || live.documents ? [{ id: 'documents' as const, label: 'Documents', count: docCount }] : []),
+    ...(!live || live.performance ? [{ id: 'performance' as const, label: 'Performance' }] : []),
+    // Learning: there is no learning module in the live app yet (left out).
+    ...(!live ? [{ id: 'learning' as const, label: 'Learning' }] : []),
+    ...(!live || live.assets ? [{ id: 'assets' as const, label: 'Assets', count: assetCount }] : []),
+    ...(!live || live.history ? [{ id: 'history' as const, label: 'History' }] : []),
+    ...(live ? (live.workAuth ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: live.workAuth.rows.length || undefined }] : []) : international && persona === 'hr' ? [{ id: 'work-auth' as const, label: 'Work authorisations', count: ARJUN_WORK_AUTH.length }] : []),
   ];
 
-  return (
-    <PeopleFrame active="Directory" persona={persona}>
-      <ObjectHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'People', href: '#' }, { label: 'Directory', href: '#' }, { label: ARJUN.name }]} />}
-        name={ARJUN.name}
-        person
-        secondary={`${role} · ${ARJUN.department} · ${ARJUN.location}`}
-        status={
-          <span className="yx-ppl__header-extra">
-            <Badge tone="success">Active</Badge>
-            {!asOf && <Badge tone="info">Promotion from 1 Oct 2026</Badge>}
-            {international && <Badge tone="warning">Deputation · Dubai to 31 Oct 2026</Badge>}
-            {asOf && <Badge tone="neutral">As on {formatDate(asOf)}</Badge>}
-          </span>
-        }
-        facts={[
-          { label: 'Employee ID', value: <span className="yx-mono">{ARJUN.code}</span> },
-          { label: 'Manager', value: ARJUN.manager },
-          { label: 'Joined', value: formatDate(ARJUN.joined) },
-          ...(persona !== 'emp' || self ? [{ label: 'Grade', value: asOf && asOf >= new Date(2026, 9, 1) ? 'G6' : ARJUN.grade }] : []),
-        ]}
-        actions={actions}
-        menu={
-          persona === 'hr' ? (
-            <>
-              <MenuItem icon={FileText}>Issue letter</MenuItem>
+  const header = live ? (
+    <ObjectHeader
+      breadcrumbs={<Breadcrumbs items={[{ label: 'People', href: live.directoryHref }, { label: 'Directory', href: live.directoryHref }, { label: name }]} />}
+      name={name}
+      person
+      secondary={[role, live.department, live.location].filter(Boolean).join(' · ')}
+      status={
+        <span className="yx-ppl__header-extra">
+          {live.badges.map((b) => (
+            <Badge key={b.label} tone={b.tone}>
+              {b.label}
+            </Badge>
+          ))}
+          {asOf && <Badge tone="neutral">As on {formatDate(asOf)}</Badge>}
+        </span>
+      }
+      facts={[
+        { label: 'Employee ID', value: <span className="yx-mono">{live.code}</span> },
+        ...(live.manager ? [{ label: 'Manager', value: live.manager }] : []),
+        ...(live.joined ? [{ label: 'Joined', value: formatDate(live.joined) }] : []),
+        ...(live.grade ? [{ label: 'Grade', value: live.grade }] : []),
+      ]}
+      actions={actions}
+      menu={
+        persona === 'hr' ? (
+          <>
+            {live.onIssueLetter && (
+              <MenuItem icon={FileText} onSelect={live.onIssueLetter}>
+                Issue letter
+              </MenuItem>
+            )}
+            {live.onEditWorkPhone && (
+              <MenuItem icon={Phone} onSelect={live.onEditWorkPhone}>
+                Change work phone
+              </MenuItem>
+            )}
+            {live.onBankAbroad && (
+              <MenuItem icon={Landmark} onSelect={live.onBankAbroad}>
+                International bank details
+              </MenuItem>
+            )}
+            {live.history && (
               <MenuItem icon={History} onSelect={() => setTab('history')}>
                 View as on a date
               </MenuItem>
-              <MenuItem icon={IdCard} onSelect={() => setSide('identity')}>
+            )}
+            {live.identityPanel && (
+              <MenuItem icon={IdCard} onSelect={() => (live.identityPanel!.onOpen(), setSide('identity'))}>
                 Identity panel
               </MenuItem>
+            )}
+            {live.history && (
               <MenuItem icon={ShieldCheck} onSelect={() => setSide('roles')}>
                 All roles of this person
               </MenuItem>
-            </>
-          ) : undefined
-        }
+            )}
+          </>
+        ) : undefined
+      }
+    />
+  ) : (
+    <ObjectHeader
+      breadcrumbs={<Breadcrumbs items={[{ label: 'People', href: '#' }, { label: 'Directory', href: '#' }, { label: ARJUN.name }]} />}
+      name={ARJUN.name}
+      person
+      secondary={`${role} · ${ARJUN.department} · ${ARJUN.location}`}
+      status={
+        <span className="yx-ppl__header-extra">
+          <Badge tone="success">Active</Badge>
+          {!asOf && <Badge tone="info">Promotion from 1 Oct 2026</Badge>}
+          {international && <Badge tone="warning">Deputation · Dubai to 31 Oct 2026</Badge>}
+          {asOf && <Badge tone="neutral">As on {formatDate(asOf)}</Badge>}
+        </span>
+      }
+      facts={[
+        { label: 'Employee ID', value: <span className="yx-mono">{ARJUN.code}</span> },
+        { label: 'Manager', value: ARJUN.manager },
+        { label: 'Joined', value: formatDate(ARJUN.joined) },
+        ...(persona !== 'emp' || self ? [{ label: 'Grade', value: asOf && asOf >= new Date(2026, 9, 1) ? 'G6' : ARJUN.grade }] : []),
+      ]}
+      actions={actions}
+      menu={
+        persona === 'hr' ? (
+          <>
+            <MenuItem icon={FileText}>Issue letter</MenuItem>
+            <MenuItem icon={Phone}>Change work phone</MenuItem>
+            <MenuItem icon={History} onSelect={() => setTab('history')}>
+              View as on a date
+            </MenuItem>
+            <MenuItem icon={IdCard} onSelect={() => setSide('identity')}>
+              Identity panel
+            </MenuItem>
+            <MenuItem icon={ShieldCheck} onSelect={() => setSide('roles')}>
+              All roles of this person
+            </MenuItem>
+          </>
+        ) : undefined
+      }
+    />
+  );
+
+  const rail = live ? (
+    <div className="yx-ppl__stack">
+      <FactRail facts={live.facts} events={live.events} />
+      {side === 'activity' && live.activity && (
+        <Card title="Activity">
+          {live.activity.length ? <ActivityFeed entries={live.activity} today={today} /> : <Text size="sm" tone="secondary" as="p">Nothing yet.</Text>}
+        </Card>
+      )}
+      {side === 'identity' && live.identityPanel && <IdentityPanel live={live.identityPanel} name={first} onClose={() => setSide(live.activity ? 'activity' : 'roles')} />}
+      {side === 'roles' && live.history && live.history.roles.length > 0 && <PersonRolesPanel roles={live.history.roles} company={live.history.company} onClose={live.activity ? () => setSide('activity') : undefined} />}
+    </div>
+  ) : (
+    <div className="yx-ppl__stack">
+      <FactRail
+        facts={[
+          { label: 'Work email', value: ARJUN.workEmail },
+          { label: 'Work phone', value: formatPhone(ARJUN.workPhone) },
+          { label: 'Secondary manager', value: ARJUN.dottedManager },
+          { label: 'Employment type', value: ARJUN.type },
+          { label: 'Legal entity', value: ARJUN.entity },
+        ]}
+        events={[
+          { label: 'Promotion effective', date: new Date(2026, 9, 1), tone: 'info' },
+          { label: 'Forklift licence expires', date: new Date(2026, 9, 24), tone: 'warning' },
+          { label: 'Re-verification due', date: new Date(2026, 9, 20), tone: 'warning' },
+          { label: 'Work anniversary (6 years)', date: new Date(2027, 2, 12) },
+          ...(probationDone ? [] : [{ label: 'Probation ends', date: new Date(2026, 9, 5), tone: 'warning' as const }]),
+          { label: '1 pending request', note: 'Profile change: bank account' },
+        ]}
       />
+      {side === 'activity' && (
+        <Card title="Activity">
+          <ActivityFeed entries={ACTIVITY} today={today} />
+        </Card>
+      )}
+      {side === 'identity' && <IdentityPanel state={identityState} onClose={() => setSide('activity')} />}
+      {side === 'roles' && <PersonRolesPanel onClose={() => setSide('activity')} />}
+    </div>
+  );
+
+  const payVisible = live ? live.pay.kind !== 'none' : canSeePay(persona, relation, payGrant);
+
+  return (
+    <PeopleFrame active="Directory" persona={persona}>
+      {header}
       {asOf && (
         <InlineAlert tone="info" title={`You're viewing this profile as on ${formatDate(asOf)}`} actions={<Button size="sm" onClick={() => setAsOf(null)}>Back to today</Button>}>
           {daysBetween(today, asOf) > 0 ? 'Scheduled changes up to that date are shown as if they were effective.' : 'Values are as the record held them on that date, including later corrections.'}
         </InlineAlert>
       )}
       {revealed.length > 0 && (
-        <InlineAlert tone="warning">You viewed {revealed.join(', ')}. This view is recorded and Arjun can see it in "Who accessed my data".</InlineAlert>
+        <InlineAlert tone="warning">
+          You viewed {revealed.join(', ')}. This view is recorded and {first} can see it in "Who accessed my data".
+        </InlineAlert>
       )}
-      <SplitLayout
-        aside={
-          <div className="yx-ppl__stack">
-            <FactRail
-              facts={[
-                { label: 'Work email', value: ARJUN.workEmail },
-                { label: 'Work phone', value: formatPhone(ARJUN.workPhone) },
-                { label: 'Secondary manager', value: ARJUN.dottedManager },
-                { label: 'Employment type', value: ARJUN.type },
-                { label: 'Legal entity', value: ARJUN.entity },
-              ]}
-              events={[
-                { label: 'Promotion effective', date: new Date(2026, 9, 1), tone: 'info' },
-                { label: 'Forklift licence expires', date: new Date(2026, 9, 24), tone: 'warning' },
-                { label: 'Re-verification due', date: new Date(2026, 9, 20), tone: 'warning' },
-                { label: 'Work anniversary (6 years)', date: new Date(2027, 2, 12) },
-                ...(probationDone ? [] : [{ label: 'Probation ends', date: new Date(2026, 9, 5), tone: 'warning' as const }]),
-                { label: '1 pending request', note: 'Profile change: bank account' },
-              ]}
-            />
-            {side === 'activity' && (
-              <Card title="Activity">
-                <ActivityFeed entries={ACTIVITY} today={today} />
-              </Card>
-            )}
-            {side === 'identity' && <IdentityPanel state={identityState} onClose={() => setSide('activity')} />}
-            {side === 'roles' && <PersonRolesPanel onClose={() => setSide('activity')} />}
-          </div>
-        }
-      >
+      <SplitLayout aside={rail}>
         <Tabs value={tab} onValueChange={(v) => setTab(v as RecordTab)}>
           <TabsList aria-label="Record sections">
             {tabs.map((t) => (
@@ -201,143 +497,127 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
           ) : (
             <>
               <TabsContent value="overview">
-                <OverviewTab persona={persona} relation={relation} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                {live ? (
+                  <OverviewTab persona={persona} relation={relation} name={name} today={today} personal={live.personal} identity={live.identity} family={live.family ?? undefined} custom={live.custom?.rows} onEditCustom={live.custom?.onEdit} pending={live.pending} onEdit={live.onEditPersonal} onRequestChange={live.onRequestChange} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                ) : (
+                  <OverviewTab persona={persona} relation={relation} name={ARJUN.name} today={today} personal={ARJUN.personal} identity={ARJUN.identity} family={{ members: ARJUN.family, nominations: ARJUN.nominations, expected: ARJUN.expectedSchemes, contacts: ARJUN.emergency, note: ARJUN.familyNote, ...(persona === 'hr' ? { onEdit: () => {} } : {}), ...(self || persona === 'hr' ? { onEditContacts: () => {} } : {}) }} custom={ARJUN.custom} onEditCustom={self || persona === 'hr' ? () => {} : undefined} onEdit={self ? () => {} : undefined} onRequestChange={self ? () => {} : undefined} onReveal={(l) => setRevealed((r) => (r.includes(l) ? r : [...r, l]))} />
+                )}
               </TabsContent>
               <TabsContent value="job">
-                <JobTab persona={persona} />
+                {live ? (
+                  live.job && <JobTab canChange={persona !== 'emp' && !!live.onStartChange} onStartChange={live.onStartChange} rows={live.job} scheduled={live.scheduled} past={live.pastChanges} />
+                ) : (
+                  <JobTab canChange={persona !== 'emp'} rows={SAMPLE_JOB} scheduled={[{ title: 'Scheduled: promotion to Quality Lead from 1 Oct 2026', body: `Grade G6, CTC ${formatINR(780000)} a year. Approved by Karthik Subramanian on 24 Sep 2026. Letter KF/HR/2026/0418 accepted.` }]} past={ARJUN_HISTORY.filter((h) => h.state !== 'scheduled').length} />
+                )}
               </TabsContent>
               <TabsContent value="pay">
-                {canSeePay(persona, relation, payGrant) ? (
-                  <PayTab persona={persona} self={self} international={international} />
+                {live ? (
+                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} access={live.payAccess ?? null} onRequestChange={live.onRequestChange} onBankAbroad={self ? live.onBankAbroad : undefined} />
+                ) : payVisible ? (
+                  <div className="yx-ppl__stack">
+                    {payAccess?.state === 'active' && <PayAccessNote latest={payAccess} />}
+                    {/* As live: every viewer, the employee too, asks to see pay each time (R1). */}
+                    {payShown ? <PayTab persona={persona} self={self} international={international} /> : <PayReveal name={name} self={self} onShow={() => setPayShown(true)} />}
+                  </div>
                 ) : (
                   <div className="yx-ppl__stack">
-                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR (Lakshmi Venkatesan) can grant a salary grant for your team" />
-                    <div>
-                      <Button>Request access</Button>
-                    </div>
+                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR" note="Pay needs a salary grant for your team." />
+                    <PayAccessNote latest={payAccess} onRequest={() => setAsking(true)} />
+                    {asking && <PayAccessDialog person={{ id: 'e-arjun', name: ARJUN.name }} teamSize={6} defaultScope="team" days={30} onSubmit={async () => undefined} onClose={() => setAsking(false)} />}
                   </div>
                 )}
               </TabsContent>
-              <TabsContent value="time">
-                <TimeTab />
-              </TabsContent>
+              <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} attendance={live.time.attendance ?? null} /> : <TimeTab />}</TabsContent>
               <TabsContent value="documents">
-                <DocumentsTab persona={persona} relation={relation} />
+                {live ? (
+                  live.documents && <DocumentsTab persona={persona} rows={live.documents.rows} hidden={live.documents.hidden} actions={live.documents} />
+                ) : (
+                  <DocumentsTab persona={persona} rows={ARJUN_DOCS.filter((d) => fieldVisibility(d.cls, persona, relation) !== 'hidden')} hidden={ARJUN_DOCS.filter((d) => fieldVisibility(d.cls, persona, relation) === 'hidden').length} />
+                )}
               </TabsContent>
-              <TabsContent value="performance">
-                <PerformanceTab persona={persona} />
-              </TabsContent>
-              <TabsContent value="learning">
-                <LearningTab />
-              </TabsContent>
-              <TabsContent value="assets">
-                <AssetsTab persona={persona} />
-              </TabsContent>
-              <TabsContent value="history">
-                <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} />
-              </TabsContent>
-              {international && persona === 'hr' && (
-                <TabsContent value="work-auth">
-                  <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
+              <TabsContent value="performance">{live ? live.performance && <PerformanceTab persona={persona} data={live.performance} /> : <PerformanceTab persona={persona} />}</TabsContent>
+              {!live && (
+                <TabsContent value="learning">
+                  <LearningTab />
                 </TabsContent>
+              )}
+              <TabsContent value="assets">{live ? live.assets && <AssetsTab name={name} rows={live.assets.rows} onIssue={persona === 'hr' ? live.assets.onIssue : undefined} /> : <AssetsTab name={ARJUN.name} rows={ARJUN_ASSETS} onIssue={persona === 'hr' ? () => {} : undefined} />}</TabsContent>
+              <TabsContent value="history">
+                {live ? live.history && <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={live.history.rows} roles={live.history.roles} /> : <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={ARJUN_HISTORY} roles={ARJUN_ROLES} />}
+              </TabsContent>
+              {live ? (
+                live.workAuth && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab today={today} live={live.workAuth} />
+                  </TabsContent>
+                )
+              ) : (
+                international &&
+                persona === 'hr' && (
+                  <TabsContent value="work-auth">
+                    <WorkAuthTab rows={ARJUN_WORK_AUTH} today={today} />
+                  </TabsContent>
+                )
               )}
             </>
           )}
         </Tabs>
       </SplitLayout>
+      {live?.children}
     </PeopleFrame>
   );
 }
 
 /* ------------------------------------------------------------------ tabs */
 
-function OverviewTab({ persona, relation, onReveal }: { persona: Persona; relation: Relation; onReveal: (label: string) => void }) {
+export interface CustomField {
+  label: string;
+  /** null: "Not set". */
+  value: string | null;
+  cls: FieldClass;
+  selfEdit: boolean;
+}
+
+function OverviewTab({ persona, relation, name, today, personal, identity, family, custom: allCustom = [], pending = [], onEdit, onEditCustom, onRequestChange, onReveal }: { persona: Persona; relation: Relation; name: string; today: Date; personal: FieldRow[] | null; identity: FieldRow[] | null; family?: RecordFamily; custom?: CustomField[]; pending?: LiveRecord['pending']; onEdit?: () => void; onEditCustom?: () => void; onRequestChange?: () => void; onReveal: (label: string) => void }) {
   const familyVis = fieldVisibility('Personal', persona, relation);
-  const custom = ARJUN.custom.filter((c) => fieldVisibility(c.cls, persona, relation) !== 'hidden');
+  const custom = allCustom.filter((c) => fieldVisibility(c.cls, persona, relation) !== 'hidden');
+  const first = name.split(' ')[0];
   return (
     <div className="yx-ppl__stack">
-      <Card title="Personal" actions={relation === 'self' ? <Button size="sm">Edit</Button> : undefined}>
-        <FieldList rows={ARJUN.personal} persona={persona} relation={relation} onReveal={onReveal} />
-      </Card>
-      <Card title="Identity and bank" actions={relation === 'self' ? <Button size="sm">Request a change</Button> : undefined}>
-        <FieldList rows={ARJUN.identity} persona={persona} relation={relation} onReveal={onReveal} />
-        {relation === 'self' && (
-          <Text size="sm" tone="secondary" as="p">
-            Changes to PAN, bank account and legal name need HR approval. We tell your old contact when the bank account changes.
-          </Text>
-        )}
-      </Card>
-      {familyVis !== 'hidden' ? (
-        <>
-          <Card title="Family and nominees">
-            <div className="yx-ppl__grid2">
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Family, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Family</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Relation</th>
-                    <th scope="col">Dependant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ARJUN.family.map((f) => (
-                    <tr key={f.name}>
-                      <td>{f.name}</td>
-                      <td>{f.relation}</td>
-                      <td>{f.dependent ? 'Yes' : 'No'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Nominations, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Nominations</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Scheme</th>
-                    <th scope="col">Nominee</th>
-                    <th scope="col">Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ARJUN.nominations.map((n) => (
-                    <tr key={n.scheme + n.name}>
-                      <td>{n.scheme}</td>
-                      <td>{n.name}</td>
-                      <td className="yx-ppl__num">{n.share}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
+      {personal && (
+        <Card title="Personal" actions={onEdit ? <Button size="sm" onClick={onEdit}>Edit</Button> : undefined}>
+          <FieldList rows={personal} persona={persona} relation={relation} onReveal={onReveal} />
+        </Card>
+      )}
+      {identity && (
+        <Card title="Identity and bank" actions={onRequestChange ? <Button size="sm" onClick={onRequestChange}>Request a change</Button> : undefined}>
+          <FieldList rows={identity} persona={persona} relation={relation} onReveal={onReveal} />
+          {relation === 'self' && (
             <Text size="sm" tone="secondary" as="p">
-              Marital status changed on 2 Feb 2020. Nominations were reviewed after that change.
+              Changes to PAN, bank account and legal name need HR approval. We tell your old contact when the bank account changes.
             </Text>
-          </Card>
-          <Card title="Emergency contacts">
-            <ul className="yx-ppl__successors">
-              {ARJUN.emergency.map((e) => (
-                <li key={e.name}>
-                  <span>
-                    {e.name} · {e.relation}
-                  </span>
-                  <span>{formatPhone(e.phone)}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </>
-      ) : (
+          )}
+          {pending.map((p) => (
+            <InlineAlert key={p.id} tone="info" title={`Waiting for approval: ${p.label}`} actions={p.onWithdraw ? <Button size="sm" onClick={p.onWithdraw}>Withdraw</Button> : undefined}>
+              {p.detail}
+            </InlineAlert>
+          ))}
+        </Card>
+      )}
+      {family && familyVis !== 'hidden' ? (
+        <FamilyCards family={family} today={today} />
+      ) : family ? (
         <Text size="sm" tone="secondary" as="p">
-          Family, nominees and emergency contacts are Personal fields. Only Arjun and HR see them.
+          Family, nominees and emergency contacts are Personal fields. Only {first} and HR see them.
+        </Text>
+      ) : null}
+      {!personal && !identity && (
+        <Text size="sm" tone="secondary" as="p">
+          Personal, identity and bank details are for {first}, HR and payroll.
         </Text>
       )}
       {custom.length > 0 && (
-        <Card title="Additional details">
+        <Card title="Additional details" actions={onEditCustom ? <Button size="sm" onClick={onEditCustom}>Edit</Button> : undefined}>
           <dl className="yx-ppl__dl">
             {custom.map((c) => (
               <div key={c.label} className="yx-ppl__dl-row">
@@ -345,7 +625,7 @@ function OverviewTab({ persona, relation, onReveal }: { persona: Persona; relati
                   {c.label} <ClassBadge cls={c.cls} />
                   {relation === 'self' && !c.selfEdit && <Badge tone="neutral">HR edits</Badge>}
                 </dt>
-                <dd>{c.value}</dd>
+                <dd>{c.value ?? <Text tone="secondary">Not set</Text>}</dd>
               </div>
             ))}
           </dl>
@@ -355,26 +635,12 @@ function OverviewTab({ persona, relation, onReveal }: { persona: Persona; relati
   );
 }
 
-function JobTab({ persona }: { persona: Persona }) {
-  const current = ARJUN_HISTORY.filter((h) => h.state !== 'scheduled');
+function JobTab({ canChange, onStartChange, rows, scheduled, past }: { canChange: boolean; onStartChange?: () => void; rows: [string, string][]; scheduled: { title: string; body: string }[]; past: number }) {
   return (
     <div className="yx-ppl__stack">
-      <Card title="Current assignment" actions={persona !== 'emp' ? <Button size="sm">Start change</Button> : undefined}>
+      <Card title="Current assignment" actions={canChange ? <Button size="sm" onClick={onStartChange}>Start change</Button> : undefined}>
         <dl className="yx-ppl__dl">
-          {[
-            ['Designation', ARJUN.role],
-            ['Grade', ARJUN.grade],
-            ['Department', ARJUN.department],
-            ['Location', ARJUN.location],
-            ['Manager', ARJUN.manager],
-            ['Secondary manager', ARJUN.dottedManager],
-            ['Employment type', ARJUN.type],
-            ['Probation', 'Confirmed on 12 Sep 2021'],
-            ['Holiday calendar', 'Tamil Nadu 2026'],
-            ['Shift pattern', 'Rotational (A / B / C)'],
-            ['Cost centre', 'QA-HSR-01'],
-            ['Notice period', '60 days'],
-          ].map(([l, v]) => (
+          {rows.map(([l, v]) => (
             <div key={l} className="yx-ppl__dl-row">
               <dt>{l}</dt>
               <dd>{v}</dd>
@@ -382,11 +648,13 @@ function JobTab({ persona }: { persona: Persona }) {
           ))}
         </dl>
       </Card>
-      <InlineAlert tone="info" title="Scheduled: promotion to Quality Lead from 1 Oct 2026">
-        Grade G6, CTC {formatINR(780000)} a year. Approved by Karthik Subramanian on 24 Sep 2026. Letter KF/HR/2026/0418 accepted.
-      </InlineAlert>
+      {scheduled.map((s) => (
+        <InlineAlert key={s.title} tone="info" title={s.title}>
+          {s.body}
+        </InlineAlert>
+      ))}
       <Text size="sm" tone="secondary" as="p">
-        {current.length} past changes. See History for the full dated timeline.
+        {past} past change{past === 1 ? '' : 's'}. See History for the full dated timeline.
       </Text>
     </div>
   );
@@ -399,6 +667,48 @@ const PAY_LINES = [
   { label: 'Employer PF (12% of ₹15,000)', monthly: 1800 },
   { label: 'Gratuity provision (4.81% of basic)', monthly: 1106 },
 ];
+
+function SalaryTable({ lines, money, ctc, outside = [] }: { lines: { label: string; monthly: number }[]; money: (n: number) => string; ctc?: number; outside?: { label: string; monthly: number }[] }) {
+  const monthly = ctc !== undefined ? ctc / 12 : lines.reduce((s, l) => s + l.monthly, 0);
+  return (
+    <Card title="Salary structure (monthly)">
+      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+      <table className="yx-ppl__impact">
+        <thead>
+          <tr>
+            <th scope="col">Component</th>
+            <th scope="col">Monthly</th>
+            <th scope="col">Annual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) => (
+            <tr key={l.label}>
+              <td>{l.label}</td>
+              <td className="yx-ppl__num">{money(l.monthly)}</td>
+              <td className="yx-ppl__num">{money(l.monthly * 12)}</td>
+            </tr>
+          ))}
+          <tr>
+            <th scope="row">Total CTC</th>
+            <td className="yx-ppl__num">{money(monthly)}</td>
+            <td className="yx-ppl__num">{money(monthly * 12)}</td>
+          </tr>
+          {outside.map((l) => (
+            <tr key={l.label}>
+              <td>
+                {l.label} <Text size="sm" tone="secondary">(not in CTC)</Text>
+              </td>
+              <td className="yx-ppl__num">{money(l.monthly)}</td>
+              <td className="yx-ppl__num">{money(l.monthly * 12)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+    </Card>
+  );
+}
 
 function PayTab({ persona, self, international }: { persona: Persona; self: boolean; international: boolean }) {
   const monthly = PAY_LINES.reduce((s, l) => s + l.monthly, 0);
@@ -418,33 +728,7 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
           <Text size="sm" tone="secondary" as="p">FY 2026–27 · 2 proofs pending</Text>
         </Card>
       </div>
-      <Card title="Salary structure (monthly)">
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-ppl__impact">
-          <thead>
-            <tr>
-              <th scope="col">Component</th>
-              <th scope="col">Monthly</th>
-              <th scope="col">Annual</th>
-            </tr>
-          </thead>
-          <tbody>
-            {PAY_LINES.map((l) => (
-              <tr key={l.label}>
-                <td>{l.label}</td>
-                <td className="yx-ppl__num">{formatINR(l.monthly)}</td>
-                <td className="yx-ppl__num">{formatINR(l.monthly * 12)}</td>
-              </tr>
-            ))}
-            <tr>
-              <th scope="row">Total CTC</th>
-              <td className="yx-ppl__num">{formatINR(monthly)}</td>
-              <td className="yx-ppl__num">{formatINR(monthly * 12)}</td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
-      </Card>
+      <SalaryTable lines={PAY_LINES} money={formatINR} />
       {international ? (
         <InternationalBankTab persona={persona} splits={SPLITS} net={49812} embedded />
       ) : (
@@ -466,12 +750,132 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
   );
 }
 
-function TimeTab() {
-  const balances = [
-    { type: 'Casual leave', used: 5, total: 8 },
-    { type: 'Sick leave', used: 2, total: 8 },
-    { type: 'Earned leave', used: 6.5, total: 15 },
-  ];
+/** Founder rule R1: pay shows only after "Show pay" (each view is recorded). */
+function PayReveal({ name, self, onShow, busy, error }: { name: string; self: boolean; onShow: () => void; busy?: boolean; error?: string | null }) {
+  return (
+    <Card title="Pay">
+      <div className="yx-ppl__stack">
+        <Text as="p" tone="secondary">
+          {self ? 'Your pay is shown when you ask.' : `${name.split(' ')[0]} can see each time someone else looks at their pay.`}
+        </Text>
+        <div>
+          <Button onClick={onShow} loading={busy}>
+            Show pay
+          </Button>
+        </div>
+        {error && <InlineAlert tone="danger" title={error} />}
+      </div>
+    </Card>
+  );
+}
+
+/** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
+function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; onRequestChange?: () => void; onBankAbroad?: () => void }) {
+  if (pay.kind === 'none')
+    return access ? (
+      <div className="yx-ppl__stack">
+        <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} note={pay.note} />
+        <PayAccessNote latest={access.latest} onRequest={access.onRequest} />
+      </div>
+    ) : (
+      <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} note={pay.note} />
+    );
+  // PPL-50: a manager with time-limited access sees until when, above the pay.
+  const until = access?.latest?.state === 'active' ? <PayAccessNote latest={access.latest} /> : null;
+  if (until) return (
+    <div className="yx-ppl__stack">
+      {until}
+      <LivePayTab pay={pay} name={name} persona={persona} self={self} access={null} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
+    </div>
+  );
+  if (pay.kind === 'ask') return <PayReveal name={name} self={self} onShow={pay.onShow} busy={pay.busy} error={pay.error} />;
+  // Whole rupees on screen, as the design (stored amounts keep their paise).
+  const money = (n: number) => formatMoney(Math.round(n), pay.currency);
+  return (
+    <div className="yx-ppl__stack">
+      <div className="yx-ppl__grid3">
+        <Card title="Annual CTC">
+          <span className="yx-ppl__num yx-figure" data-size="lg">{money(pay.ctc)}</span>
+          <Text size="sm" tone="secondary" as="p">
+            From {formatDate(pay.from)}
+            {pay.next ? ` · ${pay.next}` : ''}
+          </Text>
+        </Card>
+        <Card title="Last net pay">
+          {pay.lastNet ? (
+            <>
+              <span className="yx-ppl__num yx-figure" data-size="lg">{money(pay.lastNet.amount)}</span>
+              <Text size="sm" tone="secondary" as="p">{pay.lastNet.note}</Text>
+            </>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">No payslip yet.</Text>
+          )}
+        </Card>
+        <Card title="Tax regime">
+          {pay.taxRegime ? (
+            <>
+              <span className="yx-figure" data-size="lg">{pay.taxRegime.label}</span>
+              <Text size="sm" tone="secondary" as="p">{pay.taxRegime.note}</Text>
+            </>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">Not chosen for this tax year yet.</Text>
+          )}
+        </Card>
+      </div>
+      {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} ctc={pay.ctc} outside={pay.outside} />}
+      {pay.banks.length > 0 && (
+        <Card
+          title="Bank accounts"
+          actions={
+            self && (onRequestChange || onBankAbroad) ? (
+              <span className="yx-ppl__row">
+                {onBankAbroad && <Button size="sm" onClick={onBankAbroad}>Account abroad</Button>}
+                {onRequestChange && <Button size="sm" onClick={onRequestChange}>Request a change</Button>}
+              </span>
+            ) : undefined
+          }
+        >
+          <FieldList rows={pay.banks} persona={persona} relation={self ? 'self' : 'other'} />
+        </Card>
+      )}
+      {persona === 'mgr' && <Text size="sm" tone="secondary" as="p">You see pay because HR gave you a salary grant for your team. Each view is recorded.</Text>}
+    </div>
+  );
+}
+
+const SAMPLE_BALANCES = [
+  { type: 'Casual leave', used: 5, total: 8 },
+  { type: 'Sick leave', used: 2, total: 8 },
+  { type: 'Earned leave', used: 6.5, total: 15 },
+];
+
+const SAMPLE_ATTENDANCE = {
+  title: 'Attendance, September 2026',
+  rows: [
+    ['Present', '20 days'],
+    ['Late marks', '2 (7 Sep, 18 Sep)'],
+    ['Missing punch', '1 (23 Sep, regularisation pending)'],
+    ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
+  ] as [string, string][],
+};
+
+function AttendanceCard({ attendance }: { attendance: { title: string; rows: [string, string][] } }) {
+  return (
+    <Card title={attendance.title}>
+      <dl className="yx-ppl__dl">
+        {attendance.rows.map(([l, v]) => (
+          <div key={l} className="yx-ppl__dl-row">
+            <dt>{l}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
+function TimeTab({ balances = SAMPLE_BALANCES, unpaid, attendance }: { balances?: { type: string; used: number; total: number }[]; unpaid?: number | null; attendance?: { title: string; rows: [string, string][] } | null }) {
+  const live = unpaid !== undefined;
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__grid3">
@@ -481,74 +885,124 @@ function TimeTab() {
           </Card>
         ))}
       </div>
-      <Card title="Unpaid leave">
-        <Text as="p">2 days taken this year (11 and 12 Jun 2026).</Text>
-      </Card>
-      <Card title="Attendance, September 2026">
-        <dl className="yx-ppl__dl">
-          {[
-            ['Present', '20 days'],
-            ['Late marks', '2 (7 Sep, 18 Sep)'],
-            ['Missing punch', '1 (23 Sep, regularisation pending)'],
-            ['Shift', 'Rotational · week of 28 Sep: B shift, 2 pm to 10 pm'],
-          ].map(([l, v]) => (
-            <div key={l} className="yx-ppl__dl-row">
-              <dt>{l}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
+      {live ? (
+        <>
+          {unpaid !== null && (
+            <Card title="Unpaid leave">
+              <Text as="p">{unpaid === 0 ? 'None taken this year.' : `${unpaid} day${unpaid === 1 ? '' : 's'} taken this year.`}</Text>
+            </Card>
+          )}
+          {attendance && <AttendanceCard attendance={attendance} />}
+        </>
+      ) : (
+        <>
+          <Card title="Unpaid leave">
+            <Text as="p">2 days taken this year (11 and 12 Jun 2026).</Text>
+          </Card>
+          <AttendanceCard attendance={SAMPLE_ATTENDANCE} />
+        </>
+      )}
     </div>
   );
 }
 
-function DocumentsTab({ persona, relation }: { persona: Persona; relation: Relation }) {
-  const done = ARJUN_DOCS.filter((d) => d.status === 'Verified').length;
-  const docs = ARJUN_DOCS.filter((d) => fieldVisibility(d.cls, persona, relation) !== 'hidden');
+function DocumentsTab({ persona, rows: docs, hidden, actions }: { persona: Persona; rows: RecordDoc[]; hidden: number; actions?: NonNullable<LiveRecord['documents']> }) {
+  const done = docs.filter((d) => d.status === 'Verified').length;
+  const total = docs.length + hidden;
+  // The sample record shows every button; live, only the ones the server allows.
+  const upload = actions ? actions.onUpload : () => {};
+  const request = actions ? actions.onRequest : () => {};
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__row yx-ppl__row--between">
-        <Meter value={done} max={ARJUN_DOCS.length} label="Checklist complete" valueText={`${done} of ${ARJUN_DOCS.length} verified`} warnAt={101} />
+        {/* Nothing to count: no "0 of 0" bar. */}
+        {total > 0 ? <Meter value={done} max={total} label="Checklist complete" valueText={`${done} of ${total} verified`} warnAt={101} dangerAt={101} /> : <span />}
         <div className="yx-ppl__row">
-          {persona === 'hr' && <Button icon={Mail}>Request upload</Button>}
-          <Button icon={Upload}>Upload</Button>
+          {persona === 'hr' && request && (
+            <Button icon={Mail} onClick={request}>
+              Request upload
+            </Button>
+          )}
+          {upload && (
+            <Button icon={Upload} onClick={upload}>
+              Upload
+            </Button>
+          )}
         </div>
       </div>
-      <ul className="yx-ppl__checklist" aria-label="Document checklist">
-        {docs.map((d) => (
-          <li key={d.type} className="yx-ppl__check-row">
-            <div className="yx-ppl__check-main">
-              <span className="yx-ppl__check-title">
-                {d.type} <ClassBadge cls={d.cls} />
-              </span>
-              <Text size="sm" tone="secondary">
-                {d.on ? `Uploaded ${formatDate(d.on)} · ${d.versions} version${d.versions > 1 ? 's' : ''}` : 'Not uploaded'}
-                {d.by ? ` · verified by ${d.by}` : ''}
-                {'expires' in d && d.expires ? ` · expires ${formatDate(d.expires)}` : ''}
-              </Text>
-            </div>
-            <StatusBadge status={d.status} />
-            {persona === 'hr' && d.status === 'Pending verification' && (
-              <div className="yx-ppl__check-action">
-                <Button size="sm">Reject</Button>
-                <Button size="sm">Verify</Button>
+      {docs.length === 0 ? (
+        persona === 'mgr' ? (
+          // A manager sees Public and Internal documents only (founder, 22 Oct 2026); the others exist but are not theirs to see.
+          <EmptyState title="No documents you can see" description="Personal and confidential documents stay with HR and the person." />
+        ) : (
+          <EmptyState title="No documents yet" description="Uploaded and requested documents appear here." />
+        )
+      ) : (
+        <ul className="yx-ppl__checklist" aria-label="Document checklist">
+          {docs.map((d) => (
+            <li key={d.id ?? d.type} className="yx-ppl__check-row">
+              <div className="yx-ppl__check-main">
+                <span className="yx-ppl__check-title">
+                  {d.type} <ClassBadge cls={d.cls} />
+                </span>
+                <Text size="sm" tone="secondary">
+                  {d.on ? `Uploaded ${formatDate(d.on)} · ${d.versions} version${d.versions > 1 ? 's' : ''}` : 'Not uploaded'}
+                  {d.by ? ` · verified by ${d.by}` : ''}
+                  {d.expires ? ` · expires ${formatDate(d.expires)}` : ''}
+                </Text>
               </div>
-            )}
-            {d.on && <IconButton icon={Download} label={`Download ${d.type}`} size="sm" />}
-          </li>
-        ))}
-      </ul>
-      {docs.length < ARJUN_DOCS.length && (
+              <StatusBadge status={d.status} />
+              {persona === 'hr' && d.status === 'Pending verification' && (!actions || actions.onVerify) && (
+                <div className="yx-ppl__check-action">
+                  <Button size="sm" onClick={() => actions?.onReject?.(d)}>
+                    Reject
+                  </Button>
+                  <Button size="sm" onClick={() => actions?.onVerify?.(d)}>
+                    Verify
+                  </Button>
+                </div>
+              )}
+              {d.on && (!actions || actions.onDownload) && <IconButton icon={Download} label={`Download ${d.type}`} size="sm" onClick={() => actions?.onDownload?.(d)} />}
+            </li>
+          ))}
+        </ul>
+      )}
+      {hidden > 0 && (
         <Text size="sm" tone="secondary" as="p">
-          {ARJUN_DOCS.length - docs.length} documents are Confidential or Special and not shown to you.
+          {hidden} documents are Confidential or Special and not shown to you.
         </Text>
       )}
     </div>
   );
 }
 
-function PerformanceTab({ persona }: { persona: Persona }) {
+export function PerformanceTab({ persona, data }: { persona: Persona; data?: RecordPerformance }) {
+  if (data)
+    return (
+      <div className="yx-ppl__grid2">
+        <Card title={data.period ? `Goals, ${data.period}` : 'Goals'} actions={data.onOpenGoals ? <Button size="sm" onClick={data.onOpenGoals}>Open goals</Button> : undefined}>
+          {data.goals.length ? (
+            <ul className="yx-ppl__successors">
+              {data.goals.map((g) => (
+                <li key={g.id}>
+                  <span>{g.title}</span>
+                  <Badge tone={g.tone}>{g.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">No goals in this period yet.</Text>
+          )}
+        </Card>
+        <Card title="Reviews">
+          <dl className="yx-ppl__rail-facts">
+            <div><dt>Last review</dt><dd>{data.lastReview ?? 'None shared yet'}</dd></div>
+            <div><dt>Next 1:1</dt><dd>{data.nextOneOnOne ?? 'None scheduled'}</dd></div>
+            {data.feedback != null && <div><dt>Feedback this quarter</dt><dd>{data.feedback}</dd></div>}
+          </dl>
+        </Card>
+      </div>
+    );
   return (
     <div className="yx-ppl__grid2">
       <Card title="Goals, 2026–27" actions={<Button size="sm">Open goals</Button>}>
@@ -582,41 +1036,47 @@ function LearningTab() {
   );
 }
 
-function AssetsTab({ persona }: { persona: Persona }) {
+function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[]; onIssue?: () => void }) {
   return (
     <div className="yx-ppl__stack">
-      {persona === 'hr' && (
+      {onIssue && (
         <div className="yx-ppl__row">
-          <Button icon={Plus}>Issue asset</Button>
+          <Button icon={Plus} onClick={onIssue}>
+            Issue asset
+          </Button>
         </div>
       )}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Assets with Arjun Kulkarni, scrolls sideways on small screens">
-      <table className="yx-ppl__impact">
-        <caption className="yx-visually-hidden">Assets with Arjun Kulkarni</caption>
-        <thead>
-          <tr>
-            <th scope="col">Tag</th>
-            <th scope="col">Asset</th>
-            <th scope="col">Issued</th>
-            <th scope="col">Condition</th>
-            <th scope="col">Acknowledgement</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ARJUN_ASSETS.map((a) => (
-            <tr key={a.tag}>
-              <td className="yx-mono">{a.tag}</td>
-              <td>{a.name}</td>
-              <td>{formatDate(a.issued)}</td>
-              <td>{a.condition}</td>
-              <td>
-                <StatusBadge status={a.ack === 'Waiting' ? 'Waiting' : 'Accepted'} />
-              </td>
+      {rows.length === 0 ? (
+        <EmptyState title={`No assets with ${name}`} description="Assets issued to this person appear here." />
+      ) : (
+        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`Assets with ${name}, scrolls sideways on small screens`}>
+        <table className="yx-ppl__impact">
+          <caption className="yx-visually-hidden">Assets with {name}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Asset</th>
+              <th scope="col">Issued</th>
+              <th scope="col">Condition</th>
+              <th scope="col">Acknowledgement</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+          </thead>
+          <tbody>
+            {rows.map((a) => (
+              <tr key={a.tag}>
+                <td className="yx-mono">{a.tag}</td>
+                <td>{a.name}</td>
+                <td>{formatDate(a.issued)}</td>
+                <td>{a.condition}</td>
+                <td>
+                  <StatusBadge status={a.ack === 'Waiting' ? 'Waiting for confirmation' : 'Confirmed'} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -629,9 +1089,9 @@ const FACT_FILTER = [
   { value: 'Correction', label: 'Corrections' },
 ];
 
-function HistoryTab({ asOf, onAsOf, today }: { asOf: Date | null; onAsOf: (d: Date | null) => void; today: Date }) {
+function HistoryTab({ asOf, onAsOf, today, rows: all, roles }: { asOf: Date | null; onAsOf: (d: Date | null) => void; today: Date; rows: JobChange[]; roles: RecordRole[] }) {
   const [fact, setFact] = useState<string | null>('all');
-  const rows = useMemo(() => ARJUN_HISTORY.filter((h) => fact === 'all' || h.type === fact || (fact === 'Promotion' && h.type === 'Joining')), [fact]);
+  const rows = useMemo(() => all.filter((h) => fact === 'all' || h.type === fact || (fact === 'Promotion' && h.type === 'Joining')), [fact, all]);
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__row">
@@ -642,37 +1102,44 @@ function HistoryTab({ asOf, onAsOf, today }: { asOf: Date | null; onAsOf: (d: Da
           <Select options={FACT_FILTER} value={fact} onChange={setFact} />
         </FormField>
       </div>
-      <ol className="yx-ppl__history" aria-label="Dated changes, newest first">
-        {rows.map((h: JobChange) => (
-          <li key={h.id} data-state={h.state} data-after-asof={asOf && h.effective > asOf ? true : undefined}>
-            <span className="yx-ppl__history-date">{formatDate(h.effective)}</span>
-            <span>
-              <strong>{h.type}</strong> · {h.summary}
-              {asOf && h.effective > asOf && (
-                <Text size="sm" as="div">
-                  Not yet effective on {formatDate(asOf)}
-                </Text>
-              )}
-              <Text size="sm" tone="secondary" as="div">
-                By {h.by}
-                {h.letter ? ` · letter ${h.letter}` : ''}
-              </Text>
-            </span>
-            <StatusBadge status={h.state === 'scheduled' ? 'Scheduled' : h.state === 'correction' ? 'Correction' : h.state === 'current' ? 'Current' : 'Past'} />
-          </li>
-        ))}
-      </ol>
-      <Card title="All roles of this person">
-        <RolesList />
-      </Card>
+      {rows.length === 0 ? (
+        <EmptyState title="No changes of this kind" description="Pick All changes to see the whole timeline." />
+      ) : (
+        <ol className="yx-ppl__history" aria-label="Dated changes, newest first">
+          {rows.map((h: JobChange) => (
+            <li key={h.id} data-state={h.state} data-after-asof={asOf && h.effective > asOf ? true : undefined}>
+              <span className="yx-ppl__history-date">{formatDate(h.effective)}</span>
+              <span>
+                <strong>{h.type}</strong> · {h.summary}
+                {asOf && h.effective > asOf && (
+                  <Text size="sm" as="div">
+                    Not yet effective on {formatDate(asOf)}
+                  </Text>
+                )}
+                {(h.by || h.letter) && (
+                  <Text size="sm" tone="secondary" as="div">
+                    {[h.by && `By ${h.by}`, h.letter && `letter ${h.letter}`].filter(Boolean).join(' · ')}
+                  </Text>
+                )}
+              </span>
+              <StatusBadge status={h.state === 'scheduled' ? 'Scheduled' : h.state === 'correction' ? 'Correction' : h.state === 'current' ? 'Current' : 'Past'} />
+            </li>
+          ))}
+        </ol>
+      )}
+      {roles.length > 0 && (
+        <Card title="All roles of this person">
+          <RolesList roles={roles} />
+        </Card>
+      )}
     </div>
   );
 }
 
-function RolesList() {
+function RolesList({ roles = ARJUN_ROLES }: { roles?: RecordRole[] }) {
   return (
     <ol className="yx-ppl__roles" aria-label="Roles over time">
-      {[...ARJUN_ROLES].sort((a, b) => a.from.getTime() - b.from.getTime()).map((r) => (
+      {[...roles].sort((a, b) => a.from.getTime() - b.from.getTime()).map((r) => (
         <li key={r.role + r.from.getTime()}>
           <span>
             <strong>{r.role}</strong> · {formatDate(r.from)} to {r.to ? formatDate(r.to) : 'now'}
@@ -689,13 +1156,13 @@ function RolesList() {
 /* ================================================================== PPL-35 roles panel */
 
 // PPL-35
-export function PersonRolesPanel({ onClose }: { onClose?: () => void }) {
+export function PersonRolesPanel({ onClose, roles, company }: { onClose?: () => void; roles?: RecordRole[]; company?: string }) {
   return (
     <Card title="Person roles" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
       <Text size="sm" tone="secondary" as="p">
-        One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).
+        {roles ? `One person record links every role in ${company ?? 'the company'}.` : 'One person record links every role in Kaveri Foods. The contract service before 12 Mar 2021 is history only; it does not count for probation or seniority (company setting).'}
       </Text>
-      <RolesList />
+      <RolesList roles={roles} />
     </Card>
   );
 }
@@ -703,15 +1170,28 @@ export function PersonRolesPanel({ onClose }: { onClose?: () => void }) {
 /* ================================================================== PPL-34 identity panel */
 
 // PPL-34
-export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refused' | 'mismatch'; onClose?: () => void }) {
-  const checks =
-    state === 'refused'
+export function IdentityPanel({ state = 'consented', onClose, live, name }: { state?: 'consented' | 'refused' | 'mismatch'; onClose?: () => void; live?: LiveIdentity; name?: string }) {
+  const [dialog, setDialog] = useState<'reverify' | 'attest' | null>(null);
+  const [idType, setIdType] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const [note, setNote] = useState('');
+  // Live: the checks HR made (no face match runs in the app yet, so the attestation is always on offer).
+  const checks = live
+    ? live.checks.map((c) => ({ at: c.at, point: LIVE_CHECK[c.kind][0], result: LIVE_CHECK[c.kind][1], by: [c.by ? `HR: ${c.by}` : null, c.note].filter(Boolean).join(' · ') }))
+    : state === 'refused'
       ? IDENTITY.checks.map((c) => ({ ...c, result: c.point === 'Application verification' ? 'ID check only (face consent refused)' : 'Attested', by: c.by === 'System' ? 'Proctor: Kavitha Rao' : c.by }))
       : state === 'mismatch'
         ? [...IDENTITY.checks.slice(0, 3), { at: new Date(2021, 2, 12), point: 'Day-1 identity check', result: 'Mismatch: HR review', by: 'System' }]
         : IDENTITY.checks;
+  const close = onClose && <Button size="sm" onClick={onClose}>Close</Button>;
+  if (live && live.state !== 'ready')
+    return (
+      <Card title="Identity" actions={close}>
+        {live.state === 'error' ? <ErrorState title="We couldn't load the identity checks" description="Retry in a moment." onRetry={live.onRetry} /> : <ListSkeleton rows={4} label="Loading the identity checks" />}
+      </Card>
+    );
   return (
-    <Card title="Identity" actions={onClose && <Button size="sm" onClick={onClose}>Close</Button>}>
+    <Card title="Identity" actions={close}>
       <div className="yx-ppl__stack">
         <Text size="sm" tone="secondary" as="p">
           Special class. No face image is shown here. Views are recorded.
@@ -727,17 +1207,23 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {IDENTITY.consent.map((c) => (
-              <tr key={c.jurisdiction}>
-                <td>{c.jurisdiction}</td>
-                <td>
-                  <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
-                </td>
-                <td>
-                  {c.point}, {formatDate(c.on)}
-                </td>
+            {live ? (
+              <tr>
+                <td colSpan={3}>No face-match consent on file. Identity is checked against the original ID.</td>
               </tr>
-            ))}
+            ) : (
+              IDENTITY.consent.map((c) => (
+                <tr key={c.jurisdiction}>
+                  <td>{c.jurisdiction}</td>
+                  <td>
+                    <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
+                  </td>
+                  <td>
+                    {c.point}, {formatDate(c.on)}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         </div>
@@ -752,14 +1238,19 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
             </tr>
           </thead>
           <tbody>
-            {checks.map((c) => (
-              <tr key={c.point}>
+            {checks.length === 0 && (
+              <tr>
+                <td colSpan={3}>No identity checks recorded yet.</td>
+              </tr>
+            )}
+            {checks.map((c, i) => (
+              <tr key={`${c.point}-${i}`}>
                 <td>{formatDate(c.at)}</td>
                 <td>
                   {c.point}
-                  <Text size="sm" tone="secondary" as="div">{c.by}</Text>
+                  {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
                 </td>
-                <td>
+                <td data-wrap>
                   <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge>
                 </td>
               </tr>
@@ -767,55 +1258,205 @@ export function IdentityPanel({ state, onClose }: { state: 'consented' | 'refuse
           </tbody>
         </table>
         </div>
-        {state === 'mismatch' && (
+        {state === 'mismatch' && !live && (
           <InlineAlert tone="warning" title="Identity flag for HR review">
             A mismatch never blocks joining. Ask for a fresh ID and selfie, or attest against the original ID.
           </InlineAlert>
         )}
-        <div className="yx-ppl__row">
-          <Button icon={IdCard}>Request re-verification</Button>
-          {state !== 'consented' && <Button>Record HR attestation</Button>}
-        </div>
+        {!live ? (
+          <div className="yx-ppl__row">
+            <Button icon={IdCard}>Request re-verification</Button>
+            {state !== 'consented' && <Button>Record HR attestation</Button>}
+          </div>
+        ) : (
+          (live.onReverify || live.onAttest) && (
+            <div className="yx-ppl__row">
+              {live.onReverify && <Button icon={IdCard} onClick={() => (setIdType(null), setTried(false), setDialog('reverify'))}>Request re-verification</Button>}
+              {live.onAttest && <Button onClick={() => (setNote(''), setDialog('attest'))}>Record HR attestation</Button>}
+            </div>
+          )
+        )}
       </div>
+      {live?.onReverify && (
+        <ConfirmDialog
+          open={dialog === 'reverify'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Ask ${name} for a fresh ID?`}
+          consequence={`${name} is told in the app and by email to upload a fresh copy in My documents. You verify it in the documents queue.`}
+          confirmLabel="Send request"
+          onConfirm={async () => {
+            setTried(true);
+            if (!idType) return false;
+            await live.onReverify!(idType);
+          }}
+        >
+          <FormField label="ID to upload" required error={tried && !idType ? 'Choose the ID to upload.' : null}>
+            <Select aria-label="ID to upload" value={idType} onChange={setIdType} options={live.idTypes.map((t) => ({ value: t.key, label: t.name }))} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {live?.onAttest && (
+        <ConfirmDialog
+          open={dialog === 'attest'}
+          onOpenChange={(o) => !o && setDialog(null)}
+          title={`Record HR attestation for ${name}?`}
+          consequence={`Confirm you checked ${name}'s original ID against them in person. It is recorded with your name.`}
+          confirmLabel="Record attestation"
+          onConfirm={() => live.onAttest!(note.trim())}
+        >
+          <FormField label="Note" optional helper="Which ID you checked, for example the passport.">
+            <TextArea value={note} onChange={setNote} rows={3} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </Card>
   );
 }
 
+const LIVE_CHECK: Record<LiveIdentity['checks'][number]['kind'], [string, string]> = {
+  day1: ['Day-1 identity check', 'Attested'],
+  attested: ['HR attestation', 'Attested'],
+  requested: ['Re-verification', 'Fresh ID asked for'],
+};
+
 /* ================================================================== PPL-45 work authorisations */
 
 // PPL-45
-export function WorkAuthTab({ rows, today }: { rows: typeof ARJUN_WORK_AUTH; today: Date }) {
-  const cols: TableColumn<(typeof ARJUN_WORK_AUTH)[number]>[] = [
-    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}<Text size="sm" tone="secondary" as="div">{r.country}</Text></span>, width: 200 },
+export function WorkAuthTab({ rows: sample = [], today, live }: { rows?: typeof ARJUN_WORK_AUTH; today: Date; live?: LiveWorkAuth }) {
+  const [adding, setAdding] = useState(false);
+  type Row = { id: string; type: string; country: string; number: string; sponsor: string; occupation: string; expires: Date; status: string; differs: boolean; kind: string; reminded: number[] };
+  const soon = live?.reminderDays[0] ?? 90;
+  const rows: Row[] = live
+    ? live.rows.map((r) => {
+        const left = daysBetween(today, r.expires);
+        return {
+          id: r.id,
+          type: r.kind === 'national_id' && r.country === 'AE' ? 'Emirates ID' : WORK_AUTH_KIND[r.kind],
+          country: r.country ? REGION.of(r.country) ?? r.country : '',
+          number: r.number,
+          sponsor: r.sponsor ?? '—',
+          occupation: r.occupation ?? '—',
+          expires: r.expires,
+          status: left < 0 ? 'Expired' : left <= soon ? 'Expiring' : 'Valid',
+          differs: (r.kind === 'employment_visa' || r.kind === 'work_permit') && Boolean(r.occupation && live.designation && r.occupation.trim().toLowerCase() !== live.designation.trim().toLowerCase()),
+          kind: r.kind,
+          reminded: r.remindedDays,
+        };
+      })
+    : sample.map((r) => ({ ...r, id: r.type + r.country, differs: r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa', kind: '', reminded: [90, 60] }));
+  const cols: TableColumn<Row>[] = [
+    { key: 'type', header: 'Document', value: (r) => r.type, render: (r) => <span>{r.type}{r.country && <Text size="sm" tone="secondary" as="div">{r.country}</Text>}</span>, width: 200 },
     { key: 'number', header: 'Number', type: 'id', value: (r) => r.number, width: 170 },
     { key: 'sponsor', header: 'Sponsor', value: (r) => r.sponsor, width: 160 },
     {
       key: 'occupation',
       header: 'Occupation on permit',
       value: (r) => r.occupation,
-      render: (r) => (r.occupation !== '—' && r.occupation !== 'Quality Lead' && r.type === 'Employment visa' ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
+      render: (r) => (r.differs ? <span>{r.occupation} <Badge tone="warning">Differs from designation</Badge></span> : r.occupation),
       width: 260,
     },
     { key: 'expires', header: 'Expires', type: 'date', value: (r) => r.expires, width: 130 },
     { key: 'left', header: 'Days left', type: 'number', value: (r) => daysBetween(today, r.expires), width: 110 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expiring' ? 'warning' : 'success'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Expired' ? 'danger' : v === 'Expiring' ? 'warning' : 'success'), width: 120 },
   ];
+  // The soonest to lapse: what went, what goes next, and what an expired permit stops.
+  const due = rows.filter((r) => r.status !== 'Valid').sort((a, b) => a.expires.getTime() - b.expires.getTime())[0];
+  const left = due ? daysBetween(today, due.expires) : 0;
+  const went = due ? [...due.reminded].sort((a, b) => b - a) : [];
+  const next = live && due ? live.reminderDays.filter((d) => d < left && !went.includes(d))[0] : 30;
+  const add = live ? (live.onAdd ? () => setAdding(true) : undefined) : () => {};
   return (
     <div className="yx-ppl__stack">
-      {rows.some((r) => r.status === 'Expiring') && (
-        <InlineAlert tone="warning" title="Employment visa expires on 1 Nov 2026">
-          Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.
+      {due && (
+        <InlineAlert tone={due.status === 'Expired' ? 'danger' : 'warning'} title={`${due.type} ${due.status === 'Expired' ? 'expired' : 'expires'} on ${formatDate(due.expires)}`}>
+          {!live
+            ? 'Reminders went at 90 and 60 days. The next goes at 30 days. WPS salary files fail pre-flight once it expires.'
+            : [
+                went.length ? `Reminders went at ${listDays(went)} days.` : due.kind === 'passport' ? '' : 'No reminder has gone yet.',
+                next ? `The next goes at ${next} days.` : '',
+                due.kind === 'employment_visa' || due.kind === 'work_permit' ? `Payroll approval is held once it ${due.status === 'Expired' ? 'has expired' : 'expires'}.` : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
         </InlineAlert>
       )}
       <DataTable
         label="Work authorisations"
         columns={cols}
         rows={rows}
-        getRowId={(r) => r.type + r.country}
-        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={<Button variant="primary">Add document</Button>} />}
-        toolbar={<Button icon={Plus} size="sm">Add document</Button>}
+        getRowId={(r) => r.id}
+        empty={<EmptyState title="No work authorisations" description="Add visas, permits or national IDs for people who work outside their home country." action={add && <Button variant="primary" onClick={add}>Add document</Button>} />}
+        toolbar={add && <Button icon={Plus} size="sm" onClick={add}>Add document</Button>}
       />
+      {adding && live?.onAdd && <AddWorkAuthDrawer today={today} onAdd={live.onAdd} onClose={() => setAdding(false)} />}
     </div>
+  );
+}
+
+const listDays = (days: number[]) => (days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]}` : String(days[0]));
+
+/** Add a visa, permit or national ID (HR, with the right to change identity details). */
+function AddWorkAuthDrawer({ today, onAdd, onClose }: { today: Date; onAdd: NonNullable<LiveWorkAuth['onAdd']>; onClose: () => void }) {
+  const [kind, setKind] = useState<WorkAuthKind | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
+  const [number, setNumber] = useState('');
+  const [sponsor, setSponsor] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [issued, setIssued] = useState<Date | null>(null);
+  const [expires, setExpires] = useState<Date | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const permit = kind === 'employment_visa' || kind === 'work_permit';
+  const errors: FormErrorItem[] = [
+    ...(!kind ? [{ fieldId: 'wa-kind', message: 'Choose the document.' }] : []),
+    ...(!country ? [{ fieldId: 'wa-country', message: 'Choose the country.' }] : []),
+    ...(!/^[A-Za-z0-9][A-Za-z0-9 /-]{3,29}$/.test(number.trim()) ? [{ fieldId: 'wa-number', message: 'Enter the number as printed: 4 to 30 letters or digits.' }] : []),
+    ...(!expires ? [{ fieldId: 'wa-expires', message: 'Choose the expiry date.' }] : issued && expires <= issued ? [{ fieldId: 'wa-expires', message: 'The expiry date must be after the issue date.' }] : []),
+  ];
+  const sv = useSaveErrors(errors);
+  const save = async () => {
+    if (errors.length) return sv.reveal();
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onAdd({ kind: kind!, country: country!, number: number.trim(), ...(sponsor.trim() ? { sponsor: sponsor.trim() } : {}), ...(permit && occupation.trim() ? { occupation: occupation.trim() } : {}), ...(issued ? { issuedOn: dayKey(issued) } : {}), expiresOn: dayKey(expires!) });
+      onClose();
+    } catch (e) {
+      setFailed(errorText(e));
+      setSaving(false);
+    }
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Add work authorisation" size="lg" dirty={Boolean(kind || country || number || sponsor || occupation || issued || expires)} notice={failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>Add document</Button></>}>
+      <div className="yx-ppl__stack">
+        {sv.showErrors && <ErrorSummary errors={sv.shownErrors} />}
+        <div className="yx-ppl__form">
+          <FormField id="wa-kind" label="Document" required error={sv.errorOf('wa-kind')}>
+            <Select aria-label="Document" value={kind} onChange={setKind} options={WORK_AUTH_KINDS.map((k) => ({ value: k, label: WORK_AUTH_KIND[k] }))} />
+          </FormField>
+          <FormField id="wa-country" label="Country" required error={sv.errorOf('wa-country')}>
+            <Select aria-label="Country" value={country} onChange={setCountry} options={COUNTRY_OPTIONS} searchable />
+          </FormField>
+          <FormField id="wa-number" label="Number" required error={sv.errorOf('wa-number')} helper="Only the last four are shown on the record.">
+            <TextField value={number} onChange={setNumber} maxLength={30} className="yx-mono" />
+          </FormField>
+          <FormField id="wa-sponsor" label="Sponsor" optional>
+            <TextField value={sponsor} onChange={setSponsor} maxLength={120} />
+          </FormField>
+          {permit && (
+            <FormField id="wa-occupation" label="Occupation on permit" optional helper="As printed. We flag it when it differs from the designation.">
+              <TextField value={occupation} onChange={setOccupation} maxLength={120} />
+            </FormField>
+          )}
+          <FormField id="wa-issued" label="Issued on" optional>
+            <DatePicker value={issued} onChange={setIssued} max={today} aria-label="Issued on" />
+          </FormField>
+          <FormField id="wa-expires" label="Expires on" required error={sv.errorOf('wa-expires')}>
+            <DatePicker value={expires} onChange={setExpires} aria-label="Expires on" />
+          </FormField>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 
@@ -827,8 +1468,139 @@ const RULES = [
   { value: 'percent', label: 'Percentage' },
 ];
 
+/** PPL-46 live: the salary account abroad, changed through approval (HR for someone, or the person themselves). */
+export interface LiveIntlBank {
+  name: string;
+  /** On file now (IBAN masked), or null. */
+  current: { country: string; iban: string; bic: string; currency: string; usableFrom: Date } | null;
+  /** A change is already waiting for approval. */
+  waiting: boolean;
+  /** The page shows the success toast and goes back. */
+  onSend: (value: { country: string; iban: string; bic: string; currency: string }) => Promise<void>;
+  onCancel: () => void;
+}
+
+const CURRENCY = new Intl.DisplayNames(['en'], { type: 'currency' });
+const CURRENCY_OPTIONS = Intl.supportedValuesOf('currency').map((c) => ({ value: c, label: `${c} · ${CURRENCY.of(c) ?? c}` }));
+const compact = (v: string) => v.replace(/\s+/g, '').toUpperCase();
+
+/** The form both live pages share: what is wrong, and the value to send once nothing is. */
+function useIntlBankForm(live: LiveIntlBank, fixedCountry: boolean) {
+  const [country, setCountry] = useState<string | null>(live.current?.country ?? null);
+  const [iban, setIban] = useState('');
+  const [bic, setBic] = useState('');
+  const [currency, setCurrency] = useState<string | null>(live.current?.currency ?? null);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const cc = fixedCountry ? compact(iban).slice(0, 2) || null : country;
+  const ibanError = iban.trim() ? ibanProblem(iban, cc) : null;
+  const bicError = bic.trim() && !isBic(bic) ? 'Enter an 8 or 11 character BIC, like ECBKAEAD.' : null;
+  const ready = Boolean(cc && iban.trim() && !ibanError && bic.trim() && !bicError && currency && !live.waiting);
+  const send = async () => {
+    setSending(true);
+    setFailed(null);
+    try {
+      await live.onSend({ country: cc!, iban: compact(iban), bic: compact(bic), currency: currency! });
+    } catch (e) {
+      setFailed(errorText(e));
+    }
+    setSending(false);
+  };
+  return { country, setCountry, iban, setIban, bic, setBic, currency, setCurrency, ibanError, bicError, ready, send, sending, failed };
+}
+
+function IntlBankOnFile({ current }: { current: NonNullable<LiveIntlBank['current']> }) {
+  const later = current.usableFrom > new Date();
+  return (
+    <>
+      <Text as="p" className="yx-mono">
+        {REGION.of(current.country) ?? current.country} · {current.iban} · {current.bic} · {current.currency}
+      </Text>
+      <Badge tone={later ? 'warning' : 'success'}>{later ? `Used for pay from ${formatDate(current.usableFrom)}` : 'In use'}</Badge>
+    </>
+  );
+}
+
+function LiveInternationalBank({ persona, live }: { persona: Persona; live: LiveIntlBank }) {
+  const f = useIntlBankForm(live, false);
+  return (
+    <PeopleFrame active="Directory" persona={persona}>
+      <ObjectHeader name={live.name} person secondary="Pay › Bank details" />
+      <div className="yx-ppl__stack">
+        {live.waiting && <InlineAlert tone="warning" title="A change is already waiting for approval">Wait for the decision, or withdraw it on the person's record first.</InlineAlert>}
+        {live.current && (
+          <Card title="Salary account abroad">
+            <IntlBankOnFile current={live.current} />
+          </Card>
+        )}
+        <div className="yx-ppl__form">
+          <FormField label="Country of account" required>
+            <Select aria-label="Country of account" options={COUNTRY_OPTIONS} value={f.country} onChange={f.setCountry} searchable />
+          </FormField>
+          <FormField label="IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed (country length and check digits).' : undefined}>
+            <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
+          </FormField>
+          <FormField label="BIC / SWIFT" required error={f.bicError}>
+            <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
+          </FormField>
+          <FormField label="Payout currency" required>
+            <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
+          </FormField>
+        </div>
+        <InlineAlert tone="info">Changes need approval and a cooling period before the first payout. The employee and the old contact are notified.</InlineAlert>
+        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        <div className="yx-ppl__row">
+          <Button onClick={live.onCancel}>Cancel</Button>
+          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+            Send for approval
+          </Button>
+        </div>
+      </div>
+    </PeopleFrame>
+  );
+}
+
+function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
+  const f = useIntlBankForm(live, true);
+  return (
+    <MeFrame active="Change requests">
+      <PageHeader title="Bank details" />
+      <div className="yx-ppl__stack">
+        <Card title="Salary account abroad">{live.current ? <IntlBankOnFile current={live.current} /> : <Text as="p" tone="secondary">No account abroad on file yet.</Text>}</Card>
+        {live.waiting && <InlineAlert tone="warning" title="A change is already waiting for approval">You can withdraw it in Change requests.</InlineAlert>}
+        <FormField label="New IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed.' : undefined}>
+          <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
+        </FormField>
+        <FormField label="BIC / SWIFT" required error={f.bicError}>
+          <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
+        </FormField>
+        <FormField label="Payout currency" required>
+          <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
+        </FormField>
+        <InlineAlert tone="info">HR approves bank changes. Your first salary to a new account waits for the cooling period.</InlineAlert>
+        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        <div className="yx-ppl__row">
+          <Button onClick={live.onCancel}>Cancel</Button>
+          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+            Send for approval
+          </Button>
+        </div>
+        {f.ibanError && (
+          <Text size="sm" tone="danger" as="p">
+            <Icon icon={AlertTriangle} size="sm" /> Fix the IBAN to continue.
+          </Text>
+        )}
+      </div>
+    </MeFrame>
+  );
+}
+
 // PPL-46
-export function InternationalBankTab({ persona, splits: initial, net, embedded, defaultIban = 'AE07 0331 2345 6789 0123 456', defaultBic = 'ECBKAEAD' }: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string }) {
+export function InternationalBankTab(props: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string; live?: LiveIntlBank }) {
+  return props.live ? <LiveInternationalBank persona={props.persona} live={props.live} /> : <SampleInternationalBank {...props} />;
+}
+
+function SampleInternationalBank({ persona, splits: initial, net, embedded, defaultIban = 'AE07 0331 2345 6789 0123 456', defaultBic = 'ECBKAEAD' }: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string }) {
   const [splits, setSplits] = useState(initial);
   const [iban, setIban] = useState(defaultIban);
   const [bic, setBic] = useState(defaultBic);
@@ -924,8 +1696,12 @@ export function InternationalBankTab({ persona, splits: initial, net, embedded, 
   );
 }
 
-// PPL-46 · phone
-export function InternationalBankPhone({ defaultIban }: { defaultIban?: string }) {
+// PPL-46 · phone (live: the person's own page)
+export function InternationalBankPhone({ defaultIban, live }: { defaultIban?: string; live?: LiveIntlBank }) {
+  return live ? <LiveInternationalBankPhone live={live} /> : <SampleInternationalBankPhone defaultIban={defaultIban} />;
+}
+
+function SampleInternationalBankPhone({ defaultIban }: { defaultIban?: string }) {
   const [iban, setIban] = useState(defaultIban ?? 'AE07 0331 2345 6789 0123 456');
   const ok = isIban(iban);
   return (

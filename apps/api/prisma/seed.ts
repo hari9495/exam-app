@@ -3,7 +3,7 @@ import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
-import { seedEmployees, seedFinanceEmployees } from './seed-employees';
+import { seedEmployeeCustomFields, seedEmployees, seedFinanceEmployees } from './seed-employees';
 import { seedGlobal } from './seed-global';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
@@ -68,7 +68,7 @@ export const PERMISSIONS = [
   { key: 'employee.identity.view', description: 'View identity and bank details (masked; full value with an audited reveal)' },
   { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
   { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
-  { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
+  { key: 'employee.aadhaar.view', description: 'See Special data: Aadhaar in full and the identity panel (every view recorded)' },
   // Step 3, the YukthiX platform console (P14 §7) and support sessions (P02 Q8). Platform keys are staff only.
   { key: 'platform.companies.view', description: 'See companies, their lifecycle and products (YukthiX staff)' },
   { key: 'platform.companies.manage', description: 'Create companies and change their lifecycle (YukthiX staff)' },
@@ -133,9 +133,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org.structure.view',
     'org.settings.manage',
     // P06: the System Admin runs job history (Internal facts) and is the YX-HIS-12 override; no pay (Q1).
+    // Founder 28 Oct 2026: job changes are approved by HR only, so not by the System Admin.
     'employee.profile.view',
     'employee.change.manage',
-    'employee.change.approve',
     'employee.change.retro',
     'employee.change.retro_override',
     // P02 §4.2 System Admin: hands out roles; Personal data (not Confidential) like the rest of the record.
@@ -352,6 +352,7 @@ async function main() {
         payroll: await userId('payroll@demo-org.test'),
         panel: await userId('panel@demo-org.test'),
       });
+      await seedEmployeeCustomFields(tx, demoOrg.id);
       await seedAccess(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
 
       // Local testing of every way in on the sign-in screen (README "Sign-in on your laptop"): codes by

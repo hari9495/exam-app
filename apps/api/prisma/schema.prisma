@@ -1434,6 +1434,8 @@ model CustomFieldDefinition {
   optionsJson    String?   @map("options_json") @db.Text
   required       Boolean   @default(false)
   showOnApply    Boolean   @default(false) @map("show_on_apply")
+  // Employee fields only: public | internal | personal | confidential (P02 §4.4).
+  dataClass      String    @default("internal") @map("data_class") @db.VarChar(20)
   position       Int       @default(0)
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -2467,6 +2469,7 @@ model Employee {
   familyName     String?  @map("family_name") @db.VarChar(100)
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
+  workPhone      String?  @map("work_phone") @db.VarChar(16)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2523,6 +2526,20 @@ model EmployeeChange {
 
   @@unique([organizationId, id])
   @@map("employee_changes")
+}
+
+/// PPL-04 "Save draft": a half-filled change, seen and edited only by whoever started it (forced RLS, support excluded).
+model EmployeeChangeDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  changeType     String?  @map("change_type") @db.VarChar(32)
+  form           Json
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy, updatedAt(sort: Desc)], map: "employee_change_drafts_owner_idx")
+  @@map("employee_change_drafts")
 }
 
 model EmployeeAssignment {
@@ -2639,6 +2656,21 @@ model PersonRole {
   @@map("person_roles")
 }
 
+/// PPL-34: HR's identity checks on a person after joining (attested against the original ID, or a fresh ID asked for).
+/// Special class; append-only. The day-1 check at joining stays on the pre-boarding.
+model PersonIdentityCheck {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  result         String   @db.VarChar(10)
+  note           String?  @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+
+  @@index([organizationId, personId, checkedAt], map: "person_identity_checks_person_idx")
+  @@map("person_identity_checks")
+}
+
 /// Append-only (the app role cannot update or delete it): YX-ORG-27.
 model PersonLinkLog {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -2688,6 +2720,7 @@ model EmployeeChangeBatch {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote   String?   @map("decision_note") @db.VarChar(1000)
   compCycleId    String?   @map("comp_cycle_id") @db.Uuid
+  letterTemplateId String? @map("letter_template_id") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
@@ -2706,6 +2739,8 @@ model RoleGrant {
   legalEntityId       String?   @map("legal_entity_id") @db.Uuid
   locationId          String?   @map("location_id") @db.Uuid
   departmentId        String?   @map("department_id") @db.Uuid
+  /// 'one_report': the one report the grant covers (a manager's pay access request).
+  employeeId          String?   @map("employee_id") @db.Uuid
   validFrom           DateTime  @map("valid_from") @db.Date
   validTo             DateTime? @map("valid_to") @db.Date
   status              String    @db.VarChar(10)
@@ -2719,6 +2754,35 @@ model RoleGrant {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("role_grants")
+}
+
+/// Founder 28 Oct 2026: a manager asks to see their team's pay; two different HR people approve; the grant ends by itself.
+model PayAccessRequest {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  requestedBy       String    @map("requested_by") @db.Uuid
+  managerEmployeeId String    @map("manager_employee_id") @db.Uuid
+  /// 'team' or 'person' (employeeId).
+  scope             String    @db.VarChar(10)
+  employeeId        String?   @map("employee_id") @db.Uuid
+  reason            String    @db.VarChar(500)
+  days              Int
+  status            String    @default("pending") @db.VarChar(10)
+  firstBy           String?   @map("first_by") @db.Uuid
+  firstAt           DateTime? @map("first_at") @db.Timestamptz(3)
+  firstNote         String?   @map("first_note") @db.VarChar(500)
+  decidedBy         String?   @map("decided_by") @db.Uuid
+  decidedAt         DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote      String?   @map("decision_note") @db.VarChar(500)
+  grantId           String?   @map("grant_id") @db.Uuid
+  validTo           DateTime? @map("valid_to") @db.Date
+  /// Ended before its last day (End access, or the grant revoked in Roles & access); validTo is then that day.
+  endedBy           String?   @map("ended_by") @db.Uuid
+  endedAt           DateTime? @map("ended_at") @db.Timestamptz(3)
+  endNote           String?   @map("end_note") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("pay_access_requests")
 }
 
 /// P02 §4.4 Personal class, kept apart from the employee row.
@@ -2736,6 +2800,7 @@ model EmployeePersonalDetails {
   postalCode     String?   @map("postal_code") @db.VarChar(12)
   country        String?   @db.Char(2)
   hideBirthday   Boolean   @default(false) @map("hide_birthday")
+  maritalStatus  String?   @map("marital_status") @db.VarChar(20)
   updatedBy      String?   @map("updated_by") @db.Uuid
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2760,10 +2825,36 @@ model EmployeeIdentifiers {
   esicEnc        String?  @map("esic_enc")
   esicHash       String?  @map("esic_hash") @db.Char(64)
   esicLast4      String?  @map("esic_last4") @db.Char(4)
+  passportEnc       String?   @map("passport_enc")
+  passportHash      String?   @map("passport_hash") @db.Char(64)
+  passportLast4     String?   @map("passport_last4") @db.Char(4)
+  passportExpiresOn DateTime? @map("passport_expires_on") @db.Date
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([organizationId, employeeId])
   @@map("employee_identifiers")
+}
+
+/// PPL-45: visas, permits and national IDs to work in a country (Confidential; the number sealed, last four in clear).
+model WorkAuthorisation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  kind           String    @db.VarChar(16)
+  country        String    @db.Char(2)
+  numberEnc      String    @map("number_enc")
+  numberLast4    String    @map("number_last4") @db.VarChar(4)
+  sponsor        String?   @db.VarChar(120)
+  occupation     String?   @db.VarChar(120)
+  issuedOn       DateTime? @map("issued_on") @db.Date
+  expiresOn      DateTime  @map("expires_on") @db.Date
+  remindedDays   Int[]     @default([]) @map("reminded_days")
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId], map: "work_authorisations_employee_idx")
+  @@index([expiresOn], map: "work_authorisations_expiry_idx")
+  @@map("work_authorisations")
 }
 
 /// M01 Q4: salary and reimbursement accounts as dated rows (closed, never edited).
@@ -2785,6 +2876,100 @@ model EmployeeBankAccount {
   @@map("employee_bank_accounts")
 }
 
+/// PPL-43: the compliance officer's designated persons (BFSI insider-trading rules).
+model BfsiDesignation {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  designatedOn   DateTime @map("designated_on") @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("bfsi_designations")
+}
+
+/// PPL-43: a designated person's annual declaration (holdings, related persons, conflicts sealed; attested with step-up).
+model BfsiDeclaration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  cycle          String    @db.Char(7)
+  holdingsEnc    String?   @map("holdings_enc")
+  relatedEnc     String?   @map("related_enc")
+  coi            String?   @db.VarChar(3)
+  coiEnc         String?   @map("coi_enc")
+  status         String    @default("draft") @db.VarChar(10)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(3)
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, cycle], map: "bfsi_declarations_cycle_key")
+  @@map("bfsi_declarations")
+}
+
+/// PPL-44: a designated person's trading pre-clearance, the officer's decision and the trade reported.
+model TradePreclearance {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String    @map("organization_id") @db.Uuid
+  employeeId             String    @map("employee_id") @db.Uuid
+  referenceNo            String    @map("reference_no") @db.VarChar(20)
+  security               String    @db.VarChar(200)
+  side                   String    @db.VarChar(4)
+  quantity               Int
+  value                  Decimal   @db.Decimal(16, 2)
+  status                 String    @default("pending") @db.VarChar(10)
+  requestedBy            String    @map("requested_by") @db.Uuid
+  decidedBy              String?   @map("decided_by") @db.Uuid
+  decidedAt              DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote           String?   @map("decision_note") @db.VarChar(500)
+  validUntil             DateTime? @map("valid_until") @db.Date
+  tradedOn               DateTime? @map("traded_on") @db.Date
+  tradedQuantity         Int?      @map("traded_quantity")
+  contractNoteDocumentId String?   @map("contract_note_document_id") @db.Uuid
+  reportedAt             DateTime? @map("reported_at") @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, referenceNo], map: "trade_preclearances_reference_key")
+  @@index([organizationId, employeeId, createdAt], map: "trade_preclearances_employee_idx")
+  @@map("trade_preclearances")
+}
+
+/// PPL-38: a voluntary disability declaration (Special); category, percentage and adjustments sealed, cleared on withdrawal.
+model DisabilityDeclaration {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  employeeId            String    @map("employee_id") @db.Uuid
+  answer                String    @db.VarChar(4)
+  detailsEnc            String?   @map("details_enc")
+  certificateDocumentId String?   @map("certificate_document_id") @db.Uuid
+  consentAt             DateTime  @map("consent_at") @db.Timestamptz(3)
+  withdrawnAt           DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId], map: "disability_declarations_employee_key")
+  @@map("disability_declarations")
+}
+
+/// PPL-46: a salary account abroad (IBAN, BIC, payout currency); dated rows like the Indian accounts, IBAN sealed.
+model EmployeeIntlBankAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  country        String    @db.Char(2)
+  ibanEnc        String    @map("iban_enc")
+  ibanHash       String    @map("iban_hash") @db.Char(64)
+  ibanLast4      String    @map("iban_last4") @db.Char(4)
+  bic            String    @db.VarChar(11)
+  currency       String    @db.Char(3)
+  validFrom      DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(3)
+  usableFrom     DateTime  @map("usable_from") @db.Timestamptz(3)
+  requestId      String?   @map("request_id") @db.Uuid
+
+  @@index([organizationId, ibanHash], map: "employee_intl_bank_accounts_hash_idx")
+  @@map("employee_intl_bank_accounts")
+}
+
 /// P02 §4.5: identity, bank and legal-name changes with old → new and a second person's approval.
 model EmployeeProfileRequest {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -2794,8 +2979,11 @@ model EmployeeProfileRequest {
   proposedEnc     String    @map("proposed_enc")
   proposedDisplay Json      @map("proposed_display")
   currentDisplay  Json?     @map("current_display")
-  reason          String    @db.VarChar(500)
+  reason          String?   @db.VarChar(500)
   overrideReason  String?   @map("override_reason") @db.VarChar(500)
+  /// PPL-32: the proof on the person's record, and the day a new legal name took effect.
+  proofDocumentId String?   @map("proof_document_id") @db.Uuid
+  effectiveOn     DateTime? @map("effective_on") @db.Date
   status          String    @default("pending") @db.VarChar(10)
   requestedBy     String    @map("requested_by") @db.Uuid
   decidedBy       String?   @map("decided_by") @db.Uuid
@@ -5345,6 +5533,27 @@ model ExchangeFileLink {
   @@map("exchange_file_links")
 }
 
+/// PPL-30: an employee's expiring read-only link to one of their own issued letters or pay documents (token hashed).
+model DocumentShare {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  source         String    @db.VarChar(10)
+  sourceId       String    @map("source_id") @db.Uuid
+  employeeId     String?   @map("employee_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  tokenHash      String    @unique(map: "document_shares_token_key") @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  opens          Int       @default(0)
+  lastOpenedAt   DateTime? @map("last_opened_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, userId, expiresAt], map: "document_shares_owner_idx")
+  @@map("document_shares")
+}
+
 model PayDocument {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String    @map("organization_id") @db.Uuid
@@ -6050,6 +6259,10 @@ model LetterTemplate {
   requiresApproval Boolean   @map("requires_approval")
   personSigns      Boolean   @map("person_signs")
   companyDsc       Boolean   @default(false) @map("company_dsc")
+  /// A person holds one issued letter of this type: another is refused unless it is a correction (company policy).
+  onePerPerson     Boolean   @default(false) @map("one_per_person")
+  /// The YukthiX starter revision it was made from (starters only): an older one is offered the new revision.
+  starterRevision  Int?      @map("starter_revision") @db.SmallInt
   version          Int       @default(1)
   status           String    @db.VarChar(10)
   previewViewedBy  String?   @map("preview_viewed_by") @db.Uuid
@@ -6080,6 +6293,8 @@ model LetterIssue {
   letterType       String    @map("letter_type") @db.VarChar(40)
   title            String    @db.VarChar(150)
   personId         String    @map("person_id") @db.Uuid
+  /// The employment the letter is for ("one per person" counts per employment); null while the person is still joining.
+  employmentId     String?   @map("employment_id") @db.Uuid
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
   subjectType      String?   @map("subject_type") @db.VarChar(12)
   subjectId        String?   @map("subject_id") @db.Uuid
@@ -6100,6 +6315,8 @@ model LetterIssue {
   acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(3)
   acceptanceFileId String?   @map("acceptance_file_id") @db.Uuid
   renderError      String?   @map("render_error") @db.VarChar(300)
+  /// PPL-15: why HR discarded a drafted letter (the row is kept for the audit).
+  discardReason    String?   @map("discard_reason") @db.VarChar(500)
   requestedBy      String?   @map("requested_by") @db.Uuid
   issuedBy         String?   @map("issued_by") @db.Uuid
   issuedAt         DateTime? @map("issued_at") @db.Timestamptz(3)
@@ -6162,6 +6379,8 @@ model ExitCase {
   changePayload        Json?     @map("change_payload")
   acceptedAt           DateTime? @map("accepted_at") @db.Timestamptz(3)
   withdrawnAt          DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  withdrawnBy          String?   @map("withdrawn_by") @db.Uuid
+  withdrawalReason     String?   @map("withdrawal_reason") @db.VarChar(500)
   lettersHeld          Boolean   @default(false) @map("letters_held")
   lwdNotifiedOn        DateTime? @map("lwd_notified_on") @db.Date
   settledOutsideOn     DateTime? @map("settled_outside_on") @db.Date
@@ -6170,6 +6389,8 @@ model ExitCase {
   retrenchment         Json?
   irPermissionId       String?   @map("ir_permission_id") @db.Uuid
   vrsSchemeId          String?   @map("vrs_scheme_id") @db.Uuid
+  /// PPL-23: a death in service's compassionate contact for the family (an HR user).
+  familyContactUserId  String?   @map("family_contact_user_id") @db.Uuid
   /// M06 PM8 (§4.1 change 4): an exit opened from an improvement plan links back to it.
   sourceType           String?   @map("source_type") @db.VarChar(16)
   sourceId             String?   @map("source_id") @db.Uuid
@@ -6377,17 +6598,56 @@ model JoinerBatch {
 }
 
 model EmployeeNomination {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  scheme         String    @db.VarChar(12)
+  name           String    @db.VarChar(100)
+  relation       String    @db.VarChar(40)
+  sharePercent   Decimal   @map("share_percent") @db.Decimal(5, 2)
+  source         String    @db.VarChar(12)
+  /// PPL-03: the family member nominated (null on joiner rows from before).
+  familyMemberId String?   @map("family_member_id") @db.Uuid
+  /// Set when a later review replaced this nomination.
+  supersededAt   DateTime? @map("superseded_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("employee_nominations")
+}
+
+/// PPL-03 family (Personal class, P02 §4.4); never deleted, a removal stamps removedAt.
+model EmployeeFamilyMember {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  relation       String    @db.VarChar(40)
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  dependant      Boolean   @default(false)
+  position       Int       @default(0) @db.SmallInt
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, id], map: "employee_family_members_org_employee_id_key")
+  @@map("employee_family_members")
+}
+
+/// PPL-03 emergency contacts (Personal class), in calling order.
+model EmployeeEmergencyContact {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   employeeId     String   @map("employee_id") @db.Uuid
-  scheme         String   @db.VarChar(12)
   name           String   @db.VarChar(100)
   relation       String   @db.VarChar(40)
-  sharePercent   Decimal  @map("share_percent") @db.Decimal(5, 2)
-  source         String   @db.VarChar(12)
+  phone          String   @db.VarChar(16)
+  position       Int      @db.SmallInt
+  updatedBy      String?  @map("updated_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  @@map("employee_nominations")
+  @@unique([organizationId, employeeId, position], map: "employee_emergency_contacts_position_key")
+  @@map("employee_emergency_contacts")
 }
 
 model ExitPayee {
@@ -6948,10 +7208,23 @@ model PayrollRun {
   postedAt       DateTime? @map("posted_at") @db.Timestamptz(3)
   totals         Json?
   voidReason     String?   @map("void_reason") @db.VarChar(500)
+  /// PPL-22: "FNF-2026-0041" for F&F runs (payroll_run_counters), null for other runs.
+  reference      String?   @db.VarChar(20)
   version        Int       @default(1)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, reference])
   @@map("payroll_runs")
+}
+
+model PayrollRunCounter {
+  organizationId String @map("organization_id") @db.Uuid
+  kind           String @db.VarChar(12)
+  year           Int    @db.SmallInt
+  lastNo         Int    @default(0) @map("last_no")
+
+  @@id([organizationId, kind, year])
+  @@map("payroll_run_counters")
 }
 
 model RunEmployee {
@@ -9156,6 +9429,13 @@ model Union {
   legalEntityId  String   @map("legal_entity_id") @db.Uuid
   name           String   @db.VarChar(200)
   registrationNo String?  @map("registration_no") @db.VarChar(60)
+  /// PPL-39 union register: the establishment, recognition and basis, its period and office bearers.
+  locationId     String?   @map("location_id") @db.Uuid
+  recognition    String    @default("not_recognised") @db.VarChar(16)
+  basis          String?   @db.VarChar(200)
+  validFrom      DateTime? @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  bearers        String?   @db.VarChar(500)
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -9959,6 +10239,148 @@ model HomeSnapshot {
   @@map("home_snapshots")
 }
 
+/// PPL-41: colleagues who volunteer as buddies, and how many joiners each looks after at a time.
+model BuddyPool {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  cap            Int      @default(2) @db.SmallInt
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("buddy_pool")
+}
+
+/// PPL-26: a critical position and its nominated successors (Confidential, succession.manage).
+model SuccessionPosition {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  title               String   @db.VarChar(120)
+  incumbentEmployeeId String?  @map("incumbent_employee_id") @db.Uuid
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("succession_positions")
+}
+
+model Successor {
+  organizationId String   @map("organization_id") @db.Uuid
+  positionId     String   @map("position_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  /// now · 1_2y · 3y
+  readiness      String   @db.VarChar(8)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([positionId, employeeId])
+  @@index([organizationId], map: "successors_org_idx")
+  @@map("successors")
+}
+
+/// PPL-09: a bulk move inside a legal entity or between legal entities, sent once, approved once by someone else.
+model Restructure {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// merge · close · demerge · within
+  kind           String    @db.VarChar(8)
+  fromEntityId   String    @map("from_entity_id") @db.Uuid
+  intoEntityId   String?   @map("into_entity_id") @db.Uuid
+  effectiveOn    DateTime  @map("effective_on") @db.Date
+  plan           Json
+  reason         String    @db.VarChar(500)
+  overrideReason String?   @map("override_reason") @db.VarChar(500)
+  /// pending · scheduled (approved, runs on the effective date) · done · rejected · cancelled
+  status         String    @default("pending") @db.VarChar(10)
+  requestedBy    String    @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(500)
+  ranAt          DateTime? @map("ran_at") @db.Timestamptz(3)
+  moved          Int       @default(0)
+  failed         Int       @default(0)
+  version        Int       @default(1)
+
+  @@unique([organizationId, id], map: "restructures_org_id_key")
+  @@index([organizationId, status], map: "restructures_org_status_idx")
+  @@map("restructures")
+}
+
+model RestructurePerson {
+  organizationId  String  @map("organization_id") @db.Uuid
+  restructureId   String  @map("restructure_id") @db.Uuid
+  employeeId      String  @map("employee_id") @db.Uuid
+  employmentId    String  @map("employment_id") @db.Uuid
+  options         Json    @default("{}")
+  /// pending · moved · failed · left_out
+  status          String  @default("pending") @db.VarChar(8)
+  failReason      String? @map("fail_reason") @db.VarChar(500)
+  newEmploymentId String? @map("new_employment_id") @db.Uuid
+  changeId        String? @map("change_id") @db.Uuid
+  result          Json?
+
+  @@id([restructureId, employeeId])
+  @@index([organizationId], map: "restructure_people_org_idx")
+  @@map("restructure_people")
+}
+
+/// PPL-10: what still has to happen for one person after a move between legal entities.
+model ContinuityItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  restructureId  String    @map("restructure_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  /// The entity the person moved into.
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  key            String    @db.VarChar(20)
+  title          String    @db.VarChar(300)
+  owner          String    @db.VarChar(20)
+  dueOn          DateTime? @map("due_on") @db.Date
+  status         String    @default("open") @db.VarChar(8)
+  note           String?   @db.VarChar(300)
+  doneBy         String?   @map("done_by") @db.Uuid
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@unique([restructureId, employeeId, key], map: "continuity_items_key")
+  @@index([organizationId, legalEntityId, status], map: "continuity_items_open_idx")
+  @@map("continuity_items")
+}
+
+/// PPL-09 "Save and exit": a half-planned restructure, seen and changed only by its creator. RLS in migration 20261204000001_restructure_drafts.
+model RestructureDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  title          String   @db.VarChar(200)
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy, updatedAt], map: "restructure_drafts_owner_idx")
+  @@map("restructure_drafts")
+}
+
+/// PPL-07 "Save and exit": an employee import kept for the person who saved it. Deleted after 30 days.
+model EmployeeImportDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  fileName       String   @map("file_name") @db.VarChar(200)
+  rowCount       Int      @map("row_count")
+  /// upload · map · validate · review
+  step           String   @db.VarChar(20)
+  /// The file's columns and rows, the matching and the fixes, sealed as one value.
+  payloadEnc     String   @map("payload_enc")
+  savedAt        DateTime @default(now()) @map("saved_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId], map: "employee_import_drafts_owner_key")
+  @@index([expiresAt], map: "employee_import_drafts_expires_idx")
+  @@map("employee_import_drafts")
+}
+
 // ---- Nudge (PLT-02 Team today, 19 Oct 2026). Key, check, RLS and grants in migration 20261202000002_nudges. ----
 
 model Nudge {
@@ -9972,4 +10394,40 @@ model Nudge {
 
   @@unique([organizationId, employeeId, item, onDay], map: "nudges_once_a_day_key")
   @@map("nudges")
+}
+
+// ---- PPL-42 re-verification cycles (migration 20261204000000_reverification). RLS lives in the migration.
+
+model ReverificationRule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String?   @map("legal_entity_id") @db.Uuid
+  typeKey        String    @map("type_key") @db.VarChar(40)
+  everyMonths    Int       @map("every_months")
+  departmentIds  String[]  @default([]) @map("department_ids") @db.Uuid
+  designationIds String[]  @default([]) @map("designation_ids") @db.Uuid
+  onRoleChange   Boolean   @default(false) @map("on_role_change")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("reverification_rules")
+}
+
+model ReverificationAsk {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  ruleId         String    @map("rule_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  documentId     String    @map("document_id") @db.Uuid
+  dueOn          DateTime  @map("due_on") @db.Date
+  lastVerified   DateTime? @map("last_verified") @db.Date
+  askedAt        DateTime  @default(now()) @map("asked_at") @db.Timestamptz(3)
+  askedBy        String?   @map("asked_by") @db.Uuid
+  remindedOn     DateTime? @map("reminded_on") @db.Date
+
+  @@unique([organizationId, ruleId, employeeId, dueOn], map: "reverification_asks_once_key")
+  @@map("reverification_asks")
 }

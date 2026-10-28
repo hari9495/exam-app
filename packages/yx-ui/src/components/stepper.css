@@ -2,6 +2,15 @@
 .yx-stepper__review-step { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-stepper { display: grid; grid-template-columns: calc(var(--yx-space-16) * 4 + var(--yx-space-8)) minmax(0, 1fr); gap: var(--yx-space-8); color: var(--yx-color-text); font-size: var(--yx-text-body); line-height: var(--yx-leading-body); }
 .yx-stepper[data-layout="mobile"] { grid-template-columns: minmax(0, 1fr); gap: var(--yx-space-4); }
+/* Horizontal: steps across the top, the wizard fills the content area, the step scrolls in its own box (founder 28 Oct 2026). */
+.yx-shell__content > .yx-screen:has(> .yx-stepper[data-layout="horizontal"]) { height: 100%; }
+.yx-stepper[data-layout="horizontal"] { flex: 1; min-height: calc(var(--yx-space-16) * 5); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--yx-space-4); }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__list { flex-direction: row; gap: var(--yx-space-2); }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__item { flex: 1 1 0; min-width: 0; }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__item::after, .yx-stepper[data-layout="horizontal"] .yx-stepper__desc { display: none; }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__main { max-width: none; min-height: 0; }
+/* The padding keeps focus rings inside the scroll box; the negative margin keeps the edges where they were. */
+.yx-stepper[data-layout="horizontal"] .yx-stepper__panel:not([hidden]) { flex: 1; min-height: 0; overflow-y: auto; padding: var(--yx-space-1); margin: calc(var(--yx-space-1) * -1); }
 .yx-stepper__pagetitle { grid-column: 1 / -1; margin: 0 0 calc(var(--yx-space-4) * -1); }
 .yx-stepper__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .yx-stepper__item { position: relative; }
@@ -17,10 +26,12 @@
 .yx-stepper__item[data-status="current"] .yx-stepper__marker { border-color: var(--yx-color-action-primary); background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); }
 .yx-stepper__item[data-status="done"] .yx-stepper__marker { border-color: var(--yx-color-success-border); background: var(--yx-color-success-bg); color: var(--yx-color-success-text); }
 .yx-stepper__item[data-status="error"] .yx-stepper__marker { border-color: var(--yx-color-danger-border); background: var(--yx-color-danger-bg); color: var(--yx-color-danger-text); }
+.yx-stepper__item[data-status="open"] .yx-stepper__marker { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); color: var(--yx-color-warning-text); }
 .yx-stepper__item[data-status="locked"] .yx-stepper__marker { border-style: dashed; color: var(--yx-color-text-muted); }
+.yx-stepper__item[data-status="stopped"] .yx-stepper__marker { color: var(--yx-color-text-muted); }
 .yx-stepper__text { display: flex; flex-direction: column; min-width: 0; }
 .yx-stepper__title { font-weight: var(--yx-weight-medium); }
-.yx-stepper__item[data-status="locked"] .yx-stepper__title, .yx-stepper__item[data-status="todo"] .yx-stepper__title { color: var(--yx-color-text-secondary); }
+.yx-stepper__item[data-status="locked"] .yx-stepper__title, .yx-stepper__item[data-status="todo"] .yx-stepper__title, .yx-stepper__item[data-status="stopped"] .yx-stepper__title { color: var(--yx-color-text-secondary); }
 .yx-stepper__desc, .yx-stepper__status { font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
 .yx-stepper__status { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
 .yx-stepper__item[data-status="done"] .yx-stepper__status { color: var(--yx-color-success-text); }
@@ -93,4 +104,4 @@
 }
 
 /* Why the next button is disabled: plain information (neutral), always right beside that button, wrapping inside its own space. */
-.yx-stepper__blocked { flex: 1 1 calc(var(--yx-space-16) * 3); min-width: 0; text-align: end; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }
+.yx-stepper__blocked { flex: 0 1 auto; min-width: 0; text-align: end; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }

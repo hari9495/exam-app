@@ -51,12 +51,13 @@ export function PeerPanel(p: PeerPanelProps) {
   const { busy, error, run } = useRun();
   const [adding, setAdding] = useState(false);
   const [who, setWho] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const [chosen, setChosen] = useState<PersonOption | null>(null);
   const [rel, setRel] = useState<Nomination['relationship']>('peer');
   if (!p.data.peer) return null;
   const live = p.data.nominations.filter((n) => n.status !== 'withdrawn' && n.status !== 'declined');
   return (
-    <Card title="Feedback from colleagues" actions={(p.data.can.propose || p.data.can.add) && <Button icon={Plus} onClick={() => setAdding(true)}>{p.data.can.propose ? 'Suggest someone' : 'Ask someone'}</Button>}>
+    <Card title="Feedback from colleagues" actions={(p.data.can.propose || p.data.can.add) && <Button icon={Plus} onClick={() => (setTried(false), setAdding(true))}>{p.data.can.propose ? 'Suggest someone' : 'Ask someone'}</Button>}>
       <Text as="p" tone="secondary">{`${p.data.peer.minNominees} to ${p.data.peer.maxNominees} people, by ${dateText(p.data.peer.dueOn)}. Their answers are anonymous, shown only as a group, and do not count towards the rating.`}</Text>
       {error && (
         <InlineAlert tone="danger" title="That didn't work">
@@ -117,14 +118,15 @@ export function PeerPanel(p: PeerPanelProps) {
           size="md"
           title={p.data.can.propose ? 'Suggest someone to give feedback' : 'Ask someone to give feedback'}
           confirmLabel={p.data.can.propose ? 'Suggest' : 'Ask'}
-          confirmDisabled={!who}
           onConfirm={async () => {
+            setTried(true);
+            if (!who) return false;
             await p.onNominate(who!, rel);
             setAdding(false);
             setWho(null);
           }}
         >
-          <FormField id="nm-who" label="Who" required helper={p.data.can.propose ? 'Your manager approves it.' : undefined}>
+          <FormField id="nm-who" label="Who" required error={tried && !who ? 'Choose the person.' : null} helper={p.data.can.propose ? 'Your manager approves it.' : undefined}>
             <PersonPicker
               aria-label="Who"
               value={who}
@@ -288,6 +290,7 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
   const [adding, setAdding] = useState(false);
   const [a, setA] = useState<PersonOption | null>(null);
   const [b, setB] = useState<PersonOption | null>(null);
+  const [tried, setTried] = useState(false);
   const [reason, setReason] = useState<ReviewerBlock['reasonCode']>('conflict');
   const [until, setUntil] = useState<Date | null>(null);
   const pick = (chosen: PersonOption | null) => (chosen && !p.people.some((x) => x.id === chosen.id) ? [chosen, ...p.people] : p.people);
@@ -299,7 +302,7 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
       onRetry={p.onRetry}
       what="reviewer blocks"
       actions={
-        <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+        <Button variant="primary" icon={Plus} onClick={() => (setTried(false), setAdding(true))}>
           Block a pair
         </Button>
       }
@@ -334,16 +337,17 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
           size="md"
           title="Block a pair from reviewing each other"
           confirmLabel="Block"
-          confirmDisabled={!a || !b || a.id === b.id}
           onConfirm={async () => {
+            setTried(true);
+            if (!a || !b || a.id === b.id) return false;
             await p.onBlock({ employeeA: a!.id, employeeB: b!.id, reasonCode: reason, untilOn: until ? dayKey(until) : null });
             setAdding(false);
           }}
         >
-          <FormField id="rb-a" label="One person" required>
+          <FormField id="rb-a" label="One person" required error={tried && !a ? 'Choose the first person.' : null}>
             <PersonPicker aria-label="One person" value={a?.id ?? null} onChange={(id) => setA(pick(a).find((x) => x.id === id) ?? null)} people={pick(a)} onSearchChange={p.onSearch} />
           </FormField>
-          <FormField id="rb-b" label="The other person" required>
+          <FormField id="rb-b" label="The other person" required error={!tried ? null : !b ? 'Choose the other person.' : a && a.id === b.id ? 'Choose a different person.' : null}>
             <PersonPicker aria-label="The other person" value={b?.id ?? null} onChange={(id) => setB(pick(b).find((x) => x.id === id) ?? null)} people={pick(b)} onSearchChange={p.onSearch} />
           </FormField>
           <FormField id="rb-reason" label="Reason (only HR sees it)">

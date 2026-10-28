@@ -4,10 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
-import { ProfileScreen, type ProfileScreenProps } from './profile';
+import { CancelDialog, ChangeDialog, PersonalDialog } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
-import { AccessLogScreen } from './access-log';
-import { ACCESS_LOG, EFFECTIVE, GRANTS, PROFILE_MANAGER, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
+import { EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
 const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
@@ -88,7 +87,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('Location: Hosur plant')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Revoke' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Revoke' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onRevoke).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), 'Moved to Chennai');
     await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     expect(p.onRevoke).toHaveBeenCalledWith('g-1', 'Moved to Chennai');
@@ -99,7 +100,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('System Admins now: Ramesh Iyer.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Make System Admin' }));
     const dialog = await screen.findByRole('dialog', { name: 'Make Anitha Rao a System Admin?' });
-    expect(within(dialog).getByRole('button', { name: 'Make System Admin' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onSystemAdmin).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Runs HR and access');
     await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
     expect(p.onSystemAdmin).toHaveBeenCalledWith('u-anitha', true, 'Runs HR and access');
@@ -150,68 +153,22 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
   });
 });
 
-function profile(over: Partial<ProfileScreenProps> = {}) {
-  const props: ProfileScreenProps = {
-    state: 'ready',
-    profile: PROFILE_SELF,
-    states: [{ code: 'IN-KA', name: 'Karnataka' }],
-    requests: REQUESTS.filter((r) => r.employeeId === 'p-divya'),
-    onSavePersonal: ok(),
-    onReveal: vi.fn().mockResolvedValue('BQRPR4821K'),
-    onRequestChange: ok(),
-    onCancelRequest: ok(),
-    ...over,
-  };
-  render(
-    <ToastProvider>
-      <ProfileScreen {...props} />
-    </ToastProvider>,
-  );
-  return props;
-}
-
-describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
-  it('with no one in scope, says so instead of "Pick a person"', () => {
-    profile({ profile: null, people: [], onPickPerson: vi.fn(), requests: [] });
-    expect(screen.getByText('No profiles to show')).toBeInTheDocument();
-    expect(screen.queryByText('Pick a person')).toBeNull();
-  });
-
-  it('saving personal details sends only what changed and says so in a toast', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+describe('Profile dialogs (P02 §4.4–4.5; the person record PPL-03 opens them)', () => {
+  it('saving personal details sends the edited details', async () => {
+    const onSave = ok();
+    render(<PersonalDialog initial={PROFILE_SELF.personal!} states={[{ code: 'IN-KA', name: 'Karnataka' }]} onSave={onSave} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     const phone = within(dialog).getByRole('textbox', { name: /Personal phone/ });
     await ue.clear(phone);
     await ue.type(phone, '+91 98450 22233');
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(p.onSavePersonal).toHaveBeenCalledTimes(1));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-  });
-
-  it('a manager sees neither Personal nor identity details, and no pay', () => {
-    profile({ profile: PROFILE_MANAGER, requests: [] });
-    expect(screen.getByText('Personal details are for the person and HR with personal-data access.')).toBeInTheDocument();
-    expect(screen.getByText('Identity and bank details are for the person and payroll.')).toBeInTheDocument();
-    expect(screen.getByText('Pay is visible only with pay access.')).toBeInTheDocument();
-    expect(screen.queryByText('divya.r.home@mail.test')).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Show full/ })).toBeNull();
-  });
-
-  it('identifiers are masked; Show asks for the full value; Aadhaar has no Show without its grant (YX-SEC-08)', async () => {
-    const p = profile();
-    expect(screen.getByText('•••• 821K')).toBeInTheDocument();
-    expect(screen.getByText('•••• 0248')).toBeInTheDocument();
-    const shows = screen.getAllByRole('button', { name: /^Show full/ });
-    expect(shows).toHaveLength(3); // PAN, UAN, salary account; never Aadhaar here
-    await ue.click(shows[0]);
-    expect(p.onReveal).toHaveBeenCalledWith('pan');
-    expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0]).toMatchObject({ personalPhone: '+91 98450 22233', city: 'Bengaluru' });
   });
 
   it('a PAN change is checked before it is sent, then goes to approval', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Request a change' }));
+    const onRequest = ok();
+    render(<ChangeDialog pending={[]} onRequest={onRequest} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     await pick('What changes', 'PAN');
     const pan = within(dialog).getAllByRole('textbox')[0];
@@ -222,23 +179,23 @@ describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
     await ue.type(pan, 'bqrpr4822k');
     await ue.type(within(dialog).getAllByRole('textbox')[1], 'Typo on file');
     await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    expect(p.onRequestChange).toHaveBeenCalledWith({ kind: 'pan', value: { pan: 'BQRPR4822K' }, reason: 'Typo on file' });
+    expect(onRequest).toHaveBeenCalledWith({ kind: 'pan', value: { pan: 'BQRPR4822K' }, reason: 'Typo on file' });
   });
 
   it('a change already waiting can be withdrawn with a reason', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    const onCancel = ok();
+    render(<CancelDialog request={REQUESTS.find((r) => r.id === 'pr-1')!} onCancel={onCancel} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox'), 'Wrong account');
     await ue.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
-    expect(p.onCancelRequest).toHaveBeenCalledWith('pr-1', 'Wrong account');
+    expect(onCancel).toHaveBeenCalledWith('pr-1', 'Wrong account');
   });
 });
 
 describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
   it('a duplicate value needs a reason to approve anyway', async () => {
     const onApprove = vi.fn().mockRejectedValueOnce(coded('DUPLICATE_IDENTIFIER', 'Arjun Kulkarni (KF-0142) already has this Reimbursement bank account.')).mockResolvedValueOnce(undefined);
-    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Approve' }));
@@ -249,20 +206,26 @@ describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
     expect(onApprove).toHaveBeenLastCalledWith('pr-1', 'Joint account, checked');
   });
 
+  it('PPL-32: the approver opens the proof and sees the effective date; no proof says so', async () => {
+    const onProof = vi.fn(async () => {});
+    const { unmount } = render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], reason: null, proofDocumentId: 'd1', effectiveOn: '2026-10-01' }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/Reason given/)).toBeNull();
+    expect(within(dialog).getByText(/Effective from/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Open the proof' }));
+    expect(onProof).toHaveBeenCalledWith('d1');
+    unmount();
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Approve' })[0]);
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('No proof attached.')).toBeInTheDocument();
+  });
+
   it('a change you raised shows Profile, never Approve', () => {
-    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeInTheDocument();
-  });
-});
-
-describe('Who accessed my data (P02 §7)', () => {
-  it('lists the looks, or says the company turned the view off', () => {
-    const { unmount } = render(<AccessLogScreen state="ready" log={ACCESS_LOG} />);
-    expect(screen.getAllByText('Suresh Pillai').length).toBeGreaterThan(0);
-    unmount();
-    render(<AccessLogScreen state="ready" log={{ enabled: false, entries: [] }} />);
-    expect(screen.getByText('Your company has turned this view off')).toBeInTheDocument();
   });
 });
 

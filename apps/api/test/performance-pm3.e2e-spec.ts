@@ -123,6 +123,18 @@ describe('Performance batch PM3', () => {
     expect((await items('arjun', 'received')).map((x) => x.id)).not.toContain(b.id);
   });
 
+  it('the record counts feedback this quarter: the person, their manager chain and HR; recipient-only only for the person', async () => {
+    const counts = (who: Who) => api(who, 'get', `/feedback/employee/${emp.arjun}/counts`);
+    // From the test above: one private praise to Arjun stays (the recipient-only one was withdrawn).
+    const quiet = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Quietly: well done on the audit.', visibility: 'recipient_only' }).expect(201)).body as Item;
+    const own = (await counts('arjun').expect(200)).body as { received: number; given: number };
+    const mgr = (await counts('priya').expect(200)).body as { received: number; given: number };
+    expect(own.received).toBe(mgr.received + 1); // the recipient-only one counts for Arjun only
+    expect((await counts('head').expect(200)).body.received).toBe(mgr.received);
+    await counts('sita').expect(404); // a peer may not ask
+    await api('sita', 'post', `/feedback/${quiet.id}/withdraw`).expect(200);
+  });
+
   it('withdrawing ends after 24 hours', async () => {
     await inA((tx) => tx.feedbackItem.update({ where: { id: ids.praise }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } }));
     await api('sita', 'post', `/feedback/${ids.praise}/withdraw`).expect(409);
