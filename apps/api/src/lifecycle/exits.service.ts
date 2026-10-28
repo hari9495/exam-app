@@ -413,7 +413,8 @@ export class ExitsService implements OnModuleInit {
       if (!a.manage) throw new ForbiddenException('Only HR withdraws an exit.');
       if (k.initiatedBy !== 'company') throw new BadRequestException('Only the employee withdraws their resignation, from their own page.');
       if (!LIVE.includes(k.status)) throw new BadRequestException(k.status === 'withdrawn' ? 'This exit is already withdrawn.' : 'This exit is over and can no longer be withdrawn.');
-      if (iso(k.approvedLwd ?? k.standardLwd) <= todayIst()) throw new BadRequestException('The last working day has been reached, so this exit can no longer be withdrawn.');
+      // Founder 28 Oct 2026: like an employee's resignation, HR may withdraw up to and on the last working day.
+      if (iso(k.approvedLwd ?? k.standardLwd) < todayIst()) throw new BadRequestException('The last working day has passed, so this exit can no longer be withdrawn.');
       const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: k.employmentId } });
       if ((await fnfStateOf(tx, c.organizationId, k.id, e.legalEntityId))?.finalised) throw new BadRequestException('The full and final settlement is already finalised, so this exit can no longer be withdrawn.');
       await this.withdrawIn(tx, c, k.id, { userId: c.userId ?? null, reason: reason.trim() });

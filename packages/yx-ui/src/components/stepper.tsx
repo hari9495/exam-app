@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { AlertCircle, Check, ChevronDown, Circle, Clock, Lock } from 'lucide-react';
+import { AlertCircle, Ban, Check, ChevronDown, Circle, Clock, Lock } from 'lucide-react';
 import { Button, Link } from './button';
 import { Heading, Icon, type IconComponent } from './foundations';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
@@ -22,7 +22,7 @@ export function useNarrow(maxWidth = 767) {
 
 /* ------------------------------------------------------------------ Stepper (§19) */
 
-export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo' | 'open';
+export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo' | 'open' | 'stopped';
 
 export interface StepperStep {
   id: string;
@@ -30,8 +30,8 @@ export interface StepperStep {
   /** One short line under the title in the step list. */
   description?: string;
   /** Force a status. Otherwise a step is done once passed (a later step was reached), and to do until then. */
-  /** "open": visited but not finished ("Open · 4 of 6 signed off"), never shown as Done. */
-  status?: 'error' | 'locked' | 'done' | 'open';
+  /** "open": visited but not finished ("Open · 4 of 6 signed off"), never shown as Done. "stopped": the process ended before this step (a withdrawn exit); it can still be opened to read. */
+  status?: 'error' | 'locked' | 'done' | 'open' | 'stopped';
   /** Why the step is locked or what to fix: "Add company details first". */
   statusNote?: string;
   /** The fix for an error step ("Fix LWF registration"), shown as the button in its alert. */
@@ -82,6 +82,7 @@ const STATUS: Record<StepStatus, { icon: IconComponent; text: string }> = {
   locked: { icon: Lock, text: 'Locked' },
   todo: { icon: Circle, text: 'Not started' },
   open: { icon: Circle, text: 'Open' },
+  stopped: { icon: Ban, text: 'Stopped' },
 };
 
 /** Vertical wizard for processes with a real order (§19): onboarding, payroll run, company setup. */

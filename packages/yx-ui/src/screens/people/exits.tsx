@@ -298,8 +298,10 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
   const fnfDue = p.handoff?.current ? isoDay(p.handoff.current.wagesDueBy) : addWorkingDays(lwd, 2, []);
   const fnfLate = daysBetween(fnfDue, today) > 0 && !p.handoff?.settledOutside;
   const canSign = d.can.manage && ['accepted', 'cleared'].includes(d.status);
-  // HR undoes an exit HR started, until the last working day (the server also refuses once the F&F is finalised).
-  const canWithdraw = Boolean(p.onWithdraw) && d.can.manage && d.initiatedBy === 'company' && ['submitted', 'accepted', 'cleared'].includes(d.status) && lwd > today;
+  // HR undoes an exit HR started, up to and on the last working day like an employee's resignation (the server also refuses once the F&F is finalised).
+  const canWithdraw = Boolean(p.onWithdraw) && d.can.manage && d.initiatedBy === 'company' && ['submitted', 'accepted', 'cleared'].includes(d.status) && lwd >= today;
+  // A withdrawn exit: the steps after approval did not finish and never will.
+  const stopped = d.status === 'withdrawn' ? { status: 'stopped' as const, statusNote: 'exit withdrawn' } : {};
   const current = d.status === 'submitted' ? 'approval' : d.status === 'accepted' && d.clearance.some((c) => c.status === 'open') ? 'clearance' : d.status === 'accepted' && d.interview === 'sent' ? 'interview' : d.status === 'exited' || d.status === 'closed' ? 'documents' : 'fnf';
   const stepRow = (s: ExitStep): ChecklistRow => ({
     id: s.handler,
@@ -414,6 +416,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
             title: 'Clearance',
             // Items still open: the step stays "Open · 4 of 6 signed off", never "Done" because it was visited.
             ...(d.clearance.length && done < d.clearance.length ? { status: 'open' as const, statusNote: `${done} of ${d.clearance.length} signed off` } : {}),
+            ...stopped,
             summary: d.clearance.length ? `${done} of ${d.clearance.length} signed off` : 'Starts when the exit is accepted',
             content: d.clearance.length ? (
               <StatusChecklist
@@ -436,6 +439,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           {
             id: 'interview',
             title: 'Exit interview',
+            ...stopped,
             summary: d.interview === 'submitted' ? 'Done' : d.interview === 'sent' ? `Sent to ${first}, not done yet` : d.interview === 'skipped' ? 'Skipped' : 'Not sent',
             content: (
               <div className="yx-ppl__stack">
@@ -451,6 +455,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           {
             id: 'fnf',
             title: 'F&F',
+            ...stopped,
             summary: p.handoff?.settledOutside ? `Settled outside on ${formatDate(isoDay(p.handoff.settledOutside.on))}` : `Due ${formatDate(fnfDue)}`,
             content: (
               <div className="yx-ppl__stack">
@@ -471,6 +476,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
             summary: d.lettersHeld ? 'Letters held' : 'Relieving and experience letters',
             status: d.lettersHeld ? 'locked' : undefined,
             statusNote: d.lettersHeld ? 'Held by HR' : undefined,
+            ...stopped,
             content: letters.length ? (
               <StatusChecklist label="Exit documents" rows={letters.map(stepRow)} />
             ) : (

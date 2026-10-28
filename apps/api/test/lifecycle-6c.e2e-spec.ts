@@ -395,10 +395,14 @@ describe('Lifecycle batch 6c', () => {
     expect((await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: tRow.wfRequestId! } }))).status).toBe('withdrawn');
     expect(await inA((tx) => tx.wfTask.count({ where: { requestId: tRow.wfRequestId!, status: 'open' } }))).toBe(0);
 
-    // Refused: the last working day reached; the F&F finalised; an employee's resignation.
+    // Allowed on the last working day itself (as an employee's resignation); refused once it has passed.
     const late = await exit(await hireOne('Usha', 'EX-010'), 'retirement');
+    await inA((tx) => tx.exitCase.update({ where: { id: late.id }, data: { approvedLwd: new Date(`${addDays(today, -1)}T00:00:00Z`) } }));
+    expect((await withdraw('hr', late.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/last working day has passed/);
     await inA((tx) => tx.exitCase.update({ where: { id: late.id }, data: { approvedLwd: new Date(`${today}T00:00:00Z`) } }));
-    expect((await withdraw('hr', late.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/last working day/);
+    await withdraw('hr', late.id, { reason: 'Still the last day' }).expect(200);
+
+    // Refused: the F&F finalised; an employee's resignation.
     const paid = await exit(await hireOne('Vani', 'EX-011'), 'end_of_contract');
     await inA(async (tx) => {
       const e = await tx.employment.findFirstOrThrow({ where: { employeeId: paid.employeeId } });
