@@ -10885,6 +10885,8 @@ model LocationPing {
   lng            Decimal  @db.Decimal(9, 6)
   accuracyM      Int      @map("accuracy_m")
   flags          String[] @default([]) @db.VarChar(20)
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewedBy     String?   @map("reviewed_by") @db.Uuid
   clientRef      String   @map("client_ref") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -10917,6 +10919,7 @@ model FieldVisit {
   clientRef        String?   @map("client_ref") @db.Uuid
   createdBy        String?   @map("created_by") @db.Uuid
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  flags            String[]  @default([]) @db.VarChar(20)
   version          Int       @default(1)
 
   @@unique([organizationId, employeeId, clientRef], map: "field_visits_client_ref_key")
