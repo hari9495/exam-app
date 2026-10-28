@@ -1240,9 +1240,10 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
   );
   return (
     <PeopleFrame active="Restructure">
-      <PageHeader title={heading} description={`Moves ${moving} employments with one preview and one approval${closes ? ', then closes the old entity' : ''}.`} />
+      <PageHeader title={heading} description={`Moves ${moving} ${moving === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then closes the old entity' : ''}.`} />
       <Stepper
         title="Restructure"
+        layout="horizontal"
         current={step}
         onCurrentChange={setStep}
         finishLabel="Send for approval"
@@ -1256,44 +1257,51 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
             title: 'What moves',
             summary: `${moving} people · ${part ? (by === 'people' ? picked.join(', ') : locations.join(', ')) : 'Hosur plant and Chennai office'} · into ${INTO_ENTITY} · ${date}`,
             content: (
-              <div className="yx-ppl__form">
-                <FormField label="Action" required>
-                  <RadioGroup
-                    value={action}
-                    onChange={(v) => setAction(v as RestructureAction)}
-                    options={[
-                      { value: 'merge', label: 'Merge into another entity' },
-                      { value: 'close', label: 'Close the entity (transfers)' },
-                      { value: 'demerge', label: 'Move part of the entity to another one' },
-                      { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
-                    ]}
-                  />
-                </FormField>
-                <FormField label="From entity" required>
-                  <Select options={[{ value: 'tn', label: `${FROM_ENTITY} · 96 people` }]} value="tn" onChange={() => {}} />
-                </FormField>
-                <FormField label={action === 'close' ? 'Transfer people to' : 'Into entity'} required>
-                  <Select options={[{ value: 'ka', label: `${INTO_ENTITY} · 152 people` }]} value="ka" onChange={() => {}} />
-                </FormField>
-                {part && (
-                  <>
-                    <FormField label="Who moves" required>
-                      <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]))} options={[{ value: 'location', label: 'By location' }, { value: 'people', label: 'Pick people' }]} />
+              <div className="yx-ppl__stack">
+                <div className="yx-ppl__form-cols">
+                  <FormField label="Action" required>
+                    <RadioGroup
+                      value={action}
+                      onChange={(v) => setAction(v as RestructureAction)}
+                      options={[
+                        { value: 'merge', label: 'Merge into another entity' },
+                        { value: 'close', label: 'Close the entity (transfers)' },
+                        { value: 'demerge', label: 'Move part of the entity to another one' },
+                        { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
+                      ]}
+                    />
+                  </FormField>
+                  <div className="yx-ppl__form">
+                    <FormField label="From entity" required>
+                      <Select options={[{ value: 'tn', label: `${FROM_ENTITY} · 96 people` }]} value="tn" onChange={() => {}} />
                     </FormField>
-                    {by === 'location' ? (
-                      <FormField label="Locations" required helper="Everyone at the chosen locations moves.">
-                        <MultiSelect aria-label="Locations" placeholder="Locations" options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
+                    <FormField label={action === 'close' ? 'Transfer people to' : 'Into entity'} required>
+                      <Select options={[{ value: 'ka', label: `${INTO_ENTITY} · 152 people` }]} value="ka" onChange={() => {}} />
+                    </FormField>
+                  </div>
+                  {part && (
+                    <>
+                      <FormField label="Who moves" required>
+                        <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]))} options={[{ value: 'location', label: 'By location' }, { value: 'people', label: 'Pick people' }]} />
                       </FormField>
-                    ) : (
-                      <FormField label="People" required helper="Only the people you pick move.">
-                        <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" options={MOVE_PEOPLE.map((p) => ({ value: p.name, label: `${p.name} · ${p.code}`, description: p.location }))} value={picked} onChange={setPicked} />
-                      </FormField>
-                    )}
-                  </>
-                )}
-                <FormField label="Effective date" required>
-                  <DatePicker value={effective} onChange={setEffective} />
-                </FormField>
+                      {by === 'location' ? (
+                        <FormField label="Locations" required helper="Everyone at the chosen locations moves.">
+                          <MultiSelect aria-label="Locations" placeholder="Locations" options={Object.keys(MOVE_LOCATIONS).map((l) => ({ value: l, label: `${l} · ${MOVE_LOCATIONS[l]} people` }))} value={locations} onChange={setLocations} />
+                        </FormField>
+                      ) : (
+                        <FormField label="People" required helper="Only the people you pick move.">
+                          <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" options={MOVE_PEOPLE.map((p) => ({ value: p.name, label: `${p.name} · ${p.code}`, description: p.location }))} value={picked} onChange={setPicked} />
+                        </FormField>
+                      )}
+                    </>
+                  )}
+                  <FormField label="Effective date" required>
+                    <DatePicker value={effective} onChange={setEffective} />
+                  </FormField>
+                  <FormField label="Reason" required helper="Shown on every person's job history.">
+                    <TextArea rows={2} />
+                  </FormField>
+                </div>
                 {!part && (
                   <Card title={`Who moves (${moving})`}>
                     <dl className="yx-ppl__dl">
@@ -1319,7 +1327,7 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
             content: (
               <div className="yx-ppl__stack">
                 <Text as="p">Company defaults are selected for everyone. Change a default, or give one person their own option with a reason.</Text>
-                <div className="yx-ppl__form">
+                <div className="yx-ppl__form-cols">
                   {TRANSFER_DEFAULTS.map((o) => (
                     <FormField key={o.key} label={o.label}>
                       <Select options={o.options.map((v) => ({ value: v, label: v }))} value={defaults[o.key]} onChange={(v) => v && setDefaults({ ...defaults, [o.key]: v })} />

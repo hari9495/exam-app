@@ -2,6 +2,15 @@
 .yx-stepper__review-step { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-stepper { display: grid; grid-template-columns: calc(var(--yx-space-16) * 4 + var(--yx-space-8)) minmax(0, 1fr); gap: var(--yx-space-8); color: var(--yx-color-text); font-size: var(--yx-text-body); line-height: var(--yx-leading-body); }
 .yx-stepper[data-layout="mobile"] { grid-template-columns: minmax(0, 1fr); gap: var(--yx-space-4); }
+/* Horizontal: steps across the top, the wizard fills the content area, the step scrolls in its own box (founder 28 Oct 2026). */
+.yx-shell__content > .yx-screen:has(> .yx-stepper[data-layout="horizontal"]) { height: 100%; }
+.yx-stepper[data-layout="horizontal"] { flex: 1; min-height: calc(var(--yx-space-16) * 5); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--yx-space-4); }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__list { flex-direction: row; gap: var(--yx-space-2); }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__item { flex: 1 1 0; min-width: 0; }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__item::after, .yx-stepper[data-layout="horizontal"] .yx-stepper__desc { display: none; }
+.yx-stepper[data-layout="horizontal"] .yx-stepper__main { max-width: none; min-height: 0; }
+/* The padding keeps focus rings inside the scroll box; the negative margin keeps the edges where they were. */
+.yx-stepper[data-layout="horizontal"] .yx-stepper__panel:not([hidden]) { flex: 1; min-height: 0; overflow-y: auto; padding: var(--yx-space-1); margin: calc(var(--yx-space-1) * -1); }
 .yx-stepper__pagetitle { grid-column: 1 / -1; margin: 0 0 calc(var(--yx-space-4) * -1); }
 .yx-stepper__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .yx-stepper__item { position: relative; }

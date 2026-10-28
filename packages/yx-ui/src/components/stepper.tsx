@@ -63,8 +63,12 @@ export interface StepperProps {
   finishBlocked?: string;
   /** Why Continue can't run on the current step yet ("Upload a file first"). Disables it and says so beside it. */
   continueBlocked?: string;
-  /** Force the phone layout (stories, narrow panels). Default: below 768 px. */
-  layout?: 'auto' | 'mobile';
+  /**
+   * Force the phone layout (stories, narrow panels). Default: below 768 px.
+   * horizontal: the step list runs across the top and the wizard fills the rest of the page; a long step scrolls inside
+   * its own box with the footer in view, so the page fits without a page scroll bar (R-fit). Phone layout still applies below 1024 px.
+   */
+  layout?: 'auto' | 'mobile' | 'horizontal';
   /** Show the title as the page heading (h1) above the steps, for wizards that are the whole page. */
   showTitle?: boolean;
 }
@@ -193,7 +197,7 @@ export function Stepper({
   );
 
   return (
-    <div className="yx-stepper" data-layout={narrow ? 'mobile' : 'desktop'}>
+    <div className="yx-stepper" data-layout={narrow ? 'mobile' : layout === 'horizontal' ? 'horizontal' : 'desktop'}>
       {showTitle && (
         <Heading level={1} className="yx-stepper__pagetitle">
           {title}
