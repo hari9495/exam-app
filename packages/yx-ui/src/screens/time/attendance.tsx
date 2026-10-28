@@ -948,7 +948,7 @@ const COLS: { key: BoardStatus[]; title: string; tone: BadgeTone; hideEmpty?: bo
 ];
 const countOf = (people: TeamPerson[], keys: BoardStatus[]) => people.filter((p) => keys.includes(boardStatus(p))).length;
 const needsNudge = (p: TeamPerson) => boardStatus(p) === 'not_in' || p.status === 'missing';
-/** "No check-out 28 Sep" from the open exception. */
+/** "No check-out 28 Sep 2026" from the open exception. */
 const missedOutText = (p: TeamPerson) => {
   const x = EXCEPTIONS.find((e) => e.person === p.name && e.kind === 'Missing check-out' && e.status === 'Open');
   return x ? `No check-out ${shortDate(x.date)}` : 'No check-out yesterday';

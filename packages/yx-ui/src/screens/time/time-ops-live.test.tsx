@@ -34,7 +34,7 @@ describe('TIM-01 Today board (live)', () => {
     const live = board();
     render(<TodayBoardScreen live={live} />);
     expect(screen.getByRole('region', { name: 'Not checked in, 1' })).toBeInTheDocument();
-    expect(screen.getByText('No check-out 27 Oct')).toBeInTheDocument();
+    expect(screen.getByText('No check-out 27 Oct 2026')).toBeInTheDocument();
     expect(screen.getByText(/2 open exceptions block October payroll/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Nudge 1 person' }));
     await waitFor(() => expect(live.onNudge).toHaveBeenCalledWith('m'));
