@@ -357,6 +357,18 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
   });
 
+  it('an answered exit interview reads Done and opens while clearance is still open', async () => {
+    wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, interview: 'submitted' } })} />);
+    expect(screen.getByRole('button', { name: /Clearance/ })).toHaveTextContent(/0 of 1 signed off/);
+    const interview = screen.getByRole('button', { name: /Exit interview/ });
+    expect(interview).toHaveTextContent('Done');
+    await userEvent.click(interview);
+    expect(interview).toHaveAttribute('aria-current', 'step');
+    // Not answered yet: Open, never Not started, and still reachable.
+    wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, interview: 'sent' } })} />);
+    expect(screen.getAllByRole('button', { name: /Exit interview/ })[1]).toHaveTextContent(/Open · not answered yet/);
+  });
+
   it('a withdrawn exit shows its unfinished steps as Stopped, not In progress', () => {
     wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, initiatedBy: 'company', status: 'withdrawn', withdrawalReason: 'Started by mistake' } })} />);
     expect(screen.getAllByText(/Stopped · exit withdrawn/)).toHaveLength(4);

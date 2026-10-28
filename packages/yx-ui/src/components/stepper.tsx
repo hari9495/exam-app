@@ -71,6 +71,8 @@ export interface StepperProps {
   layout?: 'auto' | 'mobile' | 'horizontal';
   /** Show the title as the page heading (h1) above the steps, for wizards that are the whole page. */
   showTitle?: boolean;
+  /** A record shown as steps (an exit case), not a form: its parts run side by side, so any step can be opened. */
+  anyOrder?: boolean;
 }
 
 export const REVIEW_ID = 'review';
@@ -102,6 +104,7 @@ export function Stepper({
   continueBlocked,
   layout = 'auto',
   showTitle,
+  anyOrder = false,
 }: StepperProps) {
   const reviewTitle = review?.title ?? 'Review';
   const steps: StepperStep[] = review
@@ -124,8 +127,9 @@ export function Stepper({
   }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusOf = (s: StepperStep, i: number): StepStatus =>
-    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : i < Math.max(index, furthest) ? 'done' : 'todo');
-  const canOpen = (s: StepperStep, i: number) => s.status !== 'locked' && i <= Math.max(furthest, index);
+    // In any order, a step is never "done" just because a later one was opened: the record says what is done.
+    s.status === 'open' && i === index ? 'current' : s.status ?? (i === index ? 'current' : !anyOrder && i < Math.max(index, furthest) ? 'done' : 'todo');
+  const canOpen = (s: StepperStep, i: number) => s.status !== 'locked' && (anyOrder || i <= Math.max(furthest, index));
   // A locked step can't be opened from the list, from Continue or from Back (B7).
   const go = (i: number) => {
     if (steps[i]?.status === 'locked') return;

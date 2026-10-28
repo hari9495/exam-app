@@ -580,11 +580,12 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
         defaultCurrent={current}
         finishLabel="Close exit case"
         finishBlocked="Payroll closes the case once the F&F is settled."
+        anyOrder
         steps={[
           {
             id: 'approval',
             title: 'Approval and notice',
-            ...(d.status === 'withdrawn' ? { status: 'done' as const } : {}),
+            ...(d.status !== 'submitted' ? { status: 'done' as const } : {}),
             summary: d.status === 'submitted' ? 'Waiting for the manager and HR' : `Accepted · last working day ${formatDate(lwd)}`,
             content: (
               <div className="yx-ppl__stack">
@@ -606,7 +607,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
             id: 'clearance',
             title: 'Clearance',
             // Items still open: the step stays "Open · 4 of 6 signed off", never "Done" because it was visited.
-            ...(d.clearance.length && done < d.clearance.length ? { status: 'open' as const, statusNote: `${done} of ${d.clearance.length} signed off` } : {}),
+            ...(d.clearance.length && done < d.clearance.length ? { status: 'open' as const, statusNote: `${done} of ${d.clearance.length} signed off` } : d.clearance.length ? { status: 'done' as const } : {}),
             ...stopped,
             summary: d.clearance.length ? `${done} of ${d.clearance.length} signed off` : 'Starts when the exit is accepted',
             content: d.clearance.length ? (
@@ -630,6 +631,8 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           {
             id: 'interview',
             title: 'Exit interview',
+            // The interview runs beside clearance: answered is Done even while clearance is still open.
+            ...(d.interview === 'submitted' ? { status: 'done' as const } : d.interview === 'sent' ? { status: 'open' as const, statusNote: 'not answered yet' } : {}),
             ...stopped,
             summary: d.interview === 'submitted' ? 'Done' : d.interview === 'sent' ? `Sent to ${first}, not done yet` : d.interview === 'skipped' ? 'Skipped' : 'Not sent',
             content: (
@@ -792,14 +795,16 @@ export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', varia
         defaultCurrent={current}
         finishLabel="Close exit case"
         finishBlocked={blocked}
+        anyOrder
         steps={[
           {
             id: 'approval',
             title: 'Approval and notice',
+            status: 'done',
             summary: 'Accepted by Divya Raghunathan and HR on 22 Aug 2026',
             content: <ApprovalTimeline now={today} steps={[{ id: 'a', label: 'Manager', status: 'done', approver: 'Divya Raghunathan', at: new Date(2026, 7, 21) }, { id: 'b', label: 'HR', status: 'done', approver: 'Lakshmi Venkatesan', at: new Date(2026, 7, 22) }]} />,
           },
-          { id: 'clearance', title: 'Clearance', summary: '1 of 6 signed off', content: <StatusChecklist label="Clearance" rows={clearanceRows} /> },
+          { id: 'clearance', title: 'Clearance', status: 'open', statusNote: '1 of 6 signed off', summary: '1 of 6 signed off', content: <StatusChecklist label="Clearance" rows={clearanceRows} /> },
           {
             id: 'interview',
             title: 'Exit interview',
