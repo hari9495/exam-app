@@ -53,21 +53,6 @@ for (const todo = [...IN_STORIES]; todo.length; )
 // Known gaps when the guard came in (28 Oct 2026): live pages that render a component no story shows. Each needs a
 // design story (or the designed screen instead); remove the line when it has one. A stale line fails the test too.
 const KNOWN_UNDESIGNED: Record<string, string[]> = {
-  'Time: live screens built before design twins': [
-    'LeaveBalancesScreen @ (app)/time/balances/page.tsx',
-    'MyLeaveScreen @ (app)/time/leave/page.tsx',
-    'MusterScreen @ (app)/time/muster/page.tsx',
-    'MyOvertimeScreen @ (app)/time/overtime/page.tsx',
-    'OvertimeReviewScreen @ (app)/time/overtime-review/page.tsx',
-    'PayrollFeedScreen @ (app)/time/payroll-feed/page.tsx',
-    'PeriodsScreen @ (app)/time/periods/page.tsx',
-    'RosterPlannerScreen @ (app)/time/roster/page.tsx',
-    'TimeSetupScreen @ (app)/time/setup/page.tsx',
-    'MyShiftsScreen @ (app)/time/shifts/page.tsx',
-    'ShiftsSetupScreen @ (app)/time/shifts-setup/page.tsx',
-    'TeamLeaveScreen @ (app)/time/team/page.tsx',
-    'MyTimesheetScreen @ (app)/time/timesheet/page.tsx',
-  ],
   'Pay: live screens built before design twins': [
     'AuditScreen @ (app)/payroll/audit/page.tsx',
     'CompensationLiveScreen @ (app)/payroll/compensation/page.tsx',
