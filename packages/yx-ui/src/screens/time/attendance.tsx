@@ -6,7 +6,7 @@ import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, DayDate, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Pagination, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -49,7 +49,7 @@ import {
   type TeamPerson,
   type TimeUser,
 } from './time-data';
-import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, GeoMap, Kpis, SOURCE_LABEL, TimePage, codeText, type ClockCardProps, type DayCardBodyProps } from './time-kit';
+import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, GeoMap, Kpis, NoRecordState, SOURCE_LABEL, TimePage, codeText, type ClockCardProps, type DayCardBodyProps } from './time-kit';
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
@@ -861,7 +861,7 @@ function SampleAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openD
       <Drawer
         open={!!open}
         onOpenChange={(o) => !o && setOpenN(null)}
-        title={open ? `${open.date.toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(open.date)}` : ''}
+        title={open ? <DayDate date={open.date} /> : ''}
         subtitle={`${who} · day card`}
         size="lg"
       >
@@ -1227,7 +1227,8 @@ function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
     if (refused.length) say(refused[0], 'default');
   };
   const at = d ? new Date(d.at) : new Date();
-  const nowText = <span style={{ whiteSpace: 'nowrap' }}>{at.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'Asia/Kolkata' })} {formatDate(isoDay(d?.today ?? isoOf(at)))}, {fmt12(at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }))}</span>;
+  // House rule 8: the weekday is its own small label (DayDate), the date reads "29 Oct 2026", then the time.
+  const nowText = <span style={{ whiteSpace: 'nowrap' }}><DayDate date={isoDay(d?.today ?? isoOf(at))} /> · {fmt12(at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }))}</span>;
   const scope = !d ? '' : d.scope === 'team' ? `Your reports (${people.length})` : d.scope === 'company' ? `Everyone (${people.length})` : `The people you look after (${people.length})`;
   const state: ViewState = live.state === 'ready' ? (people.filter((p) => p.status !== 'off').length ? 'ready' : 'empty') : live.state === 'loading' ? 'loading' : 'error';
   if (live.state === 'no-access') return <TimePage active="Today"><PageHeader title="Today" /><NoAccessState grantedBy="HR" what="today's board" /></TimePage>;
@@ -2459,6 +2460,7 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
   if (state === 'loading') return <LoadingBlock rows={8} />;
   if (state === 'error') return <ErrorState title={`We couldn't load ${what}`} description="Check your connection and try again. Nothing has changed." onRetry={onRetry} />;
   if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what} />;
+  if (state === 'no-record') return <NoRecordState />;
   return <>{children}</>;
 }
 
@@ -2571,7 +2573,7 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
           </div>
         )}
       </LiveStates>
-      <Drawer open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? `${open.date.toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(open.date)}` : ''} subtitle="Your day card" size="lg">
+      <Drawer open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? <DayDate date={open.date} /> : ''} subtitle="Your day card" size="lg">
         {open && d && openOn && (
           <DayPanel
             key={openOn}
@@ -2759,6 +2761,14 @@ function NightWork({ night, live }: { night: MyNightWork; live: LiveMyAttendance
 const LIVE_MODE: Record<string, MusterRow['mode']> = { punch: 'Punch', assumed_present: 'Assumed present', timesheet: 'Timesheet' };
 
 /** Time › Muster, live (TIM-02): the muster design on the people in my scope; each cell opens the day card (TIM-03). */
+/** "Your team · 5 people, and you" / "Only you": the reports are counted apart from the viewer's own row. */
+function musterCount(d: Muster) {
+  const others = d.people.filter((p) => !p.me).length;
+  const me = d.people.some((p) => p.me);
+  if (!others) return me ? 'Only you: no one reports to you' : `${SCOPE_TEXT[d.scope]} · no one`;
+  return `${SCOPE_TEXT[d.scope]} · ${others} ${others === 1 ? 'person' : 'people'}${me ? ', and you' : ''}`;
+}
+
 function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const d = live.data;
   const narrow = useNarrow();
@@ -2833,7 +2843,8 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
     <TimePage active="Muster" user={HR_ADMIN}>
       <PageHeader
         title={`Muster · ${monthLong(live.month)}`}
-        description={d ? `${period?.entityName ? `${period.entityName} · ` : ''}${SCOPE_TEXT[d.scope]} · ${rows.length} ${rows.length === 1 ? 'person' : 'people'}` : undefined}
+        // The viewer's own row is on the muster on purpose (YX-AT-14: "(you)"); the count says so instead of adding it to the team.
+        description={d ? `${period?.entityName ? `${period.entityName} · ` : ''}${musterCount(d)}` : undefined}
         status={period ? <Badge tone={stage === 'open' ? 'success' : stage === 'frozen' ? 'warning' : 'neutral'}>{stage === 'open' ? 'Open' : stage === 'frozen' ? 'Inputs frozen' : 'Locked'}</Badge> : undefined}
         facts={
           period && stage !== 'locked' ? (
@@ -2993,7 +3004,10 @@ export interface LiveExceptions {
   /** Opened for one person (from their day or calendar). */
   defaultSearch?: string;
   musterHref?: string;
+  /** The server pages and filters the list (10,000 rows hold up); each change asks for the page again. */
+  onQuery: (q: ExceptionsQuery) => void;
 }
+export interface ExceptionsQuery { status: string[]; kind: string[]; search: string; page: number; pageSize: number }
 type LiveExceptionRow = ExceptionsList['rows'][number];
 
 /** A live row in the design's exception shape (the table, filters and resolve dialog read it). */
@@ -3026,13 +3040,15 @@ function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
   const [why, setWhy] = useState('');
   const [tried, setTried] = useState(false);
   const { busy, error, run, clearError } = useRun();
-  const shown = useMemo(() => {
-    const st = filters.find((f) => f.key === 'status');
-    const kind = filters.find((f) => f.key === 'kind');
-    const ok = (f: FilterValue | undefined, v: string) => !f || f.type !== 'multi' || f.values.length === 0 || f.values.includes(v);
-    return all.filter((r) => ok(st, r.status) && ok(kind, r.kind) && r.person.toLowerCase().includes(search.toLowerCase()));
-  }, [all, filters, search]);
-  const blocking = all.filter((r) => r.status !== 'Resolved' && r.blocking).length;
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const pick = (k: string) => { const f = filters.find((x) => x.key === k); return f && f.type === 'multi' ? f.values : []; };
+  // Filters, search and the page go to the server; a new filter starts again on page 1.
+  useEffect(() => {
+    live.onQuery({ status: pick('status'), kind: pick('kind'), search: search.trim(), page, pageSize });
+  }, [JSON.stringify(filters), search, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = all;
+  const blocking = d?.blocking ?? 0;
   const goMonth = (n: number) => {
     if (n > 0 && d && live.month >= d.today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
     setSelected([]);
@@ -3103,9 +3119,9 @@ function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
               { key: 'kind', label: 'Exception', type: 'multi', options: ['Missing check-out', 'Missing check-in', 'No attendance', 'No approved timesheet'].map((v) => ({ value: v, label: v })) },
             ]}
             value={filters}
-            onChange={setFilters}
+            onChange={(f) => { setFilters(f); setPage(1); }}
             search={search}
-            onSearchChange={setSearch}
+            onSearchChange={(x) => { setSearch(x); setPage(1); }}
             searchPlaceholder="Search people"
           />
           <DataTable
@@ -3115,8 +3131,8 @@ function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
             getRowId={(r) => r.id}
             state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
             onRetry={live.onRetry}
-            filtered={all.length > 0 && (filters.length > 0 || !!search)}
-            onClearFilters={() => { setFilters([]); setSearch(''); }}
+            filtered={!!search.trim() || pick('kind').length > 0}
+            onClearFilters={() => { setFilters([]); setSearch(''); setPage(1); }}
             empty={<EmptyState title="No open exceptions" description={`Every working day in ${monthLong(live.month)} has punches, leave or an approved request. Payroll is not blocked by attendance.`} action={live.musterHref ? <Button asChild><a href={live.musterHref}>Open muster</a></Button> : undefined} />}
             selectable={hr}
             isSelectable={(r) => (r.status === 'Open' ? true : r.status === 'Resolved' ? false : 'A request is waiting: decide it first')}
@@ -3134,6 +3150,8 @@ function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
               ) : null
             }
           />
+          {/* Server paging: the designed table shows one page; the count and the next page come from the server. */}
+          {(d?.total ?? 0) > pageSize && <Pagination page={page} pageSize={pageSize} total={d!.total} onPageChange={(x) => { setSelected([]); setPage(x); }} onPageSizeChange={(x) => { setPageSize(x); setPage(1); }} />}
         </>
       )}
       <ResolveDialog
