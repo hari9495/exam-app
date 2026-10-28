@@ -53,22 +53,6 @@ for (const todo = [...IN_STORIES]; todo.length; )
 // Known gaps when the guard came in (28 Oct 2026): live pages that render a component no story shows. Each needs a
 // design story (or the designed screen instead); remove the line when it has one. A stale line fails the test too.
 const KNOWN_UNDESIGNED: Record<string, string[]> = {
-  'Pay: live screens built before design twins': [
-    'AuditScreen @ (app)/payroll/audit/page.tsx',
-    'CompensationLiveScreen @ (app)/payroll/compensation/page.tsx',
-    'ComponentLibraryLiveScreen @ (app)/payroll/components/page.tsx',
-    'CoverageLiveScreen @ (app)/payroll/coverage/page.tsx',
-    'PayDocumentsScreen @ (app)/payroll/documents/page.tsx',
-    'ExchangeFilesScreen @ (app)/payroll/files/page.tsx',
-    'PayImportsScreen @ (app)/payroll/imports/page.tsx',
-    'PayGroupsScreen @ (app)/payroll/pay-groups/page.tsx',
-    'PayslipLayoutLiveScreen @ (app)/payroll/payslip-layout/page.tsx',
-    'PayPeriodsScreen @ (app)/payroll/periods/page.tsx',
-    'ReopenRequestsScreen @ (app)/payroll/reopen-requests/page.tsx',
-    'PaySetupScreen @ (app)/payroll/setup/page.tsx',
-    'StatutoryRulesScreen @ (app)/payroll/statutory-rules/page.tsx',
-    'TemplatesLiveScreen @ (app)/payroll/templates/page.tsx',
-  ],
   'Helpdesk: live screens built before design twins': [
     'CatalogScreen @ (app)/desk/catalog/page.tsx',
     'RequesterChatScreen @ (app)/desk/chat/page.tsx',
