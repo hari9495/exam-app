@@ -35,3 +35,17 @@ export const Withdraw: S = {
     await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Withdraw exit' }));
   },
 };
+/** After HR withdraws it: the reason on top, the unfinished steps Stopped and the clearance items Skipped. */
+export const Withdrawn: S = {
+  name: 'HR · withdrawn exit',
+  render: () => (
+    <ExitCaseWorkspace
+      today={TODAY}
+      live={{
+        state: 'ready',
+        data: { ...contract, status: 'withdrawn', interview: 'skipped', withdrawalReason: 'Contract was renewed last week', clearance: contract.clearance.map((c) => ({ ...c, status: 'waived', note: 'Exit withdrawn' })) },
+        today: '2026-10-09', onBack: () => {}, onNotice: noop, onHrFacts: noop, onSignOff: noop, onInterview: async () => ({ answers: {}, notes: null }) as never, onInterviewNotes: noop, checklistHref: () => '#', onWithdraw: noop,
+      }}
+    />
+  ),
+};

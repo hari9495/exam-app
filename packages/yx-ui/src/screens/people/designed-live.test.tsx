@@ -332,7 +332,7 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); // the page shows the toast
   });
 
-  it('no Withdraw exit for a resignation, without the key, or once the last day is reached', () => {
+  it('no Withdraw exit for a resignation, without the key, or once the last day has passed', () => {
     const company: ExitWorkspace = { ...base, initiatedBy: 'company', can: { manage: true, confidential: false, interview: false } };
     const { unmount } = wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...company, initiatedBy: 'employee' }, onWithdraw: vi.fn() })} />);
     expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
@@ -340,8 +340,18 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     const second = wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...company, can: { manage: false, confidential: false, interview: false } }, onWithdraw: vi.fn() })} />);
     expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
     second.unmount();
-    wrap(<ExitCaseWorkspace today={day('2026-10-31')} live={props({ data: company, today: '2026-10-31', onWithdraw: vi.fn() })} />);
+    // On the last working day (31 Oct) HR may still withdraw, as an employee may; the day after, not.
+    const onDay = wrap(<ExitCaseWorkspace today={day('2026-10-31')} live={props({ data: company, today: '2026-10-31', onWithdraw: vi.fn() })} />);
+    expect(screen.getByRole('button', { name: 'Withdraw exit' })).toBeInTheDocument();
+    onDay.unmount();
+    wrap(<ExitCaseWorkspace today={day('2026-11-01')} live={props({ data: company, today: '2026-11-01', onWithdraw: vi.fn() })} />);
     expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
+  });
+
+  it('a withdrawn exit shows its unfinished steps as Stopped, not In progress', () => {
+    wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, initiatedBy: 'company', status: 'withdrawn', withdrawalReason: 'Started by mistake' } })} />);
+    expect(screen.getAllByText(/Stopped · exit withdrawn/)).toHaveLength(4);
+    expect(screen.queryByText(/In progress/)).toBeNull();
   });
 
   it('Clearance: waiving needs a note', async () => {
