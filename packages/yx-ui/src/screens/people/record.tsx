@@ -516,12 +516,12 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 ) : payVisible ? (
                   <div className="yx-ppl__stack">
                     {payAccess?.state === 'active' && <PayAccessNote latest={payAccess} />}
-                    {/* PPL-50 as live: a manager with time-limited access still asks to see each time (R1). */}
-                    {payAccess?.state === 'active' && !payShown ? <PayReveal name={name} self={self} onShow={() => setPayShown(true)} /> : <PayTab persona={persona} self={self} international={international} />}
+                    {/* As live: every viewer, the employee too, asks to see pay each time (R1). */}
+                    {payShown ? <PayTab persona={persona} self={self} international={international} /> : <PayReveal name={name} self={self} onShow={() => setPayShown(true)} />}
                   </div>
                 ) : (
                   <div className="yx-ppl__stack">
-                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR (Lakshmi Venkatesan)" note="Pay needs a salary grant for your team." />
+                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR" note="Pay needs a salary grant for your team." />
                     <PayAccessNote latest={payAccess} onRequest={() => setAsking(true)} />
                     {asking && <PayAccessDialog person={{ id: 'e-arjun', name: ARJUN.name }} teamSize={6} defaultScope="team" days={30} onSubmit={async () => undefined} onClose={() => setAsking(false)} />}
                   </div>

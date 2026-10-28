@@ -75,6 +75,18 @@ describe('PayAccessNote (manager, Pay tab)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show pay' }));
     expect(screen.getByText('Annual CTC')).toBeInTheDocument();
   });
+  it('design, HR and the employee: pay waits for Show pay too; a manager without a grant reads the live wording', async () => {
+    const { unmount } = wrap(<PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="pay" />);
+    expect(screen.queryByText('Annual CTC')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Show pay' }));
+    expect(screen.getByText('Annual CTC')).toBeInTheDocument();
+    unmount();
+    const own = wrap(<PersonWorkspace persona="emp" relation="self" today={TODAY} defaultTab="pay" />);
+    expect(screen.getByText('Your pay is shown when you ask.')).toBeInTheDocument();
+    own.unmount();
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="pay" />);
+    expect(screen.getByText('Pay needs a salary grant for your team. Ask HR to give you access.')).toBeInTheDocument();
+  });
   it('nothing asked yet: Request access', () => {
     render(<PayAccessNote latest={null} onRequest={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Request access' })).toBeInTheDocument();
