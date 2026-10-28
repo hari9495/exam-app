@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { PortalScreen, PortalSignIn, type PortalMe } from '@yukthix/ui/lifecycle';
+import { PortalScreen, PortalSignInScreen, type PortalMe } from '@yukthix/ui/lifecycle';
 import type { LoadState } from '@yukthix/ui/org';
 import { apiFetch, apiFetchBlob } from '../../../../lib/api-client';
 import { saveBlob } from '../../../../lib/yx-pay';
+import { otpSignIn } from '../../../../lib/yx-portal';
 
 // The joining portal (T9-01, LIFE-2.01 / 2.02): a joiner signs in with a one-time code to their personal email and fills
 // in their forms, sends documents, gives background-check consent and accepts letters. The session lives in this tab
@@ -37,13 +38,17 @@ export default function YxJoinPortalPage() {
   };
   if (!token)
     return (
-      <PortalSignIn
-        company={org}
-        onCode={(email) => apiFetch(`${base}/code`, { method: 'POST', body: JSON.stringify({ email }) })}
-        onVerify={async (email, code) => {
-          const s = (await apiFetch(`${base}/verify`, { method: 'POST', body: JSON.stringify({ email, code }) })) as { token: string };
-          setState('loading');
-          setToken(s.token);
+      <PortalSignInScreen
+        tenant={org}
+        portal="Joining"
+        footer={{ privacy: 'Privacy notice for joiners (G-09)' }}
+        signIn={{
+          title: `Joining ${org}`,
+          intro: 'Sign in with the personal email you gave HR. We send you a one-time code.',
+          live: otpSignIn(base, (t) => {
+            setState('loading');
+            setToken(t);
+          }),
         }}
       />
     );

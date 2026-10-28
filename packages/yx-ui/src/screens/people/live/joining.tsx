@@ -256,52 +256,6 @@ export function JoinerPanel(p: JoinerPanelProps) {
 
 // ------------------------------------------------------------------------------------------ the pre-boarding portal
 
-export interface PortalSignInProps {
-  company: string;
-  /** The alumni login reuses this (lifecycle 6d). */
-  title?: string;
-  intro?: string;
-  onCode: (email: string) => Promise<unknown>;
-  onVerify: (email: string, code: string) => Promise<unknown>;
-}
-
-export function PortalSignIn(p: PortalSignInProps) {
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sent, setSent] = useState(false);
-  const { busy, error, run } = useRun();
-  return (
-    <div className="yx-auth__page">
-      <Card title={p.title ?? `Joining ${p.company}`}>
-        <Text as="p">{p.intro ?? 'Sign in with the personal email you gave HR. We send you a one-time code.'}</Text>
-        {error && (
-          <InlineAlert tone="danger" title="Not signed in">
-            {error}
-          </InlineAlert>
-        )}
-        <FormField id="ps-email" label="Personal email" required>
-          <TextField type="email" value={email} onChange={setEmail} autoComplete="email" disabled={sent} />
-        </FormField>
-        {sent ? (
-          <>
-            <FormField id="ps-code" label="Code" required helper="6 digits. It expires in a few minutes.">
-              <CodeField value={code} onChange={setCode} />
-            </FormField>
-            <Button variant="primary" loading={busy === 'v'} disabled={code.length !== 6} onClick={() => void run('v', () => p.onVerify(email.trim(), code))}>
-              Sign in
-            </Button>
-            <Button onClick={() => setSent(false)}>Use another email</Button>
-          </>
-        ) : (
-          <Button variant="primary" loading={busy === 'c'} disabled={!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())} onClick={() => void run('c', async () => { await p.onCode(email.trim()); setSent(true); })}>
-            Send me a code
-          </Button>
-        )}
-      </Card>
-    </div>
-  );
-}
-
 export interface PortalScreenProps {
   state: LoadState;
   onRetry?: () => void;

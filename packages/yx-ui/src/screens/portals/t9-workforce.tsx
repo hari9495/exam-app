@@ -5,7 +5,7 @@ import { Download, FileText, Lock, Send, Upload } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { FormField, FieldRow, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea, TextField, MaskedField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
@@ -32,7 +32,6 @@ import { BlockNote, ConsentPanel, Fact, FactRow, OtpInput, QrCode, StepDots, Ten
 import type { IcCase, Nominee, PortalDoc, PreItem, TrainerSession, WbCase } from './t9-data';
 import { useRun } from '../org/org-kit';
 import { LEGAL_LINKS } from '../auth/kit';
-import type { AlumniMe, Letter } from '../people/live/types';
 
 const fakeUpload = () => Promise.resolve();
 const uploaded = (name: string, status: UploadItem['status'] = 'done', error?: string): UploadItem => ({
@@ -525,40 +524,86 @@ export function PreboardingDocuments({ items }: { items: PreItem[] }) {
 /* ================================================================== */
 
 // T9-02
-/** The live alumni portal (LIFE-4.04): the letters HR issued, read-only, until the company's alumni period ends. */
+/** One document in the live portals: a letter HR issued, or a pay document (payslips, Form 16; other pay documents sit with the letters). */
+export interface LivePortalDoc {
+  id: string;
+  kind: 'Payslip' | 'Form 16' | 'Letter';
+  title: string;
+  /** YYYY-MM-DD. */
+  issuedOn: string;
+  /** Groups the list ("FY 2025-26"). */
+  period?: string;
+}
+
+/**
+ * The live alumni and nominee portals: the alumni login (LIFE-4.04, letters with payslips and Form 16) and the pay
+ * documents portal (YX-DOC-16 / 19). Read-only, until access ends. Dates are YYYY-MM-DD.
+ */
 export interface LiveAlumniPortal {
-  data: AlumniMe;
-  /** The personal email they signed in with. */
+  company: string;
+  /** The former employee (for a nominee: the person who died). */
+  name: string;
+  /** The email they signed in with. */
   email: string;
-  /** Today, YYYY-MM-DD. */
+  lastDay: string;
+  accessUntil: string;
   today: string;
-  onDownload: (l: Letter) => Promise<unknown>;
+  /** Null while loading. */
+  docs: LivePortalDoc[] | null;
+  /** Some documents could not load; the rest still show. */
+  loadError?: string | null;
+  onDownload: (doc: LivePortalDoc) => Promise<unknown>;
   onSignOut: () => void;
 }
 type AlumniPerson = { name: string; email: string; exitDate: Date; lastRole?: string; code?: string };
+type DocKind = 'Payslip' | 'Form 16' | 'Letter';
 export type AlumniPortalScreenProps =
-  | { tenant: string; accent?: string; person: AlumniPerson; docs: PortalDoc[]; today: Date; tab?: 'Payslip' | 'Form 16' | 'Letter'; live?: undefined }
-  | { accent?: string; live: LiveAlumniPortal };
+  | { tenant: string; accent?: string; person: AlumniPerson; docs: PortalDoc[]; today: Date; tab?: DocKind; live?: undefined }
+  | { accent?: string; tab?: DocKind; live: LiveAlumniPortal };
 
 const isoDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+const portalDocs = (docs: LivePortalDoc[]): PortalDoc[] => docs.map((x) => ({ id: x.id, kind: x.kind, title: x.title, period: x.period, issuedOn: isoDate(x.issuedOn) }));
+/** The live portals' download, busy state and refusal ("Not downloaded"). */
+function useLiveDownload(live: LiveAlumniPortal | undefined) {
+  const { busy, error, run } = useRun();
+  const onDownload = live ? (id: string) => void run(id, () => live.onDownload(live.docs!.find((x) => x.id === id)!)) : undefined;
+  return { busy, error, onDownload };
+}
+function LiveNotes({ live, error }: { live?: LiveAlumniPortal; error: string | null }) {
+  if (!live) return null;
+  return (
+    <>
+      <div className="yx-ps-row">
+        <Button onClick={live.onSignOut}>Sign out</Button>
+      </div>
+      {live.loadError && (
+        <InlineAlert tone="warning" title="Some documents did not load">
+          {live.loadError}
+        </InlineAlert>
+      )}
+      {error && (
+        <InlineAlert tone="danger" title="Not downloaded">
+          {error}
+        </InlineAlert>
+      )}
+    </>
+  );
+}
 
-/** Alumni: own payslips, Form 16 and letters, read-only, for 7 years from exit (YX-DOC-16). Live: the letters only. */
+/** Alumni: own payslips, Form 16 and letters, read-only, for 7 years from exit (YX-DOC-16). */
 export function AlumniPortalScreen(props: AlumniPortalScreenProps) {
   const live = props.live;
-  const { busy, error, run } = useRun();
-  const tenant = live ? live.data.company : props.tenant;
-  const person: AlumniPerson = live ? { name: live.data.name, email: live.email, exitDate: isoDate(live.data.lastDay) } : props.person;
-  const docs: PortalDoc[] = live
-    ? live.data.letters.map((l) => ({ id: l.id, kind: 'Letter', title: l.title.split(': ')[0] ?? l.title, issuedOn: isoDate(l.issuedAt ?? live.data.lastDay) }))
-    : props.docs;
+  const { busy, error, onDownload } = useLiveDownload(live);
+  const tenant = live ? live.company : props.tenant;
+  const person: AlumniPerson = live ? { name: live.name, email: live.email, exitDate: isoDate(live.lastDay) } : props.person;
+  const docs: PortalDoc[] = live ? portalDocs(live.docs ?? []) : props.docs;
   const today = live ? isoDate(live.today) : props.today;
-  const ends = live ? isoDate(live.data.accessUntil) : alumniAccessEnds(person.exitDate);
-  // Live: this portal serves letters only; payslips and Form 16 are in the pay documents portal.
-  const kinds: ('Payslip' | 'Form 16' | 'Letter')[] = live ? ['Letter'] : ['Payslip', 'Form 16', 'Letter'];
+  const ends = live ? isoDate(live.accessUntil) : alumniAccessEnds(person.exitDate);
+  const kinds: DocKind[] = ['Payslip', 'Form 16', 'Letter'];
   const label = { Payslip: 'Payslips', 'Form 16': 'Form 16', Letter: 'Letters' } as const;
-  const onDownload = live ? (id: string) => void run(id, () => live.onDownload(live.data.letters.find((l) => l.id === id)!)) : undefined;
-  const list = (k: (typeof kinds)[number]) => {
+  const list = (k: DocKind) => {
     const rows = docs.filter((x) => x.kind === k);
+    if (live && !live.docs) return <Skeleton height={120} />;
     return rows.length === 0 ? (
       <EmptyState title={`No ${label[k].toLowerCase()} were issued to you.`} description="If you expected one, ask the HR team; they can publish it here." />
     ) : (
@@ -572,7 +617,7 @@ export function AlumniPortalScreen(props: AlumniPortalScreenProps) {
       accent={props.accent}
       noLanguage={Boolean(live)}
       access={{ kind: 'otp', identity: person.email, endsOn: ends, today, endsBecause: live ? undefined : '7 years after you left' }}
-      footer={{ privacy: 'Privacy notice for former employees (G-09)' }}
+      footer={{ privacy: 'Privacy notice for former employees (G-09)', ...(live ? { hrefs: LEGAL_LINKS } : {}) }}
     >
       <section className="yx-ps-hero">
         <h1>Your documents from {tenant}</h1>
@@ -580,34 +625,21 @@ export function AlumniPortalScreen(props: AlumniPortalScreenProps) {
           {[person.lastRole, person.code, `left on ${formatDate(person.exitDate)}`].filter(Boolean).join(' · ')}. You can view and download these, but not change them.
         </p>
       </section>
-      {live && (
-        <div className="yx-ps-row">
-          <Button onClick={live.onSignOut}>Sign out</Button>
-        </div>
-      )}
-      {error && (
-        <InlineAlert tone="danger" title="Not downloaded">
-          {error}
-        </InlineAlert>
-      )}
-      {live ? (
-        list('Letter')
-      ) : (
-        <Tabs defaultValue={props.tab?.replace(/\s+/g, '-') ?? 'Payslip'}>
-          <TabsList aria-label="Document type">
-            {kinds.map((k) => (
-              <TabsTrigger key={k} value={k.replace(/\s+/g, '-')} count={docs.filter((x) => x.kind === k).length}>
-                {label[k]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+      <LiveNotes live={live} error={error} />
+      <Tabs defaultValue={props.tab?.replace(/\s+/g, '-') ?? 'Payslip'}>
+        <TabsList aria-label="Document type">
           {kinds.map((k) => (
-            <TabsContent key={k} value={k.replace(/\s+/g, '-')}>
-              {list(k)}
-            </TabsContent>
+            <TabsTrigger key={k} value={k.replace(/\s+/g, '-')} count={docs.filter((x) => x.kind === k).length}>
+              {label[k]}
+            </TabsTrigger>
           ))}
-        </Tabs>
-      )}
+        </TabsList>
+        {kinds.map((k) => (
+          <TabsContent key={k} value={k.replace(/\s+/g, '-')}>
+            {list(k)}
+          </TabsContent>
+        ))}
+      </Tabs>
       <p className="yx-ps-muted">
         Need a document that isn't here, like a salary certificate for a loan? {live ? 'Ask the HR team.' : <Link href="#">Ask the HR team</Link>}
       </p>
@@ -650,25 +682,50 @@ function DocList({ docs, busy, onDownload }: { docs: PortalDoc[]; busy?: string 
 }
 
 /** Nominee or legal heir: only the claim documents HR releases (YX-DOC-19). */
-export function NomineePortalScreen({
-  tenant,
-  accent,
-  nominee,
-  deceased,
-  docs,
-  fnf,
-  today,
-  claimsClosed,
-}: {
-  tenant: string;
-  accent?: string;
-  nominee: { name: string; relation: string; email: string };
-  deceased: { name: string; code: string; role: string; dateOfDeath: Date };
-  docs: PortalDoc[];
-  fnf: { label: string; amount: number }[];
-  today: Date;
-  claimsClosed?: boolean;
-}) {
+export type NomineePortalScreenProps =
+  | {
+      tenant: string;
+      accent?: string;
+      nominee: { name: string; relation: string; email: string };
+      deceased: { name: string; code: string; role: string; dateOfDeath: Date };
+      docs: PortalDoc[];
+      fnf: { label: string; amount: number }[];
+      today: Date;
+      claimsClosed?: boolean;
+      live?: undefined;
+    }
+  | { accent?: string; live: LiveAlumniPortal };
+
+export function NomineePortalScreen(props: NomineePortalScreenProps) {
+  const { busy, error, onDownload } = useLiveDownload(props.live);
+  if (props.live) {
+    // Live (YX-DOC-19): the documents HR released to the nominee; the settlement and filing notes are not in the API yet.
+    const live = props.live;
+    return (
+      <TenantPortal
+        tenant={live.company}
+        portal="Nominee claim documents"
+        accent={props.accent}
+        noLanguage
+        access={{ kind: 'otp', identity: live.email, endsOn: isoDate(live.accessUntil), today: isoDate(live.today), endsBecause: 'or when HR closes the claims' }}
+        footer={{ privacy: 'Privacy notice for nominees (G-09)', hrefs: LEGAL_LINKS }}
+      >
+        <section className="yx-ps-hero">
+          <h1>Documents for {live.name}'s claims</h1>
+          <p>We are sorry for your loss. {live.company} has released these documents to you as nominee, so you can file claims with the EPFO and the insurer.</p>
+        </section>
+        <LiveNotes live={live} error={error} />
+        {!live.docs ? (
+          <Skeleton height={120} />
+        ) : live.docs.length === 0 ? (
+          <EmptyState title="No documents are released to you yet." description="HR releases each one here when it is ready." />
+        ) : (
+          <DocList docs={portalDocs(live.docs)} busy={busy} onDownload={onDownload} />
+        )}
+      </TenantPortal>
+    );
+  }
+  const { tenant, accent, nominee, deceased, docs, fnf, today, claimsClosed } = props;
   const net = fnf.reduce((a, l) => a + l.amount, 0);
   return (
     <TenantPortal

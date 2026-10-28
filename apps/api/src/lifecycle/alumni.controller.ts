@@ -41,6 +41,19 @@ export class AlumniPortalController {
     return this.alumni.me(slugOf(org), token);
   }
 
+  /** Payslips and Form 16, by the pay documents portal's own rules and guard (the person's own, within 7 years). */
+  @Get('pay-documents')
+  payDocuments(@Param('org') org: string, @Headers('x-alumni-portal') token?: string) {
+    return this.alumni.payDocumentsOf(slugOf(org), token);
+  }
+
+  @Get('pay-documents/:id/file')
+  async payFile(@Res({ passthrough: true }) res: Response, @Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Headers('x-alumni-portal') token?: string) {
+    const f = await this.alumni.payDocumentFile(slugOf(org), token, id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
+  }
+
   @Get('letters/:id/file')
   async file(@Res({ passthrough: true }) res: Response, @Param('org') org: string, @Param('id', ParseUUIDPipe) id: string, @Query() q: LetterFileQueryDto, @Headers('x-alumni-portal') token?: string) {
     const f = await this.alumni.letterFile(slugOf(org), token, id, q.which ?? 'letter');

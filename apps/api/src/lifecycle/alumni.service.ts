@@ -7,6 +7,7 @@ import { assertHuman } from '../auth/bot-challenge';
 import { OtpService } from '../auth/otp.service';
 import { settingFor } from '../people/probation';
 import { LettersService } from '../documents/letters/letters.service';
+import { PayDocumentsService } from '../payroll/documents.service';
 import { alumniUntil } from './exit-rules';
 
 // LIFE-4.04 the alumni login (T9-02; P02 §4.7 "Alumni"; P05 Q6): someone who left signs in with a one-time code to
@@ -31,6 +32,7 @@ export class AlumniPortalService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly otp: OtpService,
     private readonly letters: LettersService,
+    private readonly payDocuments: PayDocumentsService,
   ) {}
 
   private async orgOf(slug: string) {
@@ -125,6 +127,22 @@ export class AlumniPortalService {
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: a.org, id: a.personId } });
       const payee = a.payeeId ? await tx.exitPayee.findFirst({ where: { organizationId: a.org, id: a.payeeId }, select: { name: true } }) : null;
       return { company: o.name, name: p.preferredName || [p.givenName, p.familyName].filter(Boolean).join(' '), lastDay: a.lastDay, accessUntil: a.until, nominee: payee?.name ?? null, ...(await this.letters.lettersOf(tx, a.org, a.personId)) };
+    });
+  }
+
+  /**
+   * Payslips and Form 16 (T9-02): what the pay documents portal shows this person, by its rules (PayDocumentsService:
+   * left within 7 years, not working here again, the database guard on that one employee). A nominee's session never
+   * sees them here; HR adds nominees to the pay documents portal itself.
+   */
+  async payDocumentsOf(slug: string, token: string | undefined) {
+    return this.inPortal(slug, token, (tx, a) => (a.payeeId ? Promise.resolve([]) : this.payDocuments.alumniDocuments(tx, a.org, a.personId)));
+  }
+
+  async payDocumentFile(slug: string, token: string | undefined, id: string) {
+    return this.inPortal(slug, token, (tx, a) => {
+      if (a.payeeId) throw new NotFoundException('Not found');
+      return this.payDocuments.alumniFile(tx, a.org, a.personId, id);
     });
   }
 

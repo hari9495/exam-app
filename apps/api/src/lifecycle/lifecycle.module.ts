@@ -15,6 +15,7 @@ import { LifecycleJourneysService } from './journeys.service';
 import { LifeEventsService } from './life-events.service';
 import { LifecycleController } from './lifecycle.controller';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { PayrollModule } from '../payroll/payroll.module';
 import { ExitsController } from './exits.controller';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
@@ -34,7 +35,8 @@ import { PreboardingPortalService } from './portal.service';
 // M01 lifecycle: checklists and joiners (6a); the pre-boarding portal, joining, BGV and the ATS hand-off (6b); probation
 // reviews, resignations, company exits, clearance, exit interviews and assets (6c).
 @Module({
-  imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule],
+  // The alumni login shows the pay documents portal's payslips and Form 16 (PayDocumentsService).
+  imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
   controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.

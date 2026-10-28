@@ -12,11 +12,9 @@ export {
 export { JourneyTemplatesScreen, type JourneyTemplatesScreenProps } from './templates';
 export {
   JoinerPanel,
-  PortalSignIn,
   PortalScreen,
   SignatoriesDrawer,
   type JoinerPanelProps,
-  type PortalSignInProps,
   type PortalScreenProps,
   type SignatoriesDrawerProps,
 } from './joining';
@@ -41,5 +39,6 @@ export {
   type UpcomingExitsScreenProps,
   type RetrenchmentScreenProps,
 } from './special';
-// The alumni login renders the designed T9-02 portal with its live path.
-export { AlumniPortalScreen, type AlumniPortalScreenProps, type LiveAlumniPortal } from '../../portals/t9-workforce';
+// The alumni login and the joining portal render the designed T9-02 portal and T9 sign-in with their live paths.
+export { AlumniPortalScreen, NomineePortalScreen, type AlumniPortalScreenProps, type LiveAlumniPortal, type LivePortalDoc } from '../../portals/t9-workforce';
+export { PortalSignInScreen, type LiveOtpSignIn } from '../../portals/portals-kit';

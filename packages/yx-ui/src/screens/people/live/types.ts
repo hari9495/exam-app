@@ -523,6 +523,8 @@ export interface AlumniMe {
   name: string;
   lastDay: string;
   accessUntil: string;
+  /** A nominee or legal heir signed in (the payee's name). */
+  nominee?: string | null;
   letters: Letter[];
 }
 export interface MyDocuments {

@@ -479,6 +479,31 @@ describe('Payroll batch 5a', () => {
       }
       const s2 = (await request(server()).post(`/api/v1/public/pay/${org.A.slug}/portal/verify`).send({ email: `leaver.home@pay5a-${run}.test`, code: home }).expect(200)).body;
       expect((await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/documents`).set('X-Pay-Portal', s2.token).expect(200)).body).toHaveLength(1);
+      // T9-02: who the session is for, and when access ends (7 years after the last day).
+      const lastDay = addDays(today, -3);
+      expect((await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/me`).set('X-Pay-Portal', s2.token).expect(200)).body).toMatchObject({ nominee: null, lastDay, accessUntil: `${Number(lastDay.slice(0, 4)) + 7}${lastDay.slice(4)}` });
+      await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/me`).expect(401);
+    });
+
+    it('the alumni login shows the same payslips by the same rules, and never someone else’s (T9-02)', async () => {
+      const home = `leaver.home@pay5a-${run}.test`;
+      email.send.mockClear();
+      await request(server()).post(`/api/v1/portal/alumni/${org.A.slug}/code`).send({ email: home }).expect(200);
+      let code = '';
+      for (let i = 0; i < 50 && !code; i++) {
+        const m = email.send.mock.calls.find(([x]) => x.to === home);
+        if (m) code = m[0].subject.slice(0, 6);
+        else await new Promise((r) => setTimeout(r, 100));
+      }
+      const t = (await request(server()).post(`/api/v1/portal/alumni/${org.A.slug}/verify`).send({ email: home, code }).expect(200)).body.token as string;
+      const alumni = (path: string) => request(server()).get(`/api/v1/portal/alumni/${org.A.slug}${path}`).set('X-Alumni-Portal', t);
+      const pay = (await alumni('/pay-documents').expect(200)).body as { id: string; kind: string }[];
+      expect(pay).toHaveLength(1);
+      expect((await alumni(`/pay-documents/${pay[0].id}/file`).expect(200)).headers['content-type']).toMatch(/pdf/);
+      // Another person's payslip (the employee's), even with its id: not found.
+      await alumni(`/pay-documents/${ids.doc}/file`).expect(404);
+      await request(server()).get(`/api/v1/portal/alumni/${org.A.slug}/pay-documents`).expect(401);
+      await request(server()).get(`/api/v1/portal/alumni/${org.B.slug}/pay-documents`).set('X-Alumni-Portal', t).expect(401);
     });
   });
 

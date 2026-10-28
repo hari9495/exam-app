@@ -301,6 +301,13 @@ export class PublicPayController {
     return this.documents.portalVerify(org.slice(0, 100), dto);
   }
 
+  /** Who the session is for (the former employee, or the nominee) and when access ends: the portal's own person only. */
+  @Get(':org/portal/me')
+  @Throttle(PUBLIC_API_THROTTLE)
+  portalMe(@Param('org') org: string, @Headers('x-pay-portal') token?: string) {
+    return this.documents.portalMe(org.slice(0, 100), token);
+  }
+
   @Get(':org/portal/documents')
   @Throttle(PUBLIC_API_THROTTLE)
   portalDocuments(@Param('org') org: string, @Headers('x-pay-portal') token?: string) {

@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ConsultantPortalScreen, PayPortalSignIn, type ConsultantMe } from '@yukthix/ui/pay';
+import { ConsultantPortalScreen, PortalSignInScreen, type ConsultantMe } from '@yukthix/ui/pay';
 import { apiFetch, apiFetchBlob } from '../../../../lib/api-client';
 import { saveBlob } from '../../../../lib/yx-pay';
+import { otpSignIn } from '../../../../lib/yx-portal';
 
 // The consultant's own page (PAY-8.01): a one-time code by email, then a 30-minute session that sees only their own
 // invoices, payment advices and TDS certificates. The session lives in this tab only (memory).
@@ -21,15 +22,17 @@ export default function YxConsultantPortalPage() {
   };
   if (!token)
     return (
-      <PayPortalSignIn
-        company={org}
-        title="Consultants: your invoices"
-        note="For consultants the company pays. Use the email the company has for you."
-        onSendCode={(email) => apiFetch(`${base}/code`, { method: 'POST', body: JSON.stringify({ email }) })}
-        onVerify={async (email, code) => {
-          const s = (await apiFetch(`${base}/verify`, { method: 'POST', body: JSON.stringify({ email, code }) })) as { token: string };
-          await load(s.token);
-          setToken(s.token);
+      <PortalSignInScreen
+        tenant={org}
+        portal="Consultants"
+        footer={{ privacy: 'Privacy notice for consultants (G-09)' }}
+        signIn={{
+          title: 'Consultants: your invoices',
+          intro: 'For consultants the company pays. Use the email the company has for you.',
+          live: otpSignIn(base, async (t) => {
+            await load(t);
+            setToken(t);
+          }),
         }}
       />
     );

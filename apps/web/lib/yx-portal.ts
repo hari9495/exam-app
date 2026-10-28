@@ -1,4 +1,6 @@
-import { API_BASE } from './api-client';
+import type { LiveOtpSignIn } from '@yukthix/ui/lifecycle';
+import { API_BASE, apiFetch } from './api-client';
+import { yxAuthMessage } from './yx-auth-messages';
 
 // The outside help page (/yx/portal/<company>/<portal>): public calls with no YukthiX sign-in. After the email code the
 // API hands out a portal session token; it is sent as X-Portal-Session and kept in this tab only (sessionStorage).
@@ -46,4 +48,22 @@ export async function portalFetch<T>(org: string, portal: string, path: string, 
       ? `Too many tries. Wait ${wait > 0 ? `${wait} seconds` : 'a minute'} and try again.`
       : (Array.isArray(body.message) ? body.message[0] : body.message) || (res.status >= 500 ? 'Something went wrong on our side. Try again in a moment.' : 'That did not work. Try again.');
   throw Object.assign(new Error(message), { status: res.status, retryAfterSeconds: wait || undefined }) as PortalError;
+}
+
+/**
+ * The designed portal sign-in (T9 OtpSignIn) on a portal's /code and /verify: refusals in plain words, and a send
+ * refused for too many tries says the real wait the API gave ("Try again in 42 seconds").
+ */
+export function otpSignIn(base: string, onToken: (token: string, email: string) => unknown): LiveOtpSignIn {
+  const plain = (e: unknown): never => {
+    throw new Error(yxAuthMessage(e, 'That did not work. Try again.'));
+  };
+  const post = (path: string, body: unknown) => apiFetch(`${base}${path}`, { method: 'POST', body: JSON.stringify(body) }).catch(plain);
+  return {
+    validMinutes: 5,
+    onSendCode: (email) => post('/code', { email }),
+    onVerify: async (email, code) => {
+      await onToken(((await post('/verify', { email, code })) as { token: string }).token, email);
+    },
+  };
 }
