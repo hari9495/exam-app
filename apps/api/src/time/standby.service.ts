@@ -79,11 +79,12 @@ export class StandbyService {
       const [slots, callOuts, shifts, settingRows] = await Promise.all([
         tx.standbySlot.findMany({ where: { organizationId: org, employeeId: { in: ids }, startsAt: { lt: to }, endsAt: { gt: from } }, orderBy: { startsAt: 'asc' } }),
         tx.callOut.findMany({ where: { organizationId: org, employeeId: { in: ids }, startedAt: { gte: from, lt: to } }, orderBy: { startedAt: 'desc' }, take: 200 }),
-        tx.shift.findMany({ where: { organizationId: org, active: true }, orderBy: { code: 'asc' } }),
+        tx.shift.findMany({ where: { organizationId: org }, orderBy: { code: 'asc' } }),
         tx.setting.findMany({ where: { organizationId: org, key: 'standby.call_out_minimum_hours', scopeType: 'tenant' } }),
       ]);
       const book = await ScheduleBook.load(tx, org);
       const guard = await RosterGuard.load(tx, c, book);
+      const codeOf = new Map(shifts.map((s) => [s.id, s.code]));
       const name = async (id: string) => (await guard.factsOn(id, today))?.name ?? (await guard.factsOn(id, week))?.name ?? 'Someone';
       // The grid: everyone with a slot this week, their published shifts and which days hold a standby start.
       const people = [];
@@ -94,7 +95,7 @@ export class StandbyService {
         people.push({
           employeeId: id,
           name: await name(id),
-          days: plan.map((d) => ({ on: d.on, employed: d.employed, shift: d.shift ? { id: d.shift.shiftId, name: d.shift.name, start: hhmm(d.shift.shiftStart), end: hhmm(d.shift.shiftEnd) } : null, standby: slots.some((s) => s.employeeId === id && s.status === 'planned' && localDay(s.startsAt, zone) === d.on) })),
+          days: plan.map((d) => ({ on: d.on, employed: d.employed, shift: d.shift ? { id: d.shift.shiftId, code: d.shift.shiftId ? (codeOf.get(d.shift.shiftId) ?? null) : null, name: d.shift.name, start: hhmm(d.shift.shiftStart), end: hhmm(d.shift.shiftEnd) } : null, standby: slots.some((s) => s.employeeId === id && s.status === 'planned' && localDay(s.startsAt, zone) === d.on) })),
         });
       }
       const log: ({ id: string; employeeId: string } & Record<string, unknown>)[] = [];
@@ -121,7 +122,10 @@ export class StandbyService {
         today,
         minimumHours: Number(resolveSetting(SETTINGS['standby.call_out_minimum_hours'], settingRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, null).value),
         planned: await Promise.all(reach.slice(0, 200).map(async (r) => ({ employeeId: r.id, name: await name(r.id) }))),
-        shifts: shifts.map((s) => book.shiftOn(s.id, today)).filter((s): s is NonNullable<typeof s> => Boolean(s)).map((s) => ({ id: s.shiftId!, name: s.name, start: hhmm(s.shiftStart), end: hhmm(s.shiftEnd) })),
+        shifts: shifts.filter((s) => s.active).flatMap((s) => {
+          const t = book.shiftOn(s.id, today);
+          return t ? [{ id: s.id, code: s.code, name: t.name, start: hhmm(t.shiftStart), end: hhmm(t.shiftEnd) }] : [];
+        }),
         slots: await Promise.all(slots.map(async (s) => ({ id: s.id, employeeId: s.employeeId, name: await name(s.employeeId), startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString(), status: s.status, started: s.startsAt.getTime() <= Date.now() }))),
         people,
         callOuts: log.map((r) => ({ ...r, latest: latest.has(r.id) })),
