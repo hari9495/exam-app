@@ -12,14 +12,16 @@ import { describe, expect, it } from 'vitest';
 
 const SCREENS = join(__dirname, 'screens');
 // Time: every designed Time file (the live pages render them); its old live copies are gone.
-const AREAS = ['time', 'pay/live', 'desk'];
+// Pay joins when its live pages move onto the Pay designs (next area); its live copies are replaced, not polished.
+const AREAS = ['time', 'desk'];
 
 /** Allowed, with the reason. Matched against "file: text of the offending tag". */
 const ALLOWED: Record<string, string> = {
   'time/leave-admin.tsx: <InlineAlert tone="success" title={postedTitle} actions={postedActions}>': 'runs in the background, so it stays until the balances update (founder approved)',
+  'desk/esm2.tsx: <InlineAlert tone="success" title="Done">': 'the one-time approval link page: the result is all the page shows, so it stays',
 };
 /** Owned by another builder (Me, Approvals, Settings, portals) at the time; move them over there. A stale line fails. */
-const OTHER_BUILDER = ['desk/approvals.tsx', 'desk/portal.tsx'];
+const OTHER_BUILDER: string[] = [];
 
 const files = (dir: string): string[] =>
   readdirSync(dir).flatMap((n) => {

@@ -2,7 +2,8 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { LogOut, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -129,7 +130,7 @@ function PortalKbCard({ kb }: { kb: PortalKbProps }) {
 }
 
 /** Team, topic, product, subject and details: shared by "Ask without an account" and the signed-in raise form. */
-function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) => Promise<KbSuggestion[]>) {
+function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) => Promise<KbSuggestion[]>) | undefined, idp: string, before: { fieldId: string; message: string }[] = []) {
   const [deskId, setDeskId] = useState<string | null>(desks.length === 1 ? desks[0].id : null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
@@ -137,17 +138,26 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) 
   const [details, setDetails] = useState('');
   const desk = desks.find((d) => d.id === deskId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, onSuggest);
+  const early = useTooEarly([
+    ...before,
+    ...(deskId ? [] : [{ fieldId: `${idp}-team`, message: 'Choose a team.' }]),
+    ...(subject.trim() ? [] : [{ fieldId: `${idp}-subject`, message: 'Write a subject.' }]),
+    ...(details.trim() ? [] : [{ fieldId: `${idp}-details`, message: 'Say what you need help with.' }]),
+  ]);
   return {
-    ready: Boolean(deskId && subject.trim() && details.trim()),
+    /** True when something is missing (now shown, focus on the first); the caller stops there. */
+    stop: early.stop,
+    errorOf: early.errorOf,
     input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim() }),
     clear: () => {
       setSubject('');
       setDetails('');
+      early.reset();
     },
     fields: (
       <>
         {desks.length > 1 && (
-          <FormField label="Team" required>
+          <FormField id={`${idp}-team`} label="Team" required error={early.errorOf(`${idp}-team`)}>
             <Select
               value={deskId}
               onChange={(v) => {
@@ -170,11 +180,11 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) 
             <Select value={productId} onChange={setProductId} clearable options={desk.products.map((p) => ({ value: p.id, label: p.name }))} placeholder="Choose a product" />
           </FormField>
         )}
-        <FormField label="Subject" required>
+        <FormField id={`${idp}-subject`} label="Subject" required error={early.errorOf(`${idp}-subject`)}>
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
         <SuggestList items={suggestions} />
-        <FormField label="Details" required helper="Dates, error messages and steps help us answer faster.">
+        <FormField id={`${idp}-details`} label="Details" required error={early.errorOf(`${idp}-details`)} helper="Dates, error messages and steps help us answer faster.">
           <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
         </FormField>
       </>
@@ -191,7 +201,12 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
   const [askName, setAskName] = useState('');
   const [askEmail, setAskEmail] = useState('');
   const [asked, setAsked] = useState(false);
-  const form = usePortalRaiseForm(h.desks, props.kb?.onSearch);
+  const form = usePortalRaiseForm(h.desks, props.kb?.onSearch, 'ask', [
+    ...(askName.trim() ? [] : [{ fieldId: 'ask-name', message: 'Write your name.' }]),
+    ...(askEmail.includes('@') ? [] : [{ fieldId: 'ask-email', message: 'Enter your email, like name@company.com.' }]),
+  ]);
+  const emailEarly = useTooEarly(email.includes('@') ? [] : [{ fieldId: 'portal-email', message: 'Enter your email, like name@company.com.' }]);
+  const codeEarly = useTooEarly(code.length === 6 ? [] : [{ fieldId: 'portal-code', message: 'Enter the 6-digit code from the email.' }]);
   const { busy, error, run } = useRun();
   return (
     <>
@@ -201,11 +216,11 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           {step === 'email' ? (
             <>
-              <FormField label="Your email" required helper="We send a 6-digit code. No password needed.">
+              <FormField id="portal-email" label="Your email" required error={emailEarly.errorOf('portal-email')} helper="We send a 6-digit code. No password needed.">
                 <TextField type="email" autoComplete="email" value={email} onChange={setEmail} maxLength={254} />
               </FormField>
               <div className="yx-ops-row">
-                <Button variant="primary" disabled={!email.includes('@')} loading={busy === 'send'} onClick={() => void run('send', async () => { await props.onSendCode(email.trim().toLowerCase()); setStep('code'); })}>
+                <Button variant="primary" loading={busy === 'send'} onClick={() => !emailEarly.stop() && void run('send', async () => { await props.onSendCode(email.trim().toLowerCase()); setStep('code'); })}>
                   Send me a code
                 </Button>
               </div>
@@ -213,11 +228,11 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
           ) : (
             <>
               <InlineAlert tone="info">If this email can use the help page, a 6-digit code is on its way.</InlineAlert>
-              <FormField label="6-digit code" required helper={`Sent to ${email}.`}>
+              <FormField id="portal-code" label="6-digit code" required error={codeEarly.errorOf('portal-code')} helper={`Sent to ${email}.`}>
                 <CodeField value={code} onChange={setCode} />
               </FormField>
               <div className="yx-ops-row">
-                <Button variant="primary" disabled={code.length !== 6} loading={busy === 'verify'} onClick={() => void run('verify', () => props.onVerify(email.trim().toLowerCase(), code))}>
+                <Button variant="primary" loading={busy === 'verify'} onClick={() => !codeEarly.stop() && void run('verify', () => props.onVerify(email.trim().toLowerCase(), code))}>
                   Sign in
                 </Button>
                 <Button onClick={() => { setStep('email'); setCode(''); }}>Use another email</Button>
@@ -232,7 +247,7 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
       {h.portal.openRequests && (
         <Card title="Ask without an account">
           {asked ? (
-            <InlineAlert tone="success" title="Check your email">
+            <InlineAlert tone="info" title="Check your email">
               Check your email and open the link to send your request.
             </InlineAlert>
           ) : !asking ? (
@@ -244,10 +259,10 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
             </div>
           ) : (
             <div className="yx-ops-stack">
-              <FormField label="Your name" required>
+              <FormField id="ask-name" label="Your name" required error={form.errorOf('ask-name')}>
                 <TextField value={askName} onChange={setAskName} maxLength={100} autoComplete="name" />
               </FormField>
-              <FormField label="Your email" required>
+              <FormField id="ask-email" label="Your email" required error={form.errorOf('ask-email')}>
                 <TextField type="email" value={askEmail} onChange={setAskEmail} maxLength={254} autoComplete="email" />
               </FormField>
               {form.fields}
@@ -255,9 +270,9 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
                 <Button
                   variant="primary"
                   icon={Send}
-                  disabled={!form.ready || !askName.trim() || !askEmail.includes('@')}
                   loading={busy === 'ask'}
                   onClick={() =>
+                    !form.stop() &&
                     void run('ask', async () => {
                       await props.onAsk({ ...form.input(), name: askName.trim(), email: askEmail.trim().toLowerCase() });
                       setAsked(true);
@@ -278,19 +293,18 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
 export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me: PortalMe }) {
   const [show, setShow] = useState<'open' | 'all'>('open');
   const [raising, setRaising] = useState(false);
-  const [raised, setRaised] = useState<string | null>(null);
-  const form = usePortalRaiseForm(props.home.desks, props.kb?.onSearch);
+  const { toast } = useToast();
+  const form = usePortalRaiseForm(props.home.desks, props.kb?.onSearch, 'raise');
   const { busy, error, run } = useRun();
   const tz = props.timeZone || browserTimeZone();
   const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
-  const notice = raised ? `Ticket ${raised} is open.` : props.notice;
   return (
     <>
       <p className="yx-ops-muted">
         Signed in as {props.me.name || props.me.email}
         {props.me.account ? ` · ${props.me.account}` : ''}
       </p>
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
+      {props.notice && <InlineAlert tone="info">{props.notice}</InlineAlert>}
       <BannerList banners={props.home.banners} onMeToo={props.onMeToo} />
       <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
         {rows.length === 0 ? (
@@ -331,12 +345,12 @@ export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me
               <Button
                 variant="primary"
                 icon={Send}
-                disabled={!form.ready}
                 loading={busy === 'raise'}
                 onClick={() =>
+                  !form.stop() &&
                   void run('raise', async () => {
                     const r = await props.onRaise(form.input());
-                    setRaised(r.number);
+                    toast({ tone: 'success', title: `Ticket ${r.number} is open`, description: 'The team will reply here.' });
                     form.clear();
                     setRaising(false);
                   })
@@ -399,6 +413,7 @@ export function PortalTicketView(props: PortalScreenProps) {
   const t = props.ticket;
   const [text, setText] = useState('');
   const { busy, error, run } = useRun();
+  const replyEarly = useTooEarly(text.trim() ? [] : [{ fieldId: 'portal-reply', message: 'Write your reply.' }]);
   const tz = props.timeZone || browserTimeZone();
   return (
     <>
@@ -443,11 +458,11 @@ export function PortalTicketView(props: PortalScreenProps) {
             <Card title="Reply">
               <div className="yx-ops-stack">
                 {error && <InlineAlert tone="danger" title="Your reply was not sent">{error}</InlineAlert>}
-                <FormField label="Your reply" hideLabel>
+                <FormField id="portal-reply" label="Your reply" hideLabel error={replyEarly.errorOf('portal-reply')}>
                   <TextArea value={text} onChange={setText} rows={4} maxLength={20000} placeholder="Write to the support team" />
                 </FormField>
                 <div className="yx-ops-row">
-                  <Button variant="primary" icon={Send} disabled={!text.trim()} loading={busy === 'reply'} onClick={() => void run('reply', async () => { await props.onReply(text.trim()); setText(''); })}>
+                  <Button variant="primary" icon={Send} loading={busy === 'reply'} onClick={() => !replyEarly.stop() && void run('reply', async () => { await props.onReply(text.trim()); setText(''); replyEarly.reset(); })}>
                     Send reply
                   </Button>
                 </div>

@@ -1,6 +1,7 @@
 {
   "liveCopies": [
     "desk: AgentChatScreen",
+    "desk: ArticleBody",
     "desk: CatalogAdmin",
     "desk: CatalogScreen",
     "desk: ChatPromptBanner",

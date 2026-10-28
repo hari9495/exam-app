@@ -489,6 +489,21 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(onReply).toHaveBeenCalledWith('Thanks');
   });
 
+  it('portal: buttons are never greyed out; pressed too early they say what is missing and send nothing', async () => {
+    const onSendCode = ok();
+    const onAsk = ok();
+    render(<PortalScreen {...portal({ onSendCode, onAsk })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
+    expect(screen.getByText('Enter your email, like name@company.com.')).toBeInTheDocument();
+    expect(screen.getAllByRole('textbox', { name: /Your email/ })[0]).toHaveFocus();
+    expect(onSendCode).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Ask without an account' }));
+    await ue.type(screen.getByRole('textbox', { name: /Your name/ }), 'Ravi');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(screen.getByText('Write a subject.')).toBeInTheDocument();
+    expect(onAsk).not.toHaveBeenCalled();
+  });
+
   it('portal: an unknown address says so', () => {
     render(<PortalScreen {...portal({ state: 'not-found', home: null })} />);
     expect(screen.getByText('No such help page')).toBeInTheDocument();
