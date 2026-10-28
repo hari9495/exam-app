@@ -832,25 +832,25 @@ Question: there is no list of past events in the design; the API has GET /time/i
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager · live map | feature not built (no field tracking in the API) |
-| HR · all field staff | feature not built |
-| Person trail and visits | feature not built |
-| Integrity flag | feature not built |
-| Tracking off for group | feature not built |
-| Person not checked in | feature not built |
-| Consent withdrawn · no trail | feature not built |
+| Manager · live map | live: /yx/time/field-force as a manager (own team, implicit): `FieldForceScreen live={…}`; pins only for people on duty with consent and tracking on; map is the GeoMap drawing (no tiles); maps / place names: adapter, dev-fake, provider: to decide |
+| HR · all field staff | live: /yx/time/field-force with attendance.view in scope ("All field staff", manager name on each row; field staff = tracking on or visits today, first 200) |
+| Person trail and visits | live: Open on a row → drawer with the duty trail (good readings only), distance, visits today (GET /time/field/people/:id) |
+| Integrity flag | live: mock location / impossible speed (> 200 km/h) flag and "Mark reviewed" (toast); gap: "Ask … for a note" (no note request feature yet) |
+| Tracking off for group | live: no one in reach has `field.tracking` on → HR: "Open settings" (Settings › Company rules); gap: the manager's "Ask HR" button (no request-to-HR feature yet) |
+| Person not checked in | live: "Not checked in" badge and "Not on duty yet" panel, no location; gap: "Message …" button (no messaging from here yet) |
+| Consent withdrawn · no trail | live: "No trail: consent withdrawn at …" (withdrawal erases the trail); also "has not agreed" for people who never consented |
 
 ### TIM-33 · Visit check-in and beat plan
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Consent (first use) | phone view, mobile app not built |
-| Beat plan · tracking banner | phone view, mobile app not built |
-| Visit check-in · inside site | phone view, mobile app not built |
-| Visit · outside site | phone view, mobile app not built |
-| Camera photo | phone view, mobile app not built |
-| Distance → draft mileage | phone view, mobile app not built |
-| Consent withdrawn | phone view, mobile app not built |
+| Consent (first use) | phone view, mobile app not built; API live: GET /time/me/field (notice, version), POST /time/me/field/consent |
+| Beat plan · tracking banner | phone view, mobile app not built; API live: my beat today in GET /time/me/field, readings POST /time/me/field/pings; managers plan with POST /time/field/visits (no web plan screen in the designs) |
+| Visit check-in · inside site | phone view, mobile app not built; API live: POST /time/me/field/visits/:id/check-in (inside the radius), /check-out; web: Visit log tab |
+| Visit · outside site | phone view, mobile app not built; API live: the same check-in answers inside: false (shown "Outside site" in the Visit log) |
+| Camera photo | phone view, mobile app not built; gap: no visit photo in the API yet |
+| Distance → draft mileage | phone view, mobile app not built; gap: distance is shown on the map, no mileage claim link yet |
+| Consent withdrawn | phone view, mobile app not built; API live: POST /time/me/field/consent/withdraw (tracking stops, trail erased) |
 | Web app · only while open | phone view, mobile app not built |
 
 ## G. Time ops feature sheet (attendance, overtime, periods) · 29 Oct 2026
