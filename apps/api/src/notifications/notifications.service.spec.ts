@@ -173,6 +173,8 @@ describe('NotificationsService', () => {
     };
 
     beforeEach(() => {
+      // The link base comes from FRONTEND_URL; a developer's apps/api/.env (loaded on import) must not change it here.
+      process.env.FRONTEND_URL = 'http://localhost:3000';
       tx = {
         user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]), findUnique: jest.fn().mockResolvedValue({ name: '<b>Actor</b>' }) },
         userNotification: { create: jest.fn() },
