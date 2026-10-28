@@ -442,7 +442,7 @@ const isoDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.sli
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const minuteOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
 const LIVE_FIX: Record<string, LiveFixKind> = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' };
-const STATUS_NOW: Record<DayRow['status'], string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', missing_in: 'Missing check-in', missing_out: 'Missing check-out', no_timesheet: 'No timesheet yet', not_started: 'Not worked out yet' };
+const STATUS_NOW: Record<DayRow['status'], string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', missing_in: 'Missing check-in', missing_out: 'Missing check-out', no_timesheet: 'No timesheet yet', not_started: 'Not worked out yet', strike: 'Strike', lockout: 'Lockout', layoff: 'Lay-off' };
 /** The time of day in the person's zone as "HH:MM". */
 const zoneHm = (iso: string | null | undefined, zone: string) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: zone }) : null);
 

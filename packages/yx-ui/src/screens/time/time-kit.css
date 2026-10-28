@@ -209,6 +209,8 @@
 [data-code="WO"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); }
 [data-code="WFH"], [data-code="OD"] { border-style: dashed; }
 [data-code="TODAY"] { border-color: var(--yx-color-action-primary); }
+/* TIM-37: strike, lockout, lay-off days are neither absence nor leave. */
+[data-code="ST"], [data-code="LO"], [data-code="LF"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border-strong); border-style: dotted; }
 
 .yx-tim-legend { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-tim-legend__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); font-size: var(--yx-text-sm); }

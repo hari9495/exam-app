@@ -63,6 +63,9 @@ export const DAY_STATUS: Record<DayStatus, { label: string; code: string; tone: 
   missing_out: { label: 'Missing check-out', code: 'MO', tone: 'warning' },
   no_timesheet: { label: 'No timesheet yet', code: 'NT', tone: 'warning' },
   not_started: { label: 'Day not over', code: '·', tone: 'neutral' },
+  strike: { label: 'Strike', code: 'ST', tone: 'neutral' },
+  lockout: { label: 'Lockout', code: 'LO', tone: 'neutral' },
+  layoff: { label: 'Lay-off', code: 'LF', tone: 'neutral' },
 };
 export const DayStatusBadge = ({ status, leavePart }: { status: DayStatus; leavePart?: string | null }) => (
   <Badge tone={DAY_STATUS[status].tone}>

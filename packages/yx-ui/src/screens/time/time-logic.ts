@@ -247,7 +247,7 @@ export function geofenceVerdict(pin: { lat: number; lng: number; accuracyM: numb
 /* ---------- attendance month ---------- */
 
 // LV (leave of a type the day engine does not name) and MI (missing check-in) come from the live day engine.
-export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'MI' | 'LOP' | 'FUT' | 'TODAY';
+export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'MI' | 'LOP' | 'FUT' | 'TODAY' | 'ST' | 'LO' | 'LF';
 
 export const DAY_CODE_LABEL: Record<DayCode, string> = {
   P: 'Present',
@@ -268,6 +268,10 @@ export const DAY_CODE_LABEL: Record<DayCode, string> = {
   LOP: 'Unpaid leave',
   FUT: 'Upcoming',
   TODAY: 'Today',
+  // TIM-37 industrial action: marked with its kind, not absence or leave.
+  ST: 'Strike',
+  LO: 'Lockout',
+  LF: 'Lay-off',
 };
 
 export interface AttendanceDay {
@@ -281,7 +285,7 @@ export interface AttendanceDay {
   /** Recorded check-out ("19:25") when the day's punches must match `workedMin` exactly. */
   outAt?: string;
   /** Overtime approval; month totals count paid (approved) overtime only, not pending or taken as comp-off. */
-  otStatus?: 'pending' | 'approved' | 'comp-off';
+  otStatus?: 'pending' | 'approved' | 'comp-off' | 'unclaimed';
   note?: string;
 }
 

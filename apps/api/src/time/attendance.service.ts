@@ -376,7 +376,7 @@ export class AttendanceService implements OnModuleInit {
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
       // Nudge (PLT-02): the days each person was already reminded, so Home shows "Reminded" after a reload too.
       const nudges = ids.length ? await tx.nudge.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, select: { employeeId: true, onDay: true } }) : [];
-      const ots = ids.length ? await tx.overtimeRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, payableMinutes: true, status: true } }) : [];
+      const ots = ids.length ? await tx.overtimeRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, payableMinutes: true, status: true, settle: true } }) : [];
       // TIM-02: the month's stage for the legal entity it is about (the one picked, else the company's only one).
       const ent = await this.periods.musterEntity(tx, c, user, entityId);
       const period = ent.id ? await this.periods.musterPeriod(tx, c, ent.v, ent.id, month) : null;
@@ -402,7 +402,7 @@ export class AttendanceService implements OnModuleInit {
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
           remindedOn: nudges.filter((n) => n.employeeId === p.id).map((n) => dateOf(n.onDay)),
-          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, otMinutes: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.payableMinutes ?? 0 })),
+          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, otMinutes: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.payableMinutes ?? 0, otStatus: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.status ?? null })),
         })),
       };
     });

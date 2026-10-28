@@ -55,7 +55,7 @@ import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
 import { AttendanceRequestSheet } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, WfhInput } from './live/types';
+import type { DayCard, DayRow, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -1307,7 +1307,7 @@ export function musterRows(month: 'aug' | 'sep' = 'sep', resolved = false): Must
 }
 
 /** Day codes that the muster can show, in legend order. */
-const MUSTER_CODES: DayCode[] = ['P', 'WFH', 'OD', 'HD', 'CL', 'EL', 'SL', 'H', 'WO', 'A', 'LOP', 'MP', 'R', 'TODAY', 'FUT'];
+const MUSTER_CODES: DayCode[] = ['P', 'WFH', 'OD', 'HD', 'CL', 'EL', 'SL', 'LV', 'H', 'WO', 'ST', 'LO', 'LF', 'A', 'LOP', 'MP', 'MI', 'R', 'TODAY', 'FUT'];
 const WEEKDAY2 = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 /** Late is a mark on a present day, not its own code. */
 const cellCode = (c: DayCode): DayCode => (c === 'L' ? 'P' : c);
@@ -1862,7 +1862,14 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
 /** One person has a check-in on record: present is the likely answer. */
 const hasCheckIn = (r: ExceptionRow) => r.kind !== 'No attendance' && r.kind !== 'Missing check-in' && r.kind !== 'No approved timesheet';
 
-function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | null; onClose: () => void; onResolved?: (ids: string[]) => void }) {
+/** The live app's resolve: the check-in on record, the shift end, and the call (it closes on success; a refusal stays). */
+interface LiveResolve {
+  recordedIn: string | null;
+  shiftEnd: string;
+  onSubmit: (how: 'present' | 'absent', inMinute: number | undefined, outMinute: number | undefined, reason: string) => Promise<unknown>;
+}
+
+function ResolveDialog({ rows, onClose, onResolved, live }: { rows: ExceptionRow[] | null; onClose: () => void; onResolved?: (ids: string[]) => void; live?: LiveResolve }) {
   const one = rows?.length === 1 ? rows[0] : null;
   const refused = (r: ExceptionRow) => r.kind === 'Refused check-in attempt';
   // Present needs actual times, except for a refused check-in (the logged attempt is the time). Bulk: only when every row is a refused check-in.
@@ -1872,13 +1879,14 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
   const weekDays = one && sheet ? SEPTEMBER.filter((d) => sameDay(weekStart(d.date), weekStart(one.date)) && d.code !== 'WO' && d.code !== 'H').length : 1;
   const daysText = `${weekDays} ${weekDays === 1 ? 'day' : 'working days'}`;
   const needTimes = !!one && !refused(one) && !sheet;
-  const onRecord = one ? recordedIn(one.person, one.date)?.time ?? null : null;
+  const onRecord = live ? live.recordedIn : one ? recordedIn(one.person, one.date)?.time ?? null : null;
+  const { busy, error, run } = useRun();
   const [how, setHow] = useState(one && hasCheckIn(one) ? 'present' : '');
   const [inT, setInT] = useState<string | null>(onRecord);
   const [outT, setOutT] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
-  const cl = one ? balancesFor(one.person).find((b) => b.code === 'CL') : undefined;
+  const cl = one && !live ? balancesFor(one.person).find((b) => b.code === 'CL') : undefined;
   const timesMissing = how === 'present' && needTimes ? (!inT ? 'Enter the check-in time.' : !outT ? 'Enter the check-out time.' : null) : null;
   const missing = !how ? 'Choose a resolution.' : timesMissing ?? (!reason.trim() ? 'Enter a reason.' : null);
   const content: ReactNode = rows && (
@@ -1888,30 +1896,34 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
           {rows.map((r) => <li key={r.id}><span>{r.person}</span><span className="yx-tim-muted">{rowDate(r)} · {r.kind}</span></li>)}
         </ul>
       )}
-      <RadioGroup
-        aria-label="Resolution"
-        value={how}
-        onChange={setHow}
-        options={[
-          ...(canPresent
-            ? [sheet
-              ? { value: 'present', label: 'Accept the week as worked', description: `All ${daysText} count as present; no times needed for a timesheet` }
-              : { value: 'present', label: 'Present with approval', description: one && !refused(one) ? 'Enter the actual times below' : 'From the logged attempt: no late mark for a location failure' }]
-            : []),
-          { value: 'leave', label: 'Deduct leave', description: `${sheet ? `${daysText} · ` : ''}${cl ? `Casual leave first; ${firstName(one!.person)} has ${cl.balance} left` : 'Casual leave first'}` },
-          { value: 'absent', label: 'Absent (unpaid)', description: sheet ? `${daysText}' pay deducted in September payroll` : "1 day's pay deducted in September payroll" },
-        ]}
-      />
+      <div id="rs-how" tabIndex={-1}>
+        <RadioGroup
+          aria-label="Resolution"
+          value={how}
+          onChange={setHow}
+          options={[
+            ...(canPresent
+              ? [sheet
+                ? { value: 'present', label: 'Accept the week as worked', description: `All ${daysText} count as present; no times needed for a timesheet` }
+                : { value: 'present', label: 'Present with approval', description: one && !refused(one) ? 'Enter the actual times below' : 'From the logged attempt: no late mark for a location failure' }]
+              : []),
+            // Live: deducting leave is not built yet (the leave API takes no HR leave on someone's behalf), so it is not offered.
+            ...(live ? [] : [{ value: 'leave', label: 'Deduct leave', description: `${sheet ? `${daysText} · ` : ''}${cl ? `Casual leave first; ${firstName(one!.person)} has ${cl.balance} left` : 'Casual leave first'}` }]),
+            { value: 'absent', label: 'Absent (unpaid)', description: live ? "The day's pay is deducted in this month's payroll" : sheet ? `${daysText}' pay deducted in September payroll` : "1 day's pay deducted in September payroll" },
+          ]}
+        />
+      </div>
       {how === 'present' && needTimes && (
         <div className="yx-tim-row">
           <FormField id="rs-in" label="Check-in" required error={tried && !inT ? 'Enter the check-in time' : null}>
             <TimeField value={inT} onChange={setInT} />
           </FormField>
           <FormField id="rs-out" label="Check-out" required error={tried && !outT ? 'Enter the check-out time' : null}>
-            <TimeField value={outT} onChange={setOutT} placeholder={`Shift ends ${fmt12(shiftFor(one!.person).end)}`} />
+            <TimeField value={outT} onChange={setOutT} placeholder={`Shift ends ${fmt12(live ? live.shiftEnd : shiftFor(one!.person).end)}`} />
           </FormField>
         </div>
       )}
+      {error && <InlineAlert tone="danger" title="Not resolved">{error}</InlineAlert>}
       <FormField id="rs-reason" label="Reason" required helper="Saved in the audit history" error={tried && !reason.trim() ? 'Enter a reason' : null}>
         <TextArea rows={3} value={reason} onChange={setReason} placeholder="For example: confirmed with the supervisor's gate register" />
       </FormField>
@@ -1928,7 +1940,29 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
         <>
           {missing && <span className="yx-tim-muted" style={FOOT_HINT}>{missing}</span>}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => { if (!missing) { onResolved?.(rows!.map((r) => r.id)); return onClose(); } setTried(true); document.getElementById(timesMissing ? (inT ? 'rs-out' : 'rs-in') : 'rs-reason')?.focus(); }}>{one ? 'Resolve exception' : `Resolve ${rows?.length ?? 0}`}</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'resolve'}
+            onClick={() => {
+              if (missing) {
+                setTried(true);
+                document.getElementById(!how ? 'rs-how' : timesMissing ? (inT ? 'rs-out' : 'rs-in') : 'rs-reason')?.focus();
+                return;
+              }
+              if (!live) {
+                onResolved?.(rows!.map((r) => r.id));
+                return onClose();
+              }
+              const times = how === 'present' && needTimes && inT && outT ? { inMinute: toMin(inT), outMinute: toMin(outT) } : { inMinute: undefined, outMinute: undefined };
+              void run('resolve', async () => {
+                await live.onSubmit(how as 'present' | 'absent', times.inMinute, times.outMinute, reason.trim());
+                onResolved?.(rows!.map((r) => r.id));
+                onClose();
+              });
+            }}
+          >
+            {one ? 'Resolve exception' : `Resolve ${rows?.length ?? 0}`}
+          </Button>
         </>
       }
     >
@@ -2014,6 +2048,18 @@ export interface LiveMusterData {
   onOpenDay: (employeeId: string, on: string) => Promise<DayCard>;
   /** Today in the company's zone, "2026-10-29" (default: the browser's date). */
   today?: string;
+  /** TIM-02 period stage actions (each checked again on the server; lock and approve ask for the second step). */
+  onFreeze?: (legalEntityId: string, month: string) => Promise<unknown>;
+  onLock?: (legalEntityId: string, month: string) => Promise<unknown>;
+  onSend?: (legalEntityId: string, month: string) => Promise<unknown>;
+  onApproveLock?: (legalEntityId: string, month: string) => Promise<unknown>;
+  /** TIM-02 bulk: mark the ticked people present on one date with a reason. */
+  onMarkPresent?: (employeeIds: string[], on: string, reason: string) => Promise<unknown>;
+  /** TIM-03 HrFix and pending overtime on the day card. */
+  onResolve?: (input: ResolveInput) => Promise<unknown>;
+  onDecideOt?: (claimId: string, decision: 'approve' | 'reject' | 'comp_off', reason?: string) => Promise<unknown>;
+  /** Where "Open exceptions" goes (TIM-04). */
+  exceptionsHref?: string;
 }
 
 const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
@@ -2066,9 +2112,13 @@ function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o
                 : st === 'absent' || st === 'no_timesheet' ? 'A'
                   : st === 'missing_out' ? 'MP'
                     : st === 'missing_in' ? 'MI'
-                      : 'FUT';
+                      : st === 'strike' ? 'ST'
+                        : st === 'lockout' ? 'LO'
+                          : st === 'layoff' ? 'LF'
+                            : 'FUT';
   const note = x?.regularised ? 'Fixed by an approved request' : st === 'no_timesheet' ? 'No timesheet yet' : st === 'leave' && x?.leavePart && x.leavePart !== 'full' ? `On leave, ${x.leavePart} half` : undefined;
-  return { date, code, ...(late > 0 ? { lateMin: late } : {}), ...(x?.workedMinutes ? { workedMin: x.workedMinutes } : {}), ...(note ? { note } : {}) };
+  const ot = x?.otMinutes ? { otMin: x.otMinutes, otStatus: x.otStatus === 'approved' ? ('approved' as const) : ('pending' as const) } : {};
+  return { date, code, ...(late > 0 ? { lateMin: late } : {}), ...(x?.workedMinutes ? { workedMin: x.workedMinutes } : {}), ...ot, ...(note ? { note } : {}) };
 }
 
 /** Every day of a month in the design's codes. */
@@ -2130,21 +2180,31 @@ export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref,
 }
 
 /** A live day card (TIM-03): loads the day's punches and shows them in the design's day card. */
-function LiveDayPanel({ load, day, viewer, person, approver, monthDays, now, fallbackShift, onFix, onWithdraw }: {
+function LiveDayPanel({ load, day, viewer, person, employeeId, approver, monthDays, now, fallbackShift, onFix, onWithdraw, onResolve, onDecideOt }: {
   load: () => Promise<DayCard>;
   day: PDay;
   viewer: Persona;
   person: string;
+  employeeId?: string;
   approver?: string;
   monthDays: AttendanceDay[];
   now?: number;
   fallbackShift: DayCardBodyProps['shift'];
   onFix?: () => void;
   onWithdraw?: () => void;
+  /** TIM-03 HrFix: HR resolves the day with a reason (the TIM-04 resolve dialog). */
+  onResolve?: (input: ResolveInput) => Promise<unknown>;
+  /** TIM-03 pending overtime: decide it here, as the viewer's approval task (one engine with Approvals). */
+  onDecideOt?: (claimId: string, decision: 'approve' | 'reject' | 'comp_off', reason?: string) => Promise<unknown>;
 }) {
   const [card, setCard] = useState<DayCard | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
+  const [resolve, setResolve] = useState<ExceptionRow[] | null>(null);
+  const [ot, setOt] = useState<'approve' | 'reject' | 'comp_off' | null>(null);
+  const [rejectWhy, setRejectWhy] = useState('');
+  const [tried, setTried] = useState(false);
+  const [outcome, setOutcome] = useState<NonNullable<DayCardBodyProps['outcome']>>({});
   useEffect(() => {
     let on = true;
     setCard(null);
@@ -2161,21 +2221,90 @@ function LiveDayPanel({ load, day, viewer, person, approver, monthDays, now, fal
   if (problem) return <ErrorState title="We couldn't open this day" description={problem} onRetry={() => setTries(tries + 1)} />;
   if (!card) return <LoadingBlock rows={4} />;
   const shift = card.shift ? { name: card.shift.name, start: hm(card.shift.start), end: hm(card.shift.end), graceMin: card.shift.grace } : fallbackShift;
+  const otMin = card.ot ? card.ot.payableMinutes : undefined;
+  const claim = card.ot?.claim ?? null;
+  const otStatus: PDay['otStatus'] = !card.ot ? undefined : !claim ? 'unclaimed' : claim.status === 'approved' ? (card.ot.settle === 'comp_off' ? 'comp-off' : 'approved') : 'pending';
+  const shown: PDay = { ...day, ...(card.day?.workedMinutes && !day.workedMin ? { workedMin: card.day.workedMinutes } : {}), ...(otMin ? { otMin, otStatus } : {}) };
+  // HR may resolve only a past day of an open month; the card says why not otherwise (today, frozen or locked).
+  const hrFix = viewer === 'hr' && onResolve && card.hrFix?.ok ? () => setResolve([liveException(shown, person, employeeId ?? '', card)]) : undefined;
+  const firstIn = card.punches.find((p) => p.accepted && p.kind === 'in');
+  const decide = onDecideOt && claim && claim.status === 'pending' && viewer !== 'emp' ? onDecideOt : undefined;
+  const first = person.split(' ')[0];
   return (
-    <DayCardBody
-      day={card.day?.workedMinutes && !day.workedMin ? { ...day, workedMin: card.day.workedMinutes } : day}
-      punches={card.punches.map((p) => livePunch(p, card.zone))}
-      shift={shift}
-      viewer={viewer}
-      person={person}
-      approver={approver}
-      monthDays={monthDays}
-      now={now}
-      hideMap
-      onFix={onFix}
-      onWithdraw={onWithdraw}
-    />
+    <div className="yx-tim-stack">
+      <DayCardBody
+        day={shown}
+        punches={card.punches.map((p) => livePunch(p, card.zone))}
+        shift={shift}
+        locked={card.locked}
+        viewer={viewer}
+        person={person}
+        approver={approver}
+        monthDays={monthDays}
+        now={now}
+        hideMap
+        lateFree={card.lateMarks?.free}
+        onFix={viewer === 'hr' ? hrFix : onFix}
+        onWithdraw={onWithdraw}
+        onReviewOvertime={decide ? () => setOt('approve') : undefined}
+        onRejectOvertime={decide ? () => setOt('reject') : undefined}
+        onCompOff={decide ? () => setOt('comp_off') : undefined}
+        outcome={outcome}
+      />
+      {viewer === 'hr' && card.hrFix && !card.hrFix.ok && card.hrFix.why && (day.code === 'MP' || day.code === 'MI' || day.code === 'A') && <p className="yx-tim-note">{card.hrFix.why}</p>}
+      {card.resolution && <p className="yx-tim-note">Resolved by {card.resolution.by ?? 'HR'} on {formatDate(new Date(card.resolution.at))}: {card.resolution.reason}</p>}
+      <ResolveDialog
+        key={resolve?.map((r) => r.id).join()}
+        rows={resolve}
+        onClose={() => setResolve(null)}
+        live={onResolve ? { recordedIn: firstIn ? zoneTime(new Date(firstIn.at), card.zone).hhmm : null, shiftEnd: shift.end, onSubmit: async (how, inMinute, outMinute, reason) => { await onResolve({ days: [{ employeeId: employeeId ?? '', on: card.on }], how, inMinute, outMinute, reason }); setOutcome((x) => ({ ...x, exception: 'resolved' })); } } : undefined}
+      />
+      <ConfirmDialog
+        open={ot === 'approve'}
+        onOpenChange={(o) => !o && setOt(null)}
+        title={`Approve ${fmtDuration(otMin ?? 0)} overtime for ${first}, ${formatDate(day.date)}?`}
+        consequence="It's paid in payroll at the overtime rate."
+        confirmLabel="Approve overtime"
+        confirmVariant="approve"
+        onConfirm={async () => { await decide!(claim!.id, 'approve'); setOutcome((x) => ({ ...x, ot: 'approved' })); }}
+      />
+      <ConfirmDialog
+        open={ot === 'comp_off'}
+        onOpenChange={(o) => !o && setOt(null)}
+        title={`Give ${first} comp-off for ${formatDate(day.date)}?`}
+        consequence={`${first} gets comp-off to use later; the hours are not paid as overtime.`}
+        confirmLabel="Give comp-off"
+        onConfirm={async () => { await decide!(claim!.id, 'comp_off'); setOutcome((x) => ({ ...x, ot: 'comp-off' })); }}
+      />
+      <ConfirmDialog
+        open={ot === 'reject'}
+        onOpenChange={(o) => { if (!o) { setOt(null); setRejectWhy(''); setTried(false); } }}
+        title={`Reject ${fmtDuration(otMin ?? 0)} overtime for ${first}, ${formatDate(day.date)}?`}
+        consequence={`It isn't paid and no comp-off is credited. ${first} sees your reason.`}
+        confirmLabel="Reject overtime"
+        onConfirm={async () => {
+          // Pressed too early: the field says so and takes focus (never a disabled button).
+          if (!rejectWhy.trim()) {
+            setTried(true);
+            document.getElementById('dc-ot-why')?.focus();
+            return false;
+          }
+          await decide!(claim!.id, 'reject', rejectWhy.trim());
+          setOutcome((x) => ({ ...x, ot: 'rejected' }));
+        }}
+      >
+        <FormField id="dc-ot-why" label="Reason" required error={tried && !rejectWhy.trim() ? 'Enter a reason' : null}>
+          <TextArea rows={2} value={rejectWhy} onChange={setRejectWhy} maxLength={500} />
+        </FormField>
+      </ConfirmDialog>
+    </div>
   );
+}
+
+/** A live day as the resolve dialog's exception row. */
+function liveException(day: PDay, person: string, employeeId: string, card: DayCard): ExceptionRow {
+  const kind: ExceptionRow['kind'] = day.code === 'MP' ? 'Missing check-out' : day.code === 'MI' ? 'Missing check-in' : 'No attendance';
+  return { id: `${employeeId}|${card.on}`, person, code: card.person.code ?? '', date: day.date, kind, detail: DAY_CODE_LABEL[day.code], mode: card.day?.status === 'no_timesheet' ? 'Timesheet' : 'Punch', nudged: 0, status: 'Open', blocking: day.code !== 'A' };
 }
 
 const fixable = (c: DayCode) => c === 'A' || c === 'MP' || c === 'MI';
@@ -2506,6 +2635,9 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const gridRef = useRef<HTMLDivElement>(null);
   const [cell, setCell] = useState<[string, number] | null>(null);
   const [monthOf, setMonthOf] = useState<string | null>(null);
+  const [dlg, setDlg] = useState<'freeze' | 'lock' | 'send' | 'approve' | 'bulk' | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const { run } = useRun();
   const today = live.today ?? isoOf(new Date());
   const todayDate = isoDay(today);
   const rows: MusterRow[] = (d?.people ?? []).map((p) => {
@@ -2521,25 +2653,71 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const sheetRow = monthOf ? rows.find((r) => r.id === monthOf) : null;
   const person = row ? d!.people.find((p) => p.id === row.id) : undefined;
   const say = useSay();
+  // TIM-02 period stage of the month for its legal entity (none when the company has several and none is picked).
+  const period = d?.period ?? null;
+  const stage = period?.stage === 'filed' ? 'locked' : (period?.stage ?? 'open');
+  const twoStep = period?.flow === 'two_step';
+  const exceptions = period?.exceptions ?? 0;
+  const waiting = (period?.pending ?? []).reduce((n, x) => n + x.count, 0);
+  const lockBlock = !period ? null : !period.lockable ? `${label} can be frozen and locked from ${formatDate(isoDay(period.lockableFrom))}` : waiting ? `${waiting} ${waiting === 1 ? 'request is' : 'requests are'} still waiting for a decision` : exceptions ? `Lock opens when ${exceptions} open ${exceptions === 1 ? 'exception is' : 'exceptions are'} resolved` : null;
+  const own = selected.filter((id) => d?.people.find((p) => p.id === id)?.me);
+  // Bulk "mark present" only for HR, in an open month with absent or missing-punch days to mark (never their own row).
+  const bulkable = Boolean(d?.canMarkPresent) && stage === 'open' && rows.some((r) => !d!.people.find((p) => p.id === r.id)?.me && r.days.some((x) => canMarkPresent(x.code)));
+  const toggle = (id: string, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((x) => x !== id));
   // Like the calendar: the next month that has not started says so instead of moving.
   const goMonth = (n: number) => {
     if (n > 0 && live.month >= today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
     setCell(null);
+    setSelected([]);
     live.onMonth(shiftMonth(live.month, n));
   };
   useEffect(() => {
     const g = gridRef.current;
     if (g) g.scrollLeft = g.scrollWidth;
   }, [narrow, live.state]);
+  // The one button the stage offers this viewer; pressed while blocked, it says why (never disabled).
+  const press = (next: 'freeze' | 'lock' | 'send' | 'approve') => (lockBlock && (next !== 'freeze' || !period?.lockable || waiting) ? say(`${lockBlock}.`, 'default') : setDlg(next));
+  // Bulk: the dialog stays open on a refusal and the reason shows as a toast; done closes it (the page toasts).
+  const act = (fn: () => Promise<unknown>) =>
+    void run('bulk', async () => {
+      try {
+        await fn();
+        setDlg(null);
+      } catch (e) {
+        say(e instanceof Error && e.message ? e.message : 'That did not work. Nothing has changed.', 'default');
+        throw e;
+      }
+    });
+  const stageButton = !period || !ready ? null : stage === 'open' && period.canLock ? (
+    <Button icon={Snowflake} onClick={() => press('freeze')}>Freeze inputs</Button>
+  ) : stage === 'frozen' && !twoStep && period.canLock ? (
+    <Button variant="primary" icon={Lock} onClick={() => press('lock')}>Lock period</Button>
+  ) : stage === 'frozen' && twoStep && period.canApprove && period.sentAt ? (
+    <Button variant="approve" icon={Lock} onClick={() => press('approve')}>Approve lock</Button>
+  ) : stage === 'frozen' && twoStep && period.canLock && !period.sentAt ? (
+    <Button variant="primary" icon={Lock} onClick={() => press('send')}>Send for approval</Button>
+  ) : stage === 'frozen' && twoStep && period.sentAt ? (
+    <Badge tone="info">Sent for payroll approval</Badge>
+  ) : null;
   return (
     <TimePage active="Muster" user={HR_ADMIN}>
       <PageHeader
         title={`Muster · ${monthLong(live.month)}`}
-        description={d ? `${SCOPE_TEXT[d.scope]} · ${rows.length} ${rows.length === 1 ? 'person' : 'people'}` : undefined}
-        actions={
-          ready ? (
-            <Button icon={Download} onClick={() => downloadCsv(`muster-${d!.month}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((x) => String(x.date.getDate()))], ...rows.map((r) => { const s = monthSummary(r.days, todayDate); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((x) => codeText(cellCode(x.code)))]; })])}>Export</Button>
+        description={d ? `${period?.entityName ? `${period.entityName} · ` : ''}${SCOPE_TEXT[d.scope]} · ${rows.length} ${rows.length === 1 ? 'person' : 'people'}` : undefined}
+        status={period ? <Badge tone={stage === 'open' ? 'success' : stage === 'frozen' ? 'warning' : 'neutral'}>{stage === 'open' ? 'Open' : stage === 'frozen' ? 'Inputs frozen' : 'Locked'}</Badge> : undefined}
+        facts={
+          period && stage !== 'locked' ? (
+            <span className="yx-tim-row">
+              <span className="yx-tim-muted">{ready && exceptions > 0 && stage === 'open' ? 'Open exceptions stop payroll approval · ' : ''}{period.lockable ? `Cut-off ${formatDate(isoDay(period.lockableFrom))} has passed` : `Cut-off ${formatDate(isoDay(period.lockableFrom))}`}</span>
+              {!period.lockable && <DueBadge date={isoDay(period.lockableFrom)} />}
+            </span>
           ) : undefined
+        }
+        actions={
+          <div className="yx-tim-row">
+            {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${d!.month}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((x) => String(x.date.getDate()))], ...rows.map((r) => { const s = monthSummary(r.days, todayDate); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((x) => codeText(cellCode(x.code)))]; })])}>Export</Button>}
+            {stageButton}
+          </div>
         }
       />
       <div className="yx-tim-row yx-tim-monthnav">
@@ -2547,15 +2725,28 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
         <h2 className="yx-tim-h2" aria-live="polite">{monthLong(live.month)}</h2>
         <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
       </div>
+      {period && stage !== 'open' && (
+        <InlineAlert
+          tone={stage === 'frozen' && exceptions > 0 ? 'warning' : 'info'}
+          title={stage === 'frozen' ? (exceptions > 0 ? `Inputs are frozen · ${exceptions} open exceptions` : twoStep && period.sentAt ? `Inputs are frozen · sent for payroll approval ${formatDate(new Date(period.sentAt))}` : 'Inputs are frozen') : `${label} is locked`}
+          actions={stage === 'frozen' && exceptions > 0 && live.exceptionsHref ? <Button size="sm" asChild><a href={live.exceptionsHref}>Open exceptions</a></Button> : undefined}
+        >
+          {stage === 'frozen'
+            ? `${lockBlock ? `${lockBlock}. ` : ''}Employees can still raise late requests; they need HR and payroll approval and are paid in the next payroll. Days can't change any more: HR records a correction with a reason.`
+            : 'Corrections become late requests with effect in the next payroll.'}
+        </InlineAlert>
+      )}
       <LiveStates state={live.state} onRetry={live.onRetry} what="the muster">
         {d && rows.length === 0 ? (
           <EmptyState title="No one on the muster" description="People you manage, or look after in HR, appear here." />
         ) : d ? (
           <>
-            {openCount > 0 && (
+            {(openCount > 0 || bulkable) && (
               <div className="yx-tim-row">
-                <Badge tone="danger">{openCount} {openCount === 1 ? 'day' : 'days'} to fix</Badge>
-                <span className="yx-tim-muted">Missing punches and absences: each person fixes them with a request.</span>
+                {openCount > 0 && <Badge tone="danger">{openCount} {openCount === 1 ? 'day' : 'days'} to fix</Badge>}
+                {openCount > 0 && live.exceptionsHref && <Button size="sm" asChild><a href={live.exceptionsHref}>Open exceptions</a></Button>}
+                {bulkable && <span className="yx-tim-muted">Select people to act in bulk.</span>}
+                {selected.length > 0 && bulkable && <Button onClick={() => (own.length ? say('You cannot mark your own attendance. Untick your own row.', 'default') : setDlg('bulk'))}>Mark present with reason ({selected.length})</Button>}
               </div>
             )}
             <MusterGrid
@@ -2565,13 +2756,13 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
               today={todayDate}
               narrow={narrow}
               gridRef={gridRef}
-              bulkable={false}
-              selected={[]}
-              onToggle={() => undefined}
+              bulkable={bulkable}
+              selected={selected}
+              onToggle={toggle}
               cell={cell}
               onCell={setCell}
               onMonthOf={setMonthOf}
-              note={'"late" = came in after the grace time · Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.'}
+              note={'"late" = came in after the grace time · "OT" = overtime claimed · Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.'}
             />
           </>
         ) : null}
@@ -2588,13 +2779,70 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
               day,
               viewer: d!.scope === 'team' ? 'mgr' : 'hr',
               person: person.name,
+              employeeId: row.id,
               approver: 'their manager',
               monthDays: row.days,
               fallbackShift: { name: 'No shift', start: '00:00', end: '00:00', graceMin: 0 },
+              onResolve: live.onResolve,
+              onDecideOt: live.onDecideOt,
             }}
           />
         )}
       </Drawer>
+      {period && (
+        <>
+          <ConfirmDialog
+            open={dlg === 'freeze'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Freeze ${label} inputs?`}
+            consequence={[
+              "After freezing, the month's days can't change: employees raise late requests, paid in the next payroll.",
+              exceptions > 0 && `${exceptions} exceptions are still open and will block the lock until HR records a correction for each.`,
+            ].filter(Boolean).join(' ')}
+            confirmLabel="Freeze inputs"
+            onConfirm={async () => { await live.onFreeze!(period.legalEntityId, live.month); }}
+          />
+          <ConfirmDialog
+            open={dlg === 'lock'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Lock ${label} attendance?`}
+            consequence={`${rows.length} people · no open exceptions. Locked days can't be edited; corrections go to the next payroll. You'll be asked to confirm it's you.`}
+            confirmLabel="Lock period"
+            onConfirm={async () => { await live.onLock!(period.legalEntityId, live.month); }}
+          />
+          <ConfirmDialog
+            open={dlg === 'send'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Send ${label} for payroll approval?`}
+            consequence={`Payroll approves the lock. Until then, inputs for ${label} stay frozen.`}
+            confirmLabel="Send for approval"
+            onConfirm={async () => { await live.onSend!(period.legalEntityId, live.month); }}
+          />
+          <ConfirmDialog
+            open={dlg === 'approve'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Approve lock · ${label}`}
+            consequence={`Attendance and pay-affecting leave for ${label} can't be changed after this; fixes become late requests paid in the next payroll. You'll be asked to confirm it's you.`}
+            confirmLabel="Approve lock"
+            confirmVariant="approve"
+            onConfirm={async () => { await live.onApproveLock!(period.legalEntityId, live.month); }}
+          />
+        </>
+      )}
+      {dlg === 'bulk' && (
+        <BulkPresentDialog
+          rows={rows.filter((r) => selected.includes(r.id))}
+          monthDays={monthDays}
+          today={todayDate}
+          onClose={() => setDlg(null)}
+          onDone={(ids, date, reason) =>
+            act(async () => {
+              await live.onMarkPresent!(ids, isoOf(date), reason);
+              setSelected([]);
+            })
+          }
+        />
+      )}
     </TimePage>
   );
 }

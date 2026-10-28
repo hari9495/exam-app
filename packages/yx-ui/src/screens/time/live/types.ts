@@ -111,7 +111,7 @@ export interface PunchRow {
   where: string | null;
 }
 
-export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started';
+export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started' | 'strike' | 'lockout' | 'layoff';
 
 export interface DayRow {
   on: string;
@@ -122,6 +122,9 @@ export interface DayRow {
   workedMinutes: number | null;
   lateMinutes: number | null;
   regularised: boolean;
+  /** Overtime claimed for the day (pending or approved), on the muster. */
+  otMinutes?: number;
+  otStatus?: 'pending' | 'approved' | null;
 }
 
 export type FixKind = 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day';
@@ -156,6 +159,16 @@ export interface MyAttendance {
   wfh: { limit: number; used: number };
   /** Today is an approved work-from-home day. */
   wfhToday?: boolean;
+  /** Days of the month in a frozen or locked period: a fix becomes a late correction (TIM-07), paid next payroll. */
+  locked?: string[];
+  /** How many days back a late correction may still be asked for (payroll.late_request_max_days). */
+  lateRequestMaxDays?: number;
+}
+export interface LateCorrectionInput {
+  on: string;
+  kind: 'attendance' | 'leave';
+  shouldBe: string;
+  reason: string;
 }
 
 export interface WfhInput {
@@ -193,6 +206,24 @@ export interface Muster {
   to: string;
   scope: 'team' | 'granted' | 'company';
   people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; remindedOn?: string[]; days: DayRow[] }[];
+  /** TIM-02: the month's stage for its legal entity (null when the company has several and none is picked). */
+  period?: MusterPeriod | null;
+  /** HR may mark people present in bulk (leave.approve; checked per person on the server). */
+  canMarkPresent?: boolean;
+}
+export interface MusterPeriod {
+  legalEntityId: string;
+  entityName: string;
+  stage: 'open' | 'frozen' | 'locked' | 'filed';
+  lockableFrom: string;
+  lockable: boolean;
+  flow: 'one_step' | 'two_step';
+  sentAt: string | null;
+  lockedAt: string | null;
+  exceptions: number;
+  pending: { kind: string; count: number }[];
+  canLock: boolean;
+  canApprove: boolean;
 }
 
 export interface DayCard {
@@ -203,6 +234,21 @@ export interface DayCard {
   shift?: { name: string; start: number; end: number; grace: number } | null;
   day: Omit<DayRow, 'on'> | null;
   punches: (PunchRow & { minute: number })[];
+  /** TIM-03: the day's overtime (as a claim fixes it) and any claim for it. */
+  ot?: { eligibleMinutes: number; payableMinutes: number; overCapMinutes: number; category: OtCategory; settle: 'pay' | 'comp_off'; claim: { id: string; status: 'pending' | 'approved'; overridden: boolean } | null } | null;
+  /** Late marks this month up to the day, and how many are free (attendance.late_marks_free). */
+  lateMarks?: { month: number; free: number };
+  locked?: boolean;
+  /** TIM-03 HrFix: null when the viewer may not resolve; otherwise whether they may now, and why not. */
+  hrFix?: { ok: boolean; why: string | null } | null;
+  resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null; reason: string; by: string | null; at: string } | null;
+}
+export interface ResolveInput {
+  days: { employeeId: string; on: string }[];
+  how: 'present' | 'absent';
+  inMinute?: number;
+  outMinute?: number;
+  reason: string;
 }
 
 export interface HrBalances {
@@ -439,6 +485,9 @@ export interface OtClaim {
   name?: string;
   code?: string | null;
   canOverride?: boolean;
+  /** TIM-09: the viewer's open approval task for the claim (decide here or in Approvals: one engine). */
+  taskId?: string | null;
+  canCompOff?: boolean;
 }
 /** Me › Attendance › Night work (founder decisions 9 Oct 2026). */
 export interface MyNightWork {
@@ -483,7 +532,15 @@ export interface TimesheetLineInput {
 export interface Periods {
   year: string;
   today: string;
-  entities: { id: string; name: string; months: { month: string; stage: 'open' | 'frozen' | 'locked' | 'filed'; reopenAsked?: boolean; changedAt: string | null; changedBy: string | null; reason: string | null; lockable: boolean }[] }[];
+  entities: {
+    id: string;
+    name: string;
+    /** TIM-11: one step (HR locks) or two (HR sends, payroll approves), and what this viewer may do. */
+    flow?: 'one_step' | 'two_step';
+    canLock?: boolean;
+    canApprove?: boolean;
+    months: { month: string; stage: 'open' | 'frozen' | 'locked' | 'filed'; reopenAsked?: boolean; changedAt: string | null; changedBy: string | null; reason: string | null; lockable: boolean; lockableFrom?: string; sentAt?: string | null; sentBy?: string | null; sentByMe?: boolean }[];
+  }[];
 }
 export interface Preflight {
   month: string;
@@ -507,6 +564,9 @@ export interface FeedRow {
   compOffDays: number;
   timesheetMinutes: number;
   unevaluatedDays: number;
+  layoffDays?: number;
+  heldDays?: number;
+  lateLopDays?: number;
 }
 export interface PayrollFeed {
   entity: { id: string; name: string };
@@ -650,4 +710,153 @@ export interface HolidayFeeds {
   states: { code: string; name: string }[];
   feeds: { id: string; state: string; stateName: string; provider: string; checkedAt: string | null; checkError: string | null; locations: { id: string; name: string; hasCalendar: boolean }[]; waiting: number }[];
   changes: { id: string; feedId: string; calendar: string; action: 'add' | 'remove'; on: string; name: string; peopleOnLeave: number }[];
+}
+
+// ------------------------------------------------------------------------------------------ time ops (29 Oct 2026)
+
+/** TIM-01 Today board. */
+export type BoardStatus = 'in' | 'late' | 'missing' | 'not_in' | 'leave' | 'wfh' | 'od' | 'off' | 'rest';
+export interface TodayBoard {
+  today: string;
+  at: string;
+  scope: Scope;
+  month: string;
+  lockableFrom: string;
+  /** Open exceptions this month among these people (missing punches or timesheets). */
+  blocking: number;
+  people: { id: string; name: string; code: string | null; role: string; dept: string; location: string; status: BoardStatus; inAt: string | null; onSite: boolean; site: string; mode: 'Punch' | 'Assumed present' | 'Timesheet'; source: 'web' | 'field' | null; detail: string | null; missedOutOn: string | null; nudged: boolean; shiftStarted: boolean; today: string | null }[];
+}
+
+/** TIM-04 exceptions. */
+export interface ExceptionsList {
+  month: string;
+  today: string;
+  scope: Scope;
+  canResolve: boolean;
+  rows: {
+    id: string;
+    employeeId: string;
+    person: string;
+    code: string | null;
+    on: string;
+    kind: string;
+    status: 'Open' | 'Request pending' | 'Resolved';
+    blocking: boolean;
+    mode: 'Punch' | 'Timesheet';
+    detail: string;
+    firstIn: string | null;
+    nudged: number;
+    request: { id: string; kind: string; inMinute: number | null; outMinute: number | null; reason: string; taskId: string | null } | null;
+    resolution: { how: 'present' | 'absent'; reason: string; by: string | null; at: string } | null;
+  }[];
+}
+
+/** TIM-16 late and early / overtime report rows. */
+export interface AttendanceReport {
+  month: string;
+  upTo: string;
+  scope: Scope;
+  stage: 'open' | 'frozen' | 'locked' | 'filed' | null;
+  rows: { id: string; name: string; code: string | null; dept: string; location: string; late: number; early: number; otMinutes: number; lop: number }[];
+}
+export interface NightRegister {
+  month: string;
+  stage: 'open' | 'frozen' | 'locked' | 'filed' | null;
+  rows: { id: string; name: string; code: string | null; location: string; shifts: number; nightMinutes: number; consent: { reference: string; givenOn: string; withdrawnOn: string | null; confirmed: boolean } | null }[];
+}
+
+/** TIM-37 industrial action. */
+export type IndustrialKind = 'strike' | 'lockout' | 'layoff';
+export type Legality = 'legal' | 'illegal' | 'undetermined';
+export interface IndustrialEvent {
+  id: string;
+  kind: IndustrialKind;
+  from: string;
+  to: string;
+  days: number;
+  location: { id: string; name: string; state: string };
+  department: { id: string; name: string } | null;
+  workers: number;
+  legality: Legality;
+  legalitySetAt: string | null;
+  legalitySetBy: string | null;
+  notice: string;
+  status: 'active' | 'cancelled';
+  version: number;
+  today: string;
+}
+export interface IndustrialOptions {
+  today: string;
+  locations: { id: string; name: string; state: string; people: number; departments: { id: string; name: string; people: number }[] }[];
+}
+export interface IndustrialInput {
+  kind: IndustrialKind;
+  locationId: string;
+  departmentId?: string;
+  from: string;
+  to: string;
+  legality: Legality;
+  notice: string;
+}
+
+/** TIM-36 presence days. */
+export interface PresenceDayRow {
+  id: string;
+  employeeId: string;
+  person: string;
+  dept?: string;
+  on: string;
+  status: DayStatus | null;
+  byPresence: boolean;
+  activeMinutes: number | null;
+  first: string | null;
+  last: string | null;
+  webIn: string | null;
+  webOut: string | null;
+  consent: { givenAt: string | null; version: string | null } | null;
+  withdrawnAt: string | null;
+}
+export interface MyPresence {
+  month: string;
+  today: string;
+  enabled: boolean;
+  notice: string;
+  consent: { id: string; givenAt: string; noticeVersion: string } | null;
+  history: { id: string; givenAt: string; withdrawnAt: string | null; noticeVersion: string }[];
+  days: PresenceDayRow[];
+}
+export interface TeamPresence {
+  month: string;
+  scope: 'hr' | 'team';
+  days: PresenceDayRow[];
+}
+
+/** TIM-10 device backfill. */
+export interface DeviceBatch {
+  deviceRef: string;
+  punches: number;
+  people: number;
+  from: string | null;
+  to: string | null;
+  receivedAt: string | null;
+}
+export interface DeviceDayView {
+  status: DayStatus;
+  lateMinutes: number | null;
+  firstIn: string | null;
+  lastOut: string | null;
+}
+export interface DevicePreview {
+  deviceRef: string;
+  from: string;
+  to: string;
+  receivedAt: string;
+  punches: number;
+  people: number;
+  personDays: number;
+  becomePresent: number;
+  lateRemoved: number;
+  lateAdded: number;
+  corrections: number;
+  changes: { employeeId: string; name: string; code: string | null; on: string; open: boolean; stage: string; punches: { kind: string; at: string | null }[]; before: DeviceDayView | null; after: DeviceDayView | null }[];
 }

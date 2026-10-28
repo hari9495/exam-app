@@ -899,6 +899,8 @@ export interface DayCardBodyProps {
    * comp-off; the request withdrawn; the exception resolved. Set it after the confirm step succeeds.
    */
   outcome?: { ot?: 'approved' | 'rejected' | 'comp-off'; request?: 'withdrawn'; exception?: 'resolved' };
+  /** Late marks a month without a deduction (the company's setting; the stories use 3). */
+  lateFree?: number;
 }
 
 /**
@@ -932,6 +934,7 @@ export function DayCardBody({
   now = NOW_MIN,
   hideMap,
   outcome = {},
+  lateFree = 3,
 }: DayCardBodyProps) {
   // Refused punches are listed with their reason but never counted.
   const punches = listed.filter((p) => !p.refusal);
@@ -958,12 +961,12 @@ export function DayCardBody({
       : { label: 'Worked', value: day.workedMin ? fmtDuration(day.workedMin) : '—' };
   // Overtime just decided on this card wins over the stored status.
   const otStatus = outcome.ot ?? day.otStatus;
-  const otPending = !!day.otMin && otStatus !== 'approved' && otStatus !== 'comp-off' && otStatus !== 'rejected';
+  const otPending = !!day.otMin && otStatus !== 'approved' && otStatus !== 'comp-off' && otStatus !== 'rejected' && otStatus !== 'unclaimed';
   // No punches and no recorded hours: late and overtime are not known, not "No" / "None".
   const noData = punches.length === 0 && !day.workedMin;
   // A holiday or weekly off has no shift: no late mark, and every worked minute is overtime.
   const offDay = day.code === 'H' || day.code === 'WO';
-  const otState = otPending ? 'pending approval' : otStatus === 'comp-off' ? 'taken as comp-off' : otStatus === 'rejected' ? 'rejected, not paid' : 'approved';
+  const otState = otPending ? 'pending approval' : otStatus === 'unclaimed' ? 'not claimed yet' : otStatus === 'comp-off' ? 'taken as comp-off' : otStatus === 'rejected' ? 'rejected, not paid' : 'approved';
   const otValue = open || noData ? '—' : day.otMin ? `${fmtDuration(day.otMin)} · ${otState}` : 'None';
   const lateValue = noData || offDay ? '—' : day.lateMin ? `${day.lateMin} min` : 'No';
   // The OT review row for this day (category, pre-approval, quarter hours): the facts the approve decision needs.
@@ -1065,7 +1068,7 @@ export function DayCardBody({
       <PunchList punches={listed} showMapIndex={!hideMap} showNetwork={viewer === 'hr'} emptyText="No punches on this day." hideSource={day.code === 'OD' ? ['field'] : []} />
       {lateN > 0 && (
         <p className="yx-tim-note">
-          {lateN <= 3 ? `Late mark ${lateN} of 3 free this month, so no penalty.` : `Late mark ${lateN} this month: over the 3 free, so a late penalty posts.`}
+          {lateN <= lateFree ? `Late mark ${lateN} of ${lateFree} free this month, so no penalty.` : `Late mark ${lateN} this month: over the ${lateFree} free, so a late penalty posts.`}
         </p>
       )}
       {/* Withdrawn: the success alert already says so; offer the next step instead of repeating it. */}
