@@ -58,7 +58,23 @@ function directoryColumns(persona: Persona, filter: WorkforceFilter): TableColum
   const base: TableColumn<WorkforceRow>[] = [
     { key: 'name', header: 'Name', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.role }), width: 260 },
     { key: 'department', header: 'Department', value: (r) => r.department, groupable: true, width: 140 },
-    { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 190 },
+    // Founder 28 Oct 2026: the legal entity under the place, so the code's prefix (KF-, KFT-) has its entity beside it.
+    {
+      key: 'location',
+      header: 'Location',
+      value: (r) => r.location,
+      render: (r) =>
+        r.entity ? (
+          <span className="yx-ppl__cell-two">
+            <span>{r.location}</span>
+            <span className="yx-ppl__sub">{r.entity}</span>
+          </span>
+        ) : (
+          r.location
+        ),
+      groupable: true,
+      width: 190,
+    },
     { key: 'manager', header: 'Manager', value: (r) => r.manager, width: 170 },
     { key: 'email', header: 'Work email', value: (r) => r.email, width: 240, optional: true },
   ];
@@ -390,6 +406,7 @@ function DirectoryCard({ row, persona }: { row: WorkforceRow; persona: Persona }
       <dl className="yx-ppl__dl">
         <div className="yx-ppl__dl-row"><dt>Department</dt><dd>{row.department}</dd></div>
         <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{row.location}</dd></div>
+        {row.entity && <div className="yx-ppl__dl-row"><dt>Legal entity</dt><dd>{row.entity}</dd></div>}
         <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{row.manager}</dd></div>
         {row.email && <div className="yx-ppl__dl-row"><dt>Work email</dt><dd>{row.email}</dd></div>}
         {row.phone && <div className="yx-ppl__dl-row"><dt>Phone</dt><dd>{formatPhone(row.phone)}</dd></div>}

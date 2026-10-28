@@ -113,6 +113,9 @@ describe('/yx/people/directory (PPL-01 live)', () => {
     expect(within(tabs).getAllByRole('tab').map((t) => t.querySelector('.yx-ppl__wf-label')?.textContent)).toEqual(['Employees', 'Consultants', 'All persons']);
     expect(tabs).toHaveTextContent('1 more than September');
     expect(screen.getByRole('columnheader', { name: /^Status/ })).toBeInTheDocument();
+    // The legal entity under the place, beside the code (founder 28 Oct 2026); not twice where there is no place.
+    expect(screen.getAllByText('Kaveri Foods', { selector: '.yx-ppl__sub' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('KF-0142').length).toBeGreaterThan(0);
     // Import opens People › Import (PPL-07).
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     expect(push).toHaveBeenCalledWith('/yx/people/import');

@@ -383,7 +383,7 @@ export const PLT20Empty: S = { name: 'PLT-20 · Command palette · no results', 
 
 /* PLT-21 */
 const HITS: SearchHit[] = [
-  { id: 'h1', source: 'People', title: 'Arjun Mehta', subtitle: 'KF-0231 · QA Engineer · Quality · Chennai office', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(28) },
+  { id: 'h1', source: 'People', title: 'Arjun Mehta', subtitle: 'KF-0231 · Kaveri Foods Pvt Ltd (Tamil Nadu) · QA Engineer · Quality · Chennai office', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(28) },
   { id: 'h2', source: 'Requests', title: 'LV-26-01842 · Casual leave', subtitle: 'Arjun Mehta · 1–2 Oct · Waiting for Karthik Subramanian', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(29) },
   { id: 'h3', source: 'Documents', title: 'Appointment letter · Arjun Mehta', subtitle: 'Letters · signed 12 Jan 2024', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(12, 0) },
   { id: 'h4', source: 'Tickets', title: 'TKT-5519 · Arjun: PF passbook not updated', subtitle: 'Helpdesk · Open · Payroll queue', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(24) },

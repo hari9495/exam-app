@@ -20,6 +20,8 @@ export interface WorkforceRow {
   /** The department and those above it, top first (live app): filtering a parent finds everyone under it. */
   departmentPath?: string[];
   location: string;
+  /** The legal entity that employs them (founder 28 Oct 2026: shown with the code, whose prefix is per entity). */
+  entity?: string;
   manager: string;
   email: string;
   phone: string;
@@ -44,6 +46,9 @@ const orgManagerOf = (id: string) => {
 const CW_FIRST = ['Murugan', 'Selvi', 'Ravi', 'Anbu', 'Lakshmanan', 'Kannan', 'Vasanthi', 'Senthil', 'Pooja', 'Ganesh', 'Mani', 'Jaya'];
 const CW_LAST = ['K', 'Perumal', 'Shankar', 'Durai', 'Ramasamy', 'Velu', 'Arumugam'];
 const slug = (n: string) => n.toLowerCase().replace(/[^a-z]+/g, '.').replace(/\.$/, '');
+
+/** The demo's two entities: the Tamil Nadu sites are KFPL-TN, everything else KFPL. */
+const entityAt = (location: string) => (location === 'Hosur plant' || location === 'Chennai office' ? 'Kaveri Foods Pvt Ltd (Tamil Nadu)' : 'Kaveri Foods Pvt Ltd');
 
 export const WORKFORCE: WorkforceRow[] = [
   ...EMPLOYEES.map((e) => ({
@@ -105,7 +110,7 @@ export const WORKFORCE: WorkforceRow[] = [
     status: 'On assignment',
     via: ['Brindavan Retail Ltd', 'Nilgiri Logistics', 'Coromandel Textiles'][i % 3],
   })),
-];
+].map((r) => ({ ...r, entity: entityAt(r.location) }));
 
 export const WORKFORCE_COUNTS = {
   Employee: WORKFORCE.filter((w) => w.kind === 'Employee').length,

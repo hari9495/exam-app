@@ -360,7 +360,8 @@ export class WorkspaceService {
       const page = await this.people.directory(ctx, v, { q, limit: LIMIT });
       return page.people.map((p) => {
         const hr = 'employeeCode' in p;
-        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.designation?.name, p.department?.name].filter(Boolean);
+        // Founder 28 Oct 2026: the legal entity's name next to the code (whose prefix is per entity), and the place.
+        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.legalEntity?.name, p.designation?.name, p.department?.name, p.location?.name].filter(Boolean);
         return { id: p.id, label: p.name, secondary: parts.join(' · '), href: hr ? `/yx/people/profile?person=${enc(p.id)}` : `/yx/people/directory?q=${enc(p.name)}` };
       });
     } catch (e) {
