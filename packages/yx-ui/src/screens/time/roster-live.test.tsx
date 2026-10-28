@@ -5,7 +5,8 @@ import { RosterScreen, type LiveRoster } from './roster';
 import { ShiftEditorScreen } from './roster';
 import { ShiftSwapSheet, type LiveMyShifts } from './requests';
 import type { LiveShiftSetup } from './live/shifts-setup';
-import type { MyShifts, RosterWeek, ShiftSetup } from './live/types';
+import type { MyShifts, RosterWeek, ShiftSetup, TeamRosterWeek } from './live/types';
+import type { LiveStaffRoster } from './roster';
 
 // The designed rostering screens (TIM-05 roster, TIM-06 shift editor, TIM-08 my shifts and swaps) with the live
 // app's data: what each page must do once it is live. Ported from the old live-copy tests (live-b2.test.tsx).
@@ -258,5 +259,68 @@ describe('TIM-06 Shift editor, live (HR › Shifts set-up)', () => {
     expect(onRetry).toHaveBeenCalled();
     rerender(<ShiftEditorScreen live={setup({ state: 'no-access', data: null })} />);
     expect(screen.getByText(/the shifts set-up/i)).toBeInTheDocument();
+  });
+});
+
+describe('TIM-05 rules, notice and Staff, live (feature sheet rules 1–6)', () => {
+  it('shows the new rule checks (hours, weekly off, licence) with the limits from the server', () => {
+    const cells = ROSTER.people[0].cells.map((c, i) => (i === 2 ? { ...c, conflicts: [{ on: c.on, kind: 'licence' as const, message: 'Murugan Selvam has no valid Forklift licence on this day' }] } : i === 6 ? { ...c, conflicts: [{ on: c.on, kind: 'weekly_off' as const, message: 'No weekly off in the week of 12 Oct 2026 (at least 1)' }] } : c));
+    render(<RosterScreen live={roster({ data: { ...ROSTER, rules: { minRestHours: 12, maxDailyHours: 9, maxWeeklyHours: 48, maxSpreadOverHours: 10.5, minWeeklyOffs: 1 }, people: [{ ...ROSTER.people[0], cells }] } })} />);
+    const checks = screen.getByRole('list', { name: 'Roster checks' });
+    expect(checks).toHaveTextContent('Licence');
+    expect(checks).toHaveTextContent('No weekly off');
+    expect(screen.getByText(/minimum rest 12 h · max 9 h a day, 48 h a week/)).toBeInTheDocument();
+  });
+
+  it('a publish inside the notice asks for a reason: too early shows the field error and focus, then publishes with it', async () => {
+    const onPublish = vi.fn(async (_w: string, reason?: string) => {
+      if (!reason) throw Object.assign(new Error('1 change starts sooner than the notice the people are owed.'), { code: 'NOTICE_REASON' });
+      return {};
+    });
+    render(<RosterScreen live={roster({ onPublish })} />);
+    await ue.click(screen.getByRole('button', { name: 'Publish roster' }));
+    const confirm = screen.getAllByRole('button', { name: 'Publish roster' });
+    await ue.click(confirm[confirm.length - 1]);
+    const dialog = await screen.findByRole('dialog', { name: 'Some changes start too soon' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Publish with reason' }));
+    expect(within(dialog).getByText(/at least 5 letters/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Machine breakdown on line 2');
+    await ue.click(within(dialog).getByRole('button', { name: 'Publish with reason' }));
+    await waitFor(() => expect(onPublish).toHaveBeenLastCalledWith('2026-10-12', 'Machine breakdown on line 2'));
+  });
+
+  const TEAM: TeamRosterWeek = {
+    week: '2026-10-12',
+    to: '2026-10-18',
+    today: '2026-10-09',
+    team: true,
+    shifts: ROSTER.shifts,
+    people: [
+      { id: 'me', name: 'Rekha Balan', code: 'KFT-0102', me: true, cells: Array.from({ length: 7 }, (_, i) => ({ on: `2026-10-${12 + i}`, employed: true, shift: i < 5 ? { shiftId: 's-m', name: 'Morning', start: 360, end: 840 } : null, off: i >= 5, leave: null })) },
+      { id: 'p2', name: 'Kavitha Sundaram', code: 'KFT-0103', me: false, cells: Array.from({ length: 7 }, (_, i) => ({ on: `2026-10-${12 + i}`, employed: true, shift: { shiftId: 's-n', name: 'Night', start: 1320, end: 360 }, off: false, leave: i === 1 ? ('away' as const) : null })) },
+    ],
+  };
+  const staff = (over: Partial<LiveStaffRoster> = {}): LiveStaffRoster => ({ state: 'ready', data: TEAM, week: '2026-10-12', onWeek: vi.fn(), swapHref: '/yx/time/shifts', ...over });
+
+  it('Staff: the published team week read-only, me marked You, a colleague on leave only as Away, the swap link', () => {
+    render(<RosterScreen staffLive={staff()} />);
+    expect(screen.getByText('Rekha Balan')).toBeInTheDocument();
+    expect(screen.getByText('Kavitha Sundaram')).toBeInTheDocument();
+    expect(screen.getAllByText('You').length).toBeGreaterThan(0);
+    expect(screen.getByRole('list', { name: 'Shift key' })).toHaveTextContent('on leave');
+    expect(screen.getByRole('link', { name: 'Ask to swap a shift' })).toHaveAttribute('href', '/yx/time/shifts');
+    expect(screen.queryByRole('button', { name: 'Publish roster' })).not.toBeInTheDocument();
+  });
+
+  it('Staff, setting off: only my row and the note why; loading and error states', async () => {
+    const { unmount } = render(<RosterScreen staffLive={staff({ data: { ...TEAM, team: false, people: [TEAM.people[0]] } })} />);
+    expect(screen.queryByText('Kavitha Sundaram')).not.toBeInTheDocument();
+    expect(screen.getByText(/only their own roster; HR can change that/)).toBeInTheDocument();
+    unmount();
+    const onRetry = vi.fn();
+    render(<RosterScreen staffLive={staff({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
   });
 });

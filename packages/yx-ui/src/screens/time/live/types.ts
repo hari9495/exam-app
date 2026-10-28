@@ -350,7 +350,7 @@ export interface ShiftRef {
 }
 export interface RosterConflictRow {
   on: string;
-  kind: 'rest' | 'overlap' | 'leave' | 'holiday' | 'night';
+  kind: 'rest' | 'overlap' | 'leave' | 'holiday' | 'night' | 'hours' | 'spread' | 'week' | 'weekly_off' | 'licence';
   message: string;
 }
 export interface RosterCell {
@@ -374,7 +374,19 @@ export interface RosterWeek {
   scope: Scope;
   shifts: { id: string; code: string; name: string; colour: string; night: boolean; start: number | null; end: number | null }[];
   drafts: number;
+  /** The working-time limits the checks used (the first person's; each person's own limits decide their conflicts). */
+  rules?: { minRestHours: number; maxDailyHours: number; maxWeeklyHours: number; maxSpreadOverHours: number; minWeeklyOffs: number } | null;
   people: { id: string; name: string; code: string | null; cells: RosterCell[] }[];
+}
+/** TIM-05 Staff: my week, and my team's published roster when the company allows it (roster.staff_see_team). */
+export interface TeamRosterWeek {
+  week: string;
+  to: string;
+  today: string;
+  /** False: the company shows employees only their own shifts. */
+  team: boolean;
+  shifts: RosterWeek['shifts'];
+  people: { id: string; name: string; code: string | null; me: boolean; cells: { on: string; employed: boolean; shift: ShiftRef | null; off: boolean; leave: 'full' | 'half' | 'away' | null }[] }[];
 }
 export interface MyShifts {
   week: string;

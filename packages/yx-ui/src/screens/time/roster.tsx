@@ -41,9 +41,9 @@ import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './tim
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
 import { COLOURS, NightWorkTab, OvertimeRulesTab, ProjectsTab, SCOPES, fromMinute, toMinute, type LiveShiftSetup } from './live/shifts-setup';
-import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
+import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup, TeamRosterWeek } from './live/types';
 import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
-import { type LiveOpenShifts, LiveOpenShiftsScreen } from './open-shifts-live';
+import { type LiveOpenShifts, LiveOpenShiftsScreen, OpenShiftsPanel } from './open-shifts-live';
 import { type LiveStandby, LiveStandbyScreen } from './standby-live';
 import { type LiveAutoRoster, LiveAutoRosterScreen } from './auto-roster-live';
 import { type LiveLicences, LiveLicencesScreen } from './licences-live';
@@ -326,11 +326,11 @@ function MyWeekList({ row, pid }: { row: (string | null)[]; pid: string }) {
 }
 
 // TIM-05: the story shows the Hosur plant sample; the app passes `live` (the planner's real week).
-export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial, live }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; live?: LiveRoster }) {
-  return live ? <LiveRosterScreen live={live} /> : <SampleRosterScreen {...{ persona, status, dialog, state, readOnly, partial }} />;
+export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial, live, staffLive }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; live?: LiveRoster; /** The employee's read-only week (the Staff story with real data). */ staffLive?: LiveStaffRoster }) {
+  return live ? <LiveRosterScreen live={live} /> : staffLive ? <LiveStaffRosterScreen live={staffLive} /> : <SampleRosterScreen {...{ persona, status, dialog, state, readOnly, partial }} />;
 }
 
-function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial }: { persona: 'mgr' | 'hr' | 'emp'; status: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state: ViewState; readOnly?: boolean; partial?: boolean }) {
+function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial }: { persona: 'mgr' | 'hr' | 'emp'; status: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state: ViewState; readOnly?: boolean; partial?: boolean }) {
   const why = useWhy();
   const done = useDone();
   const [dlg, setDlg] = useState(dialog);
@@ -438,6 +438,8 @@ function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial 
         onConfirm={() => { change(copy.next); setSt('ready'); setDlg(undefined); if (copy.filled) done(`${copy.filled} ${copy.filled === 1 ? 'cell' : 'cells'} copied from last week`); }}
       />
       <SwapDialog open={dlg === 'swap' && ready} onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} />
+      {/* Rule 5: Senthil's Thursday morning starts tomorrow, inside the 24 h notice, so publishing asks why. */}
+      <NoticeDialog open={dlg === 'notice'} onOpenChange={(o) => !o && setDlg(undefined)} onPublish={() => { setDlg(undefined); setRs('published'); setPublishedOn('today'); done('Roster published', 'Staff are notified; Senthil is told why his Thursday changed.'); }} />
     </TimePage>
   );
 }
@@ -466,7 +468,21 @@ export interface LiveRoster {
   /** value: a shift id, 'off', or 'pattern' (back to the pattern / location default). */
   onCells: (cells: { employeeId: string; on: string; value: string }[]) => Promise<unknown>;
   onCopy: (fromWeek: string, toWeek: string) => Promise<unknown>;
-  onPublish: (week: string) => Promise<unknown>;
+  /** reason: why published days inside the notice change (rule 5); the API answers NOTICE_REASON when one is needed. */
+  onPublish: (week: string, reason?: string) => Promise<unknown>;
+  /** The Open shifts tab (TIM-35), when the page loads it. */
+  openShifts?: LiveOpenShifts;
+}
+
+/** TIM-05 Staff (founder decision 29 Oct 2026): the employee's read-only week, with their team's when the company allows it. */
+export interface LiveStaffRoster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TeamRosterWeek | null;
+  week: string;
+  onWeek: (week: string) => void;
+  /** Where "Ask to swap a shift" goes (the live My shifts page). */
+  swapHref: string;
 }
 
 const COLOUR_NUMBER: Record<string, number> = { blue: 1, green: 2, teal: 3, purple: 4, orange: 5, pink: 6, grey: 7, red: 8 };
@@ -475,7 +491,48 @@ const isoDate = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.sl
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const isoPlus = (iso: string, n: number) => isoOf(addDays(isoDate(iso), n));
 const SCOPE_TEXT = { team: 'Your team', granted: 'The people you plan', company: 'Everyone' };
-const CHECK_KIND = { night: 'Night work', holiday: 'Holiday', rest: 'Rest', overlap: 'Overlap', leave: 'Leave' } as const;
+const CHECK_KIND = { night: 'Night work', holiday: 'Holiday', rest: 'Rest', overlap: 'Overlap', leave: 'Leave', hours: 'Hours', spread: 'Spread-over', week: 'Weekly hours', weekly_off: 'Weekly off', licence: 'Licence' } as const;
+/** Breaks that stop a publish (feature sheet rules 1–4 and 8); leave and holidays stay warnings. */
+const LAW_KINDS = ['night', 'licence'];
+
+/** Rule 5: publishing changes to shifts that start sooner than the notice needs a reason; the people are told at once. */
+function NoticeDialog({ open, onOpenChange, onPublish }: { open: boolean; onOpenChange: (o: boolean) => void; onPublish: (reason: string) => Promise<unknown> | void }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const id = 'roster-notice-reason';
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Some changes start too soon"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (reason.trim().length < 5) {
+                setError('Say why, in at least 5 letters. The people see it.');
+                return document.getElementById(id)?.focus();
+              }
+              setError(undefined);
+              return onPublish(reason.trim());
+            }}
+          >
+            Publish with reason
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        <p className="yx-tim-muted">People are owed notice of a shift change (HR sets how much). These changes start sooner, so they are published only with a reason. The people are told at once, and the reason is kept with the change.</p>
+        <FormField label="Reason" required error={error} id={id}>
+          <TextField id={id} value={reason} placeholder="For example Machine breakdown on line 2" onChange={setReason} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
 
 function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
   const d = p.data;
@@ -497,7 +554,21 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
   const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map((k) => ({ personId: x.id, date: isoDate(c.on), code: k.message.startsWith('Half') ? 'half day' : 'full day' })))), [d]);
   const serverChecks = (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind !== 'leave').map((k) => ({ who: x.name, ...k }))));
   const people: RosterPerson[] = (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.code ?? undefined }));
-  const rules: RosterRules = { minRestHours: 11 };
+  const limits = d?.rules;
+  const rules: RosterRules = { minRestHours: limits?.minRestHours ?? 11, maxWeeklyHours: limits?.maxWeeklyHours };
+  const [notice, setNotice] = useState(false);
+  const [offer, setOffer] = useState(false);
+  const publish = (reason?: string) =>
+    run('publish', async () => {
+      try {
+        await (reason ? p.onPublish(d!.week, reason) : p.onPublish(d!.week));
+        setNotice(false);
+      } catch (e) {
+        // Rule 5: the API asks for a reason; the dialog asks the planner instead of an error.
+        if ((e as { code?: string }).code === 'NOTICE_REASON' && !reason) return setNotice(true);
+        throw e;
+      }
+    });
   const swapCtx: SwapCtx = {
     // No roles from the API yet, so the swap checks cover, rest, leave and night consent only.
     people: people.map((x) => ({ ...x, role: undefined })),
@@ -520,11 +591,23 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
   };
   const ready = p.state === 'ready' && !!d;
   const prev = isoPlus(p.week, -7);
+  // The design's Roster | Open shifts tabs (the pattern "Bids" windows are not built, so that tab is left out).
+  const withTabs = (body: ReactNode) =>
+    p.openShifts ? (
+      <Tabs defaultValue="roster">
+        <TabsList aria-label="Roster views">
+          <TabsTrigger value="roster">Roster</TabsTrigger>
+          <TabsTrigger value="open" count={p.openShifts.data?.rows.filter((o) => o.status === 'open').length}>Open shifts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="roster">{body}</TabsContent>
+        <TabsContent value="open"><OpenShiftsPanel live={p.openShifts} offer={offer} onOffer={setOffer} /></TabsContent>
+      </Tabs>
+    ) : body;
   return (
     <TimePage active="Roster">
       <PageHeader
         title="Roster"
-        description={`${d ? `${SCOPE_TEXT[d.scope]} · ` : ''}Week of ${formatDate(start)} · minimum rest 11 h · night window 7 pm – 6 am · changes are drafts until you publish them`}
+        description={`${d ? `${SCOPE_TEXT[d.scope]} · ` : ''}Week of ${formatDate(start)} · minimum rest ${rules.minRestHours} h${limits ? ` · max ${limits.maxDailyHours} h a day, ${limits.maxWeeklyHours} h a week` : ''} · changes are drafts until you publish them`}
         status={ready && d ? d.drafts > 0 ? <Badge tone="warning">{`Draft · ${d.drafts} ${d.drafts === 1 ? 'change' : 'changes'} not visible to staff`}</Badge> : <Badge tone="success">Published</Badge> : undefined}
         actions={
           <div className="yx-tim-row">
@@ -535,7 +618,7 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
           </div>
         }
       />
-      {p.state === 'loading' || (p.state === 'ready' && !d) ? (
+      {withTabs(p.state === 'loading' || (p.state === 'ready' && !d) ? (
         <LoadingBlock rows={8} />
       ) : p.state === 'error' ? (
         <ErrorState title="The roster didn't load" description="Check your connection and try again. Nothing you published is lost." onRetry={p.onRetry} />
@@ -558,7 +641,7 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
               rules={rules}
               status={d.drafts > 0 ? 'draft' : 'published'}
               hideStatus
-              onPublish={() => void run('publish', () => p.onPublish(d.week))}
+              onPublish={() => void publish()}
               today={isoDate(d.today)}
             />
           ) : (
@@ -570,7 +653,7 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
                 {serverChecks.map((x, i) => (
                   <li key={i}>
                     <span className="yx-tim-list__main"><strong>{x.who} · {dayName(isoDate(x.on))}</strong><span className="yx-tim-muted">{x.message}</span></span>
-                    <Badge tone={x.kind === 'night' ? 'danger' : 'warning'}>{CHECK_KIND[x.kind]}</Badge>
+                    <Badge tone={LAW_KINDS.includes(x.kind) ? 'danger' : 'warning'}>{CHECK_KIND[x.kind]}</Badge>
                   </li>
                 ))}
               </ul>
@@ -588,6 +671,63 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
             }}
           />
           {dlg === 'swap' && people.length > 0 && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} ctx={swapCtx} />}
+          <NoticeDialog open={notice} onOpenChange={setNotice} onPublish={(reason) => publish(reason)} />
+        </div>
+      ))}
+    </TimePage>
+  );
+}
+
+/** TIM-05 Staff with real data: the same read-only grid, legend and swap link as the design. */
+function LiveStaffRosterScreen({ live: p }: { live: LiveStaffRoster }) {
+  const d = p.data;
+  const narrow = useNarrow();
+  const start = isoDate(d?.week ?? p.week);
+  const shifts: Shift[] = useMemo(
+    () => [
+      ...(d?.shifts ?? []).filter((s) => s.start !== null && s.end !== null).map((s) => ({ code: s.code, name: s.name, start: hhmm(s.start!), end: hhmm(s.end!), hours: Math.round((((s.end! - s.start! + 1440) % 1440) / 60) * 10) / 10, color: COLOUR_NUMBER[s.colour] ?? 1 })),
+      { code: 'OFF', name: 'Weekly off', hours: 0 },
+      AWAY,
+    ],
+    [d],
+  );
+  const codeOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.id, s.code])), [d]);
+  const me = d?.people.find((x) => x.me);
+  // Own leave keeps its own mark; a colleague's leave shows only as Away (the leave type stays private).
+  const value: RosterValue = Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.leave === 'away' ? AWAY.code : c.leave === 'full' ? null : c.shift ? (c.shift.shiftId ? (codeOf.get(c.shift.shiftId) ?? null) : null) : 'OFF'))]));
+  const leave: RosterLeave[] = (me?.cells ?? []).filter((c) => c.leave === 'full' || c.leave === 'half').map((c) => ({ personId: me!.id, date: isoDate(c.on), code: c.leave === 'half' ? 'half day' : 'Leave' }));
+  const people: RosterPerson[] = (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.me ? 'You' : (x.code ?? undefined) }));
+  const text = (c: TeamRosterWeek['people'][number]['cells'][number]) => (c.leave === 'full' ? 'On leave' : c.shift ? `${c.shift.name} ${fmt12(hhmm(c.shift.start))} – ${fmt12(hhmm(c.shift.end))}`.replace(/:00/g, '') : c.off ? 'Weekly off' : 'No shift');
+  return (
+    <TimePage active="My shifts">
+      <PageHeader
+        title="Roster"
+        description={`Week of ${formatDate(start)}${d && !d.team ? ' · your shifts only' : ''}`}
+        status={d ? <Badge tone="success">Published</Badge> : undefined}
+        actions={
+          <div className="yx-tim-row">
+            <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, -7))} />
+            <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, 7))} />
+            <Button asChild><a href={p.swapHref}>Ask to swap a shift</a></Button>
+          </div>
+        }
+      />
+      {p.state === 'loading' || (p.state === 'ready' && !d) ? (
+        <LoadingBlock rows={6} />
+      ) : p.state === 'error' ? (
+        <ErrorState title="The roster didn't load" description="Check your connection and try again." onRetry={p.onRetry} />
+      ) : p.state === 'no-access' ? (
+        <NoAccessState what="the roster" grantedBy="HR" />
+      ) : d && me && narrow ? (
+        <div className="yx-tim-stack">
+          <ul className="yx-tim-list">{me.cells.map((c) => <li key={c.on}><DayDate date={isoDate(c.on)} /><strong>{text(c)}</strong></li>)}</ul>
+          <p className="yx-tim-note">Your shifts only. Open the roster on a wider screen to see your colleagues' shifts.</p>
+        </div>
+      ) : d && (
+        <div className="yx-tim-stack">
+          <Legend shifts={shifts} />
+          <RosterGrid people={people} start={start} days={7} shifts={shifts} value={value} onChange={() => undefined} leave={leave} status="published" hideStatus readOnly today={isoDate(d.today)} />
+          {!d.team && <p className="yx-tim-note">You see your own shifts. Your company shows employees only their own roster; HR can change that.</p>}
         </div>
       )}
     </TimePage>

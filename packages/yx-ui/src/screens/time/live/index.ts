@@ -8,7 +8,7 @@ export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, Muste
 export { HolidayFeedScreen, type LiveHolidayFeeds } from '../leave-admin';
 export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, LeaveTypeEditorScreen, YearEndWizard, type LeaveTypeInput, type LiveHolidayCalendars, type LiveLeavePolicies, type LiveLeaveTypeEditor, type LiveLocations, type LiveYearEnd, type LocationRuleInput, type SetupLive } from '../leave-admin';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
-export { RosterScreen, ShiftEditorScreen, BlockLeavePlannerScreen, type LiveRoster, type LiveBlockLeave } from '../roster';
+export { RosterScreen, ShiftEditorScreen, BlockLeavePlannerScreen, type LiveRoster, type LiveBlockLeave, type LiveStaffRoster } from '../roster';
 export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { type LiveShiftSetup } from './shifts-setup';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
