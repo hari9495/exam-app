@@ -14,6 +14,9 @@ export interface RoleTemplate {
   permissions: readonly string[];
 }
 
+/** Not a template: the company role team pay access grants use (employee.salary.view only; its keys cannot be edited). */
+export const PAY_ACCESS_ROLE = 'pay_access';
+
 const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // M02 leave and attendance (step 4): HR reads in scope; HR Admin also sets up, adjusts, approves and handles Special
 // medical data.
@@ -62,7 +65,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, payroll approval.',
     // Founder 27 Oct 2026: HR admins see Special data (the identity panel, Aadhaar in full); every look is recorded.
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+    // Founder 28 Oct 2026: HR approves a manager's request to see their team's pay (two different HR people).
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     key: 'hr_executive',

@@ -4,6 +4,7 @@ import { GRANT_SCOPE_TYPES } from '@exam-platform/shared';
 // Request bodies for Roles & access (P02 §4.2–4.3, §4.6). Every field is whitelisted by the global pipe.
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ADMIN_SCOPE_TYPES = GRANT_SCOPE_TYPES.filter((t): t is Exclude<(typeof GRANT_SCOPE_TYPES)[number], 'one_report'> => t !== 'one_report');
 
 export class FromTemplateDto {
   @IsString() @Matches(/^[a-z_]{2,40}$/)
@@ -20,8 +21,9 @@ export class GrantDto {
   @IsUUID()
   permissionProfileId!: string;
 
-  @IsIn(GRANT_SCOPE_TYPES)
-  scopeType!: (typeof GRANT_SCOPE_TYPES)[number];
+  // One named report is granted only through a manager's pay access request (two HR approvals), never here.
+  @IsIn(ADMIN_SCOPE_TYPES)
+  scopeType!: (typeof ADMIN_SCOPE_TYPES)[number];
 
   /** The entity, location or department; omitted for the company and the report scopes. */
   @IsOptional() @IsUUID()

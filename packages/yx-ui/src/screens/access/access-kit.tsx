@@ -10,6 +10,8 @@ export const SCOPE_LABEL: Record<ScopeType, string> = {
   department_subtree: 'Department and below',
   all_reports: 'Everyone under them',
   direct_reports: 'Their direct reports',
+  // Given only through a manager's team pay access request (People › Team pay access), never from Roles & access.
+  one_report: 'One of their reports',
 };
 
 /** Scopes that name a record. */

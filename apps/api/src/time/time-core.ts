@@ -348,7 +348,7 @@ export async function holdersOf(tx: Tx, org: string, key: TimeKey | string, empl
     LEFT JOIN employees own ON own.organization_id = g.organization_id AND own.user_id = g.user_id
     WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like}
       AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
-      AND yx_scope_periods(${org}::uuid, ${employeeId}::uuid, g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id), own.id) @> ${today}::date
+      AND yx_scope_periods(${org}::uuid, ${employeeId}::uuid, g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id, g.employee_id), own.id) @> ${today}::date
     LIMIT 25`;
   return rows.map((r) => r.id);
 }

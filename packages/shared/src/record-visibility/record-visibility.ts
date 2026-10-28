@@ -13,15 +13,16 @@ export function isRecordVisibilityGoverned(role: string | null | undefined): boo
 
 /**
  * Who a role grant covers (P02 §3). `tenant` is the whole company; the others narrow it to an entity, a
- * location, a department subtree, or the grantee's own reports (relative to their employee record).
+ * location, a department subtree, or the grantee's own reports (relative to their employee record), or one named report
+ * ('one_report', from a manager's pay access request: that person only, while they report to the grantee).
  * The implicit grants (YX-SEC-04: self, manager, dotted line, department head) are computed, never stored.
  */
-export const GRANT_SCOPE_TYPES = ['tenant', 'legal_entity', 'location', 'department_subtree', 'all_reports', 'direct_reports'] as const;
+export const GRANT_SCOPE_TYPES = ['tenant', 'legal_entity', 'location', 'department_subtree', 'all_reports', 'direct_reports', 'one_report'] as const;
 export type GrantScopeType = (typeof GRANT_SCOPE_TYPES)[number];
 
 export interface GrantScope {
   type: GrantScopeType;
-  /** The entity, location or department; null for tenant and the report scopes. */
+  /** The entity, location, department or (one_report) employee; null for tenant and the other report scopes. */
   id: string | null;
 }
 

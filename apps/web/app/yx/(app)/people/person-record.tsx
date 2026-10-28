@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { ContactsDrawer, CustomFieldsDrawer, FamilyDrawer, PersonWorkspace, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { ContactsDrawer, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -90,6 +90,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const docs = useLife<PersonDocs>(
     self ? '/documents/me' : person.data && (perms.has('document.view') || perms.has('document.manage')) ? `/documents/people/${id(person.data.id)}` : teamView && profile.data?.personId ? `/documents/team/${id(profile.data.personId)}` : null,
   );
+  // PPL-50: a manager's requests to see their team's pay (their own, newest first) and the company's defaults.
+  const payAsks = usePeople<{ days: number; scope: 'team' | 'person'; team: { id: string; name: string }[]; requests: PayAccessRow[] }>(teamView ? '/pay-access/mine' : null);
   // PPL-42: "Re-verification due" for the person, HR with document.manage, or the manager (the API decides).
   const reverif = useLife<{ items: ReverifDue[] }>(personId && profile.data && (self || teamView || perms.has('document.manage')) ? `/documents/reverification/person/${p}` : null);
   const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
@@ -129,6 +131,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [askingPay, setAskingPay] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [phone, setPhone] = useState('');
   // PPL-34: loaded each time HR opens the identity panel (every load is a recorded view of Special data).
@@ -246,6 +249,14 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     scheduled: h ? scheduledNotes(h, pay.data?.next) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
     pay: payState,
+    // PPL-50: the manager's newest request covering this person; they may ask while nothing waits for HR.
+    payAccess:
+      payAsks.data && payAsks.data.team.some((m) => m.id === personId)
+        ? {
+            latest: payAsks.data.requests.find((r) => r.scope === 'team' || r.person?.id === personId) ?? null,
+            ...(payAsks.data.requests.some((r) => r.state === 'first' || r.state === 'second') ? {} : { onRequest: () => setAskingPay(true) }),
+          }
+        : null,
     time,
     documents: docs.data
       ? {
@@ -337,6 +348,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
 
   live.children = (
     <>
+      {askingPay && payAsks.data && personId && (
+        <PayAccessDialog
+          person={{ id: personId, name }}
+          teamSize={payAsks.data.team.length}
+          defaultScope={payAsks.data.scope}
+          days={payAsks.data.days}
+          onSubmit={async (input: PayAccessAskInput) => void (await write('POST', '/pay-access', input))}
+          onClose={() => setAskingPay(false)}
+        />
+      )}
       {uploading && docs.data && (
         <UploadDocDialog
           name={first}

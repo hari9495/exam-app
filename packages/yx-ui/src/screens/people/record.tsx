@@ -25,6 +25,7 @@ import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, sp
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
 import { FamilyCards, type RecordFamily } from './family';
+import { PayAccessDialog, PayAccessNote, type PayAccessRow } from './pay-access';
 
 export type RecordTab = 'overview' | 'job' | 'pay' | 'time' | 'documents' | 'performance' | 'learning' | 'assets' | 'history' | 'work-auth';
 export type RecordPanel = 'activity' | 'identity' | 'roles';
@@ -160,6 +161,8 @@ export interface LiveRecord {
   scheduled: { title: string; body: string }[];
   pastChanges: number;
   pay: LiveRecordPay;
+  /** PPL-50: a manager's access to this person's pay (their newest request covering them; onRequest when they may ask). */
+  payAccess?: { latest: PayAccessRow | null; onRequest?: () => void } | null;
   /** null: no Time tab (no leave access). */
   time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
@@ -196,6 +199,8 @@ export interface PersonWorkspaceProps {
   defaultTab?: RecordTab;
   /** Manager holds the P02 Q3 salary grant. */
   payGrant?: boolean;
+  /** PPL-50 (design): the manager's newest team pay access request covering this person. */
+  payAccess?: PayAccessRow | null;
   defaultAsOf?: Date | null;
   panel?: RecordPanel;
   /** Person works abroad: shows the Work authorisations tab and international bank details (P21). */
@@ -235,8 +240,9 @@ const SAMPLE_JOB: [string, string][] = [
 ];
 
 // PPL-03
-export function PersonWorkspace({ persona, relation, today, defaultTab = 'overview', payGrant = false, defaultAsOf = null, panel = 'activity', international = false, identityState = 'consented', state = 'ready', live }: PersonWorkspaceProps) {
+export function PersonWorkspace({ persona, relation, today, defaultTab = 'overview', payGrant = false, payAccess = null, defaultAsOf = null, panel = 'activity', international = false, identityState = 'consented', state = 'ready', live }: PersonWorkspaceProps) {
   const [tab, setTab] = useState<RecordTab>(defaultTab);
+  const [asking, setAsking] = useState(false);
   const [ownAsOf, setOwnAsOf] = useState<Date | null>(defaultAsOf);
   const asOf = live ? live.asOf : ownAsOf;
   const setAsOf = live ? live.onAsOf : setOwnAsOf;
@@ -505,15 +511,17 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               </TabsContent>
               <TabsContent value="pay">
                 {live ? (
-                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} onRequestChange={live.onRequestChange} onBankAbroad={self ? live.onBankAbroad : undefined} />
+                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} access={live.payAccess ?? null} onRequestChange={live.onRequestChange} onBankAbroad={self ? live.onBankAbroad : undefined} />
                 ) : payVisible ? (
-                  <PayTab persona={persona} self={self} international={international} />
+                  <div className="yx-ppl__stack">
+                    {payAccess?.state === 'active' && <PayAccessNote latest={payAccess} />}
+                    <PayTab persona={persona} self={self} international={international} />
+                  </div>
                 ) : (
                   <div className="yx-ppl__stack">
                     <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR (Lakshmi Venkatesan)" note="Pay needs a salary grant for your team." />
-                    <div>
-                      <Button>Request access</Button>
-                    </div>
+                    <PayAccessNote latest={payAccess} onRequest={() => setAsking(true)} />
+                    {asking && <PayAccessDialog person={{ id: 'e-arjun', name: ARJUN.name }} teamSize={6} defaultScope="team" days={30} onSubmit={async () => undefined} onClose={() => setAsking(false)} />}
                   </div>
                 )}
               </TabsContent>
@@ -741,8 +749,24 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
 }
 
 /** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
-function LivePayTab({ pay, name, persona, self, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; onRequestChange?: () => void; onBankAbroad?: () => void }) {
-  if (pay.kind === 'none') return <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />;
+function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; onRequestChange?: () => void; onBankAbroad?: () => void }) {
+  if (pay.kind === 'none')
+    return access ? (
+      <div className="yx-ppl__stack">
+        <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />
+        <PayAccessNote latest={access.latest} onRequest={access.onRequest} />
+      </div>
+    ) : (
+      <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />
+    );
+  // PPL-50: a manager with time-limited access sees until when, above the pay.
+  const until = access?.latest?.state === 'active' ? <PayAccessNote latest={access.latest} /> : null;
+  if (until) return (
+    <div className="yx-ppl__stack">
+      {until}
+      <LivePayTab pay={pay} name={name} persona={persona} self={self} access={null} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
+    </div>
+  );
   if (pay.kind === 'ask')
     return (
       <Card title="Pay">
