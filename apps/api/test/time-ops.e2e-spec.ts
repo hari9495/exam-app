@@ -143,6 +143,13 @@ describe('Time ops: attendance, overtime, periods', () => {
     await expect(prisma.$executeRaw`DELETE FROM presence_signals`).rejects.toThrow();
   });
 
+  it('my pages for a sign-in with no employee record say so with a code, not a retryable error', async () => {
+    for (const path of [`/time/me/attendance?month=${thisMonth}`, `/time/me/presence?month=${thisMonth}`, '/time/me/overtime', '/time/me/leave']) {
+      const r = await api('hrExec', 'get', path).expect(404);
+      expect(r.body.code).toBe('NO_EMPLOYEE_RECORD');
+    }
+  });
+
   describe('TIM-01 Today board', () => {
     it('a manager sees their team (not themselves), HR their scope, an employee no one, company B nothing', async () => {
       await punch(ids.empEmp, today, 'in', '10:00');
@@ -190,6 +197,17 @@ describe('Time ops: attendance, overtime, periods', () => {
       expect((await api('emp', 'get', `/time/exceptions?month=${lockMonth}`).expect(200)).body.rows).toEqual([]);
       expect((await api('adminB', 'get', `/time/exceptions?month=${lockMonth}`).expect(200)).body.rows.some((r: { employeeId: string }) => r.employeeId === ids.empEmp)).toBe(false);
       await api('hrAdmin', 'get', '/time/exceptions?month=2026-13').expect(400);
+      // The server pages and filters: one row a page, a kind filter, a search, bad paging refused.
+      const one = (await api('hrAdmin', 'get', `/time/exceptions?month=${lockMonth}&pageSize=25&page=1&kind=Missing%20check-out`).expect(200)).body;
+      expect(one).toMatchObject({ page: 1, pageSize: 25 });
+      expect(one.rows.every((r: { kind: string }) => r.kind === 'Missing check-out')).toBe(true);
+      expect(one.total).toBeGreaterThanOrEqual(1);
+      const far = (await api('hrAdmin', 'get', `/time/exceptions?month=${lockMonth}&page=999`).expect(200)).body;
+      expect(far.rows).toEqual([]);
+      expect(far.total).toBe(0);
+      expect((await api('hrAdmin', 'get', `/time/exceptions?month=${lockMonth}&search=nobody-${run}`).expect(200)).body.rows).toEqual([]);
+      await api('hrAdmin', 'get', `/time/exceptions?month=${lockMonth}&pageSize=7`).expect(400);
+      await api('hrAdmin', 'get', `/time/exceptions?month=${lockMonth}&status=Done`).expect(400);
     });
 
     it('refuses the wrong role, bad input, today, another company, one\'s own day and a day with a fix waiting', async () => {
@@ -474,6 +492,10 @@ describe('Time ops: attendance, overtime, periods', () => {
         })
         .expect(201);
       expect((await api('hrAdmin', 'get', `/time/device-batches?legalEntityId=${ids.entityA}`).expect(200)).body.batches[0]).toMatchObject({ deviceRef: 'GATE-1', punches: 3, people: 2 });
+      // No entity picked: every entity the person may lock, each batch naming its entity; no attendance.lock: 403.
+      expect((await api('hrAdmin', 'get', '/time/device-batches').expect(200)).body.batches[0]).toMatchObject({ deviceRef: 'GATE-1', legalEntityId: ids.entityA, entityName: `TimeOps Foods A` });
+      await api('mgr', 'get', '/time/device-batches').expect(403);
+      await api('hrAdmin', 'get', `/time/device-batches?legalEntityId=${ids.entityB}`).expect(404);
       await api('hrExec', 'get', `/time/device-batches/preview?legalEntityId=${ids.entityA}&deviceRef=GATE-1`).expect(403);
       await api('adminB', 'get', `/time/device-batches/preview?legalEntityId=${ids.entityA}&deviceRef=GATE-1`).expect(404);
       await api('hrAdmin', 'get', `/time/device-batches/preview?legalEntityId=${ids.entityA}&deviceRef=NOPE`).expect(404);

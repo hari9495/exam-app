@@ -2827,5 +2827,88 @@
       "TIM-16"
     ],
     "note": "POSITIVE + NEGATIVE (manager cannot open the night register)."
+  },
+  {
+    "id": "MT-TO-16",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-10 Device punches - all entities, and no access",
+    "url": "http://localhost:3000/yx/time/device-punches",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "As hr@ leave the top bar on \"All entities\" and open Time > Device punches.",
+      "Pick one entity in the top bar and reload.",
+      "Sign out; as kavya@ open http://localhost:3000/yx/time/device-punches."
+    ],
+    "expected": "All entities: batches of every entity Lakshmi may lock are listed, each with its entity in the Device list (or \"No device punches waiting\" when none exist anywhere). One entity: only that entity. Kavya (no attendance.lock) sees the no-access state, never \"No device punches waiting\". Every state has the page heading \"Device punches correction\".",
+    "stories": [
+      "TIM-10"
+    ],
+    "note": "POSITIVE + NEGATIVE (fix 29 Oct 2026)."
+  },
+  {
+    "id": "MT-TO-17",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-04 Exceptions - server paging",
+    "url": "http://localhost:3000/yx/time/exceptions",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time > Exceptions for a month with many open days.",
+      "Scroll to the bottom: use the paging control (Next page, rows per page).",
+      "Type a name in Search people; pick \"Missing check-out\" in the Exception filter."
+    ],
+    "expected": "The page shows one page (50 rows by default) with \"1-50 of N\" and Next page; the page height stays short. Search and the filter ask the server again and start at page 1. A search with no match shows \"No results\" with Clear filters, not \"No open exceptions\".",
+    "stories": [
+      "TIM-04"
+    ],
+    "note": "POSITIVE + NEGATIVE (fix 29 Oct 2026)."
+  },
+  {
+    "id": "MT-TO-18",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "My pages without an employee record",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "hr-tester (HR, no employee record)",
+    "steps": [
+      "Open http://localhost:3000/yx/time/attendance by typing the address.",
+      "Open /yx/time/presence?view=me and /yx/time/leave/card the same way."
+    ],
+    "expected": "Each page says \"You have no employee record here\" and \"Ask HR to link your sign-in to your employee record.\" There is no Try again button. As arjun@ the same pages load normally.",
+    "stories": [
+      "TIM-07",
+      "TIM-36",
+      "TIM-21"
+    ],
+    "note": "NEGATIVE + POSITIVE (fix 29 Oct 2026). The nav hides My time for such accounts; this is the direct-link case."
+  },
+  {
+    "id": "MT-TO-19",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-01 Today board - date line",
+    "url": "http://localhost:3000/yx/time/today",
+    "account": "kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "Open Time > Today and read the line under the title."
+    ],
+    "expected": "It reads like \"Your reports (5) · Thu 29 Oct 2026 · 4:37 am\", with \"Thu\" as its own small grey label and the date with its year. No date anywhere on the page lacks a year.",
+    "stories": [
+      "TIM-01"
+    ],
+    "note": "POSITIVE (fix 29 Oct 2026, house rule 8)."
+  },
+  {
+    "id": "MT-TO-20",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-02 Muster - team count",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "kavya@demo-org.test (Manager - Kavya); then arjun@demo-org.test (Employee)",
+    "steps": [
+      "As kavya@ open Time > Muster and read the line under the title; compare with Time > Today.",
+      "As arjun@ open http://localhost:3000/yx/time/muster."
+    ],
+    "expected": "Kavya: \"Your team · 5 people, and you\": the same 5 reports as the Today board, plus her own row marked \"(you)\" (her own month is on the muster on purpose). Arjun: \"Only you: no one reports to you\".",
+    "stories": [
+      "TIM-02"
+    ],
+    "note": "POSITIVE + NEGATIVE (fix 29 Oct 2026)."
   }
 ]

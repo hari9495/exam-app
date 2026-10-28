@@ -36,6 +36,9 @@ describe('TIM-01 Today board (live)', () => {
     expect(screen.getByRole('region', { name: 'Not checked in, 1' })).toBeInTheDocument();
     expect(screen.getByText('No check-out 27 Oct 2026')).toBeInTheDocument();
     expect(screen.getByText(/2 open exceptions block October payroll/)).toBeInTheDocument();
+    // House rule 8: the weekday is its own small label beside "28 Oct 2026".
+    expect(screen.getByText('28 Oct 2026')).toBeInTheDocument();
+    expect(document.querySelector('.yx-daydate__wd')?.textContent).toBe('Wed');
     await ue.click(screen.getByRole('button', { name: 'Nudge 1 person' }));
     await waitFor(() => expect(live.onNudge).toHaveBeenCalledWith('m'));
     expect(live.onNudge).toHaveBeenCalledTimes(1);
@@ -60,12 +63,16 @@ describe('TIM-04 Exceptions (live)', () => {
     today: '2026-10-28',
     scope: 'company',
     canResolve: true,
+    page: 1,
+    pageSize: 50,
+    total: 2,
+    blocking: 2,
     rows: [
       { id: 'a|2026-10-12', employeeId: 'a', person: 'Arjun Kulkarni', code: 'K1', on: '2026-10-12', kind: 'Missing check-out', status: 'Open', blocking: true, mode: 'Punch', detail: 'Checked in 09:25, no check-out', firstIn: null, inAt: '09:25', shiftEnd: '18:30', nudged: 0, request: null, resolution: null },
       { id: 's|2026-10-14', employeeId: 's', person: 'Sanjay Rao', code: 'K2', on: '2026-10-14', kind: 'Missing check-in', status: 'Request pending', blocking: true, mode: 'Punch', detail: 'Checked out, no check-in', firstIn: null, inAt: null, shiftEnd: '18:30', nudged: 0, request: { id: 'r', kind: 'missed_in', inMinute: 570, outMinute: null, reason: 'Phone died', taskId: 't1' }, resolution: null },
     ],
   };
-  const live = (o: Partial<LiveExceptions> = {}): LiveExceptions => ({ state: 'ready', data, month: '2026-10', onMonth: vi.fn(), onResolve: ok(), onDecideTask: ok(), ...o });
+  const live = (o: Partial<LiveExceptions> = {}): LiveExceptions => ({ state: 'ready', data, month: '2026-10', onMonth: vi.fn(), onResolve: ok(), onDecideTask: ok(), onQuery: vi.fn(), ...o });
 
   it('HR resolves with times; pressed without a reason it says so and sends nothing', async () => {
     const l = live();
@@ -97,6 +104,14 @@ describe('TIM-04 Exceptions (live)', () => {
     await waitFor(() => expect(l.onDecideTask).toHaveBeenCalledWith('t1', 'approve', undefined));
   });
 
+  it('the server pages the list: filters and pages go back as a query; the paging control shows past one page', async () => {
+    const l = live({ data: { ...data, total: 240 } });
+    render(<ExceptionsScreen live={l} />);
+    expect(l.onQuery).toHaveBeenLastCalledWith({ status: ['Open', 'Request pending'], kind: [], search: '', page: 1, pageSize: 50 });
+    await ue.click(screen.getByRole('button', { name: /Next page/ }));
+    await waitFor(() => expect(l.onQuery).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
+  });
+
   it('a manager has no resolve; empty and no access', () => {
     const { rerender } = render(<ExceptionsScreen live={live({ data: { ...data, canResolve: false, scope: 'team' } })} />);
     expect(screen.queryByRole('button', { name: 'Resolve' })).toBeNull();
@@ -104,6 +119,15 @@ describe('TIM-04 Exceptions (live)', () => {
     expect(screen.getByText('No open exceptions')).toBeInTheDocument();
     rerender(<ExceptionsScreen live={live({ state: 'no-access', data: null })} />);
     expect(screen.getByText(/You don't have access/)).toBeInTheDocument();
+  });
+});
+
+describe('My pages without an employee record (live)', () => {
+  it('say so plainly with what to do, never "try again"', () => {
+    render(<PresenceDayScreen live={{ state: 'no-record', month: '2026-10', onMonth: vi.fn(), mine: null, onConsent: ok() }} />);
+    expect(screen.getByText('You have no employee record here')).toBeInTheDocument();
+    expect(screen.getByText(/Ask HR to link your sign-in/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Try again|Retry/ })).toBeNull();
   });
 });
 
@@ -251,12 +275,12 @@ describe('TIM-07 late request to a locked month (live)', () => {
 
 describe('TIM-10 Device backfill (live)', () => {
   const preview: DevicePreview = { deviceRef: 'GATE-1', from: '2026-10-14', to: '2026-10-17', receivedAt: '2026-10-28T10:00:00Z', punches: 3, people: 2, personDays: 2, becomePresent: 1, lateRemoved: 0, lateAdded: 0, corrections: 1, changes: [{ employeeId: 'a', name: 'Kavitha Sundaram', code: 'K1', on: '2026-10-15', open: true, stage: 'open', punches: [{ kind: 'in', at: '06:02' }], before: { status: 'absent', lateMinutes: null, firstIn: null, lastOut: null }, after: { status: 'present', lateMinutes: 0, firstIn: '06:02', lastOut: '14:05' } }] };
-  const wizard = (o: Partial<LiveDeviceBackfill> = {}): LiveDeviceBackfill => ({ state: 'ready', batches: [{ deviceRef: 'GATE-1', punches: 3, people: 2, from: '2026-10-14', to: '2026-10-17', receivedAt: null }], onPreview: vi.fn(async () => preview), onApply: vi.fn(async () => ({ id: 'b', punches: 3, people: 2, personDays: 2, openDays: 1, corrections: 1 })), musterHref: '/m', periodsHref: '/p', ...o });
+  const wizard = (o: Partial<LiveDeviceBackfill> = {}): LiveDeviceBackfill => ({ state: 'ready', batches: [{ legalEntityId: 'le-tn', entityName: 'Kaveri Foods (Tamil Nadu)', deviceRef: 'GATE-1', punches: 3, people: 2, from: '2026-10-14', to: '2026-10-17', receivedAt: null }], onPreview: vi.fn(async () => preview), onApply: vi.fn(async () => ({ id: 'b', punches: 3, people: 2, personDays: 2, openDays: 1, corrections: 1 })), musterHref: '/m', periodsHref: '/p', ...o });
 
   it('previews the changes; the reason must be a sentence; applies once with the reviewed count', async () => {
     const l = wizard();
     render(<DeviceBackfillWizard live={l} />);
-    await waitFor(() => expect(l.onPreview).toHaveBeenCalledWith('GATE-1'));
+    await waitFor(() => expect(l.onPreview).toHaveBeenCalledWith('le-tn', 'GATE-1'));
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/Absent → Present 6:02 am – 2:05 pm/)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
@@ -265,13 +289,23 @@ describe('TIM-10 Device backfill (live)', () => {
     await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Gate 1 kiosk was offline for four days');
     await ue.click(screen.getByRole('button', { name: 'Continue' }));
     await ue.click(screen.getByRole('button', { name: 'Apply punches' }));
-    await waitFor(() => expect(l.onApply).toHaveBeenCalledWith('GATE-1', 'Gate 1 kiosk was offline for four days', 3));
+    await waitFor(() => expect(l.onApply).toHaveBeenCalledWith('le-tn', 'GATE-1', 'Gate 1 kiosk was offline for four days', 3));
     expect(await screen.findByText('Device punches applied')).toBeInTheDocument();
   });
 
-  it('nothing waiting', () => {
-    render(<DeviceBackfillWizard live={wizard({ batches: [] })} />);
+  it('nothing waiting; no attendance.lock is the no-access state (never "nothing waiting"); every state has the h1', () => {
+    const { rerender } = render(<DeviceBackfillWizard live={wizard({ batches: [] })} />);
     expect(screen.getByText('No device punches waiting')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Device punches correction' })).toBeInTheDocument();
+    rerender(<DeviceBackfillWizard live={wizard({ state: 'no-access', batches: null })} />);
+    expect(screen.queryByText('No device punches waiting')).toBeNull();
+    expect(screen.getByText(/You don't have access/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Device punches correction' })).toBeInTheDocument();
+  });
+
+  it('batches from several legal entities name their entity', () => {
+    render(<DeviceBackfillWizard live={wizard({ batches: [{ legalEntityId: 'le-a', entityName: 'Kaveri Foods', deviceRef: 'K1', punches: 2, people: 1, from: null, to: null, receivedAt: null }, { legalEntityId: 'le-tn', entityName: 'Kaveri Foods (Tamil Nadu)', deviceRef: 'K1', punches: 4, people: 2, from: null, to: null, receivedAt: null }] })} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Device punches correction' })).toBeInTheDocument();
   });
 });
 
