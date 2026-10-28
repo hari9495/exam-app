@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CalibrationBoardScreen, CalibrationSessions, PerformanceReportsScreen } from './calibration';
+import { CalibrationBoardScreen, CalibrationListScreen, CalibrationSessions, PerformanceReportsScreen } from './calibration';
 import type { CalibrationBoard } from './types';
 
 // Calibration and reports, wired (batch PM6; PRF-09). In the affordance guard set ('screens-performance-live').
@@ -32,3 +32,15 @@ export const Board: S = { render: () => <CalibrationBoardScreen state="ready" bo
 export const SmallGroup: S = { render: () => <CalibrationBoardScreen state="ready" board={{ ...board, guide: null, distribution: { bands: null, counted: 3, notes: [] }, can: { change: false, signOff: false } }} onBack={noop} onChange={ok} onSignOff={ok} /> };
 export const Sessions: S = { render: () => <div className="yx-auth__page"><CalibrationSessions sessions={[{ id: 's1', name: 'Sales H1', facilitator: 'Lakshmi R', status: 'open', people: 12 }]} departments={[{ value: 'd1', label: 'Sales' }]} facilitators={[{ value: 'u1', label: 'Lakshmi R' }]} bands={['Below', 'Meets', 'Above']} onOpen={noop} onCreate={ok} /></div> };
 export const Reports: S = { render: () => <PerformanceReportsScreen state="ready" cycles={[{ value: 'c1', label: 'H1 2025-26' }]} cycleId="c1" onCycle={noop} kind="distribution" onKind={noop} report={{ kind: 'distribution', cycle: 'H1 2025-26', header: ['department', 'band', 'people'], rows: [['Sales', 'Meets', 12], ['Sales', 'Below', null]] }} onDownload={ok} /> };
+
+// Performance › Calibration (/yx/performance/calibrations): the sessions I run, or every session for HR.
+const SESSIONS = [
+  { id: 's1', name: 'Sales H1', facilitator: 'Lakshmi Venkatesan', status: 'open' as const, people: 12 },
+  { id: 's2', name: 'Plant supervisors, Hosur', facilitator: 'Suresh Pillai', status: 'open' as const, people: 18 },
+  { id: 's3', name: 'Finance and accounts', facilitator: 'Meena Raghavan', status: 'signed_off' as const, people: 7 },
+];
+export const List: S = { name: 'Calibration sessions · list', render: () => <CalibrationListScreen state="ready" sessions={SESSIONS} onOpen={noop} /> };
+export const ListEmpty: S = { name: 'Calibration sessions · none yet', render: () => <CalibrationListScreen state="ready" sessions={[]} onOpen={noop} /> };
+export const ListLoading: S = { name: 'Calibration sessions · loading', render: () => <CalibrationListScreen state="loading" sessions={[]} onOpen={noop} /> };
+export const ListError: S = { name: 'Calibration sessions · could not load', render: () => <CalibrationListScreen state="error" onRetry={noop} sessions={[]} onOpen={noop} /> };
+export const ListNoAccess: S = { name: 'Calibration sessions · no access', render: () => <CalibrationListScreen state="no-access" sessions={[]} onOpen={noop} /> };
