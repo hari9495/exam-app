@@ -46,6 +46,7 @@ import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
 import { type LiveOpenShifts, LiveOpenShiftsScreen } from './open-shifts-live';
 import { type LiveStandby, LiveStandbyScreen } from './standby-live';
 import { type LiveAutoRoster, LiveAutoRosterScreen } from './auto-roster-live';
+import { type LiveLicences, LiveLicencesScreen } from './licences-live';
 import './time.css';
 
 /** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
@@ -2358,10 +2359,10 @@ export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false, live 
    ===================================================================== */
 
 interface LicHolder { name: string; expires: Date }
-interface LicRow { id: string; req: string; kind: 'Role' | 'Skill' | 'Shift'; licence: string; /** Short second line under the licence name. */ note?: string; legal: boolean; holders: number; watch: LicHolder[]; /** Days before expiry that reminders go out. */ remind: number[] }
-const REMIND_DEFAULT = [60, 30, 7];
+export interface LicRow { id: string; req: string; kind: 'Role' | 'Skill' | 'Shift'; licence: string; /** Short second line under the licence name. */ note?: string; legal: boolean; holders: number; watch: LicHolder[]; /** Days before expiry that reminders go out. */ remind: number[] }
+export const REMIND_DEFAULT = [60, 30, 7];
 /** "60, 30 and 7" */
-const daysList = (d: number[]) => (d.length > 1 ? `${d.slice(0, -1).join(', ')} and ${d[d.length - 1]}` : String(d[0] ?? ''));
+export const daysList = (d: number[]) => (d.length > 1 ? `${d.slice(0, -1).join(', ')} and ${d[d.length - 1]}` : String(d[0] ?? ''));
 const LIC: LicRow[] = [
   { id: 'l1', req: 'Forklift driver', kind: 'Role', licence: 'Forklift licence', note: 'LMV endorsement', legal: true, holders: 6, remind: REMIND_DEFAULT, watch: [{ name: 'Babu Raj', expires: new Date(2026, 8, 27) }, { name: 'Mohammed Irfan', expires: new Date(2026, 9, 12) }] },
   {
@@ -2379,17 +2380,17 @@ function FORKLIFT_WATCH() {
   return LIC[0].watch;
 }
 /** Holders overridden by HR (name → reason): they can be rostered, so they don't count as needing action. */
-type Overrides = Record<string, string>;
+export type Overrides = Record<string, string>;
 /** The needs-action window is the row's first (longest) reminder. */
-const windowOf = (r: LicRow) => Math.max(...r.remind);
-const expiredOf = (r: LicRow, ov: Overrides = {}) => r.watch.filter((h) => !ov[h.name] && daysUntil(h.expires, TODAY) < 0).length;
-const expiringOf = (r: LicRow, ov: Overrides = {}) => r.watch.filter((h) => { const n = daysUntil(h.expires, TODAY); return !ov[h.name] && n >= 0 && n <= windowOf(r); }).length;
+export const windowOf = (r: LicRow) => Math.max(...r.remind);
+export const expiredOf = (r: LicRow, ov: Overrides = {}, today = TODAY) => r.watch.filter((h) => !ov[h.name] && daysUntil(h.expires, today) < 0).length;
+export const expiringOf = (r: LicRow, ov: Overrides = {}, today = TODAY) => r.watch.filter((h) => { const n = daysUntil(h.expires, today); return !ov[h.name] && n >= 0 && n <= windowOf(r); }).length;
 const actionCount = (r: LicRow, ov: Overrides = {}) => expiredOf(r, ov) + expiringOf(r, ov);
 const needsAction = (r: LicRow, ov: Overrides = {}) => actionCount(r, ov) > 0;
 
-function NeedsAction({ r, ov }: { r: LicRow; ov: Overrides }) {
-  const ex = expiredOf(r, ov);
-  const soon = expiringOf(r, ov);
+export function NeedsAction({ r, ov, today = TODAY }: { r: LicRow; ov: Overrides; today?: Date }) {
+  const ex = expiredOf(r, ov, today);
+  const soon = expiringOf(r, ov, today);
   const overridden = r.watch.filter((h) => ov[h.name]).length;
   if (!ex && !soon) return <span className="yx-tim-row"><span className="yx-tim-muted">All valid {windowOf(r)}+ days</span>{overridden > 0 && <Badge tone="neutral">{overridden} overridden</Badge>}</span>;
   // Two short badges, one line each, instead of one badge that wraps.
@@ -2402,10 +2403,30 @@ function NeedsAction({ r, ov }: { r: LicRow; ov: Overrides }) {
   );
 }
 
-export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: { state?: ViewState; blocked?: boolean }) {
+export function LicenceRequirementsScreen({ live, ...story }: { state?: ViewState; blocked?: boolean; /** The holders drawer with "Record licence" open. */ record?: boolean; /** The live app's /time/setup/licences. */ live?: LiveLicences }) {
+  return live ? <LiveLicencesScreen live={live} /> : <SampleLicenceRequirements {...story} />;
+}
+function SampleLicenceRequirements({ state = 'ready', blocked = false, record = false }: { state?: ViewState; blocked?: boolean; record?: boolean }) {
   const [lics, setLics] = useState(state === 'empty' ? [] : LIC);
   const [onlyAction, setOnlyAction] = useState(false);
-  const [holders, setHolders] = useState<LicRow | null>(null);
+  const [holders, setHolders] = useState<LicRow | null>(record ? LIC[0] : null);
+  /** "Record licence": HR records a person's licence or its renewal (the latest one counts). */
+  const [recording, setRecording] = useState(record);
+  const [recTried, setRecTried] = useState(false);
+  const [rec, setRec] = useState<{ person: string | null; number: string; from: Date | null; to: Date | null }>({ person: null, number: '', from: null, to: null });
+  const recError = { person: !rec.person ? 'Choose the person.' : '', from: !rec.from ? 'Enter the date the licence is valid from.' : '', to: rec.from && rec.to && rec.to < rec.from ? 'The expiry is after the valid-from date.' : '' };
+  const saveRecord = () => {
+    setRecTried(true);
+    const bad = (['person', 'from', 'to'] as const).find((k) => recError[k]);
+    if (bad) return void document.getElementById(`yx-lic-rec-${bad}`)?.focus();
+    done(`Licence recorded for ${rec.person}`, rec.to ? `Valid until ${longDate(rec.to)}.` : 'It has no expiry date.');
+    setRecording(false);
+    setRecTried(false);
+    setRec({ person: null, number: '', from: null, to: null });
+  };
+  const [code, setCode] = useState('');
+  const [note, setNote] = useState('');
+  const [until, setUntil] = useState<Date | null>(null);
   const [edit, setEdit] = useState<LicRow | 'new' | null>(null);
   /** People asked to renew (blocked alert and drawer share it). */
   const [asked, setAsked] = useState<string[]>([]);
@@ -2430,12 +2451,14 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
     setLegal(r !== 'new' && !r.legal ? 'company' : 'legal');
     setReq(r === 'new' ? '' : r.req);
     setLicence(r === 'new' ? '' : r.licence);
+    setCode('');
+    setNote(r === 'new' ? '' : r.note ?? '');
     setRemind(r === 'new' ? REMIND_DEFAULT : r.remind);
   };
   const missing = !req.trim() ? `Enter the ${kind.toLowerCase()}` : !licence.trim() ? 'Enter the licence' : remind.some((n) => n == null) ? 'Fill in all three reminder days' : '';
   const saveEdit = () => {
     if (!edit || missing) return;
-    const patch = { req: req.trim(), kind, licence: licence.trim(), legal: legal === 'legal', remind: remind.map(Number).sort((a, b) => b - a) };
+    const patch = { req: req.trim(), kind, licence: licence.trim(), note: note.trim() || undefined, legal: legal === 'legal', remind: remind.map(Number).sort((a, b) => b - a) };
     setLics(edit === 'new' ? [...lics, { id: `l${lics.length + 1}`, holders: 0, watch: [], ...patch }] : lics.map((r) => (r.id === edit.id ? { ...r, ...patch } : r)));
     // A new requirement blocks rostering from today, so that stays on screen; a saved edit is a toast.
     if (edit === 'new') {
@@ -2489,7 +2512,7 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
             </button>
           )
         }
-        rowButtons={(r) => <><Button size="sm" onClick={why(!act(r) && `All holders are valid for ${windowOf(r)}+ days`, () => setHolders(r))}>Who needs action</Button><Button size="sm" onClick={() => openEdit(r)}>Edit</Button></>}
+        rowButtons={(r) => <><Button size="sm" onClick={() => setHolders(r)}>Who needs action</Button><Button size="sm" onClick={() => openEdit(r)}>Edit</Button></>}
         empty={
           onlyAction ? (
             <EmptyState title="No licences need action" description="Every holder's licence is valid past its first reminder." action={<Button onClick={() => setOnlyAction(false)}>Show all</Button>} />
@@ -2503,6 +2526,7 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
           <div className="yx-tim-stack">
             <span className="yx-tim-row">
               <Button size="sm" onClick={why(drawerNames.every((n) => asked.includes(n)) && 'Everyone was already asked today', () => ask(drawerNames))}>{drawerNames.every((n) => asked.includes(n)) ? 'All asked to renew' : 'Ask all to renew'}</Button>
+              <Button size="sm" icon={Plus} onClick={() => setRecording(true)}>Record licence</Button>
             </span>
             <ul className="yx-tim-list">
               {[...holders.watch].sort((a, b) => a.expires.getTime() - b.expires.getTime()).map((h) => {
@@ -2521,8 +2545,31 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
               })}
             </ul>
           </div>
-        ) : <p className="yx-tim-muted">{holders.holders ? `All ${holders.holders} holders have a licence valid for more than ${windowOf(holders)} days.` : 'No holders yet.'}</p>)}
+        ) : (
+          <div className="yx-tim-stack">
+            <span className="yx-tim-row"><Button size="sm" icon={Plus} onClick={() => setRecording(true)}>Record licence</Button></span>
+            <p className="yx-tim-muted">{holders.holders ? `All ${holders.holders} holders have a licence valid for more than ${windowOf(holders)} days.` : 'No holders yet.'}</p>
+          </div>
+        ))}
       </Drawer>
+      <Dialog
+        open={recording}
+        onOpenChange={(o) => !o && setRecording(false)}
+        title={holders ? `Record a ${holders.licence.toLowerCase()}` : 'Record a licence'}
+        description="A renewal is recorded the same way: the latest licence counts."
+        footer={<><Button onClick={() => setRecording(false)}>Cancel</Button><Button variant="primary" onClick={saveRecord}>Record licence</Button></>}
+      >
+        <div className="yx-tim-form">
+          <FormField id="yx-lic-rec-person" label="Person" required error={recTried ? recError.person : undefined}>
+            <Select searchable value={rec.person} placeholder="Choose a person" onChange={(person) => setRec({ ...rec, person })} options={PLANT_PEOPLE.map((p) => ({ value: p.name, label: p.name }))} />
+          </FormField>
+          <FormField label="Licence number" optional><TextField value={rec.number} placeholder="For example TN-FL-2026-0412" onChange={(number) => setRec({ ...rec, number })} /></FormField>
+          <FieldRow>
+            <FormField id="yx-lic-rec-from" label="Valid from" required error={recTried ? recError.from : undefined}><DatePicker value={rec.from} max={TODAY} onChange={(from) => setRec({ ...rec, from })} /></FormField>
+            <FormField id="yx-lic-rec-to" label="Expires on" optional helper="Leave empty if it never expires." error={recTried ? recError.to : undefined}><DatePicker value={rec.to} min={rec.from ?? undefined} onChange={(to) => setRec({ ...rec, to })} /></FormField>
+          </FieldRow>
+        </div>
+      </Dialog>
       <Dialog
         open={!!overrideFor}
         onOpenChange={(o) => !o && setOverrideFor(null)}
@@ -2532,6 +2579,7 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
         <div className="yx-tim-stack">
           <p className="yx-tim-muted">{overrideFor} can be rostered while the company licence is renewed. The override and its reason are logged.</p>
           <FormField label="Reason" required><TextField value={overrideReason} placeholder="For example Renewal course booked for 6 Oct" onChange={setOverrideReason} /></FormField>
+          <FormField label="Until" optional helper="At most 90 days. Renewing the licence is the fix."><DatePicker value={until} min={TODAY} max={addDays(TODAY, 90)} onChange={setUntil} /></FormField>
         </div>
       </Dialog>
       <Dialog
@@ -2544,6 +2592,10 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
           <FormField label="Required for"><Segment label="Required for" value={kind} onChange={setKind} options={(['Role', 'Skill', 'Shift'] as const).map((k) => ({ value: k, label: k }))} /></FormField>
           <FormField label={kind} required><TextField value={req} onChange={setReq} /></FormField>
           <FormField label="Licence" required><TextField value={licence} onChange={setLicence} /></FormField>
+          <FieldRow>
+            {edit === 'new' && <FormField label="Code" optional helper="Made from the licence name if left empty."><TextField value={code} placeholder={licence.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^[^A-Z]+|-+$/g, '').slice(0, 20) || 'FORKLIFT'} onChange={(v) => setCode(v.toUpperCase())} /></FormField>}
+            <FormField label="Note" optional><TextField value={note} placeholder="For example LMV endorsement" onChange={setNote} /></FormField>
+          </FieldRow>
           <FormField label="Type" helper={legal === 'legal' ? 'Required by law: no one can override it.' : 'Company rule: HR can override it with a reason.'}>
             <Segment label="Type" value={legal} onChange={setLegal} options={[{ value: 'legal', label: 'Legal' }, { value: 'company', label: 'Company' }]} />
           </FormField>

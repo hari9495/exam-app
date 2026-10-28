@@ -37,3 +37,6 @@ export type { LiveStandby, StandbyData, StandbyCallOut, StandbySlot, StandbyShif
 // Auto-roster (TIM-34): the designed screen with `live`.
 export { AutoRosterScreen } from '../roster';
 export type { LiveAutoRoster, AutoRosterData, AutoRosterResult, AutoRosterSlot, AutoRosterSkip, AutoRosterShift } from '../auto-roster-live';
+// Licence requirements (TIM-40): the designed screen with `live`.
+export { LicenceRequirementsScreen } from '../roster';
+export type { LiveLicences, LicencesData, LicenceType, LicenceTypeInput, LicenceRequirement, LicenceWatch } from '../licences-live';

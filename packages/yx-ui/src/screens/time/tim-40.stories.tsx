@@ -9,3 +9,4 @@ export const List: S = { name: 'Requirements' };
 export const Blocked: S = { name: 'Roster block · expired licence', args: { blocked: true } };
 export const Empty: S = { name: 'Empty', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
+export const Record: S = { name: 'Record licence', args: { record: true } };
