@@ -96,6 +96,9 @@ export class DecideDto {
 export class CloseDto {
   @IsString() @MinLength(3) @MaxLength(500) reason!: string;
 }
+export class ListQueryDto {
+  @IsOptional() @IsIn(['finished']) status?: 'finished';
+}
 export class ContinuityQueryDto {
   @IsUUID() restructureId!: string;
   @IsUUID() employeeId!: string;
@@ -148,8 +151,8 @@ export class RestructureController {
 
   @Get()
   @RequirePermissions('employee.change.manage')
-  async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.restructures.list(ctx, await this.viewer(req));
+  async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ListQueryDto) {
+    return this.restructures.list(ctx, await this.viewer(req), q.status === 'finished');
   }
 
   @Post('preview')

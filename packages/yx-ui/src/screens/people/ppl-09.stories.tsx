@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { REVIEW_ID } from '../../components/stepper';
 import { RestructureWizard } from './changes';
-import { RestructureRecord, type ContinuityItemData, type RestructureRecordData } from './restructure';
+import { RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureRecordData } from './restructure';
 import { d } from './people-data';
 
 const meta: Meta = { title: 'Screens/People/PPL-09 · Bulk transfer and restructure', parameters: { layout: 'fullscreen' } };
@@ -94,23 +94,31 @@ const SETUP = {
   costCentres: [],
   open: [],
 };
+const START: LiveRestructure = {
+  state: 'ready',
+  onRetry: () => {},
+  setup: SETUP,
+  people: [],
+  onPreview: async () => ({ people: [], checks: [], counts: { ready: 0, failed: 0, leftOut: 0 } }),
+  onSend: noop,
+  onOpen: () => {},
+  onSaveDraft: noop,
+  onContinueDraft: () => {},
+  onDeleteDraft: noop,
+};
 export const Drafts: S = {
   name: 'Start · saved drafts (Save and exit)',
-  render: () => (
-    <RestructureWizard
-      live={{
-        state: 'ready',
-        onRetry: () => {},
-        setup: SETUP,
-        people: [],
-        onPreview: async () => ({ people: [], checks: [], counts: { ready: 0, failed: 0, leftOut: 0 } }),
-        onSend: noop,
-        onOpen: () => {},
-        drafts: [{ id: 'd1', title: 'Merge Kaveri Foods Pvt Ltd (Tamil Nadu) into Kaveri Foods Pvt Ltd', updatedAt: '2026-10-20T10:00:00Z' }],
-        onSaveDraft: noop,
-        onContinueDraft: () => {},
-        onDeleteDraft: noop,
-      }}
-    />
-  ),
+  render: () => <RestructureWizard live={{ ...START, drafts: [{ id: 'd1', title: 'Merge Kaveri Foods Pvt Ltd (Tamil Nadu) into Kaveri Foods Pvt Ltd', updatedAt: '2026-10-20T10:00:00Z' }] }} />,
 };
+
+// Founder 28 Oct 2026: done, rejected and cancelled restructures, newest first, each opening its record (letters, checklist).
+const finished = (o: Partial<FinishedRestructure> & Pick<FinishedRestructure, 'id' | 'title' | 'status'>): FinishedRestructure => ({ kind: 'demerge', effectiveDate: '2026-10-01', count: 1, moved: 0, failed: 0, requestedBy: 'Lakshmi Venkatesan', mine: false, openItems: 0, ...o });
+const FINISHED: FinishedRestructure[] = [
+  finished({ id: 'f1', title: 'Move Divya Raghunathan from Kaveri Foods Pvt Ltd (Tamil Nadu) to Kaveri Foods Pvt Ltd', status: 'done', effectiveDate: '2026-10-20', moved: 1, openItems: 3 }),
+  finished({ id: 'f2', kind: 'merge', title: 'Merge Kaveri Foods Pvt Ltd (Tamil Nadu) into Kaveri Foods Pvt Ltd', status: 'done', count: 96, moved: 95, failed: 1, openItems: 41 }),
+  finished({ id: 'f3', kind: 'within', title: 'Move people inside Kaveri Foods Pvt Ltd', status: 'done', effectiveDate: '2026-09-15', count: 12, moved: 12 }),
+  finished({ id: 'f4', title: 'Move part of Kaveri Foods Pvt Ltd to Kaveri Foods Pvt Ltd (Tamil Nadu)', status: 'rejected', effectiveDate: '2026-09-01', count: 8 }),
+  finished({ id: 'f5', title: 'Move Rahul Sharma from Kaveri Foods Pvt Ltd to Kaveri Foods Pvt Ltd (Tamil Nadu)', status: 'cancelled', effectiveDate: '2026-08-01', mine: true }),
+];
+export const Finished: S = { name: 'Start · finished restructures (Open goes to the record)', render: () => <RestructureWizard live={{ ...START, finished: FINISHED }} /> };
+export const FinishedEmpty: S = { name: 'Start · no finished restructures yet', render: () => <RestructureWizard live={{ ...START, finished: [] }} /> };

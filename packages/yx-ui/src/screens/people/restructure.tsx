@@ -17,7 +17,7 @@ import { Drawer } from '../../components/drawer';
 import { Stepper } from '../../components/stepper';
 import { Text } from '../../components/foundations';
 import { formatDate } from '../../lib/format';
-import { ListSkeleton, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { ListSkeleton, PeopleFrame, StatusBadge, StatusChecklist, toneOf, type ChecklistRow } from './people-kit';
 
 const persons = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 
@@ -119,6 +119,10 @@ export interface RestructureSummary {
   requestedBy: string | null;
   mine: boolean;
 }
+/** A done, rejected or cancelled restructure, with its open continuity items (Finished restructures). */
+export interface FinishedRestructure extends RestructureSummary {
+  openItems: number;
+}
 export interface SetupMaster {
   kind: 'department' | 'designation' | 'employmentType' | 'grade';
   id: string;
@@ -161,6 +165,8 @@ export interface LiveRestructure {
   onContinueDraft?: (id: string) => void;
   onDeleteDraft?: (id: string) => Promise<void>;
   onOpenPayroll?: (runId: string) => void;
+  /** Done, rejected and cancelled restructures, newest first (null while loading). */
+  finished?: FinishedRestructure[] | null;
 }
 
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -484,6 +490,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           </ul>
         </Card>
       )}
+      {!live.draft && live.finished !== undefined && <FinishedRestructures rows={live.finished} onOpen={live.onOpen} />}
       {saving && <InlineAlert tone="danger" title="The draft was not saved">{saving}</InlineAlert>}
       <Stepper
         title="Restructure"
@@ -790,6 +797,41 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
         />
       )}
     </PeopleFrame>
+  );
+}
+
+/**
+ * Finished restructures (founder 28 Oct 2026): done, rejected and cancelled ones, newest first, so HR gets back to a record
+ * (transfer letters, continuity checklist). Open ones stay in the banner above.
+ */
+export function FinishedRestructures({ rows, onOpen }: { rows: FinishedRestructure[] | null; onOpen: (id: string) => void }) {
+  const cols: TableColumn<FinishedRestructure>[] = [
+    { key: 'title', header: 'Restructure', value: (r) => r.title, width: 300 },
+    { key: 'effective', header: 'Effective', type: 'date', value: (r) => day(r.effectiveDate), width: 110 },
+    { key: 'people', header: 'People', value: (r) => (r.status === 'done' ? `${r.moved} moved${r.failed ? ` · ${r.failed} couldn't move` : ''}` : `${persons(r.count)} · none moved`), width: 170 },
+    { key: 'items', header: 'Continuity', value: (r) => (r.openItems ? `${r.openItems} open ${r.openItems === 1 ? 'item' : 'items'}` : ''), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => STATUS_TEXT[r.status], statusTone: (v) => toneOf(String(v)), width: 110 },
+  ];
+  return (
+    <Card title="Finished restructures">
+      {rows?.length === 0 ? (
+        <EmptyState compact title="No finished restructures yet" description="Done, rejected and cancelled restructures show here." />
+      ) : (
+        <DataTable
+          label="Finished restructures"
+          columns={cols}
+          rows={rows ?? []}
+          state={rows ? 'ready' : 'loading'}
+          getRowId={(r) => r.id}
+          pageSize={3}
+          rowButtons={(r) => (
+            <Button size="sm" onClick={() => onOpen(r.id)}>
+              Open
+            </Button>
+          )}
+        />
+      )}
+    </Card>
   );
 }
 

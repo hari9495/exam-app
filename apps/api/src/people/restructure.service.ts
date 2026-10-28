@@ -137,6 +137,9 @@ function reasonOf(e: unknown): string {
   throw e;
 }
 
+/** A restructure that is over: listed under Finished restructures. */
+const FINISHED = ['done', 'rejected', 'cancelled'];
+
 @Injectable()
 export class RestructureService {
   private readonly logger = new Logger(RestructureService.name);
@@ -721,10 +724,20 @@ export class RestructureService {
     };
   }
 
-  list(ctx: TenantContext, v: Viewer) {
+  /**
+   * Restructures, newest first; `finished` (founder 28 Oct 2026): done, rejected and cancelled ones, so HR gets back to a
+   * record (letters, continuity checklist), each with its open continuity items. Only plans naming someone the viewer's
+   * employee.change.manage reaches today (every plan for company-wide HR).
+   */
+  list(ctx: TenantContext, v: Viewer, finished = false) {
     return this.history.run(ctx, async (tx, c) => {
-      const rows = await tx.restructure.findMany({ where: { organizationId: c.organizationId }, orderBy: { requestedAt: 'desc' }, take: 100 });
-      return Promise.all(rows.map((r) => this.summary(tx, c, v, r)));
+      const org = c.organizationId;
+      const rows = await tx.restructure.findMany({ where: { organizationId: org, ...(finished ? { status: { in: FINISHED } } : {}) }, orderBy: finished ? [{ effectiveOn: 'desc' }, { requestedAt: 'desc' }] : { requestedAt: 'desc' }, take: 100 });
+      const people = await tx.restructurePerson.findMany({ where: { organizationId: org, restructureId: { in: rows.map((r) => r.id) } }, select: { restructureId: true, employeeId: true } });
+      const reached = await this.history.reachedIds(tx, c, v, 'employee.change.manage', [...new Set(people.map((p) => p.employeeId))]);
+      const seen = rows.filter((r) => people.some((p) => p.restructureId === r.id && reached.has(p.employeeId)));
+      const open = await tx.continuityItem.groupBy({ by: ['restructureId'], where: { organizationId: org, restructureId: { in: seen.map((r) => r.id) }, status: 'open' }, _count: { _all: true } });
+      return Promise.all(seen.map(async (r) => ({ ...(await this.summary(tx, c, v, r)), openItems: open.find((o) => o.restructureId === r.id)?._count._all ?? 0 })));
     });
   }
 
