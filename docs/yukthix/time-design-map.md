@@ -13,12 +13,14 @@ live page cannot reach yet (the reason is given).
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
 | Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 29 | 46 | 19 | 15 |
-| Leave (TIM-17…25) | 25 | 11 | 11 | 6 |
-| Set-up (TIM-26…29, 31, 42) | 20 | 11 | 0 | 2 |
-| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 17 | 24 | 10 | 2 |
-| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 22 | 19 | 3 | 3 |
+| Leave (TIM-17…25) | 39 | 0 | 11 | 3 |
+| Set-up (TIM-26…29, 31, 42) | 24 | 8 | 0 | 1 |
+| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 19 | 21 | 10 | 3 |
+| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 29 | 12 | 3 | 3 |
 | Field force (TIM-32, 33) | 0 | 7 | 8 | 0 |
-| **All 45 design groups (310 sub-pages counted)** | **113** | **118** | **51** | **28** |
+| **All 45 design groups (310 sub-pages counted)** | **140** | **94** | **51** | **25** |
+
+Leave v2 (29 Oct 2026) moved 27 sub-pages to live: Leave 14, set-up 4 (TIM-29 PendingBlocked, TIM-42 ×3), rosters 2 (TIM-39), reports 7 (TIM-30).
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -226,26 +228,81 @@ Live extras from the design file: month arrows (the top bar has no month on this
 
 ## B. Leave
 
-Builder B. Designs live in `packages/yx-ui/src/screens/time/leave.tsx`. The live pages now render the designs with a `live` prop.
+Builder B. Designs live in `packages/yx-ui/src/screens/time/leave.tsx` (TIM-30 in ops.tsx, TIM-39 in roster.tsx, TIM-42 and
+TIM-29 in leave-admin.tsx). The live pages render the designs with a `live` prop.
+
+### Leave v2 feature sheet (29 Oct 2026, BUILD-STANDARD §1)
+
+**Rules and their source** (company choices are settings with a default; HR changes them per company, entity or
+location in Settings, key in brackets):
+
+| # | Rule | Source | Default |
+|---|---|---|---|
+| 1 | Leave year starts in a month (calendar or financial year) | company (`leave.year_start_month`) | January |
+| 2 | Accrual monthly or yearly, pro rata for joiners and leavers, rounding per policy line | company (policy lines) | per policy |
+| 3 | Never below the state's Shops & Establishments floor (days a year, carry-forward floor) | law, per state (P07 IN.SE rule sets) | — |
+| 4 | Earned leave in a factory needs 240 days worked in the calendar year before; a joiner last year needs 2/3 of the days from joining; a joiner this year earns it from next year | law, Factories Act 1948 s.79 (applies where `attendance.factories_act` = covered) | not covered |
+| 5 | Carry forward up to the policy cap (never below the state floor), the rest lapses at year end | company + law | per policy |
+| 6 | Year end lists requests still waiting with days in the closing year; posting is refused (409) unless HR ticks Post anyway, and they stay pending | product | — |
+| 7 | Half days, minimum / maximum days, negative balance limit, sandwich rule, certificate after N days | company (leave type rules) | per type |
+| 8 | Short notice: refused, or allowed and flagged to the approver | company (type rule `noticeMode`) | refused |
+| 9 | Company block dates: planned leave on them is refused or flagged; sick, maternity, paternity and unpaid leave are never stopped | company (`leave.block_dates.mode`) | refused |
+| 10 | Leave during the notice period: last day stays, last day moves by the leave days (a half day moves it a day), or only sick and unpaid leave; leave can't pass the last working day | company (`leave.notice_period.leave`) | last day stays |
+| 11 | Probation: every type, casual / sick / unpaid only, or unpaid only (an HR eligibility override lets one person through) | company (`leave.probation.leave`) | every type |
+| 12 | Gender eligibility (maternity / paternity) with a plain "ask HR" message and HR override; maternity weeks and 80 days worked | law (Maternity Benefit Act) + company | existing |
+| 13 | Holidays and weekly offs inside a range are not counted (unless sandwiched); overlapping requests refused | product | — |
+| 14 | Cancel approved leave through the manager; a locked month is refused ("ask HR") | product (P08) | — |
+| 15 | Comp-off: claim a worked weekly off or holiday within N days; half day from the location's half-day minutes, full day from full-day minutes; one claim per day; manager approves | company (`leave.comp_off.claim_within_days`) | 30 days |
+| 16 | Comp-off expires N days after the day worked, oldest credit used first; overtime comp-off uses the same ledger and rule | company (`leave.comp_off.expiry_days`) | 60 days |
+| 17 | Encashment while working: window month (or off), most days a year, days that must stay, one request waiting, manager then HR approve; the days are held while waiting; daily rate = monthly basic + DA (or gross) ÷ divisor; paid as a payroll one-time pay | company (`leave.encashment.window`, `.max_days`, `.min_left`, `.divisor`, `payroll.leave_encashment_basis`) | off, 7, 7, 26, basic + DA |
+| 18 | Encashment tax note: taxed as salary in service; at exit exempt up to the s.10(10AA) limit | law (Income-tax Act) | — |
+| 19 | Encashment at exit: in the F&F settlement (payroll, unchanged) | law + company | — |
+| 20 | Long absence: maternity counts as service (earns leave); sabbatical and long unpaid leave earn none unless the company says so; monthly credits drop by the days away | law + company (`leave.long_absence.accrues`) | no |
+| 21 | Optional holidays: N of M a year; after a move to another office during the year, N × months left ÷ 12 (rounded); over the limit after HR lowers it: no new picks until one is given back | company (`leave.optional_holiday.prorate_on_move`) | yes |
+| 22 | Block leave: roles that need it (by designation, department, location, entity) take N working days in a row a year, from earned leave | company (`leave.block_leave.required`, `.days`) | not required, 10 |
+| 23 | Public-holiday feeds: changes wait for HR review; an accepted new holiday gives back leave already on that date | company (`holiday.feeds`) | off |
+| 24 | Unpaid leave (LOP) to payroll: approved unpaid leave days plus absent days with no leave (LOP report; the frozen payroll feed is unchanged) | product | — |
+| 25 | Transfers between states: the state floors apply by date; leave carries or lapses by `transfer.leave` (existing) | law + company | carry |
+
+Dates are India time (IST) for "today"; the leave dates are the location's calendar dates.
+
+**Who** (checked on the server for every row): employee — own claims, encashment, ledger, absence; manager — approves
+in Approvals, sees the block-leave rows of the team read only; HR with `leave.view` in scope — leave home, reports and
+export, block-leave plans, nudges and access pause; `leave.balance.adjust` — long absences (never one's own);
+`leave.settings.manage` — block dates, holiday feeds, year end. Acting for someone else is refused on every write.
+Another company's rows answer 404.
+
+**Provider: to decide** — public-holiday feed (`HolidayProvider` in apps/api/src/time/holiday-feed.provider.ts; the
+dev-fake answers until a provider is chosen).
+
+**API routes** (all under /api/v1/time): `GET me/leave/ledger`, `GET|POST me/comp-off`, `POST me/comp-off/:id/withdraw`,
+`GET|POST me/encashment`, `POST me/encashment/:id/withdraw`, `GET me/long-absence`, `POST me/long-absence/:id/return-date`,
+`GET hr/leave-home`, `POST hr/leave-home/remind/:requestId`, `GET hr/leave-report`, `GET hr/leave-report/export`,
+`GET|POST hr/long-absences`, `POST hr/long-absences/:id/extend|early-return`, `GET hr/block-leave`,
+`POST hr/block-leave/:employeeId/plan|nudge|pause`, `GET|POST setup/block-dates`, `POST setup/block-dates/:id/remove`,
+`GET|POST setup/holiday-feeds`, `POST setup/holiday-feeds/check|decide`, `POST setup/holiday-feeds/:id/remove`;
+`POST setup/year-end` takes `acknowledgePending`. Comp-off service for overtime: `LeaveV2Service.creditCompOff`.
 
 ### Live pages
 
 | page | live screen today | design story | verdict |
 |---|---|---|---|
-| /yx/time/leave | `LeaveHomeScreen live` (leave.tsx). The old `MyLeaveScreen` copy is deleted. | TIM-17 Leave home (Employee). Apply leave TIM-18, request detail TIM-19 and optional holidays TIM-23 open from it. | Now the TIM-17 design |
-| /yx/time/team | `TeamLeaveCalendarScreen live`. The old `TeamLeaveScreen` copy is deleted. | TIM-20 Team leave calendar (Manager, HR, Month) | Now the TIM-20 design |
-| /yx/time/balances | `LeaveCardScreen live` (HR). The old `LeaveBalancesScreen` copy is deleted. | TIM-21 Leave card (HR, Adjust) | Now the TIM-21 design, one person at a time, with an Employee picker. Question: the people × balances table is the TIM-30 Balances report (ops.tsx, builder E). Once E wires it, it can link to this card. |
+| /yx/time/leave | `LeaveHomeScreen live` with the designed sheets: `ApplyLeaveSheet`, `LeaveRequestDetail`, `OptionalHolidaysSheet`, `CompOffClaim`, `EncashmentRequest`, `LongAbsenceCard` (each `live`) | TIM-17 Employee, TIM-18, 19, 22, 23, 24, 25 | now the designs |
+| /yx/time/leave/card (new) | `LeaveCardScreen mine` | TIM-21 Employee | now the design |
+| /yx/time/leave-home (new, HR) | `LeaveHomeScreen hrLive` | TIM-17 HR, TIM-25 HR | now the design |
+| /yx/time/team | `TeamLeaveCalendarScreen live` | TIM-20 | unchanged |
+| /yx/time/balances | `LeaveReportsScreen live`; `?person=<id>` opens `LeaveCardScreen live` | TIM-30, TIM-21 HR | now the designs: everyone × balances with a row to the card |
 
 ### TIM-17 · Leave home
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee | /yx/time/leave: balance cards, My requests (View / Withdraw / Ask to cancel), Upcoming holidays, Optional holidays button |
+| Employee | /yx/time/leave: balance cards, My requests, Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
 | Manager | gap: no manager leave home. Managers use /yx/time/team (TIM-20) and answer requests in /yx/approvals |
-| HR | gap: no HR leave home. HR uses /yx/time/balances (TIM-21) and /yx/time/team |
-| Employee · no requests yet | /yx/time/leave for a new joiner: "No leave requests yet" with Apply leave |
+| HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end) |
+| Employee · no requests yet | /yx/time/leave for a new joiner |
 | Loading | /yx/time/leave while it loads |
-| Error | /yx/time/leave when the API fails: error state with Retry |
+| Error | /yx/time/leave when the API fails: Retry |
 | Phone · employee | phone view, mobile app not built |
 | Phone · manager | phone view, mobile app not built |
 
@@ -253,91 +310,91 @@ Builder B. Designs live in `packages/yx-ui/src/screens/time/leave.tsx`. The live
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Earned leave · sandwich counted | /yx/time/leave → Apply leave. If the policy counts sandwich days, the summary shows "Days counted (incl. N days between leave days)" from the server preview |
-| Half days at both ends | /yx/time/leave → Apply leave: First day / Last day half selects (Part of the day for one day) |
-| Over balance · blocked | /yx/time/leave → Apply leave: the server preview's block shows as a field error on Send, and nothing is sent |
-| Short notice warning | /yx/time/leave → Apply leave: the API blocks short notice ("needs N days' notice"), so it shows as an error, not a warning |
-| Sick leave · certificate required | /yx/time/leave → Apply leave: "I will give a certificate to HR" tick when the rules need one (field error if missing). The file upload is not in the API |
-| Company block date | feature not built: the API has no company block dates |
-| During notice period · last day moves | feature not built: the API has no notice-period rule for leave |
-| Leave without pay · taken, no balance | /yx/time/leave → Apply leave on Leave without pay: "Unpaid days this year (with this)". The "use paid leave instead" nudge is not built |
-| Sent | /yx/time/leave → Send request: toast "Leave sent for approval", and the request shows in My requests. The design's sent panel is replaced by the toast |
+| Earned leave · sandwich counted | /yx/time/leave → Apply leave: days counted incl. days between leave days |
+| Half days at both ends | /yx/time/leave → Apply leave: First day / Last day |
+| Over balance · blocked | /yx/time/leave → Apply leave: field error on Send |
+| Short notice warning | /yx/time/leave → Apply leave: a warning when the type flags short notice (`noticeMode` warn); the approver sees "Short notice"; refused when the type refuses it |
+| Sick leave · certificate required | /yx/time/leave → Apply leave: the certificate tick (HR verifies). Partial: the file upload waits for P05 documents |
+| Company block date | /yx/time/leave → Apply leave on a block date: refused with the reason, or a warning the approver sees (setting) |
+| During notice period · last day moves | /yx/time/leave → Apply leave while on notice: "Last working day" row (stays / moves to …) and a warning; refused past the last day or for paid leave when only sick and unpaid are allowed |
+| Leave without pay · taken, no balance | /yx/time/leave → Apply leave on unpaid leave |
+| Sent | toast "Leave sent for approval" |
 | Phone | phone view, mobile app not built |
 
 ### TIM-19 · Leave request detail
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee · pending | /yx/time/leave → View on a pending request (drawer) |
-| Withdraw | /yx/time/leave → Withdraw: confirm dialog; a server refusal shows in the dialog |
-| Employee · approved | /yx/time/leave → View on an approved request |
-| Past approved leave · report an error | /yx/time/leave → Ask to cancel on approved leave from last month. The API's cancel covers it; there is no separate "report to HR" flow |
-| Employee · ask to cancel future leave | /yx/time/leave → Ask to cancel: reason required (field error), then sent |
-| Manager · with team availability | gap: managers review leave in /yx/approvals (P03), not in this drawer |
+| Employee · pending | /yx/time/leave → View (LeaveRequestDetail live) |
+| Withdraw | /yx/time/leave → Withdraw |
+| Employee · approved | /yx/time/leave → View on approved leave |
+| Past approved leave · report an error | /yx/time/leave → Ask to cancel on last month's leave; a locked month is refused ("ask HR") |
+| Employee · ask to cancel future leave | /yx/time/leave → Ask to cancel (reason required) |
+| Manager · with team availability | gap: managers review leave in /yx/approvals (P03) |
 | Manager · approve | gap: approving happens in /yx/approvals (P03) |
 | Phone | phone view, mobile app not built |
 | Phone · manager | phone view, mobile app not built |
 
 ### TIM-20 · Team leave calendar
 
-| story (sub-page) | where it shows live |
-|---|---|
-| Manager · people × days | /yx/time/team as a manager: two weeks (one week under 1100 px), Previous / Next week, "Waiting for approval" with Review going to /yx/approvals, Export |
-| Month view | /yx/time/team → Month tab: the page loads that month |
-| HR · all teams | /yx/time/team as HR: the people in leave.view scope |
-| Empty | /yx/time/team when no one is away in the range: "No one is away …" with Next 2 weeks. ("No one to show" when the scope has no people.) |
-| Loading | /yx/time/team while it loads |
-| Phone | phone view, mobile app not built. At phone width the web page still shows the grid, not the design's list |
+Unchanged: Manager, Month, HR, Empty, Loading live on /yx/time/team; Phone is a phone view.
 
 ### TIM-21 · Leave card
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee · ledger and projection | gap: there is no "my leave card" page (the /me/leave API has no ledger for self). My leave shows the balances |
-| HR | /yx/time/balances: Employee picker, balance cards, History (ledger) timeline. The projection card is not shown, because the API gives no pending dates per person (gap) |
-| HR · adjust with reason | /yx/time/balances → Adjust balance (only when canAdjust): Direction, Days, Reason. Post pressed too early shows field errors; a server refusal stays in the dialog |
+| Employee · ledger and projection | /yx/time/leave/card (My leave → My leave card): balances, every ledger line, "What will my balance be?" (pending requests that start by the date) |
+| HR | /yx/time/balances → Open leave card on a row (?person=). The HR projection card is not shown (the HR API has no pending dates per person) |
+| HR · adjust with reason | /yx/time/balances?person=… → Adjust balance |
 | Phone | phone view, mobile app not built |
 
 ### TIM-22 · Comp-off claim
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Claim | feature not built: no claim for working on a holiday. Comp-off is only credited from overtime settled as comp-off (/yx/time/overtime) |
-| No eligible days | feature not built |
-| Sent | feature not built |
+| Claim | /yx/time/leave → Claim comp-off: worked weekly offs and holidays in the window, half or full day (full only with the full-day minutes), reason, use-by date |
+| No eligible days | /yx/time/leave → Claim comp-off with nothing to claim |
+| Sent | toast "Comp-off claim sent to your manager"; the claim shows under "Waiting for approval" with Withdraw |
 | Phone | phone view, mobile app not built |
 
 ### TIM-23 · Optional holidays
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Choose 2 of 5 | /yx/time/leave → "Optional holidays · N chosen · M left": tick and Save choices (each change goes to choose / unchoose) |
-| At the limit · others locked | /yx/time/leave → Optional holidays at the calendar's limit: the others lock with "Limit reached · untick one to swap" |
-| Prorated after transfer | gap: the API has no prorated limit after a transfer |
+| Choose 2 of 5 | /yx/time/leave → Optional holidays |
+| At the limit · others locked | /yx/time/leave → Optional holidays at the limit; over the limit (HR lowered it): a warning to untick, new picks refused |
+| Prorated after transfer | /yx/time/leave → Optional holidays after a move to another office this year: the prorated limit and why |
 | Phone | phone view, mobile app not built |
 
 ### TIM-24 · Encashment request
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Request · amount preview | feature not built: the API has no encashment request (only an `encashable` flag at year end) |
-| Over what you can encash | feature not built |
-| Request already waiting | feature not built |
+| Request · amount preview | /yx/time/leave → Encash leave (while the window is open): days, rate, amount before tax, balance after, tax note. "After tax (about)" is left out: the person's slab is not known here |
+| Over what you can encash | /yx/time/leave → Encash leave: field error with the cap and the days that must stay |
+| Request already waiting | /yx/time/leave → Encash leave with a request waiting: Withdraw request |
 | Phone | phone view, mobile app not built |
 
 ### TIM-25 · Long-absence status card
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee · maternity | feature not built: maternity is a leave type you can apply for, but there is no long-absence status (extend, early return) in the API |
-| HR · sabbatical | feature not built |
-| HR · long LWP | feature not built |
+| Employee · maternity | /yx/time/leave: approved maternity leave starts the status; Open status → progress, return, pay and accrual, Tell HR my return date changed |
+| HR · sabbatical | /yx/time/leave-home → Needs HR → Open status: Extend / Record early return (reason, version-checked). Recording a new sabbatical is API only (`POST hr/long-absences`): question below |
+| HR · long LWP | same as HR · sabbatical |
 | Phone · maternity | phone view, mobile app not built |
 
 ### Counts
 
-53 sub-pages in total: 25 live, 11 not built, 11 phone, 6 gaps.
-- Gaps: TIM-17 Manager, TIM-17 HR, TIM-19 Manager, TIM-19 Approve, TIM-21 Employee, TIM-23 Prorated.
+53 sub-pages: 39 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
+
+### Questions (defaults chosen, marked)
+
+- Recording a new sabbatical or long unpaid leave, and managing company block dates, have APIs but no designed HR
+  screen yet. Proposed: a "Record long absence" dialog on the HR leave home and a "Company block dates" card in TIM-26.
+- The notice-period choice is a company setting; TIM-27 drew it per leave type. Default kept company-wide; per type if wanted.
+- "Last working day moves": shown to the employee and the approver; the exit case's date itself is changed by HR in the exit flow.
+- The block-leave access pause is recorded and audited; turning access off on those dates belongs to the access area (not built).
 
 ## C. Leave and attendance set-up
 
@@ -394,7 +451,7 @@ the three new pages are reachable only by address.
 | Preview · Year-end · preview | → Preview: KPIs, per person balance → carried, lapse badge, search, "only people losing days"; failed preview → Try again |
 | Review · Year-end · review | → Review step, Post year-end |
 | Blocked · review, post blocked | → Review when nothing lapses ("Nothing lapses on that date…"). The "available from 1 Jan" lock: the date picker stops at today instead |
-| PendingBlocked · pending requests | gap: the API has no pending-requests check for year end |
+| PendingBlocked · pending requests | /yx/time/setup/year-end → Scope lists the pending requests; Post is blocked until "Post anyway" is ticked (the API answers 409 otherwise) |
 | Post · typed confirmation | → Post year-end → type LEAVE YEAR <year> → Post entries |
 | Posted · posted | → after posting: "Year end is being posted" (stays, founder OK) |
 | Transition · Leave-year change · scope | feature not built |
@@ -416,14 +473,14 @@ Letters and notices step: feature not built (left out live).
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Settings · Subscriptions | feature not built (no holiday feeds in the API) |
-| Review · Review before publish | feature not built |
-| Off · Feeds off | feature not built |
+| Settings · Subscriptions | /yx/time/setup/holiday-feeds (new): on/off, feeds per state with their locations, Add feed, Check for updates, Remove. Provider: to decide (dev-fake until then) |
+| Review · Review before publish | → changes waiting: Accept / Ignore each, Publish; leave already on an accepted holiday goes back to the balance and the people are told |
+| Off · Feeds off | → switch off (asks first when changes wait) |
 
 ### Counts
 
-33 stories: live 20 (TIM-26: 3, TIM-27: 5, TIM-28: 4, TIM-29: 6, TIM-31: 2) · feature not built 11 (TIM-26: 2,
-TIM-27: 2, TIM-29: 3, TIM-31: 1, TIM-42: 3) · phone 0 · gaps 2 (TIM-29 PendingBlocked, TIM-31 IpError).
+33 stories: live 24 (TIM-26: 3, TIM-27: 5, TIM-28: 4, TIM-29: 7, TIM-31: 2, TIM-42: 3) · feature not built 8 (TIM-26: 2,
+TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 1 (TIM-31 IpError).
 
 ## D. Rosters and shifts
 
@@ -516,9 +573,9 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Hr (HR · compliance view) | feature not built |
-| Manager | feature not built |
-| Suspend (Access suspension confirmation) | feature not built |
+| Hr (HR · compliance view) | /yx/time/block-leave (new): people whose role needs it (setting), taken / planned / not planned, Nudge to plan, Plan block leave |
+| Manager | /yx/time/block-leave as a manager: the team's rows, read only |
+| Suspend (Access suspension confirmation) | gap: Schedule access pause is recorded and audited; turning access off on those dates is not built (access area) |
 
 ### TIM-40 · Licence requirements
 
@@ -541,8 +598,8 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 
 ### Counts
 
-53 sub-pages: live 17 · feature not built 24 · phone view 10 · gaps 2 (TIM-05 Staff, TIM-08 RestBlocked).
-Live 17 = TIM-05 8, TIM-06 5, TIM-08 4 (Consent and Accepted through Approvals). Also a gap inside TIM-08 Request: "Change my shift".
+53 sub-pages: live 19 · feature not built 21 · phone view 10 · gaps 3 (TIM-05 Staff, TIM-08 RestBlocked, TIM-39 Suspend).
+Live 19 = TIM-05 8, TIM-06 5, TIM-08 4 (Consent and Accepted through Approvals), TIM-39 2. Also a gap inside TIM-08 Request: "Change my shift".
 
 ### Questions
 
@@ -625,14 +682,14 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Balances (`Balances`) | Design only, feature not built (no leave reports page; HR balances per person are on /yx/time/balances). |
-| Leave taken (`Taken`) | Design only, feature not built. |
-| Unpaid leave (LOP) to payroll (`Lop`) | Design only, feature not built (LOP days per person are in the payroll feed). |
-| Payroll · liability (`Liability`) | Design only, feature not built. |
-| Negative balances (`Negative`) | Design only, feature not built. |
-| Ledger (`Ledger`) | Design only, feature not built (a person's ledger is on their leave card). |
-| Loading (`Loading`) | Design only, feature not built. |
-| Error (`Failed`) | Design only, feature not built. |
+| Balances (`Balances`) | /yx/time/balances: everyone in leave.view scope × leave types, filters (entity, location, department, name), 50 a page with Previous / Next, Export CSV (every row, up to 10,000), Open leave card per row |
+| Leave taken (`Taken`) | /yx/time/balances → Report: Leave taken (this leave year) |
+| Unpaid leave (LOP) to payroll (`Lop`) | /yx/time/balances → Report: Unpaid leave (LOP), by month: unpaid leave days and absent days with no leave |
+| Payroll · liability (`Liability`) | Feature not built: needs each person's pay (payroll role); question for payroll |
+| Negative balances (`Negative`) | /yx/time/balances → Report: Negative balances |
+| Ledger (`Ledger`) | /yx/time/balances → Report: Ledger, by month |
+| Loading (`Loading`) | /yx/time/balances while loading |
+| Error (`Failed`) | /yx/time/balances when the API fails: Retry |
 
 #### TIM-37 · Industrial-action event
 
@@ -683,8 +740,8 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 ### 3. Counts (groups TIM-09, 11, 15, 16, 30, 37, 43)
 
-- Sub-pages live: 22 (TIM-09: 7, TIM-11: 6, TIM-15: 5, TIM-16: 4)
-- Feature not built: 19 (TIM-16: 4, TIM-30: 8, TIM-37: 4, TIM-43: 3)
+- Sub-pages live: 29 (TIM-09: 7, TIM-11: 6, TIM-15: 5, TIM-16: 4, TIM-30: 7)
+- Feature not built: 12 (TIM-16: 4, TIM-30: 1, TIM-37: 4, TIM-43: 3)
 - Phone view: 3 (TIM-15: 2, TIM-43: 1)
 - Gaps: 3 (TIM-09 comp-off decision; TIM-11 Payroll Admin and HR-send steps). Partial gaps noted in the rows: OT approve/reject live in Approvals, sent-back reason, locked-week correction, register rows on the page.
 - Kit: 24 shared parts (listed above), not counted as pages.
