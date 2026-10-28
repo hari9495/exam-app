@@ -17,6 +17,11 @@ export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type Live
 // Time ops (29 Oct 2026): presence-based attendance (TIM-36).
 export { PresenceDayScreen, type LivePresence } from '../field';
 export { DAY_STATUS, LEAVE_STATUS, dayText, rangeText } from './kit';
+// Devices and kiosks (TIM-14) and the kiosk tablet (TIM-13): the designed screens with `live`.
+export { DevicesScreen } from '../ops';
+export { KioskScreen } from '../field';
+export type { LiveDevices, DevicesData, KioskKey } from '../devices-live';
+export type { LiveKiosk, KioskInfo, KioskToday, KioskPunched } from '../kiosk-live';
 // Field force (TIM-32): the designed map with `live`.
 export { FieldForceScreen } from '../field';
 export type { LiveFieldForce, FieldMap, FieldMapPerson, FieldMapVisit, FieldPersonDay, FieldFence } from '../field-force-live';

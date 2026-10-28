@@ -22,6 +22,7 @@ import type { LoadState, MyPresence, PresenceDayRow, TeamPresence } from './live
 import { LoadingBlock } from './attendance';
 import { useRun } from '../org/org-kit';
 import { teamDrawing, trailDrawing, visitRow, type FieldPerson, type FieldVisit, type LiveFieldForce, type VisitStatus } from './field-force-live';
+import { LiveKioskScreen, type LiveKiosk } from './kiosk-live';
 import './time.css';
 
 /** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
@@ -267,7 +268,11 @@ const booked = (note?: string) => note === 'On leave' || note === 'Requested';
 /** My requests rows never wrap, so the badge stays on the right on every row, even on a phone. */
 const reqRow = { flexWrap: 'nowrap' } as const;
 
-export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
+export function KioskScreen({ view = 'code', live }: { view?: KioskView; /** The live kiosk page (/yx/kiosk) on a site tablet. */ live?: LiveKiosk }) {
+  return live ? <LiveKioskScreen live={live} /> : <SampleKioskScreen view={view} />;
+}
+
+function SampleKioskScreen({ view = 'code' }: { view?: KioskView }) {
   const { say, toast } = useSay();
   const [v, setV] = useState<KioskView>(view === 'unknown_code' ? 'code' : view);
   const [code, setCode] = useState(view === 'unknown_code' ? '9999' : '');

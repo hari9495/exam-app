@@ -29,6 +29,7 @@ import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL
 import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
+import { LiveDevicesScreen, type LiveDevices } from './devices-live';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -114,7 +115,11 @@ const KIOSK_W = 320;
 // flex: none — the kit class's 256px flex-basis turns into a min-height when phone cards stack the cell.
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 
-export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready' }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones'; signOut?: boolean; state?: ViewState }) {
+export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones'; signOut?: boolean; state?: ViewState; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
+  return live ? <LiveDevicesScreen live={live} /> : <SampleDevicesScreen {...story} />;
+}
+
+function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready' }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones'; signOut?: boolean; state?: ViewState }) {
   const sa = persona === 'sa';
   const narrow = useNarrow(599);
   // The story opens the sign-out confirmation for Meera's lost Redmi.
