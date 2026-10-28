@@ -19,7 +19,8 @@ export default function YxBatchesPage() {
   const { toast } = useToast();
   const perms = useYxPermissions();
   const canManage = perms.has('lifecycle.onboarding.manage');
-  const data = useLife<{ today: string; rows: Batch[] }>('/lifecycle/batches');
+  // Each batch says whether the viewer may change it; createIn: the legal entities a new batch may be for.
+  const data = useLife<{ today: string; rows: Batch[]; createIn?: string[] }>('/lifecycle/batches');
   const board = useLife<JoinerBoard>(canManage ? '/lifecycle/joiners' : null);
   const places = useJoinerPlaces(canManage);
   const write = useLifeWrite();
@@ -31,6 +32,7 @@ export default function YxBatchesPage() {
   const find = (batchId: string) => batches.find((b) => b.id === batchId)!;
   const save = (batchId: string | null, x: Parameters<React.ComponentProps<typeof BatchDialog>['onSave']>[1]) => (batchId ? write('PUT', `/lifecycle/batches/${id(batchId)}`, x) : write('POST', '/lifecycle/batches', x));
   const today = data.data?.today ?? todayIst();
+  const createIn = places.entities.filter((e) => data.data?.createIn?.includes(e.value));
   return (
     <PreboardingBatches
       rows={batchRows(batches, joiners, places.entities)}
@@ -38,10 +40,11 @@ export default function YxBatchesPage() {
         state: loadState(data),
         onRetry: () => void data.refetch(),
         today: day(today),
+        manageable: batches.filter((b) => b.canManage).map((b) => b.id),
         members: Object.fromEntries(batches.map((b) => [b.id, b.members.map((m) => ({ id: m.id, name: m.name, status: m.status, joiningOn: day(m.joiningOn) }))])),
         ...(canManage
           ? {
-              onNew: () => setEdit('new'),
+              ...(createIn.length ? { onNew: () => setEdit('new') } : {}),
               onEdit: (batchId: string) => setEdit(find(batchId)),
               onAddMembers: (batchId: string) => setAdding(find(batchId)),
               onLetters: async (batchId: string) => {
@@ -63,7 +66,7 @@ export default function YxBatchesPage() {
             {edit && (
               <BatchDialog
                 batch={edit === 'new' ? null : edit}
-                entities={places.entities}
+                entities={edit === 'new' ? createIn : places.entities}
                 today={today}
                 onClose={() => setEdit(null)}
                 onSave={async (batchId, x) => {

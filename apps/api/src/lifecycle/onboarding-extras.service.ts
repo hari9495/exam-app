@@ -179,10 +179,14 @@ export class OnboardingExtrasService {
 
   // ------------------------------------------------------------------------------------------ campus batches (LIFE-5.02)
 
+  /** A batch is managed whole: company-wide, or with a legal-entity scope on its entity (a location or team scope is not enough). */
+  private canManageEntity(v: Viewer, legalEntityId: string) {
+    return v.grants.has('lifecycle.onboarding.manage') && !v.actingForOther && (tenantWide(v, 'lifecycle.onboarding.manage') || (v.scopes.get('lifecycle.onboarding.manage') ?? []).some((s) => s.type === 'legal_entity' && s.id === legalEntityId));
+  }
+
   private async mayManageEntity(v: Viewer, legalEntityId: string) {
     if (!v.grants.has('lifecycle.onboarding.manage') || v.actingForOther) throw new ForbiddenException('You cannot manage joiners.');
-    if (tenantWide(v, 'lifecycle.onboarding.manage')) return;
-    if (!(v.scopes.get('lifecycle.onboarding.manage') ?? []).some((s) => s.type === 'legal_entity' && s.id === legalEntityId)) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
+    if (!this.canManageEntity(v, legalEntityId)) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
   }
 
   async batches(ctx: TenantContext, user: ScopeUser) {
@@ -190,6 +194,11 @@ export class OnboardingExtrasService {
     if (!v.grants.has('lifecycle.onboarding.view') && !v.grants.has('lifecycle.onboarding.manage')) throw new ForbiddenException('You cannot see joiners.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.joinerBatch.findMany({ where: { organizationId: c.organizationId }, orderBy: { joiningOn: 'desc' }, take: 200 });
+      // N6 (28 Oct 2026): a batch is listed company-wide, with a legal-entity scope on its entity, or (a location,
+      // department or team scope) when at least one of its members is the viewer's; never another entity's batch.
+      const entityScope = (key: string, entity: string) => tenantWide(v, key) || (v.scopes.get(key) ?? []).some((s) => s.type === 'legal_entity' && s.id === entity);
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true } });
+      const createIn = entities.map((e) => e.id).filter((e) => this.canManageEntity(v, e));
       const out = [];
       for (const b of rows) {
         const members = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, batchId: b.id, status: { not: 'cancelled' } } });
@@ -198,6 +207,7 @@ export class OnboardingExtrasService {
           const sees = (await joinerInScope(tx, c, v, 'lifecycle.onboarding.view', m)) || (await joinerInScope(tx, c, v, 'lifecycle.onboarding.manage', m));
           if (sees) visible.push(m);
         }
+        if (!visible.length && !entityScope('lifecycle.onboarding.view', b.legalEntityId) && !entityScope('lifecycle.onboarding.manage', b.legalEntityId)) continue;
         const people = await tx.person.findMany({ where: { organizationId: c.organizationId, id: { in: visible.map((m) => m.personId) } } });
         // PPL-14 "Offers issued": members who came from an accepted offer in Hiring or hold an issued appointment
         // letter; the rest with an issued letter of intent are "still on letter of intent".
@@ -222,9 +232,10 @@ export class OnboardingExtrasService {
           offersIssued: visible.filter(offered).length,
           lettersOfIntent: visible.filter((m) => intent.has(m.personId) && !offered(m)).length,
           openTasks,
+          canManage: this.canManageEntity(v, b.legalEntityId),
         });
       }
-      return { today: todayIst(), rows: out };
+      return { today: todayIst(), rows: out, createIn };
     });
   }
 
@@ -251,6 +262,8 @@ export class OnboardingExtrasService {
       }
       const b = await tx.joinerBatch.findFirst({ where: { organizationId: org, id } });
       if (!b) throw new NotFoundException('No such batch.');
+      // The entity was checked from the body: a batch keeps its own entity, so nobody changes another entity's batch.
+      if (b.legalEntityId !== dto.legalEntityId) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
       if (b.version !== dto.version) throw new ConflictException('Someone else changed this batch. Reload it.');
       await tx.joinerBatch.update({ where: { id }, data: { name: dto.name.trim(), joiningOn: new Date(`${dto.joiningOn}T00:00:00Z`), touchpoints: (dto.touchpoints ?? []) as Prisma.InputJsonValue, version: { increment: 1 } } });
       // A new batch day moves every member waiting to join, and their checklists (YX-LC-13).
@@ -289,9 +302,11 @@ export class OnboardingExtrasService {
 
   /** A letter of intent to every member waiting to join (each through the ordinary letter issue, checks included). */
   async sendLoi(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
     const members = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const b = await tx.joinerBatch.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!b) throw new NotFoundException('No such batch.');
+      await this.mayManageEntity(v, b.legalEntityId);
       return tx.preboarding.findMany({ where: { organizationId: c.organizationId, batchId: id, status: 'invited' }, select: { id: true, personId: true } });
     });
     const out = { issued: 0, failed: [] as { preboardingId: string; message: string }[] };

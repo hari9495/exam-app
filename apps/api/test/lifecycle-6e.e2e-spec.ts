@@ -38,7 +38,7 @@ describe('Lifecycle batch 6e', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'buddy' | 'lata';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'buddy' | 'lata' | 'plantHr' | 'entHr';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp: Record<string, string> = {};
@@ -95,6 +95,8 @@ describe('Lifecycle batch 6e', () => {
       ['mgr', 'A', 'panel', []],
       ['buddy', 'A', 'panel', []],
       ['lata', 'A', 'panel', []],
+      ['plantHr', 'A', 'panel', null],
+      ['entHr', 'A', 'panel', null],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -224,6 +226,51 @@ describe('Lifecycle batch 6e', () => {
     const mine = (await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { id: string }) => t.id === checkin.id);
     // PPL-47: each task names whose checklist it is, so HR can upload or issue the letter from My checklist tasks.
     expect(mine).toMatchObject({ personId: expect.any(String), subject: { type: expect.any(String), id: expect.any(String) } });
+  });
+
+  it('N6 batches by scope: a plant (location) HR sees only batches with her joiners, read-only; an entity HR manages her entity only', async () => {
+    // HR Executive for the Hosur location (in Special Plant), and HR Executive for the Special Foods entity.
+    await inA(async (tx) => {
+      const o = { organizationId: org.A.id };
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `hr-exec-${run}`, permissionsJson: JSON.stringify([...ROLE_TEMPLATES.find((t) => t.key === 'hr_executive')!.permissions]) } });
+      const g = { ...o, permissionProfileId: role.id, validFrom: new Date('2026-01-01T00:00:00Z'), status: 'active', grantedBy: users.adminA };
+      await tx.roleGrant.create({ data: { ...g, userId: users.plantHr, scopeType: 'location', locationId: ids.hosur, reason: 'Plant HR' } });
+      await tx.roleGrant.create({ data: { ...g, userId: users.entHr, scopeType: 'legal_entity', legalEntityId: ids.entity, reason: 'Entity HR' } });
+    });
+    for (const who of ['plantHr', 'entHr'] as const) token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `${who}@life6e-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+    const joiner = async (n: string, at: object) => (await api('hr', 'post', '/lifecycle/joiners').send({ givenName: n, familyName: run, joiningOn: addDays(today, 40), departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr, ...at }).expect(201)).body.id as string;
+    const batch = async (name: string, legalEntityId: string, members: string[]) => {
+      const b = (await api('hr', 'post', '/lifecycle/batches').send({ name: `${name} ${run}`, legalEntityId, joiningOn: addDays(today, 30) }).expect(201)).body;
+      if (members.length) await api('hr', 'post', `/lifecycle/batches/${b.id}/members`).send({ preboardingIds: members }).expect(200);
+      return b.id as string;
+    };
+    const foods = await batch('Foods campus', ids.entity, [await joiner('Chitra', place())]);
+    const plant = await batch('Plant campus', ids.plant, [await joiner('Dinesh', { legalEntityId: ids.plant, locationId: ids.hosur })]);
+    const plantEmpty = await batch('Plant empty', ids.plant, []);
+    const list = async (who: Who) => (await api(who, 'get', '/lifecycle/batches').expect(200)).body as { rows: { id: string; canManage: boolean; members: unknown[] }[]; createIn: string[] };
+    // Plant HR: the plant batch (one of its members is at Hosur) read-only; never another entity's batch or an empty one.
+    const p = await list('plantHr');
+    expect(p.rows.map((r) => r.id).filter((x) => [foods, plant, plantEmpty].includes(x))).toEqual([plant]);
+    expect(p.rows.find((r) => r.id === plant)).toMatchObject({ canManage: false, members: [expect.anything()] });
+    expect(p.createIn).toEqual([]);
+    const refused = 'You cannot manage joiners of that legal entity.';
+    expect((await api('plantHr', 'post', '/lifecycle/batches').send({ name: `Plant new ${run}`, legalEntityId: ids.plant, joiningOn: addDays(today, 30) }).expect(403)).body.message).toBe(refused);
+    const pv = (await list('hr')).rows.find((r) => r.id === plant) as unknown as { version: number };
+    expect((await api('plantHr', 'put', `/lifecycle/batches/${plant}`).send({ name: `Plant campus ${run}`, legalEntityId: ids.plant, joiningOn: addDays(today, 31), reason: 'Exams', version: pv.version }).expect(403)).body.message).toBe(refused);
+    expect((await api('plantHr', 'post', `/lifecycle/batches/${plant}/loi`).expect(403)).body.message).toBe(refused);
+    // Entity HR: her entity's batch, managed; the plant entity's batches neither listed nor changeable (not even by naming her entity).
+    const e = await list('entHr');
+    expect(e.rows.map((r) => r.id).filter((x) => [foods, plant, plantEmpty].includes(x))).toEqual([foods]);
+    expect(e.rows.find((r) => r.id === foods)).toMatchObject({ canManage: true });
+    expect(e.createIn).toEqual([ids.entity]);
+    const fv = (await list('hr')).rows.find((r) => r.id === foods) as unknown as { version: number };
+    await api('entHr', 'put', `/lifecycle/batches/${foods}`).send({ name: `Foods campus 2027 ${run}`, legalEntityId: ids.entity, joiningOn: addDays(today, 30), version: fv.version }).expect(200);
+    expect((await api('entHr', 'put', `/lifecycle/batches/${plant}`).send({ name: 'Taken', legalEntityId: ids.entity, joiningOn: addDays(today, 30), version: pv.version }).expect(403)).body.message).toBe(refused);
+    expect((await api('entHr', 'post', '/lifecycle/batches').send({ name: `Plant new ${run}`, legalEntityId: ids.plant, joiningOn: addDays(today, 30) }).expect(403)).body.message).toBe(refused);
+    // Company-wide HR: every batch, all manageable, creates in every entity.
+    const h = await list('hr');
+    expect(h.rows.filter((r) => [foods, plant, plantEmpty].includes(r.id)).every((r) => r.canManage)).toBe(true);
+    expect(h.createIn.sort()).toEqual([ids.entity, ids.plant].sort());
   });
 
   it('death in service: nominations 60 / 40 become the payees in the hand-off; the family signs in and reads the letter', async () => {

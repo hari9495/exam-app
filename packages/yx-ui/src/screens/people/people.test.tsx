@@ -322,11 +322,32 @@ describe('pre-boarding batches', () => {
     const u = userEvent.setup();
     const calls: unknown[][] = [];
     const members = { b3: [{ id: 'm1', name: 'Asha', status: 'invited', joiningOn: d(2026, 10, 19) }, { id: 'm2', name: 'Bhanu', status: 'joined', joiningOn: d(2026, 10, 19) }] };
-    render(<PreboardingBatches rows={[BATCHES[2]]} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} live={{ state: 'ready', onRetry: () => undefined, today: d(2026, 9, 28), members, onChangeDate: async (...a) => void calls.push(a) }} />);
+    render(<PreboardingBatches rows={[BATCHES[2]]} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} live={{ state: 'ready', onRetry: () => undefined, today: d(2026, 9, 28), members, manageable: ['b3'], onChangeDate: async (...a) => void calls.push(a) }} />);
     await u.click(screen.getByRole('checkbox', { name: 'Email the 1 member their new date' }));
     await u.type(screen.getByRole('textbox', { name: /^Why the day moves/ }), 'Exams postponed');
     await u.click(screen.getByRole('button', { name: 'Move 1 member' }));
     expect(calls).toEqual([['b3', new Date(2026, 10, 2), 'Exams postponed', false]]);
+  });
+});
+
+describe('pre-boarding batches, read-only (N6: a plant HR sees her joiners\' batch, never changes it)', () => {
+  const live = (manageable: string[], onNew?: () => void) => ({ state: 'ready' as const, onRetry: () => undefined, today: d(2026, 9, 28), members: {}, manageable, onNew, onEdit: () => undefined, onAddMembers: () => undefined, onLetters: () => undefined, onChangeDate: async () => undefined });
+  it('a batch she may not manage has no Change date and only Open batch in its menu; no New batch', async () => {
+    const u = userEvent.setup();
+    render(<PreboardingBatches rows={[BATCHES[2]]} live={live([])} />);
+    expect(screen.queryByRole('button', { name: 'Change date' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New batch' })).toBeNull();
+    await u.click(screen.getByRole('button', { name: /^More actions/ }));
+    expect(screen.getByRole('menuitem', { name: 'Open batch' })).toBeTruthy();
+    for (const name of ['Rename or add touchpoints', 'Add joiners', 'Send letters of intent']) expect(screen.queryByRole('menuitem', { name })).toBeNull();
+  });
+  it('a batch she manages keeps every action, and New batch shows when she may create one', async () => {
+    const u = userEvent.setup();
+    render(<PreboardingBatches rows={[BATCHES[2]]} live={live(['b3'], () => undefined)} />);
+    expect(screen.getByRole('button', { name: 'Change date' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New batch' })).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: /^More actions/ }));
+    for (const name of ['Rename or add touchpoints', 'Add joiners', 'Send letters of intent']) expect(screen.getByRole('menuitem', { name })).toBeTruthy();
   });
 });
 

@@ -779,6 +779,9 @@ export interface LiveBatches {
   today: Date;
   /** Members of each batch, for "Open batch". */
   members: Record<string, { id: string; name: string; status: string; joiningOn: Date }[]>;
+  /** Batches the viewer may change (company-wide, or a legal-entity scope on the batch's entity); the rest are read-only. */
+  manageable: string[];
+  /** Only when the viewer may create a batch in at least one legal entity. */
   onNew?: () => void;
   onEdit?: (id: string) => void;
   onAddMembers?: (id: string) => void;
@@ -831,9 +834,10 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
     { key: 'completion', header: 'Progress', type: 'number', value: (r) => r.completion, render: (r) => <Meter value={r.completion} max={100} label={`${r.name} pre-boarding done`} valueText={`${r.completion}%`} warnAt={101} dangerAt={101} />, width: 140 },
     { key: 'entity', header: 'Legal entity', value: (r) => r.entity, width: 260 },
   ];
-  const canChange = !live || Boolean(live.onChangeDate);
+  // A location or team scope reads its own joiners' batches but never changes a batch (the API refuses it).
+  const may = (r: Batch) => !live || live.manageable.includes(r.id);
   const action = (r: Batch) =>
-    canChange && (!live || daysBetween(today, r.joining) >= 0) ? (
+    may(r) && (!live || (live.onChangeDate && daysBetween(today, r.joining) >= 0)) ? (
       <Button size="sm" icon={CalendarClock} onClick={() => openChange(r)}>
         Change date
       </Button>
@@ -842,9 +846,9 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
   const menu = (r: Batch) => (
     <>
       <MenuItem onSelect={() => live && setOpenId(r.id)}>Open batch</MenuItem>
-      {(!live || live.onEdit) && <MenuItem onSelect={() => live?.onEdit?.(r.id)}>Rename or add touchpoints</MenuItem>}
-      {(!live || live.onAddMembers) && <MenuItem onSelect={() => live?.onAddMembers?.(r.id)}>Add joiners</MenuItem>}
-      {(!live || live.onLetters) && r.members > 0 && <MenuItem onSelect={() => live?.onLetters?.(r.id)}>Send letters of intent</MenuItem>}
+      {may(r) && (!live || live.onEdit) && <MenuItem onSelect={() => live?.onEdit?.(r.id)}>Rename or add touchpoints</MenuItem>}
+      {may(r) && (!live || live.onAddMembers) && <MenuItem onSelect={() => live?.onAddMembers?.(r.id)}>Add joiners</MenuItem>}
+      {may(r) && (!live || live.onLetters) && r.members > 0 && <MenuItem onSelect={() => live?.onLetters?.(r.id)}>Send letters of intent</MenuItem>}
     </>
   );
   const newBatch = live ? live.onNew : () => {};
@@ -970,7 +974,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
                 ))}
               </ul>
             ) : (
-              <EmptyState compact title="No one in this batch yet" description={live.onAddMembers ? 'Add joiners from the batch menu.' : undefined} />
+              <EmptyState compact title="No one in this batch yet" description={live.onAddMembers && live.manageable.includes(opened.id) ? 'Add joiners from the batch menu.' : undefined} />
             )
           )}
         </Drawer>

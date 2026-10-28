@@ -13,6 +13,8 @@ export const Default: S = { name: 'Campus batches', render: () => <PreboardingBa
 export const ChangeDate: S = { name: 'Change batch joining date (re-anchor)', render: () => <PreboardingBatches rows={BATCHES} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} /> };
 export const ChangeDateNoReason: S = { name: 'Change batch joining date · Move pressed with no reason', render: () => <PreboardingBatches rows={BATCHES} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} />, play: play(press('Move 12 members')) };
 export const ChangeDateSameDay: S = { name: 'Change batch joining date · Move pressed on the same day', render: () => <PreboardingBatches rows={BATCHES} defaultChangeId="b3" />, play: play(press('Move 12 members')) };
+// N6: HR scoped to a location (a plant) sees the batches of her joiners read-only: no New batch, no Change date, Open batch only.
+export const PlantHrReadOnly: S = { name: 'Plant HR · read only', render: () => <PreboardingBatches rows={BATCHES.slice(0, 1)} live={{ state: 'ready', onRetry: () => undefined, today: new Date(2026, 9, 28), members: {}, manageable: [] }} /> };
 export const Empty: S = { name: '· empty', render: () => <PreboardingBatches rows={[]} /> };
 
 // New batch / Change the batch and Add joiners (People › Batches): the live dialogs with sample data.

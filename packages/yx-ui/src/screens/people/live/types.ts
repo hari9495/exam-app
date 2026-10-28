@@ -560,6 +560,8 @@ export interface Batch {
   lettersOfIntent?: number;
   /** Open checklist tasks of the members waiting to join (a new batch day moves them). */
   openTasks?: number;
+  /** The viewer may change this batch (company-wide, or a legal-entity scope on its entity). */
+  canManage?: boolean;
 }
 export interface Payee {
   id?: string;
