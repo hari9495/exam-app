@@ -291,6 +291,8 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   const [checking, setChecking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
+  // The start page: the new plan, the saved drafts or the finished restructures, one at a time so each fits (founder 28 Oct 2026).
+  const [view, setView] = useState<'new' | 'drafts' | 'finished'>('new');
 
   const across = kind !== 'within';
   const picking = by === 'people' && (kind === 'demerge' || kind === 'within');
@@ -402,6 +404,13 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
             ? 'No one moves with these choices'
             : undefined;
   const objectName = fromE && effective ? `${kind === 'within' ? 'MOVE' : kind.toUpperCase()} ${fromE.shortName.toUpperCase()} ${MONTH[effective.getMonth()]} ${effective.getFullYear()}` : 'RESTRUCTURE';
+  const views: { value: 'new' | 'drafts' | 'finished'; label: string }[] = [
+    { value: 'new', label: 'New restructure' },
+    ...(!live.draft && live.drafts?.length ? [{ value: 'drafts' as const, label: `Saved drafts (${live.drafts.length})` }] : []),
+    ...(!live.draft && live.finished !== undefined ? [{ value: 'finished' as const, label: live.finished ? `Finished (${live.finished.length})` : 'Finished' }] : []),
+  ];
+  // Back to the plan when the list it showed is gone (the last draft deleted).
+  const shown = views.some((v) => v.value === view) ? view : 'new';
   const leaveOut = (p: RestructurePersonResult) => setEditing({ employeeId: p.employeeId, leaveOut: true, reason: '' });
 
   const beforeRows: ChecklistRow[] = [
@@ -455,7 +464,17 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
 
   return (
     <PeopleFrame active="Restructure">
-      <PageHeader title={heading} description={`Moves ${moveCount ?? 'the'} ${moveCount === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then the old entity can be closed' : ''}.`} />
+      <PageHeader
+        title={shown === 'new' ? heading : 'Restructure'}
+        description={
+          shown === 'drafts'
+            ? 'Plans you saved with Save and exit. Continue one, or delete it.'
+            : shown === 'finished'
+              ? 'Done, rejected and cancelled restructures, newest first. Open one for its letters and continuity checklist.'
+              : `Moves ${moveCount ?? 'the'} ${moveCount === 1 ? 'employment' : 'employments'} with one preview and one approval${closes ? ', then the old entity can be closed' : ''}.`
+        }
+        actions={views.length > 1 && <Segment label="Show" value={shown} onChange={setView} options={views} />}
+      />
       {s.open.length > 0 && (
         <InlineAlert tone="info" title={`${s.open.length} ${s.open.length === 1 ? 'restructure is' : 'restructures are'} open`}>
           <ul className="yx-ppl__stack" aria-label="Open restructures">
@@ -472,7 +491,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           </ul>
         </InlineAlert>
       )}
-      {!live.draft && (live.drafts?.length ?? 0) > 0 && (
+      {shown === 'drafts' && (
         <Card title={`Your saved drafts (${live.drafts!.length})`}>
           <ul className="yx-ppl__stack" aria-label="Saved drafts">
             {live.drafts!.map((dr) => (
@@ -490,79 +509,90 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           </ul>
         </Card>
       )}
-      {!live.draft && live.finished !== undefined && <FinishedRestructures rows={live.finished} onOpen={live.onOpen} />}
-      {saving && <InlineAlert tone="danger" title="The draft was not saved">{saving}</InlineAlert>}
-      <Stepper
-        title="Restructure"
-        current={step}
-        onCurrentChange={setStep}
-        {...(live.onSaveDraft
-          ? {
-              onSaveAndExit: () => {
-                const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, ...(picking ? { employeeIds: picked } : {}), locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
-                live.onSaveDraft!(state, heading, live.draft?.id ?? null).catch((e) => setSaving(e instanceof Error ? e.message : 'Try again.'));
-              },
-            }
-          : {})}
-        continueBlocked={step === 'options' ? mapBlocked : undefined}
-        // Continue stays enabled with no one picked: the click says what is missing under the field.
-        onContinue={(id) => (id === 'scope' && picking && !picked.length ? (setTried(true), false) : undefined)}
-        finishLabel="Send for approval"
-        finishBlocked={finishBlocked}
-        onFinish={() => setConfirm(true)}
-        review={{ description: closes ? 'The old entity closes only when nothing is left open.' : 'Check who moves before you send this for approval.' }}
-        steps={[
-          {
-            id: 'scope',
-            title: 'What moves',
-            summary: preview ? `${persons(ready.length)} · ${across ? `into ${intoE?.name ?? ''}` : 'inside the entity'} · ${date}` : 'Not filled in yet',
-            content: (
-              <div className="yx-ppl__form">
-                <FormField label="Action" required>
-                  <RadioGroup
-                    value={kind}
-                    onChange={(v) => setKind(v as RestructureKind)}
-                    options={[
-                      { value: 'merge', label: 'Merge into another entity' },
-                      { value: 'close', label: 'Close the entity (transfers)' },
-                      { value: 'demerge', label: 'Move part of the entity to another one' },
-                      { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
-                    ]}
-                  />
-                </FormField>
-                <FormField label={kind === 'within' ? 'Legal entity' : 'From entity'} required>
-                  <Select options={entityOptions} value={from} onChange={(v) => (setFrom(v), setLocations([]), setDepartments([]), setPicked([]), setMap({}), setMasterMap({}), setTarget({}))} placeholder="Choose a legal entity" />
-                </FormField>
-                {across && (
-                  <FormField label={kind === 'close' ? 'Transfer people to' : 'Into entity'} required>
-                    <Select options={entityOptions.filter((e) => e.value !== from)} value={into} onChange={(v) => (setInto(v), setMap({}), setMasterMap({}))} placeholder="Choose a legal entity" />
-                  </FormField>
-                )}
-                {(kind === 'demerge' || kind === 'within') && from && (
-                  <>
-                    <FormField label="Who moves" required>
-                      <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]), setDepartments([]), setTried(false))} options={[{ value: 'place', label: kind === 'demerge' ? 'By location' : 'By location and department' }, { value: 'people', label: 'Pick people' }]} />
+      {shown === 'finished' && <FinishedRestructures rows={live.finished!} onOpen={live.onOpen} />}
+      {shown === 'new' && saving && <InlineAlert tone="danger" title="The draft was not saved">{saving}</InlineAlert>}
+      {shown === 'new' && (
+        <Stepper
+          title="Restructure"
+          layout="horizontal"
+          current={step}
+          onCurrentChange={setStep}
+          {...(live.onSaveDraft
+            ? {
+                onSaveAndExit: () => {
+                  const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, ...(picking ? { employeeIds: picked } : {}), locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
+                  live.onSaveDraft!(state, heading, live.draft?.id ?? null).catch((e) => setSaving(e instanceof Error ? e.message : 'Try again.'));
+                },
+              }
+            : {})}
+          continueBlocked={step === 'options' ? mapBlocked : undefined}
+          // Continue stays enabled with no one picked: the click says what is missing under the field.
+          onContinue={(id) => (id === 'scope' && picking && !picked.length ? (setTried(true), false) : undefined)}
+          finishLabel="Send for approval"
+          finishBlocked={finishBlocked}
+          onFinish={() => setConfirm(true)}
+          review={{ description: closes ? 'The old entity closes only when nothing is left open.' : 'Check who moves before you send this for approval.' }}
+          steps={[
+            {
+              id: 'scope',
+              title: 'What moves',
+              summary: preview ? `${persons(ready.length)} · ${across ? `into ${intoE?.name ?? ''}` : 'inside the entity'} · ${date}` : 'Not filled in yet',
+              content: (
+                <div className="yx-ppl__stack">
+                  <div className="yx-ppl__form-cols">
+                    <FormField label="Action" required>
+                      <RadioGroup
+                        value={kind}
+                        onChange={(v) => setKind(v as RestructureKind)}
+                        options={[
+                          { value: 'merge', label: 'Merge into another entity' },
+                          { value: 'close', label: 'Close the entity (transfers)' },
+                          { value: 'demerge', label: 'Move part of the entity to another one' },
+                          { value: 'within', label: 'Move people inside the entity (department, location, manager, cost centre)' },
+                        ]}
+                      />
                     </FormField>
-                    {picking ? (
-                      <FormField label="People" required helper="Only the people you pick move." error={tried && !picked.length ? 'Pick at least one person who moves.' : null}>
-                        <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" emptyText={entityPeople ? 'No matches' : 'Loading the people'} options={(entityPeople ?? []).map((p) => ({ value: p.id, label: [p.name, p.code].filter(Boolean).join(' · '), description: p.location ?? undefined }))} value={picked} onChange={(v) => (setPicked(v), setTried(false))} />
+                    <div className="yx-ppl__form">
+                      <FormField label={kind === 'within' ? 'Legal entity' : 'From entity'} required>
+                        <Select options={entityOptions} value={from} onChange={(v) => (setFrom(v), setLocations([]), setDepartments([]), setPicked([]), setMap({}), setMasterMap({}), setTarget({}))} placeholder="Choose a legal entity" />
                       </FormField>
-                    ) : (
-                      <FormField label="Locations" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
-                        <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
-                      </FormField>
+                      {across && (
+                        <FormField label={kind === 'close' ? 'Transfer people to' : 'Into entity'} required>
+                          <Select options={entityOptions.filter((e) => e.value !== from)} value={into} onChange={(v) => (setInto(v), setMap({}), setMasterMap({}))} placeholder="Choose a legal entity" />
+                        </FormField>
+                      )}
+                    </div>
+                    {(kind === 'demerge' || kind === 'within') && from && (
+                      <>
+                        <FormField label="Who moves" required>
+                          <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]), setDepartments([]), setTried(false))} options={[{ value: 'place', label: kind === 'demerge' ? 'By location' : 'By location and department' }, { value: 'people', label: 'Pick people' }]} />
+                        </FormField>
+                        {picking ? (
+                          <FormField label="People" required helper="Only the people you pick move." error={tried && !picked.length ? 'Pick at least one person who moves.' : null}>
+                            <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" emptyText={entityPeople ? 'No matches' : 'Loading the people'} options={(entityPeople ?? []).map((p) => ({ value: p.id, label: [p.name, p.code].filter(Boolean).join(' · '), description: p.location ?? undefined }))} value={picked} onChange={(v) => (setPicked(v), setTried(false))} />
+                          </FormField>
+                        ) : (
+                          <FormField label="Locations" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
+                            <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
+                          </FormField>
+                        )}
+                        {kind === 'within' && !picking && (
+                          <FormField label="Departments">
+                            <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${persons(d.byEntity[from])}` }))} value={departments} onChange={setDepartments} />
+                          </FormField>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-                {kind === 'within' && from && (
-                  <>
-                    {!picking && (
-                      <FormField label="Departments">
-                        <MultiSelect aria-label="Departments" placeholder="Departments" options={s.departments.filter((d) => d.byEntity[from]).map((d) => ({ value: d.id, label: `${d.name} · ${persons(d.byEntity[from])}` }))} value={departments} onChange={setDepartments} />
-                      </FormField>
-                    )}
+                    <FormField label="Effective date" required>
+                      <DatePicker value={effective} onChange={setEffective} />
+                    </FormField>
+                    <FormField label="Reason" required helper="Shown on every person's job history.">
+                      <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+                    </FormField>
+                  </div>
+                  {kind === 'within' && from && (
                     <Card title="Move to">
-                      <div className="yx-ppl__form">
+                      <div className="yx-ppl__form-cols">
                         <FormField label="Department">
                           <Select options={s.departments.map((d) => ({ value: d.id, label: d.name }))} value={target.departmentId ?? null} onChange={(v) => setTarget({ ...target, departmentId: v ?? undefined })} placeholder="No change" />
                         </FormField>
@@ -577,191 +607,185 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                         </FormField>
                       </div>
                     </Card>
-                  </>
-                )}
-                <FormField label="Effective date" required>
-                  <DatePicker value={effective} onChange={setEffective} />
-                </FormField>
-                <FormField label="Reason" required helper="Shown on every person's job history.">
-                  <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
-                </FormField>
-                {across && kind !== 'demerge' && from && (
-                  <Card title={`Who moves (${moveCount ?? 0})`}>
-                    {moving.length ? (
-                      <dl className="yx-ppl__dl">
-                        {moving.map((l) => (
-                          <div key={l.id} className="yx-ppl__dl-row"><dt>{l.name}</dt><dd>{persons(l.people)}</dd></div>
-                        ))}
-                        {s.departments.filter((dp) => dp.byEntity[from]).map((dp) => (
-                          <div key={dp.id} className="yx-ppl__dl-row"><dt>{dp.name}</dt><dd>{persons(dp.byEntity[from])}</dd></div>
-                        ))}
-                      </dl>
-                    ) : (
-                      <Text size="sm" tone="secondary" as="p">No one works here today.</Text>
-                    )}
-                  </Card>
-                )}
-                {failed && <InlineAlert tone="danger" title="The plan was not checked">{failed}</InlineAlert>}
-                {cannot.length > 0 && (
-                  <InlineAlert tone="info" title={`${cannot.length} ${cannot.length === 1 ? 'person needs' : 'people need'} their own decision`} actions={<Button size="sm" onClick={() => setStep('options')}>Review overrides</Button>}>
-                    <ul className="yx-ppl__stack" aria-label="People who need their own decision">
-                      {cannot.map((p) => (
-                        <li key={p.employeeId}>
-                          {p.name}: {shortReason(p.reason)}
-                        </li>
-                      ))}
-                    </ul>
-                  </InlineAlert>
-                )}
-              </div>
-            ),
-          },
-          {
-            id: 'options',
-            title: 'Transfer options',
-            summary: across ? `${KEYS.map((k) => `${OPTION_LABEL[k]}: ${lower(OPTION_TEXT[k][defaults[k]])}`).join(' · ')} · ${overrides.length} overrides` : `${overrides.length} overrides`,
-            content: (
-              <div className="yx-ppl__stack">
-                {across && from && into && (
-                  <Card title={`Places in ${intoE?.name ?? 'the new entity'}`}>
-                    {moving.length ? (
-                      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Locations and their place in the new entity">
-                        <table className="yx-ppl__impact">
-                          <thead>
-                            <tr>
-                              <th scope="col">Now at</th>
-                              <th scope="col">Location in {intoE?.name}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {moving.map((l) => (
-                              <tr key={l.id}>
-                                <td>
-                                  <span className="yx-ppl__type">
-                                    <span>{l.name}</span>
-                                    <span className="yx-ppl__sub">{persons(l.people)}</span>
-                                  </span>
-                                </td>
-                                <td>
-                                  <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={intoLocations.map((x) => ({ value: x.id, label: x.name }))} value={locOf(l) ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose…" />
-                                </td>
-                              </tr>
-                            ))}
-                            {closedMasters.map((m) => (
-                              <tr key={m.id}>
-                                <td>
-                                  <span className="yx-ppl__type">
-                                    <span>{m.name}</span>
-                                    <span className="yx-ppl__sub">{MASTER_TEXT[m.kind]} only for {fromE?.name} · {persons(m.byEntity[from!])}</span>
-                                  </span>
-                                </td>
-                                <td>
-                                  <Select aria-label={`${MASTER_TEXT[m.kind]} in ${intoE?.name} for ${m.name}`} size="sm" options={allMasters.filter((x) => x.kind === m.kind && openInto(x)).map((x) => ({ value: x.id, label: x.name }))} value={masterOf(m) ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m.id]: v })} placeholder="Choose…" />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <Text size="sm" tone="secondary" as="p">{kind === 'demerge' ? (picking ? 'Pick the people who move.' : 'Choose the locations whose people move.') : 'No one works here today.'}</Text>
-                    )}
-                  </Card>
-                )}
-                {across ? (
-                  <>
-                    <Text as="p">Company defaults are selected for everyone. Change a default, or give one person their own option with a reason.</Text>
-                    <div className="yx-ppl__form">
-                      {KEYS.slice(0, 3).map((k) => (
-                        <FormField key={k} label={OPTION_LABEL[k]} helper={k === 'leave' ? 'Encashing at the old entity is part of a full and final settlement: leave the person out and start their exit instead.' : undefined}>
-                          <Select options={Object.entries(OPTION_TEXT[k]).map(([value, label]) => ({ value, label: k === 'code' && value === 'new' ? `New code in the ${intoE?.shortName ?? 'target'} series` : label }))} value={defaults[k]} onChange={(v) => v && setDefaults({ ...defaults, [k]: v })} />
-                        </FormField>
-                      ))}
-                      <FormField label="Settlement at old entity" helper="A full and final settlement needs an exit case: leave the person out and start their exit from Exit cases.">
-                        <Select options={[{ value: 'none', label: 'None: amounts move over' }]} value="none" onChange={() => {}} />
-                      </FormField>
-                      <FormField label={OPTION_LABEL.salary} helper={defaults.salary === 'new' ? 'No pay on the new employment until a salary change is approved; payroll leaves them out until then.' : undefined}>
-                        <Select options={Object.entries(OPTION_TEXT.salary).map(([value, label]) => ({ value, label }))} value={defaults.salary} onChange={(v) => v && setDefaults({ ...defaults, salary: v as MoveOptions['salary'] })} />
-                      </FormField>
-                    </div>
-                  </>
-                ) : (
-                  <Text as="p">Pay, leave and service stay as they are: only the place changes. You can leave a person out with a reason.</Text>
-                )}
-                <Card
-                  title={`Per-person overrides (${overrides.length})`}
-                  actions={
-                    <Button size="sm" icon={Plus} onClick={() => setEditing('new')} disabled={!people.length}>
-                      Add override
-                    </Button>
-                  }
-                >
-                  {overrides.length ? (
-                    <StatusChecklist
-                      label="Per-person overrides"
-                      rows={overrides.map(
-                        (o): ChecklistRow => ({
-                          id: o.employeeId,
-                          title: people.find((p) => p.employeeId === o.employeeId)?.name ?? 'A person',
-                          note: o.reason,
-                          status: overrideText(o),
-                          action: (
-                            <span className="yx-ppl__row">
-                              <Button size="sm" onClick={() => setEditing(o)}>
-                                Edit
-                              </Button>
-                              <Button size="sm" onClick={() => setOverrides(overrides.filter((x) => x.employeeId !== o.employeeId))}>
-                                Remove
-                              </Button>
-                            </span>
-                          ),
-                        }),
-                      )}
-                    />
-                  ) : (
-                    <Text size="sm" tone="secondary" as="p">Everyone follows the defaults.</Text>
                   )}
-                </Card>
-              </div>
-            ),
-          },
-          {
-            id: 'close',
-            title: closes ? 'Close the old entity' : 'Checks',
-            status: reached >= 2 && (blockedCheck || cannot.length) ? 'error' : undefined,
-            statusNote: reached < 2 ? undefined : blockedCheck ? 'Payroll month not ready' : cannot.length ? `${cannot.length} can't move` : undefined,
-            summary: !preview ? 'Not checked yet' : blockedCheck ? `Blocked: ${lower(blockedCheck.note ?? blockedCheck.title)}` : cannot.length ? `${persons(cannot.length)} can't move` : 'All checks pass',
-            content: !preview ? (
-              <ListSkeleton rows={4} label="Checking the plan" />
-            ) : (
-              <div className="yx-ppl__stack">
-                <Card title="Before you send">
-                  <StatusChecklist label="Checks before sending" rows={beforeRows} />
-                </Card>
-                <Card title={`Each person (${people.length})`}>
-                  <DataTable label="Each person after the move" columns={cols} rows={people} getRowId={(r) => r.employeeId} empty={<EmptyState title="No one moves" description="Change who moves on the first step." />} />
-                </Card>
-                <Card title="After approval">
-                  <StatusChecklist label="What happens after approval" rows={afterRows} />
-                </Card>
-              </div>
-            ),
-          },
-          {
-            id: 'letters',
-            title: 'Letters',
-            summary: letterType ? `${ready.length} transfer ${ready.length === 1 ? 'letter' : 'letters'} (${live.letterTypes?.find((t) => t.value === letterType)?.label ?? 'template chosen'}) · bulk issue after approval` : 'No template chosen · no letters',
-            content: (
-              <div className="yx-ppl__form">
-                <FormField label="Letter template" helper="Change the wording or the merge fields in Settings › Letter templates.">
-                  <Select options={live.letterTypes ?? []} value={letterType} onChange={setLetterType} placeholder={live.letterTypes?.length ? 'Choose a template' : 'No active letter templates'} disabled={!live.letterTypes?.length} />
-                </FormField>
-                <InlineAlert tone="info">Letters are made only after approval. The restructure page then opens the bulk issue for the {ready.length === 1 ? '1 person' : `${ready.length} people`} who moved, with this template chosen.</InlineAlert>
-              </div>
-            ),
-          },
-        ]}
-      />
+                  {across && kind !== 'demerge' && from && (
+                    <Card title={`Who moves (${moveCount ?? 0})`}>
+                      {moving.length ? (
+                        <dl className="yx-ppl__dl">
+                          {moving.map((l) => (
+                            <div key={l.id} className="yx-ppl__dl-row"><dt>{l.name}</dt><dd>{persons(l.people)}</dd></div>
+                          ))}
+                          {s.departments.filter((dp) => dp.byEntity[from]).map((dp) => (
+                            <div key={dp.id} className="yx-ppl__dl-row"><dt>{dp.name}</dt><dd>{persons(dp.byEntity[from])}</dd></div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <Text size="sm" tone="secondary" as="p">No one works here today.</Text>
+                      )}
+                    </Card>
+                  )}
+                  {failed && <InlineAlert tone="danger" title="The plan was not checked">{failed}</InlineAlert>}
+                  {cannot.length > 0 && (
+                    <InlineAlert tone="info" title={`${cannot.length} ${cannot.length === 1 ? 'person needs' : 'people need'} their own decision`} actions={<Button size="sm" onClick={() => setStep('options')}>Review overrides</Button>}>
+                      <ul className="yx-ppl__stack" aria-label="People who need their own decision">
+                        {cannot.map((p) => (
+                          <li key={p.employeeId}>
+                            {p.name}: {shortReason(p.reason)}
+                          </li>
+                        ))}
+                      </ul>
+                    </InlineAlert>
+                  )}
+                </div>
+              ),
+            },
+            {
+              id: 'options',
+              title: 'Transfer options',
+              summary: across ? `${KEYS.map((k) => `${OPTION_LABEL[k]}: ${lower(OPTION_TEXT[k][defaults[k]])}`).join(' · ')} · ${overrides.length} overrides` : `${overrides.length} overrides`,
+              content: (
+                <div className="yx-ppl__stack">
+                  {across && from && into && (
+                    <Card title={`Places in ${intoE?.name ?? 'the new entity'}`}>
+                      {moving.length ? (
+                        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Locations and their place in the new entity">
+                          <table className="yx-ppl__impact">
+                            <thead>
+                              <tr>
+                                <th scope="col">Now at</th>
+                                <th scope="col">Location in {intoE?.name}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {moving.map((l) => (
+                                <tr key={l.id}>
+                                  <td>
+                                    <span className="yx-ppl__type">
+                                      <span>{l.name}</span>
+                                      <span className="yx-ppl__sub">{persons(l.people)}</span>
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={intoLocations.map((x) => ({ value: x.id, label: x.name }))} value={locOf(l) ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose…" />
+                                  </td>
+                                </tr>
+                              ))}
+                              {closedMasters.map((m) => (
+                                <tr key={m.id}>
+                                  <td>
+                                    <span className="yx-ppl__type">
+                                      <span>{m.name}</span>
+                                      <span className="yx-ppl__sub">{MASTER_TEXT[m.kind]} only for {fromE?.name} · {persons(m.byEntity[from!])}</span>
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <Select aria-label={`${MASTER_TEXT[m.kind]} in ${intoE?.name} for ${m.name}`} size="sm" options={allMasters.filter((x) => x.kind === m.kind && openInto(x)).map((x) => ({ value: x.id, label: x.name }))} value={masterOf(m) ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m.id]: v })} placeholder="Choose…" />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <Text size="sm" tone="secondary" as="p">{kind === 'demerge' ? (picking ? 'Pick the people who move.' : 'Choose the locations whose people move.') : 'No one works here today.'}</Text>
+                      )}
+                    </Card>
+                  )}
+                  {across ? (
+                    <>
+                      <Text as="p">Company defaults are selected for everyone. Change a default, or give one person their own option with a reason.</Text>
+                      <div className="yx-ppl__form-cols">
+                        {KEYS.slice(0, 3).map((k) => (
+                          <FormField key={k} label={OPTION_LABEL[k]} helper={k === 'leave' ? 'Encashing at the old entity is part of a full and final settlement: leave the person out and start their exit instead.' : undefined}>
+                            <Select options={Object.entries(OPTION_TEXT[k]).map(([value, label]) => ({ value, label: k === 'code' && value === 'new' ? `New code in the ${intoE?.shortName ?? 'target'} series` : label }))} value={defaults[k]} onChange={(v) => v && setDefaults({ ...defaults, [k]: v })} />
+                          </FormField>
+                        ))}
+                        <FormField label="Settlement at old entity" helper="A full and final settlement needs an exit case: leave the person out and start their exit from Exit cases.">
+                          <Select options={[{ value: 'none', label: 'None: amounts move over' }]} value="none" onChange={() => {}} />
+                        </FormField>
+                        <FormField label={OPTION_LABEL.salary} helper={defaults.salary === 'new' ? 'No pay on the new employment until a salary change is approved; payroll leaves them out until then.' : undefined}>
+                          <Select options={Object.entries(OPTION_TEXT.salary).map(([value, label]) => ({ value, label }))} value={defaults.salary} onChange={(v) => v && setDefaults({ ...defaults, salary: v as MoveOptions['salary'] })} />
+                        </FormField>
+                      </div>
+                    </>
+                  ) : (
+                    <Text as="p">Pay, leave and service stay as they are: only the place changes. You can leave a person out with a reason.</Text>
+                  )}
+                  <Card
+                    title={`Per-person overrides (${overrides.length})`}
+                    actions={
+                      <Button size="sm" icon={Plus} onClick={() => setEditing('new')} disabled={!people.length}>
+                        Add override
+                      </Button>
+                    }
+                  >
+                    {overrides.length ? (
+                      <StatusChecklist
+                        label="Per-person overrides"
+                        rows={overrides.map(
+                          (o): ChecklistRow => ({
+                            id: o.employeeId,
+                            title: people.find((p) => p.employeeId === o.employeeId)?.name ?? 'A person',
+                            note: o.reason,
+                            status: overrideText(o),
+                            action: (
+                              <span className="yx-ppl__row">
+                                <Button size="sm" onClick={() => setEditing(o)}>
+                                  Edit
+                                </Button>
+                                <Button size="sm" onClick={() => setOverrides(overrides.filter((x) => x.employeeId !== o.employeeId))}>
+                                  Remove
+                                </Button>
+                              </span>
+                            ),
+                          }),
+                        )}
+                      />
+                    ) : (
+                      <Text size="sm" tone="secondary" as="p">Everyone follows the defaults.</Text>
+                    )}
+                  </Card>
+                </div>
+              ),
+            },
+            {
+              id: 'close',
+              title: closes ? 'Close the old entity' : 'Checks',
+              status: reached >= 2 && (blockedCheck || cannot.length) ? 'error' : undefined,
+              statusNote: reached < 2 ? undefined : blockedCheck ? 'Payroll month not ready' : cannot.length ? `${cannot.length} can't move` : undefined,
+              summary: !preview ? 'Not checked yet' : blockedCheck ? `Blocked: ${lower(blockedCheck.note ?? blockedCheck.title)}` : cannot.length ? `${persons(cannot.length)} can't move` : 'All checks pass',
+              content: !preview ? (
+                <ListSkeleton rows={4} label="Checking the plan" />
+              ) : (
+                <div className="yx-ppl__stack">
+                  <Card title="Before you send">
+                    <StatusChecklist label="Checks before sending" rows={beforeRows} />
+                  </Card>
+                  <Card title={`Each person (${people.length})`}>
+                    <DataTable label="Each person after the move" columns={cols} rows={people} getRowId={(r) => r.employeeId} empty={<EmptyState title="No one moves" description="Change who moves on the first step." />} />
+                  </Card>
+                  <Card title="After approval">
+                    <StatusChecklist label="What happens after approval" rows={afterRows} />
+                  </Card>
+                </div>
+              ),
+            },
+            {
+              id: 'letters',
+              title: 'Letters',
+              summary: letterType ? `${ready.length} transfer ${ready.length === 1 ? 'letter' : 'letters'} (${live.letterTypes?.find((t) => t.value === letterType)?.label ?? 'template chosen'}) · bulk issue after approval` : 'No template chosen · no letters',
+              content: (
+                <div className="yx-ppl__form">
+                  <FormField label="Letter template" helper="Change the wording or the merge fields in Settings › Letter templates.">
+                    <Select options={live.letterTypes ?? []} value={letterType} onChange={setLetterType} placeholder={live.letterTypes?.length ? 'Choose a template' : 'No active letter templates'} disabled={!live.letterTypes?.length} />
+                  </FormField>
+                  <InlineAlert tone="info">Letters are made only after approval. The restructure page then opens the bulk issue for the {ready.length === 1 ? '1 person' : `${ready.length} people`} who moved, with this template chosen.</InlineAlert>
+                </div>
+              ),
+            },
+          ]}
+        />
+      )}
       <TypeToConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}

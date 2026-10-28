@@ -162,6 +162,8 @@ describe('Restructure wizard (PPL-09)', () => {
   it('the start page lists the person’s saved drafts: continue one, or delete it after confirming', async () => {
     const l = live({ drafts: [{ id: 'd1', title: 'Merge Kaveri TN into Kaveri Foods', updatedAt: '2026-10-20T10:00:00Z' }], onContinueDraft: vi.fn(), onDeleteDraft: vi.fn(async () => undefined), onSaveDraft: vi.fn(async () => undefined) });
     wrap(<RestructureWizard live={l} />);
+    // The drafts are one view of the start page (founder 28 Oct 2026: the page fits without a scroll bar).
+    await ue.click(screen.getByRole('radio', { name: 'Saved drafts (1)' }));
     const list = screen.getByRole('list', { name: 'Saved drafts' });
     expect(within(list).getByText('Merge Kaveri TN into Kaveri Foods')).toBeInTheDocument();
     await ue.click(within(list).getByRole('button', { name: 'Continue' }));
@@ -170,6 +172,7 @@ describe('Restructure wizard (PPL-09)', () => {
     await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete draft' }));
     await waitFor(() => expect(l.onDeleteDraft).toHaveBeenCalledWith('d1'));
     // A new plan saved from the start: no draft id yet.
+    await ue.click(screen.getByRole('radio', { name: 'New restructure' }));
     await ue.click(screen.getByRole('button', { name: 'Save and exit' }));
     expect(l.onSaveDraft).toHaveBeenCalledWith(expect.objectContaining({ kind: 'merge', fromEntityId: null, step: 'scope' }), 'Restructure', null);
   });
@@ -259,6 +262,7 @@ describe('Restructure wizard (PPL-09)', () => {
     const row = (id: string, status: 'done' | 'rejected' | 'cancelled', o: object = {}) => ({ id, kind: 'demerge' as const, title: `Move ${id} from Kaveri TN to Kaveri Foods`, effectiveDate: '2026-10-01', status, count: 1, moved: 0, failed: 0, requestedBy: null, mine: false, openItems: 0, ...o });
     const l = live({ finished: [row('Divya', 'done', { moved: 1, openItems: 3 }), row('Imran', 'rejected'), row('Arjun', 'cancelled')] });
     const { unmount } = wrap(<RestructureWizard live={l} />);
+    await ue.click(screen.getByRole('radio', { name: 'Finished (3)' }));
     const table = screen.getByRole('table', { name: 'Finished restructures' });
     const divya = within(table).getByText('Move Divya from Kaveri TN to Kaveri Foods').closest('tr')!;
     expect(divya).toHaveTextContent('1 moved');
@@ -270,6 +274,7 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(l.onOpen).toHaveBeenCalledWith('Divya');
     unmount();
     wrap(<RestructureWizard live={live({ finished: [] })} />);
+    await ue.click(screen.getByRole('radio', { name: 'Finished (0)' }));
     expect(screen.getByText('No finished restructures yet')).toBeInTheDocument();
     expect(screen.getByText('Done, rejected and cancelled restructures show here.')).toBeInTheDocument();
   });
@@ -283,6 +288,23 @@ describe('Restructure wizard (PPL-09)', () => {
   it('no finished list without the data (no access, or it could not load)', () => {
     wrap(<RestructureWizard live={live()} />);
     expect(screen.queryByText('Finished restructures')).not.toBeInTheDocument();
+    // Only the plan: no view switch at all.
+    expect(screen.queryByRole('radiogroup', { name: 'Show' })).toBeNull();
+  });
+
+  it('the finished list and the wizard are both reachable, and the plan keeps what was typed', async () => {
+    const row = { id: 'f1', kind: 'merge' as const, title: 'Merge Kaveri TN into Kaveri Foods', effectiveDate: '2026-10-01', status: 'done' as const, count: 2, moved: 2, failed: 0, requestedBy: null, mine: false, openItems: 0 };
+    wrap(<RestructureWizard live={live({ finished: [row] })} />);
+    // The plan shows first; the finished list waits behind its own view.
+    expect(screen.getByRole('radio', { name: 'New restructure' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('table', { name: 'Finished restructures' })).toBeNull();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Board resolution');
+    await ue.click(screen.getByRole('radio', { name: 'Finished (1)' }));
+    expect(screen.getByRole('table', { name: 'Finished restructures' })).toHaveTextContent('Merge Kaveri TN into Kaveri Foods');
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    await ue.click(screen.getByRole('radio', { name: 'New restructure' }));
+    expect(screen.getByRole('textbox', { name: /Reason/ })).toHaveValue('Board resolution');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
   });
 
   it('names the financial-year quarter of a day', () => {
