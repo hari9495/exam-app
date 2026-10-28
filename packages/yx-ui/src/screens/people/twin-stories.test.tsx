@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as ppl15 from './ppl-15.stories';
 import * as ppl17 from './ppl-17.stories';
 import * as ppl28 from './ppl-28.stories';
+import * as ppl30 from './ppl-30.stories';
+import * as ppl31 from './ppl-31.stories';
 import * as ppl29 from './ppl-29.stories';
 
 // PPL-15 / 17 / 28 / 29: each design story is the one live component (the Change status drawer, the review drawer,
@@ -11,6 +13,8 @@ import * as ppl29 from './ppl-29.stories';
 const s15 = composeStories(ppl15);
 const s17 = composeStories(ppl17);
 const s28 = composeStories(ppl28);
+const s30 = composeStories(ppl30);
+const s31 = composeStories(ppl31);
 const s29 = composeStories(ppl29);
 // The open template lives in the address (?template=…); each story starts from the list.
 afterEach(() => window.history.replaceState(null, '', '/'));
@@ -71,5 +75,21 @@ describe('PPL-17 review stories (live = design)', () => {
   it('extending past the maximum says the limit', async () => {
     await show(s17.ExtendOverLimit);
     expect(await screen.findByText(/Extend by 1 to 6 months/)).toBeInTheDocument();
+  });
+});
+
+describe('PPL-30 / PPL-31 stories (live = design)', () => {
+  it('upload from a row: the fixed type is text, not a control', async () => {
+    await show(s30.UploadVersion);
+    const dialog = within(await screen.findByRole('dialog', { name: 'Upload Forklift licence' }));
+    expect(dialog.queryByRole('combobox')).toBeNull();
+  });
+  it('upload from the page: Upload pressed with nothing chosen says what is missing', async () => {
+    await show(s30.UploadNew);
+    expect(await screen.findByText('Choose the document type.')).toBeInTheDocument();
+  });
+  it('a certificate already waiting: Send to HR says so under the choice', async () => {
+    await show(s31.AlreadyWaiting);
+    expect(await screen.findByText(/It is still waiting for Lakshmi Venkatesan/)).toBeInTheDocument();
   });
 });

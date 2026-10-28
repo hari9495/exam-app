@@ -110,6 +110,25 @@ describe('PPL-30 documents and letters, live', () => {
     expect(live.onUpload).not.toHaveBeenCalled();
   });
 
+  it('Upload from the page asks for the type and the file; from a row the type is fixed text, then it uploads', async () => {
+    const live = page({ uploads: [UP('u2', 'forklift_licence', 'Forklift licence', 'verified')], uploadTypes: [{ key: 'forklift_licence', name: 'Forklift licence', expiryTracked: false }, { key: 'pan_card', name: 'PAN card', expiryTracked: false }] });
+    await ue.click(screen.getByRole('button', { name: 'Upload' }));
+    let dialog = screen.getByRole('dialog', { name: 'Upload a document' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Upload' }));
+    expect(within(dialog).getByText('Choose the document type.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Add the file.')).toBeInTheDocument();
+    expect(live.onUpload).not.toHaveBeenCalled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await ue.click(within(screen.getByRole('row', { name: /Forklift licence/ })).getByRole('button', { name: /More actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Upload a new version' }));
+    dialog = screen.getByRole('dialog', { name: 'Upload Forklift licence' });
+    expect(within(dialog).queryByRole('combobox', { name: 'Document type' })).toBeNull();
+    expect(within(dialog).getByText('Forklift licence')).toBeInTheDocument();
+    await ue.upload(dialog.querySelector('input[type=file]') as HTMLInputElement, new File(['x'], 'licence.pdf', { type: 'application/pdf' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(live.onUpload).toHaveBeenCalledWith('forklift_licence', expect.any(File), null));
+  });
+
   it('shows the empty state with Upload, and no Upload when the person uploads nothing themselves', () => {
     page({ uploads: [], letters: [], pay: [], uploadTypes: [] });
     expect(screen.getByText('No documents yet')).toBeInTheDocument();

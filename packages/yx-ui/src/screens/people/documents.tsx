@@ -1954,8 +1954,9 @@ function UploadDialog({ types, typeKey, today, onClose, onUpload }: { types: Liv
       }}
     >
       <div className="yx-ppl__stack">
-        <FormField label="Document type" required error={tried && !type ? 'Choose the document type.' : null}>
-          <Select aria-label="Document type" options={types.map((t) => ({ value: t.key, label: t.name }))} value={key} onChange={setKey} disabled={Boolean(typeKey)} />
+        {/* Opened from a row: the type is fixed, so it reads as text, not a greyed-out control. */}
+        <FormField label="Document type" required={!typeKey} error={tried && !type ? 'Choose the document type.' : null}>
+          {typeKey ? <Text as="p">{type?.name}</Text> : <Select aria-label="Document type" options={types.map((t) => ({ value: t.key, label: t.name }))} value={key} onChange={setKey} />}
         </FormField>
         <FormField id="md-file" label="File" required error={tried && !file ? 'Add the file.' : null}>
           <FileUpload id="md-file" upload={async (f) => setFile(f)} accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} onItemsChange={(items) => items.length === 0 && setFile(null)} />
@@ -2100,13 +2101,18 @@ interface CertForm {
   to: string;
 }
 
-function CertFields({ options, form, onChange }: { options: { value: string; label: string; description: string; disabled?: boolean }[]; form: CertForm; onChange: (f: CertForm) => void }) {
+/** What Generate / Send to HR found missing, shown under the field on click (never a disabled button). */
+type CertErrors = { type?: string | null; purpose?: string | null };
+
+function CertFields({ options, form, onChange, errors = {} }: { options: { value: string; label: string; description: string; disabled?: boolean }[]; form: CertForm; onChange: (f: CertForm) => void; errors?: CertErrors }) {
   return (
     <div className="yx-ppl__form">
-      <FormField label="Certificate" required>
-        <RadioGroup value={form.type ?? ''} onChange={(v) => onChange({ ...form, type: v })} options={options} />
+      <FormField label="Certificate" required error={errors.type}>
+        <div id="cert-type">
+          <RadioGroup value={form.type ?? ''} onChange={(v) => onChange({ ...form, type: v })} options={options} />
+        </div>
       </FormField>
-      <FormField label="Purpose" required>
+      <FormField id="cert-purpose" label="Purpose" required error={errors.purpose}>
         <Select aria-label="Purpose" options={PURPOSES} value={form.purpose} onChange={(v) => onChange({ ...form, purpose: v })} />
       </FormField>
       <FormField label="Addressed to" optional>
@@ -2157,6 +2163,7 @@ function LiveCertificatePage({ live, today }: { live: LiveCertificateRequest; to
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ letter: LiveLetter; kind: MyCertificateKind; url: string | null } | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [tried, setTried] = useState(false);
   const type = form.type ?? (free ?? live.kinds[0])?.letterType ?? null;
   const kind = live.kinds.find((k) => k.letterType === type);
   const options = live.kinds.map((k) => ({
@@ -2165,8 +2172,21 @@ function LiveCertificatePage({ live, today }: { live: LiveCertificateRequest; to
     description: k.pending ? `Sent to HR on ${formatDate(new Date(k.pending.requestedAt))}. Waiting for ${listOf(k.pending.approvers) || 'HR'}.` : k.requiresApproval ? NEEDS_HR : INSTANT,
     disabled: Boolean(k.pending),
   }));
+  const errors: CertErrors = tried
+    ? {
+        type: !kind ? 'Choose the certificate.' : kind.pending ? `You asked for this on ${formatDate(new Date(kind.pending.requestedAt))}. It is still waiting for ${listOf(kind.pending.approvers) || 'HR'}.` : null,
+        purpose: form.purpose ? null : 'Choose the purpose.',
+      }
+    : {};
   const send = async () => {
-    if (!kind || !form.purpose) return;
+    setTried(true);
+    if (!kind || kind.pending || !form.purpose) {
+      // The first field to fix gets the focus: the certificate's chosen (or first) option, else the purpose.
+      const radio = (q: string) => document.querySelector<HTMLElement>(`#cert-type [role=radio]${q}:not([disabled])`);
+      const at = !kind || kind.pending ? (radio('[aria-checked=true]') ?? radio('')) : document.getElementById('cert-purpose');
+      at?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -2217,13 +2237,13 @@ function LiveCertificatePage({ live, today }: { live: LiveCertificateRequest; to
     if (done) return <InlineAlert tone="info" title={`${done.kind.name} is being prepared`}>It appears in your documents in a few minutes.</InlineAlert>;
     return (
       <>
-        <CertFields options={options} form={{ ...form, type }} onChange={setForm} />
+        <CertFields options={options} form={{ ...form, type }} onChange={setForm} errors={errors} />
         {error && <InlineAlert tone="danger" title={error} />}
         <div className="yx-ppl__row">
           <Button asChild>
             <a href={live.backHref}>Cancel</a>
           </Button>
-          <Button variant="primary" loading={busy} disabled={!kind || Boolean(kind.pending) || !form.purpose} onClick={() => void send()}>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
             {kind?.requiresApproval ? 'Send to HR' : 'Generate certificate'}
           </Button>
         </div>

@@ -43,14 +43,20 @@ const pickPurpose = async (name: string) => {
 };
 
 describe('PPL-31 request a certificate, live', () => {
-  it('offers the switched-on kinds, says which are instant, and needs a purpose', () => {
-    page();
+  it('offers the switched-on kinds, says which are instant, and needs a purpose', async () => {
+    const { live } = page();
     expect(screen.getByRole('heading', { name: 'Request a certificate' })).toBeInTheDocument();
     expect(screen.getByText('Salary certificate and employment certificate are generated instantly with the company signatory and a QR code anyone can verify.')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Salary certificate' })).toBeChecked();
     expect(screen.getByText('Needs HR approval (company setting)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Generate certificate' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/yx/me/documents');
+    // Never a disabled button: Generate says what is missing, under the field, and goes there.
+    await ue.click(screen.getByRole('button', { name: 'Generate certificate' }));
+    expect(screen.getByText('Choose the purpose.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Purpose' })).toHaveFocus();
+    expect(live.onRequest).not.toHaveBeenCalled();
+    await pickPurpose('Home loan');
+    expect(screen.queryByText('Choose the purpose.')).toBeNull();
   });
 
   it('generates a certificate at once: number, check code, preview, download and share', async () => {
@@ -85,10 +91,13 @@ describe('PPL-31 request a certificate, live', () => {
     );
     expect(screen.getByText('Lakshmi Venkatesan')).toBeInTheDocument();
     view.unmount();
-    page({ kinds: [pending] });
+    const again = page({ kinds: [pending] }).live;
     expect(screen.getByRole('radio', { name: 'No objection certificate (NOC)' })).toBeDisabled();
     expect(screen.getByText(/Waiting for Lakshmi Venkatesan/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send to HR' })).toBeDisabled();
+    await pickPurpose('Visa application');
+    await ue.click(screen.getByRole('button', { name: 'Send to HR' }));
+    expect(screen.getByText('You asked for this on 26 Oct 2026. It is still waiting for Lakshmi Venkatesan.')).toBeInTheDocument();
+    expect(again.onRequest).not.toHaveBeenCalled();
   });
 
   it('shows the refusal from the API in place, and plain states for no kinds or no job', async () => {
