@@ -27,7 +27,7 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
-import type { LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import './time.css';
 
@@ -1047,7 +1047,7 @@ export interface LivePayrollFeed extends LiveReportBase {
   entityId: string | null;
   onEntity: (id: string) => void;
 }
-export type LiveReports = LiveRegisters | LivePayrollFeed;
+export type LiveReports = LiveRegisters | LivePayrollFeed | LiveAttendanceReport | LiveNightRegister;
 
 const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const MODE_LABEL: Record<string, string> = { punch: 'Check in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' };
@@ -1061,7 +1061,7 @@ function monthOptions(month: string) {
 }
 type FeedRow = PayrollFeed['rows'][number];
 
-function LiveReportsScreen({ live }: { live: LiveReports }) {
+function LiveReportsScreen({ live }: { live: LiveRegisters | LivePayrollFeed }) {
   const { toast } = useToast();
   const { busy, error, run } = useRun();
   const regs = live.report === 'registers';
@@ -1155,8 +1155,153 @@ function LiveReportsScreen({ live }: { live: LiveReports }) {
   );
 }
 
+/* ---------- live: /time/reports (TIM-16 late and early, overtime, women's night-shift register) ---------- */
+
+/** Late and early or overtime: HR by department and site, a manager by person (their team). */
+export interface LiveAttendanceReport extends LiveReportBase {
+  report: 'late' | 'ot';
+  data: AttendanceReport | null;
+  onReport: (report: 'late' | 'ot' | 'night') => void;
+}
+/** HR only: women who worked a night shift in the month, with their consent on file (OSH Code / Factories Act). */
+export interface LiveNightRegister extends LiveReportBase {
+  report: 'night';
+  data: NightRegister | null;
+  onReport: (report: 'late' | 'ot' | 'night') => void;
+}
+type ReportRow = { id: string; label: string; loc: string; late: number; early: number; ot: number; lop: number };
+
+function saveCsv(name: string, rows: (string | number)[][]) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNightRegister }) {
+  const { toast } = useToast();
+  const [filters, setFilters] = useState<FilterValue[]>([]);
+  const night = live.report === 'night';
+  const rep = live.report !== 'night' ? live : null;
+  const mgr = rep?.data?.scope === 'team';
+  const isOt = live.report === 'ot';
+  // HR adds people up by department and site; a manager sees each person.
+  const rows: ReportRow[] = !rep?.data
+    ? []
+    : mgr
+      ? rep.data.rows.map((r) => ({ id: r.id, label: r.name, loc: r.location, late: r.late, early: r.early, ot: hoursOf(r.otMinutes), lop: r.lop }))
+      : Object.values(
+          rep.data.rows.reduce<Record<string, ReportRow>>((acc, r) => {
+            const k = `${r.dept}|${r.location}`;
+            const x = acc[k] ?? { id: k, label: r.dept, loc: r.location, late: 0, early: 0, ot: 0, lop: 0 };
+            acc[k] = { ...x, late: x.late + r.late, early: x.early + r.early, ot: hoursOf(x.ot * 60 + r.otMinutes), lop: x.lop + r.lop };
+            return acc;
+          }, {}),
+        );
+  const locs = multi(filters, 'loc');
+  const depts = multi(filters, 'dept');
+  const shown = rows.filter((x) => (!locs || locs.includes(x.loc)) && (mgr || !depts || depts.includes(x.label)));
+  const cats = [...new Set(shown.map((x) => x.label))];
+  const by = (k: 'late' | 'early' | 'ot') => cats.map((c) => shown.filter((x) => x.label === c).reduce((a, x) => a + x[k], 0));
+  const lateCols: TableColumn<ReportRow>[] = [
+    { key: 'late', header: 'Late marks', type: 'number', value: (x) => x.late, total: 'sum', optional: isOt },
+    { key: 'early', header: 'Early exits', type: 'number', value: (x) => x.early, total: 'sum', optional: isOt },
+  ];
+  const otCol: TableColumn<ReportRow> = { key: 'ot', header: 'Overtime hours', type: 'number', value: (x) => x.ot, total: 'sum', optional: !isOt };
+  const cols: TableColumn<ReportRow>[] = [
+    { key: 'label', header: mgr ? 'Employee' : 'Department', value: (x) => x.label },
+    { key: 'loc', header: 'Location', value: (x) => x.loc, optional: true },
+    ...(isOt ? [otCol, ...lateCols] : [...lateCols, otCol]),
+    { key: 'lop', header: 'Unpaid days (LOP)', type: 'number', value: (x) => x.lop, total: 'sum', optional: true },
+  ];
+  const nightRows = live.report === 'night' ? (live.data?.rows ?? []) : [];
+  const ncols: TableColumn<NightRegister['rows'][number]>[] = [
+    { key: 'name', header: 'Worker', type: 'person', width: 220, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: x.code ?? undefined }) },
+    { key: 'shifts', header: 'Night shifts', type: 'number', value: (x) => x.shifts, total: 'sum' },
+    { key: 'hours', header: 'Night hours (7 pm–6 am)', type: 'number', value: (x) => hoursOf(x.nightMinutes), total: 'sum' },
+    {
+      key: 'consent',
+      header: 'Night-work consent',
+      value: (x) => x.consent?.reference ?? '',
+      render: (x) =>
+        x.consent ? (
+          <span className="yx-tim-list__main"><span>{x.consent.reference}</span><span className="yx-tim-muted" style={nowrap}>{x.consent.withdrawnOn ? `Withdrawn ${isoDate(x.consent.withdrawnOn)}` : `Given ${isoDate(x.consent.givenOn)}${x.consent.confirmed ? ' · confirmed' : ' · not confirmed'}`}</span></span>
+        ) : (
+          <Badge tone="danger">None on file</Badge>
+        ),
+    },
+  ];
+  const stage = (live.data as { stage?: string | null } | null)?.stage;
+  const draft = stage !== 'locked' && stage !== 'filed';
+  const reportName = night ? 'Register of women night-shift workers' : isOt ? 'Overtime' : 'Late and early';
+  const exportRows = (fmt: 'csv' | 'xlsx') => {
+    const file = `${reportName} · ${monthText(live.month)}.csv`;
+    if (night) saveCsv(file, [['Worker', 'Code', 'Night shifts', 'Night hours', 'Consent', 'Given', 'Withdrawn'], ...nightRows.map((x) => [x.name, x.code ?? '', x.shifts, hoursOf(x.nightMinutes), x.consent?.reference ?? 'None', x.consent?.givenOn ?? '', x.consent?.withdrawnOn ?? ''])]);
+    else saveCsv(file, [[mgr ? 'Employee' : 'Department', 'Location', 'Late marks', 'Early exits', 'Overtime hours', 'Unpaid days'], ...shown.map((x) => [x.label, x.loc, x.late, x.early, x.ot, x.lop])]);
+    toast({ tone: 'success', title: `${file} downloaded.${draft ? ' Draft: the month is not locked yet.' : ''}${fmt === 'xlsx' ? ' Saved as CSV, which Excel opens.' : ''}` });
+  };
+  const tableState = liveTable(live.state);
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title={mgr ? 'My team · attendance' : 'Attendance reports'}
+        description={mgr ? `Your ${rows.length} reports` : night ? 'Women who worked a night shift, with their consent on file' : 'By department and site'}
+        facts={<span className="yx-tim-row"><span>{monthText(live.month)}{rep?.data && draft ? ` · up to ${isoDate(rep.data.upTo)}` : ''}</span>{stage ? <Badge tone={draft ? 'warning' : 'neutral'}>{draft ? 'Not locked' : 'Locked'}</Badge> : null}</span>}
+        actions={
+          <div className="yx-tim-row">
+            <div className="yx-tim-picker"><Select aria-label="Report" value={live.report} onChange={(v) => v && live.onReport(v as 'late' | 'ot' | 'night')} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : [{ value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={monthOptions(live.month)} /></div>
+          </div>
+        }
+      />
+      {live.state === 'no-access' ? (
+        <LiveGate state="no-access" what={night ? 'the night-shift register' : 'attendance reports'} />
+      ) : night ? (
+        <Card title={`Register of women night-shift workers · ${monthText(live.month)}`}>
+          <div className="yx-tim-stack">
+            <p className="yx-tim-muted">{plural(nightRows.length, 'woman', 'women')} · {nightRows.reduce((a, x) => a + x.shifts, 0)} night shifts · from the day engine and the consents on file. Pick-up and drop records are not in the app yet.</p>
+            <DataTable label="Women night-shift register" columns={ncols} rows={nightRows} getRowId={(x) => x.id} state={tableState} onRetry={live.onRetry} onExport={exportRows} empty={<EmptyState compact title="No night shifts by women this month" description="Women who work a night shift show here with their consent." />} />
+          </div>
+        </Card>
+      ) : (
+        <>
+          {(shown.length > 0 || live.state === 'loading') && (
+            <BarChart
+              title={isOt ? (mgr ? 'Overtime hours by person' : 'Overtime hours by department') : mgr ? 'Late marks and early exits by person' : 'Late marks and early exits by department'}
+              categories={mgr ? cats.map((c) => c.split(' ')[0]) : cats}
+              series={isOt ? [{ name: 'Overtime hours', values: by('ot') }] : [{ name: 'Late marks', values: by('late') }, { name: 'Early exits', values: by('early') }]}
+              xLabel={mgr ? 'Employee' : 'Department'}
+              horizontalBelow={480}
+              loading={live.state === 'loading'}
+            />
+          )}
+          <DataTable
+            key={live.report}
+            label="Report rows"
+            columns={cols}
+            rows={shown}
+            getRowId={(x) => x.id}
+            state={tableState}
+            onRetry={live.onRetry}
+            toolbar={<FilterBar fields={[{ key: 'loc', label: 'Location', type: 'multi', options: [...new Set(rows.map((x) => x.loc))].map((l) => ({ value: l, label: l })) }, ...(mgr ? [] : [{ key: 'dept', label: 'Department', type: 'multi' as const, options: [...new Set(rows.map((x) => x.label))].map((d) => ({ value: d, label: d })) }])]} value={filters} onChange={setFilters} />}
+            onExport={exportRows}
+            empty={
+              filters.length > 0 ? (
+                <EmptyState title="No attendance for these filters" description="No one matches every filter you picked." action={<Button onClick={() => setFilters([])}>Clear filters</Button>} />
+              ) : (
+                <EmptyState title="No attendance recorded" description="Nothing was recorded for this month yet." action={<Button onClick={() => live.onMonth(shiftMonth(live.month, -1))}>Show {monthText(shiftMonth(live.month, -1))}</Button>} />
+              )
+            }
+          />
+        </>
+      )}
+    </TimePage>
+  );
+}
+
 export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
-  if (live) return <LiveReportsScreen live={live} />;
+  if (live) return live.report === 'registers' || live.report === 'feed' ? <LiveReportsScreen live={live} /> : <LiveTimeReportsScreen live={live} />;
   return <SampleAttendanceReports report={report} persona={persona} month={startMonth} filters={startFilters} state={state} />;
 }
 

@@ -157,17 +157,19 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Time',
     sections: [
       ...sec(undefined, [
-        ...when(manager || has('attendance.view'), L('muster', 'Muster', '/yx/time/muster')),
+        ...when(manager || has('attendance.view'), L('today', 'Today', '/yx/time/today'), L('muster', 'Muster', '/yx/time/muster'), L('exceptions', 'Exceptions', '/yx/time/exceptions')),
         ...when(manager || has('roster.manage'), L('roster', 'Roster', '/yx/time/roster')),
         ...when(has('leave.view'), L('hr-leave', 'Leave', '/yx/time/leave-home')),
         ...when(manager || has('leave.view'), L('team-leave', 'Team leave', '/yx/time/team')),
         ...when(manager || has('attendance.view'), L('overtime-review', 'Overtime', '/yx/time/overtime-review')),
         ...when(manager || has('leave.view'), L('block-leave', 'Block leave', '/yx/time/block-leave')),
         ...when(has('leave.view'), L('leave-balances', 'Leave balances', '/yx/time/balances')),
-        ...when(has('attendance.lock'), L('periods', 'Periods', '/yx/time/periods')),
-        ...when(has('attendance.view'), L('registers', 'Reports', '/yx/time/registers'), L('payroll-feed', 'Payroll feed', '/yx/time/payroll-feed')),
+        ...when(has('attendance.lock') || has('payroll.correction.approve'), L('periods', 'Periods', '/yx/time/periods')),
+        ...when(has('attendance.lock'), L('device-punches', 'Device punches', '/yx/time/device-punches'), L('industrial-action', 'Industrial action', '/yx/time/industrial-action')),
+        ...when(manager || has('attendance.view'), L('attendance-reports', 'Attendance reports', '/yx/time/reports'), L('presence', 'Presence days', '/yx/time/presence')),
+        ...when(has('attendance.view'), L('registers', 'Registers', '/yx/time/registers'), L('payroll-feed', 'Payroll feed', '/yx/time/payroll-feed')),
       ]),
-      ...sec('My time', when(self, L('my-attendance', 'My attendance', '/yx/time/attendance'), L('my-leave', 'My leave', '/yx/time/leave'), L('my-shifts', 'My shifts', '/yx/time/shifts'), L('my-timesheet', 'My timesheet', '/yx/time/timesheet'), L('my-overtime', 'My overtime', '/yx/time/overtime'))),
+      ...sec('My time', when(self, L('my-attendance', 'My attendance', '/yx/time/attendance'), L('my-leave', 'My leave', '/yx/time/leave'), L('my-shifts', 'My shifts', '/yx/time/shifts'), L('my-timesheet', 'My timesheet', '/yx/time/timesheet'), L('my-overtime', 'My overtime', '/yx/time/overtime'), L('my-presence', 'My work-from-home days', '/yx/time/presence?view=me'))),
       ...sec('Time settings', when(has('leave.settings.manage'), L('shifts-setup', 'Shifts & patterns', '/yx/time/shifts-setup'), L('time-setup', 'Leave types & policies', '/yx/time/setup'), L('time-holidays', 'Holiday calendars', '/yx/time/setup/holidays'), L('holiday-feeds', 'Holiday feeds', '/yx/time/setup/holiday-feeds'), L('time-locations', 'Locations & geofences', '/yx/time/setup/locations'), L('year-end', 'Year-end', '/yx/time/setup/year-end'))),
     ],
   };

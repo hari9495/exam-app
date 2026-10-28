@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { DeviceBackfillWizard } from './requests';
 
-const meta: Meta<typeof DeviceBackfillWizard> = { title: 'Screens/Time/TIM-10 · Device backfill correction', component: DeviceBackfillWizard, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof DeviceBackfillWizard> = { title: 'Screens/Time/TIM-10 · Device backfill correction', component: DeviceBackfillWizard, render: (args) => <DeviceBackfillWizard {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof DeviceBackfillWizard>;
 

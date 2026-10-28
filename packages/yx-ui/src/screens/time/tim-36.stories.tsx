@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PresenceDayScreen } from './field';
 
-const meta: Meta<typeof PresenceDayScreen> = { title: 'Screens/Time/TIM-36 · Presence-based attendance', component: PresenceDayScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof PresenceDayScreen> = { title: 'Screens/Time/TIM-36 · Presence-based attendance', component: PresenceDayScreen, render: (args) => <PresenceDayScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof PresenceDayScreen>;
 

@@ -520,16 +520,13 @@
     "time: D",
     "time: DayCardPhone",
     "time: DayCardScreen",
-    "time: DeviceBackfillWizard",
     "time: DevicesScreen",
     "time: ExceptionsPhone",
-    "time: ExceptionsScreen",
     "time: FieldForceScreen",
     "time: FieldVisitPhone",
     "time: HomeClockScreen",
     "time: HybridPhone",
     "time: HybridPlannerScreen",
-    "time: IndustrialActionScreen",
     "time: KioskScreen",
     "time: LeaveHomePhone",
     "time: LicenceRequirementsScreen",
@@ -539,11 +536,9 @@
     "time: OpenShiftsScreen",
     "time: PrefillPhone",
     "time: PrefillScreen",
-    "time: PresenceDayScreen",
     "time: StandbyPhone",
     "time: StandbyScreen",
     "time: TeamLeaveCalendarPhone",
-    "time: TeamTodayPhone",
-    "time: TodayBoardScreen"
+    "time: TeamTodayPhone"
   ]
 }

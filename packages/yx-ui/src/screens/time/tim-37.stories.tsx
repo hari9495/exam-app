@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { IndustrialActionScreen } from './requests';
 
-const meta: Meta<typeof IndustrialActionScreen> = { title: 'Screens/Time/TIM-37 · Industrial-action event', component: IndustrialActionScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof IndustrialActionScreen> = { title: 'Screens/Time/TIM-37 · Industrial-action event', component: IndustrialActionScreen, render: (args) => <IndustrialActionScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof IndustrialActionScreen>;
 

@@ -7,7 +7,7 @@ import { Button, IconButton } from '../../components/button';
 import { Badge, DayDate, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
-import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
@@ -1570,12 +1570,12 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
         confirmLabel="Freeze inputs"
         onConfirm={() => { setStage('frozen'); setDlg(null); }}
       />
-      <TypeToConfirmDialog
+      {/* Founder decision (29 Oct 2026): a plain confirm, then the authenticator step, as on Periods (no typed name). */}
+      <ConfirmDialog
         open={dlg === 'lock' && !lockBlock}
         onOpenChange={(o) => !o && setDlg(null)}
-        title={`Lock ${monthName} 2026 attendance`}
-        consequence={`${rows.length} people · ${rows.length * monthDays.length} days · no open exceptions. Locked days can't be edited; corrections go to the next payroll as arrears or a reversal of unpaid days.`}
-        objectName={`KAVERI TN ${monthName.slice(0, 3).toUpperCase()} 2026`}
+        title={`Lock ${monthName} 2026 attendance?`}
+        consequence={`${rows.length} people · ${rows.length * monthDays.length} days · no open exceptions. Locked days can't be edited; corrections go to the next payroll as arrears or a reversal of unpaid days. You'll be asked to confirm it's you.`}
         confirmLabel="Lock period"
         onConfirm={() => { setStage('locked'); setDlg(null); }}
       />

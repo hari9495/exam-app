@@ -12,7 +12,7 @@ export const Frozen: S = { name: 'Frozen · all exceptions resolved', args: { st
 export const FrozenBlocked: S = { name: 'Frozen · lock blocked by open exceptions', args: { stage: 'frozen' } };
 // September's cut-off (30 Sep) hasn't passed on 29 Sep, so the lock stories use August, which has ended.
 export const Lock: S = {
-  name: 'Lock · typed confirmation (August)',
+  name: 'Lock · confirm (August)',
   args: { month: 'aug', stage: 'frozen', dialog: 'lock', asOf: new Date(2026, 8, 2) },
   parameters: { docs: { description: { story: 'The moment August was locked (2 Sep, before payroll was approved on 3 Sep). The Locked story shows the same month afterwards.' } } },
 };

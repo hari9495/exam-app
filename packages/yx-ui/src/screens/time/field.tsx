@@ -17,6 +17,8 @@ import { FENCES, FIELD_DAY, GENERAL_SHIFT, HOLIDAYS, HR_ADMIN, ME, NOW_MIN, SEPT
 import { PUBLISHED_ROSTER } from './roster';
 import { CameraFrame, GeoMap, Kpis, PunchList, TimePage, type MapPin as Pin } from './time-kit';
 import { evaluateClock, fmt12, fmtDuration, formatDistance, geofenceVerdict, toHHMM, toMin, type ClockState } from './time-logic';
+import { LiveGate, monthText, shiftMonth } from './ops';
+import type { LoadState, MyPresence, PresenceDayRow, TeamPresence } from './live/types';
 import './time.css';
 
 /** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
@@ -1025,7 +1027,12 @@ const TEAM_PRESENCE: PresenceDay[] = ([
 ] satisfies PresenceDay[]).sort((a, b) => b.date.getTime() - a.date.getTime());
 
 /** `consent`: 'none' is the employee who never gave it; 'withdrawn' marks the story about Fathima's withdrawal (the withdrawal itself holds in every view). `openId`: a day whose drawer starts open. */
-export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: openInit }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string }) {
+/** TIM-36 · Presence-based attendance. The app passes `live` (Time › Presence days); stories show the sample. */
+export function PresenceDayScreen(p: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; live?: LivePresence }) {
+  return p.live ? <LivePresenceScreen live={p.live} /> : <SamplePresenceDay {...p} />;
+}
+
+function SamplePresenceDay({ persona = 'emp', consent = 'given', openId: openInit }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string }) {
   const isEmp = persona === 'emp';
   const [dept, setDept] = useState<string | null>('all');
   const [showRecord, setShowRecord] = useState(false);
@@ -1134,6 +1141,139 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
           </div>
         )}
       </Drawer>
+    </TimePage>
+  );
+}
+
+/* ---------- live: /time/presence (TIM-36) ---------- */
+
+/** Me: my work-from-home days and my consent; or my team / HR's people: the day's status and total active time only. */
+export interface LivePresence {
+  state: LoadState;
+  onRetry?: () => void;
+  month: string;
+  onMonth: (month: string) => void;
+  /** Employee view (my own days). */
+  mine?: MyPresence | null;
+  onConsent?: (action: 'give' | 'withdraw') => Promise<unknown>;
+  /** Manager / HR view. */
+  team?: TeamPresence | null;
+  musterHref?: string;
+}
+const PRESENCE_STATUS: Record<string, PresenceDay['status'] | 'No check-out' | 'Absent' | 'Not over yet'> = { present: 'Present', half_day: 'Half day', absent: 'Absent', missing_out: 'No check-out', not_started: 'Not over yet' };
+const hmText = (m: number | null) => (m === null ? '—' : fmtDuration(m));
+
+function LivePresenceScreen({ live }: { live: LivePresence }) {
+  const emp = live.mine !== undefined;
+  const hr = live.team?.scope === 'hr';
+  const all = emp ? (live.mine?.days ?? []) : (live.team?.days ?? []);
+  const [dept, setDept] = useState<string | null>('all');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [showRecord, setShowRecord] = useState(false);
+  const [ask, setAsk] = useState<'give' | 'withdraw' | null>(null);
+  const days = hr && dept !== 'all' ? all.filter((d) => d.dept === dept) : all;
+  const depts = [...new Set(all.map((d) => d.dept ?? '').filter(Boolean))];
+  const day = all.find((d) => d.id === openId);
+  const consent = live.mine?.consent ?? null;
+  const statusOf = (d: PresenceDayRow) => (d.status ? (PRESENCE_STATUS[d.status] ?? d.status) : 'Not over yet');
+  const tone = (s: string): BadgeTone => (s === 'Present' ? 'success' : s === 'Not over yet' ? 'neutral' : 'warning');
+  const webLine = (d: PresenceDayRow) => (d.webIn ? `Checked in ${fmt12(d.webIn)} on the web` : 'No check-in');
+  const onDay = (iso: string) => dayLabel(new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))));
+  const recorded = (
+    <Card title="What is recorded">
+      <ul className="yx-tim-check"><li><span>Presence states and times</span><Badge tone="success">Yes</Badge></li><li><span>Active or idle (idle after 10 minutes with no activity)</span><Badge tone="success">Yes</Badge></li><li><span>Keystrokes, screenshots, apps, windows, URLs, files, camera, microphone</span><Badge tone="neutral">Never</Badge></li></ul>
+    </Card>
+  );
+  return (
+    <TimePage active={emp ? 'My attendance' : 'Muster'} user={hr ? HR_ADMIN : ME}>
+      <PageHeader
+        title={emp ? 'My work-from-home days' : hr ? 'Presence days' : 'Presence days · My team'}
+        description={emp && !consent ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from the YukthiX desktop app (Teams presence: not connected yet)'}
+        actions={
+          <div className="yx-tim-row">
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, -1))}>Previous month</Button>
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, 1))}>Next month</Button>
+            {emp && live.mine?.enabled && (consent ? <Button size="sm" onClick={() => setAsk('withdraw')}>Withdraw consent</Button> : <Button size="sm" variant="primary" onClick={() => setAsk('give')}>Review and give consent</Button>)}
+          </div>
+        }
+      />
+      <LiveGate state={live.state} onRetry={live.onRetry} what="presence days">
+        <div className="yx-tim-stack">
+          {emp && live.mine && !live.mine.enabled && <InlineAlert tone="info" title="Presence-based attendance is off">Your company has not turned it on. Your web check-in and check-out decide your work-from-home days.</InlineAlert>}
+          {hr && depts.length > 1 && (
+            <FormField label="Department">
+              <Select value={dept} onChange={setDept} options={[{ value: 'all', label: 'All departments' }, ...depts.map((x) => ({ value: x, label: x }))]} />
+            </FormField>
+          )}
+          <Card title={`Work-from-home days · ${monthText(live.month)}`}>
+            {days.length === 0 ? (
+              emp ? <EmptyState compact title="No work-from-home days" description="Your approved work-from-home days show here." /> : <EmptyState compact title="No presence days" description="Work-from-home days show here once someone works from home." />
+            ) : (
+              <ul className="yx-tim-list">
+                {days.map((d) => (
+                  <li key={d.id}>
+                    <span className="yx-tim-list__main">
+                      <strong>{emp ? onDay(d.on) : `${d.person} · ${onDay(d.on)}`}</strong>
+                      <span className="yx-tim-muted">{d.byPresence ? `Active ${hmText(d.activeMinutes)}` : webLine(d)}</span>
+                    </span>
+                    <Badge tone={tone(statusOf(d))}>{statusOf(d)}</Badge>
+                    <Button size="sm" onClick={() => { setOpenId(d.id); setShowRecord(false); }}>Open</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </LiveGate>
+      <Drawer open={!!day} onOpenChange={(o) => !o && setOpenId(null)} title={day ? (emp ? onDay(day.on) : `${day.person} · ${onDay(day.on)}`) : ''} subtitle="Work from home">
+        {day && (
+          <div className="yx-tim-stack">
+            {!day.byPresence ? (
+              <>
+                <InlineAlert tone={day.withdrawnAt ? 'warning' : 'info'} title={day.withdrawnAt ? `Consent withdrawn on ${formatDate(new Date(day.withdrawnAt))}` : day.consent ? 'No presence recorded that day' : 'No consent'}>
+                  {day.consent ? 'The day used the web check-in and check-out.' : 'No presence signals are read.'} {day.webOut ? `It used ${emp ? 'your' : 'the'} web check-in and check-out.` : day.webIn ? 'It has a web check-in but no check-out.' : ''}
+                </InlineAlert>
+                <div className="yx-tim-row"><Badge tone={tone(statusOf(day))}>{statusOf(day)}</Badge><span>{webLine(day)}{day.webOut ? ` · out ${fmt12(day.webOut)}` : ''}</span></div>
+                {!emp && live.musterHref && <Button asChild><a href={live.musterHref}>Open in muster</a></Button>}
+              </>
+            ) : (
+              <>
+                <div className="yx-tim-row"><Badge tone={tone(statusOf(day))}>{statusOf(day)}</Badge>{day.consent?.givenAt && <Badge tone="neutral">Consent given {formatDate(new Date(day.consent.givenAt))}</Badge>}</div>
+                <Kpis items={emp ? [{ label: 'First active', value: day.first ? fmt12(day.first) : '—' }, { label: 'Last active', value: day.last ? fmt12(day.last) : '—' }, { label: 'Active time', value: hmText(day.activeMinutes) }] : [{ label: 'Active time', value: hmText(day.activeMinutes) }]} />
+                {emp && recorded}
+                {!emp && <p className="yx-tim-note">Managers and HR see the day status and total active hours only, never a minute-by-minute timeline.</p>}
+              </>
+            )}
+            {hr && (
+              <div className="yx-tim-row">
+                <Button aria-expanded={showRecord} onClick={() => setShowRecord((x) => !x)}>{showRecord ? 'Hide consent record' : 'View consent record'}</Button>
+              </div>
+            )}
+            {hr && showRecord && (
+              <Card title="Consent record">
+                {day.consent ? (
+                  <ul className="yx-tim-list">
+                    <li><span>Given</span><span>{day.consent.givenAt ? formatDate(new Date(day.consent.givenAt)) : '—'} · {day.consent.version}</span></li>
+                    <li><span>Withdrawn</span><span>{day.withdrawnAt ? formatDate(new Date(day.withdrawnAt)) : 'Not withdrawn'}</span></li>
+                  </ul>
+                ) : (
+                  <p className="yx-tim-muted">No consent on record{day.withdrawnAt ? `; withdrawn ${formatDate(new Date(day.withdrawnAt))}` : ''}.</p>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+      </Drawer>
+      <ConfirmDialog
+        open={!!ask}
+        onOpenChange={(o) => !o && setAsk(null)}
+        title={ask === 'give' ? 'Let presence decide your work-from-home days?' : 'Withdraw your consent?'}
+        consequence={ask === 'give' ? `${live.mine?.notice ?? 'Presence notice'}. You can withdraw it at any time; from then on nothing more is read.` : 'From now on no presence is read: your web check-in and check-out decide your work-from-home days.'}
+        confirmLabel={ask === 'give' ? 'Give consent' : 'Withdraw consent'}
+        onConfirm={async () => { await live.onConsent!(ask!); }}
+      >
+        {ask === 'give' ? recorded : null}
+      </ConfirmDialog>
     </TimePage>
   );
 }

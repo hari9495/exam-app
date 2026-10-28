@@ -125,3 +125,20 @@ export const lastMonth = () => {
   d.setUTCMonth(d.getUTCMonth() - 1);
   return d.toISOString().slice(0, 7);
 };
+
+/**
+ * Calls another API area from a Time page (a late correction under /payroll, an approval task under /workflow) and
+ * refreshes the time queries and the approvals inbox, like useTimeWrite.
+ */
+export function useOtherWrite() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return async <T = unknown>(path: string, body?: unknown, done?: string): Promise<T> => {
+    const result = await apiFetch(path, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
+    await queryClient.invalidateQueries({ queryKey: ['time'] });
+    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
+    if (done) toast({ tone: 'success', title: done });
+    return result as T;
+  };
+}

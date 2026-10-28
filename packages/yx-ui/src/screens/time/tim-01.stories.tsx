@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TeamTodayPhone, TodayBoardScreen } from './attendance';
 
-const meta: Meta<typeof TodayBoardScreen> = { title: 'Screens/Time/TIM-01 · Today board', component: TodayBoardScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof TodayBoardScreen> = { title: 'Screens/Time/TIM-01 · Today board', component: TodayBoardScreen, render: (args) => <TodayBoardScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof TodayBoardScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

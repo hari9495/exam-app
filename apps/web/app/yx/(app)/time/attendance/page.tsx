@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Spinner } from '@yukthix/ui';
 import { AttendanceCalendarScreen, MyAttendanceTodayScreen, type DayCard, type LiveMyAttendance, type MyAttendance, type MyNightWork, type NightCodeSent, type PunchResult } from '@yukthix/ui/time';
-import { browserLocation, timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
+import { browserLocation, timeState, todayIndia, useOtherWrite, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
 // Me › Attendance: the designed attendance calendar (my month, day cards, fixes, work from home, night work) and, with
 // ?view=today, the designed "My attendance today" clock page. No permission key; punches and fixes are the person's own.
@@ -20,6 +20,7 @@ function YxMyAttendanceInner() {
   const night = useTime<MyNightWork>(today ? null : '/me/night-work');
   const write = useTimeWrite();
   const read = useTimeRead();
+  const other = useOtherWrite();
   const live: LiveMyAttendance = {
     state: timeState(att),
     onRetry: () => void att.refetch(),
@@ -32,6 +33,8 @@ function YxMyAttendanceInner() {
     onWithdrawFix: (rid) => write(`/me/regularise/${encodeURIComponent(rid)}/withdraw`),
     onOpenDay: (on) => read<DayCard>(`/people/${encodeURIComponent(att.data!.employee.id)}/days/${on}`),
     onWfh: (input) => write('/me/wfh', 'POST', input),
+    // TIM-07: a day of a frozen or locked month goes as a late correction (manager, HR, payroll), paid next payroll.
+    onLateCorrection: (input) => other('/payroll/me/late-corrections', input),
     defaultRequest: request === 'wfh' || request === 'regularise' ? request : undefined,
     night: night.data ?? null,
     onNightOptIn: (optIn) => write('/me/night-work/opt-in', 'PUT', { optIn }),

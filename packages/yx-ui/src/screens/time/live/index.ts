@@ -3,7 +3,7 @@
 export * from './types';
 export { LeaveHomeScreen, TeamLeaveCalendarScreen, LeaveCardScreen, type LiveLeaveHome, type LiveTeamLeave, type LiveLeaveCard, type LiveHrLeaveHome, type LiveMyLeaveCard, type LiveCompOff, type LiveEncash } from '../leave';
 // Me › Attendance (calendar + today's clock), Home's clock card and the muster: the designed screens, each with `live`.
-export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, type LiveMyAttendance, type LiveMusterData } from '../attendance';
+export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, TodayBoardScreen, ExceptionsScreen, type LiveMyAttendance, type LiveMusterData, type LiveTodayBoard, type LiveExceptions } from '../attendance';
 // HR set-up: the designed TIM-26 / 27 / 28 / 29 / 31 screens, each with `live`.
 export { HolidayFeedScreen, type LiveHolidayFeeds } from '../leave-admin';
 export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, LeaveTypeEditorScreen, YearEndWizard, type LeaveTypeInput, type LiveHolidayCalendars, type LiveLeavePolicies, type LiveLeaveTypeEditor, type LiveLocations, type LiveYearEnd, type LocationRuleInput, type SetupLive } from '../leave-admin';
@@ -11,7 +11,9 @@ export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, Leav
 export { RosterScreen, ShiftEditorScreen, BlockLeavePlannerScreen, type LiveRoster, type LiveBlockLeave } from '../roster';
 export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { type LiveShiftSetup } from './shifts-setup';
-export { OtReviewScreen, PeriodsScreen, type LiveOtReview, type LiveMyOvertime, type LivePeriods } from '../requests';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
-export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed } from '../ops';
+export { OtReviewScreen, PeriodsScreen, DeviceBackfillWizard, IndustrialActionScreen, type LiveOtReview, type LiveMyOvertime, type LivePeriods, type LiveDeviceBackfill, type LiveIndustrialAction } from '../requests';
+export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister } from '../ops';
+// Time ops (29 Oct 2026): presence-based attendance (TIM-36).
+export { PresenceDayScreen, type LivePresence } from '../field';
 export { DAY_STATUS, LEAVE_STATUS, dayText, rangeText } from './kit';

@@ -8,7 +8,7 @@ import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/di
 import { formatDate } from '../../lib/format';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
-import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { RadioGroup } from '../../components/choice';
@@ -30,7 +30,7 @@ import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRout
 import type { ViewState } from './attendance';
 // useToast, useTooEarly and useRun come from the import lines above (shared with the TIM-07 region).
 import { LiveGate, isoDate, liveTable, monthText, shiftMonth } from './ops';
-import type { LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
+import type { DeviceBatch, DeviceDayView, DevicePreview, IndustrialEvent, IndustrialInput, IndustrialOptions, LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
 // TIM-08 live (Me › My shifts).
 import { useSaveErrors } from '../../components/field';
 import type { MyShifts } from './live/types';
@@ -1159,7 +1159,7 @@ function LiveOtReviewScreen({ live }: { live: LiveOtReview }) {
           // One visible decision per row (Approve, or Override for HR on over-limit approved rows); comp-off and reject sit in the "…" menu.
           rowButtons={(c) =>
             c.canOverride ? <Button size="sm" onClick={() => setOver(c)}>Override limit</Button>
-              : mine(c) ? <Button variant="approve" size="sm" loading={busy === c.id} onClick={() => void run(c.id, () => live.onDecide(c.id, 'approve'))}>Approve</Button>
+              : mine(c) ? <Button variant="approve" size="sm" loading={busy === c.id} onClick={() => void run(c.id, async () => { await live.onDecide(c.id, 'approve'); toast({ tone: 'success', title: 'Overtime approved' }); })}>Approve</Button>
                 : claimBadge(c)
           }
           rowActions={(c) =>
@@ -1641,7 +1641,12 @@ function downloadChanges() {
   URL.revokeObjectURL(a.href);
 }
 
-export function DeviceBackfillWizard({ current = 'batch', done = false }: { current?: string; done?: boolean }) {
+/** TIM-10 · Device backfill. The app passes `live` (Time › Device punches); stories show the sample. */
+export function DeviceBackfillWizard(p: { current?: string; done?: boolean; live?: LiveDeviceBackfill }) {
+  return p.live ? <LiveDeviceBackfillWizard live={p.live} /> : <SampleDeviceBackfillWizard {...p} />;
+}
+
+function SampleDeviceBackfillWizard({ current = 'batch', done = false }: { current?: string; done?: boolean }) {
   const { toast } = useToast();
   const [applied, setApplied] = useState(done);
   const [reason, setReason] = useState('Gate 1 kiosk lost network 14–17 Sep; the network was restored on 18 Sep and the stored punches synced on 28 Sep.');
@@ -1725,6 +1730,182 @@ export function DeviceBackfillWizard({ current = 'batch', done = false }: { curr
       />
     </TimePage>
   );
+}
+
+/* ---------- live: /time/device-punches (TIM-10) ---------- */
+
+/** HR (attendance.lock over the legal entity): a device's late punches, previewed, then applied once with a reason. */
+export interface LiveDeviceBackfill {
+  state: LoadState;
+  onRetry?: () => void;
+  /** Devices with punches waiting in the legal entity. */
+  batches: DeviceBatch[] | null;
+  onPreview: (deviceRef: string) => Promise<DevicePreview>;
+  /** Applies the batch (the second sign-in step is asked); `punches` is the count reviewed. */
+  onApply: (deviceRef: string, reason: string, punches: number) => Promise<{ id: string; punches: number; people: number; personDays: number; openDays: number; corrections: number }>;
+  musterHref: string;
+  periodsHref: string;
+}
+
+const STATUS_WORD: Record<string, string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', missing_in: 'Missing check-in', missing_out: 'Missing check-out', not_started: 'Not worked out', no_timesheet: 'No timesheet', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', strike: 'Strike', lockout: 'Lockout', layoff: 'Lay-off' };
+/** "Absent → Present 6:02 am – 2:05 pm", "Late (6:18 am) → On time (5:58 am)", or the correction a locked day becomes. */
+function deviceChange(c: DevicePreview['changes'][number]): string {
+  if (!c.open) return `Correction for the next payroll: ${c.punches.map((p) => `${p.kind === 'in' ? 'in' : 'out'} ${p.at ? fmt12(p.at) : ''}`).join(', ')}`;
+  const b = c.before;
+  const a = c.after;
+  const word = (x: DeviceDayView | null) => (!x ? 'Nothing recorded' : (x.lateMinutes ?? 0) > 0 && x.status === 'present' ? `Late (${x.firstIn ? fmt12(x.firstIn) : ''})` : STATUS_WORD[x.status] ?? x.status);
+  const span = a?.firstIn && a.lastOut ? ` ${fmt12(a.firstIn)} – ${fmt12(a.lastOut)}` : '';
+  return `${word(b)} → ${a && (b?.lateMinutes ?? 0) > 0 && !(a.lateMinutes ?? 0) && a.status === 'present' ? `On time (${a.firstIn ? fmt12(a.firstIn) : ''})` : `${word(a)}${span}`}`;
+}
+
+function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
+  const { toast } = useToast();
+  const [device, setDevice] = useState<string | null>(null);
+  const [preview, setPreview] = useState<DevicePreview | null>(null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [done, setDone] = useState<Awaited<ReturnType<LiveDeviceBackfill['onApply']>> | null>(null);
+  const { busy, error, run } = useRun();
+  const batches = live.batches ?? [];
+  const chosen = batches.find((b) => b.deviceRef === device) ?? (batches.length === 1 ? batches[0] : null);
+  const load = (ref: string) => void run('preview', async () => setPreview(await live.onPreview(ref)));
+  useEffect(() => {
+    if (chosen && preview?.deviceRef !== chosen.deviceRef) load(chosen.deviceRef);
+  }, [chosen?.deviceRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reasonErr = reason.trim().length < 10 ? 'Give the reason in a sentence (at least 10 letters).' : null;
+  if (done)
+    return (
+      <TimePage active="Periods">
+        <PageHeader title="Device punches applied" />
+        {/* Done is said by the toast; this stays as the record of what changed and where to go next. */}
+        <InlineAlert
+          tone="info"
+          title={`${plural(done.punches, 'punch', 'punches')} applied for ${plural(done.people, 'person', 'people')}`}
+          actions={
+            <>
+              <Button size="sm" asChild><a href={live.musterHref}>Open muster</a></Button>
+              <Button size="sm" asChild><a href={live.periodsHref}>Back to Periods</a></Button>
+            </>
+          }
+        >
+          Recorded as one audited correction. {done.openDays ? `${plural(done.openDays, 'day')} of open months worked out again. ` : ''}{done.corrections ? `${plural(done.corrections, 'day')} of locked months go to the next payroll as corrections.` : ''}
+        </InlineAlert>
+      </TimePage>
+    );
+  return (
+    <TimePage active="Periods">
+      <LiveGate state={live.state} onRetry={live.onRetry} what="device punches">
+        {!batches.length ? (
+          <EmptyState title="No device punches waiting" description="When a kiosk or reader that was offline sends its stored punches late, they wait here to be applied once." action={<Button asChild><a href={live.periodsHref}>Back to Periods</a></Button>} />
+        ) : (
+          <>
+          {error && busy === null && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <Stepper
+            title="Device punches correction"
+            finishLabel="Apply punches"
+            finishing={busy === 'apply'}
+            onContinue={(id) => {
+              if (id === 'batch' && !chosen) {
+                document.getElementById('bf-device')?.focus();
+                return false;
+              }
+              if (id === 'preview' && !preview) return false;
+              if (id === 'reason' && reasonErr) {
+                setTried(true);
+                document.getElementById('bf-reason')?.focus();
+                return false;
+              }
+              return true;
+            }}
+            onFinish={() => {
+              if (reasonErr || !chosen || !preview) return setTried(true);
+              void run('apply', async () => {
+                const r = await live.onApply(chosen.deviceRef, reason.trim(), preview.punches);
+                toast({ tone: 'success', title: `${plural(r.punches, 'punch', 'punches')} applied for ${plural(r.people, 'person', 'people')}` });
+                setDone(r);
+              });
+            }}
+            review={{ title: 'Review', note: preview ? `${plural(preview.punches, 'punch', 'punches')} for ${plural(preview.people, 'person', 'people')} are applied as one audited correction. You'll be asked to confirm it's you.` : undefined }}
+            steps={[
+              {
+                id: 'batch',
+                title: 'Batch',
+                description: 'Device and dates',
+                content: (
+                  <div className="yx-tim-form">
+                    <InlineAlert tone="info" title="Late punches from a device">Apply a device's stored punches once, with one audit record, instead of a request from each person.</InlineAlert>
+                    <FormField id="bf-device" label="Device" required error={!chosen && tried ? 'Choose the device' : null}>
+                      <Select value={chosen?.deviceRef ?? null} onChange={(v) => { setDevice(v); setPreview(null); }} options={batches.map((b) => ({ value: b.deviceRef, label: `${b.deviceRef} · ${plural(b.punches, 'punch', 'punches')}` }))} />
+                    </FormField>
+                    {chosen && (
+                      <FormField label="Dates" helper="Set by the batch: the days the punches are for">
+                        <p>{chosen.from && chosen.to ? `${isoDate(chosen.from)} – ${isoDate(chosen.to)}` : '—'}</p>
+                      </FormField>
+                    )}
+                    {chosen && <p className="yx-tim-muted">{chosen.receivedAt ? `Batch received ${isoDate(chosen.receivedAt)} · ` : ''}{plural(chosen.punches, 'punch', 'punches')} · {plural(chosen.people, 'person', 'people')}</p>}
+                  </div>
+                ),
+                summary: chosen ? `${chosen.deviceRef} · ${plural(chosen.punches, 'punch', 'punches')}` : 'No device chosen',
+              },
+              {
+                id: 'preview',
+                title: 'Preview',
+                description: 'What changes',
+                content: !preview ? (
+                  busy === 'preview' ? <Skeleton height={120} /> : <InlineAlert tone="danger" title="The preview did not load" actions={chosen ? <Button size="sm" onClick={() => load(chosen.deviceRef)}>Try again</Button> : undefined}>{error ?? 'Try again.'}</InlineAlert>
+                ) : (
+                  <div className="yx-tim-stack">
+                    <Kpis items={[{ label: 'People', value: preview.people }, { label: 'Days rechecked', value: preview.personDays }, { label: 'Absences that become present', value: preview.becomePresent }, { label: 'Late marks removed', value: preview.lateRemoved }, { label: 'New late marks', value: preview.lateAdded }]} />
+                    <strong>Examples · {Math.min(3, preview.changes.length)} of {plural(preview.changes.length, 'change')}</strong>
+                    <ul className="yx-tim-list">
+                      {preview.changes.slice(0, 3).map((c) => (
+                        <li key={`${c.employeeId}-${c.on}`}>
+                          <span className="yx-tim-list__main">
+                            <span><strong>{c.name}</strong> <span className="yx-tim-muted">· {isoDate(c.on)}</span></span>
+                            <span>{deviceChange(c)}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="yx-tim-row">
+                      <Button size="sm" icon={Download} onClick={() => downloadText(`${preview.deviceRef}-changes.csv`, ['Employee,Code,Date,Change', ...preview.changes.map((c) => `"${c.name}","${c.code ?? ''}",${c.on},"${deviceChange(c).replace(/"/g, '""')}"`)].join('\n'))}>Download all {plural(preview.changes.length, 'change')}</Button>
+                    </div>
+                    {preview.corrections > 0 ? (
+                      <InlineAlert tone="info" title={`${plural(preview.corrections, 'day')} in a frozen or locked month`}>Those days don't change; they go to the next payroll as approved corrections.</InlineAlert>
+                    ) : (
+                      <InlineAlert tone="info" title="The month is open">The days are worked out again with these punches.</InlineAlert>
+                    )}
+                  </div>
+                ),
+                summary: preview ? `${plural(preview.people, 'person', 'people')} · ${plural(preview.personDays, 'day')} rechecked · ${preview.becomePresent} absent → present` : 'Not previewed',
+              },
+              {
+                id: 'reason',
+                title: 'Reason',
+                description: 'Audit note',
+                content: (
+                  <FormField id="bf-reason" label="Reason (audited)" required error={tried ? reasonErr : null}>
+                    <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} placeholder="For example: Gate 1 kiosk lost network 14–17 Sep; punches synced on 28 Sep" />
+                  </FormField>
+                ),
+                summary: reason.trim() ? clip(reason.trim()) : 'No reason entered',
+              },
+            ]}
+          />
+          </>
+        )}
+      </LiveGate>
+    </TimePage>
+  );
+}
+
+/** Saves text as a file in the browser. */
+function downloadText(name: string, text: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* =====================================================================
@@ -2149,13 +2330,12 @@ function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona
         />
       )}
       {open && (
-        <TypeToConfirmDialog
+        <ConfirmDialog
           open={dlg === 'lock'}
           onOpenChange={(o) => !o && setDlg(undefined)}
           title={`Approve lock · ${monthName(open)}`}
-          consequence={`Attendance and pay-affecting leave for ${MONTH[open.m]} can't be changed after this; fixes become late requests paid in ${MONTH[(open.m + 1) % 12]} payroll.`}
-          objectName={`KAVERI TN ${MON[open.m].toUpperCase()} 2026`}
-          // Same name and colour as the drawer's button: an approval is green (R7), the typed confirmation stays.
+          consequence={`Attendance and pay-affecting leave for ${MONTH[open.m]} can't be changed after this; fixes become late requests paid in ${MONTH[(open.m + 1) % 12]} payroll. You'll be asked to confirm it's you.`}
+          // Same name and colour as the drawer's button: an approval is green (R7). Founder (29 Oct 2026): a plain confirm and the authenticator step.
           confirmLabel="Approve lock"
           confirmVariant="approve"
           onConfirm={() => { setLockedIds([...lockedIds, open.id]); setDlg(undefined); setOpen(null); }}
@@ -2240,7 +2420,12 @@ const iaDays = (from: Date | null, to: Date | null) => (from && to ? daysUntil(t
 /** One date check for the form and the Edit dates dialog. */
 const iaDateError = (from: Date | null, to: Date | null) => (!from || !to ? 'Pick both dates' : iaDays(from, to) < 1 ? 'To must be on or after From' : null);
 
-export function IndustrialActionScreen({ view = 'form', legality = 'undetermined' }: { view?: 'form' | 'record'; legality?: Legality }) {
+/** TIM-37 · Industrial action. The app passes `live` (Time › Industrial action); stories show the sample. */
+export function IndustrialActionScreen(p: { view?: 'form' | 'record'; legality?: Legality; live?: LiveIndustrialAction }) {
+  return p.live ? <LiveIndustrialActionScreen live={p.live} /> : <SampleIndustrialAction {...p} />;
+}
+
+function SampleIndustrialAction({ view = 'form', legality = 'undetermined' }: { view?: 'form' | 'record'; legality?: Legality }) {
   const startType: IaType = view === 'record' ? 'layoff' : 'strike';
   const startFrom = new Date(2026, 9, 5);
   const startTo = new Date(2026, 9, 7);
@@ -2317,10 +2502,14 @@ export function IndustrialActionScreen({ view = 'form', legality = 'undetermined
   );
 }
 
-function IndustrialActionRecord({ type, from, to, count, group, notice, legality, setOn, onLegality, onDates }: {
+function IndustrialActionRecord({ type, from, to, count, group, notice, legality, setOn, onLegality, onDates, place = 'Hosur plant', today: now = TODAY, onCancel, cancelled: cancelledStart = false, links }: {
   type: IaType; from: Date; to: Date; count: number; group: string; notice: string; legality: Legality; setOn: Date | null;
-  onLegality: (l: Legality) => void; onDates: (from: Date, to: Date) => void;
+  /** The live record awaits the server; a refusal stays in the dialog. */
+  onLegality: (l: Legality) => void | Promise<unknown>; onDates: (from: Date, to: Date) => void | Promise<unknown>;
+  /** Live: the establishment, today, cancelling on the server and the app's links. */
+  place?: string; today?: Date; onCancel?: () => Promise<unknown>; cancelled?: boolean; links?: { people: string; muster: string };
 }) {
+  const TODAY = now;
   const [confirm, setConfirm] = useState(false);
   // A legal decision needs an explicit pick: nothing is pre-selected.
   const [next, setNext] = useState<Legality | null>(null);
@@ -2329,7 +2518,8 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
   const [eFrom, setEFrom] = useState<Date | null>(from);
   const [eTo, setETo] = useState<Date | null>(to);
   const [cancelAsk, setCancelAsk] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
+  const [cancelled, setCancelled] = useState(cancelledStart);
+  const { busy: saving, error: saveError, run: runSave } = useRun();
   const days = iaDays(from, to);
   const workerDays = count * days;
   const label = IA_LABEL[type];
@@ -2352,7 +2542,7 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
   return (
     <TimePage active="Requests" user={HR_ADMIN}>
       <PageHeader
-        title={`${label} · Hosur plant`}
+        title={`${label} · ${place}`}
         status={
           <span className="yx-tim-row">
             {/* An upcoming event shows only "Starts in …"; the status badge is for the other states. */}
@@ -2388,8 +2578,8 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
         </>
       )}
       <div className="yx-tim-row">
-        {!cancelled && <Button asChild><a href={storyHref('screens-people-ppl-01-·-directory--hr-employees')} target="_top">Open people directory</a></Button>}
-        <Button asChild><a href={storyHref('screens-time-tim-02-·-muster--open')} target="_top">Open muster</a></Button>
+        {!cancelled && <Button asChild><a href={links?.people ?? storyHref('screens-people-ppl-01-·-directory--hr-employees')} target={links ? undefined : '_top'}>Open people directory</a></Button>}
+        <Button asChild><a href={links?.muster ?? storyHref('screens-time-tim-02-·-muster--open')} target={links ? undefined : '_top'}>Open muster</a></Button>
       </div>
       <ConfirmDialog
         open={confirm}
@@ -2397,10 +2587,10 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
         title={unset ? 'Set legality' : 'Change legality'}
         consequence={changeText}
         confirmLabel={unset ? 'Set legality' : 'Change legality'}
-        onConfirm={() => {
+        onConfirm={async () => {
           setTried(true);
           if (!next || next === legality) return false;
-          onLegality(next);
+          await onLegality(next);
           setConfirm(false);
         }}
       >
@@ -2417,10 +2607,10 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
         title={`Edit dates · ${label}`}
         footer={
           <>
-            {editErr && <FootReason>{editErr}</FootReason>}
+            {(editErr ?? saveError) && <FootReason>{editErr ?? saveError}</FootReason>}
             <Button onClick={() => setEditing(false)}>Cancel</Button>
             {/* Never disabled: the reason shows beside the buttons. */}
-            <Button variant="primary" onClick={() => { if (editErr) return; if (eFrom && eTo) onDates(eFrom, eTo); setEditing(false); }}>Save dates</Button>
+            <Button variant="primary" loading={saving === 'dates'} onClick={() => { if (editErr || !eFrom || !eTo) return; void runSave('dates', async () => { await onDates(eFrom, eTo); setEditing(false); }); }}>Save dates</Button>
           </>
         }
       >
@@ -2443,8 +2633,133 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
         confirmLabel="Cancel event"
         cancelLabel="Keep event"
         destructive
-        onConfirm={() => { setCancelled(true); setCancelAsk(false); }}
+        onConfirm={async () => { if (onCancel) await onCancel(); setCancelled(true); setCancelAsk(false); }}
       />
     </TimePage>
   );
 }
+
+/* ---------- live: /time/industrial-action (TIM-37) ---------- */
+
+/** HR (attendance.lock over the legal entity): record a strike, lockout or lay-off, then its record (legality, dates, cancel). */
+export interface LiveIndustrialAction {
+  state: LoadState;
+  onRetry?: () => void;
+  /** The form's establishments and their departments (form view). */
+  options: IndustrialOptions | null;
+  /** An event to show (record view); null: the form. */
+  event: IndustrialEvent | null;
+  onRecord: (input: IndustrialInput) => Promise<IndustrialEvent>;
+  onLegality: (id: string, legality: Legality, version: number) => Promise<IndustrialEvent>;
+  onDates: (id: string, from: string, to: string, version: number) => Promise<IndustrialEvent>;
+  onCancel: (id: string, version: number) => Promise<IndustrialEvent>;
+  links: { cancel: string; people: string; muster: string };
+}
+
+function LiveIndustrialActionScreen({ live }: { live: LiveIndustrialAction }) {
+  const [event, setEvent] = useState<IndustrialEvent | null>(live.event);
+  useEffect(() => setEvent(live.event), [live.event]);
+  const locations = live.options?.locations ?? [];
+  const [type, setType] = useState<IaType>('strike');
+  const [loc, setLoc] = useState<string | null>(null);
+  const [group, setGroup] = useState<string>('all');
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [leg, setLeg] = useState<Legality>('undetermined');
+  const [notice, setNotice] = useState('');
+  const [confirm, setConfirm] = useState(false);
+  const [tried, setTried] = useState(false);
+  const place = locations.find((l) => l.id === (loc ?? locations[0]?.id)) ?? null;
+  const dept = place?.departments.find((x) => x.id === group) ?? null;
+  const count = dept ? dept.people : (place?.people ?? 0);
+  const days = iaDays(from, to);
+  const dateErr = iaDateError(from, to);
+  const block = !place ? 'Choose the establishment' : dateErr ? (from && to ? 'Fix the dates' : dateErr) : notice.trim().length < 3 ? 'Enter the notice reference' : null;
+  if (event) {
+    const ev = event;
+    return (
+      <IndustrialActionRecord
+        type={ev.kind}
+        from={isoDay(ev.from)}
+        to={isoDay(ev.to)}
+        count={ev.workers}
+        group={ev.department ? ev.department.name : `Everyone at ${ev.location.name}`}
+        notice={ev.notice}
+        legality={ev.legality}
+        setOn={ev.legalitySetAt ? new Date(ev.legalitySetAt) : null}
+        place={`${ev.location.name}${STATE_NAME[ev.location.state] ? ` (${STATE_NAME[ev.location.state]})` : ''}`}
+        today={isoDay(ev.today)}
+        cancelled={ev.status === 'cancelled'}
+        links={{ people: live.links.people, muster: live.links.muster }}
+        onLegality={async (l) => setEvent(await live.onLegality(ev.id, l, ev.version))}
+        onDates={async (f, t) => setEvent(await live.onDates(ev.id, isoOf(f), isoOf(t), ev.version))}
+        onCancel={async () => setEvent(await live.onCancel(ev.id, ev.version))}
+      />
+    );
+  }
+  return (
+    <TimePage active="Requests" user={HR_ADMIN}>
+      <PageHeader title="Record industrial action" description="Strike, lockout or lay-off at one establishment" />
+      <LiveGate state={live.state} onRetry={live.onRetry} what="industrial action">
+        {!locations.length ? (
+          <EmptyState title="No establishment in your scope" description="Recording industrial action needs attendance.lock for the legal entity." />
+        ) : (
+          <div className="yx-tim-form">
+            <FormField label="Type" required>
+              <Segment label="Type" value={type} onChange={setType} options={(Object.keys(IA_LABEL) as IaType[]).map((k) => ({ value: k, label: IA_LABEL[k] }))} />
+            </FormField>
+            <FormField id="ia-place" label="Establishment" required>
+              <Select value={place?.id ?? null} onChange={(v) => { setLoc(v); setGroup('all'); }} options={locations.map((l) => ({ value: l.id, label: `${l.name}${STATE_NAME[l.state] ? ` (${STATE_NAME[l.state]})` : ''}` }))} />
+            </FormField>
+            <FieldRow>
+              <FormField id="ia-from" label="From" required error={tried && !from ? 'Pick both dates' : null}><DatePicker value={from} onChange={setFrom} /></FormField>
+              <FormField id="ia-to" label="To" required error={(tried && !to) ? 'Pick both dates' : from && to && days < 1 ? 'To must be on or after From' : null}><DatePicker value={to} onChange={setTo} min={from ?? undefined} /></FormField>
+            </FieldRow>
+            <FormField label="Workers affected" required helper={`${plural(count, 'worker')} selected`}>
+              <Select value={group} onChange={(v) => v && setGroup(v)} options={[{ value: 'all', label: `Everyone at ${place?.name ?? ''} (${place?.people ?? 0})` }, ...(place?.departments ?? []).map((x) => ({ value: x.id, label: `${x.name} (${x.people})` }))]} />
+            </FormField>
+            <FormField label="Legality" required>
+              <Segment label="Legality" value={leg} onChange={setLeg} options={LEGALITY} />
+            </FormField>
+            <FormField id="ia-notice" label="Notice reference" required error={tried && notice.trim().length < 3 ? 'Enter the notice reference' : null}><TextField value={notice} onChange={setNotice} placeholder="For example: notice dated 21 Sep 2026" maxLength={200} /></FormField>
+            <section className="yx-tim-effect" aria-live="polite">
+              <strong>Effect</strong>
+              <p className="yx-tim-muted">
+                {count} workers × {plural(Math.max(days, 0), 'day')} marked {IA_LABEL[type]}, not absence or leave. {payLine(type, leg, days)}
+              </p>
+            </section>
+            <div className="yx-tim-stack">
+              {block && <p className="yx-tim-muted">{block}</p>}
+              <div className="yx-tim-row">
+                <Button asChild><a href={live.links.cancel}>Cancel</a></Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    if (!block) return setConfirm(true);
+                    setTried(true);
+                    document.getElementById(!place ? 'ia-place' : !from ? 'ia-from' : dateErr ? 'ia-to' : 'ia-notice')?.focus();
+                  }}
+                >
+                  Record event
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </LiveGate>
+      {from && to && place && (
+        <ConfirmDialog
+          open={confirm}
+          onOpenChange={setConfirm}
+          title={`Mark ${count} workers as ${IA_LABEL[type]} for ${range(from, to)}?`}
+          consequence={`Their attendance for these days changes to "${IA_LABEL[type]}", not absence or leave. ${payLine(type, leg, days)}`}
+          confirmLabel="Record event"
+          onConfirm={async () => {
+            setEvent(await live.onRecord({ kind: type, locationId: place.id, ...(dept ? { departmentId: dept.id } : {}), from: isoOf(from), to: isoOf(to), legality: leg, notice: notice.trim() }));
+          }}
+        />
+      )}
+    </TimePage>
+  );
+}
+const STATE_NAME: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu', 'IN-MH': 'Maharashtra', 'IN-DL': 'Delhi', 'IN-TG': 'Telangana', 'IN-GJ': 'Gujarat' };

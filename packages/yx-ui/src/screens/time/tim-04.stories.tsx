@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ExceptionsPhone, ExceptionsScreen } from './attendance';
 
-const meta: Meta<typeof ExceptionsScreen> = { title: 'Screens/Time/TIM-04 · Attendance exceptions', component: ExceptionsScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ExceptionsScreen> = { title: 'Screens/Time/TIM-04 · Attendance exceptions', component: ExceptionsScreen, render: (args) => <ExceptionsScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ExceptionsScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
