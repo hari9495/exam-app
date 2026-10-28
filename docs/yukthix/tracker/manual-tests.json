@@ -2287,5 +2287,280 @@
       "US-A-114"
     ],
     "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-LV2-01",
+    "area": "Time - Leave v2",
+    "screen": "My leave card - ledger and projection",
+    "url": "http://localhost:3000/yx/time/leave/card",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Open My leave and press \"My leave card\".",
+      "Look at History, then pick Earned leave and a date in December under \"What will my balance be?\"."
+    ],
+    "expected": "Every credit and leave taken is a line with a date. The projection shows the balance on that date and names any pending request that comes off it.",
+    "stories": [
+      "TIM-21"
+    ],
+    "note": "POSITIVE test."
+  },
+  {
+    "id": "MT-LV2-02",
+    "area": "Time - Leave v2",
+    "screen": "Apply leave - company block date",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "HR first adds a block date for next Monday (API: POST /time/setup/block-dates, reason \"Quality audit\").",
+      "Apply leave: Earned leave on that Monday. Press Send request.",
+      "Change the type to Sick leave on the same day."
+    ],
+    "expected": "Earned leave is refused with \"... is a company block date (Quality audit)\". Sick leave on that day is allowed.",
+    "stories": [
+      "TIM-18"
+    ],
+    "note": "NEGATIVE then POSITIVE."
+  },
+  {
+    "id": "MT-LV2-03",
+    "area": "Time - Leave v2",
+    "screen": "Apply leave - short notice flagged",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Apply leave: Earned leave for tomorrow (Earned leave asks for 3 days notice). Set \"Shorter notice\" on the type to \"Allow and flag\" first in Leave types.",
+      "Send it and open the approval in Approvals as the manager."
+    ],
+    "expected": "A \"Short notice\" warning shows before sending; the approver sees \"Notice: Short notice\". With \"Refuse it\", the request is refused with the notice days.",
+    "stories": [
+      "TIM-18"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-04",
+    "area": "Time - Leave v2",
+    "screen": "Apply leave - during the notice period",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Use an employee with an accepted resignation (People > Exits).",
+      "Apply for 2 days of earned leave before the last working day.",
+      "Apply for leave past the last working day."
+    ],
+    "expected": "Summary shows \"Last working day: stays <date>\" (or the moved date when the company setting moves it). Leave past the last working day is refused.",
+    "stories": [
+      "TIM-18"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-05",
+    "area": "Time - Leave v2",
+    "screen": "Comp-off claim",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Work (punch in and out) on a weekly off, at least 4 hours.",
+      "My leave > Claim comp-off. Press Send claim with no reason.",
+      "Pick Full day when you worked under 8 hours and press Send claim.",
+      "Pick Half day, write a reason, Send claim.",
+      "Claim the same day again."
+    ],
+    "expected": "No reason: \"Enter a reason.\" and the field is focused. Full day on a short day: \"claim a half day\". Half day: toast \"Comp-off claim sent to your manager\" and it shows under Waiting for approval with a use-by date. The same day is not offered again.",
+    "stories": [
+      "TIM-22"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-06",
+    "area": "Time - Leave v2",
+    "screen": "Encash leave",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Admin sets Settings > leave.encashment.window to \"any_month\".",
+      "My leave > Encash leave. Type more days than allowed; press Send request.",
+      "Type 2 days; read the amount and tax note; Send request.",
+      "Open Encash leave again."
+    ],
+    "expected": "Too many days: field error naming the cap and the days that must stay. 2 days: toast \"Encashment sent for approval\"; Earned leave shows 2 days pending. Opening again shows \"already have an encashment request waiting\" with Withdraw.",
+    "stories": [
+      "TIM-24"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-07",
+    "area": "Time - Leave v2",
+    "screen": "Encash leave - window closed",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Leave the encashment window setting at \"off\".",
+      "Open My leave."
+    ],
+    "expected": "No \"Encash leave\" button. The API answers that leave left at exit is paid in the final settlement.",
+    "stories": [
+      "TIM-24"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-LV2-08",
+    "area": "Time - Leave v2",
+    "screen": "HR leave home",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Open Time > Leave.",
+      "On a request waiting more than 2 days, press \"Remind approver\". Press it again on another day."
+    ],
+    "expected": "Pending requests show who they wait for and since when; the reminder shows \"Reminded\" and the approver gets a notice; a second reminder the same day is refused. Away this week and Needs HR (negative balances, certificates, long absences, year-end) show.",
+    "stories": [
+      "TIM-17"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-09",
+    "area": "Time - Leave v2",
+    "screen": "HR leave home - no access",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Open /yx/time/leave-home as an employee."
+    ],
+    "expected": "No access state; the API answers 403.",
+    "stories": [
+      "TIM-17"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-LV2-10",
+    "area": "Time - Leave v2",
+    "screen": "Long absence - extend and early return",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Record a sabbatical for a demo employee (API POST /time/hr/long-absences).",
+      "Leave home > Needs HR > Open status > Extend. Press Extend with no date.",
+      "Pick a later date, write a reason, Extend.",
+      "Record early return on a date after the last day."
+    ],
+    "expected": "No date: \"Choose the date.\" Extend: toast \"Absence extended\", new last day shown. A return date outside the absence is refused.",
+    "stories": [
+      "TIM-25"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-11",
+    "area": "Time - Leave v2",
+    "screen": "Leave reports - balances for everyone",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Open Time > Leave balances.",
+      "Filter by a location, then search a name.",
+      "Press Next at the last page.",
+      "Press \"Open leave card\" on a row.",
+      "Press Export CSV."
+    ],
+    "expected": "Rows for everyone in scope with a column per leave type; negative balances in red. Filters ask the server again. At the last page: \"This is the last page\". The row opens that person's leave card. The CSV has every row.",
+    "stories": [
+      "TIM-30",
+      "TIM-21"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-12",
+    "area": "Time - Leave v2",
+    "screen": "Leave reports - unpaid leave and ledger",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Report: Unpaid leave (LOP) to payroll, pick last month.",
+      "Report: Ledger.",
+      "Report: Negative balances with a filter that matches no one."
+    ],
+    "expected": "LOP shows unpaid leave and absent days per person with totals. Ledger lists each entry. The empty filter shows \"No one matches these filters\" with Clear filters.",
+    "stories": [
+      "TIM-30"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-13",
+    "area": "Time - Leave v2",
+    "screen": "Block-leave planner",
+    "url": "http://localhost:3000/yx/time/block-leave",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Admin sets leave.block_leave.required = yes for the Finance department.",
+      "Open Team > Block leave. Press Plan block leave, then Plan block with no dates.",
+      "Pick 3 working days and Plan block.",
+      "Pick 10 working days and Plan block; then Schedule access pause.",
+      "Nudge to plan another person twice."
+    ],
+    "expected": "No dates: \"Choose the first day.\" 3 days: refused (needs 10 in a row). 10 days: toast \"Block leave planned\", status Planned; pause scheduled. The second nudge on the same day is refused.",
+    "stories": [
+      "TIM-39"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-14",
+    "area": "Time - Leave v2",
+    "screen": "Holiday feeds",
+    "url": "http://localhost:3000/yx/time/setup/holiday-feeds",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Open Time settings > Holiday feeds. Feeds are off: try to add one (API answers 409).",
+      "Switch feeds on. Add feed: Karnataka. Add Karnataka again.",
+      "Check for updates. Press Publish changes before deciding.",
+      "Accept one change, Ignore the rest, Publish."
+    ],
+    "expected": "Off: adding is refused. Duplicate state: \"Choose a state not already subscribed.\" Publish too early: \"Accept or ignore each change\". After publishing: the holiday is on the calendar; anyone with leave that day gets it back and a notice.",
+    "stories": [
+      "TIM-42"
+    ],
+    "note": "POSITIVE and NEGATIVE."
+  },
+  {
+    "id": "MT-LV2-15",
+    "area": "Time - Leave v2",
+    "screen": "Year-end with pending requests",
+    "url": "http://localhost:3000/yx/time/setup/year-end",
+    "account": "hr@demo-org.test (HR Admin)",
+    "steps": [
+      "Leave a leave request from last year pending.",
+      "Open Year-end; go to Review and press Post year-end.",
+      "Back in Scope, tick \"Post anyway\", then post with the typed confirmation."
+    ],
+    "expected": "Scope lists the pending requests. Posting is blocked with \"Decide the 1 pending leave request first, or tick Post anyway\". After ticking, it posts and the requests stay pending.",
+    "stories": [
+      "TIM-29"
+    ],
+    "note": "NEGATIVE then POSITIVE."
+  },
+  {
+    "id": "MT-LV2-16",
+    "area": "Time - Leave v2",
+    "screen": "Optional holidays over the limit",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "panel@demo-org.test (employee with leave, demo seed)",
+    "steps": [
+      "Choose 2 optional holidays. HR lowers the calendar limit to 1.",
+      "Open Optional holidays and tick a third."
+    ],
+    "expected": "A warning \"2 chosen, the limit is now 1\" asks to untick one; a new pick is refused until one is given back.",
+    "stories": [
+      "TIM-23"
+    ],
+    "note": "NEGATIVE test."
   }
 ]
