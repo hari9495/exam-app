@@ -511,21 +511,21 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 )}
               </TabsContent>
               <TabsContent value="pay">
-                {live ? (
-                  <LivePayTab pay={live.pay} name={name} persona={persona} self={self} access={live.payAccess ?? null} onRequestChange={live.onRequestChange} onBankAbroad={self ? live.onBankAbroad : undefined} />
-                ) : payVisible ? (
-                  <div className="yx-ppl__stack">
-                    {payAccess?.state === 'active' && <PayAccessNote latest={payAccess} />}
-                    {/* As live: every viewer, the employee too, asks to see pay each time (R1). */}
-                    {payShown ? <PayTab persona={persona} self={self} international={international} /> : <PayReveal name={name} self={self} onShow={() => setPayShown(true)} />}
-                  </div>
-                ) : (
-                  <div className="yx-ppl__stack">
-                    <NoAccessState what="pay details for Arjun Kulkarni" grantedBy="HR" note="Pay needs a salary grant for your team." />
-                    <PayAccessNote latest={payAccess} onRequest={() => setAsking(true)} />
-                    {asking && <PayAccessDialog person={{ id: 'e-arjun', name: ARJUN.name }} teamSize={6} defaultScope="team" days={30} onSubmit={async () => undefined} onClose={() => setAsking(false)} />}
-                  </div>
-                )}
+                <PayTab
+                  {...(live
+                    ? { pay: live.pay, access: live.payAccess ?? null, onRequestChange: live.onRequestChange, onBankAbroad: self ? live.onBankAbroad : undefined }
+                    : {
+                        pay: !payVisible ? { kind: 'none' as const, grantedBy: 'HR', note: 'Pay needs a salary grant for your team.' } : payShown ? SAMPLE_PAY : { kind: 'ask' as const, onShow: () => setPayShown(true) },
+                        // As live: every viewer, the employee too, asks to see pay each time (R1).
+                        access: payVisible ? (payAccess?.state === 'active' ? { latest: payAccess } : null) : { latest: payAccess, onRequest: () => setAsking(true) },
+                        international,
+                        onRequestChange: self ? () => undefined : undefined,
+                      })}
+                  name={name}
+                  persona={persona}
+                  self={self}
+                />
+                {!live && asking && <PayAccessDialog person={{ id: 'e-arjun', name: ARJUN.name }} teamSize={6} defaultScope="team" days={30} onSubmit={async () => undefined} onClose={() => setAsking(false)} />}
               </TabsContent>
               <TabsContent value="time">{live ? live.time && <TimeTab balances={live.time.balances} unpaid={live.time.unpaid} attendance={live.time.attendance ?? null} /> : <TimeTab />}</TabsContent>
               <TabsContent value="documents">
@@ -710,45 +710,22 @@ function SalaryTable({ lines, money, ctc, outside = [] }: { lines: { label: stri
   );
 }
 
-function PayTab({ persona, self, international }: { persona: Persona; self: boolean; international: boolean }) {
-  const monthly = PAY_LINES.reduce((s, l) => s + l.monthly, 0);
-  return (
-    <div className="yx-ppl__stack">
-      <div className="yx-ppl__grid3">
-        <Card title="Annual CTC">
-          <span className="yx-ppl__num yx-figure" data-size="lg">{formatINR(monthly * 12)}</span>
-          <Text size="sm" tone="secondary" as="p">From 1 Apr 2025 · {formatINR(780000)} from 1 Oct 2026 (scheduled)</Text>
-        </Card>
-        <Card title="Last net pay">
-          <span className="yx-ppl__num yx-figure" data-size="lg">{formatINR(49812)}</span>
-          <Text size="sm" tone="secondary" as="p">August 2026 · paid 31 Aug 2026</Text>
-        </Card>
-        <Card title="Tax regime">
-          <span className="yx-figure" data-size="lg">New</span>
-          <Text size="sm" tone="secondary" as="p">FY 2026–27 · 2 proofs pending</Text>
-        </Card>
-      </div>
-      <SalaryTable lines={PAY_LINES} money={formatINR} />
-      {international ? (
-        <InternationalBankTab persona={persona} splits={SPLITS} net={49812} embedded />
-      ) : (
-        <Card title="Bank accounts" actions={self ? <Button size="sm">Request a change</Button> : undefined}>
-          <dl className="yx-ppl__dl">
-            <div className="yx-ppl__dl-row">
-              <dt>Salary account <ClassBadge cls="Confidential" /></dt>
-              <dd className="yx-mono">Canara Bank · XXXX XXXX 6789 · penny drop verified</dd>
-            </div>
-            <div className="yx-ppl__dl-row">
-              <dt>Reimbursement account <ClassBadge cls="Confidential" /></dt>
-              <dd>Same as salary account</dd>
-            </div>
-          </dl>
-        </Card>
-      )}
-      {persona === 'mgr' && <Text size="sm" tone="secondary" as="p">You see pay because HR gave you a salary grant for your team. Each view is recorded.</Text>}
-    </div>
-  );
-}
+const PAY_MONTHLY = PAY_LINES.reduce((s, l) => s + l.monthly, 0);
+/** Arjun's pay as the API gives it, for the design (PPL-03, PPL-50). */
+export const SAMPLE_PAY: Extract<LiveRecordPay, { kind: 'shown' }> = {
+  kind: 'shown',
+  ctc: PAY_MONTHLY * 12,
+  currency: 'INR',
+  from: new Date(2025, 3, 1),
+  next: `${formatINR(780000)} from 1 Oct 2026 (scheduled)`,
+  lines: PAY_LINES,
+  banks: [
+    { label: 'Salary account', value: 'Canara Bank · XXXX XXXX 6789 · penny drop verified', cls: 'Confidential', mono: true },
+    { label: 'Reimbursement account', value: 'Same as salary account', cls: 'Confidential' },
+  ],
+  lastNet: { amount: 49812, note: 'August 2026 · paid 31 Aug 2026' },
+  taxRegime: { label: 'New', note: 'FY 2026–27 · 2 proofs pending' },
+};
 
 /** Founder rule R1: pay shows only after "Show pay" (each view is recorded). */
 function PayReveal({ name, self, onShow, busy, error }: { name: string; self: boolean; onShow: () => void; busy?: boolean; error?: string | null }) {
@@ -769,8 +746,8 @@ function PayReveal({ name, self, onShow, busy, error }: { name: string; self: bo
   );
 }
 
-/** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
-function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; onRequestChange?: () => void; onBankAbroad?: () => void }) {
+/** Pay tab: the person's current pay, last approved payslip and tax regime (live from the API, the design from SAMPLE_PAY). */
+export function PayTab({ pay, name, persona, self, access, international = false, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; international?: boolean; onRequestChange?: () => void; onBankAbroad?: () => void }) {
   if (pay.kind === 'none')
     return access ? (
       <div className="yx-ppl__stack">
@@ -785,7 +762,7 @@ function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankA
   if (until) return (
     <div className="yx-ppl__stack">
       {until}
-      <LivePayTab pay={pay} name={name} persona={persona} self={self} access={null} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
+      <PayTab pay={pay} name={name} persona={persona} self={self} access={null} international={international} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
     </div>
   );
   if (pay.kind === 'ask') return <PayReveal name={name} self={self} onShow={pay.onShow} busy={pay.busy} error={pay.error} />;
@@ -823,7 +800,9 @@ function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankA
         </Card>
       </div>
       {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} ctc={pay.ctc} outside={pay.outside} />}
-      {pay.banks.length > 0 && (
+      {international ? (
+        <InternationalBankTab persona={persona} splits={SPLITS} net={pay.lastNet?.amount ?? 0} embedded />
+      ) : pay.banks.length > 0 && (
         <Card
           title="Bank accounts"
           actions={

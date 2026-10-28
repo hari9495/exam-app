@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { PersonWorkspace } from './record';
+import { PayTab, PersonWorkspace, SAMPLE_PAY } from './record';
 import { ARJUN, ARJUN_CUSTOM_VALUES, EMPLOYEE_FIELDS, d, TODAY } from './people-data';
 import { CustomFieldsDrawer, EmployeeFieldsScreen } from './custom-fields';
 import { ContactsDrawer, FamilyDrawer } from './family';
@@ -15,6 +15,10 @@ export const Job: S = { name: 'Job tab', render: () => <PersonWorkspace persona=
 export const PayHr: S = { name: 'Pay tab · HR', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="pay" /> };
 export const PayGated: S = { name: 'Pay tab · manager without salary grant', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="pay" /> };
 export const PayGrant: S = { name: 'Pay tab · manager with salary grant', render: () => <PersonWorkspace persona="mgr" relation="team" payGrant today={TODAY} defaultTab="pay" /> };
+export const PayShown: S = { name: 'Pay tab · HR after Show pay', render: () => <PayTab pay={SAMPLE_PAY} name={ARJUN.name} persona="hr" self={false} access={null} /> };
+export const PaySelf: S = { name: 'Pay tab · employee own pay (request a bank change)', render: () => <PayTab pay={SAMPLE_PAY} name={ARJUN.name} persona="emp" self access={null} onRequestChange={() => undefined} onBankAbroad={() => undefined} /> };
+export const PayNewJoiner: S = { name: 'Pay tab · new joiner (no payslip, no tax regime yet)', render: () => <PayTab pay={{ ...SAMPLE_PAY, next: undefined, lastNet: null, taxRegime: null }} name={ARJUN.name} persona="hr" self={false} access={null} /> };
+export const PayShowError: S = { name: 'Pay tab · Show pay failed', render: () => <PayTab pay={{ kind: 'ask', onShow: () => undefined, error: 'Pay could not be shown. Try again.' }} name={ARJUN.name} persona="hr" self={false} access={null} /> };
 export const Time: S = { name: 'Time tab', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="time" /> };
 export const Documents: S = { name: 'Documents tab · HR verify', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="documents" /> };
 export const DocumentsManager: S = { name: 'Documents tab · manager (restricted classes hidden)', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="documents" /> };

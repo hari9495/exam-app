@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { PayAccessDialog, PayAccessNote, PayAccessRequests } from './pay-access';
 import { PAY_ACCESS_ROWS, TODAY } from './people-data';
-import { PersonWorkspace } from './record';
+import { PayTab, PersonWorkspace, SAMPLE_PAY } from './record';
 
 // PPL-50 Team pay access: the manager's request, HR's two approvals (length and scope), and the manager's states.
 const wrap = (ui: ReactNode) => render(<ToastProvider>{ui}</ToastProvider>);
@@ -86,6 +86,25 @@ describe('PayAccessNote (manager, Pay tab)', () => {
     own.unmount();
     wrap(<PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="pay" />);
     expect(screen.getByText('Pay needs a salary grant for your team. Ask HR to give you access.')).toBeInTheDocument();
+  });
+  it('design, manager without a grant: Request access opens the ask dialog (the one PayTab, live and design)', async () => {
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="pay" />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+  it('PayTab: no payslip or tax regime yet reads as such; a failed Show pay explains; ended access offers Ask again', async () => {
+    const { unmount } = render(<PayTab pay={{ ...SAMPLE_PAY, lastNet: null, taxRegime: null }} name="Arjun Kulkarni" persona="hr" self={false} access={null} />);
+    expect(screen.getByText('No payslip yet.')).toBeInTheDocument();
+    expect(screen.getByText('Not chosen for this tax year yet.')).toBeInTheDocument();
+    unmount();
+    const err = render(<PayTab pay={{ kind: 'ask', onShow: vi.fn(), error: 'Pay could not be shown.' }} name="Arjun Kulkarni" persona="hr" self={false} access={null} />);
+    expect(screen.getByText('Pay could not be shown.')).toBeInTheDocument();
+    err.unmount();
+    const onRequest = vi.fn();
+    render(<PayTab pay={{ kind: 'none', grantedBy: 'HR' }} name="Arjun Kulkarni" persona="mgr" self={false} access={{ latest: ended, onRequest }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    expect(onRequest).toHaveBeenCalledOnce();
   });
   it('nothing asked yet: Request access', () => {
     render(<PayAccessNote latest={null} onRequest={vi.fn()} />);

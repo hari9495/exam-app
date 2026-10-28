@@ -163,9 +163,7 @@ describe('design guard', () => {
   });
 
   // Live twins that are not reached through their designed export, kept on purpose (one line each).
-  const LIVE_ALLOWED: Record<string, string> = {
-    LivePayTab: "PersonWorkspace's own live path picks PayTab (sample) or LivePayTab (the API's pay); merge them when PPL-03 is next touched",
-  };
+  const LIVE_ALLOWED: Record<string, string> = {};
 
   it('(b) a "LiveX" component is only the designed X\'s own live path, never a second copy of X', () => {
     const found: string[] = [];
