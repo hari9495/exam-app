@@ -54,17 +54,13 @@ for (const todo = [...IN_STORIES]; todo.length; )
 // design story (or the designed screen instead); remove the line when it has one. A stale line fails the test too.
 const KNOWN_UNDESIGNED: Record<string, string[]> = {
   'Me: live screens with no design yet': [
-    'MyAssetsScreen @ (app)/me/assets/page.tsx',
-    'FirstThirtyDaysScreen @ (app)/me/first-30-days/page.tsx',
     'MyPayDocumentsScreen @ (app)/me/pay-documents/page.tsx',
   ],
   'Other live screens with no design yet (approvals, performance, settings, portals)': [
     'ApprovalsScreen @ (app)/approvals/page.tsx',
     'ChannelLinksCard @ (app)/approvals/page.tsx',
     'CalibrationListScreen @ (app)/performance/calibrations/page.tsx',
-    'JourneyTemplatesScreen @ (app)/settings/checklists/page.tsx',
     'IdentityProvidersScreen @ (app)/settings/identity-providers/page.tsx',
-    'SignatoriesDrawer @ (app)/settings/letters/page.tsx',
     'ActionLinkScreen @ act/[token]/page.tsx',
     'PayPortalSignIn @ consultant/[org]/page.tsx',
     'PayPortalSignIn @ pay-portal/[org]/page.tsx',
