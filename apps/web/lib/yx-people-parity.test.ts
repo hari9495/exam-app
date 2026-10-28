@@ -3,7 +3,8 @@ import type { AsOfView, ChangeRecord, HistoryView } from '@yukthix/ui/history';
 import type { Muster } from '@yukthix/ui/time';
 import { exitRows, exitStage } from './yx-exits';
 import { changeWords, scheduledRows } from './yx-changes';
-import { boardColumns } from './yx-onboarding';
+import { batchRows, boardColumns } from './yx-onboarding';
+import type { Batch } from '@yukthix/ui/lifecycle';
 import { minutesText, todayText } from './yx-team';
 import { attendanceCard, bankRows, historyRows, clock, docRows, familyData, identityRows, jobRows, leaveOrder, payShown, scheduledBody, upcoming } from './yx-record';
 import type { ProfileView } from '@yukthix/ui/access';
@@ -59,6 +60,19 @@ describe('onboarding board (PPL-11)', () => {
       ['done', 1],
     ]);
     expect(boardColumns([], null, '2026-10-20').map((c) => c.id)).toEqual(['pre', 'day1', 'first30', 'done']);
+  });
+});
+
+describe('pre-boarding batches (PPL-14)', () => {
+  const b = as<Batch>({ id: 'b', name: 'Campus 2027', legalEntityId: 'le', joiningOn: '2027-07-01', touchpoints: [], status: 'open', version: 1, members: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }], offersIssued: 1, lettersOfIntent: 2, openTasks: 24 });
+  it('the legal entity under the name, offers of members, still on letter of intent, open tasks', () => {
+    const [r] = batchRows([b], [], [{ value: 'le', label: 'Kaveri Foods Pvt Ltd' }]);
+    expect(r).toMatchObject({ entity: 'Kaveri Foods Pvt Ltd', members: 3, offers: 1, loi: 2, openTasks: 24 });
+    expect(r).not.toHaveProperty('location');
+  });
+  it('an older API without the counts reads as none', () => {
+    const [r] = batchRows([{ ...b, offersIssued: undefined, lettersOfIntent: undefined, openTasks: undefined }], [], []);
+    expect(r).toMatchObject({ entity: '', offers: 0, loi: 0, openTasks: 0 });
   });
 });
 

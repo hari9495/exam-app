@@ -281,22 +281,52 @@ describe('journey record', () => {
 });
 
 describe('pre-boarding batches', () => {
-  it('lists soonest batch first and counts offers still on letter of intent', () => {
+  it('lists soonest batch first with the legal entity and offers issued; no line when nobody is on a letter of intent', () => {
     render(<PreboardingBatches rows={BATCHES} />);
     const rows = screen.getAllByRole('row');
     expect(within(rows[1]).getByText('Campus 2026 · Sales trainees')).toBeTruthy();
+    expect(within(rows[1]).getByText('Kaveri Foods Pvt Ltd')).toBeTruthy();
+    expect(within(rows[1]).getByText('12 of 12')).toBeTruthy();
+    expect(within(rows[1]).queryByText(/still on letter of intent/)).toBeNull();
+    expect(screen.getByText('12 of 18')).toBeTruthy();
     expect(screen.getByText('6 still on letter of intent')).toBeTruthy();
   });
-  it('opens the date change on the current date and says which way tasks move', async () => {
+  it('the empty list keeps the designed columns', () => {
+    render(<PreboardingBatches rows={[]} />);
+    expect(screen.getByRole('columnheader', { name: /Offers issued/ })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /^Members/ })).toBeNull();
+  });
+  it('Move on the same day stays enabled and asks for another day', async () => {
     const u = userEvent.setup();
     render(<PreboardingBatches rows={BATCHES} />);
     await u.click(screen.getAllByRole('button', { name: 'Change date' })[0]);
-    expect(screen.getByRole('button', { name: 'Move 12 members' })).toBeDisabled();
+    const move = screen.getByRole('button', { name: 'Move 12 members' });
+    expect(move).toBeEnabled();
+    await u.click(move);
+    expect(screen.getByText('Choose a day other than the current joining date.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
-  it('re-anchors forward with a notify option', () => {
+  it('re-anchors forward: open tasks, the email option, and a reason before it moves', async () => {
+    const u = userEvent.setup();
     render(<PreboardingBatches rows={BATCHES} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} />);
-    expect(screen.getByText(/per member move 14 days later/)).toBeTruthy();
+    expect(screen.getByText('96 open tasks move 14 days later')).toBeTruthy();
+    expect(screen.queryByText(/compensation|probation/)).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Email the 12 members their new date' })).toBeChecked();
+    await u.click(screen.getByRole('button', { name: 'Move 12 members' }));
+    expect(screen.getByText('Say why the batch joining day moves.')).toBeTruthy();
+    await u.type(screen.getByRole('textbox', { name: /^Why the day moves/ }), 'Exams postponed');
+    await u.click(screen.getByRole('button', { name: 'Move 12 members' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('live: sends the reason and the email choice, and moves only members waiting to join', async () => {
+    const u = userEvent.setup();
+    const calls: unknown[][] = [];
+    const members = { b3: [{ id: 'm1', name: 'Asha', status: 'invited', joiningOn: d(2026, 10, 19) }, { id: 'm2', name: 'Bhanu', status: 'joined', joiningOn: d(2026, 10, 19) }] };
+    render(<PreboardingBatches rows={[BATCHES[2]]} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} live={{ state: 'ready', onRetry: () => undefined, today: d(2026, 9, 28), members, onChangeDate: async (...a) => void calls.push(a) }} />);
+    await u.click(screen.getByRole('checkbox', { name: 'Email the 1 member their new date' }));
+    await u.type(screen.getByRole('textbox', { name: /^Why the day moves/ }), 'Exams postponed');
+    await u.click(screen.getByRole('button', { name: 'Move 1 member' }));
+    expect(calls).toEqual([['b3', new Date(2026, 10, 2), 'Exams postponed', false]]);
   });
 });
 

@@ -332,6 +332,11 @@ export class BatchDto {
   @MaxLength(300)
   reason?: string;
 
+  /** PPL-14: email each member waiting to join their new day (when the day moves). */
+  @IsOptional()
+  @IsBoolean()
+  notify?: boolean;
+
   @IsOptional()
   @IsInt()
   version?: number;

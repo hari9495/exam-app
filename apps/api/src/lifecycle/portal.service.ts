@@ -7,6 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { assertHuman } from '../auth/bot-challenge';
 import { OtpService } from '../auth/otp.service';
 import { EmailService } from '../email/email.service';
+import { showDate } from '../people/employee-import';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DocumentsService } from '../documents/documents.service';
 import { LettersService } from '../documents/letters/letters.service';
@@ -313,6 +314,22 @@ export class PreboardingPortalService {
     const link = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}/yx/join/${encodeURIComponent(x.slug)}`;
     const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
     await this.email.send({ to: x.to, organizationId: org, subject: `Welcome to ${x.company}: your joining forms`, html: `<p>Dear ${esc(x.first)},</p><p>Welcome to ${esc(x.company)}. Please fill in your joining forms before your first day: <a href="${esc(link)}">${esc(link)}</a></p><p>Sign in with this email address; we send you a one-time code.</p>` });
+    return true;
+  }
+
+  /** PPL-14: a batch's new joining day, to a joiner with a personal email (when HR ticks "Email the members"). */
+  async dateMoved(org: string, preboardingId: string, joiningOn: string) {
+    const x = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const pb = await tx.preboarding.findFirst({ where: { organizationId: org, id: preboardingId, status: 'invited' } });
+      if (!pb) return null;
+      const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: pb.personId } });
+      const o = await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true } });
+      return p.primaryEmail ? { to: p.primaryEmail, first: p.preferredName || p.givenName, company: o.name } : null;
+    });
+    if (!x) return false;
+    const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+    const day = showDate(joiningOn).replace(/^0/, ''); // "3 Nov 2026"
+    await this.email.send({ to: x.to, organizationId: org, subject: `${x.company}: your joining day is now ${day}`, html: `<p>Dear ${esc(x.first)},</p><p>Your joining day at ${esc(x.company)} has moved to ${day}. Your joining forms and everything else stay as they were.</p>` });
     return true;
   }
 

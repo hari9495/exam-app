@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useToast } from '@yukthix/ui';
+import { formatDate, useToast } from '@yukthix/ui';
 import { PreboardingBatches } from '@yukthix/ui/frame';
 import { AddMembersDialog, BatchDialog, type Batch, type JoinerBoard } from '@yukthix/ui/lifecycle';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
@@ -11,6 +11,7 @@ import { batchRows } from '../../../../../lib/yx-onboarding';
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso}T00:00:00`);
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const plus = (key: string, days: number) => iso(new Date(day(key).getTime() + days * 86_400_000));
 
 // People › Pre-boarding batches (PPL-14, design audit step 3; LIFE-5.02): joiners who start together; a new batch day
 // moves everyone and their checklists. The API checks every call.
@@ -48,10 +49,12 @@ export default function YxBatchesPage() {
                 const r = await write<{ issued: number; failed: { message: string }[] }>('POST', `/lifecycle/batches/${id(b.id)}/loi`);
                 toast({ tone: r.failed.length ? 'error' : 'success', title: `${r.issued} letter${r.issued === 1 ? '' : 's'} of intent sent for ${b.name}`, ...(r.failed.length ? { description: `${r.failed.length} not sent: ${r.failed[0].message}` } : {}) });
               },
-              onChangeDate: async (batchId: string, date: Date, reason: string) => {
+              onChangeDate: async (batchId: string, date: Date, reason: string, notify: boolean) => {
                 const b = find(batchId);
-                await save(b.id, { name: b.name, legalEntityId: b.legalEntityId, joiningOn: iso(date), touchpoints: b.touchpoints, reason, version: b.version });
-                toast({ tone: 'success', title: `${b.name} now joins on ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` });
+                // The touchpoints move by the same days as the batch (PPL-14 Change date).
+                const shift = Math.round((date.getTime() - day(b.joiningOn).getTime()) / 86_400_000);
+                const r = await save(b.id, { name: b.name, legalEntityId: b.legalEntityId, joiningOn: iso(date), touchpoints: b.touchpoints.map((t) => ({ ...t, on: plus(t.on, shift) })), reason, notify, version: b.version }) as { moved: number; emailed: number };
+                toast({ tone: 'success', title: `${b.name} now joins on ${formatDate(date)}`, ...(notify ? { description: `${r.emailed} of ${r.moved} members emailed their new date${r.emailed < r.moved ? ' (the others have no personal email)' : ''}.` } : {}) });
               },
             }
           : {}),
@@ -72,7 +75,7 @@ export default function YxBatchesPage() {
             {adding && (
               <AddMembersDialog
                 batch={adding}
-                joiners={waiting.filter((j) => j.legalEntityId === adding.legalEntityId).map((j) => ({ value: j.id, label: `${j.name} (joins ${j.joiningOn})` }))}
+                joiners={waiting.filter((j) => j.legalEntityId === adding.legalEntityId).map((j) => ({ value: j.id, label: `${j.name}, joins ${formatDate(day(j.joiningOn))}` }))}
                 onClose={() => setAdding(null)}
                 onAdd={async (b, ids) => {
                   await write('POST', `/lifecycle/batches/${id(b.id)}/members`, { preboardingIds: ids });

@@ -555,9 +555,11 @@ export interface Batch {
   status: 'open' | 'closed';
   version: number;
   members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
-  /** Members with an issued appointment letter; members still on a letter of intent only. */
+  /** Members from an accepted offer or with an issued appointment letter; members still on a letter of intent only. */
   offersIssued?: number;
   lettersOfIntent?: number;
+  /** Open checklist tasks of the members waiting to join (a new batch day moves them). */
+  openTasks?: number;
 }
 export interface Payee {
   id?: string;

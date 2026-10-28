@@ -188,7 +188,9 @@ describe('Lifecycle batch 6e', () => {
     expect(list.members.map((m: { joiningOn: string }) => m.joiningOn)).toEqual([addDays(today, 30), addDays(today, 30)]);
     await api('hr', 'put', `/lifecycle/batches/${batch.id}`).send({ name: `Campus ${run}`, legalEntityId: ids.entity, joiningOn: addDays(today, 45), version: list.version }).expect(400);
     const moved = (await api('hr', 'put', `/lifecycle/batches/${batch.id}`).send({ name: `Campus ${run}`, legalEntityId: ids.entity, joiningOn: addDays(today, 45), reason: 'Exams postponed', version: list.version }).expect(200)).body;
-    expect(moved.moved).toBe(2);
+    expect(moved).toMatchObject({ moved: 2, emailed: 0 });
+    const dateMail = () => email.send.mock.calls.filter(([m]) => /your joining day is now/.test(m.subject) && m.to.endsWith(`-${run}@mail.test`));
+    expect(dateMail()).toHaveLength(0);
     for (const x of [a, b]) {
       expect((await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: x.id } }))).joiningOn.toISOString().slice(0, 10)).toBe(addDays(today, 45));
       expect((await inA((tx) => tx.journey.findFirstOrThrow({ where: { id: x.journeyId } }))).anchorOn.toISOString().slice(0, 10)).toBe(addDays(today, 45));
@@ -199,12 +201,26 @@ describe('Lifecycle batch 6e', () => {
     const after = (await api('hr', 'get', '/lifecycle/batches').expect(200)).body.rows.find((x: { id: string }) => x.id === batch.id);
     const intents = await inA((tx) => tx.letterIssue.count({ where: { personId: { in: after.members.map((m: { personId: string }) => m.personId) }, letterType: 'letter_of_intent', status: 'issued' } }));
     expect(after).toMatchObject({ offersIssued: 0, lettersOfIntent: intents });
+    // Change date (PPL-14): the open checklist tasks a new day moves, counted per batch.
+    const open = await inA((tx) => tx.journeyTask.count({ where: { journeyId: { in: [a.journeyId, b.journeyId] }, status: { in: ['waiting', 'open'] } } }));
+    expect(open).toBeGreaterThan(0);
+    expect(after.openTasks).toBe(open);
+    // A member who came from an accepted offer in Hiring counts as offered, not as "still on letter of intent".
+    await inA((tx) => tx.preboarding.update({ where: { id: a.id }, data: { offerId: randomUUID() } }));
+    const offered = (await api('hr', 'get', '/lifecycle/batches').expect(200)).body.rows.find((x: { id: string }) => x.id === batch.id);
+    expect(offered).toMatchObject({ offersIssued: 1, lettersOfIntent: 1 });
+    // "Email the members their new date" ticked: each waiting member with a personal email hears the new day.
+    const mail = (await api('hr', 'put', `/lifecycle/batches/${batch.id}`).send({ name: `Campus ${run}`, legalEntityId: ids.entity, joiningOn: addDays(today, 50), reason: 'Hostel not ready', notify: true, version: offered.version }).expect(200)).body;
+    expect(mail).toMatchObject({ moved: 2, emailed: 2 });
+    expect(dateMail().map(([m]) => m.to).sort()).toEqual([`asha-${run}@mail.test`, `bhanu-${run}@mail.test`]);
+    expect(dateMail()[0][0].subject).toMatch(/your joining day is now \d{1,2} [A-Z][a-z]{2} \d{4}$/);
+    await api('hr', 'put', `/lifecycle/batches/${batch.id}`).send({ name: `Campus ${run}`, legalEntityId: ids.entity, joiningOn: addDays(today, 50), notify: 'yes', version: offered.version + 1 }).expect(400);
     // The buddy: not the manager; the day-30 check-in then goes to the buddy.
     const pa = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: a.id } }));
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.mgr, version: pa.version }).expect(400);
     await api('hr', 'put', `/lifecycle/joiners/${a.id}/buddy`).send({ employeeId: emp.buddy, version: pa.version }).expect(200);
     const checkin = await inA((tx) => tx.journeyTask.findFirstOrThrow({ where: { journeyId: a.journeyId, key: 'buddy_checkin' } }));
-    expect(checkin).toMatchObject({ assigneeUserId: users.buddy, dueOn: new Date(`${addDays(today, 75)}T00:00:00Z`) });
+    expect(checkin).toMatchObject({ assigneeUserId: users.buddy, dueOn: new Date(`${addDays(today, 80)}T00:00:00Z`) }); // day 30 after the batch day (moved to today + 50)
     const mine = (await api('buddy', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { id: string }) => t.id === checkin.id);
     // PPL-47: each task names whose checklist it is, so HR can upload or issue the letter from My checklist tasks.
     expect(mine).toMatchObject({ personId: expect.any(String), subject: { type: expect.any(String), id: expect.any(String) } });

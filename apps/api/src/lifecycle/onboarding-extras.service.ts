@@ -10,6 +10,7 @@ import { displayName } from '../employee-history/employee-history.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { joinerInScope } from '../documents/person-access';
 import { JoinersService } from './joiners.service';
+import { PreboardingPortalService } from './portal.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { lookedAfter } from './people-registers.service';
 
@@ -68,6 +69,7 @@ export class OnboardingExtrasService {
     private readonly journeys: LifecycleJourneysService,
     private readonly joiners: JoinersService,
     private readonly letters: LettersService,
+    private readonly portal: PreboardingPortalService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -191,17 +193,23 @@ export class OnboardingExtrasService {
       const out = [];
       for (const b of rows) {
         const members = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, batchId: b.id, status: { not: 'cancelled' } } });
-        const visible = [];
+        const visible: typeof members = [];
         for (const m of members) {
           const sees = (await joinerInScope(tx, c, v, 'lifecycle.onboarding.view', m)) || (await joinerInScope(tx, c, v, 'lifecycle.onboarding.manage', m));
           if (sees) visible.push(m);
         }
         const people = await tx.person.findMany({ where: { organizationId: c.organizationId, id: { in: visible.map((m) => m.personId) } } });
-        // PPL-14 "Offers issued": members with an issued appointment letter, and those with a letter of intent so far.
+        // PPL-14 "Offers issued": members who came from an accepted offer in Hiring or hold an issued appointment
+        // letter; the rest with an issued letter of intent are "still on letter of intent".
         const letters = await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, personId: { in: visible.map((m) => m.personId) }, letterType: { in: ['appointment', 'letter_of_intent'] }, status: 'issued' }, select: { personId: true, letterType: true } });
         const holding = (t: string) => new Set(letters.filter((l) => l.letterType === t).map((l) => l.personId));
-        const offered = holding('appointment');
+        const appointed = holding('appointment');
+        const offered = (m: (typeof visible)[number]) => Boolean(m.offerId) || appointed.has(m.personId);
         const intent = holding('letter_of_intent');
+        // Change date: the open checklist tasks of the members waiting to join (the ones a new day moves).
+        const waiting = visible.filter((m) => m.status === 'invited').map((m) => m.id);
+        const journeys = waiting.length ? await tx.journey.findMany({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: { in: waiting }, kind: 'onboarding' }, select: { id: true } }) : [];
+        const openTasks = journeys.length ? await tx.journeyTask.count({ where: { organizationId: c.organizationId, journeyId: { in: journeys.map((j) => j.id) }, status: { in: ['waiting', 'open'] } } }) : 0;
         out.push({
           id: b.id,
           name: b.name,
@@ -211,17 +219,26 @@ export class OnboardingExtrasService {
           status: b.status,
           version: b.version,
           members: visible.map((m) => ({ id: m.id, personId: m.personId, name: displayName(people.find((p) => p.id === m.personId)!), status: m.status, joiningOn: iso(m.joiningOn) })),
-          offersIssued: visible.filter((m) => offered.has(m.personId)).length,
-          lettersOfIntent: visible.filter((m) => intent.has(m.personId) && !offered.has(m.personId)).length,
+          offersIssued: visible.filter(offered).length,
+          lettersOfIntent: visible.filter((m) => intent.has(m.personId) && !offered(m)).length,
+          openTasks,
         });
       }
       return { today: todayIst(), rows: out };
     });
   }
 
-  async saveBatch(ctx: TenantContext, user: ScopeUser, id: string | null, dto: BatchInput & { reason?: string; version?: number }) {
+  async saveBatch(ctx: TenantContext, user: ScopeUser, id: string | null, dto: BatchInput & { reason?: string; notify?: boolean; version?: number }) {
     const v = await this.viewer(user);
     await this.mayManageEntity(v, dto.legalEntityId);
+    const r = await this.saveBatchIn(ctx, id, dto);
+    // PPL-14: after the commit, each moved member with a personal email hears their new day (when HR ticked it).
+    let emailed = 0;
+    if (dto.notify) for (const m of r.movedIds) if (await this.portal.dateMoved(ctx.organizationId!, m, dto.joiningOn).catch(() => false)) emailed++;
+    return { id: r.id, moved: r.movedIds.length, emailed };
+  }
+
+  private saveBatchIn(ctx: TenantContext, id: string | null, dto: BatchInput & { reason?: string; version?: number }): Promise<{ id: string; movedIds: string[] }> {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       if (dto.joiningOn < todayIst()) throw new BadRequestException('The batch joins today or later.');
@@ -230,23 +247,23 @@ export class OnboardingExtrasService {
       if (!id) {
         const b = await tx.joinerBatch.create({ data: { organizationId: org, name: dto.name.trim(), legalEntityId: dto.legalEntityId, joiningOn: new Date(`${dto.joiningOn}T00:00:00Z`), touchpoints: (dto.touchpoints ?? []) as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
         await audit(tx, c, 'batch.created', 'joiner_batch', b.id, { joiningOn: dto.joiningOn });
-        return { id: b.id, moved: 0 };
+        return { id: b.id, movedIds: [] };
       }
       const b = await tx.joinerBatch.findFirst({ where: { organizationId: org, id } });
       if (!b) throw new NotFoundException('No such batch.');
       if (b.version !== dto.version) throw new ConflictException('Someone else changed this batch. Reload it.');
       await tx.joinerBatch.update({ where: { id }, data: { name: dto.name.trim(), joiningOn: new Date(`${dto.joiningOn}T00:00:00Z`), touchpoints: (dto.touchpoints ?? []) as Prisma.InputJsonValue, version: { increment: 1 } } });
       // A new batch day moves every member waiting to join, and their checklists (YX-LC-13).
-      let moved = 0;
+      const movedIds: string[] = [];
       if (iso(b.joiningOn) !== dto.joiningOn) {
         if (!dto.reason || dto.reason.trim().length < 3) throw new BadRequestException('Say why the batch joining day moves.');
         for (const m of await tx.preboarding.findMany({ where: { organizationId: org, batchId: id, status: 'invited' } })) {
           await this.joiners.moveIn(tx, c, m, dto.joiningOn, `Batch day moved: ${dto.reason}`);
-          moved++;
+          movedIds.push(m.id);
         }
       }
-      await audit(tx, c, 'batch.updated', 'joiner_batch', id, { joiningOn: dto.joiningOn, moved });
-      return { id, moved };
+      await audit(tx, c, 'batch.updated', 'joiner_batch', id, { joiningOn: dto.joiningOn, moved: movedIds.length });
+      return { id, movedIds };
     });
   }
 

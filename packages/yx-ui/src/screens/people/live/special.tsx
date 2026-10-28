@@ -21,6 +21,11 @@ import type { Batch, Choice, IrOverview, IrPermission, LoadState, MyVrsScheme, P
 // bulk letter wizard (PPL-28). Single choices are Segments; a form explains what is missing when saved.
 
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
+/** A click with something missing keeps the dialog open and puts the cursor in the first field with an error. */
+const focusFirstError = () => {
+  requestAnimationFrame(() => document.querySelector<HTMLElement>('[role="dialog"] .yx-field[data-invalid] :is(input, textarea, button)')?.focus());
+  return false as const;
+};
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 const choiceLabel = (c: string) => c.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase()).replace(' lt 6m', ' if the break was under 6 months');
 
@@ -142,7 +147,7 @@ export interface BatchesScreenProps {
   /** Joiners waiting to join who are not in a batch yet. */
   joiners: (Choice & { entityId: string })[];
   canManage: boolean;
-  onSave: (id: string | null, input: { name: string; legalEntityId: string; joiningOn: string; touchpoints: { title: string; on: string }[]; reason?: string; version?: number }) => Promise<unknown>;
+  onSave: (id: string | null, input: { name: string; legalEntityId: string; joiningOn: string; touchpoints: { title: string; on: string }[]; reason?: string; notify?: boolean; version?: number }) => Promise<unknown>;
   onAdd: (b: Batch, preboardingIds: string[]) => Promise<unknown>;
   onLoi: (b: Batch) => Promise<{ issued: number; failed: { message: string }[] }>;
 }
@@ -151,15 +156,14 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
   const [name, setName] = useState(batch?.name ?? '');
   const [entity, setEntity] = useState<string | null>(batch?.legalEntityId ?? (entities.length === 1 ? entities[0].value : null));
   const [on, setOn] = useState<Date | null>(batch ? fromKey(batch.joiningOn) : null);
-  const [touch, setTouch] = useState(batch?.touchpoints.map((t) => `${t.on} ${t.title}`).join('\n') ?? '');
+  // Touchpoints as rows: a day and what happens (never a typed yyyy-mm-dd).
+  const [touch, setTouch] = useState<{ on: Date | null; title: string }[]>(batch?.touchpoints.map((t) => ({ on: fromKey(t.on), title: t.title })) ?? []);
+  const setRow = (i: number, patch: Partial<{ on: Date | null; title: string }>) => setTouch(touch.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const [reason, setReason] = useState('');
   const moved = Boolean(batch && on && dayKey(on) !== batch.joiningOn);
-  const touchpoints = touch
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => ({ on: l.slice(0, 10), title: l.slice(11).trim() }));
-  const touchOk = touchpoints.every((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.on) && t.title.length >= 2);
+  const dayError = (t: { on: Date | null }) => (!t.on ? 'Choose the day.' : on && dayKey(t.on) > dayKey(on) ? 'Choose a day on or before the joining day.' : null);
+  const touchOk = touch.every((t) => !dayError(t) && t.title.trim().length >= 2);
+  const touchpoints = touch.map((t) => ({ on: t.on ? dayKey(t.on) : '', title: t.title.trim() }));
   const ready = name.trim().length >= 2 && Boolean(entity && on) && touchOk && (!moved || reason.trim().length >= 3);
   const [tried, setTried] = useState(false);
   return (
@@ -172,7 +176,7 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
       confirmLabel="Save batch"
       onConfirm={async () => {
         setTried(true);
-        if (!ready) return false;
+        if (!ready) return focusFirstError();
         await onSave(batch?.id ?? null, { name: name.trim(), legalEntityId: entity!, joiningOn: dayKey(on!), touchpoints, ...(moved ? { reason: reason.trim() } : {}), ...(batch ? { version: batch.version } : {}) });
         onClose();
       }}
@@ -186,9 +190,24 @@ export function BatchDialog({ batch, entities, today, onClose, onSave }: { batch
       <FormField id="bt-on" label="Joining day" required error={tried && !on ? 'Choose the joining day.' : null}>
         <DatePicker value={on} onChange={setOn} min={fromKey(today)} aria-label="Joining day" />
       </FormField>
-      <FormField id="bt-touch" label="Touchpoints" optional rule="One per line: yyyy-mm-dd and what happens, for example 2026-11-02 Welcome call." error={tried && !touchOk ? 'Write each line as yyyy-mm-dd and what happens.' : null}>
-        <TextArea value={touch} onChange={setTouch} rows={3} maxLength={2000} />
-      </FormField>
+      {touch.map((t, i) => (
+        <div key={i} className="yx-lif-grid">
+          <FormField id={`bt-tp-on-${i}`} label={`Touchpoint ${i + 1} day`} required error={tried ? dayError(t) : null}>
+            <DatePicker value={t.on} onChange={(v) => setRow(i, { on: v })} max={on ?? undefined} aria-label={`Touchpoint ${i + 1} day`} />
+          </FormField>
+          <FormField id={`bt-tp-what-${i}`} label={`Touchpoint ${i + 1}`} required error={tried && t.title.trim().length < 2 ? 'Say what happens, for example Welcome call.' : null}>
+            <TextField value={t.title} onChange={(v) => setRow(i, { title: v })} maxLength={120} />
+          </FormField>
+          <Button size="sm" onClick={() => setTouch(touch.filter((_, j) => j !== i))}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      {touch.length < 20 && (
+        <Button size="sm" onClick={() => setTouch([...touch, { on: null, title: '' }])}>
+          Add a touchpoint
+        </Button>
+      )}
       {moved && (
         <FormField id="bt-why" label="Why the day moves" required error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
           <TextField value={reason} onChange={setReason} maxLength={300} />
@@ -202,7 +221,7 @@ export function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Ba
   const [picked, setPicked] = useState<string[]>([]);
   const [tried, setTried] = useState(false);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" onConfirm={async () => { setTried(true); if (!picked.length) return false; await onAdd(batch, picked); onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" onConfirm={async () => { setTried(true); if (!picked.length) return focusFirstError(); await onAdd(batch, picked); onClose(); }}>
       {joiners.length ? (
         <FormField id="am-joiners" label="Joiners" required error={tried && !picked.length ? 'Choose at least one joiner.' : null}>
           {joiners.map((j) => <Checkbox key={j.value} checked={picked.includes(j.value)} onChange={(c) => setPicked(c ? [...picked, j.value] : picked.filter((x) => x !== j.value))} label={j.label} />)}

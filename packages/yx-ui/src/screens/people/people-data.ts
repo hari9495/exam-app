@@ -406,9 +406,10 @@ export const READY_TO_ONBOARD = [
 ];
 
 export const BATCHES = [
-  { id: 'b1', name: 'Campus 2027 · Food technology', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', location: 'Hosur plant', joining: d(2027, 7, 1), members: 18, completion: 34, loi: 18, offers: 12 },
-  { id: 'b2', name: 'Campus 2027 · Mechanical', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', location: 'Hosur plant', joining: d(2027, 7, 1), members: 9, completion: 21, loi: 9, offers: 4 },
-  { id: 'b3', name: 'Campus 2026 · Sales trainees', entity: 'Kaveri Foods Pvt Ltd', location: 'Bengaluru head office', joining: d(2026, 10, 19), members: 12, completion: 88, loi: 12, offers: 12 },
+  // loi: members still only on a letter of intent; openTasks: the waiting members' open checklist tasks (all of them).
+  { id: 'b1', name: 'Campus 2027 · Food technology', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', joining: d(2027, 7, 1), members: 18, completion: 34, loi: 6, offers: 12, openTasks: 198 },
+  { id: 'b2', name: 'Campus 2027 · Mechanical', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', joining: d(2027, 7, 1), members: 9, completion: 21, loi: 5, offers: 4, openTasks: 108 },
+  { id: 'b3', name: 'Campus 2026 · Sales trainees', entity: 'Kaveri Foods Pvt Ltd', joining: d(2026, 10, 19), members: 12, completion: 88, loi: 0, offers: 12, openTasks: 96 },
 ];
 
 export const PROBATIONS = [

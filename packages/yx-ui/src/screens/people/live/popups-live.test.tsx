@@ -6,7 +6,7 @@ import { CHANGES, IMPACT } from '../../history/data';
 import { ENTITY_CHOICES, IMPORT_PREVIEW, JOINER_PLACES, LIVE_BATCH, WAITING_JOINERS } from '../people-data';
 import { AddAssetDrawer } from './exits';
 import { ImportDrawer } from './lifecycle';
-import { AddMembersDialog, BuddyCard } from './special';
+import { AddMembersDialog, BatchDialog, BuddyCard } from './special';
 
 // People popups (founder 28 Oct 2026): a confirm button is never disabled; pressed too early, it says what is missing.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -67,6 +67,27 @@ describe('People popups explain instead of disabling', () => {
     await ue.click(within(dialog).getByRole('checkbox', { name: /Rahul Verma/ }));
     await ue.click(within(dialog).getByRole('button', { name: 'Add joiners' }));
     expect(onAdd).toHaveBeenCalledWith(LIVE_BATCH, ['pb-rahul']);
+  });
+
+  it('New batch: touchpoints are a day and what happens; missing parts are named, then it saves', async () => {
+    const onSave = vi.fn(async () => undefined);
+    render(<BatchDialog batch={null} entities={ENTITY_CHOICES} today="2026-10-28" onClose={vi.fn()} onSave={onSave} />);
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Add a touchpoint' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save batch' }));
+    expect(within(dialog).getByText('Enter a name of at least 2 characters.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Choose the day.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Say what happens, for example Welcome call.')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/yyyy-mm-dd/)).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Name/ }), 'Campus 2027');
+    await ue.click(within(dialog).getByRole('combobox', { name: 'Legal entity' }));
+    await ue.click(screen.getByRole('option', { name: ENTITY_CHOICES[0].label }));
+    await ue.type(within(dialog).getByRole('textbox', { name: 'Joining day' }), '01 Jul 2027{Enter}');
+    await ue.type(within(dialog).getByRole('textbox', { name: 'Touchpoint 1 day' }), '01 Jun 2027{Enter}');
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Touchpoint 1(?! day)/ }), 'Welcome call');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save batch' }));
+    expect(onSave).toHaveBeenCalledWith(null, expect.objectContaining({ name: 'Campus 2027', joiningOn: '2027-07-01', touchpoints: [{ on: '2027-06-01', title: 'Welcome call' }] }));
   });
 
   it('Review a change: Approve before the impact shows waits; after, it approves', async () => {

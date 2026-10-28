@@ -80,12 +80,12 @@ export function batchRows(batches: Batch[], joiners: Joiner[], entities: { value
       id: b.id,
       name: b.name,
       entity: entities.find((e) => e.value === b.legalEntityId)?.label ?? '',
-      location: '',
       joining: day(b.joiningOn),
       members: b.members.length,
       completion: mine.length ? Math.round(mine.reduce((n, j) => n + j.progress, 0) / mine.length) : 0,
       loi: b.lettersOfIntent ?? 0,
       offers: b.offersIssued ?? 0,
+      openTasks: b.openTasks ?? 0,
     };
   });
 }
