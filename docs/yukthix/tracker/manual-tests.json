@@ -2562,5 +2562,270 @@
       "TIM-23"
     ],
     "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-TO-01",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-01 Today board - manager team",
+    "url": "http://localhost:3000/yx/time/today",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Sign in as panel@ and open Time > Today.",
+      "Look at the columns In, Late, Not checked in, On leave, WFH / on duty.",
+      "Press Nudge beside someone in Not checked in.",
+      "Press Nudge again on the same person."
+    ],
+    "expected": "Only Divya's reports show (Arjun, Kavya, Kiran, Meera, Nikhil, Sanjay, Sneha), never Divya herself. The nudge shows a toast \"1 nudge sent\" and the person shows \"Nudged\". The second press does nothing new (button gone; the server allows one nudge a day).",
+    "stories": [
+      "TIM-01"
+    ],
+    "note": "POSITIVE + repeat. Visitors on site are not shown: the Visitors module is not built."
+  },
+  {
+    "id": "MT-TO-02",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-01 Today board - HR and an employee",
+    "url": "http://localhost:3000/yx/time/today",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then arjun@demo-org.test (Employee - Arjun, reports to Divya)",
+    "steps": [
+      "As hr@ open Time > Today, open the On site now tab.",
+      "Sign out; as arjun@ open http://localhost:3000/yx/time/today."
+    ],
+    "expected": "HR sees everyone in scope and, under On site now, each site with the people checked in and not out. Arjun (no reports, no attendance.view) sees \"No one is rostered today\" and no names.",
+    "stories": [
+      "TIM-01"
+    ],
+    "note": "POSITIVE (HR) and NEGATIVE (employee sees nobody)."
+  },
+  {
+    "id": "MT-TO-03",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-04 Exceptions - HR resolves with a reason",
+    "url": "http://localhost:3000/yx/time/exceptions",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time > Exceptions. Pick last month with the arrows.",
+      "Press Resolve on a \"Missing check-out\" row.",
+      "Press Resolve exception without choosing anything.",
+      "Choose Present with approval, enter check-in 09:30, leave check-out empty, enter a reason, press Resolve exception.",
+      "Enter check-out 18:30 and press Resolve exception."
+    ],
+    "expected": "Step 3 shows \"Choose a resolution.\" and nothing is sent. Step 4 shows \"Enter the check-out time\" on the field and focuses it. Step 5 closes the dialog with the toast \"Exception resolved\"; the row moves to Resolved with the reason; the muster cell turns Present. \"Deduct leave\" is not offered (not built).",
+    "stories": [
+      "TIM-04"
+    ],
+    "note": "POSITIVE and pressed-too-early NEGATIVES."
+  },
+  {
+    "id": "MT-TO-04",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-04 Exceptions - who may resolve",
+    "url": "http://localhost:3000/yx/time/exceptions",
+    "account": "panel@demo-org.test (Manager - Divya); then plant-hr@demo-org.test (Plant HR, Hosur only - Anitha)",
+    "steps": [
+      "As panel@ open Time > Exceptions.",
+      "As plant-hr@ open the same page and try to resolve a Bengaluru person (search for Arjun).",
+      "As hr@ try to resolve your own day (search Lakshmi)."
+    ],
+    "expected": "Divya sees her team's exceptions but no Resolve button. Anitha sees only Hosur people (Arjun is not listed). Lakshmi's own day is refused: \"You cannot resolve your own attendance. Ask another HR person.\"",
+    "stories": [
+      "TIM-04"
+    ],
+    "note": "NEGATIVE: wrong role, out of scope, own day."
+  },
+  {
+    "id": "MT-TO-05",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-04 Exceptions - review a waiting fix",
+    "url": "http://localhost:3000/yx/time/exceptions",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As arjun@ ask to fix a missing day (My attendance > Fix this day).",
+      "As panel@ open Time > Exceptions, find Arjun's row \"Request pending\", press Review request.",
+      "Press Reject without a reason, then enter a reason and press Reject."
+    ],
+    "expected": "Reject without a reason shows \"Enter a reason to reject\". With a reason: toast \"Request rejected\"; the request also leaves Divya's Approvals inbox (one engine).",
+    "stories": [
+      "TIM-04",
+      "P03"
+    ],
+    "note": "POSITIVE + NEGATIVE."
+  },
+  {
+    "id": "MT-TO-06",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-02 Muster - freeze inputs and lock (one step)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time > Muster, go to last month.",
+      "Press Freeze inputs, confirm.",
+      "Press Lock period while exceptions are still open.",
+      "Resolve or correct the open days, then press Lock period, confirm, and pass the authenticator step."
+    ],
+    "expected": "After the freeze the badge reads \"Inputs frozen\". If requests were still waiting, the freeze is refused with the count (\"... waiting. Decide them first\"). Lock with open exceptions says \"Lock opens when N open exceptions are resolved\" and opens nothing. After the authenticator the badge reads Locked and the toast \"Month locked\" shows.",
+    "stories": [
+      "TIM-02",
+      "TIM-11",
+      "P08"
+    ],
+    "note": "POSITIVE + NEGATIVE. The current month: Freeze says it can be frozen from the 2nd of next month."
+  },
+  {
+    "id": "MT-TO-07",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-02 Muster - bulk mark present",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On an open month tick Kavya and Sneha.",
+      "Press Mark present with reason (2), pick a day both were absent, leave the reason empty, press Mark present.",
+      "Enter the reason \"Reader at Hosur gate 2 was down\" and press Mark present."
+    ],
+    "expected": "Without a reason: \"Add a reason\" on the field. With it: toast \"Marked present\"; both cells turn P. Tick your own row (if listed) and press: \"You cannot mark your own attendance.\"",
+    "stories": [
+      "TIM-02"
+    ],
+    "note": "POSITIVE + NEGATIVE. Divya (manager) sees no checkboxes."
+  },
+  {
+    "id": "MT-TO-08",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-11 Periods - two-step (HR sends, payroll approves)",
+    "url": "http://localhost:3000/yx/time/periods",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "As admin@ set Settings > Locking an attendance month = two_step for Kaveri Foods.",
+      "As hr@ open Periods > last month > Pre-lock checklist > Send for approval > confirm.",
+      "As hr@ press Lock on the muster for that month.",
+      "As payroll@ open Periods; the card shows \"With payroll\". Open it, press Approve lock, confirm, pass the authenticator."
+    ],
+    "expected": "HR has no Lock in two-step (only Send). Payroll's Approve lock locks the month (toast \"Month locked\"). If the same person sent and approves: \"You sent this month, so someone else in payroll must approve the lock.\"",
+    "stories": [
+      "TIM-11"
+    ],
+    "note": "POSITIVE + NEGATIVE (maker-checker). Default company setting is one_step."
+  },
+  {
+    "id": "MT-TO-09",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-07 Late request to a locked month",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Employee - Arjun, reports to Divya)",
+    "steps": [
+      "After test 6 or 8 locked last month: as arjun@ open My attendance, go to last month, open an absent day.",
+      "Press Raise late request, enter a short reason \"ok\", press Send request.",
+      "Enter a full sentence and send."
+    ],
+    "expected": "The sheet says \"<Month> is locked, so this goes as a late request\" and the approval line reads \"Your manager -> HR -> Payroll\". A short reason shows \"Give the reason in a sentence (at least 10 letters).\" Sent: toast \"Sent to your manager, then HR and payroll\". A day older than 60 days is refused with \"only HR can correct it now\".",
+    "stories": [
+      "TIM-07",
+      "YX-LOCK-02"
+    ],
+    "note": "POSITIVE + NEGATIVE."
+  },
+  {
+    "id": "MT-TO-10",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-09 OT review - approve, reject, comp-off here",
+    "url": "http://localhost:3000/yx/time/overtime-review",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As arjun@ claim overtime on My overtime for a long day.",
+      "As panel@ open Time > Overtime; press Approve on Arjun's claim.",
+      "Claim another day; press ... > Reject..., press Reject overtime without a reason.",
+      "Press ... > Give comp-off... (needs a comp-off leave type)."
+    ],
+    "expected": "Approve: toast \"Overtime approved\"; the Approvals inbox no longer shows it. Reject without a reason: \"Enter a reason\". Comp-off: the claim is approved as comp-off and the leave balance gains the days; for a Factories Act worker the option is not offered.",
+    "stories": [
+      "TIM-09"
+    ],
+    "note": "POSITIVE + NEGATIVE. HR (hr@) sees no Approve on claims that are not theirs to decide."
+  },
+  {
+    "id": "MT-TO-11",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-03 Day card - HR resolve and overtime",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open a cell with a missing check-out from an open month: press Resolve with reason.",
+      "Open today's cell for anyone.",
+      "Open a day in a locked month."
+    ],
+    "expected": "Past open day: the resolve dialog opens. Today: no Resolve button (the day is not over). Locked month: the card says the month is locked and HR records a correction instead. Days with overtime show \"N h · pending approval\" or \"approved\"; a day with OT not claimed shows \"not claimed yet\".",
+    "stories": [
+      "TIM-03"
+    ],
+    "note": "POSITIVE + NEGATIVE."
+  },
+  {
+    "id": "MT-TO-12",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-10 Device punches",
+    "url": "http://localhost:3000/yx/time/device-punches",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Pick Kaveri Foods in the top bar. Open Time > Device punches.",
+      "If a device batch is waiting: Continue to Preview, Continue, leave the reason short, press Continue.",
+      "Enter a sentence, Continue, Apply punches, pass the authenticator."
+    ],
+    "expected": "With no batch: \"No device punches waiting\". Preview lists \"Absent -> Present 6:02 am - 2:05 pm\" style changes and how many days go to the next payroll as corrections. A short reason: \"Give the reason in a sentence (at least 10 letters).\" Applied: toast with the counts; the muster shows the new punches.",
+    "stories": [
+      "TIM-10",
+      "YX-LOCK-09"
+    ],
+    "note": "POSITIVE + NEGATIVE. A batch is posted by a device (or POST /payroll/device-batches); no UI makes one."
+  },
+  {
+    "id": "MT-TO-13",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-37 Industrial action",
+    "url": "http://localhost:3000/yx/time/industrial-action",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time > Industrial action. Press Record event with no dates.",
+      "Pick Strike, Hosur plant, Operations, two future dates, Undetermined, notice \"Union notice dated 1 Nov 2026\"; press Record event and confirm.",
+      "Press Set legality, pick Legal, confirm.",
+      "Try to record the same place and dates again."
+    ],
+    "expected": "Without dates: \"Pick both dates\". Recorded: the record page shows \"Pay for N worker-days is on hold\" until legality is set; the muster shows ST on those days. The second record is refused: \"A strike is already recorded there ...\". Anitha (plant HR without attendance.lock) cannot open the page.",
+    "stories": [
+      "TIM-37"
+    ],
+    "note": "POSITIVE + NEGATIVE."
+  },
+  {
+    "id": "MT-TO-14",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-36 Presence days",
+    "url": "http://localhost:3000/yx/time/presence?view=me",
+    "account": "arjun@demo-org.test (Employee - Arjun, reports to Divya); then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As arjun@ open My work-from-home days.",
+      "If the company switch is off: read the alert. As admin@ turn on Settings > Presence-based attendance; reload; press Review and give consent; confirm.",
+      "As panel@ open Time > Presence days and open Arjun's day."
+    ],
+    "expected": "Switch off: \"Presence-based attendance is off\". Consent dialog lists what is recorded and \"Never\" for keystrokes, screenshots, apps. Divya sees only the day's status and total active time, never first/last active times.",
+    "stories": [
+      "TIM-36"
+    ],
+    "note": "POSITIVE + NEGATIVE (privacy). The desktop app that sends presence is not built: provider to decide."
+  },
+  {
+    "id": "MT-TO-15",
+    "area": "Time ops (attendance, overtime, periods)",
+    "screen": "TIM-16 Attendance reports",
+    "url": "http://localhost:3000/yx/time/reports",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As hr@ open Time > Attendance reports; switch the report to Overtime, then to Register of women night-shift workers.",
+      "As panel@ open the same page."
+    ],
+    "expected": "HR sees rows by department and site, a bar chart, and the night register with each woman's consent (\"None on file\" in red when missing). Divya sees her team by person and no night register in the report list.",
+    "stories": [
+      "TIM-16"
+    ],
+    "note": "POSITIVE + NEGATIVE (manager cannot open the night register)."
   }
 ]

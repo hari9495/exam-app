@@ -12,15 +12,15 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 29 | 46 | 19 | 15 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 66 | 21 | 19 | 5 |
 | Leave (TIM-17…25) | 39 | 0 | 11 | 3 |
-| Set-up (TIM-26…29, 31, 42) | 24 | 8 | 0 | 1 |
+| Set-up (TIM-26…29, 31, 42) | 20 | 12 | 0 | 1 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 19 | 21 | 10 | 3 |
-| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 29 | 12 | 3 | 3 |
+| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 40 | 4 | 3 | 0 |
 | Field force (TIM-32, 33) | 0 | 7 | 8 | 0 |
-| **All 45 design groups (310 sub-pages counted)** | **140** | **94** | **51** | **25** |
+| **All 45 design groups (312 sub-pages counted)** | **184** | **65** | **51** | **12** |
 
-Leave v2 (29 Oct 2026) moved 27 sub-pages to live: Leave 14, set-up 4 (TIM-29 PendingBlocked, TIM-42 ×3), rosters 2 (TIM-39), reports 7 (TIM-30).
+Counted from the stories and the rows below by script (29 Oct 2026, after leave v2 and time ops were merged). 312, not 311: TIM-36 "Manager · status and total only" sits on the same line as another story and was missed before.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -42,14 +42,14 @@ Old live copies deleted: live/my-attendance.tsx (MyAttendanceScreen, TodayCard, 
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager · Manager · team | feature not built as a Time page (the team's day is on Home › Team today, PLT-02) |
-| Hr · HR · entity | feature not built |
-| Nudged · Nudge sent | feature not built (nudge API exists, used by Home) |
-| FieldTab · Field tab | feature not built |
-| OnSite · HR · on site now | feature not built |
-| Empty · no one rostered | feature not built |
-| Loading | feature not built |
-| Failed · Error | feature not built |
+| Manager · Manager · team | /yx/time/today as a manager (their reports, never themselves) |
+| Hr · HR · entity | /yx/time/today with attendance.view (the top bar's legal entity narrows it) |
+| Nudged · Nudge sent | /yx/time/today → Nudge (once a day per person; toast, then "Nudged") |
+| FieldTab · Field tab | /yx/time/today → Field: people whose check-in was recorded as field. Gap: no map pins or trail (field force, TIM-32, not built) |
+| OnSite · HR · on site now | /yx/time/today → On site now: checked in and not out, per site, with Download list. Gap: visitors (the Visitors module is not built) |
+| Empty · no one rostered | /yx/time/today when no one in scope is rostered today |
+| Loading | /yx/time/today while loading |
+| Failed · Error | /yx/time/today when the call fails (Try again); no access says who grants it |
 | Phone · Team today | phone view, mobile app not built |
 
 ### TIM-02 · Muster
@@ -58,17 +58,19 @@ Old live copies deleted: live/my-attendance.tsx (MyAttendanceScreen, TodayCard, 
 |---|---|
 | Open · Open month | /yx/time/muster |
 | CellOpen · Cell → day card | /yx/time/muster → click a cell |
-| Freeze · Freeze inputs | gap: freeze/lock live on /yx/time/periods (Periods), not on the muster |
-| Frozen · all exceptions resolved | gap: the muster API returns no period stage |
-| FrozenBlocked · lock blocked | gap: as above |
-| Lock · typed confirmation (August) | gap: locking a month lives on /yx/time/periods (Periods), not on the muster; the muster API returns no period stage |
-| Locked (August) | gap: as above |
-| Bulk · mark present with reason | feature not built (no bulk mark-present API) |
+| Freeze · Freeze inputs | /yx/time/muster → Freeze inputs (attendance.lock; from the 2nd of the next month; refused while requests wait) |
+| Frozen · all exceptions resolved | /yx/time/muster on a frozen month → Lock period (one-step flow) or Send for approval / Approve lock (two-step) |
+| FrozenBlocked · lock blocked | /yx/time/muster on a frozen month with open exceptions: Lock says why and opens nothing |
+| Lock · confirm | /yx/time/muster on a frozen month → Lock period: plain confirm plus the authenticator step (attendance.lock) |
+| Locked (August) | /yx/time/muster on a locked month |
+| Bulk · mark present with reason | /yx/time/muster → tick people → Mark present with reason (leave.approve; never one's own row) |
 | Empty | /yx/time/muster with no one in scope ("No one on the muster") |
 | Loading | /yx/time/muster while loading |
 | Failed · Error | /yx/time/muster when the API fails (Try again) |
 
 Live extras from the design file: month arrows (the top bar has no month on this page); next month that has not started says so in a toast.
+Founder (29 Oct 2026): the lock is a plain confirm plus the authenticator step, here and on Periods (the Lock story is renamed "Lock · confirm").
+Question: an HR "open again" for a month HR froze exists in the API (POST /time/periods/unfreeze, with a reason) but has no design, so no button.
 
 ### TIM-03 · Day card
 
@@ -78,9 +80,9 @@ Live extras from the design file: month arrows (the top bar has no month on this
 | MissingOut · missing check-out, Fix | /yx/time/attendance → a missing day → Fix this day → TIM-07 sheet |
 | OnDuty · field-recorded, offline punch | feature not built (no on-duty or offline punches in the API) |
 | Late · Manager · late day | /yx/time/muster (manager) → a late day |
-| Overtime · HR · overtime day | gap: day card has no overtime figures (OT lives on /yx/time/overtime) |
-| PendingOt · Manager · pending overtime | gap: as above |
-| HrFix · HR · resolve missing punch | gap: no HR resolve API; the live muster day card is read only (no button that does nothing) |
+| Overtime · HR · overtime day | /yx/time/muster → a day with overtime: "N h · approved / pending approval / not claimed yet" |
+| PendingOt · Manager · pending overtime | /yx/time/muster (the approver) → a day with a pending claim: Approve overtime / Reject (reason) / Give comp-off (weekly off or holiday) |
+| HrFix · HR · resolve missing punch | /yx/time/muster (leave.approve) → a past missing day → Resolve with reason. Today is read only; a frozen or locked month says to record a correction |
 | Phone | phone view, mobile app not built |
 | PhoneOd · Phone · on duty | phone view, mobile app not built |
 
@@ -88,13 +90,13 @@ Live extras from the design file: month arrows (the top bar has no month on this
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Hr · HR · queue | feature not built (no exceptions API; the muster shows "N days to fix") |
-| Manager · team | feature not built |
-| Resolve · HR · resolve with reason | feature not built |
-| OnePerson · one person | feature not built |
-| Empty · nothing open | feature not built |
-| Loading | feature not built |
-| Failed · Error | feature not built |
+| Hr · HR · queue | /yx/time/exceptions with attendance.view |
+| Manager · team | /yx/time/exceptions as a manager (no Resolve; a waiting fix they approve shows Review request) |
+| Resolve · HR · resolve with reason | /yx/time/exceptions → Resolve (one, or ticked rows): Present (times) or Absent, reason. Gap: "Deduct leave" is not offered (the leave API takes no HR leave on someone's behalf) |
+| OnePerson · one person | /yx/time/exceptions?search=<name> |
+| Empty · nothing open | /yx/time/exceptions when nothing is open |
+| Loading | /yx/time/exceptions while loading |
+| Failed · Error | /yx/time/exceptions when the call fails |
 | Phone · manager | phone view, mobile app not built |
 
 ### TIM-07 · Attendance request
@@ -103,7 +105,7 @@ Live extras from the design file: month arrows (the top bar has no month on this
 |---|---|
 | Regularise · effect preview | /yx/time/attendance → Regularise a day (or Fix 6 Oct / Fix this day) |
 | OverLimit · over monthly limit → HR | same, when the month's fixes are used up ("Goes to your manager, then HR") |
-| LateRequest · locked date | gap: the API has no locked periods for the person yet; the server refuses with its reason |
+| LateRequest · locked date | /yx/time/attendance → a day of a frozen or locked month → the sheet sends a late correction (manager → HR → payroll; reason of 10+ letters; up to payroll.late_request_max_days, default 60) |
 | Wfh · WFH | /yx/time/attendance → Request work from home (or ?request=wfh from Home) |
 | OnDuty · with location | feature not built (no on-duty API) |
 | Ot · OT pre-approval | feature not built here (overtime claims are on /yx/time/overtime) |
@@ -116,11 +118,11 @@ Live extras from the design file: month arrows (the top bar has no month on this
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Batch · Step 1 | feature not built (no device or backfill API) |
-| Preview · Step 2 | feature not built |
-| Reason · Step 3 | feature not built |
-| Review | feature not built |
-| Done · Applied | feature not built |
+| Batch · Step 1 | /yx/time/device-punches (attendance.lock; the top bar's legal entity): the devices with punches waiting |
+| Preview · Step 2 | → Preview: each day worked out with the punches and rolled back; frozen / locked days become corrections; Download all changes |
+| Reason · Step 3 | → Reason (10+ letters, field error when pressed too early) |
+| Review | → Review → Apply punches (the authenticator step; the reviewed count must still match) |
+| Done · Applied | → after applying: the record with links to the muster and Periods (and the toast) |
 
 ### TIM-12 · Mobile check-in sheet
 
@@ -168,10 +170,13 @@ Live extras from the design file: month arrows (the top bar has no month on this
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee · what was recorded | feature not built (no presence API) |
-| Hr | feature not built |
-| NoConsent | feature not built |
-| Withdrawn · Consent withdrawn · manager | feature not built |
+| Employee · what was recorded | /yx/time/presence?view=me → a day decided by presence: first / last active, active time, what is recorded |
+| Manager · status and total only | /yx/time/presence as a manager: status and active time, never times |
+| Hr | /yx/time/presence with attendance.view: department filter, View consent record |
+| NoConsent | /yx/time/presence?view=me without consent: Review and give consent (company switch attendance.presence must be on) |
+| Withdrawn · Consent withdrawn · manager | /yx/time/presence → a day after the person withdrew: "Consent withdrawn on …" |
+
+Provider: to decide (Teams presence). The YukthiX desktop app posts the person's own states to POST /time/me/presence/signals; the app itself is not built. Question: Withdraw consent sits on the page header (the design's consent page is a phone view).
 
 ### Extra · Attendance calendar
 
@@ -180,8 +185,8 @@ Live extras from the design file: month arrows (the top bar has no month on this
 | Employee · September | /yx/time/attendance |
 | DayOpen · missing check-out | /yx/time/attendance → click a missing day |
 | DayOpenPending · regularisation pending | /yx/time/attendance → a day with a waiting fix (View in "Waiting for approval"), Withdraw there |
-| Locked · August | gap: no period lock info in /me/attendance |
-| LockedDay · locked day card | gap: as above |
+| Locked · August | /yx/time/attendance on a frozen or locked month (the day card and the request sheet say so) |
+| LockedDay · locked day card | /yx/time/attendance → a day of a locked month: "is locked", Raise late request |
 | Manager · one person | gap: managers open a person's day from the muster; no one-person month page for managers |
 | ManagerDay · day card | /yx/time/muster (manager) → a cell |
 | Loading | /yx/time/attendance while loading |
@@ -212,11 +217,11 @@ Live extras from the design file: month arrows (the top bar has no month on this
 
 ### 3. Counts
 
-- Sub-pages live: 29
-- Feature not built: 46
+- Sub-pages live: 65 (time ops, 29 Oct 2026: +36)
+- Feature not built: 21
 - Phone view: 19
-- Gaps: 15
-- Total: 109 stories
+- Gaps: 5 (Extra · Manager one person; Extra · today OutsideNetwork, ChoseWfh, ShiftNotStarted, WithNote)
+- Total: 110 stories (TIM-36 "Manager · status and total only" was not counted before)
 
 ### Gaps and questions
 
@@ -337,7 +342,14 @@ dev-fake answers until a provider is chosen).
 
 ### TIM-20 · Team leave calendar
 
-Unchanged: Manager, Month, HR, Empty, Loading live on /yx/time/team; Phone is a phone view.
+| story (sub-page) | where it shows live |
+|---|---|
+| Manager | /yx/time/team as a manager |
+| Month | /yx/time/team → Month |
+| Hr | /yx/time/team with leave.view |
+| Empty | /yx/time/team when no one is away |
+| Loading | /yx/time/team while loading |
+| Phone | phone view, mobile app not built |
 
 ### TIM-21 · Leave card
 
@@ -629,11 +641,11 @@ Builder E, 29 Oct 2026.
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager · own reports (`Manager`) | /yx/time/overtime-review as a manager: the team's claims for the month. Gap: Approve / Give comp-off / Reject are not on this page; claims are decided in Approvals (the API has no decide call here). Question: move the decisions here? |
+| Manager · own reports (`Manager`) | /yx/time/overtime-review as a manager: Approve, Reject (reason), Give comp-off, and bulk Approve / Reject within the limit. Each is the viewer's own approval task (POST /time/overtime/:id/decide → the shared engine), so Approvals shows the same state (founder: yes). |
 | Plant head · over the legal limit (`PlantHead`) | /yx/time/overtime-review: a claim over the limit shows the red "Over the limit" badge and its minutes; the manager sees its status. |
 | HR (`Hr`) | /yx/time/overtime-review as HR (scope: everyone). |
 | HR · override limit with reason (`Override`) | /yx/time/overtime-review → "Override limit" on a claim HR may pay → dialog; Pay pressed without a 10-letter reason shows the field error. |
-| Convert to comp-off (`CompOff`) | Gap: no comp-off decision in the API; how a claim is settled comes from the policy and shows as "Comp-off N days" in the OT column. |
+| Convert to comp-off (`CompOff`) | /yx/time/overtime-review → … → Give comp-off: settles the claim as comp-off and approves it (never under the Factories Act; needs a comp-off leave type; a reason when part is over a limit). |
 | Empty (`Empty`) | /yx/time/overtime-review, a month with no claims: "No overtime to review". |
 | Loading (`Loading`) | /yx/time/overtime-review while loading (table loading). |
 | Error (`Failed`) | /yx/time/overtime-review when the call fails: error with Retry. No access: "You don't have access to overtime". |
@@ -643,11 +655,11 @@ Builder E, 29 Oct 2026.
 | story (sub-page) | where it shows live |
 |---|---|
 | HR · month cards (`Hr`) | /yx/time/periods: month cards per legal entity (newest first), stage badge, "Locked 2 Sep 2026 by …". Year arrows: Next at this year and Previous before 2025 stay clickable and say why (toast). |
-| Payroll Admin (`PayrollAdmin`) | Gap / Question: the API has one step (whoever holds attendance.lock locks, with a fresh sign-in step); there is no HR-sends, Payroll-Admin-approves split. |
+| Payroll Admin (`PayrollAdmin`) | /yx/time/periods as payroll (payroll.correction.approve) when the company's attendance.lock_flow = two_step: "With payroll" cards, Approve lock (authenticator step; never the person who sent it). |
 | Pre-lock checklist · blocked (`Checklist`) | /yx/time/periods → "Pre-lock checklist" on an open month: exceptions and each waiting request kind with counts; "Lock the month" pressed says "Settle what is still waiting…" and focuses the list. |
 | October · month not over (`NotEnded`) | /yx/time/periods → current month card "Can be locked from the 2nd of the next month"; in its checklist, Lock pressed says "October 2026 can be locked from 2 Oct 2026." |
-| HR · send for payroll approval (`Send`) | Gap / Question: no send-for-approval step in the API (see Payroll Admin). |
-| Payroll Admin · lock with typed confirmation (`Lock`) | /yx/time/periods → checklist (all done) → "Lock the month" → confirmation dialog → the web app asks for the fresh second step. Question: a plain confirmation instead of typing the name, because the second sign-in step already guards it. |
+| HR · send for payroll approval (`Send`) | /yx/time/periods (two_step) → checklist → Send for approval (freezes the month; refused while anything is open). Setting attendance.lock_flow, default one_step (HR locks). |
+| Payroll Admin · approve lock (`Lock`) | /yx/time/periods → checklist (all done) → "Lock the month" (one step) or "Approve lock" (two step) → plain confirmation → the authenticator step (founder OK, 29 Oct 2026; the story no longer types a name). |
 | Lock summary · filed month (`Summary`) | /yx/time/periods → "Lock summary" on a locked or filed month: lock date and person, stage, whether reopen is allowed. |
 | Reopen request · September locked 1 Oct (`ReopenAllowed`) | /yx/time/periods → "Request reopen" on a locked month (card or summary) → dialog; reason of 10+ letters; sent → toast; the card then shows "Reopen asked · Waiting for two approvals". A filed month shows "Filed: corrections only". |
 
@@ -669,12 +681,12 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Late and early (`LateEarly`) | Feature not built (no late/early report in the API). |
-| Overtime (`Overtime`) | Feature not built (no overtime report; claims are on /yx/time/overtime-review). |
+| Late and early (`LateEarly`) | /yx/time/reports: late marks, early exits, OT hours and unpaid days by department and site, chart and table, CSV export. |
+| Overtime (`Overtime`) | /yx/time/reports → Report: Overtime (approved paid OT hours lead). |
 | Form 25 register (`Form25`) | /yx/time/registers: the register card per establishment with Download PDF / Excel (toast when done; "Draft" when the month is not locked). Gap: the register rows are only in the download, not on the page. |
-| Women night-shift register (`NightRegister`) | Feature not built (the API's registers are muster and leave only; night shifts are a column of the payroll feed). |
+| Women night-shift register (`NightRegister`) | /yx/time/reports → Register of women night-shift workers (attendance.view): shifts, night hours (7 pm–6 am), consent on file. Gap: pick-up and drop records (not in the app). |
 | August 2026 (locked) (`August`) | /yx/time/registers ("Month locked") and /yx/time/payroll-feed ("Frozen 2 Oct 2026") with a locked month picked. |
-| Manager · my team (`Manager`) | Feature not built (team late/early report). |
+| Manager · my team (`Manager`) | /yx/time/reports as a manager: their reports by person (no statutory registers). |
 | Empty · no rows for these filters (`Empty`) | /yx/time/registers with no establishment in scope; /yx/time/payroll-feed with no legal entity or no people. |
 | Loading (`Loading`) | Both pages while loading; errors show Retry, no access says who grants it. |
 
@@ -695,10 +707,12 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Record event (`Form`) | Design only, feature not built (no strike / lockout / lay-off in apps/api/src/time). |
-| Record event · legal picked (`Legal`) | Design only, feature not built. |
-| Event record · lay-off (`Record`) | Design only, feature not built. |
-| Event record · legality not set (`RecordUndetermined`) | Design only, feature not built. |
+| Record event (`Form`) | /yx/time/industrial-action (attendance.lock): type, establishment, dates, workers (everyone or one department), legality, notice; Record event with a confirm |
+| Record event · legal picked (`Legal`) | same, Legality: Legal (the effect line shows the pay) |
+| Event record · lay-off (`Record`) | /yx/time/industrial-action?id=… : KPIs, pay and attendance treatment, Edit dates, Cancel event, Change legality (version-checked) |
+| Event record · legality not set (`RecordUndetermined`) | same, undetermined: "Pay for N worker-days is on hold" with Set legality |
+
+Question: there is no list of past events in the design; the API has GET /time/industrial-actions. Recorded events open by link (?id=).
 
 #### TIM-43 · Timesheet pre-fill from my tools
 
@@ -740,10 +754,10 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 ### 3. Counts (groups TIM-09, 11, 15, 16, 30, 37, 43)
 
-- Sub-pages live: 29 (TIM-09: 7, TIM-11: 6, TIM-15: 5, TIM-16: 4, TIM-30: 7)
-- Feature not built: 12 (TIM-16: 4, TIM-30: 1, TIM-37: 4, TIM-43: 3)
+- Sub-pages live: 33 (TIM-09: 8, TIM-11: 8, TIM-15: 5, TIM-16: 8, TIM-37: 4)
+- Feature not built: 11 (TIM-30: 8, TIM-43: 3)
 - Phone view: 3 (TIM-15: 2, TIM-43: 1)
-- Gaps: 3 (TIM-09 comp-off decision; TIM-11 Payroll Admin and HR-send steps). Partial gaps noted in the rows: OT approve/reject live in Approvals, sent-back reason, locked-week correction, register rows on the page.
+- Gaps: 0. Partial gaps noted in the rows: sent-back reason, locked-week correction, register rows on the page, night-register pick-up and drop.
 - Kit: 24 shared parts (listed above), not counted as pages.
 
 ## F. Field force (no live page)
@@ -772,3 +786,97 @@ Also not live from this design: "Copy last week" (the API returns only last week
 | Distance → draft mileage | phone view, mobile app not built |
 | Consent withdrawn | phone view, mobile app not built |
 | Web app · only while open | phone view, mobile app not built |
+
+## G. Time ops feature sheet (attendance, overtime, periods) · 29 Oct 2026
+
+Built in branch `feat/yukthix-time-ops`. Designs made live: TIM-01, TIM-02 (stages, bulk), TIM-03 (overtime, HrFix),
+TIM-04, TIM-07 (late request), TIM-09 (decisions), TIM-10, TIM-11 (two-step), TIM-16 (late / OT / night register),
+TIM-36, TIM-37, Extra · Attendance calendar (Locked, LockedDay). Migration `20261129100000_time_ops` (additive).
+
+### Rules and where they come from
+
+Law (P07 data on the compliance verify list, never code; the code falls back to the national value):
+- **Overtime (Factories Act s.59, 64, 65; state Shops and Establishments acts):** at most 10 h of work a day and 125 h of
+  OT a quarter (IN.FACTORIES `dailyMaxWorkMinutes`, `quarterlyOtMinutes`; quarter = Jan–Mar …). OT is paid at 2× the
+  ordinary rate (`rate`). Minutes past a limit are "over the limit": paid only after an HR override with a reason
+  (leave.approve over the person, never one's own claim). Where the Factories Act covers the person (setting
+  `attendance.factories_act` + the employment category), OT is always paid at the legal rate, never comp-off.
+- **Women at night (OSH Code / Factories Act s.66 as each state applies it):** night window 7 pm – 6 am (IN.OSH). The
+  register of women night-shift workers lists each woman's night shifts, night hours and consent on file.
+- **Industrial action (Industrial Disputes Act 1947 s.22–25C; Payment of Wages Act 1936):** strike days unpaid whether
+  legal or not (a tribunal's later award is a correction); lockout unpaid when legal, full wages when illegal; lay-off
+  unpaid in attendance and paid as lay-off compensation (50 % of basic + DA, s.25C) by payroll when legal, full wages when
+  illegal; undetermined holds the pay (neither paid nor unpaid) until HR sets the legality. Weekly offs, holidays and
+  approved leave inside the event stay as they are; a worker who checked in that day worked. Product choice (no law): the
+  45-day lay-off ceiling and the "50+ workmen" threshold are payroll's when it pays the compensation.
+- **Late requests after a lock (P08 Q4, YX-LOCK-02):** a day of a frozen or locked month goes as a late correction
+  (manager → HR → payroll), paid in the next payroll, up to `payroll.late_request_max_days` (default 60) days back; past
+  that only HR records a correction.
+
+Company policy (a setting with a default; HR changes it per company or legal entity):
+| setting | default | what it does |
+|---|---|---|
+| `attendance.lock_flow` (new) | `one_step` | one step: whoever holds attendance.lock locks; two step: HR sends, payroll (payroll.correction.approve) approves, never the same person |
+| `attendance.late_marks_free` (new) | 3 | late marks a month without a deduction (the day card's "Late mark N of 3 free" now reads it) |
+| `attendance.late_mark_penalty` (new) | 0 | days of pay each late mark over the free ones costs (0, 0.5, 1); goes into the feed's unpaid days (`late_lop_days`) |
+| `attendance.presence` (new) | off | presence-based attendance on work-from-home days |
+| shift: grace, half-day and full-day minutes, break rule | per shift (General 10 / 240 / 480, 30 above 5 h) | late mark after the grace; present at full-day minutes, half day at half-day minutes, else absent |
+| OT rule: minimum, rounding, daily cap, approval, settle (pay / comp-off), comp-off half / full minutes | per rule (30 min, 15-min steps) | weekly-off and holiday work: the whole day counts; settle as comp-off or pay |
+| `attendance.missing_punch_effect` | block payroll approval | a missing check-in / check-out blocks the lock until resolved or corrected |
+| `attendance.regularise_monthly_limit` / `wfh_monthly_limit` | 4 / 4 | beyond them HR approves too |
+| `attendance.mode` | punch | punch, assumed present or timesheet |
+
+Product defaults (decided here; questions below):
+- A month can be frozen or locked from the 2nd of the next month (its last night shift has ended). Freezing fixes the
+  days in the database (founder D2), so it is refused while requests still wait; HR may open a month it froze again
+  with a reason (not one payroll froze for a run).
+- Night shift across midnight: a punch belongs to the day the shift started (YX-AT-13, existing).
+- Time zone: each day is the location's own date (`locations.timezone`), never the server's; "today" is the person's.
+- Joiners and leavers mid-month: only days between joining and leaving count (calendar days, paid days, exceptions).
+- Transfers: each day uses the assignment in force that day (location, rules, legal entity, OT rule).
+- HR resolution (TIM-04 / HrFix / bulk): present (with times: worked out like a fix, late mark included; without: present)
+  or absent (final, unpaid). It outranks the employee's fix, is kept as history (latest wins, never edited), and a repeat
+  within a minute is the same resolution. Today is never resolved; a waiting fix is decided first.
+- Presence: counts only with consent in force all through the day and the company switch on; it decides the day only
+  when there are no punches (active minutes against the shift's thresholds).
+
+### Who may do what (checked on the server; the UI only hides)
+| action | who | sees |
+|---|---|---|
+| Today board, exceptions, reports, presence days | manager (own reports), HR with attendance.view (scope) | team / scope, never themselves |
+| Resolve, bulk mark present | leave.approve over the person | never one's own day; not while acting for someone |
+| Decide OT on the review page | the holder of the claim's open approval task | same engine and rules as Approvals |
+| Freeze, open again, send, lock (one step) | attendance.lock over the legal entity | lock and approve need the authenticator step |
+| Approve lock (two step) | payroll.correction.approve over the legal entity | never the person who sent it |
+| Industrial action, device punches | attendance.lock over the legal entity | device apply needs the authenticator step |
+| Night-shift register | attendance.view | HR only |
+| Presence consent and states | the person only | their own times; others see status and total |
+
+### API routes (AttendanceOpsController, `/api/v1/time`)
+GET `today`, GET `exceptions`, POST `exceptions/resolve` (leave.approve), POST `muster/mark-present` (leave.approve),
+POST `periods/freeze` | `unfreeze` | `send` (attendance.lock), POST `periods/approve-lock` (payroll.correction.approve,
+step-up), POST `overtime/:id/decide`, GET `reports/attendance`, GET `reports/night` (attendance.view), GET/POST
+`industrial-actions` (+ `options`, `:id`, `:id/legality`, `:id/dates`, `:id/cancel`; attendance.lock), GET
+`me/presence`, POST `me/presence/consent`, POST `me/presence/signals`, GET `presence`, GET `device-batches`
+(+ `preview`), POST `device-backfills` (attendance.lock, step-up). Changed: GET `periods` and `periods/preflight` also
+for payroll; POST `periods/lock` refuses in the two-step flow; the muster returns its period card; the day card returns
+overtime, late marks, HrFix and the resolution; `me/attendance` returns locked days. Payroll: held device punches for open
+days are applied from Time.
+
+### States covered
+Empty, loading, error, no access on every page; not set up (no OT rule, no comp-off type, presence switched off, no
+establishment in scope, no device batch); too early (freeze / lock before the 2nd, today read only); over the limit
+(OT caps; late requests past 60 days); locked / frozen (resolve, legality and dates refused; late route); already done
+(repeat resolution, repeat send, decided claim, nudged today); someone else first (event version check, approval task
+closed, batch changed since review); acting for someone else refused.
+
+### Questions (sensible defaults taken)
+1. Default lock flow is one step (keeps today's behaviour); the founder's "HR sends, Payroll Admin approves" is one
+   setting away. Should two step be the default for new companies?
+2. Payroll's approval key is `payroll.correction.approve` (the Payroll Admin role has it). A separate key?
+3. "Deduct leave" in the resolve dialog needs an HR-leave-on-behalf API from the Leave builder; not offered live.
+4. Reminders for past-day exceptions ("Remind all" on TIM-04): the nudge API covers today's check-in only; not offered.
+5. No design for: opening a frozen month again, a list of industrial-action events, withdrawing presence consent on
+   the web (the consent page is a phone design). The API exists for each; the UI has only what the designs show, plus
+   Withdraw consent on the presence page header (consent must be withdrawable).
+6. Visitors on site (TIM-01) and the field map (TIM-32) wait for their modules.
