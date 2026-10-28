@@ -170,7 +170,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     }
   };
   const payState: LiveRecordPay = !v?.payAccess
-    ? { kind: 'none', grantedBy: hr ? 'your company admin' : 'HR, who can give a salary grant for your team' }
+    ? hr ? { kind: 'none', grantedBy: 'your company admin' } : { kind: 'none', grantedBy: 'HR', note: 'Pay needs a salary grant for your team.' }
     : pay.data
       ? payShown(pay.data, prof ? bankRows(prof, reveal) : [])
       : { kind: 'ask', onShow: () => void showPay(), busy: pay.busy, error: pay.error };

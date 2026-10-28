@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { REVIEW_ID } from '../../components/stepper';
 import { RestructureWizard } from './changes';
-import { RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureRecordData } from './restructure';
+import { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureRecordData } from './restructure';
 import { d } from './people-data';
 
 const meta: Meta = { title: 'Screens/People/PPL-09 · Bulk transfer and restructure', parameters: { layout: 'fullscreen' } };
@@ -64,19 +64,22 @@ const DONE: RestructureRecordData = {
   ],
 };
 const ITEMS: ContinuityItemData[] = [
-  { id: 'i1', key: 'uan', title: 'PF: same UAN; transfer the PF balance (Form 13 or EPFO auto-transfer)', owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: 'UAN on file', version: 1 },
-  { id: 'i2', key: 'esi', title: 'ESI: the same IP number carries over', owner: 'Payroll', dueOn: '2026-10-31', status: 'done', note: null, version: 2 },
-  { id: 'i3', key: 'form12b', title: "Form 12B: carry this tax year's income and TDS from Kaveri Foods Pvt Ltd (Tamil Nadu)", owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: null, version: 1 },
-  { id: 'i4', key: 'declarations', title: 'Tax declarations and proofs: copy to the new entity', owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: null, version: 1 },
-  { id: 'i5', key: 'leave', title: 'Leave balances carried (Privilege leave 11.5)', owner: 'HR', dueOn: null, status: 'done', note: null, version: 1 },
-  { id: 'i6', key: 'gratuity', title: 'Gratuity: service continues, one payout at final exit', owner: 'Payroll', dueOn: null, status: 'done', note: null, version: 1 },
-  { id: 'i7', key: 'loan1', title: 'Loan (advance) moved to Kaveri Foods Pvt Ltd (no F&F)', owner: 'Finance', dueOn: '2026-10-31', status: 'open', note: null, version: 1 },
+  { id: 'i1', key: 'uan', title: 'PF: same UAN; transfer the PF balance (Form 13 or EPFO auto-transfer)', owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: 'UAN on file', version: 1, canSet: true },
+  { id: 'i2', key: 'esi', title: 'ESI: the same IP number carries over', owner: 'Payroll', dueOn: '2026-10-31', status: 'done', note: null, version: 2, canSet: true },
+  { id: 'i3', key: 'form12b', title: "Form 12B: carry this tax year's income and TDS from Kaveri Foods Pvt Ltd (Tamil Nadu)", owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: null, version: 1, canSet: true },
+  { id: 'i4', key: 'declarations', title: 'Tax declarations and proofs: copy to the new entity', owner: 'Payroll', dueOn: '2026-10-31', status: 'open', note: null, version: 1, canSet: true },
+  { id: 'i5', key: 'leave', title: 'Leave balances carried (Privilege leave 11.5)', owner: 'HR', dueOn: null, status: 'done', note: null, version: 1, canSet: true },
+  { id: 'i6', key: 'gratuity', title: 'Gratuity: service continues, one payout at final exit', owner: 'Payroll', dueOn: null, status: 'done', note: null, version: 1, canSet: true },
+  { id: 'i7', key: 'loan1', title: 'Loan (advance) moved to Kaveri Foods Pvt Ltd (no F&F)', owner: 'Finance', dueOn: '2026-10-31', status: 'open', note: null, version: 1, canSet: true },
 ];
 const noop = async () => {};
 export const Record: S = { name: 'Restructure record · approver', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={RECORD} today={d(2026, 9, 28)} onApprove={noop} onReject={noop} /> };
 export const Done: S = { name: 'Restructure record · done, one person could not move', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} onLetters={() => {}} /> };
 export const Checklist: S = { name: 'PPL-10 · continuity checklist (live items)', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => ITEMS} onItem={noop} defaultChecklistFor="p1" /> };
-export const PayrollNoAccess: S = { name: 'Payroll · no access (HR decides restructures)', render: () => <RestructureRecord state="forbidden" onRetry={() => {}} data={null} today={d(2026, 10, 12)} /> };
+// Payroll without the change key (founder 28 Oct 2026): the record without approve, reject, cancel or letters; it ticks
+// only its own (Payroll) items, HR's and Finance's stay visible with their owner.
+const PAYROLL_ITEMS = ITEMS.map((i) => ({ ...i, canSet: i.owner === 'Payroll' }));
+export const PayrollChecklist: S = { name: 'Payroll · continuity checklist (ticks only Payroll items)', render: () => <RestructureRecord state="ready" onRetry={() => {}} data={DONE} today={d(2026, 10, 12)} onItems={async () => PAYROLL_ITEMS} onItem={noop} defaultChecklistFor="p1" /> };
 
 // "Save and exit": the start page lists the person's own saved drafts (Continue or Delete).
 const SETUP = {
@@ -122,3 +125,6 @@ const FINISHED: FinishedRestructure[] = [
 ];
 export const Finished: S = { name: 'Start · finished restructures (Open goes to the record)', render: () => <RestructureWizard live={{ ...START, finished: FINISHED }} /> };
 export const FinishedEmpty: S = { name: 'Start · no finished restructures yet', render: () => <RestructureWizard live={{ ...START, finished: [] }} /> };
+// Payroll: only the done restructures into its entities, no plan wizard.
+export const PayrollFinished: S = { name: 'Payroll · done restructures (no wizard)', render: () => <FinishedRestructuresScreen state="ready" onRetry={() => {}} rows={FINISHED.filter((r) => r.status === 'done')} onOpen={() => {}} /> };
+export const PayrollFinishedEmpty: S = { name: 'Payroll · no done restructures yet', render: () => <FinishedRestructuresScreen state="ready" onRetry={() => {}} rows={[]} onOpen={() => {}} /> };

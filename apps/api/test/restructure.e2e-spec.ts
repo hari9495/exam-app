@@ -301,6 +301,11 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     const esi = items.find((i: { key: string }) => i.key === 'esi');
     await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(200);
     await api('hrA', 'put', `/people/restructures/continuity/${esi.id}`).send({ done: true, version: esi.version }).expect(409);
+    // HR ticks any item, its own included (founder 28 Oct 2026).
+    expect(items.every((i: { canSet: boolean }) => i.canSet)).toBe(true);
+    const leave = items.find((i: { key: string }) => i.key === 'leave');
+    await api('hrA', 'put', `/people/restructures/continuity/${leave.id}`).send({ done: false, version: leave.version }).expect(200);
+    await api('hrA', 'put', `/people/restructures/continuity/${leave.id}`).send({ done: true, version: leave.version + 1 }).expect(200);
     // Payroll keeps its own items of the new entity.
     const uan = items.find((i: { key: string }) => i.key === 'uan');
     await api('payrollA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(200);
@@ -398,6 +403,10 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     const items = (await api('payrollA', 'get', `/people/restructures/continuity?restructureId=${ids.merge}&employeeId=${ids.divya}`).expect(200)).body;
     const f12 = items.find((i: { key: string }) => i.key === 'form12b');
     expect((await api('payrollA', 'put', `/people/restructures/continuity/${f12.id}`).send({ done: true, version: f12.version }).expect(200)).body).toEqual({ id: f12.id, status: 'done' });
+    // Payroll ticks only Payroll items: HR's stay visible with their owner, but neither done nor reopened by payroll.
+    expect(items.filter((i: { canSet: boolean }) => !i.canSet).map((i: { owner: string }) => i.owner)).toEqual(['HR']);
+    const leave = items.find((i: { key: string }) => i.key === 'leave');
+    for (const done of [false, true]) await api('payrollA', 'put', `/people/restructures/continuity/${leave.id}`).send({ done, version: leave.version }).expect(403);
     for (const id of [ids.waiting, ids.rejected]) await api('payrollA', 'get', `/people/restructures/${id}`).expect(404);
     await api('payrollA', 'post', `/people/restructures/${ids.waiting}/cancel`).send({ reason: 'Not ours' }).expect(403);
     await api('payrollA', 'get', '/people/restructures/drafts').expect(403);

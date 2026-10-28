@@ -804,7 +804,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
  * Finished restructures (founder 28 Oct 2026): done, rejected and cancelled ones, newest first, so HR gets back to a record
  * (transfer letters, continuity checklist). Open ones stay in the banner above.
  */
-export function FinishedRestructures({ rows, onOpen }: { rows: FinishedRestructure[] | null; onOpen: (id: string) => void }) {
+export function FinishedRestructures({ rows, onOpen, emptyText = 'Done, rejected and cancelled restructures show here.' }: { rows: FinishedRestructure[] | null; onOpen: (id: string) => void; emptyText?: string }) {
   const cols: TableColumn<FinishedRestructure>[] = [
     { key: 'title', header: 'Restructure', value: (r) => r.title, width: 300 },
     { key: 'effective', header: 'Effective', type: 'date', value: (r) => day(r.effectiveDate), width: 110 },
@@ -815,7 +815,7 @@ export function FinishedRestructures({ rows, onOpen }: { rows: FinishedRestructu
   return (
     <Card title="Finished restructures">
       {rows?.length === 0 ? (
-        <EmptyState compact title="No finished restructures yet" description="Done, rejected and cancelled restructures show here." />
+        <EmptyState compact title="No finished restructures yet" description={emptyText} />
       ) : (
         <DataTable
           label="Finished restructures"
@@ -845,7 +845,7 @@ export function FinishedRestructuresScreen({ state, onRetry, rows, onOpen }: { s
       ) : state === 'forbidden' ? (
         <NoAccessState what="restructures" grantedBy="your HR admin" />
       ) : (
-        <FinishedRestructures rows={state === 'ready' ? rows : null} onOpen={onOpen} />
+        <FinishedRestructures rows={state === 'ready' ? rows : null} onOpen={onOpen} emptyText="Done restructures into your legal entities show here." />
       )}
     </PeopleFrame>
   );
@@ -874,9 +874,11 @@ export interface ContinuityItemData {
   status: 'open' | 'done';
   note: string | null;
   version: number;
+  /** This person may mark it done or reopen it (payroll only its own items, founder 28 Oct 2026). */
+  canSet: boolean;
 }
 export interface RestructureRecordProps {
-  /** forbidden: not HR (founder decision 21 Oct 2026: payroll does no HR work). */
+  /** forbidden: neither HR nor payroll of the entity the people moved into. */
   state: 'loading' | 'ready' | 'error' | 'forbidden';
   onRetry: () => void;
   data: RestructureRecordData | null;
@@ -907,7 +909,7 @@ export function ContinuityChecklistDrawer({ open, onOpenChange, title, subtitle,
       ...(i.dueOn ? { due: day(i.dueOn) } : {}),
       status: i.status === 'done' ? 'Done' : 'Pending',
       note: i.note ?? undefined,
-      action: onItem ? (
+      action: onItem && i.canSet ? (
         <Button size="sm" loading={busy === i.id} onClick={async () => {
           setBusy(i.id);
           try {

@@ -877,12 +877,12 @@ export class RestructureService {
 
   // ------------------------------------------------------------------------------------------ continuity (PPL-10)
 
-  /** HR whose change grant reaches the person, or payroll of the entity they moved into. */
+  /** 'hr' when the change grant reaches the person, 'payroll' for payroll of the entity they moved into, else null. */
   private async mayKeepItems(tx: Tx, c: CompanyContext, v: Viewer, user: RequestUser, employeeId: string, entityId: string) {
-    if (v.actingForOther) return false;
+    if (v.actingForOther) return null;
     const e = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId, legalEntityId: entityId }, orderBy: { joinedOn: 'desc' } });
-    if (e && (await this.history.reachesFrom(tx, c, v, 'employee.change.manage', e, isoDate(e.joinedOn)))) return true;
-    return (await this.payrollOf(user))(entityId);
+    if (e && (await this.history.reachesFrom(tx, c, v, 'employee.change.manage', e, isoDate(e.joinedOn)))) return 'hr';
+    return (await this.payrollOf(user))(entityId) ? 'payroll' : null;
   }
 
   /** Whether the user's payroll.run.prepare covers a legal entity (company-wide, or a grant for that entity). */
@@ -894,15 +894,19 @@ export class RestructureService {
   continuity(ctx: TenantContext, v: Viewer, user: RequestUser, restructureId: string, employeeId: string) {
     return this.history.run(ctx, async (tx, c) => {
       const items = await tx.continuityItem.findMany({ where: { organizationId: c.organizationId, restructureId, employeeId }, orderBy: [{ status: 'desc' }, { dueOn: 'asc' }, { key: 'asc' }] });
-      if (!items.length || !(await this.mayKeepItems(tx, c, v, user, employeeId, items[0].legalEntityId))) throw new NotFoundException('No continuity checklist for this person.');
-      return items.map((i) => ({ id: i.id, key: i.key, title: i.title, owner: i.owner, dueOn: i.dueOn ? isoDate(i.dueOn) : null, status: i.status, note: i.note, version: i.version }));
+      const role = items.length ? await this.mayKeepItems(tx, c, v, user, employeeId, items[0].legalEntityId) : null;
+      if (!role) throw new NotFoundException('No continuity checklist for this person.');
+      // Founder 28 Oct 2026: payroll ticks only its own items; HR's and Finance's stay visible to it.
+      return items.map((i) => ({ id: i.id, key: i.key, title: i.title, owner: i.owner, dueOn: i.dueOn ? isoDate(i.dueOn) : null, status: i.status, note: i.note, version: i.version, canSet: role === 'hr' || i.owner === 'Payroll' }));
     });
   }
 
   setItem(ctx: TenantContext, v: Viewer, user: RequestUser, id: string, dto: { done: boolean; note?: string | null; version: number }) {
     return this.history.run(ctx, async (tx, c) => {
       const i = await tx.continuityItem.findFirst({ where: { organizationId: c.organizationId, id } });
-      if (!i || !(await this.mayKeepItems(tx, c, v, user, i.employeeId, i.legalEntityId))) throw new NotFoundException('No such checklist item.');
+      const role = i && (await this.mayKeepItems(tx, c, v, user, i.employeeId, i.legalEntityId));
+      if (!i || !role) throw new NotFoundException('No such checklist item.');
+      if (role === 'payroll' && i.owner !== 'Payroll') throw new ForbiddenException(`Payroll ticks only its own items; ${i.owner} keeps this one.`);
       if (i.version !== dto.version) throw new ConflictException('Someone else changed this item. Reload it.');
       await tx.continuityItem.update({ where: { id }, data: { status: dto.done ? 'done' : 'open', doneBy: dto.done ? (c.userId ?? null) : null, doneAt: dto.done ? new Date() : null, ...(dto.note !== undefined ? { note: dto.note?.trim() || null } : {}), version: { increment: 1 } } });
       await audit(tx, c, dto.done ? 'continuity.item_done' : 'continuity.item_reopened', 'continuity_item', id, { key: i.key, employeeId: i.employeeId });

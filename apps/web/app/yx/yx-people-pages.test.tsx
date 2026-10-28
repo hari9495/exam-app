@@ -140,12 +140,14 @@ describe('/yx/people/restructure as payroll (founder 28 Oct 2026)', () => {
 
   it('the record: no approve, reject, cancel or letters; ticking a checklist item shows a toast', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r-1' });
-    let item = { id: 'i-1', key: 'form12b', title: 'Form 12B collected', owner: 'Payroll', dueOn: null, status: 'open', note: null, version: 1 };
+    let item = { id: 'i-1', key: 'form12b', title: 'Form 12B collected', owner: 'Payroll', dueOn: null, status: 'open', note: null, version: 1, canSet: true };
+    // HR's item: visible to payroll with its owner, never ticked by it (founder 28 Oct 2026).
+    const hrItem = { id: 'i-2', key: 'costcentre', title: 'Cost centre: choose one of Entity KF', owner: 'HR', dueOn: null, status: 'open', note: null, version: 1, canSet: false };
     const puts: unknown[] = [];
     route({
       [`GET ${PERMS_PATH}`]: PAYROLL,
       'GET /people/restructures/r-1': { ...DONE, reason: 'One company', decidedBy: 'Karthik', decidedAt: '2026-10-01T10:00:00Z', decisionNote: null, canDecide: false, canCancel: false, people: [{ employeeId: 'p-arjun', name: 'Arjun Kulkarni', status: 'moved', reason: null, result: null, openItems: 1 }] },
-      'GET /people/restructures/continuity': () => [item],
+      'GET /people/restructures/continuity': () => [item, hrItem],
       'PUT /people/restructures/continuity/i-1': (_: string, init: RequestInit) => {
         puts.push(JSON.parse(String(init.body)));
         item = { ...item, status: 'done', version: 2 };
@@ -156,7 +158,9 @@ describe('/yx/people/restructure as payroll (founder 28 Oct 2026)', () => {
     expect(await screen.findByText('Merge Entity TN into Entity KF')).toBeInTheDocument();
     for (const name of [/Approve/, /^Reject$/, /Cancel restructure/, /Issue transfer letters/]) expect(screen.queryByRole('button', { name })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /Continuity checklist/ }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Mark done' }));
+    expect(await screen.findByText('Cost centre: choose one of Entity KF')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Mark done' })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
     await waitFor(() => expect(puts).toEqual([{ done: true, version: 1 }]));
     expect((await screen.findAllByText('“Form 12B collected” done')).length).toBeGreaterThan(0);
   });

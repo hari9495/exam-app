@@ -68,7 +68,7 @@ export interface RecordEvent {
 
 /** Pay tab, live: no pay access; pay access but not yet asked ("Show pay", founder rule R1); or shown. */
 export type LiveRecordPay =
-  | { kind: 'none'; grantedBy: string }
+  | { kind: 'none'; grantedBy: string; note?: string }
   | { kind: 'ask'; onShow: () => void; busy?: boolean; error?: string | null }
   | {
       kind: 'shown';
@@ -243,6 +243,7 @@ const SAMPLE_JOB: [string, string][] = [
 export function PersonWorkspace({ persona, relation, today, defaultTab = 'overview', payGrant = false, payAccess = null, defaultAsOf = null, panel = 'activity', international = false, identityState = 'consented', state = 'ready', live }: PersonWorkspaceProps) {
   const [tab, setTab] = useState<RecordTab>(defaultTab);
   const [asking, setAsking] = useState(false);
+  const [payShown, setPayShown] = useState(false);
   const [ownAsOf, setOwnAsOf] = useState<Date | null>(defaultAsOf);
   const asOf = live ? live.asOf : ownAsOf;
   const setAsOf = live ? live.onAsOf : setOwnAsOf;
@@ -515,7 +516,8 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
                 ) : payVisible ? (
                   <div className="yx-ppl__stack">
                     {payAccess?.state === 'active' && <PayAccessNote latest={payAccess} />}
-                    <PayTab persona={persona} self={self} international={international} />
+                    {/* PPL-50 as live: a manager with time-limited access still asks to see each time (R1). */}
+                    {payAccess?.state === 'active' && !payShown ? <PayReveal name={name} self={self} onShow={() => setPayShown(true)} /> : <PayTab persona={persona} self={self} international={international} />}
                   </div>
                 ) : (
                   <div className="yx-ppl__stack">
@@ -748,16 +750,35 @@ function PayTab({ persona, self, international }: { persona: Persona; self: bool
   );
 }
 
+/** Founder rule R1: pay shows only after "Show pay" (each view is recorded). */
+function PayReveal({ name, self, onShow, busy, error }: { name: string; self: boolean; onShow: () => void; busy?: boolean; error?: string | null }) {
+  return (
+    <Card title="Pay">
+      <div className="yx-ppl__stack">
+        <Text as="p" tone="secondary">
+          {self ? 'Your pay is shown when you ask.' : `${name.split(' ')[0]} can see each time someone else looks at their pay.`}
+        </Text>
+        <div>
+          <Button onClick={onShow} loading={busy}>
+            Show pay
+          </Button>
+        </div>
+        {error && <InlineAlert tone="danger" title={error} />}
+      </div>
+    </Card>
+  );
+}
+
 /** Pay tab, live: the same cards, from the person's current pay, last approved payslip and tax regime. */
 function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; onRequestChange?: () => void; onBankAbroad?: () => void }) {
   if (pay.kind === 'none')
     return access ? (
       <div className="yx-ppl__stack">
-        <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />
+        <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} note={pay.note} />
         <PayAccessNote latest={access.latest} onRequest={access.onRequest} />
       </div>
     ) : (
-      <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} />
+      <NoAccessState what={`pay details for ${name}`} grantedBy={pay.grantedBy} note={pay.note} />
     );
   // PPL-50: a manager with time-limited access sees until when, above the pay.
   const until = access?.latest?.state === 'active' ? <PayAccessNote latest={access.latest} /> : null;
@@ -767,22 +788,7 @@ function LivePayTab({ pay, name, persona, self, access, onRequestChange, onBankA
       <LivePayTab pay={pay} name={name} persona={persona} self={self} access={null} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
     </div>
   );
-  if (pay.kind === 'ask')
-    return (
-      <Card title="Pay">
-        <div className="yx-ppl__stack">
-          <Text as="p" tone="secondary">
-            {self ? 'Your pay is shown when you ask.' : `${name.split(' ')[0]} can see each time someone else looks at their pay.`}
-          </Text>
-          <div>
-            <Button onClick={pay.onShow} loading={pay.busy}>
-              Show pay
-            </Button>
-          </div>
-          {pay.error && <InlineAlert tone="danger" title={pay.error} />}
-        </div>
-      </Card>
-    );
+  if (pay.kind === 'ask') return <PayReveal name={name} self={self} onShow={pay.onShow} busy={pay.busy} error={pay.error} />;
   // Whole rupees on screen, as the design (stored amounts keep their paise).
   const money = (n: number) => formatMoney(Math.round(n), pay.currency);
   return (

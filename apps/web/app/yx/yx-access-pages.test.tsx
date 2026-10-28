@@ -214,6 +214,7 @@ describe('/yx/people/directory/[id] (a manager, PPL-50)', () => {
     });
     wrap(<PersonRecord personParam="p-arjun" path="/yx/people/directory/p-arjun" />);
     await ue.click(await screen.findByRole('tab', { name: 'Pay' }));
+    expect(await screen.findByText('Pay needs a salary grant for your team. Ask HR to give you access.')).toBeInTheDocument();
     await ue.click(await screen.findByRole('button', { name: 'Request access' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ask HR for access to pay' });
     expect(within(dialog).getByRole('radio', { name: 'My whole team (2)' })).toBeChecked();
