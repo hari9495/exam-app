@@ -105,3 +105,14 @@ describe('overtime limits at the edges (Factories Act s.64/65, P07: 10 h a day, 
     expect(ot(600, 0, 60)).toMatchObject({ payable: 60, overCap: 60 });
   });
 });
+
+describe('night minutes inside the 7 pm to 6 am window (TIM-16 register)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { nightMinutes } = require('./attendance-ops.service') as typeof import('./attendance-ops.service');
+  it('a full night shift, a day shift, and one that touches the window at each end', () => {
+    expect(nightMinutes(1320, 360)).toBe(480);
+    expect(nightMinutes(540, 1080)).toBe(0);
+    expect(nightMinutes(840, 1320)).toBe(180);
+    expect(nightMinutes(300, 780)).toBe(60);
+  });
+});

@@ -3115,7 +3115,7 @@ function LiveExceptionsScreen({ live }: { live: LiveExceptions }) {
             getRowId={(r) => r.id}
             state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
             onRetry={live.onRetry}
-            filtered={filters.length > 0 || !!search}
+            filtered={all.length > 0 && (filters.length > 0 || !!search)}
             onClearFilters={() => { setFilters([]); setSearch(''); }}
             empty={<EmptyState title="No open exceptions" description={`Every working day in ${monthLong(live.month)} has punches, leave or an approved request. Payroll is not blocked by attendance.`} action={live.musterHref ? <Button asChild><a href={live.musterHref}>Open muster</a></Button> : undefined} />}
             selectable={hr}
