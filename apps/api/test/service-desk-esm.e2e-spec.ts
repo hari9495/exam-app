@@ -44,7 +44,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
     });
   // The company calendar is India time (todayIst), so the test's "today" is too (UTC lags it after 6:30 pm UTC).
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
-  const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null }[];
+  const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; requestId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null }[];
   const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
   /** Events are handled by the outbox dispatcher (this process or another API on the same database): wait for the run. */
   const runsOf = async (ruleId: string, until: (rows: { outcome: string; recordId: string }[]) => boolean) => {
