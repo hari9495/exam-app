@@ -3,7 +3,8 @@ import { CheckCircle2, Circle } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -152,7 +153,10 @@ function DeskWizard(props: SetupStartProps & { onClose: () => void }) {
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
   const [mailboxDone, setMailboxDone] = useState(false);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const keyOk = /^[A-Z][A-Z0-9]{1,9}$/.test(key);
+  const deskEarly = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'wz-name', message: 'Name the desk.' }]), ...(keyOk ? [] : [{ fieldId: 'wz-key', message: 'Use capital letters and digits, starting with a letter' }])]);
+  const emailEarly = useTooEarly(/^[^@\s+]+@[^@\s]+\.[^@\s]+$/.test(address.trim()) ? [] : [{ fieldId: 'wz-email', message: 'Give the support email address, like help@yourcompany.com.' }]);
   return (
     <Card title="Set up a desk in 3 steps">
       <div className="yx-ops-stack">
@@ -175,23 +179,24 @@ function DeskWizard(props: SetupStartProps & { onClose: () => void }) {
                   <FormField label="Kind of desk" required helper="Chosen once. Employee help desks answer your own people; Customer support desks answer your customers.">
                     <Segment label="Kind of desk" options={[{ value: 'employee', label: 'Employee help desk' }, { value: 'customer', label: 'Customer support desk' }]} value={audience} onChange={setAudience} />
                   </FormField>
-                  <FormField label="Desk name" required>
+                  <FormField id="wz-name" label="Desk name" required error={deskEarly.errorOf('wz-name')}>
                     <TextField value={name} onChange={setName} maxLength={100} placeholder={audience === 'customer' ? 'Customer support' : 'IT help desk'} disabled={Boolean(deskId)} />
                   </FormField>
-                  <FormField label="Short key" required helper="2–10 capital letters or digits. Ticket numbers start with it, like IT-1001." error={key && !keyOk ? 'Use capital letters and digits, starting with a letter' : null}>
+                  <FormField label="Short key" required helper="2–10 capital letters or digits. Ticket numbers start with it, like IT-1001." id="wz-key" error={key && !keyOk ? 'Use capital letters and digits, starting with a letter' : deskEarly.errorOf('wz-key')}>
                     <TextField value={key} onChange={(v) => setKey(v.toUpperCase())} maxLength={10} disabled={Boolean(deskId)} />
                   </FormField>
                   {deskId ? (
-                    <InlineAlert tone="success">The desk is created. Continue to set its response targets.</InlineAlert>
+                    <InlineAlert tone="info">The desk is created. Continue to set its response targets.</InlineAlert>
                   ) : (
                     <span>
                       <Button
                         variant="primary"
-                        disabled={!name.trim() || !keyOk}
                         loading={busy === 'desk'}
                         onClick={() =>
+                          !deskEarly.stop() &&
                           void run('desk', async () => {
                             const d = await props.onCreateDesk({ name: name.trim(), key, kind: audience === 'customer' ? 'customer_support' : 'custom' });
+                            toast({ tone: 'success', title: `${name.trim()} is created` });
                             setDeskId(d.id);
                             setCurrent('targets');
                           })
@@ -217,16 +222,18 @@ function DeskWizard(props: SetupStartProps & { onClose: () => void }) {
                   </FormField>
                   <p>{PRESETS[preset].text}</p>
                   {targetsSet ? (
-                    <InlineAlert tone="success">Response targets are set.</InlineAlert>
+                    <InlineAlert tone="info">Response targets are set.</InlineAlert>
                   ) : (
                     <span>
                       <Button
                         variant="primary"
-                        disabled={!deskId}
                         loading={busy === 'targets'}
                         onClick={() =>
-                          void run('targets', async () => {
-                            await props.onCreatePolicy(deskId!, presetPolicy(preset));
+                          !deskId
+                            ? toast({ title: 'Create the desk first.' })
+                            : void run('targets', async () => {
+                            await props.onCreatePolicy(deskId, presetPolicy(preset));
+                            toast({ tone: 'success', title: 'Response targets are set' });
                             setTargetsSet(true);
                             setCurrent('email');
                           })
@@ -247,22 +254,25 @@ function DeskWizard(props: SetupStartProps & { onClose: () => void }) {
               statusNote: 'Create the desk first',
               content: (
                 <div className="yx-ops-stack">
-                  <FormField label="Support email address" helper="Mail to this address becomes a ticket on the desk. Point your mail service at the web address we show next.">
+                  <FormField id="wz-email" error={emailEarly.errorOf('wz-email')} label="Support email address" helper="Mail to this address becomes a ticket on the desk. Point your mail service at the web address we show next.">
                     <TextField type="email" value={address} onChange={setAddress} maxLength={254} placeholder="help@yourcompany.com" disabled={mailboxDone} />
                   </FormField>
                   {secret && <SecretBox secret={secret} onDone={() => setSecret(null)} />}
                   {mailboxDone ? (
-                    !secret && <InlineAlert tone="success">The support email is connected. Press Finish.</InlineAlert>
+                    !secret && <InlineAlert tone="info">The support email is connected. Press Finish.</InlineAlert>
                   ) : (
                     <span>
                       <Button
                         variant="primary"
-                        disabled={!deskId || !/^[^@\s+]+@[^@\s]+\.[^@\s]+$/.test(address.trim())}
                         loading={busy === 'email'}
                         onClick={() =>
-                          void run('email', async () => {
-                            const m = await props.onCreateMailbox(deskId!, address.trim().toLowerCase());
+                          !deskId
+                            ? toast({ title: 'Create the desk first.' })
+                            : !emailEarly.stop() &&
+                              void run('email', async () => {
+                            const m = await props.onCreateMailbox(deskId, address.trim().toLowerCase());
                             if (m.webhookUrl && m.signingSecret) setSecret({ webhookUrl: m.webhookUrl, signingSecret: m.signingSecret });
+                            toast({ tone: 'success', title: 'The support email is connected' });
                             setMailboxDone(true);
                           })
                         }
@@ -344,10 +354,15 @@ export function DeskSignUpScreen({ onSubmit, signInHref }: DeskSignUpScreenProps
   const { busy, error, run } = useRun();
   const code = slugTouched ? slug : slugOf(company);
   const codeOk = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])$/.test(code);
-  const ok = company.trim().length >= 2 && codeOk && name.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const early = useTooEarly([
+    ...(company.trim().length >= 2 ? [] : [{ fieldId: 'su-company', message: 'Give your company name.' }]),
+    ...(codeOk ? [] : [{ fieldId: 'su-code', message: 'Use 3 to 50 lowercase letters, digits and hyphens' }]),
+    ...(name.trim() ? [] : [{ fieldId: 'su-name', message: 'Give your name.' }]),
+    ...(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()) ? [] : [{ fieldId: 'su-email', message: 'Give your work email.' }]),
+  ]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!ok) return;
+    if (early.stop()) return;
     void run('go', async () => {
       await onSubmit({ company: company.trim(), slug: code, name: name.trim(), email: email.trim().toLowerCase() });
       setSent(true);
@@ -364,10 +379,10 @@ export function DeskSignUpScreen({ onSubmit, signInHref }: DeskSignUpScreenProps
         </div>
       ) : (
         <form className="yx-auth__form" onSubmit={submit} noValidate>
-          <FormField label="Company name" required>
+          <FormField id="su-company" label="Company name" required error={early.errorOf('su-company')}>
             <TextField value={company} onChange={setCompany} maxLength={200} autoComplete="organization" />
           </FormField>
-          <FormField label="Company code" required helper="Used to sign in. 3 to 50 lowercase letters, digits and hyphens." error={code && !codeOk ? 'Use 3 to 50 lowercase letters, digits and hyphens' : null}>
+          <FormField id="su-code" label="Company code" required helper="Used to sign in. 3 to 50 lowercase letters, digits and hyphens." error={code && !codeOk ? 'Use 3 to 50 lowercase letters, digits and hyphens' : early.errorOf('su-code')}>
             <TextField
               value={code}
               onChange={(v) => {
@@ -379,14 +394,14 @@ export function DeskSignUpScreen({ onSubmit, signInHref }: DeskSignUpScreenProps
               autoCapitalize="none"
             />
           </FormField>
-          <FormField label="Your name" required>
+          <FormField id="su-name" label="Your name" required error={early.errorOf('su-name')}>
             <TextField value={name} onChange={setName} maxLength={120} autoComplete="name" />
           </FormField>
-          <FormField label="Work email" required helper="We send the link to set your password here.">
+          <FormField id="su-email" error={early.errorOf('su-email')} label="Work email" required helper="We send the link to set your password here.">
             <TextField type="email" value={email} onChange={setEmail} maxLength={320} autoComplete="email" spellCheck={false} autoCapitalize="none" />
           </FormField>
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-          <Button type="submit" variant="primary" fullWidth loading={busy === 'go'} disabled={!ok}>
+          <Button type="submit" variant="primary" fullWidth loading={busy === 'go'}>
             Start free trial
           </Button>
           <Link href={signInHref}>Already have an account? Sign in</Link>

@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -269,6 +269,7 @@ export function DeskTicketsScreen(props: DeskTicketsScreenProps) {
 function TagDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; onSave: (tag: string) => void }) {
   const [tag, setTag] = useState('');
   const ok = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u.test(tag.trim());
+  const early = useTooEarly(ok ? [] : [{ fieldId: 'tag-name', message: 'Write a tag: letters, digits, spaces or dashes, up to 40.' }]);
   return (
     <Dialog
       open={open}
@@ -280,8 +281,8 @@ function TagDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ok}
             onClick={() => {
+              if (early.stop()) return;
               onSave(tag.trim());
               setTag('');
               onOpenChange(false);
@@ -292,7 +293,7 @@ function TagDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange
         </>
       }
     >
-      <FormField label="Tag">
+      <FormField id="tag-name" label="Tag" error={early.errorOf('tag-name')}>
         <TextField value={tag} onChange={setTag} maxLength={40} />
       </FormField>
     </Dialog>
@@ -309,6 +310,12 @@ function NewTicketDrawer({ open, onOpenChange, desks, details, onSearchPeople, o
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly([
+    ...(!deskId ? [{ fieldId: 'nt-desk', message: 'Choose the desk.' }] : []),
+    ...(!personId ? [{ fieldId: 'nt-person', message: 'Choose who the ticket is for.' }] : []),
+    ...(!subject.trim() ? [{ fieldId: 'nt-subject', message: 'Write a subject.' }] : []),
+    ...(!body.replace(/<[^>]*>/g, '').trim() ? [{ fieldId: 'nt-body', message: 'Say what they need.' }] : []),
+  ]);
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => void onSearchPeople(find).then(setPeople).catch(() => setPeople([])), 250);
@@ -329,8 +336,7 @@ function NewTicketDrawer({ open, onOpenChange, desks, details, onSearchPeople, o
           <Button
             variant="primary"
             loading={busy === 'create'}
-            disabled={!deskId || !personId || !subject.trim() || !body.replace(/<[^>]*>/g, '').trim()}
-            onClick={() => void run('create', () => onCreate({ deskId: deskId!, requesterPersonId: personId!, subject: subject.trim(), bodyHtml: body, categoryId: categoryId ?? undefined }))}
+            onClick={() => !early.stop() && void run('create', () => onCreate({ deskId: deskId!, requesterPersonId: personId!, subject: subject.trim(), bodyHtml: body, categoryId: categoryId ?? undefined }))}
           >
             Raise ticket
           </Button>
@@ -340,14 +346,14 @@ function NewTicketDrawer({ open, onOpenChange, desks, details, onSearchPeople, o
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
         {desks.length > 1 && (
-          <FormField label="Desk" required>
+          <FormField id="nt-desk" label="Desk" required error={early.errorOf('nt-desk')}>
             <Select value={deskId} onChange={setDeskId} options={desks.map((d) => ({ value: d.id, label: d.name }))} />
           </FormField>
         )}
         <FormField label="Find the requester" helper="Name or email">
           <TextField value={find} onChange={setFind} />
         </FormField>
-        <FormField label="Requester" required>
+        <FormField id="nt-person" label="Requester" required error={early.errorOf('nt-person')}>
           <Select value={personId} onChange={setPersonId} options={people.map((p) => ({ value: p.id, label: p.name, description: p.email ?? undefined }))} placeholder="Choose a person" emptyText="Nobody matches" />
         </FormField>
         {detail && (
@@ -355,10 +361,10 @@ function NewTicketDrawer({ open, onOpenChange, desks, details, onSearchPeople, o
             <Select value={categoryId} onChange={setCategoryId} clearable options={detail.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name, description: c.sensitive ? 'Sensitive' : undefined }))} />
           </FormField>
         )}
-        <FormField label="Subject" required>
+        <FormField id="nt-subject" label="Subject" required error={early.errorOf('nt-subject')}>
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
-        <FormField label="What they need" required>
+        <FormField id="nt-body" label="What they need" required error={early.errorOf('nt-body')}>
           <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} />
         </FormField>
       </div>

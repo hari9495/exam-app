@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { choose, fails, never, ok, pick, play, press, pressFirst, tick, type } from '../_kit/story-play';
+import { choose, fails, never, ok, pick, play, press, pressFirst, tab, tick, type } from '../_kit/story-play';
 import { CatalogScreen, RequestTracker, type CatalogScreenProps } from './catalog';
 import { CatalogAdmin, type CatalogAdminProps } from './catalog-admin';
+import { ArticleBody, type KbArticleView } from './help-kb';
 import { AgentChatScreen, ChatPromptBanner, RequesterChatScreen, type AgentChatProps, type RequesterChatProps } from './chat';
 import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, MyDocumentsCard, SchedulesAdmin, TicketEsmRail, type DeskOrgAdminProps, type TicketEsmRailProps } from './esm2';
 import { MessagingAdmin, MyChannelsCard, TeamScreen, type TeamScreenProps } from './esm3';
@@ -68,6 +69,9 @@ export const Catalog: S = { name: 'Catalogue · items and a guide', render: () =
 export const CatalogItem: S = { name: 'Catalogue · an item open', render: () => catalog(), play: play(press('Open New laptop')) };
 export const CatalogItemMissing: S = { name: 'Catalogue · Add to cart pressed with a required answer missing', render: () => catalog(), play: play(press('Open New laptop'), press('Add to cart')) };
 export const CatalogItemFailed: S = { name: 'Catalogue · the item could not be opened', render: () => catalog({ onOpenItem: fails('This item was retired a moment ago.') }), play: play(press('Open New laptop')) };
+const toCart = [press('Open New laptop'), pick(/^Model/, /Standard/), press('Add to cart')];
+export const CatalogSent: S = { name: 'Catalogue · request sent (toast with Follow)', render: () => catalog(), play: play(...toCart, press('Send request')) };
+export const CatalogForOtherMissing: S = { name: 'Catalogue · Send request for someone else with nobody chosen', render: () => catalog(), play: play(...toCart, choose('For someone else'), press('Send request')) };
 export const CatalogEmpty: S = { name: 'Catalogue · nothing to order', render: () => catalog({ catalogue: { items: [], guides: [] } }) };
 export const CatalogLoading: S = { name: 'Catalogue · loading', render: () => catalog({ state: 'loading' }) };
 export const CatalogError: S = { name: 'Catalogue · could not load', render: () => catalog({ state: 'error', onRetry: () => undefined }) };
@@ -107,6 +111,8 @@ export const RequesterChatTyping: S = { name: 'Chat · requester, the agent is t
 export const RequesterChatOffline: S = { name: 'Chat · requester, connection lost', render: () => requester({ live: { connected: false, typing: false } }) };
 export const RequesterChatNew: S = { name: 'Chat · requester, start a new chat', render: () => requester({ current: null }) };
 export const RequesterChatNewMissing: S = { name: 'Chat · requester, start pressed with no subject', render: () => requester({ current: null }), play: play(press(/^Start (the )?chat/)) };
+export const RequesterChatSendMissing: S = { name: 'Chat · requester, Send pressed with nothing written', render: () => requester(), play: play(press('Send')) };
+export const RequesterChatRateMissing: S = { name: 'Chat · requester, Rate pressed with no stars', render: () => requester({ current: { ...CHAT_ENDED, rating: null } }), play: play(press('Rate this chat')) };
 export const RequesterChatEnded: S = { name: 'Chat · requester, ended (rate it)', render: () => requester({ current: { ...CHAT_ENDED, rating: null } }) };
 export const RequesterChatSendFailed: S = { name: 'Chat · requester, a message not sent', render: () => requester({ onSend: fails('The chat ended on the agent’s side.') }), play: play(type(/^Message/, 'Still dropping on home Wi-Fi'), press('Send')) };
 export const RequesterChatEmpty: S = { name: 'Chat · requester, no chats yet', render: () => requester({ chats: [], current: null }) };
@@ -145,6 +151,8 @@ const agent = (over: Partial<AgentChatProps> = {}) => (
 export const AgentChat: S = { name: 'Live chat · agent, in a chat', render: () => agent() };
 export const AgentChatWaiting: S = { name: 'Live chat · agent, a chat waiting to be taken', render: () => agent({ current: CHAT_QUEUED }) };
 export const AgentChatTakeFailed: S = { name: 'Live chat · agent, Take refused', render: () => agent({ current: CHAT_QUEUED, onAccept: fails('Suresh Pillai took this chat a moment ago.') }), play: play(press('Take this chat')) };
+export const AgentChatHandMissing: S = { name: 'Live chat · agent, Hand over pressed with nobody chosen', render: () => agent(), play: play(press('Hand over')) };
+export const AgentCallMissing: S = { name: 'Calls · Save pressed with no subject', render: () => agent(), play: play(choose('Calls and walk-ups'), press('Save')) };
 export const AgentChatEmpty: S = { name: 'Live chat · agent, no chats', render: () => agent({ sessions: [], current: null, interactions: [], firstContactResolution: null }) };
 export const AgentChatLoading: S = { name: 'Live chat · agent, loading', render: () => agent({ state: 'loading' }) };
 export const AgentChatError: S = { name: 'Live chat · agent, could not load', render: () => agent({ state: 'error', onRetry: () => undefined }) };
@@ -196,31 +204,44 @@ export const EscalateFailed: S = { name: 'Escalate · the server refuses', rende
 // ------------------------------------------------------------------ Desk set-up admin cards
 export const Lifecycle: S = { name: 'Set-up · ticket lifecycle designer', render: () => <LifecycleAdmin setup={LIFECYCLE} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} /> };
 export const LifecycleProblem: S = { name: 'Set-up · lifecycle check finds a problem', render: () => <LifecycleAdmin setup={LIFECYCLE} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: false, problem: 'Solved cannot be reached from New.' })} onPublish={ok} onRetire={ok} />, play: play(press('Check')) };
+export const LifecycleReady: S = { name: 'Set-up · lifecycle check passes (toast)', render: () => <LifecycleAdmin setup={LIFECYCLE} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} />, play: play(press(/^Check/)) };
 export const LifecycleEmpty: S = { name: 'Set-up · no lifecycle yet', render: () => <LifecycleAdmin setup={{ ...LIFECYCLE, lifecycles: [] }} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} /> };
 export const LifecycleLoading: S = { name: 'Set-up · lifecycle loading', render: () => <LifecycleAdmin setup={undefined} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} /> };
 const schedules = (over: Partial<Parameters<typeof SchedulesAdmin>[0]> = {}) => <SchedulesAdmin timeZone="Asia/Kolkata" groups={GROUPS} recurring={RECURRING} sequences={SEQUENCES} onCreate={ok} onState={ok} onSaveSequence={ok} {...over} />;
 export const Schedules: S = { name: 'Set-up · recurring tickets and follow-ups', render: () => schedules() };
 export const SchedulesEmpty: S = { name: 'Set-up · no schedules yet', render: () => schedules({ recurring: [], sequences: [] }) };
+export const SchedulesMissing: S = { name: 'Set-up · recurring ticket Save pressed with nothing filled', render: () => schedules(), play: play(pressFirst(/^Save$/)) };
+export const SequenceMissing: S = { name: 'Set-up · Save sequence pressed with nothing filled', render: () => schedules(), play: play(press('Save sequence')) };
 export const SchedulesStateFailed: S = { name: 'Set-up · pausing a schedule refused', render: () => schedules({ onState: fails('Someone changed this a moment ago.') }), play: play(pressFirst('Pause')) };
 export const ChatQueues: S = { name: 'Set-up · chat queues and prompts', render: () => <ChatQueuesAdmin queues={ADMIN_CHAT_QUEUES} groups={GROUPS} onSave={ok} /> };
 export const ChatQueuesEdit: S = { name: 'Set-up · edit a chat queue', render: () => <ChatQueuesAdmin queues={ADMIN_CHAT_QUEUES} groups={GROUPS} onSave={ok} />, play: play(pressFirst('Edit')) };
+export const ChatQueuesNewMissing: S = { name: 'Set-up · new chat queue saved with no name', render: () => <ChatQueuesAdmin queues={[]} groups={GROUPS} onSave={ok} />, play: play(press(/^New (chat )?queue/), press(/^Save/)) };
 export const ChatQueuesEmpty: S = { name: 'Set-up · no chat queues yet', render: () => <ChatQueuesAdmin queues={[]} groups={GROUPS} onSave={ok} /> };
 const messaging = (over: Partial<Parameters<typeof MessagingAdmin>[0]> = {}) => <MessagingAdmin deskId="d-it" setup={MSG_SETUP} onAdd={async () => ({ webhookUrl: 'https://api.kaverifoods.test/msg/ln2', secret: 'whsec_9f2c41d7' })} onSave={ok} onRotate={async () => ({ webhookUrl: 'https://api.kaverifoods.test/msg/ln1', secret: 'whsec_1a2b3c4d' })} widgets={{ list: WIDGETS, portals: [{ id: 'pt1', name: 'Kaveri careers' }], onAdd: async () => ({ ...WIDGETS[0]!, secret: 'wgt_7e8f' }), onSave: ok, onRotate: async () => ({ secret: 'wgt_8a9b' }) }} {...over} />;
 export const Messaging: S = { name: 'Set-up · WhatsApp, SMS and web chat widget', render: () => messaging() };
 export const MessagingEmpty: S = { name: 'Set-up · no messaging lines yet', render: () => messaging({ setup: { channels: [], accounts: [], devTransport: false }, widgets: null }) };
 export const MessagingAddMissing: S = { name: 'Set-up · Add the line pressed with nothing filled', render: () => messaging(), play: play(choose('SMS'), press('Add the line')) };
-export const MessagingLoading: S = { name: 'Set-up · messaging loading', render: () => messaging({ setup: undefined }) };
+export const MessagingWidgetMissing: S = { name: 'Set-up · Add the widget pressed with no name', render: () => messaging(), play: play(press('Add the widget')) };
+export const MessagingLoading: S
+ = { name: 'Set-up · messaging loading', render: () => messaging({ setup: undefined }) };
 const org = (over: Partial<DeskOrgAdminProps> = {}) => (
   <DeskOrgAdmin deskId="d-hr" deskKind="hr" desks={[{ id: 'd-it', name: 'IT help desk' }, { id: 'd-hr', name: 'HR help desk' }]} forwardTo={['d-it']} canCreateDesks branches={BRANCHES} locations={[{ id: 'loc-blr', name: 'Bengaluru head office' }, { id: 'loc-hosur', name: 'Hosur plant' }]} groups={GROUPS} templates={DOC_TEMPLATES} docFields={[{ key: 'employee.name', label: 'Employee name' }, { key: 'asset.name', label: 'Asset' }]} onForwardTo={ok} onClone={ok} onStarterPack={async () => ({ items: 6, sla: true })} onAddBranch={ok} onSaveTemplate={ok} journeys={{ setup: JOURNEYS, onSave: ok }} {...over} />
 );
 export const Org: S = { name: 'Set-up · desks, branches, document templates, journeys', render: () => org() };
 export const OrgStarter: S = { name: 'Set-up · starter pack asks about a restricted HR desk', render: () => org(), play: play(press('Add the starter pack')) };
+export const OrgStarterDone: S = { name: 'Set-up · starter pack added (toast)', render: () => org({ onStarterPack: async () => ({ items: 3, sla: true }) }), play: play(press('Add the starter pack')) };
+export const OrgSiteMissing: S = { name: 'Set-up · Add site pressed with no location', render: () => org(), play: play(press('Add site')) };
+export const OrgTemplateMissing: S = { name: 'Set-up · Save template pressed with nothing filled', render: () => org(), play: play(press('Save template')) };
+export const OrgJourneyMissing: S = { name: 'Set-up · Save journey pressed with nothing filled', render: () => org(), play: play(press('Save journey')) };
+export const OrgCloneMissing: S = { name: 'Set-up · Copy desk pressed with nothing filled', render: () => org(), play: play(press('Copy desk')) };
 export const OrgNoCreate: S = { name: 'Set-up · someone who cannot make desks', render: () => org({ canCreateDesks: false, journeys: null }) };
 const catalogAdmin = (over: Partial<CatalogAdminProps> = {}) => (
   <CatalogAdmin items={CATALOG_ITEMS} schema={CATALOG_SCHEMA} onLoad={async (id) => CATALOG_ITEMS.find((i) => i.id === id)!} onCreate={async () => CATALOG_ITEMS[1]!} onSave={async () => CATALOG_ITEMS[0]!} onPublish={ok} onRetire={ok} onFindPeople={picks} onPick={picks} highValueAbove={50000} onHighValue={ok} {...over} />
 );
 export const CatalogSetup: S = { name: 'Set-up · catalogue items', render: () => catalogAdmin() };
 export const CatalogSetupEdit: S = { name: 'Set-up · catalogue item editor', render: () => catalogAdmin(), play: play(pressFirst('Edit')) };
+export const CatalogSetupAddMissing: S = { name: 'Set-up · Add item pressed with no name', render: () => catalogAdmin(), play: play(press('Add item')) };
+export const CatalogSetupLimitStep: S = { name: 'Set-up · moving the first section up says it is already first', render: () => catalogAdmin(), play: play(pressFirst('Edit'), tab('Form'), pressFirst(/^Move section 1 up/)) };
 export const CatalogSetupEmpty: S = { name: 'Set-up · no catalogue items yet', render: () => catalogAdmin({ items: [] }) };
 export const CatalogSetupSaveFailed: S = { name: 'Set-up · saving an item refused', render: () => catalogAdmin({ onSave: fails('Someone published a newer version a moment ago.') }), play: play(pressFirst('Edit'), press('Save draft')) };
 const rules = (over: Partial<RulesAdminProps> = {}) => <RulesAdmin rules={RULES} schema={RULE_SCHEMA} webhooks={WEBHOOKS} timeZone="Asia/Kolkata" onSave={ok} onStatus={ok} onRuns={async () => RULE_RUNS} onDryRun={async () => ({ checked: 40, matched: 6, records: [] })} onInstall={ok} onAddWebhook={async () => ({ secret: 'whsec_44aa' })} onWebhookActive={ok} {...over} />;
@@ -229,6 +250,9 @@ export const RulesEdit: S = { name: 'Set-up · rule editor', render: () => rules
 export const RulesRuns: S = { name: 'Set-up · what a rule did', render: () => rules(), play: play(pressFirst('What it did')) };
 export const RulesEmpty: S = { name: 'Set-up · no rules yet (recipes)', render: () => rules({ rules: [] }) };
 export const RulesSaveFailed: S = { name: 'Set-up · saving a rule refused', render: () => rules({ onSave: fails('A rule with this name already exists.') }), play: play(pressFirst('Edit'), press('Save')) };
+export const RulesTooEarly: S = { name: 'Set-up · new rule saved with no name', render: () => rules(), play: play(press('New rule'), press('Save')) };
+export const WebhookTooEarly: S = { name: 'Set-up · Add webhook pressed with nothing filled', render: () => rules(), play: play(press('Add webhook')) };
+export const WebhookAdded: S = { name: 'Set-up · webhook added, secret to copy', render: () => rules(), play: play(type('Webhook name', 'Plant board'), type('Webhook address', 'https://board.kaverifoods.test/h'), press('Add webhook')) };
 
 // ------------------------------------------------------------------ Desk team (lead, agent)
 const team = (over: Partial<TeamScreenProps> = {}) => (
@@ -238,8 +262,17 @@ export const Team: S = { name: 'Desk team · lead (capacity, shifts, forecast)',
 export const TeamAgent: S = { name: 'Desk team · agent (my presence only)', render: () => team({ canLead: false, canReport: false, forecast: null, availability: null }) };
 export const TeamRouting: S = { name: 'Desk team · change capacity and languages', render: () => team(), play: play(pressFirst('Change capacity and languages')) };
 export const TeamShiftMissing: S = { name: 'Desk team · Add the shift pressed with nothing filled', render: () => team(), play: play(press('Add the shift')) };
+export const TeamImportMissing: S = { name: 'Desk team · Import shifts pressed with nothing pasted', render: () => team(), play: play(press('Import shifts')) };
+export const TeamImported: S = { name: 'Desk team · shifts imported (toast)', render: () => team({ onImportShifts: async () => ({ added: 4 }) }), play: play(type(/^Or paste shifts/, 'suresh@kaverifoods.in, 2026-10-27 09:00, 2026-10-27 17:00, Day'), press('Import shifts')) };
 export const TeamPresenceFailed: S = { name: 'Desk team · presence change refused', render: () => team({ onPresence: fails('You are signed out on another device.') }), play: play(async (s) => (await s.findByRole('radio', { name: 'Busy' })).click()) };
 export const TeamEmpty: S = { name: 'Desk team · no one on the desk', render: () => team({ team: [], shifts: [] }) };
 export const TeamLoading: S = { name: 'Desk team · loading', render: () => team({ state: 'loading' }) };
 export const TeamError: S = { name: 'Desk team · could not load', render: () => team({ state: 'error', onRetry: () => undefined }) };
 export const TeamWorking: S = { name: 'Desk team · saving presence', render: () => team({ onPresence: never }), play: play(async (s) => (await s.findByRole('radio', { name: 'Busy' })).click()) };
+
+// ------------------------------------------------------------------ Help article (requester): feedback once, solved is a toast
+const WIFI: KbArticleView = { id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: 'Join KaveriStaff with your work sign-in.', bodyHtml: '<p>Choose <strong>KaveriStaff</strong>, then sign in with your work email.</p>', language: 'en', languages: ['en', 'hi'], fallback: false, updatedAt: '2026-10-08T10:00:00Z' };
+const article = () => <ArticleBody article={WIFI} onFeedback={ok} onSolved={ok} onStillNeedHelp={() => undefined} onLanguage={() => undefined} timeZone="Asia/Kolkata" />;
+export const ArticleRead: S = { name: 'Help article · was this helpful?', render: article };
+export const ArticleVoteAgain: S = { name: 'Help article · a second vote (toast)', render: article, play: play(press('Yes'), press('No')) };
+export const ArticleSolved: S = { name: 'Help article · This solved it (toast)', render: article, play: play(press('This solved it')) };

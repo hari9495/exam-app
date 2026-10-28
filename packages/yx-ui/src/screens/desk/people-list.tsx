@@ -4,7 +4,8 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { PasswordField, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -196,7 +197,7 @@ function PersonDrawer({ person, onClose, onSave }: { person: DeskPerson | null; 
   const [team, setTeam] = useState(person?.team ?? '');
   const [location, setLocation] = useState(person?.location ?? '');
   const { busy, error, run } = useRun();
-  const ok = given.trim() && (person || email.includes('@'));
+  const early = useTooEarly([...(given.trim() ? [] : [{ fieldId: 'pp-given', message: 'Give their given name.' }]), ...(person || email.includes('@') ? [] : [{ fieldId: 'pp-email', message: 'Give their work email.' }])]);
   return (
     <Drawer
       open
@@ -207,9 +208,8 @@ function PersonDrawer({ person, onClose, onSave }: { person: DeskPerson | null; 
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ok}
             loading={busy === 'save'}
-            onClick={() => void run('save', () => onSave({ ...(person ? {} : { email: email.trim() }), givenName: given.trim(), familyName: family.trim(), team: team.trim(), location: location.trim() }))}
+            onClick={() => !early.stop() && void run('save', () => onSave({ ...(person ? {} : { email: email.trim() }), givenName: given.trim(), familyName: family.trim(), team: team.trim(), location: location.trim() }))}
           >
             {person ? 'Save' : 'Add person'}
           </Button>
@@ -218,7 +218,7 @@ function PersonDrawer({ person, onClose, onSave }: { person: DeskPerson | null; 
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The person was not saved">{error}</InlineAlert>}
-        <FormField label="Given name" required>
+        <FormField id="pp-given" label="Given name" required error={early.errorOf('pp-given')}>
           <TextField value={given} onChange={setGiven} maxLength={100} />
         </FormField>
         <FormField label="Family name" optional>
@@ -229,7 +229,7 @@ function PersonDrawer({ person, onClose, onSave }: { person: DeskPerson | null; 
             <TextField value={person.email ?? ''} readOnly />
           </FormField>
         ) : (
-          <FormField label="Email" required helper="Their work email. It cannot be changed later.">
+          <FormField id="pp-email" error={early.errorOf('pp-email')} label="Email" required helper="Their work email. It cannot be changed later.">
             <TextField type="email" value={email} onChange={setEmail} maxLength={320} />
           </FormField>
         )}
@@ -256,8 +256,8 @@ function ImportCard({ onImport }: { onImport: PeopleListScreenProps['onImport'] 
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<{ name: string; csv: string } | null>(null);
   const [check, setCheck] = useState<ImportResult | null>(null);
-  const [done, setDone] = useState<ImportResult | null>(null);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   return (
     <Card title="Import from a CSV file">
       <div className="yx-ops-stack">
@@ -279,7 +279,6 @@ function ImportCard({ onImport }: { onImport: PeopleListScreenProps['onImport'] 
             void run('read', async () => {
               setFile({ name: f.name, csv: await readText(f) });
               setCheck(null);
-              setDone(null);
             });
           }}
         />
@@ -296,11 +295,15 @@ function ImportCard({ onImport }: { onImport: PeopleListScreenProps['onImport'] 
             </Button>
             <Button
               variant="primary"
-              disabled={!check || check.problems.length > 0}
               loading={busy === 'import'}
               onClick={() =>
-                void run('import', async () => {
-                  setDone(await onImport(file.csv, false));
+                !check
+                  ? toast({ title: 'Check the file first. Nothing is imported until it looks right.' })
+                  : check.problems.length > 0
+                    ? toast({ title: 'Fix the problems in the file and choose it again.' })
+                    : void run('import', async () => {
+                  const done = await onImport(file.csv, false);
+                  toast({ tone: 'success', title: `${done.imported} ${done.imported === 1 ? 'person' : 'people'} imported${done.created !== undefined ? `, ${done.created} of them new` : ''}` });
                   setCheck(null);
                   setFile(null);
                 })
@@ -322,13 +325,8 @@ function ImportCard({ onImport }: { onImport: PeopleListScreenProps['onImport'] 
           </InlineAlert>
         )}
         {check && check.problems.length === 0 && (
-          <InlineAlert tone="success" title="The file looks right">
+          <InlineAlert tone="info" title="The file looks right">
             {check.rows} {check.rows === 1 ? 'person' : 'people'} ready to import. Nothing has changed yet.
-          </InlineAlert>
-        )}
-        {done && (
-          <InlineAlert tone="success" title="Imported">
-            {done.imported} {done.imported === 1 ? 'person' : 'people'} imported{done.created !== undefined ? `, ${done.created} of them new` : ''}.
           </InlineAlert>
         )}
       </div>
@@ -442,8 +440,15 @@ function SourceDrawer({ kind, source, desks, onClose, onSave }: { kind: 'ldap' |
   const [map, setMap] = useState<GroupMapRow[]>(source?.groupMap ?? []);
   const { busy, error, run } = useRun();
   const urlOk = /^ldaps:\/\/[A-Za-z0-9.-]{1,253}(:\d{1,5})?\/?$/.test(url);
-  const ldapOk = kind === 'scim' || (urlOk && bindDn.trim().length >= 3 && baseDn.trim().length >= 3 && (source || password));
-  const mapOk = map.every((m) => m.group.trim() && m.deskId);
+  const { toast } = useToast();
+  const early = useTooEarly([
+    ...(name.trim() ? [] : [{ fieldId: 'ds-name', message: 'Name the connection.' }]),
+    ...(kind === 'ldap' && !urlOk ? [{ fieldId: 'ds-url', message: 'Start with ldaps:// and give the server name' }] : []),
+    ...(kind === 'ldap' && bindDn.trim().length < 3 ? [{ fieldId: 'ds-bind', message: 'Give the read-only account.' }] : []),
+    ...(kind === 'ldap' && !source && !password ? [{ fieldId: 'ds-pass', message: 'Give the password.' }] : []),
+    ...(kind === 'ldap' && baseDn.trim().length < 3 ? [{ fieldId: 'ds-base', message: 'Say where people are.' }] : []),
+    ...map.flatMap((m, i) => [...(m.group.trim() ? [] : [{ fieldId: `ds-group-${i}`, message: 'Name the directory group.' }]), ...(m.deskId ? [] : [{ fieldId: `ds-desk-${i}`, message: 'Choose a desk.' }])]),
+  ]);
   const paid = map.some((m) => m.role !== 'collaborator');
   const set = (i: number, change: Partial<GroupMapRow>) => setMap(map.map((m, j) => (j === i ? { ...m, ...change } : m)));
   return (
@@ -457,9 +462,9 @@ function SourceDrawer({ kind, source, desks, onClose, onSave }: { kind: 'ldap' |
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!name.trim() || !ldapOk || !mapOk}
             loading={busy === 'save'}
             onClick={() =>
+              !early.stop() &&
               void run('save', () =>
                 onSave({
                   kind,
@@ -478,21 +483,21 @@ function SourceDrawer({ kind, source, desks, onClose, onSave }: { kind: 'ldap' |
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-        <FormField label="Name" required>
+        <FormField id="ds-name" label="Name" required error={early.errorOf('ds-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
         {kind === 'ldap' && (
           <>
-            <FormField label="Directory address" required helper="A secure address, like ldaps://dc1.example.com" error={url && !urlOk ? 'Start with ldaps:// and give the server name' : null}>
+            <FormField id="ds-url" label="Directory address" required helper="A secure address, like ldaps://dc1.example.com" error={url && !urlOk ? 'Start with ldaps:// and give the server name' : early.errorOf('ds-url')}>
               <TextField value={url} onChange={setUrl} spellCheck={false} />
             </FormField>
-            <FormField label="Read-only account" required helper="The account’s full name (DN), like CN=yukthix-read,OU=Service,DC=example,DC=com">
+            <FormField id="ds-bind" error={early.errorOf('ds-bind')} label="Read-only account" required helper="The account’s full name (DN), like CN=yukthix-read,OU=Service,DC=example,DC=com">
               <TextField value={bindDn} onChange={setBindDn} spellCheck={false} maxLength={300} />
             </FormField>
-            <FormField label="Password" required={!source} helper={source ? 'Leave blank to keep the saved password.' : 'Kept encrypted. Never shown again.'}>
+            <FormField id="ds-pass" error={early.errorOf('ds-pass')} label="Password" required={!source} helper={source ? 'Leave blank to keep the saved password.' : 'Kept encrypted. Never shown again.'}>
               <PasswordField value={password} onChange={setPassword} autoComplete="new-password" maxLength={300} />
             </FormField>
-            <FormField label="Where people are" required helper="The base DN to read from, like OU=Staff,DC=example,DC=com">
+            <FormField id="ds-base" error={early.errorOf('ds-base')} label="Where people are" required helper="The base DN to read from, like OU=Staff,DC=example,DC=com">
               <TextField value={baseDn} onChange={setBaseDn} spellCheck={false} maxLength={300} />
             </FormField>
             <FormField label="Filter" optional helper="Only people who match, like (department=Sales). Starts with ( and ends with ).">
@@ -509,10 +514,10 @@ function SourceDrawer({ kind, source, desks, onClose, onSave }: { kind: 'ldap' |
             {paid && <InlineAlert tone="warning">Agent and team lead seats cost ₹999 a month for each person. Collaborators are free.</InlineAlert>}
             {map.map((m, i) => (
               <div key={i} className="yx-ops-stack" data-gap="sm" role="group" aria-label={`Group rule ${i + 1}`}>
-                <FormField label="Directory group" required>
+                <FormField id={`ds-group-${i}`} label="Directory group" required error={early.errorOf(`ds-group-${i}`)}>
                   <TextField value={m.group} onChange={(v) => set(i, { group: v })} maxLength={200} placeholder="IT Support" />
                 </FormField>
-                <FormField label="Desk" required>
+                <FormField id={`ds-desk-${i}`} label="Desk" required error={early.errorOf(`ds-desk-${i}`)}>
                   <Select value={m.deskId || null} onChange={(v) => set(i, { deskId: v ?? '' })} options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Choose a desk" />
                 </FormField>
                 <FormField label="Seat">
@@ -526,7 +531,7 @@ function SourceDrawer({ kind, source, desks, onClose, onSave }: { kind: 'ldap' |
               </div>
             ))}
             <span>
-              <Button size="sm" icon={Plus} disabled={map.length >= 50} onClick={() => setMap([...map, { group: '', deskId: '', role: 'agent' }])}>
+              <Button size="sm" icon={Plus} onClick={() => (map.length >= 50 ? toast({ title: 'Up to 50 group rules.' }) : setMap([...map, { group: '', deskId: '', role: 'agent' }]))}>
                 Add a group rule
               </Button>
             </span>

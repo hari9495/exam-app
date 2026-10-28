@@ -40,7 +40,7 @@ describe('HLP-01 help centre', () => {
     await ue.click(screen.getByRole('radio', { name: 'Today' }));
     await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
     await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Wi-Fi drops', description: 'Every hour on floor 2', urgency: 2 })));
-    expect(await screen.findByText(/IT-1009/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Your ticket number is IT-1009/))[0]).toBeInTheDocument();
   });
 
   it('lists my open tickets with private ones marked; the requester view has no notes', () => {
@@ -63,6 +63,18 @@ describe('HLP-02 agent desk', () => {
     await ue.click(screen.getByRole('button', { name: 'Assign to me' }));
     await waitFor(() => expect(onBulk).toHaveBeenCalledWith(expect.any(Array), { assignee: 'me' }));
     expect(await screen.findByText('1 changed.')).toBeInTheDocument();
+  });
+
+  it('Raise ticket pressed too early says what is missing; nothing is sent', async () => {
+    const onCreate = vi.fn();
+    render(
+      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: ROWS, total: 3, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={ok()} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={onCreate} />,
+    );
+    await ue.click(screen.getByRole('button', { name: 'New ticket' }));
+    await ue.click(await screen.findByRole('button', { name: 'Raise ticket' }));
+    expect(screen.getByText('Choose who the ticket is for.')).toBeInTheDocument();
+    expect(screen.getByText('Write a subject.')).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -110,6 +122,14 @@ describe('HLP-03 ticket workspace', () => {
     expect(screen.getByRole('tab', { name: 'Internal note' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Log time' })).not.toBeInTheDocument();
+  });
+
+  it('Send reply pressed with nothing written says so and sends nothing', async () => {
+    const onPost = ok();
+    render(<TicketScreen {...props({ onPost })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(screen.getByText('Write the reply first.')).toBeInTheDocument();
+    expect(onPost).not.toHaveBeenCalled();
   });
 
   it('changing priority asks for a reason first', async () => {
@@ -183,7 +203,10 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
   it('resolve needs a code and note when the desk asks', async () => {
     const onResolve = ok();
     render(<ResolveDialog open onOpenChange={() => {}} ticket={TICKET} codes={TEMPLATES.resolutionCodes} required linked={0} onResolve={onResolve} />);
-    expect(screen.getByRole('button', { name: 'Resolve' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Resolve' }));
+    expect(onResolve).not.toHaveBeenCalled();
+    expect(screen.getByText('Choose the resolution code.')).toBeInTheDocument();
+    expect(screen.getByText('Say what fixed it.')).toBeInTheDocument();
     await ue.click(screen.getByRole('combobox', { name: /Resolution code/ }));
     await ue.click(await screen.findByRole('option', { name: 'Fixed' }));
     await ue.type(screen.getByRole('textbox', { name: /What fixed it/ }), 'Updated the client');
@@ -197,6 +220,16 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
     expect(screen.getByRole('button', { name: /Resolve by: IT-1043/ })).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Make my link' }));
     expect(await screen.findByDisplayValue(/secret\.ics/)).toBeInTheDocument();
+  });
+
+  it('the SLA tab: Save targets with a bad percent says why', async () => {
+    const onSaveTargets = ok();
+    render(<SlaTab detail={{ ...DETAIL, canSetUp: true }} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={ok()} onAddVersion={ok()} onUpdatePolicy={ok()} onSaveTargets={onSaveTargets} />);
+    await ue.click(screen.getByRole('button', { name: 'Add a target' }));
+    await ue.clear(screen.getAllByLabelText('Target percent').at(-1)!);
+    await ue.click(screen.getByRole('button', { name: 'Save targets' }));
+    expect((await screen.findAllByText('Give each target a percent from 1 to 100.'))[0]).toBeInTheDocument();
+    expect(onSaveTargets).not.toHaveBeenCalled();
   });
 
   it('the SLA tab shows targets by priority and the month at risk', () => {
@@ -272,8 +305,10 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.click(screen.getByRole('combobox', { name: /How mail reaches us/ }));
     await ue.click(await screen.findByRole('option', { name: 'Your mail server (IMAP)' }));
     await ue.type(screen.getByRole('textbox', { name: /Email address/ }), 'help@kaveri.test');
-    expect(screen.getByRole('button', { name: 'Add mailbox' })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: /Server name/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add mailbox' }));
+    expect(await screen.findByText('Give the server name.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Server name/ })).toHaveFocus();
   });
 
   it('banners: severity and audience are single choices; me-too count and linked ticket are shown', async () => {
@@ -305,6 +340,17 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(onSetHalfDay).toHaveBeenCalledWith(cal, 'second');
   });
 
+  it('calendar: Add holiday pressed too early asks for the date and the name', async () => {
+    const onAddHoliday = ok();
+    const cal = { id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [], holidays: [] };
+    render(<DeskSetupScreen state="ready" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={DETAIL} canned={[]} calendars={[cal]} canCalendars onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={onAddHoliday} onSetHours={ok()} />);
+    await ue.click(screen.getByRole('tab', { name: 'Calendars' }));
+    await ue.click(screen.getByRole('button', { name: 'Add holiday' }));
+    expect(screen.getByText('Choose the date.')).toBeInTheDocument();
+    expect(screen.getByText('Name the holiday.')).toBeInTheDocument();
+    expect(onAddHoliday).not.toHaveBeenCalled();
+  });
+
   it('ticket: an unproven sender gets a clear warning; customer, plan, product and source are shown', () => {
     render(<TicketScreen {...ticketProps({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' }, screen: '/yx/people/directory', fields: { screen: '/yx/people/directory', order_number: '4471' } } })} />);
     expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();
@@ -326,14 +372,36 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} banners={MY_BANNERS} onMeToo={onMeToo} timeZone="Asia/Kolkata" />);
     await ue.click(screen.getByRole('button', { name: 'Me too' }));
     expect(onMeToo).toHaveBeenCalledWith('bn1');
-    expect(await screen.findByRole('button', { name: 'You are on it' })).toBeDisabled();
+    await ue.click(await screen.findByRole('button', { name: 'You are on it' }));
+    expect(onMeToo).toHaveBeenCalledTimes(1);
+    expect((await screen.findAllByText(/You are already on this issue/))[0]).toBeInTheDocument();
     expect(screen.getByText(/We added you to this issue/)).toBeInTheDocument();
     expect(screen.getByText('Times are in your time zone: Asia/Kolkata.')).toBeInTheDocument();
     await ue.click(screen.getByRole('switch', { name: /Larger text/ }));
     expect(document.querySelector('.yx-reading')).toHaveAttribute('data-large', 'true');
   });
 
+  it('help drawer: Raise ticket pressed too early says what is missing', async () => {
+    const onRaise = vi.fn();
+    render(<HelpDrawer open onOpenChange={() => {}} desks={[RAISE_DESKS[0]]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    expect(onRaise).not.toHaveBeenCalled();
+    expect(await screen.findByText('Write a subject.')).toBeInTheDocument();
+    expect(screen.getByText('Add the details.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Subject/ })).toHaveFocus();
+  });
+
+  it('customers: Add company pressed with no name says so', async () => {
+    const onCreateAccount = ok();
+    render(<CustomersScreen state="ready" canManage accounts={ACCOUNT_ROWS} search="" onSearch={() => {}} selectedId={null} onSelect={() => {}} account={null} products={PRODUCTS} desks={[CS_DESK]} onCreateAccount={onCreateAccount} onUpdateAccount={ok()} onAddContact={ok()} onUpdateContact={ok()} onAddPlan={ok()} onEndPlan={ok()} onSaveProduct={ok()} onSearchUsers={async () => []} onLoadAgentAccounts={async () => []} onSetAgentAccounts={ok()} />);
+    await ue.click(screen.getByRole('button', { name: /New company/ }));
+    await ue.click(await screen.findByRole('button', { name: 'Add company' }));
+    expect(onCreateAccount).not.toHaveBeenCalled();
+    expect(await screen.findByText('Enter the company name.')).toBeInTheDocument();
+  });
+
   it('help drawer: raises from any page and links my open tickets', async () => {
+
     const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1010' });
     render(<HelpDrawer open onOpenChange={() => {}} desks={[RAISE_DESKS[0]]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
     expect(screen.getByRole('link', { name: 'VPN keeps disconnecting from home' })).toHaveAttribute('href', '/yx/desk/help/t1');
@@ -341,7 +409,7 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Since this morning');
     await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
     await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Payslip page is blank' })));
-    expect(await screen.findByText(/IT-1010/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Your ticket number is IT-1010/))[0]).toBeInTheDocument();
   });
 
   it('customers: people, plans and the company’s ticket sharing', async () => {

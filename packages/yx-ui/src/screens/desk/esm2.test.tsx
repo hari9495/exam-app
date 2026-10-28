@@ -44,6 +44,17 @@ describe('3b-2 batch 2 screens', () => {
     expect(onSend).toHaveBeenCalledWith('Yes');
   });
 
+  it('Send pressed with nothing written says so; an agent cannot press the reply buttons', async () => {
+    const onSend = vi.fn(async () => undefined);
+    const s: ChatSession = { id: 's', deskId: 'd', queueId: 'q', state: 'active', subject: 'Slow', agentUserId: 'a', ticketId: null, rating: null, endReason: null, requesterSeenAt: null, agentSeenAt: null, startedAt: '2026-10-09T10:00:00Z', acceptedAt: null, endedAt: null, messages: [{ id: 'm', author: 'agent', name: 'Farah', body: '', card: { title: 'Did that help?', buttons: [{ label: 'Yes', reply: 'Yes' }] }, file: null, at: '2026-10-09T10:01:00Z' }] };
+    render(<ChatWindow session={s} me="agent" live={{ connected: true, typing: false }} canWrite onSend={onSend} />);
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Write a message.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Yes' }));
+    expect((await screen.findAllByText(/Only the person asking can answer/))[0]).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it('signing needs the name, the confirmation and the one-time code (founder decision 9 Oct 2026)', async () => {
     const onSign = vi.fn(async () => undefined);
     const onSendCode = vi.fn(async () => ({ to: 'ar****@kaveri.test', minutes: 5 }));
@@ -81,4 +92,17 @@ describe('3b-2 batch 2 screens', () => {
     await ue.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'l' }), expect.objectContaining({ transitions: [expect.objectContaining({ from: 'n', to: 'p' })] }));
   });
+
+  it('a lifecycle that checks out says so with a toast', async () => {
+    const setup: LifecycleSetup = {
+      types: [{ id: 't', name: 'Incident', kind: 'incident' }],
+      statuses: [{ id: 'n', label: 'New', systemState: 'new', ticketTypeId: null }],
+      requirable: [],
+      lifecycles: [{ id: 'l', ticketTypeId: 't', name: 'Flow', state: 'draft', currentVersion: null, draft: { startStatusId: 'n', statusIds: ['n'], transitions: [] }, version: 1, versions: [] }],
+    };
+    render(<LifecycleAdmin setup={setup} onCreate={vi.fn()} onSave={vi.fn()} onCheck={vi.fn(async () => ({ ok: true, problem: null }))} onPublish={vi.fn()} onRetire={vi.fn()} />);
+    await ue.click(screen.getByRole('button', { name: /^Check/ }));
+    expect((await screen.findAllByText('This lifecycle is ready to use.'))[0]).toBeInTheDocument();
+  });
 });
+

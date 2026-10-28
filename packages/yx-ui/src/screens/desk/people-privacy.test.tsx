@@ -45,7 +45,7 @@ const peopleProps = (over: Partial<PeopleListScreenProps> = {}): PeopleListScree
 });
 
 describe('SD-1.29 people list', () => {
-  it('checks a CSV file and shows each problem with its row number; Import stays off', async () => {
+  it('checks a CSV file and shows each problem with its row number; Import says to fix them', async () => {
     const onImport = vi.fn().mockResolvedValue({ imported: 0, rows: 2, problems: [{ row: 3, problem: 'The email is missing or not valid.' }] });
     render(<PeopleListScreen {...peopleProps({ onImport })} />);
     await ue.click(screen.getByRole('tab', { name: 'Import from CSV' }));
@@ -54,7 +54,22 @@ describe('SD-1.29 people list', () => {
     await ue.click(await screen.findByRole('button', { name: 'Check the file' }));
     expect(onImport).toHaveBeenCalledWith('name,email\nAsha Rao,asha@kaveri.test\nNo Mail,\n', true);
     expect(within(await screen.findByRole('list', { name: 'Problems in the file' })).getByText('Row 3: The email is missing or not valid.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findAllByText('Fix the problems in the file and choose it again.'))[0]).toBeInTheDocument();
+    expect(onImport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Import pressed before the check says to check first; a good file imports with a toast', async () => {
+    const onImport = vi.fn().mockResolvedValueOnce({ imported: 0, rows: 1, problems: [] }).mockResolvedValueOnce({ imported: 1, created: 1, rows: 1, problems: [] });
+    render(<PeopleListScreen {...peopleProps({ onImport })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Import from CSV' }));
+    await ue.upload(screen.getByTestId('csv-file'), new File(['name,email\nAsha Rao,asha@kaveri.test\n'], 'people.csv', { type: 'text/csv' }));
+    await ue.click(await screen.findByRole('button', { name: 'Import' }));
+    expect((await screen.findAllByText('Check the file first. Nothing is imported until it looks right.'))[0]).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Check the file' }));
+    expect(await screen.findByText('The file looks right')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findAllByText('1 person imported, 1 of them new'))[0]).toBeInTheDocument();
   });
 
   it('shows the SCIM token once, with copy buttons, and hides it when copied', async () => {
@@ -97,7 +112,18 @@ describe('SD-1.30 privacy requests', () => {
     render(<PrivacyScreen state="ready" status="open" onStatus={() => {}} requests={REQUESTS} legalHold settings={{ retentionMonths: 24, legalHold: true, binDays: 30 }} onDecide={vi.fn()} onSaveSettings={vi.fn()} />);
     expect(screen.getByText('A legal hold is on')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Complete the request from Neha Iyer' }));
-    expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Erase for good' })).toBeDisabled();
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Erase for good' }));
+    expect((await screen.findAllByText('A legal hold is on, so nothing can be erased now.'))[0]).toBeInTheDocument();
+  });
+
+  it('Refuse pressed with no note asks for one and focuses it', async () => {
+    const onDecide = vi.fn();
+    render(<PrivacyScreen state="ready" status="open" onStatus={() => {}} requests={REQUESTS} legalHold={false} settings={{ retentionMonths: 24, legalHold: false, binDays: 30 }} onDecide={onDecide} onSaveSettings={vi.fn()} />);
+    await ue.click(screen.getAllByRole('button', { name: /^Refuse the request from/ })[0]!);
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Refuse request' }));
+    expect(await screen.findByText('Say why you refuse. The person sees this note.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Note/ })).toHaveFocus();
+    expect(onDecide).not.toHaveBeenCalled();
   });
 });
 

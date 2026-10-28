@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
+import { play, press, pressFirst } from '../_kit/story-play';
 import { ReportsScreen, WallScreen, type ReportsScreenProps, type ReportsTab } from './reports';
 import { WALL, reportsProps } from './report-data';
 
@@ -38,3 +39,8 @@ export const TabLoading: S = { name: 'Tab loading', render: () => <Live start="d
 export const NoAccess: S = { name: 'No access', render: () => <Live start="dashboard" state="no-access" /> };
 export const Wall: S = { name: 'Wall screen (TV)', render: () => <WallScreen state="ready" wall={WALL} /> };
 export const WallOff: S = { name: 'Wall screen · switched off', render: () => <WallScreen state="not-found" wall={null} /> };
+
+// Founder rules (28 Oct 2026): buttons are never greyed out; pressed too early they say what is missing.
+export const WallTooEarly: S = { name: 'Wall screens · Make the link pressed with nothing filled', render: () => <Live start="walls" />, play: play(press('New wall screen'), press('Make the link')) };
+export const CustomerTooEarly: S = { name: 'Customer reports · Show report pressed with no company', render: () => <Live start="customers" />, play: play(press('Show report')) };
+export const SurveyTooEarly: S = { name: 'NPS surveys · Save survey pressed with nothing filled', render: () => <Live start="surveys" />, play: play(pressFirst(/New survey/), press('Save survey')) };

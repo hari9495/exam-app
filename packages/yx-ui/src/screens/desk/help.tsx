@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Lock, Paperclip, Plus, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -60,7 +61,7 @@ const URGENCY = [
 
 export function HelpCentreScreen(props: HelpCentreProps) {
   const [open, setOpen] = useState(false);
-  const [raised, setRaised] = useState<string | null>(null);
+  const { toast } = useToast();
   const [show, setShow] = useState<'open' | 'all'>('open');
   const [aids, setAids] = useReadingAids();
   const tz = props.timeZone || browserTimeZone();
@@ -82,17 +83,13 @@ export function HelpCentreScreen(props: HelpCentreProps) {
         onRetry={props.onRetry}
         what="your tickets"
         actions={
-          <Button variant="primary" icon={Plus} onClick={() => setOpen(true)} disabled={!props.desks.length}>
+          <Button variant="primary" icon={Plus} onClick={() => (props.desks.length ? setOpen(true) : toast({ title: 'No team takes tickets here yet. Ask your HR or IT admin.' }))}>
             Raise a ticket
           </Button>
         }
       >
         {props.banners && props.onMeToo && <BannerList banners={props.banners} onMeToo={props.onMeToo} />}
-        {raised && (
-          <InlineAlert tone="success" title="Ticket raised">
-            Your ticket number is {raised}. The team will reply here.
-          </InlineAlert>
-        )}
+
         {kb && <KnowledgeCard home={kb.home} onSearch={kb.onSearch} onOpen={(a) => openArticle(a.number)} />}
         <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
           {rows.length === 0 ? (
@@ -149,7 +146,7 @@ export function HelpCentreScreen(props: HelpCentreProps) {
           desks={props.desks}
           onRaise={async (input) => {
             const r = await props.onRaise(input);
-            setRaised(r.number);
+            toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply here.` });
             setOpen(false);
           }}
         />
@@ -168,6 +165,7 @@ const SEVERITY: Record<BannerSeverity, { tone: 'info' | 'warning' | 'danger'; ti
 export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMeToo: (id: string) => Promise<unknown> }) {
   const [joined, setJoined] = useState<string[]>([]);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   if (!banners.length) return null;
   return (
     <section className="yx-ops-stack" data-gap="sm" aria-label="Known issues">
@@ -181,7 +179,7 @@ export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMe
             title={SEVERITY[b.severity].title}
             actions={
               b.canMeToo ? (
-                <Button size="sm" disabled={on} loading={busy === b.id} onClick={() => void run(b.id, async () => { await onMeToo(b.id); setJoined((j) => [...j, b.id]); })}>
+                <Button size="sm" loading={busy === b.id} onClick={() => (on ? toast({ title: 'You are already on this issue. You will hear when it is fixed.' }) : void run(b.id, async () => { await onMeToo(b.id); setJoined((j) => [...j, b.id]); }))}>
                   {on ? 'You are on it' : 'Me too'}
                 </Button>
               ) : undefined
@@ -208,9 +206,16 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
   const desk = desks.find((d) => d.id === deskId);
   const category = desk?.categories.find((c) => c.id === categoryId);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, suggest?.onSuggest);
+  const uid = useId();
+  const id = (k: string) => `${uid}-${k}`;
+  const early = useTooEarly([
+    ...(deskId ? [] : [{ fieldId: id('desk'), message: 'Choose a team.' }]),
+    ...(subject.trim() ? [] : [{ fieldId: id('subject'), message: 'Write a subject.' }]),
+    ...(details.trim() ? [] : [{ fieldId: id('details'), message: 'Add the details.' }]),
+  ]);
   const fields = (
     <>
-      <FormField label="Which team?" required>
+      <FormField id={id('desk')} label="Which team?" required error={early.errorOf(id('desk'))}>
         <Select
           value={deskId}
           onChange={(v) => {
@@ -240,11 +245,11 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
           )}
         </>
       )}
-      <FormField label="Subject" required helper="One line, e.g. “VPN drops when I work from home”">
+      <FormField id={id('subject')} error={early.errorOf(id('subject'))} label="Subject" required helper="One line, e.g. “VPN drops when I work from home”">
         <TextField value={subject} onChange={setSubject} maxLength={200} />
       </FormField>
       <SuggestList items={suggestions} onOpen={suggest?.onOpen} hrefOf={suggest?.hrefOf} />
-      <FormField label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
+      <FormField id={id('details')} error={early.errorOf(id('details'))} label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
         <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
       </FormField>
       <FormField label="How soon do you need it?">
@@ -261,7 +266,8 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
   );
   return {
     fields,
-    ready: Boolean(deskId && subject.trim() && details.trim()),
+    /** Pressed too early: the missing fields say so and the first takes focus. */
+    stop: early.stop,
     dirty: Boolean(subject || details),
     input: (): RaiseInput => ({ deskId: deskId!, categoryId: categoryId ?? undefined, typeId: typeId ?? undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: Number(urgency), private: isPrivate || undefined }),
     clear: () => {
@@ -288,8 +294,8 @@ function RaiseDrawer({ open, onOpenChange, desks, onRaise, onSuggest, onOpenSugg
           <Button
             variant="primary"
             loading={busy === 'raise'}
-            disabled={!form.ready}
             onClick={() =>
+              !form.stop() &&
               void run('raise', async () => {
                 await onRaise(form.input());
                 form.clear();
@@ -327,7 +333,7 @@ export interface HelpDrawerProps {
 /** The in-app Help drawer (US-B-100), open from every page: known issues, raise a ticket, my open tickets. */
 export function HelpDrawer(props: HelpDrawerProps) {
   const form = useRaiseForm(props.desks, { onSuggest: props.onSuggest, hrefOf: props.articleHref });
-  const [raised, setRaised] = useState<string | null>(null);
+  const { toast } = useToast();
   const { busy, error, run } = useRun();
   const open = props.tickets.filter((t) => !['solved', 'closed'].includes(t.systemState));
   return (
@@ -343,11 +349,11 @@ export function HelpDrawer(props: HelpDrawerProps) {
           <Button
             variant="primary"
             loading={busy === 'raise'}
-            disabled={!form.ready}
             onClick={() =>
+              !form.stop() &&
               void run('raise', async () => {
                 const r = await props.onRaise(form.input());
-                setRaised(r.number);
+                toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply in the Help centre.` });
                 form.clear();
               })
             }
@@ -359,11 +365,7 @@ export function HelpDrawer(props: HelpDrawerProps) {
     >
       <div className="yx-ops-stack">
         <BannerList banners={props.banners} onMeToo={props.onMeToo} />
-        {raised && (
-          <InlineAlert tone="success" title="Ticket raised">
-            Your ticket number is {raised}. The team will reply in the Help centre.
-          </InlineAlert>
-        )}
+
         {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
         <h3 className="yx-ops-card__title">Raise a ticket</h3>
         {form.fields}
@@ -418,6 +420,8 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
   const [watcher, setWatcher] = useState('');
   const [added, setAdded] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const replyEarly = useTooEarly(text.trim() ? [] : [{ fieldId: 'my-reply', message: 'Write your reply.' }]);
+  const watchEarly = useTooEarly(watcher.includes('@') ? [] : [{ fieldId: 'my-watcher', message: "Enter your colleague's work email." }]);
   const byMessage = new Map<string, Attachment[]>();
   for (const a of t?.attachments ?? []) {
     const k = a.messageId ?? '';
@@ -457,7 +461,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                 <div className="yx-ops-stack">
                   {t.replyStartsFollowUp && <InlineAlert tone="info">{t.systemState === 'closed' ? 'This ticket is closed.' : 'The time to reopen this ticket has passed.'} Your reply starts a new ticket linked to this one.</InlineAlert>}
                   {!t.replyStartsFollowUp && t.systemState === 'solved' && t.reopenUntil && <p className="yx-ops-muted">Not fixed? Reply by {when(t.reopenUntil, props.timeZone)} and the ticket opens again.</p>}
-                  <FormField label="Your reply" hideLabel>
+                  <FormField id="my-reply" label="Your reply" hideLabel error={replyEarly.errorOf('my-reply')}>
                     <TextArea value={text} onChange={setText} rows={4} placeholder="Write to the team" maxLength={20000} />
                   </FormField>
                   <FormField label="Files" optional helper={`${t.desk.attachmentTypes.join(', ')} · up to ${t.desk.attachmentMaxMb} MB each`}>
@@ -476,9 +480,9 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                     <Button
                       variant="primary"
                       icon={Send}
-                      disabled={!text.trim()}
                       loading={busy === 'reply'}
                       onClick={() =>
+                        !replyEarly.stop() &&
                         void run('reply', async () => {
                           await props.onReply(text.trim(), files.map((f) => f.id));
                           setText('');
@@ -523,16 +527,17 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
             {t.canReply && (
               <Card title="Keep a colleague informed">
                 <div className="yx-ops-stack" data-gap="sm">
-                  <FormField label="Colleague's work email">
+                  <FormField id="my-watcher" label="Colleague's work email" error={watchEarly.errorOf('my-watcher')}>
                     <TextField value={watcher} onChange={setWatcher} type="email" />
                   </FormField>
                   {added && <p className="yx-ops-muted">If {added} works here, they will get updates.</p>}
                   <div className="yx-ops-row">
                     <Button
-                      disabled={!watcher.includes('@')}
                       loading={busy === 'watch'}
                       onClick={() =>
-                        void run('watch', async () => {
+                        !watchEarly.stop() &&
+                        void run('watch',
+ async () => {
                           await props.onAddWatcher(watcher.trim());
                           setAdded(watcher.trim());
                           setWatcher('');

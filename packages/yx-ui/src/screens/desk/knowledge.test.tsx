@@ -28,7 +28,17 @@ describe('HLP-04 knowledge', () => {
     await ue.type(title, 'Wi-Fi drops on floor 2');
     await ue.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(onSaveDraft).toHaveBeenCalledWith('a1', expect.objectContaining({ title: 'Wi-Fi drops on floor 2', version: 2, bodyHtml: expect.stringContaining('Kaveri-Staff') }));
-    expect(await screen.findByText('Draft saved as version 3.')).toBeInTheDocument();
+    expect((await screen.findAllByText('Draft saved as version 3'))[0]).toBeInTheDocument();
+  });
+
+  it('Save draft with no title asks for one and focuses it', async () => {
+    const onSaveDraft = vi.fn();
+    render(<KnowledgeScreen {...kbProps({ ...open, onSaveDraft })} />);
+    await ue.clear(screen.getByRole('textbox', { name: /^Title/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText('Give the article a title.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /^Title/ })).toHaveFocus();
+    expect(onSaveDraft).not.toHaveBeenCalled();
   });
 
   it('shows the four-eyes refusal in words when a publisher approves their own version', async () => {

@@ -4,6 +4,7 @@ import { Button } from '../../components/button';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Card } from '../../components/shell';
@@ -116,6 +117,9 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
   const { busy, error, run } = useRun();
   const [voted, setVoted] = useState<boolean | null>(null);
   const [solved, setSolved] = useState(false);
+  const { toast } = useToast();
+  /** One vote per article: a second press says so. */
+  const vote = (yes: boolean) => (voted !== null ? toast({ title: 'You have already told us. Thank you.' }) : void run(yes ? 'yes' : 'no', async () => { await onFeedback!(yes); setVoted(yes); }));
   const langs = article.languages.length > 1 && article.languages.length <= 4 ? article.languages : null;
   return (
     <article className="yx-ops-stack yx-desk-kb-article" aria-label={article.title}>
@@ -130,10 +134,10 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
       {onFeedback && (
         <div className="yx-ops-row" role="group" aria-label="Was this helpful?">
           <span>Was this helpful?</span>
-          <Button size="sm" icon={ThumbsUp} disabled={voted !== null} loading={busy === 'yes'} onClick={() => void run('yes', async () => { await onFeedback(true); setVoted(true); })}>
+          <Button size="sm" icon={ThumbsUp} loading={busy === 'yes'} onClick={() => vote(true)}>
             Yes
           </Button>
-          <Button size="sm" icon={ThumbsDown} disabled={voted !== null} loading={busy === 'no'} onClick={() => void run('no', async () => { await onFeedback(false); setVoted(false); })}>
+          <Button size="sm" icon={ThumbsDown} loading={busy === 'no'} onClick={() => vote(false)}>
             No
           </Button>
           {voted !== null && <span className="yx-ops-muted">Thank you for telling us.</span>}
@@ -143,11 +147,10 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
         <div className="yx-ops-row">
           {onSolved &&
             (solved ? (
-              <InlineAlert tone="success" title="Glad it helped">
-                No ticket was needed.
-              </InlineAlert>
+              <span className="yx-ops-muted">No ticket was needed.</span>
             ) : (
-              <Button variant="primary" icon={CheckCircle2} loading={busy === 'solved'} onClick={() => void run('solved', async () => { await onSolved(); setSolved(true); })}>
+              <Button variant="primary" icon={CheckCircle2} loading={busy === 'solved'} onClick={() => void run('solved', async () => { await onSolved(); setSolved(true); toast({ tone: 'success', title: 'Glad it helped', description: 'No ticket was needed.' }); })}>
+
                 This solved it
               </Button>
             ))}

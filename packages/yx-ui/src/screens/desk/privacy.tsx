@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextArea } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { Segment } from '../../components/segment';
@@ -122,7 +123,9 @@ export function PrivacyScreen(props: PrivacyScreenProps) {
 function DecideDialog({ request: r, action, legalHold, onClose, onDecide }: { request: PrivacyRequestRow; action: 'complete' | 'refuse'; legalHold: boolean; onClose: () => void; onDecide: PrivacyScreenProps['onDecide'] }) {
   const [note, setNote] = useState('');
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const erase = action === 'complete' && r.kind === 'erasure';
+  const early = useTooEarly(action === 'refuse' && !note.trim() ? [{ fieldId: 'pv-note', message: 'Say why you refuse. The person sees this note.' }] : []);
   const title = action === 'refuse' ? `Refuse the request from ${r.person.name}?` : erase ? `Erase ${r.person.name}’s data for good?` : `Give ${r.person.name} a copy of their data?`;
   return (
     <Dialog
@@ -137,9 +140,11 @@ function DecideDialog({ request: r, action, legalHold, onClose, onDecide }: { re
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant={erase ? 'danger' : 'primary'}
-            disabled={(action === 'refuse' && !note.trim()) || (erase && legalHold)}
             loading={busy === 'go'}
             onClick={() =>
+              erase && legalHold
+                ? toast({ title: 'A legal hold is on, so nothing can be erased now.' })
+                : !early.stop() &&
               void run('go', async () => {
                 await onDecide(r, action, note.trim());
                 onClose();
@@ -161,7 +166,7 @@ function DecideDialog({ request: r, action, legalHold, onClose, onDecide }: { re
         )}
         {erase && legalHold && <InlineAlert tone="warning">A legal hold is on, so nothing can be erased now. Refuse with a note, or lift the hold first.</InlineAlert>}
         {action === 'complete' && r.kind === 'access' && <p>{r.person.name} can then download a copy of their tickets and messages from their own requests page.</p>}
-        <FormField label="Note" required={action === 'refuse'} optional={action !== 'refuse'} helper={action === 'refuse' ? 'Say why. The person sees this note.' : 'The person sees this note.'}>
+        <FormField id="pv-note" error={early.errorOf('pv-note')} label="Note" required={action === 'refuse'} optional={action !== 'refuse'} helper={action === 'refuse' ? 'Say why. The person sees this note.' : 'The person sees this note.'}>
           <TextArea value={note} onChange={setNote} maxLength={500} rows={3} />
         </FormField>
       </div>
@@ -173,25 +178,24 @@ function SettingsCard({ settings, onSave }: { settings: PrivacySettings; onSave:
   const [months, setMonths] = useState<number | null>(settings.retentionMonths);
   const [hold, setHold] = useState(settings.legalHold);
   const [binDays, setBinDays] = useState<number | null>(settings.binDays);
-  const [saved, setSaved] = useState(false);
   const { busy, error, run } = useRun();
-  useEffect(() => setSaved(false), [months, hold, binDays]);
+  const { toast } = useToast();
   const monthsOk = months === null || (months >= 6 && months <= 240);
   const binOk = binDays !== null && binDays >= 1 && binDays <= 90;
+  const early = useTooEarly([...(monthsOk ? [] : [{ fieldId: 'pv-months', message: 'Use 6 to 240 months, or leave empty' }]), ...(binOk ? [] : [{ fieldId: 'pv-bin', message: 'Use 1 to 90 days' }])]);
   return (
     <Card title="What we keep">
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
-        {saved && <InlineAlert tone="success">Saved.</InlineAlert>}
-        <FormField label="Clear the words of closed tickets after" optional helper="In months, 6 to 240. Leave empty to keep them. The ticket stays; what people wrote and their files are removed." error={monthsOk ? null : 'Use 6 to 240 months, or leave empty'}>
+        <FormField id="pv-months" label="Clear the words of closed tickets after" optional helper="In months, 6 to 240. Leave empty to keep them. The ticket stays; what people wrote and their files are removed." error={monthsOk ? null : 'Use 6 to 240 months, or leave empty'}>
           <NumberField value={months} onChange={setMonths} min={6} max={240} suffix="months" />
         </FormField>
         <Switch checked={hold} onChange={setHold} label="Legal hold" description="While on, nothing is erased or cleared, for example during a legal case." />
-        <FormField label="Keep deleted items in the recycle bin for" required rule="1 to 90 days." helper="Then they are gone for good." error={binOk ? null : 'Use 1 to 90 days'}>
+        <FormField id="pv-bin" label="Keep deleted items in the recycle bin for" required rule="1 to 90 days." helper="Then they are gone for good." error={binOk ? null : 'Use 1 to 90 days'}>
           <NumberField value={binDays} onChange={setBinDays} min={1} max={90} suffix="days" />
         </FormField>
         <span>
-          <Button variant="primary" disabled={!monthsOk || !binOk} loading={busy === 'save'} onClick={() => void run('save', async () => { await onSave({ retentionMonths: months, legalHold: hold, binDays: binDays! }); setSaved(true); })}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { await onSave({ retentionMonths: months, legalHold: hold, binDays: binDays! }); toast({ tone: 'success', title: 'Saved' }); })}>
             Save
           </Button>
         </span>

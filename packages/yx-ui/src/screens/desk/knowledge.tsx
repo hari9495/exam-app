@@ -4,7 +4,8 @@ import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -208,6 +209,7 @@ function SpaceDrawer({ space, desks, onClose, onSave }: { space?: KbSpace; desks
   const [deskId, setDeskId] = useState<string | null>(space?.deskId ?? null);
   const { busy, error, run } = useRun();
   const slugOk = SLUG.test(slug);
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'ks-name', message: 'Name the space.' }]), ...(slugOk ? [] : [{ fieldId: 'ks-slug', message: 'Use 2 to 40 small letters, digits and dashes' }])]);
   return (
     <Drawer
       open
@@ -216,7 +218,7 @@ function SpaceDrawer({ space, desks, onClose, onSave }: { space?: KbSpace; desks
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim() || !slugOk} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ name: name.trim(), slug, audience, languages, ...(!space && deskId ? { deskId } : {}), ...(space ? { version: space.version } : {}) }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ name: name.trim(), slug, audience, languages, ...(!space && deskId ? { deskId } : {}), ...(space ? { version: space.version } : {}) }))}>
             {space ? 'Save space' : 'Add space'}
           </Button>
         </>
@@ -224,10 +226,10 @@ function SpaceDrawer({ space, desks, onClose, onSave }: { space?: KbSpace; desks
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The space was not saved">{error}</InlineAlert>}
-        <FormField label="Name" required>
+        <FormField id="ks-name" label="Name" required error={early.errorOf('ks-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Web address" required rule="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
+        <FormField id="ks-slug" label="Web address" required rule="2 to 40 small letters, digits and dashes, like it-help." error={slug && !slugOk ? 'Use 2 to 40 small letters, digits and dashes' : early.errorOf('ks-slug')}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={40} />
         </FormField>
         <FormField label="Who can read it">
@@ -256,7 +258,12 @@ function CategoriesCard(props: KnowledgeScreenProps & { space: KbSpace }) {
   const [parentId, setParentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const renameEarly = useTooEarly(renaming && !renaming.name.trim() ? [{ fieldId: 'kc-rename', message: 'Give the new name.' }] : []);
+  const addEarly = useTooEarly(name.trim() ? [] : [{ fieldId: 'kc-name', message: 'Name the category.' }]);
   const move = (c: KbCategory, step: -1 | 1) => {
+    // One reorder at a time: each sends the whole order of its level.
+    if (busy !== null) return;
     const level = tree.filter((t) => t.cat.parentId === c.parentId).map((t) => t.cat.id);
     const i = level.indexOf(c.id);
     [level[i], level[i + step]] = [level[i + step], level[i]];
@@ -278,9 +285,11 @@ function CategoriesCard(props: KnowledgeScreenProps & { space: KbSpace }) {
                   <span className="yx-ops-list__main">
                     {renaming?.id === c.id ? (
                       <span className="yx-ops-row">
-                        <TextField size="sm" aria-label={`New name for ${c.name}`} value={renaming.name} onChange={(v) => setRenaming({ id: c.id, name: v })} maxLength={100} />
+                        <FormField id="kc-rename" label={`New name for ${c.name}`} hideLabel error={renameEarly.errorOf('kc-rename')}>
+                          <TextField size="sm" value={renaming.name} onChange={(v) => setRenaming({ id: c.id, name: v })} maxLength={100} />
+                        </FormField>
                         {/* The API sets the parent and place from the body, so both are sent back unchanged. */}
-                        <Button size="sm" disabled={!renaming.name.trim()} loading={busy === `rn-${c.id}`} onClick={() => void run(`rn-${c.id}`, async () => { await props.onSaveCategory(s.id, c.id, { name: renaming.name.trim(), ...(c.parentId ? { parentId: c.parentId } : {}), sortOrder: c.sortOrder }); setRenaming(null); })}>
+                        <Button size="sm" loading={busy === `rn-${c.id}`} onClick={() => !renameEarly.stop() && void run(`rn-${c.id}`, async () => { await props.onSaveCategory(s.id, c.id, { name: renaming.name.trim(), ...(c.parentId ? { parentId: c.parentId } : {}), sortOrder: c.sortOrder }); setRenaming(null); })}>
                           Save
                         </Button>
                         <Button size="sm" onClick={() => setRenaming(null)}>
@@ -293,8 +302,8 @@ function CategoriesCard(props: KnowledgeScreenProps & { space: KbSpace }) {
                     <span className="yx-ops-list__sub">{depth === 0 ? 'Category' : depth === 1 ? `Section in ${path.split(' › ')[0]}` : `Sub-section in ${path.split(' › ').slice(0, 2).join(' › ')}`}</span>
                   </span>
                   <span className="yx-ops-row">
-                    <IconButton size="sm" icon={ArrowUp} label={`Move ${c.name} up`} disabled={i === 0 || busy !== null} onClick={() => void move(c, -1)} />
-                    <IconButton size="sm" icon={ArrowDown} label={`Move ${c.name} down`} disabled={i === level.length - 1 || busy !== null} onClick={() => void move(c, 1)} />
+                    <IconButton size="sm" icon={ArrowUp} label={`Move ${c.name} up`} onClick={() => (i === 0 ? toast({ title: `${c.name} is already first.` }) : void move(c, -1))} />
+                    <IconButton size="sm" icon={ArrowDown} label={`Move ${c.name} down`} onClick={() => (i === level.length - 1 ? toast({ title: `${c.name} is already last.` }) : void move(c, 1))} />
                     <Button size="sm" aria-label={`Rename ${c.name}`} onClick={() => setRenaming({ id: c.id, name: c.name })}>
                       Rename
                     </Button>
@@ -316,14 +325,14 @@ function CategoriesCard(props: KnowledgeScreenProps & { space: KbSpace }) {
             })}
           </ul>
         )}
-        <FormField label="New category name">
+        <FormField id="kc-name" label="New category name" error={addEarly.errorOf('kc-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
         <FormField label="Inside" optional helper="Leave empty for a top category. Three levels at most.">
           <Select value={parentId} onChange={setParentId} clearable options={tree.filter((t) => t.depth < 2).map((t) => ({ value: t.cat.id, label: t.path }))} placeholder="Top level" />
         </FormField>
         <div className="yx-ops-row">
-          <Button disabled={!name.trim()} loading={busy === 'add'} onClick={() => void run('add', async () => { await props.onSaveCategory(s.id, null, { name: name.trim(), ...(parentId ? { parentId } : {}), sortOrder: tree.filter((t) => t.cat.parentId === parentId).length }); setName(''); })}>
+          <Button loading={busy === 'add'} onClick={() => !addEarly.stop() && void run('add', async () => { await props.onSaveCategory(s.id, null, { name: name.trim(), ...(parentId ? { parentId } : {}), sortOrder: tree.filter((t) => t.cat.parentId === parentId).length }); setName(''); })}>
             Add category
           </Button>
         </div>
@@ -409,6 +418,7 @@ function NewArticleDrawer({ space, templates, onClose, onSave }: { space: KbSpac
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(title.trim() ? [] : [{ fieldId: 'ka-title', message: 'Give the article a title.' }]);
   return (
     <Drawer
       open
@@ -417,7 +427,7 @@ function NewArticleDrawer({ space, templates, onClose, onSave }: { space: KbSpac
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!title.trim()} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ spaceId: space.id, title: title.trim(), ...(summary.trim() ? { summary: summary.trim() } : {}), ...(categoryId ? { categoryId } : {}), ...(templateId ? { templateId } : {}) }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ spaceId: space.id, title: title.trim(), ...(summary.trim() ? { summary: summary.trim() } : {}), ...(categoryId ? { categoryId } : {}), ...(templateId ? { templateId } : {}) }))}>
             Start the draft
           </Button>
         </>
@@ -425,7 +435,7 @@ function NewArticleDrawer({ space, templates, onClose, onSave }: { space: KbSpac
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The article was not started">{error}</InlineAlert>}
-        <FormField label="Title" required>
+        <FormField id="ka-title" label="Title" required error={early.errorOf('ka-title')}>
           <TextField value={title} onChange={setTitle} maxLength={200} />
         </FormField>
         <FormField label="Summary" optional helper="One or two lines shown in search results.">
@@ -506,15 +516,17 @@ function EditorCard(props: KnowledgeScreenProps & { article: KbArticle }) {
   const [note, setNote] = useState('');
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [blockKey, setBlockKey] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(title.trim() ? [] : [{ fieldId: 'ke-title', message: 'Give the article a title.' }]);
+  const tplEarly = useTooEarly(templateId ? [] : [{ fieldId: 'ke-tpl', message: 'Choose a template first.' }]);
+  const blockEarly = useTooEarly(blockKey ? [] : [{ fieldId: 'ke-block', message: 'Choose a block first.' }]);
   const input = () => ({ title: title.trim(), ...(summary.trim() ? { summary: summary.trim() } : {}), bodyHtml: body, ...(note.trim() ? { note: note.trim() } : {}), version: last?.version ?? 1 });
   return (
     <Card title={`KB-${a.number} · edit`}>
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
-        {saved && <InlineAlert tone="success">{saved}</InlineAlert>}
-        <FormField label="Title" required>
+        <FormField id="ke-title" label="Title" required error={early.errorOf('ke-title')}>
           <TextField value={title} onChange={setTitle} maxLength={200} />
         </FormField>
         <FormField label="Summary" optional>
@@ -522,16 +534,20 @@ function EditorCard(props: KnowledgeScreenProps & { article: KbArticle }) {
         </FormField>
         {(props.templates?.length ?? 0) > 0 && (
           <span className="yx-ops-row">
-            <Select size="sm" aria-label="Template" value={templateId} onChange={setTemplateId} options={(props.templates ?? []).map((t) => ({ value: t.id, label: t.name }))} placeholder="Choose a template" />
-            <Button size="sm" disabled={!templateId} onClick={() => setBody(props.templates?.find((t) => t.id === templateId)?.bodyHtml ?? body)}>
+            <FormField id="ke-tpl" label="Template" hideLabel error={tplEarly.errorOf('ke-tpl')}>
+              <Select size="sm" value={templateId} onChange={setTemplateId} options={(props.templates ?? []).map((t) => ({ value: t.id, label: t.name }))} placeholder="Choose a template" />
+            </FormField>
+            <Button size="sm" onClick={() => !tplEarly.stop() && setBody(props.templates?.find((t) => t.id === templateId)?.bodyHtml ?? body)}>
               Use template
             </Button>
           </span>
         )}
         {(props.blocks?.length ?? 0) > 0 && (
           <span className="yx-ops-row">
-            <Select size="sm" aria-label="Reusable block" value={blockKey} onChange={setBlockKey} options={(props.blocks ?? []).map((b) => ({ value: b.key, label: b.name, description: `{{block:${b.key}}}` }))} placeholder="Choose a reusable block" />
-            <Button size="sm" disabled={!blockKey} onClick={() => setBody(`${body}<p>{{block:${blockKey}}}</p>`)}>
+            <FormField id="ke-block" label="Reusable block" hideLabel error={blockEarly.errorOf('ke-block')}>
+              <Select size="sm" value={blockKey} onChange={setBlockKey} options={(props.blocks ?? []).map((b) => ({ value: b.key, label: b.name, description: `{{block:${b.key}}}` }))} placeholder="Choose a reusable block" />
+            </FormField>
+            <Button size="sm" onClick={() => !blockEarly.stop() && setBody(`${body}<p>{{block:${blockKey}}}</p>`)}>
               Insert block
             </Button>
           </span>
@@ -543,10 +559,10 @@ function EditorCard(props: KnowledgeScreenProps & { article: KbArticle }) {
           <TextField value={note} onChange={setNote} maxLength={300} />
         </FormField>
         <div className="yx-ops-row">
-          <Button disabled={!title.trim()} loading={busy === 'save'} onClick={() => void run('save', async () => { const v = await props.onSaveDraft(a.id, input()); setSaved(`Draft saved as version ${v.version}.`); })}>
+          <Button loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { const v = await props.onSaveDraft(a.id, input()); toast({ tone: 'success', title: `Draft saved as version ${v.version}` }); })}>
             Save draft
           </Button>
-          <Button variant="primary" disabled={!title.trim()} loading={busy === 'submit'} onClick={() => void run('submit', async () => { const v = await props.onSaveDraft(a.id, input()); await props.onSubmit(a.id, v.version); setSaved(`Version ${v.version} was sent for review.`); })}>
+          <Button variant="primary" loading={busy === 'submit'} onClick={() => !early.stop() && void run('submit', async () => { const v = await props.onSaveDraft(a.id, input()); await props.onSubmit(a.id, v.version); toast({ tone: 'success', title: `Version ${v.version} sent for review` }); })}>
             Send for review
           </Button>
         </div>
@@ -560,6 +576,7 @@ function ReviewCard(props: KnowledgeScreenProps & { article: KbArticle }) {
   const v = a.versions.find((x) => x.state === 'in_review');
   const [note, setNote] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly(note.trim() ? [] : [{ fieldId: 'kr-note', message: 'Write a note to send it back.' }]);
   if (!v) return null;
   if (!a.canPublish) return <InlineAlert tone="info">Version {v.version} is waiting for a publisher to review it.</InlineAlert>;
   return (
@@ -573,14 +590,14 @@ function ReviewCard(props: KnowledgeScreenProps & { article: KbArticle }) {
         </p>
         <h3 className="yx-ops-card__title">{v.title}</h3>
         <MessageBody html={v.bodyHtml} />
-        <FormField label="Note to the writer" optional>
+        <FormField id="kr-note" label="Note to the writer" optional error={early.errorOf('kr-note')}>
           <TextField value={note} onChange={setNote} maxLength={300} />
         </FormField>
         <div className="yx-ops-row">
           <Button variant="primary" loading={busy === 'ok'} onClick={() => void run('ok', () => props.onReview(a.id, { version: v.version, approve: true, ...(note.trim() ? { note: note.trim() } : {}) }))}>
             Approve and publish
           </Button>
-          <Button disabled={!note.trim()} loading={busy === 'back'} onClick={() => void run('back', () => props.onReview(a.id, { version: v.version, approve: false, note: note.trim() }))}>
+          <Button loading={busy === 'back'} onClick={() => !early.stop() && void run('back', () => props.onReview(a.id, { version: v.version, approve: false, note: note.trim() }))}>
             Send back
           </Button>
         </div>
@@ -699,6 +716,8 @@ function DetailsCard(props: KnowledgeScreenProps & { article: KbArticle; space: 
   const [users, setUsers] = useState<{ id: string; name: string | null; email: string }[]>(a.owner ? [{ id: a.owner.id, name: a.owner.name, email: '' }] : []);
   const [owner, setOwner] = useState<string | null>(a.owner?.id ?? null);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(ARTICLE_SLUG.test(slug) ? [] : [{ fieldId: 'km-slug', message: 'Use small letters, digits and dashes' }]);
   const { onSearchUsers } = props;
   useEffect(() => {
     if (!onSearchUsers || !find.trim()) return;
@@ -739,7 +758,7 @@ function DetailsCard(props: KnowledgeScreenProps & { article: KbArticle; space: 
         <FormField label="Category" optional>
           <Select value={categoryId} onChange={setCategoryId} clearable options={cats.map((t) => ({ value: t.cat.id, label: t.path }))} placeholder="No category" />
         </FormField>
-        <FormField label="Web address" helper={a.publishedAt ? 'If you change it, the old address keeps working and leads here.' : 'Small letters, digits and dashes.'} error={!slugOk ? 'Use small letters, digits and dashes' : null}>
+        <FormField id="km-slug" label="Web address" helper={a.publishedAt ? 'If you change it, the old address keeps working and leads here.' : 'Small letters, digits and dashes.'} error={!slugOk ? 'Use small letters, digits and dashes' : null}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={80} />
         </FormField>
         <FormField label="Search title" optional helper={`${seoTitle.length} of 70 letters. Shown by search engines.`}>
@@ -779,7 +798,7 @@ function DetailsCard(props: KnowledgeScreenProps & { article: KbArticle; space: 
         )}
         {!pub && <p className="yx-ops-muted">Owner: {a.owner?.name ?? 'nobody'}. A publisher sets the owner, dates and featured articles.</p>}
         <div className="yx-ops-row">
-          <Button disabled={!slugOk || Object.keys(change()).length === 0} loading={busy === 'save'} onClick={() => void run('save', () => props.onUpdateMeta(a.id, a.version, change()))}>
+          <Button loading={busy === 'save'} onClick={() => !early.stop() && (Object.keys(change()).length === 0 ? toast({ title: 'Nothing has changed yet.' }) : void run('save', () => props.onUpdateMeta(a.id, a.version, change())))}>
             Save details
           </Button>
         </div>
@@ -792,6 +811,7 @@ function TranslationsCard(props: KnowledgeScreenProps & { article: KbArticle }) 
   const a = props.article;
   const [language, setLanguage] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(language ? [] : [{ fieldId: 'kt-lang', message: 'Choose a language first.' }]);
   const used = new Set([a.language, ...a.translations.map((t) => t.language)]);
   const free = a.space.languages.filter((l) => !used.has(l));
   const originalId = a.language === 'en' ? a.id : a.translationOfId;
@@ -816,12 +836,14 @@ function TranslationsCard(props: KnowledgeScreenProps & { article: KbArticle }) 
         )}
         {a.canAuthor && originalId && free.length > 0 && (
           <span className="yx-ops-row">
-            <Select size="sm" aria-label="Language of the translation" value={language} onChange={setLanguage} options={free.map((l) => ({ value: l, label: LANGUAGE_LABEL[l] ?? l }))} placeholder="Choose a language" />
+            <FormField id="kt-lang" label="Language of the translation" hideLabel error={early.errorOf('kt-lang')}>
+              <Select size="sm" value={language} onChange={setLanguage} options={free.map((l) => ({ value: l, label: LANGUAGE_LABEL[l] ?? l }))} placeholder="Choose a language" />
+            </FormField>
             <Button
               size="sm"
-              disabled={!language}
               loading={busy === 'add'}
               onClick={() =>
+                !early.stop() &&
                 void run('add', async () => {
                   const t = await props.onCreateArticle({ spaceId: a.spaceId, title: a.title, language: language!, translationOfId: originalId });
                   props.onOpenArticle(t.id);
@@ -910,6 +932,7 @@ function SnippetDrawer({ kind, item, onClose, onSave }: { kind: 'block' | 'templ
   const [body, setBody] = useState(item?.bodyHtml ?? '');
   const { busy, error, run } = useRun();
   const keyOk = kind === 'template' || SLUG.test(key);
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'kn-name', message: 'Give it a name.' }]), ...(keyOk ? [] : [{ fieldId: 'kn-key', message: 'Use 2 to 40 small letters, digits and dashes' }])]);
   return (
     <Drawer
       open
@@ -918,7 +941,7 @@ function SnippetDrawer({ kind, item, onClose, onSave }: { kind: 'block' | 'templ
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim() || !keyOk} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ ...(kind === 'block' ? { key } : {}), name: name.trim(), bodyHtml: body }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ ...(kind === 'block' ? { key } : {}), name: name.trim(), bodyHtml: body }))}>
             Save
           </Button>
         </>
@@ -927,11 +950,11 @@ function SnippetDrawer({ kind, item, onClose, onSave }: { kind: 'block' | 'templ
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
         {kind === 'block' && item && <InlineAlert tone="warning">Every article that shows this block changes when you save.</InlineAlert>}
-        <FormField label="Name" required>
+        <FormField id="kn-name" label="Name" required error={early.errorOf('kn-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
         {kind === 'block' && (
-          <FormField label="Key" required helper="Authors insert it as {{block:key}}. 2 to 40 small letters, digits and dashes." error={key && !keyOk ? 'Use 2 to 40 small letters, digits and dashes' : null}>
+          <FormField id="kn-key" label="Key" required helper="Authors insert it as {{block:key}}. 2 to 40 small letters, digits and dashes." error={key && !keyOk ? 'Use 2 to 40 small letters, digits and dashes' : early.errorOf('kn-key')}>
             <TextField value={key} onChange={(v) => setKey(v.toLowerCase())} maxLength={40} />
           </FormField>
         )}
@@ -952,6 +975,8 @@ function GapsCard(props: KnowledgeScreenProps) {
   const [deskId, setDeskId] = useState<string | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
   const { busy, error, run } = useRun();
+  const showEarly = useTooEarly([...(from ? [] : [{ fieldId: 'kg-from', message: 'Choose the first day.' }]), ...(!to ? [{ fieldId: 'kg-to', message: 'Choose the last day.' }] : to < from ? [{ fieldId: 'kg-to', message: 'The last day is before the first.' }] : [])]);
+  const taskEarly = useTooEarly(deskId ? [] : [{ fieldId: 'kg-desk', message: 'Choose the desk for the task first.' }]);
   const load = () => run('load', async () => setGaps(await props.onLoadGaps(from, to)));
   useEffect(() => {
     void load();
@@ -960,7 +985,7 @@ function GapsCard(props: KnowledgeScreenProps) {
     !props.canMakeTask ? null : done.has(query) ? (
       <span className="yx-ops-muted">Task made</span>
     ) : (
-      <Button size="sm" aria-label={`Make an article-request task for ${query}`} disabled={!deskId} loading={busy === `t-${query}`} onClick={() => void run(`t-${query}`, async () => { await props.onGapTask(deskId!, query); setDone(new Set([...done, query])); })}>
+      <Button size="sm" aria-label={`Make an article-request task for ${query}`} loading={busy === `t-${query}`} onClick={() => !taskEarly.stop() && void run(`t-${query}`, async () => { await props.onGapTask(deskId!, query); setDone(new Set([...done, query])); })}>
         Make an article-request task
       </Button>
     );
@@ -987,18 +1012,18 @@ function GapsCard(props: KnowledgeScreenProps) {
     <div className="yx-ops-stack">
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <span className="yx-ops-row">
-        <FormField label="From">
+        <FormField id="kg-from" label="From" error={showEarly.errorOf('kg-from')}>
           <TextField type="date" value={from} onChange={setFrom} />
         </FormField>
-        <FormField label="To">
+        <FormField id="kg-to" label="To" error={showEarly.errorOf('kg-to')}>
           <TextField type="date" value={to} onChange={setTo} />
         </FormField>
-        <Button disabled={!from || !to || to < from} loading={busy === 'load'} onClick={() => void load()}>
+        <Button loading={busy === 'load'} onClick={() => !showEarly.stop() && void load()}>
           Show
         </Button>
       </span>
       {props.canMakeTask && (
-        <FormField label="Desk for new tasks" helper="An article-request task goes to this desk, assigned to you.">
+        <FormField id="kg-desk" label="Desk for new tasks" error={taskEarly.errorOf('kg-desk')} helper="An article-request task goes to this desk, assigned to you.">
           <Select value={deskId} onChange={setDeskId} options={props.desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Choose a desk" />
         </FormField>
       )}

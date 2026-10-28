@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextField, TimeField } from '../../components/inputs';
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -153,6 +153,11 @@ function NewDeskDrawer({ open, onOpenChange, onCreate }: { open: boolean; onOpen
   const { busy, error, run } = useRun();
   const kind = (audience === 'customer' ? 'customer_support' : area) as DeskKind | null;
   const keyOk = /^[A-Z][A-Z0-9]{1,9}$/.test(key);
+  const early = useTooEarly([
+    ...(!kind ? [{ fieldId: 'nd-team', message: 'Choose the team.' }] : []),
+    ...(!name.trim() ? [{ fieldId: 'nd-name', message: 'Name the desk.' }] : []),
+    ...(!keyOk ? [{ fieldId: 'nd-key', message: 'Give a short key: 2–10 capital letters or digits, starting with a letter.' }] : []),
+  ]);
   return (
     <Drawer
       open={open}
@@ -165,8 +170,8 @@ function NewDeskDrawer({ open, onOpenChange, onCreate }: { open: boolean; onOpen
           <Button
             variant="primary"
             loading={busy === 'create'}
-            disabled={!kind || !name.trim() || !keyOk}
             onClick={() =>
+              !early.stop() &&
               void run('create', async () => {
                 await onCreate({ name: name.trim(), key, kind: kind! });
                 onOpenChange(false);
@@ -186,16 +191,16 @@ function NewDeskDrawer({ open, onOpenChange, onCreate }: { open: boolean; onOpen
           <Segment label="Kind of desk" options={[{ value: 'employee', label: 'Employee help desk' }, { value: 'customer', label: 'Customer support desk' }]} value={audience} onChange={setAudience} />
         </FormField>
         {audience === 'employee' ? (
-          <FormField label="Team" required helper="An HR desk is free with YukthiX HR (one per company). Any other desk is ₹999 per agent a month.">
+          <FormField id="nd-team" label="Team" required error={early.errorOf('nd-team')} helper="An HR desk is free with YukthiX HR (one per company). Any other desk is ₹999 per agent a month.">
             <Select value={area} onChange={setArea} options={AREAS} />
           </FormField>
         ) : (
           <InlineAlert tone="info">For questions from your own customers: email, help centre and chat come in later releases. ₹999 per agent a month.</InlineAlert>
         )}
-        <FormField label="Name" required>
+        <FormField id="nd-name" label="Name" required error={early.errorOf('nd-name')}>
           <TextField value={name} onChange={setName} maxLength={100} placeholder={audience === 'customer' ? 'Customer support' : 'IT help desk'} />
         </FormField>
-        <FormField label="Short key" required helper="2–10 capital letters or digits. Ticket numbers start with it, like IT-1001." error={key && !keyOk ? 'Use capital letters and digits, starting with a letter' : null}>
+        <FormField id="nd-key" label="Short key" required helper="2–10 capital letters or digits. Ticket numbers start with it, like IT-1001." error={key && !keyOk ? 'Use capital letters and digits, starting with a letter' : early.errorOf('nd-key')}>
           <TextField value={key} onChange={(v) => setKey(v.toUpperCase())} maxLength={10} />
         </FormField>
       </div>
@@ -306,6 +311,7 @@ function MembersTab(props: TabProps) {
   const [tier, setTier] = useState<string | null>('L1');
   const [cost, setCost] = useState<SeatCost | null>(null);
   const { busy, error, run } = useRun();
+  const addEarly = useTooEarly(!userId ? [{ fieldId: 'dm-person', message: 'Choose a person.' }] : []);
   useEffect(() => {
     if (!d.canManageMembers) return;
     const h = setTimeout(() => void props.onSearchUsers(find.trim()).then(setFound).catch(() => setFound([])), 250);
@@ -345,7 +351,7 @@ function MembersTab(props: TabProps) {
             <FormField label="Find a person" helper="Name or email">
               <TextField value={find} onChange={setFind} />
             </FormField>
-            <FormField label="Person" required>
+            <FormField id="dm-person" label="Person" required error={addEarly.errorOf('dm-person')}>
               <Select value={userId} onChange={setUserId} options={found.map((u) => ({ value: u.id, label: u.name ?? u.email, description: u.email }))} placeholder="Choose a person" emptyText="Nobody matches" />
             </FormField>
             <FormField label="Role" required>
@@ -362,7 +368,7 @@ function MembersTab(props: TabProps) {
               </InlineAlert>
             )}
             <div className="yx-ops-row">
-              <Button variant="primary" disabled={!userId} loading={busy === 'add'} onClick={() => void run('add', async () => { await props.onAddMember({ userId: userId!, role, tier: role === 'agent' || role === 'lead' ? (tier ?? undefined) : undefined }); setUserId(null); })}>
+              <Button variant="primary" loading={busy === 'add'} onClick={() => !addEarly.stop() && void run('add', async () => { await props.onAddMember({ userId: userId!, role, tier: role === 'agent' || role === 'lead' ? (tier ?? undefined) : undefined }); setUserId(null); })}>
                 Add to desk
               </Button>
             </div>
@@ -419,6 +425,7 @@ function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | nu
   const [members, setMembers] = useState<string[]>(group?.memberIds ?? []);
   const [active, setActive] = useState(group?.active ?? true);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(!name.trim() ? [{ fieldId: 'dg-name', message: 'Name the group.' }] : []);
   return (
     <Dialog
       open
@@ -428,7 +435,7 @@ function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | nu
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim()} loading={busy === 'save'} onClick={() => void run('save', async () => { await onSave({ name: name.trim(), assignmentMethod: method, maxOpenPerAgent: max, memberIds: members, active }); onClose(); })}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { await onSave({ name: name.trim(), assignmentMethod: method, maxOpenPerAgent: max, memberIds: members, active }); onClose(); })}>
             Save group
           </Button>
         </>
@@ -436,7 +443,7 @@ function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | nu
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-        <FormField label="Name" required>
+        <FormField id="dg-name" label="Name" required error={early.errorOf('dg-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
         <FormField label="How new tickets are shared">
@@ -461,6 +468,7 @@ function CategoriesTab(props: TabProps) {
   const [sensitive, setSensitive] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(d.groups[0]?.id ?? null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(!name.trim() ? [{ fieldId: 'dc-name', message: 'Name the category.' }] : []);
   const top = d.categories.filter((c) => !c.parentId);
   return (
     <div className="yx-ops-stack">
@@ -488,7 +496,7 @@ function CategoriesTab(props: TabProps) {
       {d.canSetUp && (
         <Card title="Add a category">
           <div className="yx-ops-stack">
-            <FormField label="Name" required>
+            <FormField id="dc-name" label="Name" required error={early.errorOf('dc-name')}>
               <TextField value={name} onChange={setName} maxLength={100} />
             </FormField>
             <FormField label="Inside" optional>
@@ -499,7 +507,7 @@ function CategoriesTab(props: TabProps) {
             </FormField>
             <Checkbox checked={sensitive} onChange={setSensitive} label="Sensitive" description="Tickets in it are seen only by this desk’s agents and leads, never by admins." />
             <div className="yx-ops-row">
-              <Button variant="primary" disabled={!name.trim()} loading={busy === 'add'} onClick={() => void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true }); setName(''); })}>
+              <Button variant="primary" loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true }); setName(''); })}>
                 Add category
               </Button>
             </div>
@@ -517,6 +525,8 @@ function TypesTab(props: TabProps) {
   const [label, setLabel] = useState('');
   const [state, setState] = useState<SystemState | null>('open');
   const { busy, error, run } = useRun();
+  const statusEarly = useTooEarly([...(!label.trim() ? [{ fieldId: 'ds-label', message: 'Name the status.' }] : []), ...(!state ? [{ fieldId: 'ds-state', message: 'Choose what it means.' }] : [])]);
+  const typeEarly = useTooEarly(!typeName.trim() ? [{ fieldId: 'dt-name', message: 'Name the type.' }] : []);
   return (
     <div className="yx-ops-stack">
       <ReadOnly show={!d.canSetUp} />
@@ -543,9 +553,13 @@ function TypesTab(props: TabProps) {
       </ul>
       {d.canSetUp && (
         <span className="yx-ops-row">
-          <TextField size="sm" value={label} onChange={setLabel} aria-label="New status name" placeholder="New status name" maxLength={60} />
-          <Select size="sm" value={state} onChange={setState} options={(Object.keys(STATE_LABEL) as SystemState[]).map((s) => ({ value: s, label: `Means: ${STATE_LABEL[s]}` }))} aria-label="What it means" />
-          <Button size="sm" disabled={!label.trim() || !state} loading={busy === 'status'} onClick={() => void run('status', async () => { await props.onSaveStatus(null, { label: label.trim(), systemState: state! }); setLabel(''); })}>
+          <FormField id="ds-label" label="New status name" hideLabel error={statusEarly.errorOf('ds-label')}>
+            <TextField size="sm" value={label} onChange={setLabel} placeholder="New status name" maxLength={60} />
+          </FormField>
+          <FormField id="ds-state" label="What it means" hideLabel error={statusEarly.errorOf('ds-state')}>
+            <Select size="sm" value={state} onChange={setState} options={(Object.keys(STATE_LABEL) as SystemState[]).map((s) => ({ value: s, label: `Means: ${STATE_LABEL[s]}` }))} />
+          </FormField>
+          <Button size="sm" loading={busy === 'status'} onClick={() => !statusEarly.stop() && void run('status', async () => { await props.onSaveStatus(null, { label: label.trim(), systemState: state! }); setLabel(''); })}>
             Add status
           </Button>
         </span>
@@ -571,9 +585,11 @@ function TypesTab(props: TabProps) {
       </ul>
       {d.canSetUp && (
         <span className="yx-ops-row">
-          <TextField size="sm" value={typeName} onChange={setTypeName} aria-label="New type name" placeholder="New type name" maxLength={60} />
+          <FormField id="dt-name" label="New type name" hideLabel error={typeEarly.errorOf('dt-name')}>
+            <TextField size="sm" value={typeName} onChange={setTypeName} placeholder="New type name" maxLength={60} />
+          </FormField>
           <Segment label="Kind" options={[{ value: 'incident', label: 'Broken' }, { value: 'request', label: 'Request' }, { value: 'question', label: 'Question' }]} value={kind} onChange={setKind} />
-          <Button size="sm" disabled={!typeName.trim()} loading={busy === 'type'} onClick={() => void run('type', async () => { await props.onSaveType(null, { name: typeName.trim(), kind }); setTypeName(''); })}>
+          <Button size="sm" loading={busy === 'type'} onClick={() => !typeEarly.stop() && void run('type', async () => { await props.onSaveType(null, { name: typeName.trim(), kind }); setTypeName(''); })}>
             Add type
           </Button>
         </span>
@@ -641,6 +657,8 @@ function RepliesTab(props: TabProps) {
   const [scStatus, setScStatus] = useState<string | null>(null);
   const [scReply, setScReply] = useState('');
   const { busy, error, run } = useRun();
+  const scEarly = useTooEarly(!scName.trim() ? [{ fieldId: 'sc-name', message: 'Name the scenario.' }] : []);
+  const cannedEarly = useTooEarly([...(!title.trim() ? [{ fieldId: 'cr-title', message: 'Give the reply a title.' }] : []), ...(!body.replace(/<[^>]*>/g, '').trim() ? [{ fieldId: 'cr-body', message: 'Write the reply.' }] : [])]);
   const desk = props.canned.filter((c) => !c.personal);
   const open = (c: CannedResponse | 'new') => {
     setEdit(c);
@@ -689,7 +707,7 @@ function RepliesTab(props: TabProps) {
       {d.canSetUp && (
         <Card title="New scenario">
           <div className="yx-ops-stack">
-            <FormField label="Name" required>
+            <FormField id="sc-name" label="Name" required error={scEarly.errorOf('sc-name')}>
               <TextField value={scName} onChange={setScName} maxLength={100} />
             </FormField>
             <FormField label="Set the status" optional>
@@ -699,7 +717,7 @@ function RepliesTab(props: TabProps) {
               <RichTextEditor hide={STYLE_TOOLS} value={scReply} onChange={setScReply} mergeFields={[]} />
             </FormField>
             <div className="yx-ops-row">
-              <Button disabled={!scName.trim()} loading={busy === 'scenario'} onClick={() => void run('scenario', async () => { await props.onSaveScenario(null, { name: scName.trim(), actions: { ...(scStatus ? { statusId: scStatus } : {}), ...(scReply.replace(/<[^>]*>/g, '').trim() ? { reply: scReply } : {}) } }); setScName(''); setScReply(''); setScStatus(null); })}>
+              <Button loading={busy === 'scenario'} onClick={() => !scEarly.stop() && void run('scenario', async () => { await props.onSaveScenario(null, { name: scName.trim(), actions: { ...(scStatus ? { statusId: scStatus } : {}), ...(scReply.replace(/<[^>]*>/g, '').trim() ? { reply: scReply } : {}) } }); setScName(''); setScReply(''); setScStatus(null); })}>
                 Add scenario
               </Button>
             </div>
@@ -720,17 +738,17 @@ function RepliesTab(props: TabProps) {
                   {edit.active ? 'Turn off' : 'Turn on'}
                 </Button>
               )}
-              <Button variant="primary" disabled={!title.trim() || !body.replace(/<[^>]*>/g, '').trim()} loading={busy === 'canned'} onClick={() => void run('canned', async () => { await props.onSaveCanned(edit === 'new' ? null : edit.id, { title: title.trim(), bodyHtml: body, active: edit === 'new' ? true : edit.active }); setEdit(null); })}>
+              <Button variant="primary" loading={busy === 'canned'} onClick={() => !cannedEarly.stop() && void run('canned', async () => { await props.onSaveCanned(edit === 'new' ? null : edit.id, { title: title.trim(), bodyHtml: body, active: edit === 'new' ? true : edit.active }); setEdit(null); })}>
                 Save reply
               </Button>
             </>
           }
         >
           <div className="yx-ops-stack">
-            <FormField label="Title" required>
+            <FormField id="cr-title" label="Title" required error={cannedEarly.errorOf('cr-title')}>
               <TextField value={title} onChange={setTitle} maxLength={100} />
             </FormField>
-            <FormField label="Reply" required>
+            <FormField id="cr-body" label="Reply" required error={cannedEarly.errorOf('cr-body')}>
               <RichTextEditor hide={STYLE_TOOLS} value={body} onChange={setBody} mergeFields={[]} />
             </FormField>
           </div>
@@ -831,13 +849,6 @@ function SettingsTab(props: TabProps) {
 }
 
 function CalendarsTab(props: TabProps) {
-  const [on, setOn] = useState('');
-  const [name, setName] = useState('');
-  const [half, setHalf] = useState(false);
-  const [days, setDays] = useState<string[]>(['1', '2', '3', '4', '5']);
-  const [start, setStart] = useState<string | null>('09:00');
-  const [end, setEnd] = useState<string | null>('18:00');
-  const [from, setFrom] = useState('');
   const { busy, error, run } = useRun();
   return (
     <div className="yx-ops-stack">
@@ -857,32 +868,66 @@ function CalendarsTab(props: TabProps) {
                 </FormField>
               )}
               <p className="yx-ops-muted">Holidays: {c.holidays.length ? c.holidays.map((h) => `${h.on} ${h.name}${h.halfDay ? ' (half day)' : ''}`).join(' · ') : 'none'}</p>
-              <span className="yx-ops-row">
-                <TextField size="sm" type="date" aria-label="Holiday date" value={on} onChange={setOn} />
-                <TextField size="sm" aria-label="Holiday name" placeholder="Holiday name" value={name} onChange={setName} maxLength={100} />
-                <Checkbox checked={half} onChange={setHalf} label="Half day" />
-                <Button size="sm" disabled={!on || !name.trim()} loading={busy === `h-${c.id}`} onClick={() => void run(`h-${c.id}`, async () => { await props.onAddHoliday(c.id, { on, name: name.trim(), halfDay: half }); setName(''); setOn(''); })}>
-                  Add holiday
-                </Button>
-              </span>
-              <span className="yx-ops-row">
-                <MultiSelect size="sm" aria-label="Working days" value={days} onChange={setDays} options={DAYS.map((x, i) => ({ value: String(i + 1), label: x }))} />
-                <TimeField size="sm" aria-label="Start" value={start} onChange={setStart} />
-                <TimeField size="sm" aria-label="End" value={end} onChange={setEnd} />
-                <TextField size="sm" type="date" aria-label="From date" value={from} onChange={setFrom} />
-                <Button
-                  size="sm"
-                  disabled={!from || !days.length || toMin(start) === null || toMin(end) === null || (toMin(end) ?? 0) <= (toMin(start) ?? 0)}
-                  loading={busy === `w-${c.id}`}
-                  onClick={() => void run(`w-${c.id}`, () => props.onSetHours(c.id, { effectiveFrom: from, hours: days.map((x) => ({ weekday: Number(x), startMinute: toMin(start)!, endMinute: toMin(end)! })) }))}
-                >
-                  Change hours from this date
-                </Button>
-              </span>
+              <CalendarEdit c={c} props={props} busy={busy} run={run} />
             </div>
           </Card>
         );
       })}
     </div>
+  );
+}
+
+/** One calendar's holiday and working-hours rows; each calendar keeps its own half-typed values. */
+function CalendarEdit({ c, props, busy, run }: { c: Calendar; props: TabProps; busy: string | null; run: (key: string, fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const [on, setOn] = useState('');
+  const [name, setName] = useState('');
+  const [half, setHalf] = useState(false);
+  const [days, setDays] = useState<string[]>(['1', '2', '3', '4', '5']);
+  const [start, setStart] = useState<string | null>('09:00');
+  const [end, setEnd] = useState<string | null>('18:00');
+  const [from, setFrom] = useState('');
+  const holEarly = useTooEarly([...(!on ? [{ fieldId: `hol-on-${c.id}`, message: 'Choose the date.' }] : []), ...(!name.trim() ? [{ fieldId: `hol-name-${c.id}`, message: 'Name the holiday.' }] : [])]);
+  const hoursEarly = useTooEarly([
+    ...(!days.length ? [{ fieldId: `wh-days-${c.id}`, message: 'Choose the working days.' }] : []),
+    ...(toMin(start) === null ? [{ fieldId: `wh-start-${c.id}`, message: 'Enter the start time.' }] : []),
+    ...(toMin(end) === null || (toMin(end) ?? 0) <= (toMin(start) ?? 0) ? [{ fieldId: `wh-end-${c.id}`, message: 'Enter an end time after the start.' }] : []),
+    ...(!from ? [{ fieldId: `wh-from-${c.id}`, message: 'Choose the date the new hours start.' }] : []),
+  ]);
+  return (
+    <>
+      <span className="yx-ops-row">
+        <FormField id={`hol-on-${c.id}`} label="Holiday date" hideLabel error={holEarly.errorOf(`hol-on-${c.id}`)}>
+          <TextField size="sm" type="date" value={on} onChange={setOn} />
+        </FormField>
+        <FormField id={`hol-name-${c.id}`} label="Holiday name" hideLabel error={holEarly.errorOf(`hol-name-${c.id}`)}>
+          <TextField size="sm" placeholder="Holiday name" value={name} onChange={setName} maxLength={100} />
+        </FormField>
+        <Checkbox checked={half} onChange={setHalf} label="Half day" />
+        <Button size="sm" loading={busy === `h-${c.id}`} onClick={() => !holEarly.stop() && void run(`h-${c.id}`, async () => { await props.onAddHoliday(c.id, { on, name: name.trim(), halfDay: half }); setName(''); setOn(''); })}>
+          Add holiday
+        </Button>
+      </span>
+      <span className="yx-ops-row">
+        <FormField id={`wh-days-${c.id}`} label="Working days" hideLabel error={hoursEarly.errorOf(`wh-days-${c.id}`)}>
+          <MultiSelect size="sm" value={days} onChange={setDays} options={DAYS.map((x, i) => ({ value: String(i + 1), label: x }))} />
+        </FormField>
+        <FormField id={`wh-start-${c.id}`} label="Start" hideLabel error={hoursEarly.errorOf(`wh-start-${c.id}`)}>
+          <TimeField size="sm" value={start} onChange={setStart} />
+        </FormField>
+        <FormField id={`wh-end-${c.id}`} label="End" hideLabel error={hoursEarly.errorOf(`wh-end-${c.id}`)}>
+          <TimeField size="sm" value={end} onChange={setEnd} />
+        </FormField>
+        <FormField id={`wh-from-${c.id}`} label="From date" hideLabel error={hoursEarly.errorOf(`wh-from-${c.id}`)}>
+          <TextField size="sm" type="date" value={from} onChange={setFrom} />
+        </FormField>
+        <Button
+          size="sm"
+          loading={busy === `w-${c.id}`}
+          onClick={() => !hoursEarly.stop() && void run(`w-${c.id}`, () => props.onSetHours(c.id, { effectiveFrom: from, hours: days.map((x) => ({ weekday: Number(x), startMinute: toMin(start)!, endMinute: toMin(end)! })) }))}
+        >
+          Change hours from this date
+        </Button>
+      </span>
+    </>
   );
 }

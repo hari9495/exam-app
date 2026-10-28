@@ -7,7 +7,8 @@ import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -94,6 +95,7 @@ export function CatalogAdmin(props: CatalogAdminProps) {
   const [editing, setEditing] = useState<CatalogItemAdmin | null>(null);
   const [newName, setNewName] = useState('');
   const { busy, error, run } = useRun();
+  const addEarly = useTooEarly(newName.trim() ? [] : [{ fieldId: 'ci-new', message: 'Name the new item.' }]);
   return (
     <div className="yx-ops-stack">
       {error && (
@@ -109,13 +111,14 @@ export function CatalogAdmin(props: CatalogAdminProps) {
       {props.onHighValue && props.highValueAbove != null && <HighValueRule key={props.highValueAbove} value={props.highValueAbove} onSave={props.onHighValue} />}
       <Card title="Catalogue items">
         <div className="yx-ops-row">
-          <FormField label="New item name" hideLabel>
+          <FormField id="ci-new" label="New item name" hideLabel error={addEarly.errorOf('ci-new')}>
             <TextField placeholder="New item, e.g. New laptop" value={newName} onChange={setNewName} maxLength={100} />
           </FormField>
           <Button
             icon={Plus}
-            disabled={!newName.trim() || busy === 'create'}
+            loading={busy === 'create'}
             onClick={() =>
+              !addEarly.stop() &&
               void run('create', async () => {
                 setEditing(await props.onCreate({ name: newName.trim(), draft: { form: EMPTY_FORM, approval: [], fulfilment: [] } }));
                 setNewName('');
@@ -150,13 +153,14 @@ export function CatalogAdmin(props: CatalogAdminProps) {
 function HighValueRule({ value, onSave }: { value: number; onSave: (rupees: number) => Promise<unknown> }) {
   const [v, setV] = useState<number | null>(value);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(v == null ? [{ fieldId: 'hv-amount', message: 'Enter an amount.' }] : []);
   return (
     <Card title="Always needs a person to approve above">
       <div className="yx-ops-row">
-        <FormField label="Amount" hideLabel error={error} helper="For the whole company. An order that costs more is never approved automatically when time runs out; it goes to the approver's manager instead.">
+        <FormField id="hv-amount" label="Amount" hideLabel error={early.errorOf('hv-amount') ?? error} helper="For the whole company. An order that costs more is never approved automatically when time runs out; it goes to the approver's manager instead.">
           <CurrencyField value={v} onChange={setV} min={0} max={100_000_000} />
         </FormField>
-        <Button disabled={v == null || v === value || busy === 'save'} onClick={() => void run('save', () => onSave(v!))}>
+        <Button loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave(v!))}>
           Save
         </Button>
       </div>
@@ -192,16 +196,16 @@ function ItemEditor(props: CatalogAdminProps & { item: CatalogItemAdmin; onClose
         <>
           <Button onClick={props.onClose}>Close</Button>
           {it.state !== 'retired' && it.state === 'published' && (
-            <Button variant="danger" disabled={Boolean(busy)} onClick={() => void run('retire', async () => props.onSaved(((await props.onRetire(it)) as CatalogItemAdmin) ?? it))}>
+            <Button variant="danger" loading={busy === 'retire'} onClick={() => void run('retire', async () => props.onSaved(((await props.onRetire(it)) as CatalogItemAdmin) ?? it))}>
               Retire
             </Button>
           )}
-          <Button disabled={Boolean(busy)} onClick={() => void save()}>
+          <Button loading={busy === 'save'} onClick={() => void save()}>
             Save draft
           </Button>
           <Button
             variant="primary"
-            disabled={Boolean(busy)}
+            loading={busy === 'publish'}
             onClick={() =>
               void run('publish', async () => {
                 const saved = await props.onSave(it, input());
@@ -284,6 +288,7 @@ function ItemEditor(props: CatalogAdminProps & { item: CatalogItemAdmin; onClose
 
 function MediaEditor({ media, onChange }: { media: ItemMedia[]; onChange: (m: ItemMedia[]) => void }) {
   const setAt = (i: number, patch: Partial<ItemMedia>) => onChange(media.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const { toast } = useToast();
   return (
     <Card title="Pictures, videos and documents (links)">
       {media.map((m, i) => (
@@ -294,7 +299,7 @@ function MediaEditor({ media, onChange }: { media: ItemMedia[]; onChange: (m: It
           <IconButton icon={Trash2} label={`Remove link ${i + 1}`} onClick={() => onChange(media.filter((_, j) => j !== i))} />
         </div>
       ))}
-      <Button size="sm" icon={Plus} disabled={media.length >= 12} onClick={() => onChange([...media, { kind: 'document', title: '', url: '' }])}>
+      <Button size="sm" icon={Plus} onClick={() => (media.length >= 12 ? toast({ title: 'An item has at most 12 links.' }) : onChange([...media, { kind: 'document', title: '', url: '' }]))}>
         Add a link
       </Button>
     </Card>
@@ -305,9 +310,12 @@ function MediaEditor({ media, onChange }: { media: ItemMedia[]; onChange: (m: It
 
 export function FormBuilder({ form, onChange, questionnaires = [] }: { form: FormDef; onChange: (f: FormDef) => void; questionnaires?: { id: string; name: string }[] }) {
   const [lib, setLib] = useState<string | null>(null);
+  const { toast } = useToast();
+  const libEarly = useTooEarly(lib ? [] : [{ fieldId: 'fb-lib', message: 'Choose a question set.' }]);
   const keys = useMemo(() => new Set(form.sections.flatMap((s) => s.fields.map((f) => f.key))), [form]);
   const setSection = (i: number, s: FormSectionDef) => onChange({ ...form, sections: form.sections.map((x, j) => (j === i ? s : x)) });
   const move = (i: number, d: -1 | 1) => {
+    if (!form.sections[i + d]) return void toast({ title: d < 0 ? 'This section is already first.' : 'This section is already last.' });
     const next = [...form.sections];
     [next[i], next[i + d]] = [next[i + d], next[i]];
     onChange({ ...form, sections: next });
@@ -320,8 +328,8 @@ export function FormBuilder({ form, onChange, questionnaires = [] }: { form: For
           title={s.questionnaireId ? `From the question library: ${questionnaires.find((q) => q.id === s.questionnaireId)?.name ?? 'a question set'}` : s.title || `Section ${i + 1}`}
           actions={
             <span className="yx-ops-row">
-              <IconButton icon={ArrowUp} label={`Move section ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)} />
-              <IconButton icon={ArrowDown} label={`Move section ${i + 1} down`} disabled={i === form.sections.length - 1} onClick={() => move(i, 1)} />
+              <IconButton icon={ArrowUp} label={`Move section ${i + 1} up`} onClick={() => move(i, -1)} />
+              <IconButton icon={ArrowDown} label={`Move section ${i + 1} down`} onClick={() => move(i, 1)} />
               <IconButton icon={Trash2} label={`Remove section ${i + 1}`} onClick={() => onChange({ ...form, sections: form.sections.filter((_, j) => j !== i) })} />
             </span>
           }
@@ -339,8 +347,10 @@ export function FormBuilder({ form, onChange, questionnaires = [] }: { form: For
         </Button>
         {questionnaires.length > 0 && (
           <>
-            <Select aria-label="Question set" options={questionnaires.map((q) => ({ value: q.id, label: q.name }))} value={lib} onChange={setLib} placeholder="From the question library" />
-            <Button disabled={!lib} onClick={() => lib && (onChange({ ...form, sections: [...form.sections, { id: nid('s'), columns: 1, fields: [], questionnaireId: lib }] }), setLib(null))}>
+            <FormField id="fb-lib" label="Question set" hideLabel error={libEarly.errorOf('fb-lib')}>
+              <Select aria-label="Question set" options={questionnaires.map((q) => ({ value: q.id, label: q.name }))} value={lib} onChange={setLib} placeholder="From the question library" />
+            </FormField>
+            <Button onClick={() => !libEarly.stop() && lib && (onChange({ ...form, sections: [...form.sections, { id: nid('s'), columns: 1, fields: [], questionnaireId: lib }] }), setLib(null))}>
               Add the set
             </Button>
           </>
@@ -354,6 +364,7 @@ export function FormBuilder({ form, onChange, questionnaires = [] }: { form: For
 function SectionEditor({ section: s, onChange, taken, form }: { section: FormSectionDef; onChange: (s: FormSectionDef) => void; taken: Set<string>; form: FormDef }) {
   const [label, setLabel] = useState('');
   const [type, setType] = useState<FormFieldType>('text');
+  const qEarly = useTooEarly(label.trim() ? [] : [{ fieldId: `q-new-${s.id}`, message: 'Write the question.' }]);
   const setField = (i: number, f: FormFieldDef) => onChange({ ...s, fields: s.fields.map((x, j) => (j === i ? f : x)) });
   return (
     <div className="yx-ops-stack">
@@ -367,14 +378,14 @@ function SectionEditor({ section: s, onChange, taken, form }: { section: FormSec
         <FieldEditor key={f.key} field={f} onChange={(x) => setField(i, x)} onRemove={() => onChange({ ...s, fields: s.fields.filter((_, j) => j !== i) })} form={form} />
       ))}
       <div className="yx-ops-row">
-        <FormField label="New question" hideLabel>
+        <FormField id={`q-new-${s.id}`} label="New question" hideLabel error={qEarly.errorOf(`q-new-${s.id}`)}>
           <TextField placeholder="New question, e.g. Which model?" value={label} onChange={setLabel} maxLength={120} />
         </FormField>
         <Select aria-label="Kind of answer" options={TYPE_OPTIONS} value={type} onChange={(v) => v && setType(v)} />
         <Button
           icon={Plus}
-          disabled={!label.trim()}
           onClick={() => {
+            if (qEarly.stop()) return;
             const f: FormFieldDef = { key: keyOf(label, taken), type, label: label.trim(), ...(type === 'choice' || type === 'multi_choice' ? { options: [{ value: 'option_1', label: 'Option 1' }] } : {}), ...(type === 'formula' ? { formula: { op: 'add', args: [] } } : {}) };
             onChange({ ...s, fields: [...s.fields, f] });
             setLabel('');
@@ -392,6 +403,7 @@ function FieldEditor({ field: f, onChange, onRemove, form }: { field: FormFieldD
   const parents = all.filter((x) => x.type === 'choice' && x.key !== f.key);
   const numeric = all.filter((x) => x.key !== f.key && (x.type === 'number' || x.type === 'date'));
   const choice = f.type === 'choice' || f.type === 'multi_choice';
+  const { toast } = useToast();
   const setOption = (i: number, patch: Partial<NonNullable<FormFieldDef['options']>[number]>) => onChange({ ...f, options: (f.options ?? []).map((o, j) => (j === i ? { ...o, ...patch } : o)) });
   return (
     <fieldset className="yx-esm-field-editor">
@@ -439,7 +451,7 @@ function FieldEditor({ field: f, onChange, onRemove, form }: { field: FormFieldD
             <div key={i} className="yx-ops-row">
               <TextField aria-label={`Choice ${i + 1}`} value={o.label} onChange={(label) => setOption(i, { label, value: o.value.startsWith('option_') ? keyOf(label, new Set((f.options ?? []).filter((_, j) => j !== i).map((x) => x.value))) : o.value })} maxLength={120} />
               <Select aria-label={`Choice ${i + 1} colour`} options={COLOURS} value={o.colour ?? null} onChange={(colour) => setOption(i, { colour: (colour ?? undefined) as OptionColour | undefined })} placeholder="No colour" clearable />
-              <IconButton icon={Trash2} label={`Remove choice ${o.label}`} disabled={(f.options ?? []).length <= 1} onClick={() => onChange({ ...f, options: (f.options ?? []).filter((_, j) => j !== i) })} />
+              <IconButton icon={Trash2} label={`Remove choice ${o.label}`} onClick={() => ((f.options ?? []).length <= 1 ? toast({ title: 'A choice question needs at least one choice.' }) : onChange({ ...f, options: (f.options ?? []).filter((_, j) => j !== i) }))} />
             </div>
           ))}
           <Button size="sm" icon={Plus} onClick={() => onChange({ ...f, options: [...(f.options ?? []), { value: `option_${(f.options?.length ?? 0) + 1}_${seq++}`, label: `Option ${(f.options?.length ?? 0) + 1}` }] })}>
@@ -485,6 +497,9 @@ function FormRulesEditor({ form, onChange }: { form: FormDef; onChange: (f: Form
   const fields = formRuleFields(form);
   const targets = form.sections.flatMap((s) => s.fields).map((f) => ({ value: f.key, label: f.label }));
   const setRule = (i: number, r: FormDef['rules'][number]) => onChange({ ...form, rules: form.rules.map((x, j) => (j === i ? r : x)) });
+  const { toast } = useToast();
+  /** A rule acts on a question, so with none yet it says so. */
+  const noQuestions = () => !targets.length && (toast({ title: 'Add a question first: a rule shows, hides or fills in a question.' }), true);
   return (
     <Card title="Form rules (show, hide or require questions by earlier answers)">
       {form.rules.length === 0 && <p className="yx-ops-muted">No rules. Every question shows.</p>}
@@ -512,7 +527,7 @@ function FormRulesEditor({ form, onChange }: { form: FormDef; onChange: (f: Form
             </div>
           ))}
           <div className="yx-ops-row">
-            <Button size="sm" icon={Plus} disabled={!targets.length} onClick={() => setRule(i, { ...r, then: [...r.then, { action: 'show', field: targets[0].value }] })}>
+            <Button size="sm" icon={Plus} onClick={() => !noQuestions() && setRule(i, { ...r, then: [...r.then, { action: 'show', field: targets[0].value }] })}>
               Add a step
             </Button>
             <Button size="sm" onClick={() => onChange({ ...form, rules: form.rules.filter((_, j) => j !== i) })}>
@@ -521,7 +536,7 @@ function FormRulesEditor({ form, onChange }: { form: FormDef; onChange: (f: Form
           </div>
         </div>
       ))}
-      <Button size="sm" icon={Plus} disabled={!targets.length} onClick={() => onChange({ ...form, rules: [...form.rules, { id: nid('r'), when: { id: nid('g'), join: 'and', items: [] }, then: [{ action: 'show', field: targets[0].value }] }] })}>
+      <Button size="sm" icon={Plus} onClick={() => !noQuestions() && onChange({ ...form, rules: [...form.rules, { id: nid('r'), when: { id: nid('g'), join: 'and', items: [] }, then: [{ action: 'show', field: targets[0].value }] }] })}>
         Add a form rule
       </Button>
     </Card>
@@ -534,6 +549,7 @@ function StepsEditor({ steps, onChange, form, schema, onFindPeople }: { steps: A
   const ccFields = form.sections.flatMap((s) => s.fields).filter((f) => f.type === 'cost_centre');
   const setAt = (i: number, patch: Partial<ApprovalStepDef>) => onChange(steps.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const pick = (_k: PickKind, q: string) => onFindPeople(q);
+  const { toast } = useToast();
   return (
     <div className="yx-ops-stack">
       {steps.length === 0 && <EmptyState compact title="No approval needed." description="Add a step if someone must say yes first." />}
@@ -623,7 +639,7 @@ function StepsEditor({ steps, onChange, form, schema, onFindPeople }: { steps: A
           </Card>
         );
       })}
-      <Button icon={Plus} disabled={steps.length >= 6} onClick={() => onChange([...steps, { name: steps.length ? 'Next approval' : 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }])}>
+      <Button icon={Plus} onClick={() => (steps.length >= 6 ? toast({ title: 'An item has at most 6 approval steps.' }) : onChange([...steps, { name: steps.length ? 'Next approval' : 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }]))}>
         Add an approval step
       </Button>
     </div>
@@ -659,6 +675,7 @@ function NamedPeople({ ids, onChange, onPick }: { ids: string[]; onChange: (ids:
 
 function TasksEditor({ tasks, onChange, groups }: { tasks: FulfilmentTaskDef[]; onChange: (t: FulfilmentTaskDef[]) => void; groups: { id: string; name: string }[] }) {
   const setAt = (i: number, patch: Partial<FulfilmentTaskDef>) => onChange(tasks.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const { toast } = useToast();
   return (
     <div className="yx-ops-stack">
       <p className="yx-ops-muted">After approval, each line becomes a task for its team, due within its time. When all are done, the item is delivered.</p>
@@ -676,7 +693,11 @@ function TasksEditor({ tasks, onChange, groups }: { tasks: FulfilmentTaskDef[]; 
           <IconButton icon={Trash2} label={`Remove task ${i + 1}`} onClick={() => onChange(tasks.filter((_, j) => j !== i))} />
         </div>
       ))}
-      <Button icon={Plus} disabled={tasks.length >= 10 || !groups.length} onClick={() => onChange([...tasks, { title: '', groupId: groups[0]?.id ?? '' }])}>
+      <Button
+        icon={Plus}
+        onClick={() => (!groups.length ? toast({ title: 'Add a team to this desk first: each task goes to a team.' }) : tasks.length >= 10 ? toast({ title: 'An item has at most 10 tasks.' }) : onChange([...tasks, { title: '', groupId: groups[0]!.id }]))}
+      >
+
         Add a task
       </Button>
     </div>

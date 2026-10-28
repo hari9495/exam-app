@@ -45,6 +45,17 @@ describe('HLP-05 reports', () => {
     expect(screen.queryByRole('textbox', { name: 'Wall screen link' })).not.toBeInTheDocument();
   });
 
+  it('Make the link pressed with nothing filled names what is missing', async () => {
+    const onCreateWallboard = vi.fn();
+    render(<ReportsScreen {...reportsProps({ tab: 'walls', onCreateWallboard })} />);
+    await ue.click(screen.getByRole('button', { name: 'New wall screen' }));
+    await ue.click(screen.getByRole('button', { name: 'Make the link' }));
+    expect(await screen.findByText('Name the wall screen.')).toBeInTheDocument();
+    expect(screen.getByText('Choose at least one desk.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Name/ })).toHaveFocus();
+    expect(onCreateWallboard).not.toHaveBeenCalled();
+  });
+
   it('picks the schedule frequency with a Segment and sends to chosen colleagues', async () => {
     const onSchedule = vi.fn().mockResolvedValue(undefined);
     render(<ReportsScreen {...reportsProps({ tab: 'mine', onSchedule })} />);

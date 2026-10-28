@@ -76,7 +76,22 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
     expect(await screen.findByRole('button', { name: 'Follow IT-1020' })).toBeInTheDocument();
   });
 
+  it('Send request for someone else with nobody chosen says so, and sends nothing', async () => {
+    const p = props();
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Model/ }));
+    await ue.click(screen.getByRole('option', { name: 'Standard' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add to cart' }));
+    await ue.click(screen.getByRole('radio', { name: 'For someone else' }));
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('Choose who it is for.')).toBeInTheDocument();
+    expect(p.onCheckout).not.toHaveBeenCalled();
+  });
+
   it('forms switch language; the choice for "who it is for" is a Segment', async () => {
+
     const p = props();
     render(<CatalogScreen {...p} />);
     await ue.click(screen.getByRole('radio', { name: 'हिन्दी' }));
@@ -92,9 +107,12 @@ describe('catalogue set-up: the company line above which a person must approve (
     render(<CatalogAdmin items={[]} schema={null} onLoad={none} onCreate={none} onSave={none} onPublish={none} onRetire={none} onFindPeople={async () => []} onPick={async () => []} highValueAbove={50000} onHighValue={onHighValue} />);
     const box = screen.getByRole('textbox', { name: 'Amount' });
     expect(box).toHaveValue('50,000');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     await ue.clear(box);
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onHighValue).not.toHaveBeenCalled();
+    expect(await screen.findByText('Enter an amount.')).toBeInTheDocument();
     await ue.type(box, '75000');
+
     await ue.click(screen.getByRole('button', { name: 'Save' }));
     expect(onHighValue).toHaveBeenCalledWith(75000);
   });

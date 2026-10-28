@@ -60,4 +60,20 @@ describe('3b-2 batch 3 screens', () => {
     await ue.click(screen.getByRole('button', { name: 'Save' }));
     expect(onRouting).toHaveBeenCalledWith('u1', { capacity: { ticket: 5, chat: 2, messaging: null }, languages: ['en', 'ta'] });
   });
+
+  it('shifts: Add and Import pressed too early say what is missing; an import says done with a toast', async () => {
+    const onAddShift = vi.fn();
+    const onImportShifts = vi.fn(async () => ({ added: 2 }));
+    const team: TeamMember[] = [{ userId: 'u1', name: 'Suresh', role: 'agent', presence: 'available', awayUntil: null, skills: [], languages: ['en'], onShift: true, openTickets: 0, activeChats: 0, capacity: { ticket: null, chat: 2, messaging: null } }];
+    render(<TeamScreen state="ready" desks={[{ id: 'd', name: 'IT' }]} deskId="d" onDesk={vi.fn()} canLead canReport={false} me={{ presence: 'available' }} onPresence={vi.fn()} team={team} onRouting={vi.fn()} shifts={[]} range={{ from: '2026-10-09', to: '2026-10-15' }} onAddShift={onAddShift} onRemoveShift={vi.fn()} onImportShifts={onImportShifts} forecast={null} availability={null} />);
+    await ue.click(screen.getByRole('button', { name: 'Add the shift' }));
+    expect(await screen.findByText('Choose the agent.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Import shifts' }));
+    expect(await screen.findByText('Paste at least one line.')).toBeInTheDocument();
+    expect(onAddShift).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Or paste shifts as CSV/ }), 'a@b.com, 2026-10-12 09:00, 2026-10-12 17:00');
+    await ue.click(screen.getByRole('button', { name: 'Import shifts' }));
+    expect((await screen.findAllByText('Added 2 shifts.'))[0]).toBeInTheDocument();
+  });
 });
+

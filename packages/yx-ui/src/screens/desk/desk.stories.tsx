@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
+import { pick, play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { HelpCentreScreen, HelpDrawer, MyTicketScreen } from './help';
 import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { TicketScreen } from './ticket';
 import { DeskSetupScreen } from './setup';
-import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TICKET, TIMELINE, WORK } from './data';
-import { TicketWorkRail } from './work';
+import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
+import { ResolveDialog, TicketWorkRail } from './work';
 import { MyCalendarScreen } from './calendar';
 import { SlaTab } from './setup-sla';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
@@ -247,3 +248,29 @@ const ME = { name: 'Kiran Shetty', email: 'kiran@sunrise.example', account: 'Sun
 export const PortalLogin: S = { name: 'US-G-021 Outside portal · sign in', render: () => portal({}) };
 export const PortalHomeStory: S = { name: 'US-G-021 Outside portal · my tickets', render: () => portal({ me: ME, notice: 'Ticket CS-1004 is open.' }) };
 export const PortalTicketStory: S = { name: 'US-G-021 Outside portal · one ticket', render: () => portal({ me: ME, ticket: PORTAL_TICKET, ticketState: 'ready' }) };
+
+// Pressed too early: the buttons stay pressable and say what is missing (founder rule, no greyed-out buttons).
+export const NewTicketTooEarly: S = { name: 'HLP-02 New ticket · Raise ticket pressed with nothing filled', render: () => list('list'), play: play(press('New ticket'), press('Raise ticket')) };
+export const ReplyTooEarly: S = { name: 'HLP-03 Ticket workspace · Send reply pressed with nothing written', render: () => workspace(), play: play(press('Send reply')) };
+export const ResolveTooEarly: S = { name: 'SD-1.10 Resolve · pressed without a code or note', render: () => shell('desk-tickets', <ResolveDialog open onOpenChange={() => {}} ticket={TICKET} codes={TEMPLATES.resolutionCodes} required linked={0} onResolve={noop} />), play: play(press('Resolve')) };
+export const NewDeskTooEarly: S = { name: 'Desk set-up · Create desk pressed with nothing filled', render: Setup.render, play: play(press('New desk'), press('Create desk')) };
+export const HolidayTooEarly: S = { name: 'Desk set-up · Add holiday pressed with no date or name', render: Setup.render, play: play(tab('Calendars'), press('Add holiday')) };
+
+// Founder rules (28 Oct 2026, set-up tabs): buttons are never greyed out; pressed too early they say what is missing.
+export const MailboxTooEarly: S = { name: 'SD-1.18 Email · Add mailbox pressed with nothing filled', render: EmailSetup.render, play: play(pressFirst('Add a mailbox'), press('Add mailbox')) };
+export const DomainTooEarly: S = { name: 'SD-1.18 Email · Add domain pressed with no domain', render: EmailSetup.render, play: play(press('Add domain')) };
+export const PortalTooEarly: S = { name: 'SD-1.21 Help pages · Save pressed with nothing filled', render: () => shell('desk-setup', <PortalTab state="ready" portals={PORTALS} desks={[DESK, CS_DESK]} onSave={noop} />), play: play(press('New help page'), press('Save help page')) };
+export const PortalNoDesk: S = { name: 'SD-1.21 Help pages · New help page with no customer desk (toast)', render: () => shell('desk-setup', <PortalTab state="ready" portals={[]} desks={[DESK]} onSave={noop} />), play: play(press('New help page')) };
+export const BannerTooEarly: S = { name: 'SD-1.23 Banners · Post pressed with nothing written', render: BannerSetup.render, play: play(press('Post a banner'), press('Post banner')) };
+
+// Helpdesk founder rules (28 Oct 2026): too early says what is missing; done is a toast.
+const helpCentre = () => shell('desk-help', <HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} onOpen={() => {}} banners={MY_BANNERS} onMeToo={noop} timeZone="Asia/Kolkata" />);
+export const HelpRaiseTooEarly: S = { name: 'HLP-01 Help centre · Raise ticket pressed with nothing filled', render: helpCentre, play: play(press('Raise a ticket'), press('Raise ticket')) };
+export const HelpRaised: S = { name: 'HLP-01 Help centre · ticket raised (toast with the number)', render: helpCentre, play: play(press('Raise a ticket'), pick(/^Which team/, /IT help desk/), type(/^Subject/, 'Wi-Fi drops on floor 2'), type(/^Details/, 'Every hour since Monday, in the Hosur plant office'), press('Raise ticket')) };
+export const HelpMeTooAgain: S = { name: 'US-G-020 Help centre · Me too pressed again (toast)', render: helpCentre, play: play(press('Me too'), press('You are on it')) };
+export const HelpDrawerTooEarly: S = { name: 'US-B-100 Help drawer · Raise ticket pressed with nothing filled', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />), play: play(press('Raise ticket')) };
+export const MyTicketReplyTooEarly: S = { name: 'HLP-01 My ticket · Send reply pressed with nothing written', render: MyTicket.render, play: play(press('Send reply')) };
+export const MyTicketWatchTooEarly: S = { name: 'HLP-01 My ticket · Add colleague pressed with no email', render: MyTicket.render, play: play(press('Add')) };
+export const CustomersPlanTooEarly: S = { name: 'SD-1.22 Customers · Add plan pressed with nothing filled', render: Customers.render, play: play(press('Add plan')) };
+export const CustomersPersonTooEarly: S = { name: 'SD-1.22 Customers · Add person pressed with nothing filled', render: Customers.render, play: play(press('Add person')) };
+export const CustomersProductTooEarly: S = { name: 'SD-1.22 Customers · Add product pressed with no name', render: Customers.render, play: play(press('Add product')) };

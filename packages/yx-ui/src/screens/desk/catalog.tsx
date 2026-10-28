@@ -4,7 +4,8 @@ import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Card } from '../../components/shell';
@@ -50,7 +51,8 @@ export function CatalogScreen(props: CatalogScreenProps) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [forOther, setForOther] = useState(false);
   const [forPerson, setForPerson] = useState<string | null>(null);
-  const [done, setDone] = useState<{ ticketId: string; number: string }[] | null>(null);
+  const { toast } = useToast();
+  const forEarly = useTooEarly(forOther && !forPerson ? [{ fieldId: 'cat-for', message: 'Choose who it is for.' }] : []);
   const [guide, setGuide] = useState<OrderGuideView | null>(null);
   const [guideAnswers, setGuideAnswers] = useState<Answers>({});
   const [suggested, setSuggested] = useState<{ id: string; name: string; shortText: string | null; cost: number | null }[] | null>(null);
@@ -87,7 +89,20 @@ export function CatalogScreen(props: CatalogScreenProps) {
   const checkout = () =>
     run('checkout', async () => {
       const res = await props.onCheckout({ ...(forOther && forPerson ? { forPersonId: forPerson } : {}), items: cart.map((l) => ({ itemId: l.item.id, quantity: l.quantity, answers: l.answers })) });
-      setDone(res.requests);
+      const many = res.requests.length > 1;
+      toast({
+        tone: 'success',
+        title: many ? 'Your requests are sent' : 'Your request is sent',
+        description: (
+          <span className="yx-ops-row">
+            {res.requests.map((r) => (
+              <Button key={r.ticketId} size="sm" onClick={() => props.onOpenRequest(r.ticketId)}>
+                Follow {r.number}
+              </Button>
+            ))}
+          </span>
+        ),
+      });
       setCart([]);
       setForOther(false);
       setForPerson(null);
@@ -111,17 +126,7 @@ export function CatalogScreen(props: CatalogScreenProps) {
             </Button>
           </InlineAlert>
         )}
-        {done && (
-          <InlineAlert tone="success" title={done.length > 1 ? 'Your requests are sent' : 'Your request is sent'}>
-            <span className="yx-ops-row">
-              {done.map((r) => (
-                <Button key={r.ticketId} size="sm" onClick={() => props.onOpenRequest(r.ticketId)}>
-                  Follow {r.number}
-                </Button>
-              ))}
-            </span>
-          </InlineAlert>
-        )}
+
         {cart.length > 0 && (
           <Card title={`Your cart (${cart.length})`} actions={<Badge tone="info">{cart.length} item{cart.length > 1 ? 's' : ''}</Badge>}>
             <ul className="yx-esm-cart">
@@ -138,13 +143,13 @@ export function CatalogScreen(props: CatalogScreenProps) {
             <div className="yx-ops-stack">
               <Segment label="Who is this for" options={[{ value: 'me', label: 'For me' }, { value: 'other', label: 'For someone else' }]} value={forOther ? 'other' : 'me'} onChange={(v) => setForOther(v === 'other')} />
               {forOther && (
-                <FormField label="Who it is for" helper="You can order for the people in your team. Their manager approves.">
+                <FormField id="cat-for" error={forEarly.errorOf('cat-for')} label="Who it is for" helper="You can order for the people in your team. Their manager approves.">
                   <LivePicker kind="people" value={forPerson} onChange={setForPerson} label="Person" onPick={props.onPick} />
                 </FormField>
               )}
               <div className="yx-ops-row">
-                <Button variant="primary" onClick={() => void checkout()} disabled={busy === 'checkout' || (forOther && !forPerson)}>
-                  {busy === 'checkout' ? 'Sending…' : 'Send request'}
+                <Button variant="primary" loading={busy === 'checkout'} onClick={() => !forEarly.stop() && void checkout()}>
+                  Send request
                 </Button>
               </div>
             </div>
@@ -359,7 +364,8 @@ export function RequestTracker({ request, onCancel, timeZone }: { request: MyReq
             <Button onClick={() => setCancelling(null)}>Keep it</Button>
             <Button
               variant="danger"
-              disabled={busy === 'cancel'}
+              loading={busy === 'cancel'}
+
               onClick={() =>
                 void run('cancel', async () => {
                   await onCancel!(cancelling === 'all' ? null : (cancelling as RequestItemView).id, reason.trim());

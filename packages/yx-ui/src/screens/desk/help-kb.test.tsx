@@ -34,10 +34,14 @@ describe('help articles for requesters', () => {
     expect(onLanguage).toHaveBeenCalledWith('hi');
     await ue.click(screen.getByRole('button', { name: 'Yes' }));
     expect(onFeedback).toHaveBeenCalledWith(true);
-    expect(screen.getByRole('button', { name: 'No' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'No' }));
+    expect(onFeedback).toHaveBeenCalledTimes(1);
+    expect((await screen.findAllByText('You have already told us. Thank you.'))[0]).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'This solved it' }));
     expect(onSolved).toHaveBeenCalled();
-    expect(await screen.findByText('No ticket was needed.')).toBeTruthy();
+    expect((await screen.findAllByText('No ticket was needed.'))[0]).toBeTruthy();
+    expect((await screen.findAllByText('Glad it helped'))[0]).toBeTruthy();
+
   });
 
   it('shows a notice when the article is not in the reader\'s language', () => {

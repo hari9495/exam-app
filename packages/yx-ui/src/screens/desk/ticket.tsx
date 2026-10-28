@@ -3,7 +3,7 @@ import { MessageSquare, Send, Ticket as TicketIcon, UserPlus, X } from 'lucide-r
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel, Tag } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -81,6 +81,7 @@ export function TicketScreen(props: TicketScreenProps) {
     if (t && !t.canWork) setMode('note');
   }, [t]);
   useEffect(() => props.onTyping(!empty(draft)), [draft]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sendEarly = useTooEarly(empty(draft) ? [{ fieldId: 'tk-draft', message: mode === 'note' ? 'Write the note first.' : 'Write the reply first.' }] : []);
 
   if (!t || !d) return <DeskPage state={props.state === 'ready' ? 'loading' : props.state} onRetry={props.onRetry} what="this ticket">{null}</DeskPage>;
 
@@ -98,6 +99,7 @@ export function TicketScreen(props: TicketScreenProps) {
   const update = (c: TicketChange) => void run('update', () => props.onUpdate(c));
 
   const send = () =>
+    !sendEarly.stop() &&
     void run('send', async () => {
       await props.onPost({ kind: mode, bodyHtml: draft, mentions: mode === 'note' ? mentions : [], attachmentIds: files.map((f) => f.id), statusId: mode === 'reply' ? (after ?? undefined) : undefined });
       setDraft('');
@@ -201,7 +203,7 @@ export function TicketScreen(props: TicketScreenProps) {
                 <TabsContent value={mode}>
                   <div className="yx-ops-stack">
                     {mode === 'note' && <p className="yx-ops-muted">Only people working this desk and the ticket’s collaborators see notes.</p>}
-                    <FormField label={mode === 'note' ? 'Note' : 'Reply'} hideLabel>
+                    <FormField id="tk-draft" label={mode === 'note' ? 'Note' : 'Reply'} hideLabel error={sendEarly.errorOf('tk-draft')}>
                       <RichTextEditor hide={STYLE_TOOLS} key={editorKey} value={draft} onChange={setDraft} mergeFields={[]} placeholder={mode === 'note' ? 'Add a note for colleagues' : `Write to ${first}`} />
                     </FormField>
                     {mode === 'note' && (
@@ -253,7 +255,7 @@ export function TicketScreen(props: TicketScreenProps) {
                           }}
                         />
                       )}
-                      <Button variant="primary" icon={Send} onClick={send} disabled={empty(draft)} loading={busy === 'send'}>
+                      <Button variant="primary" icon={Send} onClick={send} loading={busy === 'send'}>
                         {mode === 'note' ? 'Add note' : 'Send reply'}
                       </Button>
                     </div>
@@ -381,8 +383,9 @@ export function eventText(e: TimelineEntry): string {
 function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boolean; onChange: (t: string[]) => void }) {
   const [tag, setTag] = useState('');
   const ok = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u.test(tag.trim()) && !tags.includes(tag.trim());
+  const early = useTooEarly(ok ? [] : [{ fieldId: 'tk-new-tag', message: tags.includes(tag.trim()) ? 'The ticket already has this tag.' : 'Write a tag: letters, digits, spaces or dashes, up to 40.' }]);
   return (
-    <FormField label="Tags">
+    <FormField id="tk-new-tag" label="Tags" error={early.errorOf('tk-new-tag')}>
       <div className="yx-ops-stack" data-gap="sm">
         {tags.length > 0 && (
           <span className="yx-ops-row">
@@ -398,8 +401,8 @@ function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boo
             <TextField size="sm" value={tag} onChange={setTag} aria-label="New tag" maxLength={40} />
             <Button
               size="sm"
-              disabled={!ok}
               onClick={() => {
+                if (early.stop()) return;
                 onChange([...tags, tag.trim()]);
                 setTag('');
               }}
@@ -485,6 +488,7 @@ function PeoplePanel(p: {
   const [find, setFind] = useState('');
   const [found, setFound] = useState<Person[]>([]);
   const [collab, setCollab] = useState<string | null>(null);
+  const collabEarly = useTooEarly(!collab ? [{ fieldId: 'tk-collab', message: 'Choose who to add.' }] : []);
   useEffect(() => {
     if (!p.work || find.trim().length < 2) return setFound([]);
     const h = setTimeout(() => void p.onSearchPeople(find.trim()).then(setFound).catch(() => setFound([])), 250);
@@ -537,8 +541,10 @@ function PeoplePanel(p: {
       )}
       {p.work && p.collaborators.length > 0 && (
         <span className="yx-ops-row">
-          <Select size="sm" value={collab} onChange={setCollab} options={p.collaborators.map((c) => ({ value: c.userId, label: c.name }))} placeholder="Choose a collaborator" aria-label="Collaborator to add" />
-          <Button size="sm" disabled={!collab} loading={p.busy === 'collab'} onClick={() => collab && p.onAddCollaborator(collab)}>
+          <FormField id="tk-collab" label="Collaborator to add" hideLabel error={collabEarly.errorOf('tk-collab')}>
+            <Select size="sm" value={collab} onChange={setCollab} options={p.collaborators.map((c) => ({ value: c.userId, label: c.name }))} placeholder="Choose a collaborator" />
+          </FormField>
+          <Button size="sm" loading={p.busy === 'collab'} onClick={() => !collabEarly.stop() && collab && p.onAddCollaborator(collab)}>
             Add
           </Button>
         </span>
@@ -550,6 +556,7 @@ function PeoplePanel(p: {
 function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: boolean; busy: boolean; onAdd: (minutes: number, note: string) => void }) {
   const [minutes, setMinutes] = useState<number | null>(null);
   const [note, setNote] = useState('');
+  const early = useTooEarly(!minutes || minutes < 1 || minutes > 1440 ? [{ fieldId: 'tk-minutes', message: 'Enter the minutes, from 1 to 1440.' }] : []);
   return (
     <div className="yx-ops-stack" data-gap="sm">
       <p>
@@ -574,7 +581,7 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
       )}
       {work && (
         <>
-          <FormField label="Minutes">
+          <FormField id="tk-minutes" label="Minutes" error={early.errorOf('tk-minutes')}>
             <NumberField value={minutes} onChange={setMinutes} min={1} max={1440} />
           </FormField>
           <FormField label="What you did" optional>
@@ -584,8 +591,8 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
             <Button
               size="sm"
               loading={busy}
-              disabled={!minutes || minutes < 1 || minutes > 1440}
               onClick={() => {
+                if (early.stop()) return;
                 onAdd(minutes!, note.trim());
                 setMinutes(null);
                 setNote('');
@@ -602,6 +609,7 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
 
 function PriorityDialog({ value, onClose, onSave }: { value: number | null; onClose: () => void; onSave: (p: number, reason: string) => void }) {
   const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'tk-pri-reason', message: 'Say why (at least 3 letters).' }] : []);
   return (
     <Dialog
       open={value !== null}
@@ -613,8 +621,8 @@ function PriorityDialog({ value, onClose, onSave }: { value: number | null; onCl
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={reason.trim().length < 3}
             onClick={() => {
+              if (early.stop()) return;
               onSave(value!, reason.trim());
               setReason('');
               onClose();
@@ -625,7 +633,7 @@ function PriorityDialog({ value, onClose, onSave }: { value: number | null; onCl
         </>
       }
     >
-      <FormField label="Reason" required>
+      <FormField id="tk-pri-reason" label="Reason" required error={early.errorOf('tk-pri-reason')}>
         <TextField value={reason} onChange={setReason} maxLength={300} />
       </FormField>
     </Dialog>
@@ -635,6 +643,7 @@ function PriorityDialog({ value, onClose, onSave }: { value: number | null; onCl
 function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean; onOpenChange: (o: boolean) => void; types: { id: string; name: string }[]; onConvert: (typeId: string, reason: string) => void }) {
   const [typeId, setTypeId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const early = useTooEarly([...(!typeId ? [{ fieldId: 'tk-type', message: 'Choose the new type.' }] : []), ...(reason.trim().length < 3 ? [{ fieldId: 'tk-type-reason', message: 'Say why (at least 3 letters).' }] : [])]);
   return (
     <Dialog
       open={open}
@@ -646,8 +655,8 @@ function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!typeId || reason.trim().length < 3}
             onClick={() => {
+              if (early.stop()) return;
               onConvert(typeId!, reason.trim());
               onOpenChange(false);
             }}
@@ -661,10 +670,10 @@ function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean
         <EmptyState compact title="No other ticket types on this desk." />
       ) : (
         <div className="yx-ops-stack">
-          <FormField label="New type" required>
+          <FormField id="tk-type" label="New type" required error={early.errorOf('tk-type')}>
             <Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ value: x.id, label: x.name }))} />
           </FormField>
-          <FormField label="Reason" required>
+          <FormField id="tk-type-reason" label="Reason" required error={early.errorOf('tk-type-reason')}>
             <TextField value={reason} onChange={setReason} maxLength={300} />
           </FormField>
         </div>

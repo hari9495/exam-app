@@ -6,7 +6,7 @@ import { Checkbox } from '../../components/choice';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Figure } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -365,6 +365,8 @@ function TargetDialog({ kpi, onClose, onSave }: { kpi: Kpi; onClose: () => void;
   const [amber, setAmber] = useState<number | null>(kpi.amber);
   const { busy, error, run } = useRun();
   const wrong = target !== null && amber !== null && (kpi.higherIsBetter ? amber > target : amber < target);
+  const wrongText = kpi.higherIsBetter ? 'The amber limit must not be above the target.' : 'The amber limit must not be below the target.';
+  const early = useTooEarly([...(target === null ? [{ fieldId: 'rt-target', message: 'Give the target.' }] : []), ...(amber === null ? [{ fieldId: 'rt-amber', message: 'Give the amber limit.' }] : wrong ? [{ fieldId: 'rt-amber', message: wrongText }] : [])]);
   return (
     <Dialog
       open
@@ -373,7 +375,7 @@ function TargetDialog({ kpi, onClose, onSave }: { kpi: Kpi; onClose: () => void;
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={target === null || amber === null || wrong} loading={busy === 'save'} onClick={() => void run('save', async () => { await onSave({ metric: kpi.metric, target: target!, amber: amber! }); onClose(); })}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { await onSave({ metric: kpi.metric, target: target!, amber: amber! }); onClose(); })}>
             Save target
           </Button>
         </>
@@ -382,10 +384,10 @@ function TargetDialog({ kpi, onClose, onSave }: { kpi: Kpi; onClose: () => void;
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The target was not saved">{error}</InlineAlert>}
         <p className="yx-ops-muted">{kpi.higherIsBetter ? 'Higher is better: at or above the target is green, down to the amber limit is amber, below it is red.' : 'Lower is better: at or below the target is green, up to the amber limit is amber, above it is red.'}</p>
-        <FormField label="Target" required>
+        <FormField id="rt-target" label="Target" required error={early.errorOf('rt-target')}>
           <NumberField decimals min={0} max={1_000_000} value={target} onChange={setTarget} />
         </FormField>
-        <FormField label="Amber limit" required error={wrong ? (kpi.higherIsBetter ? 'The amber limit must not be above the target.' : 'The amber limit must not be below the target.') : null}>
+        <FormField id="rt-amber" label="Amber limit" required error={wrong ? wrongText : early.errorOf('rt-amber')}>
           <NumberField decimals min={0} max={1_000_000} value={amber} onChange={setAmber} />
         </FormField>
       </div>
@@ -546,6 +548,7 @@ function CustomReportDrawer({ report, desks, onClose, onSave }: { report: Custom
   const [shared, setShared] = useState(report?.shared ?? false);
   const { busy, error, run } = useRun();
   const states6: SystemState[] = [...OPEN_STATES, 'solved', 'closed'];
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'rc-name', message: 'Name the report.' }]), ...(columns.length ? [] : [{ fieldId: 'rc-cols', message: 'Choose at least one column.' }])]);
   return (
     <Drawer
       open
@@ -557,9 +560,9 @@ function CustomReportDrawer({ report, desks, onClose, onSave }: { report: Custom
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!name.trim() || columns.length === 0}
             loading={busy === 'save'}
             onClick={() =>
+              !early.stop() &&
               void run('save', () =>
                 onSave({
                   name: name.trim(),
@@ -583,10 +586,10 @@ function CustomReportDrawer({ report, desks, onClose, onSave }: { report: Custom
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The report was not saved">{error}</InlineAlert>}
-        <FormField label="Report name" required>
+        <FormField id="rc-name" label="Report name" required error={early.errorOf('rc-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Columns" required helper="Never message text: only these ticket details.">
+        <FormField id="rc-cols" error={early.errorOf('rc-cols')} label="Columns" required helper="Never message text: only these ticket details.">
           <MultiSelect value={columns} onChange={setColumns} options={Object.entries(REPORT_COLUMNS).map(([value, label]) => ({ value, label }))} placeholder="Choose columns" />
         </FormField>
         <FormField label="Desks" helper="Empty: every desk you report on.">
@@ -619,6 +622,7 @@ function ScheduleDrawer({ report, onSearchUsers, onClose, onSave }: { report: Cu
     const h = setTimeout(() => void onSearchUsers(find.trim()).then(setHits).catch(() => setHits([])), 250);
     return () => clearTimeout(h);
   }, [find]); // eslint-disable-line react-hooks/exhaustive-deps
+  const early = useTooEarly(recipients.length ? [] : [{ fieldId: 'rs-to', message: 'Choose at least one colleague.' }]);
   const options = [...known, ...hits.filter((u) => !known.some((k) => k.id === u.id))].map((u) => ({ value: u.id, label: u.name ?? u.email, description: u.email }));
   return (
     <Drawer
@@ -628,7 +632,7 @@ function ScheduleDrawer({ report, onSearchUsers, onClose, onSave }: { report: Cu
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={recipients.length === 0} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ frequency, recipients }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ frequency, recipients }))}>
             Start schedule
           </Button>
         </>
@@ -643,7 +647,7 @@ function ScheduleDrawer({ report, onSearchUsers, onClose, onSave }: { report: Cu
         <FormField label="Find a colleague" helper="Name or email">
           <TextField type="search" value={find} onChange={setFind} />
         </FormField>
-        <FormField label="Send to" required>
+        <FormField id="rs-to" label="Send to" required error={early.errorOf('rs-to')}>
           <MultiSelect
             value={recipients}
             onChange={(ids) => {
@@ -728,6 +732,7 @@ function WallDrawer({ desks, onClose, onSave }: { desks: DeskSummary[]; onClose:
   const [deskIds, setDeskIds] = useState<string[]>([]);
   const [alert, setAlert] = useState<number | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'rw-name', message: 'Name the wall screen.' }]), ...(deskIds.length ? [] : [{ fieldId: 'rw-desks', message: 'Choose at least one desk.' }])]);
   return (
     <Drawer
       open
@@ -736,7 +741,7 @@ function WallDrawer({ desks, onClose, onSave }: { desks: DeskSummary[]; onClose:
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim() || deskIds.length === 0} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ name: name.trim(), deskIds, ...(alert ? { backlogAlert: alert } : {}) }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ name: name.trim(), deskIds, ...(alert ? { backlogAlert: alert } : {}) }))}>
             Make the link
           </Button>
         </>
@@ -744,10 +749,10 @@ function WallDrawer({ desks, onClose, onSave }: { desks: DeskSummary[]; onClose:
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The wall screen was not made">{error}</InlineAlert>}
-        <FormField label="Name" required helper="For example: IT floor TV">
+        <FormField id="rw-name" label="Name" required error={early.errorOf('rw-name')} helper="For example: IT floor TV">
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Desks" required helper="Up to 10.">
+        <FormField id="rw-desks" label="Desks" required error={early.errorOf('rw-desks')} helper="Up to 10.">
           <MultiSelect value={deskIds} onChange={(v) => setDeskIds(v.slice(0, 10))} options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Choose desks" />
         </FormField>
         <FormField label="Queue alert line" optional helper="Tell the desks' team leads when open tickets go above this number.">
@@ -813,17 +818,18 @@ function CustomerReportView(props: ReportsScreenProps) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [rep, setRep] = useState<CustomerMonthReport | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(accountId ? [] : [{ fieldId: 'rr-account', message: 'Choose a company first.' }]);
   return (
     <div className="yx-ops-stack">
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <div className="yx-rep-period">
-        <FormField label="Customer company">
+        <FormField id="rr-account" label="Customer company" error={early.errorOf('rr-account')}>
           <Select value={accountId} onChange={setAccountId} options={props.accounts.map((a) => ({ value: a.id, label: a.name }))} placeholder="Choose a company" searchable emptyText="No company matches" />
         </FormField>
         <FormField label="Month">
           <TextField type="month" value={month} onChange={(m) => m && setMonth(m)} />
         </FormField>
-        <Button disabled={!accountId} loading={busy === 'show'} onClick={() => void run('show', async () => setRep(await props.onCustomerReport(accountId!, month)))}>
+        <Button loading={busy === 'show'} onClick={() => !early.stop() && void run('show', async () => setRep(await props.onCustomerReport(accountId!, month)))}>
           Show report
         </Button>
       </div>
@@ -944,7 +950,14 @@ function SurveyDrawer({ survey, desks, onClose, onSave }: { survey: Survey | nul
   const [startAt, setStartAt] = useState('');
   const [active, setActive] = useState(survey?.active ?? true);
   const { busy, error, run } = useRun();
-  const ok = deskId && name.trim() && question.trim() && everyDays && everyDays >= 7 && everyDays <= 366 && periodDays && periodDays >= 7 && periodDays <= 366;
+  const days = (n: number | null) => n !== null && n >= 7 && n <= 366;
+  const early = useTooEarly([
+    ...(deskId ? [] : [{ fieldId: 'sv-desk', message: 'Choose a desk.' }]),
+    ...(name.trim() ? [] : [{ fieldId: 'sv-name', message: 'Name the survey.' }]),
+    ...(question.trim() ? [] : [{ fieldId: 'sv-question', message: 'Write the question.' }]),
+    ...(days(everyDays) ? [] : [{ fieldId: 'sv-every', message: 'Use 7 to 366 days.' }]),
+    ...(days(periodDays) ? [] : [{ fieldId: 'sv-period', message: 'Use 7 to 366 days.' }]),
+  ]);
   return (
     <Drawer
       open
@@ -955,9 +968,8 @@ function SurveyDrawer({ survey, desks, onClose, onSave }: { survey: Survey | nul
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ok}
             loading={busy === 'save'}
-            onClick={() => void run('save', () => onSave({ deskId: deskId!, name: name.trim(), question: question.trim(), everyDays: everyDays!, periodDays: periodDays!, ...(startAt ? { startAt: new Date(`${startAt}T09:00:00+05:30`).toISOString() } : {}), active }))}
+            onClick={() => !early.stop() && void run('save', () => onSave({ deskId: deskId!, name: name.trim(), question: question.trim(), everyDays: everyDays!, periodDays: periodDays!, ...(startAt ? { startAt: new Date(`${startAt}T09:00:00+05:30`).toISOString() } : {}), active }))}
           >
             Save survey
           </Button>
@@ -966,19 +978,19 @@ function SurveyDrawer({ survey, desks, onClose, onSave }: { survey: Survey | nul
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The survey was not saved">{error}</InlineAlert>}
-        <FormField label="Desk" required helper="Sent to people whose tickets on this desk were solved recently.">
+        <FormField id="sv-desk" error={early.errorOf('sv-desk')} label="Desk" required helper="Sent to people whose tickets on this desk were solved recently.">
           <Select value={deskId} onChange={setDeskId} options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Choose a desk" />
         </FormField>
-        <FormField label="Name" required>
+        <FormField id="sv-name" label="Name" required error={early.errorOf('sv-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Question" required helper="Answered on a 0 to 10 scale.">
+        <FormField id="sv-question" error={early.errorOf('sv-question')} label="Question" required helper="Answered on a 0 to 10 scale.">
           <TextArea value={question} onChange={setQuestion} maxLength={300} rows={2} />
         </FormField>
-        <FormField label="Send every … days" required helper="7 to 366.">
+        <FormField id="sv-every" error={early.errorOf('sv-every')} label="Send every … days" required helper="7 to 366.">
           <NumberField min={7} max={366} value={everyDays} onChange={setEveryDays} />
         </FormField>
-        <FormField label="Ask the same person at most once in … days" required helper="7 to 366.">
+        <FormField id="sv-period" error={early.errorOf('sv-period')} label="Ask the same person at most once in … days" required helper="7 to 366.">
           <NumberField min={7} max={366} value={periodDays} onChange={setPeriodDays} />
         </FormField>
         <FormField label="First send on" optional helper={survey?.nextRunAt ? `Now: ${when(survey.nextRunAt)}` : 'Empty: at the next daily run.'}>

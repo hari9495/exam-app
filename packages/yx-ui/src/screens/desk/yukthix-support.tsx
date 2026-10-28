@@ -3,8 +3,9 @@ import { Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
+import { useToast } from '../../components/notify';
 import { Segment } from '../../components/segment';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
@@ -76,12 +77,14 @@ export function YukthixSupportScreen(props: YukthixSupportScreenProps) {
   const [details, setDetails] = useState('');
   const [severity, setSeverity] = useState<number>(3);
   const [withPage, setWithPage] = useState(false);
-  const [sent, setSent] = useState<string | null>(null);
+  const { toast } = useToast();
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(!subject.trim() ? [{ fieldId: 'yx-subject', message: 'Write a subject.' }] : []), ...(!details.trim() ? [{ fieldId: 'yx-details', message: 'Say what happened.' }] : [])]);
   const send = () =>
+    !early.stop() &&
     void run('raise', async () => {
       const r = await props.onRaise({ subject: subject.trim(), body: details.trim(), severity, ...(withPage && props.fromPage ? { screen: props.fromPage } : {}) });
-      setSent(r.number ? `Sent. Your ticket number is ${r.number}.` : 'Sent. It gets its number in a minute; it is in the list below.');
+      toast({ tone: 'success', title: r.number ? `Sent. Your ticket number is ${r.number}.` : 'Sent. It gets its number in a minute; it is in the list below.' });
       setSubject('');
       setDetails('');
       setWithPage(false);
@@ -94,14 +97,13 @@ export function YukthixSupportScreen(props: YukthixSupportScreenProps) {
       <p className="yx-ops-muted">
         YukthiX may ask to look inside your company; you approve each time on <a className="yx-desk-link" href={props.supportAccessHref}>Support access</a>.
       </p>
-      {sent && <InlineAlert tone="success" title={sent} />}
       <Card title="Write to YukthiX">
         <div className="yx-ops-stack">
           {error && <InlineAlert tone="danger" title="It was not sent">{error}</InlineAlert>}
-          <FormField label="Subject" required>
+          <FormField id="yx-subject" label="Subject" required error={early.errorOf('yx-subject')}>
             <TextField value={subject} onChange={setSubject} maxLength={200} />
           </FormField>
-          <FormField label="Details" required helper="What happened, what you expected, and any error message.">
+          <FormField id="yx-details" label="Details" required error={early.errorOf('yx-details')} helper="What happened, what you expected, and any error message.">
             <TextArea value={details} onChange={setDetails} rows={5} maxLength={10000} />
           </FormField>
           <FormField label="How bad is it?">
@@ -109,7 +111,7 @@ export function YukthixSupportScreen(props: YukthixSupportScreenProps) {
           </FormField>
           {props.fromPage && <Checkbox checked={withPage} onChange={setWithPage} label="Include the page I was on" description={props.fromPage} />}
           <div className="yx-ops-row">
-            <Button variant="primary" icon={Send} disabled={!subject.trim() || !details.trim()} loading={busy === 'raise'} onClick={send}>
+            <Button variant="primary" icon={Send} loading={busy === 'raise'} onClick={send}>
               Send to YukthiX
             </Button>
           </div>
@@ -148,6 +150,7 @@ export function YukthixSupportScreen(props: YukthixSupportScreenProps) {
 function TicketCard({ ticket: t, ticketState, onOpen, onReply, openId }: YukthixSupportScreenProps) {
   const [text, setText] = useState('');
   const { busy, error, run } = useRun();
+  const replyEarly = useTooEarly(!text.trim() ? [{ fieldId: 'yx-reply', message: 'Write your reply.' }] : []);
   return (
     <Card title={t ? `${t.number} · ${t.subject}` : 'Ticket'} actions={<Button size="sm" onClick={() => onOpen(null)}>Close</Button>}>
       {ticketState === 'loading' && <p className="yx-ops-muted">Loading the conversation…</p>}
@@ -169,16 +172,16 @@ function TicketCard({ ticket: t, ticketState, onOpen, onReply, openId }: Yukthix
             ))}
           </ol>
           {error && <InlineAlert tone="danger" title="Your reply was not sent">{error}</InlineAlert>}
-          <FormField label="Your reply">
+          <FormField id="yx-reply" label="Your reply" error={replyEarly.errorOf('yx-reply')}>
             <TextArea value={text} onChange={setText} rows={4} maxLength={10000} />
           </FormField>
           <div className="yx-ops-row">
             <Button
               variant="primary"
               icon={Send}
-              disabled={!text.trim()}
               loading={busy === 'reply'}
               onClick={() =>
+                !replyEarly.stop() &&
                 void run('reply', async () => {
                   await onReply(openId!, text.trim());
                   setText('');

@@ -32,13 +32,23 @@ describe('SD-1.31 Contact YukthiX', () => {
     await ue.click(screen.getByRole('radio', { name: 'Down for everyone' }));
     await ue.click(screen.getByRole('button', { name: 'Send to YukthiX' }));
     await waitFor(() => expect(props.onRaise).toHaveBeenCalledWith({ subject: 'Nobody can sign in', body: 'Since 8:00', severity: 1 }));
-    expect(await screen.findByText(/YXS-1050/)).toBeInTheDocument();
+    expect((await screen.findAllByText('Sent. Your ticket number is YXS-1050.'))[0]).toBeInTheDocument();
 
     await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Again');
     await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'More');
     await ue.click(screen.getByRole('checkbox', { name: /Include the page I was on/ }));
     await ue.click(screen.getByRole('button', { name: 'Send to YukthiX' }));
     await waitFor(() => expect(props.onRaise).toHaveBeenLastCalledWith(expect.objectContaining({ screen: '/yx/settings/structure', severity: 1 })));
+  });
+
+  it('Send pressed too early says what is missing and focuses the subject', async () => {
+    const props = base();
+    render(<YukthixSupportScreen {...props} />);
+    await ue.click(screen.getByRole('button', { name: 'Send to YukthiX' }));
+    expect(screen.getByText('Write a subject.')).toBeInTheDocument();
+    expect(screen.getByText('Say what happened.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Subject/ })).toHaveFocus();
+    expect(props.onRaise).not.toHaveBeenCalled();
   });
 
   it('lists tickets; one still being sent has no number and does not open', async () => {

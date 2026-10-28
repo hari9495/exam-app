@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
+import { play, press, type } from '../_kit/story-play';
 import { YukthixSupportScreen } from './yukthix-support';
 import { YX_ROWS, YX_TICKET } from './yukthix-support-data';
 
@@ -38,3 +39,5 @@ function Page({ empty }: { empty?: boolean }) {
 
 export const Contact: S = { name: 'Contact YukthiX', render: () => <Page /> };
 export const Empty: S = { name: 'Contact YukthiX · no tickets', render: () => <Page empty /> };
+export const SendTooEarly: S = { name: 'Contact YukthiX · Send pressed with nothing written', render: () => <Page />, play: play(press('Send to YukthiX')) };
+export const Sent: S = { name: 'Contact YukthiX · sent, the number in a toast', render: () => <Page />, play: play(type(/^Subject/, 'Nobody can sign in'), type(/^Details/, 'Since 8:00 the sign-in page spins.'), press('Send to YukthiX')) };
