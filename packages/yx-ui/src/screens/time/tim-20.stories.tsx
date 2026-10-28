@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TeamLeaveCalendarPhone, TeamLeaveCalendarScreen } from './leave';
 
-const meta: Meta<typeof TeamLeaveCalendarScreen> = { title: 'Screens/Time/TIM-20 · Team leave calendar', component: TeamLeaveCalendarScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof TeamLeaveCalendarScreen> = { title: 'Screens/Time/TIM-20 · Team leave calendar', component: TeamLeaveCalendarScreen, render: (args) => <TeamLeaveCalendarScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof TeamLeaveCalendarScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

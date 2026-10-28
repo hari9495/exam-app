@@ -13,7 +13,7 @@ import { PageHeader } from '../../components/shell';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { peoplePanel } from '../people/people-kit';
 import { TODAY } from '../_kit/data';
-import { HomeClockCard } from '../time/live/my-attendance';
+import { HomeClockCard } from '../time/attendance';
 import type { MyAttendance } from '../time/live/types';
 
 const meta: Meta = { title: 'Screens/Platform/Shell & homes', parameters: { layout: 'fullscreen' } };

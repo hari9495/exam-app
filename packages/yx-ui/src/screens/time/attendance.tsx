@@ -1,21 +1,22 @@
 // Attendance: web clock-in page, attendance calendar, Today board, muster, day card, exceptions.
 // TIM-01, TIM-02, TIM-03, TIM-04 + founder extras "My attendance today" and "Attendance calendar".
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Download, Lock, Snowflake } from 'lucide-react';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
-import { RadioGroup } from '../../components/choice';
-import { TextArea, TimeField } from '../../components/inputs';
-import { FormField } from '../../components/field';
+import { RadioGroup, Switch } from '../../components/choice';
+import { CodeField, TextArea, TimeField } from '../../components/inputs';
+import { FormField, useTooEarly } from '../../components/field';
 import { PersonPicker } from '../../components/select';
 import { DatePicker } from '../../components/date';
+import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import {
@@ -51,6 +52,10 @@ import {
 import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, GeoMap, Kpis, SOURCE_LABEL, TimePage, codeText, type ClockCardProps, type DayCardBodyProps } from './time-kit';
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
+import { useRun } from '../org/org-kit';
+import { AttendanceRequestSheet } from './requests';
+import { MODE_TEXT } from './live/kit';
+import type { DayCard, DayRow, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, WfhInput } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -111,6 +116,12 @@ function useViewState(initial: ViewState) {
   useEffect(() => setSt(initial), [initial]);
   const retry = () => { setSt('loading'); window.setTimeout(() => setSt('ready'), 800); };
   return [st, retry] as const;
+}
+
+/** "Done" messages are toasts (5 s), never a success alert; `tone` 'default' says why a button had nothing to do. */
+function useSay() {
+  const { toast } = useToast();
+  return (title: string, tone: 'success' | 'default' = 'success') => { if (title) toast({ tone, title }); };
 }
 
 /** Hosur plant morning shift (4-on / 2-off roster) for Operations; Quality lab staff at Hosur work a 9:00 am day shift. */
@@ -299,6 +310,8 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
   const [inT, setInT] = useState<string | null>(null);
   const [outT, setOutT] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  // Send pressed too early: the missing field says so and takes focus (never a disabled Send).
+  const [tried, setTried] = useState(false);
   const needIn = how === 'in' || how === 'full' || how === 'wrong';
   const needOut = !inProgress && (how === 'out' || how === 'full' || how === 'wrong');
   const timesOk = how === 'wrong' ? !!(inT || (needOut && outT)) : (!needIn || !!inT) && (!needOut || !!outT);
@@ -316,12 +329,12 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
         <>
           {missing && <span className="yx-tim-muted" style={FOOT_HINT}>{missing}</span>}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!!missing} onClick={() => day && onSent(day)}>Send request</Button>
+          <Button variant="primary" onClick={() => { if (!missing && day) return onSent(day); setTried(true); document.getElementById(!day ? 'rg-date' : !timesOk ? 'rg-in' : 'rg-reason')?.focus(); }}>Send request</Button>
         </>
       }
     >
       <div className="yx-tim-stack">
-        <FormField label="Date" required>
+        <FormField id="rg-date" label="Date" required error={tried && !day ? 'Choose the date' : null}>
           <DatePicker value={day} onChange={setDay} max={TODAY} />
         </FormField>
         {day && <p className="yx-tim-muted">{recordedText}</p>}
@@ -339,7 +352,7 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
           />
         </FormField>
         {needIn && (
-          <FormField label="Actual check-in" required={how !== 'wrong' || !needOut}>
+          <FormField id="rg-in" label="Actual check-in" required={how !== 'wrong' || !needOut} error={tried && day && !timesOk ? 'Enter the actual time' : null}>
             {/* A neutral example: the recorded time as placeholder looked like a value already entered. */}
             <TimeField value={inT} onChange={setInT} placeholder="e.g. 9:25 am" />
           </FormField>
@@ -349,7 +362,7 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
             <TimeField value={outT} onChange={setOutT} placeholder="e.g. 6:35 pm" />
           </FormField>
         )}
-        <FormField label="Reason" required>
+        <FormField id="rg-reason" label="Reason" required error={tried && !reason.trim() ? 'Add a reason' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} placeholder={REASON_EXAMPLE[how]} />
         </FormField>
         {day && change && (
@@ -365,7 +378,7 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
 /** Opens the regularise drawer for a date and remembers the "sent" message. */
 function useRegularise(initial?: { date: Date | null; kind: FixKind }, today?: { in?: string; out?: string }) {
   const [req, setReq] = useState<{ date: Date | null; kind: FixKind; n: number } | null>(initial ? { ...initial, n: 0 } : null);
-  const [sent, setSent] = useState('');
+  const say = useSay();
   // Days with a request sent here: they leave the "to fix" lists and count towards the monthly limit.
   const [sentDays, setSentDays] = useState<Date[]>([]);
   const isSent = (d: Date) => sentDays.some((x) => sameDay(x, d));
@@ -386,15 +399,13 @@ function useRegularise(initial?: { date: Date | null; kind: FixKind }, today?: {
           onSent={(d) => {
             setReq(null);
             if (!isSent(d)) setSentDays([...sentDays, d]);
-            setSent(`Request for ${shortDate(d)} sent to ${ME.manager}.`);
+            say(`Request for ${shortDate(d)} sent to ${ME.manager}`);
           }}
         />
       )}
-      {sent && <div className="yx-tim-sr" role="status">{sent}</div>}
     </>
   );
-  const alert = sent ? <InlineAlert tone="success" title="Request sent">{sent}</InlineAlert> : null;
-  return { open, node, alert, isSent, used };
+  return { open, node, isSent, used };
 }
 
 const fixKindFor = (d: AttendanceDay): FixKind => (d.code === 'A' ? 'full' : d.code === 'MP' ? 'out' : 'wrong');
@@ -420,8 +431,13 @@ function exceptionFor(person: string, day: AttendanceDay): ExceptionRow {
   );
 }
 
-function DayPanel({ day, person, viewer, locked, monthDays, onRegularise }: { day: PDay; person: string; viewer: Persona; locked?: boolean; monthDays: AttendanceDay[]; onRegularise?: (d: Date, kind: FixKind) => void }) {
-  const [msg, setMsg] = useState('');
+/** The day card's working buttons (TIM-03); the app passes `live` and the card loads the day's real punches. */
+function DayPanel(p: Parameters<typeof SampleDayPanel>[0] | { live: Parameters<typeof LiveDayPanel>[0] }) {
+  return 'live' in p ? <LiveDayPanel {...p.live} /> : <SampleDayPanel {...p} />;
+}
+
+function SampleDayPanel({ day, person, viewer, locked, monthDays, onRegularise }: { day: PDay; person: string; viewer: Persona; locked?: boolean; monthDays: AttendanceDay[]; onRegularise?: (d: Date, kind: FixKind) => void }) {
+  const setMsg = useSay();
   const [resolve, setResolve] = useState<ExceptionRow[] | null>(null);
   const [request, setRequest] = useState(false);
   const [withdraw, setWithdraw] = useState(false);
@@ -434,7 +450,6 @@ function DayPanel({ day, person, viewer, locked, monthDays, onRegularise }: { da
   const first = firstName(person);
   return (
     <div className="yx-tim-stack">
-      {msg && <InlineAlert tone="success" title={msg} />}
       <DayCardBody
         day={day}
         punches={punchesFor(day, person)}
@@ -453,7 +468,7 @@ function DayPanel({ day, person, viewer, locked, monthDays, onRegularise }: { da
         outcome={outcome}
       />
       <ResolveDialog key={resolve?.map((r) => r.id).join()} rows={resolve} onClose={() => setResolve(null)} onResolved={() => done({ exception: 'resolved' }, 'Exception resolved')} />
-      <RequestDialog row={request ? exceptionFor(person, day) : null} viewer={viewer} onClose={() => setRequest(false)} onDone={setMsg} onWithdraw={() => { setRequest(false); setWithdraw(true); }} />
+      <RequestDialog row={request ? exceptionFor(person, day) : null} viewer={viewer} onClose={() => setRequest(false)} onDone={(m) => setMsg(m)} onWithdraw={() => { setRequest(false); setWithdraw(true); }} />
       <ConfirmDialog
         open={withdraw}
         onOpenChange={setWithdraw}
@@ -555,7 +570,12 @@ const WEEK: { date: Date; code: DayCode; note?: string }[] = [
   { date: new Date(2026, 9, 3), code: 'FUT' },
 ];
 
-export function MyAttendanceTodayScreen({ clock, regulariseOpen = false }: MyAttendanceTodayProps) {
+/** Extra · My attendance today. The app passes `live` (Me › Attendance › Today); stories show the sample. */
+export function MyAttendanceTodayScreen(p: MyAttendanceTodayProps & { live?: LiveMyAttendance }) {
+  return p.live ? <LiveAttendanceToday live={p.live} /> : <SampleAttendanceToday {...p} />;
+}
+
+function SampleAttendanceToday({ clock, regulariseOpen = false }: MyAttendanceTodayProps) {
   const startPunches = clock?.defaultPunches ?? TODAY_PUNCHES;
   const nowHHMM = toHHMM(clock?.now ?? NOW_MIN);
   const [cs, setCs] = useState<ClockState>(clock?.defaultState ?? 'working');
@@ -579,7 +599,6 @@ export function MyAttendanceTodayScreen({ clock, regulariseOpen = false }: MyAtt
         // Today has its own Regularise button on the card; this one is for any other day, picked in the drawer.
         actions={<Button onClick={() => reg.open(null, 'wrong')}>Regularise another day</Button>}
       />
-      {reg.alert}
       <div className="yx-tim-grid">
         <div data-span="8">
           <ClockCard
@@ -659,7 +678,6 @@ export function HomeClockScreen({ clock }: { clock?: Partial<ClockCardProps> }) 
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={[{ items: [{ label: 'My home', active: true }, { label: 'Team home' }] }]}>
       <PageHeader title={`Good morning, ${firstName(ME.name)}`} description="Tuesday, 29 Sep 2026" />
-      {reg.alert}
       <div className="yx-tim-grid">
         <div data-span="6">
           <ClockCard now={NOW_MIN} seconds={15} date={TODAY} shift={GENERAL_SHIFT} onRegularise={() => reg.open(TODAY, 'wrong')} {...clock} />
@@ -715,7 +733,12 @@ function exportMonth(who: string, label: string, days: AttendanceDay[]) {
   ]);
 }
 
-export function AttendanceCalendarScreen({ persona = 'emp', defaultMonth = 'sep', openDay, state: stateProp = 'ready', person: personProp = 'Meera Krishnan' }: AttendanceCalendarProps) {
+/** Extra · Attendance calendar. The app passes `live` (Me › Attendance); stories show the sample. */
+export function AttendanceCalendarScreen(p: AttendanceCalendarProps & { live?: LiveMyAttendance }) {
+  return p.live ? <LiveAttendanceCalendar live={p.live} /> : <SampleAttendanceCalendar {...p} />;
+}
+
+function SampleAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openDay, state: stateProp = 'ready', person: personProp = 'Meera Krishnan' }: AttendanceCalendarProps) {
   const [state, retry] = useViewState(stateProp);
   const [month, setMonth] = useState(defaultMonth);
   const reports = myReports();
@@ -733,6 +756,9 @@ export function AttendanceCalendarScreen({ persona = 'emp', defaultMonth = 'sep'
   const openEx = EXCEPTIONS.filter((x) => x.person === who && x.status === 'Open');
   const [nudged, setNudged] = useState<string[]>([]);
   const ready = state === 'ready';
+  const say = useSay();
+  // At the first or last month the arrows stay clickable and say why they can't go further.
+  const goMonth = (m: 'aug' | 'sep') => (!ready ? undefined : m === month ? say(m === 'aug' ? 'There is no attendance before August 2026.' : 'October 2026 has not started yet.', 'default') : (setMonth(m), setOpenN(null)));
   const firstPaid = days.find((d) => d.code === 'LOP') ?? days.find((d) => d.code !== 'WO' && d.code !== 'H');
   const toFix = monthSummary(days).toFix.filter((d) => !reg.isSent(d.date));
   // The fix-before-payroll alert carries the "Tomorrow" badge; the month bar doesn't repeat it.
@@ -750,16 +776,15 @@ export function AttendanceCalendarScreen({ persona = 'emp', defaultMonth = 'sep'
                 <PersonPicker aria-label="Person" value={pick} onChange={(v) => { if (v) { setPick(v); setOpenN(null); } }} people={reports.map((p) => ({ id: p.id, name: p.name, role: p.role, department: p.dept }))} />
               </div>
             )}
-            <Button icon={Download} disabled={!ready} onClick={() => exportMonth(who, monthLabel, days)}>Export month</Button>
-            {persona === 'emp' && <Button variant="primary" disabled={!ready} onClick={() => reg.open(null, 'wrong')}>Regularise a day</Button>}
+            {ready && <Button icon={Download} onClick={() => exportMonth(who, monthLabel, days)}>Export month</Button>}
+            {ready && persona === 'emp' && <Button variant="primary" onClick={() => reg.open(null, 'wrong')}>Regularise a day</Button>}
           </div>
         }
       />
-      {reg.alert}
       <div className="yx-tim-row yx-tim-monthnav">
-        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => { setMonth('aug'); setOpenN(null); }} disabled={!ready || month === 'aug'} />
+        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth('aug')} />
         <h2 className="yx-tim-h2" aria-live="polite">{monthLabel}</h2>
-        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => { setMonth('sep'); setOpenN(null); }} disabled={!ready || month === 'sep'} />
+        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth('sep')} />
         {!ready ? null : locked ? (
           <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> Locked · payroll approved 3 Sep</Badge>
         ) : (
@@ -854,6 +879,8 @@ export function AttendanceCalendarPhone({ openDay, defaultMonth = 'sep' }: { ope
   const days = asPaid(month === 'sep' ? SEPTEMBER : AUGUST, locked);
   const [open, setOpen] = useState<AttendanceDay | null>(openDay ? days[openDay - 1] : null);
   const reg = useRegularise();
+  const say = useSay();
+  const goMonth = (m: 'aug' | 'sep') => (m === month ? say(m === 'aug' ? 'There is no attendance before August 2026.' : 'October 2026 has not started yet.', 'default') : setMonth(m));
   const s = monthSummary(days);
   const firstPaid = days.find((d) => d.code === 'LOP');
   const waiting = days.filter((d) => d.code === 'R');
@@ -861,16 +888,15 @@ export function AttendanceCalendarPhone({ openDay, defaultMonth = 'sep' }: { ope
   return (
     <PhoneFrame tab="time" title="My attendance">
       <div className="yx-tim-row yx-tim-monthnav">
-        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => setMonth('aug')} disabled={month === 'aug'} />
+        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth('aug')} />
         <h2 className="yx-tim-h2">{month === 'sep' ? 'Sep 2026' : 'Aug 2026'}</h2>
-        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => setMonth('sep')} disabled={month === 'sep'} />
+        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth('sep')} />
       </div>
       {locked && (
         <InlineAlert tone="info" title="August is locked" actions={firstPaid ? <Button size="sm" onClick={() => reg.open(firstPaid.date, 'full')}>Raise late request for {shortDate(firstPaid.date)}</Button> : undefined}>
           Pick a day to ask for a change. It goes as a late request; the effect lands in the {LATE_PAYROLL} payroll.
         </InlineAlert>
       )}
-      {reg.alert}
       {!locked && toFix.length > 0 && (
         <InlineAlert
           tone="danger"
@@ -970,8 +996,9 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
   const hr = persona === 'hr';
   const people = hr ? HR_BOARD : myReports();
   const [sent, setSent] = useState<string[]>(nudged ? [nudged] : []);
-  // A story that starts with a nudge already sent shows the same confirmation a real click gives.
-  const [notice, setNotice] = useState(nudged ? '1 nudge sent' : '');
+  const setNotice = useSay();
+  // A story that starts with a nudge already sent shows the same toast a real click gives.
+  useEffect(() => { if (nudged) setNotice('1 nudge sent'); }, [nudged]); // eslint-disable-line react-hooks/exhaustive-deps
   const count = (keys: BoardStatus[]) => countOf(people, keys);
   const blocking = timeCounts(user).Exceptions;
   const toNudge = people.filter((p) => needsNudge(p) && !sent.includes(p.id));
@@ -1001,7 +1028,7 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
         actions={
           <div className="yx-tim-row">
             {state === 'ready' && (
-              <Button icon={Bell} disabled={toNudge.length === 0} onClick={() => nudge(toNudge.map((p) => p.id))}>
+              <Button icon={Bell} onClick={() => (toNudge.length ? nudge(toNudge.map((p) => p.id)) : setNotice('Everyone who is not in yet has been nudged today.', 'default'))}>
                 {toNudge.length ? `Nudge ${toNudge.length} ${toNudge.length === 1 ? 'person' : 'people'}` : 'Everyone nudged'}
               </Button>
             )}
@@ -1031,7 +1058,6 @@ export function TodayBoardScreen({ persona = 'mgr', state: stateProp = 'ready', 
           </TabsList>
           <TabsContent value="board">
             <div className="yx-tim-stack">
-              {notice && <InlineAlert tone="success" title={notice} />}
               <Kpis
                 items={[
                   { label: 'Rostered', value: rostered },
@@ -1202,7 +1228,7 @@ const actionRank = (p: TeamPerson) => {
 export function TeamTodayPhone() {
   const people = [...myReports()].sort((a, b) => actionRank(a) - actionRank(b));
   const [sent, setSent] = useState<string[]>([]);
-  const [notice, setNotice] = useState('');
+  const setNotice = useSay();
   const count = (keys: BoardStatus[]) => countOf(people, keys);
   const blocking = timeCounts(ME).Exceptions;
   const toNudge = people.filter((p) => needsNudge(p) && !sent.includes(p.id));
@@ -1231,8 +1257,7 @@ export function TeamTodayPhone() {
           actions={<LinkButton size="sm" to={STORY.exceptionsMgr}>Open exceptions</LinkButton>}
         />
       )}
-      {notice && <InlineAlert tone="success" title={notice} />}
-      <Button icon={Bell} fullWidth disabled={toNudge.length === 0} onClick={() => nudge(toNudge.map((p) => p.id))}>
+      <Button icon={Bell} fullWidth onClick={() => (toNudge.length ? nudge(toNudge.map((p) => p.id)) : setNotice('Everyone who is not in yet has been nudged today.', 'default'))}>
         {toNudge.length ? `Nudge ${toNudge.length} ${toNudge.length === 1 ? 'person' : 'people'}` : 'Everyone nudged'}
       </Button>
       <ul className="yx-tim-list">
@@ -1304,7 +1329,12 @@ export interface MusterProps {
   asOf?: Date;
 }
 
-export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf }: MusterProps) {
+/** TIM-02 · Muster. The app passes `live` (Time › Muster); stories show the sample. */
+export function MusterScreen(p: MusterProps & { live?: LiveMusterData }) {
+  return p.live ? <LiveMusterScreen live={p.live} /> : <SampleMusterScreen {...p} />;
+}
+
+function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf }: MusterProps) {
   const today = asOf ?? TODAY;
   const [state, retry] = useViewState(stateProp);
   const [stage, setStage] = useState(stageProp);
@@ -1315,7 +1345,7 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
   const [dlg, setDlg] = useState(dialog);
   const [selected, setSelected] = useState<string[]>(defaultSelected);
   const [monthOf, setMonthOf] = useState<string | null>(null);
-  const [msg, setMsg] = useState('');
+  const setMsg = useSay();
   const narrow = useNarrow();
   const gridRef = useRef<HTMLDivElement>(null);
   const shown = state === 'empty' ? [] : rows;
@@ -1336,7 +1366,6 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
   const ready = state === 'ready' && shown.length > 0;
   const toggle = (id: string, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((x) => x !== id));
   const sheetRow = monthOf ? rows.find((r) => r.id === monthOf) : null;
-  const usedCodes = MUSTER_CODES.filter((c) => shown.some((r) => r.days.some((d) => cellCode(d.code) === c)));
   const openExceptions = <LinkButton size="sm" to={STORY.exceptionsHr}>Open exceptions</LinkButton>;
   // Bulk "mark present" only when the month has absent or missing-punch days to mark (a closed August has none).
   const bulkable = stage !== 'locked' && shown.some((r) => r.days.some((d) => canMarkPresent(d.code)));
@@ -1363,20 +1392,20 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
         }
         actions={
           <div className="yx-tim-row">
-            <Button icon={Download} disabled={!ready} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-2026.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => codeText(cellCode(d.code)))]; })])}>Export</Button>
-            {stage === 'open' && <Button icon={Snowflake} disabled={!ready} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
-            {stage === 'frozen' && <Button variant="primary" icon={Lock} disabled={!!lockBlock} onClick={() => setDlg('lock')}>Lock period</Button>}
+            {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-2026.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => codeText(cellCode(d.code)))]; })])}>Export</Button>}
+            {stage === 'open' && ready && <Button icon={Snowflake} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
+            {/* Not ready to lock: pressed, it says why (the alert below says it too). */}
+            {stage === 'frozen' && <Button variant="primary" icon={Lock} onClick={() => (lockBlock ? setMsg(`${lockBlock}.`, 'default') : setDlg('lock'))}>Lock period</Button>}
           </div>
         }
       />
-      {msg && <InlineAlert tone="success" title={msg} />}
       {stage !== 'open' && (
         <InlineAlert
           tone={stage === 'frozen' && exceptions > 0 ? 'warning' : 'info'}
           title={stage === 'frozen' ? (exceptions > 0 ? `Inputs are frozen · ${exceptions} open exceptions` : 'Inputs are frozen') : `${monthName} 2026 is locked`}
           actions={stage === 'frozen' && exceptions > 0 ? openExceptions : undefined}
         >
-          {/* Why Lock period is disabled sits here, not beside the header buttons, so the title keeps its room. */}
+          {/* Why Lock period cannot be pressed yet sits here, not beside the header buttons, so the title keeps its room. */}
           {stage === 'frozen'
             ? `${lockBlock ? `${lockBlock}. ` : ''}Employees can still raise late requests; they need an extra HR approval. Cells are read-only except HR corrections with a reason.`
             : `Payroll ${month === 'aug' ? 'was approved on 3 Sep' : 'is approved'}. Corrections become late requests with effect in ${month === 'aug' ? LATE_PAYROLL : 'November'} payroll.`}
@@ -1397,91 +1426,7 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
             {bulkable && <span className="yx-tim-muted">Select people to act in bulk.</span>}
             {selected.length > 0 && bulkable && <Button onClick={() => setDlg('bulk')}>Mark present with reason ({selected.length})</Button>}
           </div>
-          {narrow ? (
-            <div className="yx-tim-stack">
-              {shown.map((r) => {
-                const s = monthSummary(r.days);
-                // Pending requests also need HR action: they open the day card, where HR approves them.
-                const fix = r.days.map((d, i) => ({ d, i })).filter(({ d }) => d.code === 'MP' || d.code === 'A' || d.code === 'R');
-                return (
-                  <Card key={r.id} title={r.name}>
-                    <p className="yx-tim-muted">{r.code}{r.mode !== 'Punch' ? ` · ${r.mode}` : ''}</p>
-                    <Kpis items={[{ label: 'Payable', value: s.payable }, { label: 'Unpaid', value: s.lop }, { label: 'Late', value: s.lateMarks }, { label: 'OT h', value: s.otHours }]} />
-                    {fix.length > 0 && (
-                      <div className="yx-tim-row">
-                        <span className="yx-tim-muted">To fix:</span>
-                        {fix.map(({ d, i }) => <Button key={i} size="sm" onClick={() => setCell([r.id, i])}>{shortDate(d.date)}{d.code === 'R' ? ' · request' : ''}</Button>)}
-                      </div>
-                    )}
-                    <div className="yx-tim-row">
-                      {bulkable && (
-                        <label className="yx-tim-row">
-                          <input type="checkbox" checked={selected.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} /> Select
-                        </label>
-                      )}
-                      <Button size="sm" onClick={() => setMonthOf(r.id)}>View month</Button>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
-            <div ref={gridRef} className="yx-tim-muster" data-pinned-totals tabIndex={0} role="region" aria-label="Muster grid, scrolls sideways">
-              <table aria-label={`Muster, ${monthName} 2026`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Employee</th>
-                    <th scope="col">Payable</th><th scope="col">Unpaid</th><th scope="col">Late</th><th scope="col">OT h</th>
-                    {monthDays.map((d) => <th key={d.date.getDate()} scope="col">{d.date.getDate()}<br />{WEEKDAY2[d.date.getDay()]}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((r) => {
-                    const s = monthSummary(r.days);
-                    return (
-                      <tr key={r.id}>
-                        <th scope="row">
-                          <label className="yx-tim-row" style={{ flexWrap: 'nowrap' }}>
-                            {bulkable && <input type="checkbox" checked={selected.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} aria-label={`Select ${r.name}`} />}
-                            <span className="yx-tim-list__main">
-                              <span>{r.name}</span>
-                              {/* Short mode label so the pinned name cell stays two lines ("Assumed present" wrapped to a third). */}
-                              <span className="yx-tim-muted" title={r.mode !== 'Punch' ? r.mode : undefined}>{r.code}{r.mode === 'Assumed present' ? ' · No punch' : r.mode === 'Timesheet' ? ' · Timesheet' : ''}</span>
-                            </span>
-                          </label>
-                        </th>
-                        <td className="yx-tim-muster__total">{s.payable}</td>
-                        <td className="yx-tim-muster__total">{s.lop}</td>
-                        <td className="yx-tim-muster__total">{s.lateMarks}</td>
-                        <td className="yx-tim-muster__total">{s.otHours}</td>
-                        {r.days.map((d, i) => (
-                          <td key={i}>
-                            <button
-                              type="button"
-                              className="yx-tim-cell"
-                              data-code={cellCode(d.code)}
-                              aria-pressed={cell?.[0] === r.id && cell[1] === i}
-                              aria-label={`${r.name}, ${formatDate(d.date)}: ${DAY_CODE_LABEL[cellCode(d.code)]}${d.lateMin ? ', late' : ''}`}
-                              onClick={() => setCell([r.id, i])}
-                            >
-                              {codeText(cellCode(d.code)) || '·'}
-                              {d.lateMin || d.otMin ? <span className="yx-tim-cell__mark">{d.lateMin ? 'late' : 'OT'}</span> : null}
-                            </button>
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {shown.length > 0 && (
-            <ul className="yx-tim-legend__list" aria-label="Legend">
-              {usedCodes.map((c) => <li key={c}><span className="yx-tim-legend__chip" data-code={c}>{codeText(c) || '·'}</span> {DAY_CODE_LABEL[c]}</li>)}
-            </ul>
-          )}
-          <p className="yx-tim-note">"late" = arrived after the 10-minute grace · "OT" = overtime worked. Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.</p>
+          <MusterGrid rows={shown} monthDays={monthDays} monthName={monthName} today={today} narrow={narrow} gridRef={gridRef} bulkable={bulkable} selected={selected} onToggle={toggle} cell={cell} onCell={setCell} onMonthOf={setMonthOf} />
         </>
       )}
       <BottomSheet open={!!sheetRow} onOpenChange={(o) => !o && setMonthOf(null)} title={sheetRow ? `${sheetRow.name} · ${monthName}` : ''}>
@@ -1529,12 +1474,121 @@ export function MusterScreen({ stage: stageProp = 'open', state: stateProp = 're
   );
 }
 
+/** The muster grid (desk table with pinned names and totals, phone cards), its legend and note: the story and the live muster. */
+function MusterGrid({ rows: shown, monthDays, monthName, today, narrow, gridRef, bulkable, selected, onToggle: toggle, cell, onCell: setCell, onMonthOf: setMonthOf, note }: {
+  rows: MusterRow[];
+  monthDays: AttendanceDay[];
+  monthName: string;
+  today: Date;
+  narrow: boolean;
+  gridRef: RefObject<HTMLDivElement>;
+  bulkable: boolean;
+  selected: string[];
+  onToggle: (id: string, on: boolean) => void;
+  cell: [string, number] | null;
+  onCell: (c: [string, number]) => void;
+  onMonthOf?: (id: string) => void;
+  note?: string;
+}) {
+  const usedCodes = MUSTER_CODES.filter((c) => shown.some((r) => r.days.some((d) => cellCode(d.code) === c)));
+  return (
+    <>
+          {narrow ? (
+            <div className="yx-tim-stack">
+              {shown.map((r) => {
+                const s = monthSummary(r.days, today);
+                // Pending requests also need HR action: they open the day card, where HR approves them.
+                const fix = r.days.map((d, i) => ({ d, i })).filter(({ d }) => d.code === 'MP' || d.code === 'A' || d.code === 'R');
+                return (
+                  <Card key={r.id} title={r.name}>
+                    <p className="yx-tim-muted">{r.code}{r.mode !== 'Punch' ? ` · ${r.mode}` : ''}</p>
+                    <Kpis items={[{ label: 'Payable', value: s.payable }, { label: 'Unpaid', value: s.lop }, { label: 'Late', value: s.lateMarks }, { label: 'OT h', value: s.otHours }]} />
+                    {fix.length > 0 && (
+                      <div className="yx-tim-row">
+                        <span className="yx-tim-muted">To fix:</span>
+                        {fix.map(({ d, i }) => <Button key={i} size="sm" onClick={() => setCell([r.id, i])}>{shortDate(d.date)}{d.code === 'R' ? ' · request' : ''}</Button>)}
+                      </div>
+                    )}
+                    <div className="yx-tim-row">
+                      {bulkable && (
+                        <label className="yx-tim-row">
+                          <input type="checkbox" checked={selected.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} /> Select
+                        </label>
+                      )}
+                      <Button size="sm" onClick={() => setMonthOf?.(r.id)}>View month</Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <div ref={gridRef} className="yx-tim-muster" data-pinned-totals tabIndex={0} role="region" aria-label="Muster grid, scrolls sideways">
+              <table aria-label={`Muster, ${monthName} 2026`}>
+                <thead>
+                  <tr>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Payable</th><th scope="col">Unpaid</th><th scope="col">Late</th><th scope="col">OT h</th>
+                    {monthDays.map((d) => <th key={d.date.getDate()} scope="col">{d.date.getDate()}<br />{WEEKDAY2[d.date.getDay()]}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((r) => {
+                    const s = monthSummary(r.days, today);
+                    return (
+                      <tr key={r.id}>
+                        <th scope="row">
+                          <label className="yx-tim-row" style={{ flexWrap: 'nowrap' }}>
+                            {bulkable && <input type="checkbox" checked={selected.includes(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} aria-label={`Select ${r.name}`} />}
+                            <span className="yx-tim-list__main">
+                              <span>{r.name}</span>
+                              {/* Short mode label so the pinned name cell stays two lines ("Assumed present" wrapped to a third). */}
+                              <span className="yx-tim-muted" title={r.mode !== 'Punch' ? r.mode : undefined}>{r.code}{r.mode === 'Assumed present' ? ' · No punch' : r.mode === 'Timesheet' ? ' · Timesheet' : ''}</span>
+                            </span>
+                          </label>
+                        </th>
+                        <td className="yx-tim-muster__total">{s.payable}</td>
+                        <td className="yx-tim-muster__total">{s.lop}</td>
+                        <td className="yx-tim-muster__total">{s.lateMarks}</td>
+                        <td className="yx-tim-muster__total">{s.otHours}</td>
+                        {r.days.map((d, i) => (
+                          <td key={i}>
+                            <button
+                              type="button"
+                              className="yx-tim-cell"
+                              data-code={cellCode(d.code)}
+                              aria-pressed={cell?.[0] === r.id && cell[1] === i}
+                              aria-label={`${r.name}, ${formatDate(d.date)}: ${DAY_CODE_LABEL[cellCode(d.code)]}${d.lateMin ? ', late' : ''}`}
+                              onClick={() => setCell([r.id, i])}
+                            >
+                              {codeText(cellCode(d.code)) || '·'}
+                              {d.lateMin || d.otMin ? <span className="yx-tim-cell__mark">{d.lateMin ? 'late' : 'OT'}</span> : null}
+                            </button>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {shown.length > 0 && (
+            <ul className="yx-tim-legend__list" aria-label="Legend">
+              {usedCodes.map((c) => <li key={c}><span className="yx-tim-legend__chip" data-code={c}>{codeText(c) || '·'}</span> {DAY_CODE_LABEL[c]}</li>)}
+            </ul>
+          )}
+          <p className="yx-tim-note">{note ?? '"late" = arrived after the 10-minute grace · "OT" = overtime worked. Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.'}</p>
+    </>
+  );
+}
+
 function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: MusterRow[]; /** The muster's month: only its days can be picked. */ monthDays: AttendanceDay[]; today: Date; onClose: () => void; onDone: (ids: string[], date: Date, reason: string) => void }) {
   // Starts on the day the Hosur Gate 2 reader was down (25 Sep; the Gate 1 kiosk's outage was 14–17 Sep, TIM-10) when it applies, else the first day a selected person needs fixing.
   const fixDays = rows.flatMap((r) => r.days).filter((d) => canMarkPresent(d.code)).map((d) => d.date).sort((a, b) => a.getTime() - b.getTime());
   const readerDown = fixDays.find((d) => sameDay(d, new Date(2026, 8, 25)));
   const [date, setDate] = useState<Date | null>(readerDown ?? fixDays[0] ?? null);
   const [reason, setReason] = useState(readerDown ? 'Biometric reader at Hosur Gate 2 was down 25 Sep; supervisor register attached.' : '');
+  const [tried, setTried] = useState(false);
   const last = monthDays[monthDays.length - 1].date;
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
   // Each person's current code that day: only absent or missing-punch days change.
@@ -1551,7 +1605,7 @@ function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: 
         <>
           {missing && <span className="yx-tim-muted" style={FOOT_HINT}>{missing}</span>}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!!missing} onClick={() => date && onDone(eligible.map(({ r }) => r.id), date, reason.trim())}>Mark present</Button>
+          <Button variant="primary" onClick={() => { if (!missing && date) return onDone(eligible.map(({ r }) => r.id), date, reason.trim()); setTried(true); document.getElementById(!date || !eligible.length ? 'bp-date' : 'bp-reason')?.focus(); }}>Mark present</Button>
         </>
       }
     >
@@ -1566,11 +1620,11 @@ function BulkPresentDialog({ rows, monthDays, today, onClose, onDone }: { rows: 
             ))}
           </ul>
         )}
-        <FormField label="Date" required>
+        <FormField id="bp-date" label="Date" required error={tried && !date ? 'Choose the date' : tried && !eligible.length ? 'Everyone selected already has attendance that day' : null}>
           {/* Today isn't over: its punches are still coming in. */}
           <DatePicker value={date} onChange={setDate} min={monthDays[0].date} max={last < yesterday ? last : yesterday} />
         </FormField>
-        <FormField label="Reason (saved in the audit log)" required>
+        <FormField id="bp-reason" label="Reason (saved in the audit log)" required error={tried && !reason.trim() ? 'Add a reason' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </div>
@@ -1601,7 +1655,6 @@ export function DayCardScreen({ persona = 'emp', day = 22, person }: DayCardScre
         title={persona === 'emp' ? 'My attendance' : `${who} · September 2026`}
         actions={persona === 'emp' ? undefined : <LinkButton to={persona === 'hr' ? STORY.muster : STORY.exceptionsMgr}>{persona === 'hr' ? 'Back to muster' : 'Back to exceptions'}</LinkButton>}
       />
-      {reg.alert}
       <AttendanceMonth month={SEPTEMBER[0].date} days={days} selected={d.date} />
       <Drawer
         open
@@ -1622,7 +1675,6 @@ export function DayCardPhone({ day = 10 }: { day?: number }) {
   const reg = useRegularise();
   return (
     <PhoneFrame tab="time" title="My attendance">
-      {reg.alert}
       <AttendanceMonth month={SEPTEMBER[0].date} days={SEPTEMBER} compact selected={d.date} />
       <BottomSheet open onOpenChange={() => {}} title={formatDate(d.date)}>
         <DayPanel day={d} person={ME.name} viewer="emp" monthDays={SEPTEMBER} onRegularise={reg.open} />
@@ -1668,7 +1720,7 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
   const [resolve, setResolve] = useState<ExceptionRow[] | null>(resolveOpen && base[0] ? [base[0]] : null);
   const [review, setReview] = useState<ExceptionRow | null>(null);
   const [nudged, setNudged] = useState<string[]>([]);
-  const [msg, setMsg] = useState('');
+  const setMsg = useSay();
   const shown = useMemo(() => {
     const st = filters.find((f) => f.key === 'status');
     const kind = filters.find((f) => f.key === 'kind');
@@ -1733,14 +1785,12 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
           <Button
             variant="primary"
             icon={Bell}
-            disabled={state !== 'ready' || unnudged.length === 0}
-            onClick={() => { setNudged([...nudged, ...unnudged.map((r) => r.id)]); setMsg(`Reminder sent to ${unnudged.length} ${unnudged.length === 1 ? 'person' : 'people'}`); }}
+            onClick={() => state !== 'ready' ? undefined : !unnudged.length ? setMsg('Everyone with an open exception has been reminded today.', 'default') : (setNudged([...nudged, ...unnudged.map((r) => r.id)]), setMsg(`Reminder sent to ${unnudged.length} ${unnudged.length === 1 ? 'person' : 'people'}`))}
           >
             {open.length > 0 && unnudged.length === 0 ? 'Reminders sent today' : narrowed ? `Remind ${unnudged.length}` : 'Remind all'}
           </Button>
         }
       />
-      {msg && <InlineAlert tone="success" title={msg} />}
       <FilterBar
         fields={[
           { key: 'status', label: 'Status', type: 'multi', options: ['Open', 'Request pending', 'Resolved'].map((v) => ({ value: v, label: v })) },
@@ -1772,8 +1822,8 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
             <>
               <Button
                 size="sm"
-                disabled={!picked.length}
                 onClick={() => {
+                  if (!picked.length) return setMsg('Select people with an open exception.', 'default');
                   setNudged([...nudged, ...picked.map((r) => r.id)]);
                   setSelected([]);
                   setMsg(`Reminder sent to ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`);
@@ -1781,7 +1831,7 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
               >
                 Nudge {picked.length}
               </Button>
-              <Button size="sm" disabled={!picked.length} onClick={() => setResolve(picked)}>Resolve {picked.length} with reason</Button>
+              <Button size="sm" onClick={() => (picked.length ? setResolve(picked) : setMsg('Select people with an open exception.', 'default'))}>Resolve {picked.length} with reason</Button>
             </>
           );
         }}
@@ -1794,7 +1844,7 @@ export function ExceptionsScreen({ persona = 'hr', state: stateProp = 'ready', r
           ) : persona === 'hr' ? (
             <Button size="sm" onClick={() => setResolve([r])}>Resolve</Button>
           ) : (
-            <Button size="sm" disabled={nudged.includes(r.id)} onClick={() => nudgeOne(r)}>{nudged.includes(r.id) ? 'Nudged' : 'Nudge'}</Button>
+            <Button size="sm" onClick={() => (nudged.includes(r.id) ? setMsg(`${firstName(r.person)} was already reminded today.`, 'default') : nudgeOne(r))}>{nudged.includes(r.id) ? 'Nudged' : 'Nudge'}</Button>
           )
         }
       />
@@ -1827,6 +1877,7 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
   const [inT, setInT] = useState<string | null>(onRecord);
   const [outT, setOutT] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const cl = one ? balancesFor(one.person).find((b) => b.code === 'CL') : undefined;
   const timesMissing = how === 'present' && needTimes ? (!inT ? 'Enter the check-in time.' : !outT ? 'Enter the check-out time.' : null) : null;
   const missing = !how ? 'Choose a resolution.' : timesMissing ?? (!reason.trim() ? 'Enter a reason.' : null);
@@ -1853,15 +1904,15 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
       />
       {how === 'present' && needTimes && (
         <div className="yx-tim-row">
-          <FormField label="Check-in" required>
+          <FormField id="rs-in" label="Check-in" required error={tried && !inT ? 'Enter the check-in time' : null}>
             <TimeField value={inT} onChange={setInT} />
           </FormField>
-          <FormField label="Check-out" required>
+          <FormField id="rs-out" label="Check-out" required error={tried && !outT ? 'Enter the check-out time' : null}>
             <TimeField value={outT} onChange={setOutT} placeholder={`Shift ends ${fmt12(shiftFor(one!.person).end)}`} />
           </FormField>
         </div>
       )}
-      <FormField label="Reason" required helper="Saved in the audit history">
+      <FormField id="rs-reason" label="Reason" required helper="Saved in the audit history" error={tried && !reason.trim() ? 'Enter a reason' : null}>
         <TextArea rows={3} value={reason} onChange={setReason} placeholder="For example: confirmed with the supervisor's gate register" />
       </FormField>
     </div>
@@ -1877,7 +1928,7 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
         <>
           {missing && <span className="yx-tim-muted" style={FOOT_HINT}>{missing}</span>}
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!!missing} onClick={() => { onResolved?.(rows!.map((r) => r.id)); onClose(); }}>{one ? 'Resolve exception' : `Resolve ${rows?.length ?? 0}`}</Button>
+          <Button variant="primary" onClick={() => { if (!missing) { onResolved?.(rows!.map((r) => r.id)); return onClose(); } setTried(true); document.getElementById(timesMissing ? (inT ? 'rs-out' : 'rs-in') : 'rs-reason')?.focus(); }}>{one ? 'Resolve exception' : `Resolve ${rows?.length ?? 0}`}</Button>
         </>
       }
     >
@@ -1890,7 +1941,7 @@ function ResolveDialog({ rows, onClose, onResolved }: { rows: ExceptionRow[] | n
 export function ExceptionsPhone() {
   const rows = EXCEPTIONS.filter((r) => r.status === 'Open' && isMyReport(r.person));
   const [nudged, setNudged] = useState<string[]>([]);
-  const [msg, setMsg] = useState('');
+  const setMsg = useSay();
   const left = rows.filter((r) => !nudged.includes(r.id));
   const remind = (ids: string[]) => {
     setNudged([...nudged, ...ids]);
@@ -1899,7 +1950,6 @@ export function ExceptionsPhone() {
   return (
     <PhoneFrame tab="time" title="Team exceptions">
       <InlineAlert tone="warning" title={`${rows.length} open`}>September payroll is blocked until these are fixed.</InlineAlert>
-      {msg && <InlineAlert tone="success" title={msg} />}
       <ul className="yx-tim-list">
         {rows.map((r) => (
           <li key={r.id}>
@@ -1911,7 +1961,640 @@ export function ExceptionsPhone() {
           </li>
         ))}
       </ul>
-      <Button variant="primary" fullWidth icon={Bell} disabled={left.length === 0} onClick={() => remind(left.map((r) => r.id))}>{left.length === 0 ? 'Reminders sent today' : 'Remind all'}</Button>
+      <Button variant="primary" fullWidth icon={Bell} onClick={() => (left.length ? remind(left.map((r) => r.id)) : setMsg('Everyone was reminded today.', 'default'))}>{left.length === 0 ? 'Reminders sent today' : 'Remind all'}</Button>
     </PhoneFrame>
+  );
+}
+
+/* =====================================================================
+   Live (the app): the designs above on the person's real data. The web pages pass `live`; stories keep the samples.
+   ===================================================================== */
+
+/** What Me › Attendance gets from the app: my month, punches, requests and night work, and the calls behind them. */
+export interface LiveMyAttendance {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyAttendance | null;
+  /** "2026-10" */
+  month: string;
+  onMonth: (month: string) => void;
+  /** The browser's location, or null with the reason (permission refused, no GPS). */
+  getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
+  onPunch: (kind: PunchKind, pin: Pin | null) => Promise<PunchResult>;
+  onFix: (input: FixInput) => Promise<unknown>;
+  onWithdrawFix: (id: string) => Promise<unknown>;
+  /** A day card with every punch of that day (TIM-03). */
+  onOpenDay: (on: string) => Promise<DayCard>;
+  /** Request work from home (TIM-07); without it only regularising is offered. */
+  onWfh?: (input: WfhInput) => Promise<unknown>;
+  /** Open the request sheet at once (Home's "Request work from home" links here). */
+  defaultRequest?: 'wfh' | 'regularise';
+  /** Night work (founder decisions 9 Oct 2026): shown when loaded. */
+  night?: MyNightWork | null;
+  onNightOptIn?: (optIn: boolean) => Promise<unknown>;
+  onNightCode?: (consentId: string) => Promise<NightCodeSent>;
+  onNightConfirm?: (consentId: string, code: string) => Promise<unknown>;
+  onNightWithdraw?: (consentId: string) => Promise<unknown>;
+  /** The clock page and the month calendar link to each other. */
+  todayHref?: string;
+  monthHref?: string;
+  /** The time now (tests); default the real clock. */
+  now?: Date;
+}
+
+/** What the muster gets from the app (TIM-02): the people in my scope this month, and a day card per cell. */
+export interface LiveMusterData {
+  state: LoadState;
+  onRetry?: () => void;
+  data: Muster | null;
+  /** "2026-10": the month shown, and moving to another (the top bar has no month here). */
+  month: string;
+  onMonth: (month: string) => void;
+  /** The person's day card (TIM-03). */
+  onOpenDay: (employeeId: string, on: string) => Promise<DayCard>;
+  /** Today in the company's zone, "2026-10-29" (default: the browser's date). */
+  today?: string;
+}
+
+const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
+const SCOPE_TEXT = { team: 'Your team', granted: 'The people you look after', company: 'Everyone in the company' } as const;
+const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const isoDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const hm = (minute: number) => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+const monthLong = (month: string) => `${MONTH_LONG[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+const shiftMonth = (month: string, n: number) => {
+  const d = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + n, 1);
+  return isoOf(d).slice(0, 7);
+};
+/** Hours and minutes of a moment in a time zone, as "HH:MM" and minutes since midnight. */
+function zoneTime(at: Date, zone: string) {
+  const [h, m, s] = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: zone }).split(':').map(Number);
+  const hh = h % 24;
+  return { hhmm: `${String(hh).padStart(2, '0')}:${String(m).padStart(2, '0')}`, minute: hh * 60 + m, second: s };
+}
+
+/** A server punch as the design's punch (time in the person's zone); a refused one keeps its reason. */
+function livePunch(p: PunchRow, zone: string): Punch {
+  const verdict: Punch['verdict'] = p.verdict === 'outside' ? 'outside' : p.verdict === 'field' ? 'field' : p.verdict === 'network' ? 'network' : 'inside';
+  return {
+    id: p.id,
+    kind: p.kind,
+    time: zoneTime(new Date(p.at), zone).hhmm,
+    source: LIVE_SOURCES.includes(p.source as Punch['source']) ? (p.source as Punch['source']) : 'web',
+    where: p.where ?? '',
+    distanceM: p.distanceM ?? undefined,
+    verdict,
+    ...(p.accepted ? {} : { refusal: p.refusal ?? 'Refused' }),
+  };
+}
+
+/** A day from the day engine in the design's day codes (a waiting request shows as R, an approved WFH day as WFH). */
+function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o: { pending?: boolean; wfh?: boolean } = {}): PDay {
+  const date = isoDay(on);
+  if (on > today) return { date, code: 'FUT' };
+  if (o.pending) return { date, code: 'R', note: 'Request waiting for approval' };
+  const late = x?.lateMinutes ?? 0;
+  const st = x?.status;
+  const code: DayCode =
+    st === 'leave' ? (x!.leavePart && x!.leavePart !== 'full' ? 'HD' : 'LV')
+      : st === 'holiday' ? 'H'
+        : st === 'weekly_off' ? 'WO'
+          : on === today ? 'TODAY'
+            : st === 'present' ? (o.wfh ? 'WFH' : late > 0 ? 'L' : 'P')
+              : st === 'half_day' ? 'HD'
+                : st === 'absent' || st === 'no_timesheet' ? 'A'
+                  : st === 'missing_out' ? 'MP'
+                    : st === 'missing_in' ? 'MI'
+                      : 'FUT';
+  const note = x?.regularised ? 'Fixed by an approved request' : st === 'no_timesheet' ? 'No timesheet yet' : st === 'leave' && x?.leavePart && x.leavePart !== 'full' ? `On leave, ${x.leavePart} half` : undefined;
+  return { date, code, ...(late > 0 ? { lateMin: late } : {}), ...(x?.workedMinutes ? { workedMin: x.workedMinutes } : {}), ...(note ? { note } : {}) };
+}
+
+/** Every day of a month in the design's codes. */
+function liveMonth(month: string, rows: DayRow[], today: string, pending = new Set<string>(), wfh = new Set<string>()): PDay[] {
+  const first = isoDay(`${month}-01`);
+  const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  return Array.from({ length: n }, (_, i) => {
+    const on = `${month}-${String(i + 1).padStart(2, '0')}`;
+    return liveDay(on, rows.find((r) => r.on === on), today, { pending: pending.has(on), wfh: wfh.has(on) });
+  });
+}
+
+/** Today's shift as the design's shift. */
+const liveShift = (s: MyAttendance['shift']) => ({ name: s.name, start: hm(s.start), end: hm(s.end), graceMin: s.grace });
+
+/** The clock card (Extra · My attendance today, Home) on the person's live day: punches go to the server. */
+function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['getLocation'], onPunch: LiveMyAttendance['onPunch']): ClockCardProps {
+  const t = zoneTime(now, d.zone);
+  const punches = d.punches.filter((p) => p.accepted).map((p) => livePunch(p, d.zone));
+  const state: ClockState = d.next === 'out' ? (d.onBreak ? 'break' : 'working') : punches.length ? 'out' : 'not_in';
+  const day = d.days.find((x) => x.on === d.today);
+  const dayOff = d.shift.off ? 'Weekly off today' : day?.status === 'holiday' ? 'Holiday today' : day?.status === 'leave' && (!day.leavePart || day.leavePart === 'full') ? 'On leave today' : undefined;
+  return {
+    live: true,
+    now: t.minute,
+    seconds: t.second,
+    date: now,
+    // The server decides when check-in opens; the card never blocks before the shift.
+    shift: { ...liveShift(d.shift), opensBeforeMin: d.shift.start },
+    state,
+    punches,
+    mode: d.shift.checkIn,
+    locationName: d.fences[0]?.name ?? 'the office',
+    wfhToday: d.wfhToday,
+    dayOff,
+    lateMarksBefore: d.days.filter((x) => x.on < d.today && (x.lateMinutes ?? 0) > 0).length,
+    onPunch: async (kind) => {
+      const loc = await getLocation();
+      const r = await onPunch(kind, loc.pin);
+      // The browser's own reason (location off, not found) is the clearer one; never two messages run together.
+      return { accepted: r.accepted, message: r.accepted ? r.message : (loc.problem ?? r.message) };
+    },
+  };
+}
+
+/**
+ * "Attendance today" on the live Home (PLT-02): the designed clock card (HomeClockScreen's card) on the person's live
+ * day. Checking in and out and Start break / End break go to the server, which applies the location and network rules.
+ */
+export function HomeClockCard({ data, now, getLocation, onPunch, attendanceHref, onRegularise }: {
+  data: MyAttendance;
+  now: Date;
+  getLocation: LiveMyAttendance['getLocation'];
+  onPunch: LiveMyAttendance['onPunch'];
+  attendanceHref: string;
+  onRegularise: () => void;
+}) {
+  return <ClockCard variant="home" {...liveClock(data, now, getLocation, onPunch)} punchesHref={attendanceHref} onRegularise={onRegularise} />;
+}
+
+/** A live day card (TIM-03): loads the day's punches and shows them in the design's day card. */
+function LiveDayPanel({ load, day, viewer, person, approver, monthDays, now, fallbackShift, onFix, onWithdraw }: {
+  load: () => Promise<DayCard>;
+  day: PDay;
+  viewer: Persona;
+  person: string;
+  approver?: string;
+  monthDays: AttendanceDay[];
+  now?: number;
+  fallbackShift: DayCardBodyProps['shift'];
+  onFix?: () => void;
+  onWithdraw?: () => void;
+}) {
+  const [card, setCard] = useState<DayCard | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    let on = true;
+    setCard(null);
+    setProblem(null);
+    load().then(
+      (c) => on && setCard(c),
+      (e: unknown) => on && setProblem(e instanceof Error ? e.message : 'That did not work. Try again.'),
+    );
+    return () => {
+      on = false;
+    };
+    // The loader is a new function each render; the day it loads is fixed by the panel's key.
+  }, [tries]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (problem) return <ErrorState title="We couldn't open this day" description={problem} onRetry={() => setTries(tries + 1)} />;
+  if (!card) return <LoadingBlock rows={4} />;
+  const shift = card.shift ? { name: card.shift.name, start: hm(card.shift.start), end: hm(card.shift.end), graceMin: card.shift.grace } : fallbackShift;
+  return (
+    <DayCardBody
+      day={card.day?.workedMinutes && !day.workedMin ? { ...day, workedMin: card.day.workedMinutes } : day}
+      punches={card.punches.map((p) => livePunch(p, card.zone))}
+      shift={shift}
+      viewer={viewer}
+      person={person}
+      approver={approver}
+      monthDays={monthDays}
+      now={now}
+      hideMap
+      onFix={onFix}
+      onWithdraw={onWithdraw}
+    />
+  );
+}
+
+const fixable = (c: DayCode) => c === 'A' || c === 'MP' || c === 'MI';
+const shortIso = (on: string) => shortDate(isoDay(on));
+
+/** Days to fix (missing punch, absent): the red alert with a Fix button per day (calendar and clock page). */
+function FixAlert({ days, onFix }: { days: AttendanceDay[]; onFix: (on: string) => void }) {
+  if (!days.length) return null;
+  return (
+    <InlineAlert
+      tone="danger"
+      title={`${days.length} ${days.length === 1 ? 'day needs' : 'days need'} fixing before payroll`}
+      actions={days.map((x) => <Button key={x.date.getTime()} size="sm" onClick={() => onFix(isoOf(x.date))}>Fix {shortDate(x.date)}</Button>)}
+    >
+      {days.map((x) => `${shortDate(x.date)}: ${DAY_CODE_LABEL[x.code].toLowerCase()}`).join(' · ')}
+    </InlineAlert>
+  );
+}
+
+/** The live page's load states, in the design's own blocks. */
+function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
+  if (state === 'loading') return <LoadingBlock rows={8} />;
+  if (state === 'error') return <ErrorState title={`We couldn't load ${what}`} description="Check your connection and try again. Nothing has changed." onRetry={onRetry} />;
+  if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what} />;
+  return <>{children}</>;
+}
+
+/** Shared by both live attendance pages: the request sheet (TIM-07), and withdrawing a waiting request. */
+function useLiveRequests(live: LiveMyAttendance) {
+  const say = useSay();
+  const [req, setReq] = useState<{ type: 'regularise' | 'wfh'; on: string | null; n: number } | null>(live.defaultRequest ? { type: live.defaultRequest, on: null, n: 0 } : null);
+  const [withdrawing, setWithdrawing] = useState<FixRow | null>(null);
+  const open = (type: 'regularise' | 'wfh', on: string | null = null) => setReq({ type, on, n: (req?.n ?? 0) + 1 });
+  const d = live.data;
+  const node = (
+    <>
+      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, onFix: live.onFix, onWfh: live.onWfh, onClose: () => setReq(null) }} />}
+      <ConfirmDialog
+        open={!!withdrawing}
+        onOpenChange={(o) => !o && setWithdrawing(null)}
+        title={withdrawing ? `Withdraw the ${withdrawing.kind === 'wfh' ? 'work-from-home' : 'regularisation'} request for ${shortIso(withdrawing.on)}?` : ''}
+        consequence="Your manager won't see it any more. The day goes back to what was recorded until you send a new request."
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep request"
+        onConfirm={async () => {
+          await live.onWithdrawFix(withdrawing!.id);
+          setWithdrawing(null);
+          say('Request withdrawn');
+        }}
+      />
+    </>
+  );
+  return { open, node, withdraw: setWithdrawing };
+}
+
+/** Me › Attendance, live: the attendance calendar design (Extra · Attendance calendar) on my month. */
+function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
+  const d = live.data;
+  const ready = live.state === 'ready' && !!d;
+  const say = useSay();
+  const narrow = useNarrow();
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const reqs = useLiveRequests(live);
+  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
+  const wfhDays = new Set((d?.requests ?? []).filter((r) => r.status === 'approved' && r.kind === 'wfh').map((r) => r.on));
+  const days = d ? liveMonth(live.month, d.days, d.today, pendingFix, wfhDays) : [];
+  const label = monthLong(live.month);
+  const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
+  const waiting = (d?.requests ?? []).filter((r) => r.status === 'pending');
+  const open = openOn ? days.find((x) => isoOf(x.date) === openOn) ?? null : null;
+  const openReq = openOn ? waiting.find((r) => r.on === openOn && r.kind !== 'wfh') : undefined;
+  const nowMin = d ? zoneTime(live.now ?? new Date(), d.zone).minute : undefined;
+  // The next month has not started: the arrow stays clickable and says so.
+  const goMonth = (n: number) => {
+    if (!d) return;
+    if (n > 0 && live.month >= d.today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
+    setOpenOn(null);
+    live.onMonth(shiftMonth(live.month, n));
+  };
+  return (
+    <TimePage active="My attendance">
+      <PageHeader
+        title="My attendance"
+        description={d ? `${MODE_TEXT[d.mode] ?? d.mode} · ${d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${fmt12(hm(d.shift.start))} – ${fmt12(hm(d.shift.end))}`}` : undefined}
+        actions={
+          ready ? (
+            <div className="yx-tim-row">
+              {live.todayHref && <Button asChild><a href={live.todayHref}>Clock in or out</a></Button>}
+              <Button icon={Download} onClick={() => exportMonth(d.employee.name, label, days)}>Export month</Button>
+              {live.onWfh && <Button onClick={() => reqs.open('wfh')}>Request work from home</Button>}
+              {d.mode === 'punch' && <Button variant="primary" onClick={() => reqs.open('regularise')}>Regularise a day</Button>}
+            </div>
+          ) : undefined
+        }
+      />
+      {ready && (
+        <div className="yx-tim-row yx-tim-monthnav">
+          <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth(-1)} />
+          <h2 className="yx-tim-h2" aria-live="polite">{label}</h2>
+          <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
+        </div>
+      )}
+      {ready && <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />}
+      <LiveStates state={live.state} onRetry={live.onRetry} what="your attendance">
+        {d && (
+          <div className="yx-tim-grid">
+            <div data-span="8">
+              <AttendanceMonth month={isoDay(`${live.month}-01`)} days={days} compact={narrow} selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+            </div>
+            <div data-span="4" className="yx-tim-stack">
+              <Card title={`${label} totals`}>
+                <AttendanceLegend days={days} />
+              </Card>
+              {waiting.length > 0 && (
+                <Card title="Waiting for approval">
+                  <ul className="yx-tim-list" aria-label="Waiting for approval">
+                    {waiting.map((r) => (
+                      <li key={r.id}>
+                        <span className="yx-tim-list__main">
+                          <strong>{shortIso(r.on)} · {r.kind === 'wfh' ? 'Work from home' : 'Regularisation'}</strong>
+                          <span className="yx-tim-muted">With your manager</span>
+                        </span>
+                        <span className="yx-tim-row">
+                          {r.kind !== 'wfh' && r.on.startsWith(live.month) && <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
+                          <Button size="sm" onClick={() => reqs.withdraw(r)}>Withdraw</Button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+              {live.night && <NightWork night={live.night} live={live} />}
+            </div>
+          </div>
+        )}
+      </LiveStates>
+      <Drawer open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? `${open.date.toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(open.date)}` : ''} subtitle="Your day card" size="lg">
+        {open && d && openOn && (
+          <DayPanel
+            key={openOn}
+            live={{
+              load: () => live.onOpenDay(openOn),
+              day: open,
+              viewer: 'emp',
+              person: d.employee.name,
+              approver: 'your manager',
+              monthDays: days,
+              now: nowMin,
+              fallbackShift: liveShift(d.shift),
+              onFix: d.mode === 'punch' ? () => { setOpenOn(null); reqs.open('regularise', openOn); } : undefined,
+              onWithdraw: openReq ? () => reqs.withdraw(openReq) : undefined,
+            }}
+          />
+        )}
+      </Drawer>
+      {reqs.node}
+    </TimePage>
+  );
+}
+
+/** Me › Attendance › Today, live: the "My attendance today" design (web clock-in page) on my day. */
+function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
+  const d = live.data;
+  const ready = live.state === 'ready' && !!d;
+  const reqs = useLiveRequests(live);
+  const now = live.now ?? new Date();
+  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
+  const days = d ? liveMonth(d.today.slice(0, 7), d.days, d.today, pendingFix) : [];
+  const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
+  // Monday to Sunday of this week (days outside this month show the shift only).
+  const today = d ? isoDay(d.today) : TODAY;
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  const week = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
+  const lates = d ? d.days.filter((x) => (x.lateMinutes ?? 0) > 0).length : 0;
+  const weekText = (date: Date) => {
+    if (!d) return '';
+    const on = isoOf(date);
+    const row = d.days.find((x) => x.on === on);
+    const code = days.find((x) => isoOf(x.date) === on)?.code ?? (on > d.today ? 'FUT' : undefined);
+    if (on === d.today) return d.next === 'out' ? (d.onBreak ? 'On a break' : 'Working') : d.punches.some((p) => p.accepted) ? 'Done for the day' : 'Not in yet';
+    if (code === 'FUT' || !code) return `${d.shift.name} shift`;
+    const inAt = row?.firstIn ? zoneTime(new Date(row.firstIn), d.zone).hhmm : null;
+    const outAt = row?.lastOut ? zoneTime(new Date(row.lastOut), d.zone).hhmm : null;
+    return (code === 'P' || code === 'L' || code === 'WFH') && inAt && outAt ? `${DAY_CODE_LABEL[code]} · ${fmt12(inAt)} – ${fmt12(outAt)}` : DAY_CODE_LABEL[code];
+  };
+  const where = !d ? '' : d.shift.checkIn === 'field' ? 'Anywhere: your location is recorded' : d.fences.length ? `${d.fences.map((f) => `${f.name} (within ${f.radiusM} m)`).join(' or ')}, or the office network` : 'The office network';
+  return (
+    <TimePage active="My attendance">
+      <PageHeader
+        title="My attendance today"
+        description={d ? (d.mode === 'punch' ? 'Clock in and out from your desk.' : d.mode === 'assumed_present' ? 'You are counted present unless you are on leave, so clocking in is optional.' : 'Your day comes from your timesheet; punches are kept as a record.') : undefined}
+        actions={
+          ready ? (
+            <div className="yx-tim-row">
+              {live.monthHref && <Button asChild><a href={live.monthHref}>My month</a></Button>}
+              {d.mode === 'punch' && <Button onClick={() => reqs.open('regularise')}>Regularise another day</Button>}
+            </div>
+          ) : undefined
+        }
+      />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="your attendance">
+        {d && (
+          <div className="yx-tim-grid">
+            <div data-span="8">
+              <ClockCard variant="page" {...liveClock(d, now, live.getLocation, live.onPunch)} onRegularise={() => reqs.open('regularise', d.today)} />
+            </div>
+            <div data-span="4" className="yx-tim-stack">
+              <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />
+              <Card title="This week">
+                <ul className="yx-tim-list">
+                  {week.map((date) => (
+                    <li key={date.getTime()}>
+                      <span>{`${date.toLocaleDateString('en-IN', { weekday: 'short' })} ${shortDate(date)}`}</span>
+                      <span className={isoOf(date) > d.today ? 'yx-tim-muted' : undefined}>{weekText(date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              <Card title="Your rules">
+                <ul className="yx-tim-list">
+                  <li><span>Clock-in from</span><span className="yx-tim-muted">{where}</span></li>
+                  <li><span>Grace</span><span className="yx-tim-muted">{d.shift.grace} min after {fmt12(hm(d.shift.start))}</span></li>
+                  <li><span>Late marks</span><span className="yx-tim-muted">{lates} this month</span></li>
+                  <li><span>Regularisations</span><span className="yx-tim-muted">{d.regularise.used} of {d.regularise.limit} used this month</span></li>
+                  {live.onWfh && <li><span>Work from home</span><span className="yx-tim-muted">{d.wfh.used} of {d.wfh.limit} this month without HR</span></li>}
+                </ul>
+              </Card>
+            </div>
+          </div>
+        )}
+      </LiveStates>
+      {reqs.node}
+    </TimePage>
+  );
+}
+
+/** Night work (founder decisions 9 Oct 2026): opt in (only the person can turn it off), confirm or withdraw a consent. */
+function NightWork({ night, live }: { night: MyNightWork; live: LiveMyAttendance }) {
+  const { busy, error, run } = useRun();
+  const say = useSay();
+  const [sent, setSent] = useState<{ id: string; to: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const early = useTooEarly(code.length === 6 ? [] : [{ fieldId: 'nw-code', message: 'Enter the 6-digit code' }]);
+  const open = night.consents.filter((x) => !x.withdrawnOn);
+  return (
+    <Card title="Night work">
+      <div className="yx-tim-stack">
+        {night.byRecord ? (
+          <p className="yx-tim-muted">The night-work protection applies to you: you are placed on a shift between 7 pm and 6 am only with your consent, confirmed by you here, and the workplace safeguards in place.</p>
+        ) : (
+          <Switch
+            label="Night-work protection"
+            description="Placed on a shift between 7 pm and 6 am only with your consent, confirmed by you here, and the workplace safeguards in place. HR can see this. Only you can turn it off."
+            checked={night.optedIn}
+            disabled={busy === 'opt' || !live.onNightOptIn}
+            onChange={(on) => void run('opt', () => live.onNightOptIn!(on))}
+          />
+        )}
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {night.consents.length > 0 && (
+          <ul className="yx-tim-list" aria-label="My night-work consents">
+            {night.consents.map((x) => (
+              <li key={x.id} className="yx-tim-row">
+                <Badge tone={x.withdrawnOn ? 'neutral' : x.confirmedAt ? 'success' : 'warning'}>{x.withdrawnOn ? 'Withdrawn' : x.confirmedAt ? 'Confirmed' : 'Needs your confirmation'}</Badge>
+                <span className="yx-tim-list__main">
+                  <span>{x.location}</span>
+                  <span className="yx-tim-note">
+                    Given {formatDate(isoDay(x.givenOn))} · {x.reference}
+                    {x.withdrawnOn ? ` · withdrawn from ${formatDate(isoDay(x.withdrawnOn))}` : ''}
+                  </span>
+                </span>
+                {!x.withdrawnOn && !x.confirmedAt && live.onNightCode && (
+                  <Button size="sm" loading={busy === `code-${x.id}`} onClick={() => void run(`code-${x.id}`, async () => setSent({ id: x.id, to: (await live.onNightCode!(x.id)).sentTo }))}>
+                    {sent?.id === x.id ? 'Send a new code' : 'Confirm with a code'}
+                  </Button>
+                )}
+                {!x.withdrawnOn && live.onNightWithdraw && <Button size="sm" onClick={() => setWithdrawing(x.id)}>Withdraw</Button>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {sent && open.some((x) => x.id === sent.id && !x.confirmedAt) && (
+          <div className="yx-tim-row">
+            <FormField id="nw-code" label={`The 6-digit code sent to ${sent.to}`} required error={early.errorOf('nw-code')}>
+              <CodeField value={code} onChange={setCode} />
+            </FormField>
+            <Button
+              variant="primary"
+              loading={busy === 'confirm'}
+              onClick={() => {
+                if (early.stop()) return;
+                void run('confirm', async () => {
+                  await live.onNightConfirm!(sent.id, code);
+                  setSent(null);
+                  setCode('');
+                  say('Night-work consent confirmed');
+                });
+              }}
+            >
+              Confirm my consent
+            </Button>
+          </div>
+        )}
+      </div>
+      <ConfirmDialog
+        open={!!withdrawing}
+        onOpenChange={(o) => !o && setWithdrawing(null)}
+        title="Withdraw your night-work consent?"
+        consequence="From today you are not placed on shifts between 7 pm and 6 am at this workplace. Withdrawing never leads to any action against you."
+        confirmLabel="Withdraw"
+        onConfirm={async () => {
+          await live.onNightWithdraw!(withdrawing!);
+          setWithdrawing(null);
+          say('Night-work consent withdrawn');
+        }}
+      />
+    </Card>
+  );
+}
+
+const LIVE_MODE: Record<string, MusterRow['mode']> = { punch: 'Punch', assumed_present: 'Assumed present', timesheet: 'Timesheet' };
+
+/** Time › Muster, live (TIM-02): the muster design on the people in my scope; each cell opens the day card (TIM-03). */
+function LiveMusterScreen({ live }: { live: LiveMusterData }) {
+  const d = live.data;
+  const narrow = useNarrow();
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [cell, setCell] = useState<[string, number] | null>(null);
+  const [monthOf, setMonthOf] = useState<string | null>(null);
+  const today = live.today ?? isoOf(new Date());
+  const todayDate = isoDay(today);
+  const rows: MusterRow[] = (d?.people ?? []).map((p) => {
+    const days = liveMonth(d!.month, p.days, today);
+    return { id: p.id, name: `${p.name}${p.me ? ' (you)' : ''}`, code: p.code ?? '', mode: LIVE_MODE[p.mode] ?? 'Punch', days: p.mode === 'punch' ? days : noLate(days) };
+  });
+  const monthDays = d ? liveMonth(d.month, [], '0000-00-00') : [];
+  const label = d ? monthLong(d.month) : '';
+  const ready = live.state === 'ready' && rows.length > 0;
+  const openCount = rows.reduce((n, r) => n + r.days.filter((x) => fixable(x.code)).length, 0);
+  const row = cell ? rows.find((r) => r.id === cell[0]) : null;
+  const day = row && cell ? row.days[cell[1]] : null;
+  const sheetRow = monthOf ? rows.find((r) => r.id === monthOf) : null;
+  const person = row ? d!.people.find((p) => p.id === row.id) : undefined;
+  const say = useSay();
+  // Like the calendar: the next month that has not started says so instead of moving.
+  const goMonth = (n: number) => {
+    if (n > 0 && live.month >= today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
+    setCell(null);
+    live.onMonth(shiftMonth(live.month, n));
+  };
+  useEffect(() => {
+    const g = gridRef.current;
+    if (g) g.scrollLeft = g.scrollWidth;
+  }, [narrow, live.state]);
+  return (
+    <TimePage active="Muster" user={HR_ADMIN}>
+      <PageHeader
+        title={`Muster · ${monthLong(live.month)}`}
+        description={d ? `${SCOPE_TEXT[d.scope]} · ${rows.length} ${rows.length === 1 ? 'person' : 'people'}` : undefined}
+        actions={
+          ready ? (
+            <Button icon={Download} onClick={() => downloadCsv(`muster-${d!.month}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((x) => String(x.date.getDate()))], ...rows.map((r) => { const s = monthSummary(r.days, todayDate); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((x) => codeText(cellCode(x.code)))]; })])}>Export</Button>
+          ) : undefined
+        }
+      />
+      <div className="yx-tim-row yx-tim-monthnav">
+        <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth(-1)} />
+        <h2 className="yx-tim-h2" aria-live="polite">{monthLong(live.month)}</h2>
+        <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
+      </div>
+      <LiveStates state={live.state} onRetry={live.onRetry} what="the muster">
+        {d && rows.length === 0 ? (
+          <EmptyState title="No one on the muster" description="People you manage, or look after in HR, appear here." />
+        ) : d ? (
+          <>
+            {openCount > 0 && (
+              <div className="yx-tim-row">
+                <Badge tone="danger">{openCount} {openCount === 1 ? 'day' : 'days'} to fix</Badge>
+                <span className="yx-tim-muted">Missing punches and absences: each person fixes them with a request.</span>
+              </div>
+            )}
+            <MusterGrid
+              rows={rows}
+              monthDays={monthDays}
+              monthName={label}
+              today={todayDate}
+              narrow={narrow}
+              gridRef={gridRef}
+              bulkable={false}
+              selected={[]}
+              onToggle={() => undefined}
+              cell={cell}
+              onCell={setCell}
+              onMonthOf={setMonthOf}
+              note={'"late" = came in after the grace time · Unpaid = days already deducted as unpaid leave. Absent days stay out of Payable until they are fixed.'}
+            />
+          </>
+        ) : null}
+      </LiveStates>
+      <BottomSheet open={!!sheetRow} onOpenChange={(o) => !o && setMonthOf(null)} title={sheetRow ? `${sheetRow.name} · ${label}` : ''}>
+        {sheetRow && <AttendanceMonth month={monthDays[0].date} days={sheetRow.days} compact onDayClick={(x) => { setMonthOf(null); setCell([sheetRow.id, x.date.getDate() - 1]); }} />}
+      </BottomSheet>
+      <Drawer open={!!day} onOpenChange={(o) => !o && setCell(null)} title={day && row ? `${row.name} · ${formatDate(day.date)}` : ''} subtitle={person ? [person.code, person.location].filter(Boolean).join(' · ') : 'Day card'} size="lg">
+        {day && row && person && (
+          <DayPanel
+            key={`${row.id}-${cell![1]}`}
+            live={{
+              load: () => live.onOpenDay(row.id, isoOf(day.date)),
+              day,
+              viewer: d!.scope === 'team' ? 'mgr' : 'hr',
+              person: person.name,
+              approver: 'their manager',
+              monthDays: row.days,
+              fallbackShift: { name: 'No shift', start: '00:00', end: '00:00', graceMin: 0 },
+            }}
+          />
+        )}
+      </Drawer>
+    </TimePage>
   );
 }

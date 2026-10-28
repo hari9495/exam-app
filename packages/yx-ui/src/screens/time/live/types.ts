@@ -87,6 +87,13 @@ export interface LeavePlan {
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
 
+/** The browser's location sent with a punch. */
+export interface Pin {
+  lat: number;
+  lng: number;
+  accuracyM: number;
+}
+
 export interface PunchRow {
   id: string;
   kind: PunchKind;
@@ -188,6 +195,8 @@ export interface DayCard {
   person: { name: string; code: string | null };
   on: string;
   zone: string;
+  /** The day's shift; null on a weekly off (older servers leave it out). */
+  shift?: { name: string; start: number; end: number; grace: number } | null;
   day: Omit<DayRow, 'on'> | null;
   punches: (PunchRow & { minute: number })[];
 }

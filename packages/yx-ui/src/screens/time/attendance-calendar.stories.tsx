@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AttendanceCalendarPhone, AttendanceCalendarScreen } from './attendance';
 
 // Founder extra 2 · Attendance calendar (employee month view + manager view of one person).
-const meta: Meta<typeof AttendanceCalendarScreen> = { title: 'Screens/Time/Extra · Attendance calendar', component: AttendanceCalendarScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof AttendanceCalendarScreen> = { title: 'Screens/Time/Extra · Attendance calendar', component: AttendanceCalendarScreen, render: (args) => <AttendanceCalendarScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof AttendanceCalendarScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

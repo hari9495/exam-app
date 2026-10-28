@@ -142,6 +142,8 @@ export interface Punch {
   verdict: 'inside' | 'outside' | 'field' | 'network';
   offline?: boolean;
   device?: string;
+  /** Live app: the server refused this punch, with the reason (kept and shown, never counted). */
+  refusal?: string;
 }
 
 /** Worked minutes from paired in/out punches minus breaks; an open "in" counts to `now`. */
@@ -244,7 +246,8 @@ export function geofenceVerdict(pin: { lat: number; lng: number; accuracyM: numb
 
 /* ---------- attendance month ---------- */
 
-export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
+// LV (leave of a type the day engine does not name) and MI (missing check-in) come from the live day engine.
+export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'MI' | 'LOP' | 'FUT' | 'TODAY';
 
 export const DAY_CODE_LABEL: Record<DayCode, string> = {
   P: 'Present',
@@ -254,12 +257,14 @@ export const DAY_CODE_LABEL: Record<DayCode, string> = {
   CL: 'Casual leave',
   EL: 'Earned leave',
   SL: 'Sick leave',
+  LV: 'On leave',
   H: 'Holiday',
   WO: 'Weekly off',
   WFH: 'Work from home',
   OD: 'On duty',
   R: 'Regularisation pending',
   MP: 'Missing check-out',
+  MI: 'Missing check-in',
   LOP: 'Unpaid leave',
   FUT: 'Upcoming',
   TODAY: 'Today',
@@ -288,16 +293,16 @@ export function monthSummary(days: AttendanceDay[], today: Date = new Date(2026,
   // Today counts once checked in late, as the legend counts it under Late (so Present + Late + WFH adds up).
   const lateToday = days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length;
   const present = c('P') + c('L') + c('WFH') + c('OD') + c('HD') * 0.5 + lateToday;
-  const leave = c('CL') + c('EL') + c('SL') + c('HD') * 0.5;
+  const leave = c('CL') + c('EL') + c('SL') + c('LV') + c('HD') * 0.5;
   // An absence in an open month can still be fixed, so it is not unpaid yet; a locked month shows it as LOP.
   const lop = c('LOP');
   const absent = c('A');
   const lateMarks = days.filter((d) => (d.lateMin ?? 0) > 0).length;
   const otMin = days.reduce((a, d) => a + (d.otStatus === 'pending' || d.otStatus === 'comp-off' ? 0 : d.otMin ?? 0), 0);
   const compOffMin = days.reduce((a, d) => a + (d.otStatus === 'comp-off' ? d.otMin ?? 0 : 0), 0);
-  const pending = c('R') + c('MP');
+  const pending = c('R') + c('MP') + c('MI');
   /** Days the person must act on (missing punch, absent) vs regularisations already waiting for approval. */
-  const toFix = days.filter((d) => d.code === 'MP' || d.code === 'A');
+  const toFix = days.filter((d) => d.code === 'MP' || d.code === 'MI' || d.code === 'A');
   const waiting = c('R');
   const payable = days.filter((d) => d.code !== 'FUT' && daysUntil(d.date, today) < 0).length - lop - absent;
   return { counts, present, leave, lop, absent, lateMarks, otMin, otHours: Math.round((otMin / 60) * 100) / 100, compOffMin, pending, toFix, waiting, payable };

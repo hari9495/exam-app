@@ -6,19 +6,24 @@ import { Segment } from '../people/people-kit';
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, ErrorState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { NumberField, TextArea } from '../../components/inputs';
-import { FieldRow, FormField } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, useSaveErrors, useTooEarly } from '../../components/field';
 import { PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
-import { Calendar, TeamCalendar, type CalendarEvent } from '../../components/calendar';
-import { ApprovalTimeline, Timeline, type TimelineItem } from '../../components/timeline';
+import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
+import { ApprovalTimeline, SYSTEM_ACTOR, Timeline, type TimelineItem } from '../../components/timeline';
+import { useToast } from '../../components/notify';
 import { formatDate, formatINR } from '../../lib/format';
+import { useRun } from '../org/org-kit';
+import { LivePicker } from '../desk/service-form';
+import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
+import type { HrBalances, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, MaternityCase, MyLeave, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -64,12 +69,12 @@ const day0 = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const same = (a: Date, b: Date) => day0(a).getTime() === day0(b).getTime();
 const TODAY0 = day0(TODAY);
-/** "12 Oct" */
-const dm = (d: Date) => `${d.getDate()} ${MON[d.getMonth()]}`;
-/** "Sat 10 Oct" */
+/** "12 Oct 2026" (house date format). */
+const dm = (d: Date) => formatDate(d);
+/** "Sat 10 Oct 2026": the weekday as a small lead word. */
 const wdm = (d: Date) => `${WD[d.getDay()]} ${dm(d)}`;
-/** "12–13 Oct", "30 Sep – 2 Oct", "12 Oct" */
-const span = (a: Date, b: Date) => (same(a, b) ? dm(a) : a.getMonth() === b.getMonth() ? `${a.getDate()}–${dm(b)}` : `${dm(a)} – ${dm(b)}`);
+/** "12 Oct 2026", "12 Oct 2026 – 13 Oct 2026" */
+const span = (a: Date, b: Date) => (same(a, b) ? dm(a) : `${dm(a)} – ${dm(b)}`);
 const first = (name: string) => name.split(' ')[0];
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** Chennai office weekly offs and holidays. */
@@ -152,8 +157,7 @@ const othersLine = (list: { text: string }[], label = 'Also off') => (list.lengt
 function absenceDates(a: Absence, withDays = true) {
   const segs = workingSegments(a);
   const n = segs.reduce((t, s) => t + daysUntil(s.end, s.start) + 1, 0);
-  const oneMonth = segs.every((s) => s.start.getMonth() === a.start.getMonth() && s.end.getMonth() === a.start.getMonth());
-  const dates = segs.length > 1 && oneMonth ? `${segs.map((s) => span(s.start, s.end).replace(/ \w+$/, '')).join(' & ')} ${MON[a.start.getMonth()]}` : segs.map((s) => span(s.start, s.end)).join(', ');
+  const dates = segs.map((s) => span(s.start, s.end)).join(' & ');
   return withDays ? `${dates} · ${plural(n, 'day')}` : dates;
 }
 
@@ -179,7 +183,8 @@ const LWP_DATES = [new Date(2026, 7, 21)];
    ===================================================================== */
 
 /** Balance cards; unpaid types show "taken this year" (YX-LV-14). */
-export function BalanceCards({ compact, balances = BALANCES, person = ME.name, onViewPending, onUseCompOff }: { compact?: boolean; balances?: LeaveBalance[]; /** Whose balances: approved leave still ahead shows as "booked", not "used". */ person?: string; onViewPending?: () => void; onUseCompOff?: () => void }) {
+export function BalanceCards({ compact, balances = BALANCES, person = ME.name, onViewPending, onUseCompOff, live }: { compact?: boolean; balances?: LeaveBalance[]; /** Whose balances: approved leave still ahead shows as "booked", not "used". */ person?: string; onViewPending?: () => void; onUseCompOff?: () => void; /** The app: the ledger's balances. */ live?: { balances: LiveBalance[]; onViewPending?: (leaveTypeId: string) => void } }) {
+  if (live) return <LiveBalanceCards {...live} />;
   return (
     <div className={compact ? 'yx-tim-stack' : 'yx-tim-cards'}>
       {balances.map((b) => {
@@ -234,15 +239,16 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
 type ReqAction = 'withdraw' | 'cancel' | 'report' | 'approve' | 'sendback' | 'reject';
 
 export function LeaveRequestView({
-  r,
+  r: rIn,
   viewer = 'emp',
   action,
   surface = 'desk',
   open = true,
   onOpenChange,
   onDecided,
+  live,
 }: {
-  r: LeaveRequestRow;
+  r?: LeaveRequestRow;
   viewer?: 'emp' | 'mgr';
   action?: ReqAction;
   surface?: 'desk' | 'inline';
@@ -250,7 +256,11 @@ export function LeaveRequestView({
   onOpenChange?: (o: boolean) => void;
   /** Called with a short message once the request is approved, sent back, rejected, withdrawn or cancelled. */
   onDecided?: (message: string, action: ReqAction) => void;
+  /** The app: one of my requests, with withdraw and ask to cancel (managers decide in Approvals). */
+  live?: LiveRequestProps;
 }) {
+  if (live) return <LiveLeaveRequestView {...live} />;
+  const r = rIn!;
   const past = day0(r.to) < TODAY0;
   const [dlg, setDlg] = useState<ReqAction | undefined>(action === 'cancel' && past ? 'report' : action);
   const [note, setNote] = useState('');
@@ -261,9 +271,12 @@ export function LeaveRequestView({
     setNote('');
     setTried(false);
   };
+  const { toast } = useToast();
+  // Done = a toast: the parent says it when it keeps the list (onDecided), otherwise this view does.
   const finish = (msg: string, a: ReqAction) => {
     setDone(msg);
-    onDecided?.(msg, a);
+    if (onDecided) onDecided(msg, a);
+    else toast({ title: msg, tone: 'success' });
   };
   const overlap = othersOff(r.person, r.from, r.to);
   const canDecide = viewer === 'mgr' && r.status === 'Pending' && r.approver === ME.name && !done;
@@ -283,7 +296,6 @@ export function LeaveRequestView({
 
   const body = (
     <div className="yx-tim-stack">
-      {done && <InlineAlert tone="success" title={done} />}
       {inline && viewer === 'mgr' && <PersonLabel name={r.person} secondary={`${r.type} · ${dates}`} />}
       <div className="yx-tim-row">
         <Badge tone={statusTone(r)}>{r.status}</Badge>
@@ -325,8 +337,8 @@ export function LeaveRequestView({
         <DrawerFoot main={<Button variant="approve" onClick={() => setDlg('approve')}>Approve</Button>} rest={<><Button onClick={() => setDlg('sendback')}>Send back</Button><Button variant="danger" onClick={() => setDlg('reject')}>Reject</Button></>} />
       )
     ) : r.status === 'Pending' ? (
-      // Waiting on someone else: the blocked Approve with the reason beside it.
-      <DrawerFoot hint={`Waiting for ${r.approver}`} main={<Button variant="approve" disabled>Approve</Button>} />
+      // Waiting on someone else: who decides it, and Close (no Approve to press).
+      <DrawerFoot hint={`Waiting for ${r.approver}: only they can approve it`} rest={closeBtn} />
     ) : (
       // Already decided: only the status and Close.
       <DrawerFoot hint={`${r.status}${r.decided ? ` on ${formatDate(r.decided)}` : ''}`} rest={closeBtn} />
@@ -492,6 +504,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
     <div className="yx-tim-editor" style={phone ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}>
       <div className="yx-tim-form">
         {errors.length > 0 && (
+          <div id="apply-errors" tabIndex={-1}>
           <InlineAlert
             tone="danger"
             title={`Fix ${plural(errors.length, 'thing')} to send this`}
@@ -506,6 +519,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
           >
             <ul className="yx-tim-steps">{errors.map((e) => <li key={e}>{e}</li>)}</ul>
           </InlineAlert>
+          </div>
         )}
         {type === 'LWP' && own && paidLeft && (
           <InlineAlert tone="info" title={`You still have ${plural(free(paidLeft), 'day')} ${paidLeft.name}${paidLeft.pending > 0 ? ` (${paidLeft.pending} more pending)` : ''}`} actions={<Button size="sm" onClick={() => pickType(paidLeft.code as LeaveCode)}>Switch to {paidLeft.name}</Button>}>
@@ -528,7 +542,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
           <FormField label="First day"><Select value={fh} onChange={(v) => v && setFh(v as Half)} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }]} /></FormField>
           <FormField label="Last day"><Select value={th} onChange={(v) => v && setTh(v as Half)} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
         </FieldRow>
-        <FormField label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
+        <FormField id="apply-reason" label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
         {type === 'SL' && <div id={certId}><FormField label="Medical certificate" helper="Needed for more than 2 days. Only HR sees the file; your manager sees whether it's attached and verified."><FileUpload upload={async () => {}} accept={['application/pdf', 'image/jpeg', 'image/png']} /></FormField></div>}
         {own && isLead && <Checkbox label="Delegate my approvals while I'm away" checked={delegate} onChange={setDelegate} />}
         {own && isLead && delegate && (
@@ -573,7 +587,8 @@ const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map(
  * Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next.
  * With `forSomeone` (a manager's reports, or everyone for HR), the first field picks the employee; their balances and approver are used.
  */
-export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, self = ME.name, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[] }) {
+export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, self = ME.name, live, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome } }) {
+  if (live) return open ? <LiveApplyLeavePanel {...live} onClose={() => onOpenChange(false)} /> : null;
   const [draft, setDraft] = useState<LeaveDraft>(() => {
     const type = p.type ?? 'EL';
     const from = p.from ?? DEFAULT_FROM;
@@ -592,14 +607,20 @@ export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: se
     status: 'Pending', applied: TODAY, reason: draft.reason, approver,
   };
   const blockedBy = !person ? 'Pick the employee' : draft.errors > 0 ? `Fix ${plural(draft.errors, 'thing')} above` : null;
+  // Never a disabled Send: pressed too early, the first thing to fix takes focus.
+  const send = () => {
+    if (!blockedBy) return setSent(true);
+    const first = !person ? 'apply-employee' : !draft.reason.trim() ? 'apply-reason' : 'apply-errors';
+    document.getElementById(first)?.focus();
+  };
   const picker = forSomeone && !sent && (
-    <FormField label="Employee" required>
+    <FormField id="apply-employee" label="Employee" required>
       <PersonPicker aria-label="Employee" value={picked} onChange={setPicked} people={forSomeone} />
     </FormField>
   );
   const body = sent ? (
     <InlineAlert
-      tone="success"
+      tone="info"
       title={forSomeone ? `Applied for ${person} · sent to ${approver}` : `Sent to ${approver}`}
       actions={<><Button size="sm" onClick={() => setView('view')}>View request</Button>{!forSomeone && <Button size="sm" onClick={() => setView('withdraw')}>Withdraw</Button>}</>}
     >
@@ -616,10 +637,10 @@ export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: se
       {/* On a phone sheet the reason takes its own line above the buttons. */}
       {blockedBy && <span className="yx-tim-muted" style={{ flexBasis: '100%' }}>{blockedBy}</span>}
       <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-      <Button variant="primary" disabled={!!blockedBy} onClick={() => setSent(true)}>Send request</Button>
+      <Button variant="primary" onClick={send}>Send request</Button>
     </>
   ) : (
-    <DrawerFoot hint={blockedBy} rest={<Button onClick={() => onOpenChange(false)}>Cancel</Button>} main={<Button variant="primary" disabled={!!blockedBy} onClick={() => setSent(true)}>Send request</Button>} />
+    <DrawerFoot hint={blockedBy} rest={<Button onClick={() => onOpenChange(false)}>Cancel</Button>} main={<Button variant="primary" onClick={send}>Send request</Button>} />
   );
   const shown = view ? request : other;
   const action = view && view !== 'view' ? view : undefined;
@@ -659,25 +680,51 @@ export function ApplyLeaveSheet(p: ApplyLeaveProps & { surface?: 'desk' | 'phone
 
 const PEOPLE_WITH_BALANCES = [ME.name, ...Object.keys(PERSON_BALANCES)];
 
-function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost }: { open: boolean; onOpenChange: (o: boolean) => void; person?: string; onPost?: (e: { person: string; code: string; delta: number; reason: string }) => void }) {
+/** What the adjust dialog needs of a balance; the live card passes the leave type id as `code`. */
+type AdjBalance = Pick<LeaveBalance, 'code' | 'name' | 'balance' | 'pending' | 'paid'>;
+type AdjPost = { person: string; code: string; delta: number; reason: string };
+
+function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, balancesOf = balancesFor, people: peopleArg }: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  person?: string;
+  /** Live: resolves once the ledger line is saved, or throws the server's reason (shown in the dialog). */
+  onPost?: (e: AdjPost) => void | Promise<unknown>;
+  balancesOf?: (person: string) => AdjBalance[];
+  people?: { id: string; name: string; role?: string; department?: string }[];
+}) {
   const [person, setPerson] = useState(fixedPerson ?? 'Priya Shankar');
-  const balances = balancesFor(person).filter((b) => b.paid);
+  const balances = balancesOf(fixedPerson ?? person).filter((b) => b.paid);
   const [code, setCode] = useState('EL');
   const [dir, setDir] = useState('add');
-  const [days, setDays] = useState<number | null>(2);
+  const [days, setDays] = useState<number | null>(fixedPerson && peopleArg ? null : 2);
   const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
   const b = balances.find((x) => x.code === code) ?? balances[0];
   // Same "available" figure as the balance cards: days held for a pending request can't be deducted.
-  const free = (x: LeaveBalance) => (x.code === 'CO' ? x.balance : x.balance - x.pending);
+  const free = (x: AdjBalance) => (x.code === 'CO' ? x.balance : x.balance - x.pending);
   const avail = b ? free(b) : 0;
   const delta = (dir === 'add' ? 1 : -1) * (days ?? 0);
   const overDeduct = dir === 'deduct' && !!b && (days ?? 0) > avail;
-  const blockedBy = !days ? 'Enter the days' : overDeduct ? `Only ${plural(avail, 'day')} available to deduct` : !reason.trim() ? 'Add a reason' : null;
-  const people = PEOPLE_WITH_BALANCES.map((n) => {
+  // Never a disabled Post: pressed too early, the errors show and the first field takes focus.
+  const tooEarly = useTooEarly([
+    ...(!b ? [{ fieldId: 'adj-type', message: 'This person has no leave with a balance to adjust.' }] : []),
+    ...(!days ? [{ fieldId: 'adj-days', message: 'Enter the days.' }] : overDeduct ? [{ fieldId: 'adj-days', message: `Only ${plural(avail, 'day')} available to deduct.` }] : []),
+    ...(reason.trim().length < 3 ? [{ fieldId: 'adj-reason', message: 'Say why (it goes on the ledger and the audit log).' }] : []),
+  ]);
+  const people = peopleArg ?? PEOPLE_WITH_BALANCES.map((n) => {
     const t = TEAM.find((p) => p.name === n);
     const other = n === ME.name ? { role: ME.role, dept: ME.department } : ON_NOTICE[n];
     return { id: n, name: n, role: t?.role ?? other?.role ?? '', department: t?.dept ?? other?.dept ?? '' };
   });
+  const post = () => {
+    if (tooEarly.stop()) return;
+    void run('post', async () => {
+      await onPost?.({ person, code: b!.code, delta, reason: reason.trim() });
+      onOpenChange(false);
+      setReason('');
+    });
+  };
   return (
     <Dialog
       open={open}
@@ -686,18 +733,18 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost }
       description="Adjustments are saved with your reason. They can't be edited later, only reversed."
       footer={
         <>
-          {blockedBy && <span className="yx-tim-muted" style={{ alignSelf: 'center' }}>{blockedBy}</span>}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!!blockedBy} onClick={() => { onPost?.({ person, code: b.code, delta, reason }); onOpenChange(false); setReason(''); }}>Post adjustment</Button>
+          <Button variant="primary" loading={busy === 'post'} onClick={post}>Post adjustment</Button>
         </>
       }
     >
       <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="Not posted">{error}</InlineAlert>}
         {!fixedPerson && <FormField label="Employee" required><PersonPicker aria-label="Employee" value={person} onChange={(v) => v && setPerson(v)} people={people} /></FormField>}
-        <FormField label="Leave type" required><Select value={b?.code ?? code} onChange={(v) => v && setCode(v)} options={balances.map((x) => ({ value: x.code, label: `${x.name} · ${plural(free(x), 'day')} available` }))} /></FormField>
+        <FormField id="adj-type" label="Leave type" required error={tooEarly.errorOf('adj-type')}><Select value={b?.code ?? code} onChange={(v) => v && setCode(v)} options={balances.map((x) => ({ value: x.code, label: `${x.name} · ${plural(free(x), 'day')} available` }))} /></FormField>
         <FormField label="Direction"><Segment label="Direction" value={dir} onChange={setDir} options={[{ value: 'add', label: 'Add' }, { value: 'deduct', label: 'Deduct' }]} /></FormField>
-        <FormField label="Days" required><NumberField value={days} decimals min={0} max={dir === 'deduct' && b ? avail : undefined} onChange={setDays} /></FormField>
-        <FormField label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
+        <FormField id="adj-days" label="Days" required helper="Half days are fine, e.g. 1.5." error={tooEarly.errorOf('adj-days')}><NumberField value={days} decimals min={0} max={100} onChange={setDays} /></FormField>
+        <FormField id="adj-reason" label="Reason" required error={tooEarly.errorOf('adj-reason')}><TextArea rows={2} value={reason} onChange={setReason} maxLength={500} /></FormField>
         {b && <p className="yx-tim-muted">Available after: {plural(avail + delta, 'day')}{b.code !== 'CO' && b.pending > 0 ? ` · ${plural(b.pending, 'day')} held for a pending request` : ''}</p>}
       </div>
     </Dialog>
@@ -740,7 +787,9 @@ const OPTIONAL_DEFAULT = ['o1'];
 const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready' }: { persona?: LeavePersona; state?: ViewState }) {
+/** TIM-17: the story shows the sample (persona, state); the app passes `live` (My leave, the signed-in employee). */
+export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome }) {
+  if (live) return <LiveLeaveHomeScreen live={live} />;
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
   const [apply, setApply] = useState(false);
   // "Use comp-off" opens Apply leave on Comp-off; the header button on the default type.
@@ -755,7 +804,8 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready' }: { persona?
   const [optional, setOptional] = useState(state === 'empty' ? [] : OPTIONAL_DEFAULT);
   const [open, setOpen] = useState<{ r: LeaveRequestRow; action?: ReqAction; viewer: 'emp' | 'mgr' } | null>(null);
   const [gone, setGone] = useState<string[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setMsg = (m: string) => void toast({ title: m, tone: 'success' });
   const [reminded, setReminded] = useState<string[]>([]);
   // Retry re-runs the load: back to loading, then the page.
   const [retried, setRetried] = useState<ViewState | null>(null);
@@ -792,7 +842,7 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready' }: { persona?
         <ErrorState title={persona === 'emp' ? "Your leave didn't load" : "Leave didn't load"} description={persona === 'emp' ? 'Try again. Your requests are safe.' : 'Try again. No requests were changed.'} onRetry={retry} reference="LV-8820" />
       ) : (
         <>
-          {msg && <InlineAlert tone="success" title={msg} />}
+          
           {persona === 'emp' && (
             <>
               {/* No requests yet: the full year's credit, nothing used or pending. A withdrawn request leaves the pending count. */}
@@ -951,7 +1001,8 @@ export function LeaveHomePhone({ persona = 'emp' }: { persona?: 'emp' | 'mgr' })
   };
   const [holidays, setHolidays] = useState(false);
   const [optional, setOptional] = useState(OPTIONAL_DEFAULT);
-  const [msg, setMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setMsg = (m: string) => void toast({ title: m, tone: 'success' });
   const [open, setOpen] = useState<{ r: LeaveRequestRow; action?: ReqAction } | null>(null);
   const waiting = LEAVE_REQUESTS.filter((r) => r.status === 'Pending' && r.approver === ME.name);
   const otherWaiting = Math.max(0, timeCounts(ME).Requests - waiting.length);
@@ -966,7 +1017,7 @@ export function LeaveHomePhone({ persona = 'emp' }: { persona?: 'emp' | 'mgr' })
     <PhoneFrame tab="time" title={persona === 'emp' ? 'Leave' : 'Team leave'}>
       {persona === 'emp' ? (
         <div className="yx-tim-stack">
-          {msg && <InlineAlert tone="success" title={msg} />}
+          
           <Button variant="primary" fullWidth icon={CalendarPlus} onClick={() => startApply()}>Apply leave</Button>
           <BalanceCards compact onViewPending={() => setOpen({ r: lr1 })} onUseCompOff={() => startApply('CO')} />
           <Card title="My requests"><MyRequests rows={LEAVE_REQUESTS.filter((r) => r.person === ME.name)} onOpen={(r, action) => setOpen({ r, action })} /></Card>
@@ -1027,7 +1078,8 @@ export function LeaveRequestDetail({ id = 'lr1', persona = 'emp', action, surfac
   const [cur, setCur] = useState<{ r: LeaveRequestRow; action?: ReqAction } | null>({ r: LEAVE_REQUESTS.find((x) => x.id === id)!, action });
   // Decisions made in the drawer update the list behind it: new status, or gone (withdrawn, sent back).
   const [changed, setChanged] = useState<Record<string, ReqAction>>({});
-  const [msg, setMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setMsg = (m: string) => void toast({ title: m, tone: 'success' });
   const NEW_STATUS: Partial<Record<ReqAction, LeaveRequestRow['status']>> = { approve: 'Approved', reject: 'Rejected', cancel: 'Cancel requested' };
   const rows = base
     .filter((r) => changed[r.id] !== 'withdraw' && changed[r.id] !== 'sendback')
@@ -1065,14 +1117,14 @@ export function LeaveRequestDetail({ id = 'lr1', persona = 'emp', action, surfac
       );
     return (
       <PhoneFrame tab="requests" title={listTitle}>
-        <div className="yx-tim-stack">{msg && <InlineAlert tone="success" title={msg} />}{list}</div>
+        <div className="yx-tim-stack">{list}</div>
       </PhoneFrame>
     );
   }
   return (
     <TimePage active={persona === 'emp' ? 'My leave' : 'Requests'} counts={navCounts}>
       <PageHeader title={persona === 'emp' ? 'My leave' : 'Leave requests'} />
-      {msg && <InlineAlert tone="success" title={msg} />}
+      
       {/* The list stays behind the drawer, so closing it lands somewhere useful. */}
       <Card title={listTitle}>{list}</Card>
       {cur && <LeaveRequestView key={`${cur.r.id}-${cur.action}`} r={cur.r} viewer={persona} action={cur.action} open onOpenChange={(o) => !o && setCur(null)} onDecided={onDecided(cur.r)} />}
@@ -1170,13 +1222,16 @@ const requestAbsence = (r: LeaveRequestRow): Absence => ({
 /** "1 & 3 Oct · 2 days": a request's dates written the same way as in the Away lists. */
 const reqDates = (r: LeaveRequestRow) => absenceDates(requestAbsence(r));
 
-export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state = 'ready' }: { persona?: 'mgr' | 'hr'; view?: 'team' | 'month'; state?: ViewState }) {
+/** TIM-20: the story shows the sample; the app passes `live` (a manager's team, HR's people in scope). */
+export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state = 'ready', live }: { persona?: 'mgr' | 'hr'; view?: 'team' | 'month'; state?: ViewState; live?: LiveTeamLeave }) {
+  if (live) return <LiveTeamLeaveCalendar live={live} />;
   const hr = persona === 'hr';
   // HR sees each person's location beside the team (Hosur plant people follow a different calendar).
   const members = (hr ? TEAM : myReports()).map((p) => ({ id: p.id, name: p.name, team: hr ? `${p.dept} · ${p.location}` : p.dept }));
   const ids = members.map((m) => m.id);
   const [review, setReview] = useState<LeaveRequestRow | null>(null);
   const [gone, setGone] = useState<string[]>([]);
+  const { toast } = useToast();
   const absences = calendarAbsences(ids, gone);
   const phoneWidth = useMedia('(max-width: 600px)');
   const days = useMedia('(max-width: 1100px)') ? 7 : 14;
@@ -1232,7 +1287,7 @@ export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state 
       <PageHeader
         title="Leave calendar"
         description={hr ? 'All teams · all locations' : `Your team · ${ME.department} · ${plural(members.length, 'person', 'people')}`}
-        actions={empty || loading ? <span className="yx-tim-row"><span className="yx-tim-muted">{loading ? 'Loading…' : 'Nothing to export in this range'}</span><Button icon={Download} disabled>Export</Button></span> : <Button icon={Download} onClick={exportCsv}>Export {exLabel}</Button>}
+        actions={empty || loading ? <Button icon={Download} onClick={() => toast({ title: loading ? 'Still loading: export once the calendar shows' : 'Nothing to export in this range', tone: 'warning' })}>Export</Button> : <Button icon={Download} onClick={exportCsv}>Export {exLabel}</Button>}
       />
       {loading ? <LoadingBlock rows={8} /> : empty ? (
         <EmptyState title={`No one is away ${span(start, addDays(start, 27))}`} description={hr ? 'Leave shows here as soon as someone requests it.' : 'Leave shows here as soon as someone in your team requests it.'} action={<Button onClick={() => setStart(addDays(start, 28))}>Next 4 weeks</Button>} />
@@ -1264,7 +1319,7 @@ export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state 
           </TabsContent>
         </Tabs>
       )}
-      {review && <LeaveRequestView key={review.id} r={review} viewer="mgr" open onOpenChange={(o) => !o && setReview(null)} onDecided={() => setGone((g) => [...g, review.id])} />}
+      {review && <LeaveRequestView key={review.id} r={review} viewer="mgr" open onOpenChange={(o) => !o && setReview(null)} onDecided={(m) => { setGone((g) => [...g, review.id]); toast({ title: m, tone: 'success' }); }} />}
     </TimePage>
   );
 }
@@ -1274,10 +1329,11 @@ export function TeamLeaveCalendarPhone() {
   const [days, setDays] = useState(14);
   const [review, setReview] = useState<LeaveRequestRow | null>(null);
   const [gone, setGone] = useState<string[]>([]);
+  const { toast } = useToast();
   if (review)
     return (
       <PhoneFrame tab="time" title="Leave request" back={<Button size="sm" icon={ChevronLeft} onClick={() => setReview(null)}>Back</Button>}>
-        <LeaveRequestView r={review} viewer="mgr" surface="inline" onDecided={() => setGone((g) => [...g, review.id])} />
+        <LeaveRequestView r={review} viewer="mgr" surface="inline" onDecided={(m) => { setGone((g) => [...g, review.id]); toast({ title: m, tone: 'success' }); }} />
       </PhoneFrame>
     );
   return (
@@ -1357,11 +1413,14 @@ function projectBalance(b: LeaveBalance, on: Date, person = ME.name) {
   return { value, note };
 }
 
-export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg }: {
+export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, live }: {
   persona?: 'emp' | 'hr'; adjustOpen?: boolean; surface?: 'desk' | 'phone';
   /** HR view only: whose card (default the signed-in employee, ME). */
   person?: string;
+  /** The app (HR › Leave balances): everyone in HR's scope, one card at a time. */
+  live?: LiveLeaveCard;
 }) {
+  if (live) return <LiveLeaveCardScreen live={live} />;
   const person = persona === 'hr' && personArg ? personArg : ME.name;
   const isMe = person === ME.name;
   const who = isMe ? ME : TEAM.find((p) => p.name === person);
@@ -1473,7 +1532,8 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
   // "No eligible days": 26 Sep was already claimed, so that claim shows behind the empty state.
   const [claimed, setClaimed] = useState(state === 'sent' || state === 'none');
   const [withdrawing, setWithdrawing] = useState<CompOffRequest | null>(null);
-  const [withdrawnMsg, setWithdrawnMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [tried, setTried] = useState(false);
   const sentClaim: CompOffRequest = { id: 'co-new', person: ME.name, worked: CLAIM_DAY, days: claimDays, status: 'Pending', applied: TODAY, approver: ME.manager, useBy: CLAIM_USE_BY, reason };
   const pending = [...COMP_OFF_REQUESTS.filter((r) => r.person === ME.name && r.status === 'Pending'), ...(claimed ? [sentClaim] : [])];
   // The balance card counts the claims still waiting as pending.
@@ -1490,7 +1550,7 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
     />
   ) : st === 'sent' ? (
     <div className="yx-tim-stack">
-      <InlineAlert tone="success" title={`Sent to ${ME.manager}`}>
+      <InlineAlert tone="info" title={`Sent to ${ME.manager}`}>
         {amountText} comp-off for {wdm(CLAIM_DAY)}. It's listed on My leave until it's decided.
       </InlineAlert>
       <div className="yx-tim-row"><span className="yx-tim-muted">Use by {dm(CLAIM_USE_BY)}</span><DueBadge date={CLAIM_USE_BY} /></div>
@@ -1503,7 +1563,7 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
       <FormField label="Claim" helper={CLAIM_WORKED < FULL_DAY_MIN ? `Full day needs 8 h; you worked ${worked} on ${dm(CLAIM_DAY)}.` : undefined}>
         <RadioGroup aria-label="Claim" value={amount} onChange={setAmount} orientation="horizontal" options={[{ value: 'half', label: 'Half day (4 h or more)', disabled: CLAIM_WORKED < HALF_DAY_MIN }, { value: 'full', label: 'Full day (8 h or more)', disabled: CLAIM_WORKED < FULL_DAY_MIN }]} />
       </FormField>
-      <FormField label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
+      <FormField id="co-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
       <section className="yx-tim-effect">
         <strong>What you'll get</strong>
         <p className="yx-tim-muted">+{plural(claimDays, 'day')} comp-off after {ME.manager} approves</p>
@@ -1521,7 +1581,7 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
     </div>
   );
   const footer = st === 'ready' ? (
-    <DrawerFoot hint={reason.trim() ? undefined : 'Add a reason'} rest={<Button onClick={() => setOpen(false)}>Cancel</Button>} main={<Button variant="primary" disabled={!reason.trim()} onClick={() => { setSt('sent'); setClaimed(true); setWithdrawnMsg(null); }}>Send claim</Button>} />
+    <DrawerFoot rest={<Button onClick={() => setOpen(false)}>Cancel</Button>} main={<Button variant="primary" onClick={() => { setTried(true); if (!reason.trim()) return void document.getElementById('co-reason')?.focus(); setSt('sent'); setClaimed(true); }}>Send claim</Button>} />
   ) : <Button onClick={() => setOpen(false)}>Close</Button>;
   // The page behind is My leave (balances and claims waiting), with the button to claim again.
   const claimButton = <Button icon={CalendarPlus} onClick={() => { setSt(claimed ? 'none' : 'ready'); setOpen(true); }}>Claim comp-off</Button>;
@@ -1535,16 +1595,15 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
       cancelLabel="Keep claim"
       destructive
       onConfirm={() => {
-        if (withdrawing) setWithdrawnMsg(`Comp-off claim for ${wdm(withdrawing.worked)} withdrawn`);
+        if (withdrawing) toast({ title: `Comp-off claim for ${wdm(withdrawing.worked)} withdrawn`, tone: 'success' });
         if (withdrawing?.id === 'co-new') setClaimed(false);
         setWithdrawing(null);
       }}
     />
   );
-  const pendingCard = (pending.length > 0 || withdrawnMsg) && (
+  const pendingCard = pending.length > 0 && (
     <>
-    {withdrawnMsg && <InlineAlert tone="success" title={withdrawnMsg} />}
-    {pending.length > 0 && <Card title={`Comp-off waiting for approval (${pending.length})`}>
+    {<Card title={`Comp-off waiting for approval (${pending.length})`}>
       <ul className="yx-tim-list">
         {pending.map((r) => (
           <li key={r.id}>
@@ -1606,8 +1665,10 @@ function optionalSavedText(before: string[], after: string[]) {
   return after.length === 0 ? 'Optional holidays cleared' : `Optional holidays saved: ${names(after)}`;
 }
 
-function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = OPTIONAL_DEFAULT, transferred = false, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; chosen?: string[]; transferred?: boolean; /** Saves the picks (My leave keeps them and recounts its button). */ onSave?: (sel: string[]) => void }) {
+function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = OPTIONAL_DEFAULT, transferred = false, onSave, live }: { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; chosen?: string[]; transferred?: boolean; /** Saves the picks (My leave keeps them and recounts its button). */ onSave?: (sel: string[]) => void; /** The app: the calendar's optional days, each choice sent to the API. */ live?: { data: MyLeave; onChoose: LiveLeaveHome['onChooseHoliday'] } }) {
+  if (live) return open ? <LiveOptionalHolidaysPanel {...live} onClose={() => onOpenChange(false)} /> : null;
   const [sel, setSel] = useState<string[]>(chosen);
+  const { toast } = useToast();
   // Cancel or closing drops unsaved ticks.
   const dismiss = () => {
     setSel(chosen);
@@ -1663,7 +1724,7 @@ function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = 
     <DrawerFoot
       hint={changed ? undefined : full ? 'No changes to save' : 'Tick a holiday to save'}
       rest={<Button onClick={dismiss}>Cancel</Button>}
-      main={<Button variant="primary" disabled={!changed} onClick={() => { onSave?.(sel); onOpenChange(false); }}>Save choices</Button>}
+      main={<Button variant="primary" onClick={() => { if (!changed) return void toast({ title: full ? 'No changes to save' : 'Tick a holiday to save', tone: 'warning' }); onSave?.(sel); onOpenChange(false); }}>Save choices</Button>}
     />
   );
   const onSheet = (o: boolean) => (o ? onOpenChange(true) : dismiss());
@@ -1674,13 +1735,14 @@ function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = 
 export function OptionalHolidaysSheet({ surface = 'desk', chosen = ['o1'], transferred = false }: { surface?: 'desk' | 'phone'; chosen?: string[]; transferred?: boolean }) {
   const [open, setOpen] = useState(true);
   const [saved, setSaved] = useState(chosen);
-  const [msg, setMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setMsg = (m: string) => void toast({ title: m, tone: 'success' });
   const n = transferred ? 1 : OPTIONAL_ALLOWED;
   const panel = <OptionalHolidaysPanel key={saved.join()} open={open} onOpenChange={setOpen} surface={surface} chosen={saved} transferred={transferred} onSave={(s) => { setMsg(optionalSavedText(saved, s)); setSaved(s); }} />;
   // Behind the sheet: the saved choice and the button that opens it again.
   const behind = (
     <div className="yx-tim-stack">
-      {msg && <InlineAlert tone="success" title={msg} />}
+      
       <Card title="Upcoming holidays">
         <HolidayList optional={saved} />
         <Button size="sm" onClick={() => setOpen(true)}>{optionalText(saved, n)}</Button>
@@ -1706,6 +1768,7 @@ export function EncashmentRequest({ surface = 'desk', days: d0 = 5, blocked }: {
   const [sent, setSent] = useState(false);
   const [withdrawn, setWithdrawn] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  const { toast } = useToast();
   const el = BALANCES.find((b) => b.code === 'EL')!;
   const available = el.balance - el.pending;
   const max = Math.max(0, Math.min(ENCASH.maxPerYear, available - ENCASH.minLeft));
@@ -1735,17 +1798,17 @@ export function EncashmentRequest({ surface = 'desk', days: d0 = 5, blocked }: {
       {plural(ENCASH_WAITING.days, 'day')} Earned leave, sent {dm(ENCASH_WAITING.sent)} ({plural(-daysUntil(ENCASH_WAITING.sent, TODAY), 'day')} ago), waiting for {ME.manager}. You can send another once it's decided or withdrawn.
     </InlineAlert>
   ) : sent ? (
-    <InlineAlert tone="success" title={`Sent to ${ME.manager}`}>{plural(n, 'day')} Earned leave, {formatINR(amount)} before tax, paid in October payroll once approved. It's listed on My leave, and its days are held from your balance, until it's decided.</InlineAlert>
+    <InlineAlert tone="info" title={`Sent to ${ME.manager}`}>{plural(n, 'day')} Earned leave, {formatINR(amount)} before tax, paid in October payroll once approved. It's listed on My leave, and its days are held from your balance, until it's decided.</InlineAlert>
   ) : (
     <div className="yx-tim-form">
-      {withdrawn && <InlineAlert tone="success" title="Earlier request withdrawn" />}
       {/* Only earned leave can be encashed, so the type is a fact, not a choice. */}
       <dl className="yx-tim-effect__row"><dt>Leave type</dt><dd style={{ textAlign: 'end' }}>Earned leave · {available} available<br /><span className="yx-tim-note">{el.balance} days, {el.pending} pending</span></dd></dl>
-      <FormField label="Days to encash" required helper={error ? undefined : max < ENCASH.maxPerYear ? `You can encash up to ${plural(max, 'day')} (${ENCASH.minLeft} of your ${available} must remain)` : `Up to ${ENCASH.maxPerYear} days a year`} error={error}>
+      <FormField id="enc-days" label="Days to encash" required helper={error ? undefined : max < ENCASH.maxPerYear ? `You can encash up to ${plural(max, 'day')} (${ENCASH.minLeft} of your ${available} must remain)` : `Up to ${ENCASH.maxPerYear} days a year`} error={error}>
         <div className="yx-tim-row">
-          <IconButton variant="secondary" icon={Minus} label="Fewer days" disabled={n <= 1} onClick={() => setDays(Math.max(1, n - 1))} />
+          {/* At a limit the steppers stay pressable and say why. */}
+          <IconButton variant="secondary" icon={Minus} label="Fewer days" onClick={() => (n <= 1 ? toast({ title: 'Encash at least 1 day', tone: 'warning' }) : setDays(Math.max(1, n - 1)))} />
           <NumberField value={days} onChange={setDays} aria-label="Days" min={1} />
-          <IconButton variant="secondary" icon={Plus} label="More days" disabled={n >= max} onClick={() => setDays(Math.min(max, n + 1))} />
+          <IconButton variant="secondary" icon={Plus} label="More days" onClick={() => (n >= max ? toast({ title: `You can encash at most ${plural(max, 'day')}`, tone: 'warning' }) : setDays(Math.min(max, n + 1)))} />
         </div>
       </FormField>
       <section className="yx-tim-effect" aria-live="polite">
@@ -1764,10 +1827,10 @@ export function EncashmentRequest({ surface = 'desk', days: d0 = 5, blocked }: {
     </div>
   );
   const footer = waiting || sent ? <Button onClick={() => setOpen(false)}>Close</Button> : (
-    <DrawerFoot hint={error ? 'Fix the days to send' : undefined} rest={<Button onClick={() => setOpen(false)}>Cancel</Button>} main={<Button variant="primary" disabled={!!error} onClick={() => setSent(true)}>Send request</Button>} />
+    <DrawerFoot hint={error ? 'Fix the days to send' : undefined} rest={<Button onClick={() => setOpen(false)}>Cancel</Button>} main={<Button variant="primary" onClick={() => (error ? document.getElementById('enc-days')?.focus() : setSent(true))}>Send request</Button>} />
   );
   const withdrawDialog = (
-    <ConfirmDialog open={confirmWithdraw} onOpenChange={setConfirmWithdraw} title="Withdraw this encashment request?" consequence={`It hasn't been approved yet, so it's withdrawn at once. Nothing is paid for these ${plural(ENCASH_WAITING.days, 'day')}.`} confirmLabel="Withdraw request" destructive onConfirm={() => { setConfirmWithdraw(false); setWithdrawn(true); }} />
+    <ConfirmDialog open={confirmWithdraw} onOpenChange={setConfirmWithdraw} title="Withdraw this encashment request?" consequence={`It hasn't been approved yet, so it's withdrawn at once. Nothing is paid for these ${plural(ENCASH_WAITING.days, 'day')}.`} confirmLabel="Withdraw request" destructive onConfirm={() => { setConfirmWithdraw(false); setWithdrawn(true); toast({ title: 'Earlier request withdrawn', tone: 'success' }); }} />
   );
   // Behind the drawer: My leave with the balances and the button that opens it again.
   // The waiting request shows above the balances, which hold its days as pending.
@@ -1800,7 +1863,8 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
   const [date, setDate] = useState<Date | null>(null);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setMsg = (m: string) => void toast({ title: m, tone: 'success' });
   const [open, setOpen] = useState(true);
   // HR's Extend / Early return change the last day, so the meter, return date and pay effect recompute.
   const [end, setEnd] = useState(info.to);
@@ -1842,7 +1906,7 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
   const cfg = dlg ? dlgCfg[dlg] : null;
   const body = (
     <div className="yx-tim-stack">
-      {msg && <InlineAlert tone="success" title={msg} />}
+      
       <div className="yx-tim-row"><Badge tone="info">{info.title}</Badge><span className="yx-tim-muted">{formatDate(info.from)} – {formatDate(end)}{info.weeks && end === info.to ? ` (${info.weeks})` : ''}</span></div>
       <Meter label="Absence progress" value={dayN} max={total} valueText={`Day ${dayN} of ${total}`} />
       <ul className="yx-tim-list">
@@ -1924,6 +1988,661 @@ export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface =
       <PageHeader title={persona === 'emp' ? 'My leave' : `${info.who}`} />
       {page}
       <Drawer open={open} onOpenChange={setOpen} title={`${info.title} · ${info.who}`} subtitle="Long-absence status">{body}</Drawer>
+    </TimePage>
+  );
+}
+
+/* =====================================================================
+   Live: the same designs filled with the API's data (apps/web /yx/time/leave, /team and /balances).
+   The pages keep the API glue and say "done" with a toast; these parts keep the load states, validation and errors.
+   ===================================================================== */
+
+/** Me › Leave in the app (TIM-17, with TIM-18 / 19 / 23 opening from it). */
+export interface LiveLeaveHome {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyLeave | null;
+  /** The live summary from the server's own rules (days counted, sandwich, holidays, balance after, who else is off). */
+  onPreview: (input: Omit<LeaveInput, 'reason' | 'delegateUserId' | 'certificate'>) => Promise<LeavePlan>;
+  onApply: (input: LeaveInput) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+  onCancel: (id: string, reason: string) => Promise<unknown>;
+  onChooseHoliday: (holidayId: string, choose: boolean) => Promise<unknown>;
+  onFindPeople: (q: string) => Promise<LivePersonOption[]>;
+  /** Opens Apply leave at once (a link from Home, Ctrl K › N L). */
+  startApplying?: boolean;
+}
+
+/** Team leave in the app (TIM-20): the page loads the range asked for. */
+export interface LiveTeamLeave {
+  state: LoadState;
+  onRetry?: () => void;
+  data: LiveCalendarData | null;
+  onRange: (from: string, to: string) => void;
+  /** Where leave is approved (the shared Approvals inbox). */
+  approvalsHref: string;
+  onNavigate: (href: string) => void;
+}
+
+/** HR › Leave balances in the app (TIM-21 HR): one person's card at a time, adjust with a reason. */
+export interface LiveLeaveCard {
+  state: LoadState;
+  onRetry?: () => void;
+  data: HrBalances | null;
+  onLedger: (employeeId: string) => Promise<LedgerRow[]>;
+  onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+}
+
+const isoDate = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y!, m! - 1, d!);
+};
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isoAdd = (s: string, n: number) => isoOf(addDays(isoDate(s), n));
+const fd = (s: string) => formatDate(isoDate(s));
+const isoSpan = (a: string, b: string) => (a === b ? fd(a) : `${fd(a)} – ${fd(b)}`);
+const daysWord = (n: number) => plural(n, 'day');
+
+/** Loading, could not load and no access: the design's own states. */
+function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
+  if (state === 'loading') return <LoadingBlock rows={8} />;
+  if (state === 'error') return <ErrorState title={`${what} didn't load`} description="Try again. Nothing was changed." onRetry={onRetry} />;
+  if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what.toLowerCase()} />;
+  return <>{children}</>;
+}
+
+type LiveBalance = MyLeave['balances'][number];
+
+/** The design's balance cards with the ledger's figures; unpaid types show "taken this year" (YX-LV-14). */
+function LiveBalanceCards({ balances, onViewPending }: { balances: LiveBalance[]; onViewPending?: (leaveTypeId: string) => void }) {
+  // Maternity and paternity are per event (no balance), so they are only in the apply list.
+  const shown = balances.filter((b) => b.hasBalance || b.kind === 'lop');
+  if (!shown.length) return <EmptyState compact title="No leave types yet" description="HR has not given you a leave policy yet." />;
+  return (
+    <div className="yx-tim-cards">
+      {shown.map((b) => (
+        <Card key={b.leaveTypeId} title={b.name} actions={b.paid ? undefined : <Badge tone="neutral">Unpaid</Badge>}>
+          {b.hasBalance ? (
+            <>
+              <p className="yx-tim-big">{b.available} <span className="yx-tim-muted">{b.available === 1 ? 'day' : 'days'} available</span></p>
+              {b.entitlement !== null && <Meter label={`${b.name} taken`} value={b.takenThisYear} max={Math.max(b.entitlement, b.takenThisYear, 1)} valueText={`${b.takenThisYear} taken this year · ${b.entitlement} a year`} />}
+              <p className="yx-tim-note">Balance {b.balance}</p>
+              {b.pending > 0 && (
+                <div className="yx-tim-row">
+                  <span className="yx-tim-muted">Pending {daysWord(b.pending)}</span>
+                  {onViewPending && <Button size="sm" onClick={() => onViewPending(b.leaveTypeId)}>View request</Button>}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="yx-tim-big">{b.takenThisYear} <span className="yx-tim-muted">{b.takenThisYear === 1 ? 'day' : 'days'} taken this year</span></p>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+const halvesText = (r: LiveRequest) => `${r.fromHalf === 'second' ? ' · from the second half' : ''}${r.toHalf === 'first' ? ' · until the first half' : ''}`;
+/** Approved leave can be cancelled up to the start of last month (the API's own limit). */
+const cancellable = (r: LiveRequest, today: string) => r.status === 'approved' && r.to >= isoAdd(`${today.slice(0, 7)}-01`, -31);
+
+function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
+  const d = live.data;
+  const [apply, setApply] = useState(Boolean(live.startApplying));
+  // Asked again while already on this page (Ctrl K, N L): open the sheet then too, not only on first load.
+  useEffect(() => {
+    if (live.startApplying) setApply(true);
+  }, [live.startApplying]);
+  const [open, setOpen] = useState<{ r: LiveRequest; action?: 'withdraw' | 'cancel' } | null>(null);
+  const [holidays, setHolidays] = useState(false);
+  const today = d ? isoDate(d.today) : TODAY0;
+  const optional = d ? d.holidays.list.filter((h) => h.kind === 'optional' || h.kind === 'restricted') : [];
+  const chosen = optional.filter((h) => h.chosen).length;
+  const limit = d?.holidays.calendar?.optionalLimit ?? 0;
+  const upcoming = d ? d.holidays.list.filter((h) => h.on >= d.today && (!(h.kind === 'optional' || h.kind === 'restricted') || h.chosen)) : [];
+  return (
+    <TimePage active="My leave">
+      <PageHeader
+        title="My leave"
+        description={d ? `Leave year ${fd(d.year.start)} – ${fd(d.year.end)}${d.holidays.calendar ? ` · ${d.holidays.calendar.name}` : ''}` : undefined}
+        actions={live.state === 'ready' ? <Button variant="primary" icon={CalendarPlus} onClick={() => setApply(true)}>Apply leave</Button> : undefined}
+      />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="Your leave">
+        {d && (
+          <>
+            <BalanceCards
+              live={{
+                balances: d.balances,
+                onViewPending: (typeId) => {
+                  const r = d.requests.find((x) => x.status === 'pending' && x.type?.id === typeId);
+                  if (r) setOpen({ r });
+                },
+              }}
+            />
+            <div className="yx-tim-grid">
+              <div data-span="7">
+                <Card title="My requests">
+                  {d.requests.length === 0 ? (
+                    <EmptyState compact title="No leave requests yet" description="Apply for leave and it will show here with its status." action={<Button variant="primary" icon={CalendarPlus} onClick={() => setApply(true)}>Apply leave</Button>} />
+                  ) : (
+                    <ul className="yx-tim-list" aria-label="My leave requests">
+                      {d.requests.map((r) => (
+                        <li key={r.id}>
+                          <span className="yx-tim-list__main" style={MAIN}>
+                            <strong>{r.type?.name ?? 'Leave'} · {isoSpan(r.from, r.to)}</strong>
+                            <span className="yx-tim-muted">{daysWord(r.days)}{halvesText(r)}{r.certificate !== 'none' ? ` · certificate ${r.certificate === 'verified' ? 'verified by HR' : 'to give HR'}` : ''}</span>
+                            <span className="yx-tim-row">
+                              <LeaveStatusBadge status={r.status} />
+                              {r.from >= d.today && <DueBadge date={isoDate(r.from)} today={today} />}
+                            </span>
+                          </span>
+                          <span className="yx-tim-row">
+                            <Button size="sm" onClick={() => setOpen({ r })}>View</Button>
+                            {r.status === 'pending' && <Button size="sm" onClick={() => setOpen({ r, action: 'withdraw' })}>Withdraw</Button>}
+                            {cancellable(r, d.today) && <Button size="sm" onClick={() => setOpen({ r, action: 'cancel' })}>Ask to cancel</Button>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </div>
+              <div data-span="5">
+                <Card title="Upcoming holidays">
+                  {!d.holidays.calendar ? (
+                    <EmptyState compact title="No holiday calendar yet" description="HR has not set up holidays for your location." />
+                  ) : (
+                    <>
+                      {upcoming.length === 0 ? <p className="yx-tim-muted">No more holidays this year.</p> : (
+                        <ul className="yx-tim-list">
+                          {upcoming.map((h) => (
+                            <li key={h.id} style={{ flexWrap: 'nowrap' }}>
+                              <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}{h.halfDay ? ' (half day)' : ''}</span><span className="yx-tim-muted">{WD[isoDate(h.on).getDay()]} {fd(h.on)}{h.chosen ? ' · Optional' : ''}</span></span>
+                              <DueBadge date={isoDate(h.on)} today={today} />
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {optional.length > 0 && <Button size="sm" onClick={() => setHolidays(true)}>Optional holidays · {chosen} chosen · {Math.max(0, limit - chosen)} left</Button>}
+                    </>
+                  )}
+                </Card>
+              </div>
+            </div>
+            <ApplyLeavePanel open={apply} onOpenChange={setApply} live={{ data: d, live }} />
+            {open && <LeaveRequestView key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null) }} />}
+            <OptionalHolidaysPanel open={holidays} onOpenChange={setHolidays} live={{ data: d, onChoose: live.onChooseHoliday }} />
+          </>
+        )}
+      </LiveStates>
+    </TimePage>
+  );
+}
+
+type LiveRequestProps = { r: LiveRequest; data: MyLeave; action?: 'withdraw' | 'cancel'; live: LiveLeaveHome; onClose: () => void };
+/** TIM-19 in the app: the request in a drawer; withdraw (pending) or ask to cancel with a reason (approved). */
+function LiveLeaveRequestView({ r, data, action, live, onClose }: LiveRequestProps) {
+  const [dlg, setDlg] = useState<'withdraw' | 'cancel' | undefined>(action);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const bal = data.balances.find((b) => b.leaveTypeId === r.type?.id);
+  const close = () => {
+    setDlg(undefined);
+    setNote('');
+    setTried(false);
+  };
+  const footer =
+    r.status === 'pending' ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('withdraw')}>Withdraw request</Button>} />
+    : cancellable(r, data.today) ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />
+    : <DrawerFoot hint={`${LEAVE_STATUS[r.status].label}${r.decidedAt ? ` on ${formatDate(new Date(r.decidedAt))}` : ''}`} rest={<Button onClick={onClose}>Close</Button>} />;
+  return (
+    <>
+      <Drawer open={!dlg} onOpenChange={(o) => !o && onClose()} title={`${r.type?.name ?? 'Leave'} · ${data.employee.name}`} subtitle={isoSpan(r.from, r.to)} footer={footer}>
+        <div className="yx-tim-stack">
+          <div className="yx-tim-row">
+            <LeaveStatusBadge status={r.status} />
+            {r.from >= data.today && <DueBadge date={isoDate(r.from)} today={isoDate(data.today)} prefix="Starts" />}
+          </div>
+          <Kpis
+            items={[
+              { label: 'Type', value: r.type?.name ?? 'Leave' },
+              { label: 'Dates', value: `${isoSpan(r.from, r.to)}${halvesText(r)}` },
+              { label: 'Days', value: r.days },
+              { label: bal?.hasBalance ? `${bal.name} available now` : 'Balance', value: bal?.hasBalance ? bal.available : 'Not counted' },
+            ]}
+          />
+          <p><strong>Reason:</strong> {r.reason || 'None given'}</p>
+          {r.certificate !== 'none' && <div className="yx-tim-row"><Badge tone={r.certificate === 'verified' ? 'success' : 'neutral'}>{r.certificate === 'verified' ? 'Certificate verified by HR' : 'Certificate to give HR'}</Badge></div>}
+          <p className="yx-tim-muted">Sent {formatDate(new Date(r.createdAt || Date.now()))}{r.decidedAt ? ` · decided ${formatDate(new Date(r.decidedAt))}` : ''}</p>
+        </div>
+      </Drawer>
+      <ConfirmDialog
+        open={dlg === 'withdraw'}
+        onOpenChange={(o) => !o && close()}
+        title="Withdraw this request?"
+        consequence={`It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`}
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep request"
+        destructive
+        onConfirm={async () => {
+          await live.onWithdraw(r.id);
+          onClose();
+        }}
+      />
+      <ConfirmDialog
+        open={dlg === 'cancel'}
+        onOpenChange={(o) => !o && close()}
+        title="Ask to cancel approved leave?"
+        consequence={`Your manager approves the cancellation. Once approved, the ${daysWord(r.days)} ${r.days === 1 ? 'goes' : 'go'} back to your balance.`}
+        confirmLabel="Ask to cancel"
+        cancelLabel="Keep leave"
+        destructive
+        onConfirm={async () => {
+          setTried(true);
+          if (!note.trim()) {
+            document.getElementById('lv-cancel-reason')?.focus();
+            return false;
+          }
+          await live.onCancel(r.id, note.trim());
+          onClose();
+        }}
+      >
+        <FormField id="lv-cancel-reason" label="Why" required error={tried && !note.trim() ? 'Say why you are cancelling.' : null}>
+          <TextArea rows={3} value={note} onChange={setNote} maxLength={500} placeholder="For example: the client visit moved to December" />
+        </FormField>
+      </ConfirmDialog>
+    </>
+  );
+}
+
+const MATERNITY_CASES: { value: MaternityCase; label: string }[] = [
+  { value: 'birth', label: 'Birth' },
+  { value: 'third_child', label: 'Third child or later' },
+  { value: 'adoption', label: 'Adoption or surrogacy' },
+  { value: 'miscarriage', label: 'Miscarriage' },
+  { value: 'tubectomy', label: 'Tubectomy' },
+];
+const COUNTED_AS: Record<LeavePlan['days'][number]['countedAs'], string> = { leave: 'Leave', sandwich: 'Between leave days · counted', holiday: 'Holiday · not counted', weekly_off: 'Weekly off · not counted' };
+
+/** TIM-18 in the app: the design's form and summary; the summary comes from the server's own rules. */
+function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: LiveLeaveHome; onClose: () => void }) {
+  const types = data.balances;
+  const [typeId, setTypeId] = useState<string | null>(types[0]?.leaveTypeId ?? null);
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [fromHalf, setFromHalf] = useState<'full' | 'second'>('full');
+  const [toHalf, setToHalf] = useState<'full' | 'first'>('full');
+  const [reason, setReason] = useState('');
+  // Maternity (YX-LV-10): the expected date and the case decide the weeks and the eligibility window.
+  const [expectedOn, setExpectedOn] = useState<Date | null>(null);
+  const [mCase, setMCase] = useState<MaternityCase>('birth');
+  const [delegate, setDelegate] = useState<string | null>(null);
+  const [certificate, setCertificate] = useState(false);
+  const [plan, setPlan] = useState<LeavePlan | null>(null);
+  const { busy, error, run } = useRun();
+  const chosen = types.find((t) => t.leaveTypeId === typeId);
+  const maternity = chosen?.kind === 'maternity';
+  const f = from ? isoOf(from) : '';
+  const end = to ? isoOf(to) : f;
+  const oneDay = f !== '' && end === f;
+  const extra = maternity ? { expectedOn: expectedOn ? isoOf(expectedOn) : undefined, maternityCase: mCase } : {};
+
+  // The live summary comes from the server once the dates make sense; no error while typing.
+  useEffect(() => {
+    setPlan(null);
+    if (!typeId || !f || !end || end < f) return;
+    let on = true;
+    const h = setTimeout(() => {
+      void live.onPreview({ leaveTypeId: typeId, from: f, to: end, fromHalf, toHalf, ...extra })
+        .then((x) => on && setPlan(x))
+        .catch(() => on && setPlan(null));
+    }, 300);
+    return () => {
+      on = false;
+      clearTimeout(h);
+    };
+  }, [typeId, f, end, fromHalf, toHalf, expectedOn, mCase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const errors = useMemo(() => {
+    const e: { fieldId: string; message: string }[] = [];
+    if (!typeId) e.push({ fieldId: 'lv-type', message: 'Choose the kind of leave.' });
+    if (!f) e.push({ fieldId: 'lv-from', message: 'Choose the first day.' });
+    if (f && end < f) e.push({ fieldId: 'lv-to', message: 'The last day is before the first day.' });
+    if (plan?.certificateNeeded && !certificate) e.push({ fieldId: 'lv-cert', message: 'Tick that you will give a certificate to HR.' });
+    for (const b of plan?.blocks ?? []) e.push({ fieldId: 'lv-from', message: b });
+    return e;
+  }, [typeId, f, end, plan, certificate]);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
+  const send = () => {
+    if (errors.length) {
+      saveErrors.reveal();
+      document.getElementById(errors[0]!.fieldId)?.focus();
+      return;
+    }
+    void run('apply', async () => {
+      await live.onApply({ leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra });
+      onClose();
+    });
+  };
+  const halves = plan?.type.rules.halfDays !== false && f !== '';
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Apply leave"
+      size="lg"
+      dirty={Boolean(f || reason)}
+      footer={<DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'apply'} onClick={send}>Send request</Button>} />}
+    >
+      <div className="yx-tim-editor">
+        <div className="yx-tim-form">
+          <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
+          {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+          <FormField id="lv-type" label="Leave type" required error={errorOf('lv-type')}>
+            <Select value={typeId} onChange={setTypeId} options={types.map((t) => ({ value: t.leaveTypeId, label: t.name, description: t.hasBalance ? `${daysWord(t.available)} available` : t.kind === 'lop' ? `${t.takenThisYear} taken this year` : undefined }))} />
+          </FormField>
+          {maternity && (
+            <>
+              <FormField id="lv-expected" label="Expected date of delivery (or of the event)" required helper="Eligibility counts the days you worked in the 12 months before it.">
+                <DatePicker value={expectedOn} onChange={setExpectedOn} />
+              </FormField>
+              <FormField id="lv-case" label="Kind of maternity leave">
+                <Segment label="Kind of maternity leave" value={mCase} onChange={setMCase} options={MATERNITY_CASES} />
+              </FormField>
+            </>
+          )}
+          <FieldRow>
+            <FormField id="lv-from" label="From" required error={errorOf('lv-from')}>
+              <DatePicker value={from} onChange={setFrom} min={addDays(isoDate(data.today), -60)} />
+            </FormField>
+            <FormField id="lv-to" label="To" helper="Leave empty for one day" error={errorOf('lv-to')}>
+              <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
+            </FormField>
+          </FieldRow>
+          {halves && (oneDay ? (
+            <FormField label="Part of the day">
+              <Select
+                value={fromHalf === 'second' ? 'second' : toHalf === 'first' ? 'first' : 'full'}
+                onChange={(v) => {
+                  setFromHalf(v === 'second' ? 'second' : 'full');
+                  setToHalf(v === 'first' ? 'first' : 'full');
+                }}
+                options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }, { value: 'second', label: 'Second half only' }]}
+              />
+            </FormField>
+          ) : end > f ? (
+            <FieldRow>
+              <FormField label="First day"><Select value={fromHalf} onChange={(v) => v && setFromHalf(v as 'full' | 'second')} options={[{ value: 'full', label: 'Full day' }, { value: 'second', label: 'Second half only' }]} /></FormField>
+              <FormField label="Last day"><Select value={toHalf} onChange={(v) => v && setToHalf(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+            </FieldRow>
+          ) : null)}
+          <FormField id="lv-reason" label="Reason" optional helper={plan?.type.rules.medical ? 'Only you and HR can read this.' : 'Your approvers see this.'}>
+            <TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} />
+          </FormField>
+          {plan?.certificateNeeded && (
+            <FormField id="lv-cert" label="Medical certificate" error={errorOf('lv-cert')}>
+              <Checkbox label="I will give a certificate to HR" description="Only HR sees it; your manager sees only whether it's in and verified." checked={certificate} onChange={setCertificate} />
+            </FormField>
+          )}
+          <FormField id="lv-delegate" label="Delegate to" optional helper="If you approve requests, they go to this person on your leave days. Otherwise they go to your manager.">
+            <LivePicker kind="people" label="Colleague" value={delegate} onChange={setDelegate} onPick={(_k, q) => live.onFindPeople(q)} />
+          </FormField>
+        </div>
+        <div className="yx-tim-sticky" style={{ maxWidth: 'var(--yx-form-max)', minWidth: 0 }}>
+          <section className="yx-tim-effect" aria-live="polite" aria-label="Leave summary">
+            <strong>Summary</strong>
+            {!plan ? <p className="yx-tim-muted">Pick the dates to see the days counted and your balance after.</p> : (
+              <>
+                <dl className="yx-tim-stack">
+                  <div className="yx-tim-effect__row"><dt>Days counted</dt><dd>{plan.total}{plan.sandwichDays > 0 ? ` (incl. ${plural(plan.sandwichDays, 'day')} between leave days)` : ''}</dd></div>
+                  {plan.holidaysExcluded > 0 && <div className="yx-tim-effect__row"><dt>Holidays / weekly offs not counted</dt><dd>{plan.holidaysExcluded}</dd></div>}
+                  {plan.balanceAfter !== null && <div className="yx-tim-effect__row"><dt>Balance after</dt><dd>{plan.balanceAfter < 0 ? <Badge tone="danger">{`${plan.balanceAfter}`}</Badge> : plan.balanceAfter}</dd></div>}
+                  {plan.balanceAfter === null && chosen && !chosen.paid && <div className="yx-tim-effect__row"><dt>Unpaid days this year (with this)</dt><dd>{chosen.takenThisYear + plan.total}</dd></div>}
+                  <div className="yx-tim-effect__row"><dt>Your team</dt><dd>{plan.othersOff ? `${plan.othersOff} ${plan.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else is off then'}</dd></div>
+                </dl>
+                {plan.sandwichDays > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under your policy.</p>}
+                {plan.days.length > 0 && (
+                  <ul className="yx-tim-days">
+                    {plan.days.map((x) => <li key={x.on}><span style={{ whiteSpace: 'nowrap' }}>{WD[isoDate(x.on).getDay()]} {fd(x.on)}</span><span>{x.countedAs === 'leave' && x.portion === 0.5 ? 'Half day' : COUNTED_AS[x.countedAs]}</span></li>)}
+                  </ul>
+                )}
+                {plan.warnings.map((w) => <InlineAlert key={w} tone="warning">{w}</InlineAlert>)}
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+/** TIM-23 in the app: tick up to the calendar's limit; Save sends each change. */
+function LiveOptionalHolidaysPanel({ data, onChoose, onClose }: { data: MyLeave; onChoose: LiveLeaveHome['onChooseHoliday']; onClose: () => void }) {
+  const list = data.holidays.list.filter((h) => h.kind === 'optional' || h.kind === 'restricted');
+  const n = data.holidays.calendar?.optionalLimit ?? 0;
+  const initial = list.filter((h) => h.chosen).map((h) => h.id);
+  const [sel, setSel] = useState<string[]>(initial);
+  const { busy, error, run } = useRun();
+  const full = sel.length >= n;
+  const add = sel.filter((x) => !initial.includes(x));
+  const drop = initial.filter((x) => !sel.includes(x));
+  const save = () => {
+    // Nothing changed: nothing to send, so Save just closes.
+    if (!add.length && !drop.length) return onClose();
+    void run('save', async () => {
+      // Give back first, so a swap at the limit never goes over it.
+      for (const id of drop) await onChoose(id, false);
+      for (const id of add) await onChoose(id, true);
+      onClose();
+    });
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Optional holidays"
+      footer={<DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'save'} onClick={save}>Save choices</Button>} />}
+    >
+      <div className="yx-tim-form">
+        <p>Choose <strong>{n}</strong> of {list.length} optional holidays · {data.holidays.calendar?.name}.</p>
+        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+        <ul className="yx-tim-check">
+          {list.map((h) => {
+            const picked = sel.includes(h.id);
+            const past = h.on < data.today;
+            const reason = past ? (picked ? 'Taken' : 'Already passed') : !picked && full ? 'Limit reached · untick one to swap' : undefined;
+            return (
+              <li key={h.id}>
+                <div className="yx-tim-row">
+                  <Checkbox label={`${h.name} · ${WD[isoDate(h.on).getDay()]} ${fd(h.on)}`} description={reason} checked={picked} disabled={past || (!picked && full)} onChange={(c) => setSel(c ? [...sel, h.id] : sel.filter((x) => x !== h.id))} />
+                  {!past && <DueBadge date={isoDate(h.on)} today={isoDate(data.today)} />}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="yx-tim-muted" aria-live="polite">{sel.length} chosen · {Math.max(0, n - sel.length)} left</p>
+      </div>
+    </Drawer>
+  );
+}
+
+const SCOPE_TEXT = { team: 'Your team', granted: 'The people you look after', company: 'Everyone in the company' } as const;
+
+/** Consecutive days of the same leave become one chip; a half day stays on its own with its half in the name. */
+function liveAbsences(d: LiveCalendarData): (TeamAbsence & { name: string })[] {
+  const out: (TeamAbsence & { name: string })[] = [];
+  for (const p of d.people) {
+    const days = [...p.days].sort((a, b) => a.on.localeCompare(b.on));
+    for (const x of days) {
+      const last = out[out.length - 1];
+      const pending = x.status === 'pending';
+      if (last && last.memberId === p.id && x.part === 'full' && last.code === x.code && Boolean(last.pending) === pending && isoOf(addDays(last.end, 1)) === x.on && !last.name.includes('half')) last.end = isoDate(x.on);
+      else out.push({ memberId: p.id, start: isoDate(x.on), end: isoDate(x.on), code: x.code, name: x.part === 'full' ? x.name : `${x.name}, ${x.part} half`, pending });
+    }
+  }
+  return out;
+}
+
+/** TIM-20 in the app: people × days (two weeks, one under 1100 px) and the month, with what waits for approval. */
+function LiveTeamLeaveCalendar({ live }: { live: LiveTeamLeave }) {
+  const d = live.data;
+  const [tab, setTab] = useState('team');
+  const days = useMedia('(max-width: 1100px)') ? 7 : 14;
+  const { toast } = useToast();
+  const today = new Date();
+  const start = d ? isoDate(d.from) : day0(today);
+  const absences = d ? liveAbsences(d) : [];
+  const members = d ? d.people.map((p) => ({ id: p.id, name: p.me ? `${p.name} (you)` : p.name, team: SCOPE_TEXT[d.scope] })) : [];
+  const holidays = d ? [...new Map(d.people.flatMap((p) => p.holidays).map((h) => [h.on, { date: isoDate(h.on), name: h.name }])).values()] : [];
+  const holidayOf = (id: string, day: Date) => !!d?.people.find((p) => p.id === id)?.holidays.some((h) => h.on === isoOf(day));
+  const pending = absences.filter((a) => a.pending);
+  const range = d ? isoSpan(d.from, d.to) : '';
+  const twoWeeks = (from: string) => live.onRange(from, isoAdd(from, 13));
+  const month = (first: Date) => live.onRange(isoOf(new Date(first.getFullYear(), first.getMonth(), 1)), isoOf(new Date(first.getFullYear(), first.getMonth() + 1, 0)));
+  const nameOf = (id: string) => d?.people.find((p) => p.id === id)?.name ?? '';
+  const exportCsv = () => {
+    if (!d || !absences.length) return void toast({ title: 'Nothing to export in this range', tone: 'warning' });
+    downloadCsv(`leave-calendar-${d.from}-${d.to}.csv`, [
+      ['Person', 'Leave', 'From', 'To', 'Status'],
+      ...absences.map((a) => [nameOf(a.memberId), a.name, formatDate(a.start), formatDate(a.end), a.pending ? 'Pending' : 'Approved']),
+    ]);
+  };
+  const pendingList = pending.length > 0 && (
+    <Card title={`Waiting for approval (${pending.length})`}>
+      <ul className="yx-tim-list">
+        {pending.map((a) => (
+          <li key={`${a.memberId}-${a.start.getTime()}`}>
+            <span className="yx-tim-list__main" style={MAIN}><PersonLabel name={nameOf(a.memberId)} secondary={`${a.name} · ${span(a.start, a.end)}`} /></span>
+            <Button variant="review" size="sm" onClick={() => live.onNavigate(live.approvalsHref)}>Review</Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+  return (
+    <TimePage active="Leave calendar">
+      <PageHeader
+        title="Leave calendar"
+        description={d ? `${SCOPE_TEXT[d.scope]} · ${plural(d.people.length, 'person', 'people')}` : undefined}
+        actions={live.state === 'ready' ? <Button icon={Download} onClick={exportCsv}>Export {range}</Button> : undefined}
+      />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="Team leave">
+        {d && (d.people.length === 0 ? (
+          <EmptyState title="No one to show" description="People you manage, or look after in HR, appear here." />
+        ) : (
+          <Tabs
+            value={tab}
+            onValueChange={(t) => {
+              setTab(t);
+              if (t === 'month') month(start);
+              else twoWeeks(isoOf(day0(today)));
+            }}
+          >
+            <TabsList aria-label="Calendar views"><TabsTrigger value="team">People × days</TabsTrigger><TabsTrigger value="month">Month</TabsTrigger></TabsList>
+            <TabsContent value="team">
+              <div className="yx-tim-stack">
+                <div className="yx-tim-row">
+                  <Button size="sm" icon={ChevronLeft} onClick={() => twoWeeks(isoAdd(d.from, -7))}>Previous week</Button>
+                  <Button size="sm" icon={ChevronRight} onClick={() => twoWeeks(isoAdd(d.from, 7))}>Next week</Button>
+                </div>
+                {absences.length === 0 ? (
+                  <EmptyState title={`No one is away ${range}`} description="Leave shows here as soon as someone requests it." action={<Button onClick={() => twoWeeks(isoAdd(d.from, 14))}>Next 2 weeks</Button>} />
+                ) : (
+                  <TeamCalendar members={members} absences={absences} holidays={holidays} start={start} days={days} today={today} team={SCOPE_TEXT[d.scope]} weeklyOff={() => false} memberOff={holidayOf} />
+                )}
+                {pendingList}
+              </div>
+            </TabsContent>
+            <TabsContent value="month">
+              <div className="yx-tim-stack">
+                <Calendar
+                  events={absences.map((a, i) => ({ id: `e${i}`, title: `${a.code} · ${nameOf(a.memberId).split(' ')[0]}`, start: a.start, end: a.end, allDay: true, type: 'leave', pending: a.pending }))}
+                  holidays={holidays}
+                  defaultDate={today}
+                  month={start}
+                  today={today}
+                  views={['month']}
+                  hideTypeLabel
+                  weeklyOff={() => false}
+                  onDateChange={(x) => x.getMonth() !== start.getMonth() && month(x)}
+                  aria-label="Team leave, month"
+                />
+                <p className="yx-tim-note">Solid chip: approved · Dashed chip: pending · Shaded day: holiday</p>
+                {pendingList}
+              </div>
+            </TabsContent>
+          </Tabs>
+        ))}
+      </LiveStates>
+    </TimePage>
+  );
+}
+
+const LEDGER_TEXT: Record<string, string> = { opening: 'Opening balance', accrual: 'Credited', taken: 'Leave taken', cancelled: 'Leave cancelled', adjustment: 'Adjusted by HR', carry_forward: 'Carried forward', lapse: 'Lapsed', comp_off: 'Comp-off credited' };
+
+/** TIM-21 (HR) in the app: whose card, their balances, every ledger line, and Adjust with a reason. */
+function LiveLeaveCardScreen({ live }: { live: LiveLeaveCard }) {
+  const d = live.data;
+  const [pick, setPick] = useState<string | null>(null);
+  const person = d?.people.find((p) => p.employeeId === pick) ?? d?.people[0];
+  const [ledger, setLedger] = useState<{ id: string; rows: LedgerRow[] } | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [adj, setAdj] = useState(false);
+  const load = (id: string) => {
+    setLedgerError(null);
+    live.onLedger(id).then((rows) => setLedger({ id, rows }), (e: unknown) => setLedgerError(e instanceof Error && e.message ? e.message : "The ledger didn't load."));
+  };
+  useEffect(() => {
+    if (person) load(person.employeeId);
+  }, [person?.employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = ledger && ledger.id === person?.employeeId ? ledger.rows : null;
+  const items: TimelineItem[] = (rows ?? []).map((l) => ({
+    id: l.id,
+    at: isoDate(l.on),
+    actor: { name: l.kind === 'adjustment' ? 'HR' : SYSTEM_ACTOR },
+    action: `${LEDGER_TEXT[l.kind] ?? l.kind} ${l.days > 0 ? '+' : ''}${l.days} ${l.type}${l.reason ? ` · ${l.reason}` : ''}`,
+  }));
+  return (
+    <TimePage active="Team leave">
+      <PageHeader
+        title={person ? `Leave card · ${person.name}` : 'Leave card'}
+        description={person ? `${person.code ?? 'No employee code'} · every balance is the sum of its ledger` : undefined}
+        actions={live.state === 'ready' && person?.canAdjust ? <Button variant="primary" onClick={() => setAdj(true)}>Adjust balance</Button> : undefined}
+      />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="Leave balances">
+        {d && (!person ? (
+          <EmptyState title="No one to show" description="People in your HR scope appear here." />
+        ) : (
+          <div className="yx-tim-stack">
+            <FormField label="Employee">
+              <PersonPicker aria-label="Employee" value={person.employeeId} onChange={(v) => v && setPick(v)} people={d.people.map((p) => ({ id: p.employeeId, name: p.name, department: p.code ?? undefined }))} />
+            </FormField>
+            <BalanceCards live={{ balances: person.balances }} />
+            <Card title="History · every change to the balance">
+              {ledgerError ? (
+                <ErrorState title="The ledger didn't load" description={ledgerError} onRetry={() => load(person.employeeId)} />
+              ) : !rows ? <LoadingBlock rows={4} /> : items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
+              <p className="yx-tim-note">Each balance is the sum of its entries. An adjustment adds a line with your reason; it can't be edited, only reversed by another.</p>
+            </Card>
+          </div>
+        ))}
+      </LiveStates>
+      {adj && person && (
+        <AdjustBalanceDialog
+          open
+          onOpenChange={(o) => !o && setAdj(false)}
+          person={person.employeeId}
+          people={[]}
+          balancesOf={() => person.balances.filter((b) => b.hasBalance).map((b) => ({ code: b.leaveTypeId, name: b.name, balance: b.balance, pending: b.pending, paid: true }))}
+          onPost={async (e) => {
+            await live.onAdjust(person.employeeId, { leaveTypeId: e.code, days: e.delta, reason: e.reason });
+            load(person.employeeId);
+          }}
+        />
+      )}
     </TimePage>
   );
 }

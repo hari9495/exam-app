@@ -4,7 +4,7 @@ import type { Punch } from './time-logic';
 import { TODAY_PUNCHES } from './time-data';
 
 // Founder extra 1 · Web clock-in / clock-out page ("My attendance today") + Home widget.
-const meta: Meta<typeof MyAttendanceTodayScreen> = { title: 'Screens/Time/Extra · My attendance today (web clock-in)', component: MyAttendanceTodayScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof MyAttendanceTodayScreen> = { title: 'Screens/Time/Extra · My attendance today (web clock-in)', component: MyAttendanceTodayScreen, render: (args) => <MyAttendanceTodayScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof MyAttendanceTodayScreen>;
 

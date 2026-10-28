@@ -1,24 +1,26 @@
 'use client';
 
-import { LeaveBalancesScreen, type HrBalances, type LedgerRow } from '@yukthix/ui/time';
+import { LeaveCardScreen, type HrBalances, type LedgerRow } from '@yukthix/ui/time';
 import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 const id = encodeURIComponent;
 
-// HR › Leave balances (TIM-21 / TIM-30 basic): leave.view in scope; adjusting needs leave.balance.adjust and a reason.
+// HR › Leave balances: the TIM-21 leave card (HR), one person at a time: leave.view in scope; adjusting needs leave.balance.adjust and a reason.
 export default function YxLeaveBalancesPage() {
   const sp = useScopeParams();
   const balances = useTime<HrBalances>(withParams('/hr/balances', sp.entity));
   const read = useTimeRead();
   const write = useTimeWrite();
   return (
-    <LeaveBalancesScreen
-      state={timeState(balances)}
-      onRetry={() => void balances.refetch()}
-      data={balances.data ?? null}
-      onLedger={(employeeId) => read<LedgerRow[]>(`/people/${id(employeeId)}/ledger`)}
-      onAdjust={(employeeId, input) => write(`/people/${id(employeeId)}/adjust`, 'POST', input, true, 'Added to the ledger')}
+    <LeaveCardScreen
+      live={{
+        state: timeState(balances),
+        onRetry: () => void balances.refetch(),
+        data: balances.data ?? null,
+        onLedger: (employeeId) => read<LedgerRow[]>(`/people/${id(employeeId)}/ledger`),
+        onAdjust: (employeeId, input) => write(`/people/${id(employeeId)}/adjust`, 'POST', input, true, 'Added to the ledger'),
+      }}
     />
   );
 }

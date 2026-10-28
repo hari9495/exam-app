@@ -2,14 +2,14 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MyLeaveScreen, type LeavePlan, type MyLeave, type PersonOption } from '@yukthix/ui/time';
+import { LeaveHomeScreen, type LeavePlan, type MyLeave, type PersonOption } from '@yukthix/ui/time';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
 
 const id = encodeURIComponent;
 
-// Me › Leave (TIM-17 / 18 / 19 / 23): no permission key; the API reaches only the signed-in person's own leave.
+// Me › Leave: the TIM-17 design (Apply leave TIM-18, a request TIM-19 and optional holidays TIM-23 open from it): no permission key; the API reaches only the signed-in person's own leave.
 function MyLeave() {
   const { accessToken } = useAuth();
   // ?apply=1: the "Apply leave" action (Ctrl K, N L) opens the request sheet at once.
@@ -22,17 +22,19 @@ function MyLeave() {
   const leave = useTime<MyLeave>('/me/leave');
   const write = useTimeWrite();
   return (
-    <MyLeaveScreen
-      state={timeState(leave)}
-      onRetry={() => void leave.refetch()}
-      data={leave.data ?? null}
-      onPreview={(input) => write<LeavePlan>('/me/leave/preview', 'POST', input, false)}
-      onApply={(input) => write('/me/leave', 'POST', input, true, 'Leave sent for approval')}
-      onWithdraw={(rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn')}
-      onCancel={(rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager')}
-      onChooseHoliday={(hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back')}
-      onFindPeople={(q) => apiFetch(`/workflow/people?q=${id(q)}`, {}, accessToken ?? undefined) as Promise<PersonOption[]>}
-      startApplying={apply}
+    <LeaveHomeScreen
+      live={{
+        state: timeState(leave),
+        onRetry: () => void leave.refetch(),
+        data: leave.data ?? null,
+        onPreview: (input) => write<LeavePlan>('/me/leave/preview', 'POST', input, false),
+        onApply: (input) => write('/me/leave', 'POST', input, true, 'Leave sent for approval'),
+        onWithdraw: (rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn'),
+        onCancel: (rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager'),
+        onChooseHoliday: (hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back'),
+        onFindPeople: (q) => apiFetch(`/workflow/people?q=${id(q)}`, {}, accessToken ?? undefined) as Promise<PersonOption[]>,
+        startApplying: apply,
+      }}
     />
   );
 }

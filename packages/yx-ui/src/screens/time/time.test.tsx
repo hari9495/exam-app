@@ -190,15 +190,18 @@ describe('ClockCard flows', () => {
     expect(screen.getByText(/On break since/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'End break' })).toBeTruthy();
   });
-  it('outside the office: clock-in disabled until WFH is chosen', async () => {
+  it('outside the office: Clock in says why (never disabled) until WFH is chosen', async () => {
     const u = userEvent.setup();
     render(<ClockCard now={9 * 60 + 25} date={TODAY} shift={GENERAL_SHIFT} inside={false} />);
-    expect(screen.getByText('Not on Chennai office Wi-Fi')).toBeTruthy();
+    expect(screen.getAllByText('Not on Chennai office Wi-Fi').length).toBe(1);
     expect(screen.getByText('Clock in as work from home or on duty instead?')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Clock in' }) as HTMLButtonElement).disabled).toBe(true);
+    await u.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(screen.getAllByText('Not on Chennai office Wi-Fi').length).toBe(2);
+    expect(screen.getByText('Not clocked in')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Clock in as WFH' }));
-    expect((screen.getByRole('button', { name: 'Clock in' }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('Work from home')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(screen.getByText(/Working since/)).toBeTruthy();
   });
   it('shows late by minutes beyond grace', () => {
     render(<ClockCard now={600} date={TODAY} shift={GENERAL_SHIFT} defaultState="working" defaultPunches={[{ id: 'a', kind: 'in', time: '09:52', source: 'web', where: '', verdict: 'network' }]} />);

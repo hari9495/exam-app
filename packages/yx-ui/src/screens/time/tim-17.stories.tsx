@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LeaveHomePhone, LeaveHomeScreen } from './leave';
 
-const meta: Meta<typeof LeaveHomeScreen> = { title: 'Screens/Time/TIM-17 · Leave home', component: LeaveHomeScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof LeaveHomeScreen> = { title: 'Screens/Time/TIM-17 · Leave home', component: LeaveHomeScreen, render: (args) => <LeaveHomeScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof LeaveHomeScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
