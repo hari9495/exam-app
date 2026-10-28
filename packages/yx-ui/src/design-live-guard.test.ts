@@ -71,6 +71,7 @@ const isDesigned = (n: string) => DESIGNED.has(n);
 /** Story helpers that only show a live screen with sample data (one line each, why). */
 const SAMPLE_WRAPPERS: Record<string, string> = {
   PreboardingActionSheet: 'PPL-15: the live journey record with its pre-boarding drawer open, filled with sample people',
+  PrefillScreen: 'TIM-43: the timesheet with the pre-fill drawer open, sample data; /yx/time/timesheet renders TimesheetScreen whose PrefillDrawer takes the live tools and suggestions',
 };
 const reached = (n: string) => LIVE.has(n) || n in SAMPLE_WRAPPERS;
 /** Only screen-level parts: a story's own top components, not the primitives inside them. */

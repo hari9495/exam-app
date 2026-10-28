@@ -30,6 +30,7 @@ import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, type LiveDevices } from './devices-live';
+import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -488,6 +489,8 @@ export interface LiveTimesheet {
   onSave: (week: string, lines: TimesheetLineInput[]) => Promise<unknown>;
   onSubmit: (week: string) => Promise<unknown>;
   onWithdraw: (id: string) => Promise<unknown>;
+  /** TIM-43 "Pre-fill from my tools" (the person's own tools and the week's suggestions). */
+  prefill?: LivePrefill;
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -499,6 +502,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const d = live.data;
   const [lines, setLines] = useState<TimesheetLine[]>([]);
   const [problems, setProblems] = useState<string[]>([]);
+  const [pf, setPf] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
     if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) })));
@@ -526,7 +530,8 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   };
   return (
     <TimePage active="My timesheet">
-      <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} />
+      <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} actions={live.prefill && d && editable && d.week <= thisWeek ? <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button> : undefined} />
+      {live.prefill && d && <PrefillDrawer open={pf} onOpenChange={setPf} lines={lines} onLinesChange={setLines} live={{ prefill: live.prefill, week: d.week, projects: d.projects.filter((x) => x.active) }} />}
       <LiveGate state={live.state} onRetry={live.onRetry} what="your timesheet">
         {d && (
           <div className="yx-tim-stack">
@@ -890,7 +895,10 @@ function SuggestionList({ api }: { api: ReturnType<typeof useSuggestions> }) {
   );
 }
 
-export function PrefillDrawer({ open, onOpenChange, view = 'suggestions', lines, onLinesChange }: { open: boolean; onOpenChange: (o: boolean) => void; view?: PrefillView; lines: TimesheetLine[]; onLinesChange: (l: TimesheetLine[]) => void }) {
+export function PrefillDrawer({ live, ...p }: { open: boolean; onOpenChange: (o: boolean) => void; view?: PrefillView; lines: TimesheetLine[]; onLinesChange: (l: TimesheetLine[]) => void; /** The live timesheet's tools and suggestions. */ live?: { prefill: LivePrefill; week: string; projects: PrefillProject[] } }) {
+  return live ? <LivePrefillDrawer open={p.open} onOpenChange={p.onOpenChange} lines={p.lines} onLinesChange={p.onLinesChange} live={live.prefill} week={live.week} projects={live.projects} /> : <SamplePrefillDrawer {...p} />;
+}
+function SamplePrefillDrawer({ open, onOpenChange, view = 'suggestions', lines, onLinesChange }: { open: boolean; onOpenChange: (o: boolean) => void; view?: PrefillView; lines: TimesheetLine[]; onLinesChange: (l: TimesheetLine[]) => void }) {
   const [connected, setConnected] = useState<Record<Tool, boolean>>({ cal: view !== 'connect', jira: view !== 'connect', git: false });
   const api = useSuggestions(lines, onLinesChange, connected, view);
   const anyConnected = connected.cal || connected.jira || connected.git;

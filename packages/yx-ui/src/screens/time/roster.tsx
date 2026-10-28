@@ -42,6 +42,7 @@ import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-
 import { LoadingBlock, type ViewState } from './attendance';
 import { COLOURS, NightWorkTab, OvertimeRulesTab, ProjectsTab, SCOPES, fromMinute, toMinute, type LiveShiftSetup } from './live/shifts-setup';
 import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
+import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
 import './time.css';
 
 /** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
@@ -2619,7 +2620,10 @@ function DayChoice({ label, anchor, office, onChange }: { label: string; anchor:
     : <Segment label={label} value={office ? 'office' : 'home'} onChange={(v) => onChange(v === 'office')} options={[{ value: 'home', label: 'Home' }, { value: 'office', label: 'Office' }]} />;
 }
 
-export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy' }) {
+export function HybridPlannerScreen({ live, ...story }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy'; /** The live app's /time/hybrid. */ live?: LiveHybrid }) {
+  return live ? <LiveHybridScreen live={live} /> : <SampleHybridPlanner {...story} />;
+}
+function SampleHybridPlanner({ persona = 'mgr', tab = 'plan' }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy' }) {
   const [baseline, setBaseline] = useState(initialPlan);
   const [plan, setPlan] = useState(initialPlan);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);

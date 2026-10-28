@@ -25,3 +25,7 @@ export type { LiveKiosk, KioskInfo, KioskToday, KioskPunched } from '../kiosk-li
 // Field force (TIM-32): the designed map with `live`.
 export { FieldForceScreen } from '../field';
 export type { LiveFieldForce, FieldMap, FieldMapPerson, FieldMapVisit, FieldPersonDay, FieldFence } from '../field-force-live';
+// Hybrid office days (TIM-41) and timesheet pre-fill from my tools (TIM-43): the designed screens with `live`.
+export { HybridPlannerScreen } from '../roster';
+export type { LiveHybrid, HybridMe, HybridTeam, HybridCompliance, HybridPolicyGroup, HybridDay, HybridRule, HybridPlace } from '../hybrid-live';
+export type { LivePrefill, PrefillTools, PrefillSuggestions, ToolProvider } from '../prefill-live';
