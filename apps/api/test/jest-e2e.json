@@ -8,7 +8,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/.+\\.js$": [
+    "/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/.+\\.js$": [
       "ts-jest",
       {
         "tsconfig": {
@@ -30,6 +30,6 @@
   "maxWorkers": 1,
   "workerIdleMemoryLimit": "1GB",
   "transformIgnorePatterns": [
-    "/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/)"
+    "/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/)"
   ]
 }

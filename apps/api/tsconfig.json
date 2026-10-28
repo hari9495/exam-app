@@ -4,6 +4,11 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "baseUrl": "./",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // file-type 22 is ESM-only and publishes its types only under "exports", which "moduleResolution": "node" does
+    // not read. Types only: the emitted require('file-type') is loaded by Node's require(esm) (Jest: see jest.config.js).
+    "paths": {
+      "file-type": ["node_modules/file-type/source/index.d.ts", "../../node_modules/file-type/source/index.d.ts"]
+    }
   }
 }
