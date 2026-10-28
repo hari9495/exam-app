@@ -34,7 +34,6 @@ export { InsertArticleButton, TicketKbCard, articleLinkHtml, type ArticleOption,
 export * from './esm-types';
 export { CatalogScreen, RequestTracker, LANGS, type CatalogScreenProps } from './catalog';
 export { ServiceForm, LivePicker, ChoiceLabel, type ServiceFormProps } from './service-form';
-export { ApprovalsScreen, type ApprovalsScreenProps } from './approvals';
 export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-admin';
 export { RulesAdmin, type RulesAdminProps } from './rules-admin';
 export { RequestPanel } from './request-panel';

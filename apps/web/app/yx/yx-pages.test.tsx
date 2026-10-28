@@ -989,7 +989,7 @@ describe('/yx/approvals', () => {
     route({ 'GET /workflow/approvals/inbox': [TASK], 'GET /workflow/delegations': [], 'POST /workflow/approvals/tasks/t1/decide': {} });
     wrap(<ToastProvider><YxApprovalsPage /></ToastProvider>);
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
-    expect(await screen.findByText('Approved: Arjun Kulkarni: Casual leave, 27 Oct (1 day)')).toBeInTheDocument();
+    expect(await screen.findByText(/^Approved: Arjun Kulkarni: Casual leave, 27 Oct \(1 day\)\. Arjun Kulkarni is told/)).toBeInTheDocument();
   });
 
   it('a decision updates the side-menu Approvals count without a reload', async () => {

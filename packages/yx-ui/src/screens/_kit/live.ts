@@ -4,7 +4,9 @@ export { DirectoryPhone, DirectoryScreen, type DirectoryMe, type DirectorySavedV
 export type { WorkforceRow } from '../people/people-data';
 export { PALETTE_PLACEHOLDER, RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '../platform-a/shell-home';
 // The Home panel's pages (design audit step 2): notifications, search, my requests, delegation, notification preferences.
-export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, type LiveInbox, type LiveMyRequests, type LiveDelegation, type NotificationsInboxProps } from '../platform-a/inbox';
+export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, ApprovalsInboxScreen, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
+export type { ApprovalRow } from '../platform-a/platform-data';
+export type { ApprovalStep } from '../../components/timeline';
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
 export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';

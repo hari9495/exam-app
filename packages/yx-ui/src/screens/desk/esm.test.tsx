@@ -2,10 +2,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { answersToSend, formProblems, fromServerGroup, resolveForm, toServerGroup, type FormDef } from '../../lib/forms';
-import { ApprovalsScreen } from './approvals';
 import { CatalogScreen } from './catalog';
 import { CatalogAdmin } from './catalog-admin';
-import type { ApprovalTask, CatalogItemPage } from './esm-types';
+import type { CatalogItemPage } from './esm-types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
@@ -83,51 +82,6 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
     await ue.click(screen.getByRole('radio', { name: 'हिन्दी' }));
     await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
     expect(await within(await screen.findByRole('dialog')).findByText('मॉडल')).toBeInTheDocument();
-  });
-});
-
-describe('approvals inbox (P03)', () => {
-  const TASK: ApprovalTask = { taskId: 't1', requestId: 'r1', type: 'Service request', title: 'New laptop for Arjun', summary: [{ label: 'Item', value: 'New laptop' }, { label: 'Needed by', value: '2026-11-22' }], requester: 'Arjun', raisedBy: null, onBehalfOf: 'Divya', step: { index: 1, of: 2, name: 'Your manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: '2026-10-08T05:00:00Z' };
-
-  it('the request a notice points at is marked and scrolled into view', () => {
-    const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
-    const other = { ...TASK, taskId: 't2', requestId: 'r2', title: 'Monitor for Meera' };
-    render(<ApprovalsScreen state="ready" tasks={[TASK, other]} history={null} delegations={[]} onDecide={vi.fn()} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} focusRequestId="r2" />);
-    expect(document.getElementById('approval-r2')).toHaveAttribute('data-focused', 'true');
-    expect(document.getElementById('approval-r1')).not.toHaveAttribute('data-focused');
-    expect(scroll).toHaveBeenCalled();
-  });
-
-  it('a request made for someone without a login is "From" that person, never blank', () => {
-    render(<ApprovalsScreen state="ready" tasks={[{ ...TASK, requester: '', person: 'Meera Iyer' }]} history={null} delegations={[]} onDecide={vi.fn()} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
-    expect(screen.getByText(/From Meera Iyer · step 1 of 2/)).toBeInTheDocument();
-  });
-
-  it('approve at once; not approving needs a reason; delegated tasks say for whom', async () => {
-    const onDecide = vi.fn(async () => undefined);
-    render(<ApprovalsScreen state="ready" tasks={[TASK]} history={null} delegations={[]} onDecide={onDecide} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
-    expect(screen.getByText('22 Nov 2026')).toBeInTheDocument(); // a plain date reads as everywhere else, never 2026-11-22
-    expect(screen.getByText(/you answer for Divya/)).toBeInTheDocument();
-    // Approve is the designed approve button; "Do not approve" is plain until the reason dialog (founder review 20 Oct).
-    expect(screen.getByRole('button', { name: 'Approve' })).toHaveAttribute('data-variant', 'approve');
-    expect(screen.getByRole('button', { name: 'Do not approve' })).not.toHaveAttribute('data-variant', 'danger');
-    await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
-    const dialog = await screen.findByRole('dialog');
-    // Never disabled: pressed with no reason, it says what is missing and sends nothing.
-    await ue.click(within(dialog).getByRole('button', { name: 'Do not approve' }));
-    expect(within(dialog).getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
-    expect(onDecide).not.toHaveBeenCalled();
-    // Cancel drops the typed reason: opening again starts empty.
-    await ue.type(within(dialog).getByRole('textbox'), 'test only');
-    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
-    expect(within(await screen.findByRole('dialog')).getByRole('textbox')).toHaveValue('');
-    await ue.type(within(screen.getByRole('dialog')).getByRole('textbox'), 'Not this quarter');
-    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Do not approve' }));
-    expect(onDecide).toHaveBeenCalledWith(TASK, 'reject', 'Not this quarter');
-    await ue.click(screen.getByRole('button', { name: 'Approve' }));
-    expect(onDecide).toHaveBeenCalledWith(TASK, 'approve', '');
   });
 });
 

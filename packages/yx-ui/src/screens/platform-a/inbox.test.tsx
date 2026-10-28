@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen } from './inbox';
-import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME } from './platform-data';
+import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
+import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
 
 const HISTORY = APPROVALS.slice(0, 2).map((a, i) => ({ ...a, id: `h${i}`, status: 'Approved' as const }));
 
@@ -95,5 +95,58 @@ describe('My requests (founder review 30 Sep 2026)', () => {
     expect(screen.getByRole('button', { name: 'Cancel leave' })).toBeInTheDocument();
     await u.click(screen.getByRole('tab', { name: /Completed/ }));
     expect(container.querySelector('th.yx-table__actions')).toBeNull();
+  });
+});
+
+describe('PLT-04 live (the approvals engine)', () => {
+  const today = new Date(2026, 10, 3);
+  const row = (id: string, over: Partial<ApprovalRow> = {}): ApprovalRow => ({ id, ref: id.toUpperCase(), type: 'Service request', requester: 'Arjun Kulkarni', requesterRole: '', summary: `Laptop ${id}`, detail: 'Step 1 of 2: Manager', submitted: today, due: null, step: 'Manager', lowRisk: true, policy: { ok: true }, status: 'Waiting', context: ['Item: New laptop'], ...over });
+  const delegation = { meId: 'me', meName: 'Divya', today, people: [], onFindPeople: () => undefined, current: null, waiting: 2, onSave: vi.fn(), onEnd: vi.fn(), delegatedToYou: [], approvalsHref: '/yx/approvals' };
+  const live = (over: Partial<LiveApprovals> = {}): LiveApprovals => ({ today, onDecide: vi.fn(async () => undefined), onBulkApprove: vi.fn(async () => []), delegation, onDone: vi.fn(), ...over });
+
+  it('approves one in a click; not approving needs a reason (field error, nothing sent); no policy column', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} live={l} />);
+    expect(screen.queryByRole('columnheader', { name: 'Policy' })).not.toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'approve', '');
+    expect(l.onDone).toHaveBeenCalledWith(expect.stringMatching(/^Approved: Laptop a/));
+  });
+
+  it('the side panel: Do not approve pressed with no reason says why and sends nothing; with one it is sent', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={l} />);
+    const panel = await screen.findByRole('dialog');
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    expect(within(panel).getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+    expect(l.onDecide).not.toHaveBeenCalled();
+    await u.type(within(panel).getByRole('textbox'), 'Not this quarter');
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'reject', 'Not this quarter');
+  });
+
+  it('bulk approve: the refused ones stay listed with why; the rest say done', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onBulkApprove: vi.fn(async () => [{ id: 'b', message: 'This approval is already closed.' }]) });
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { requester: 'Meera Iyer' })]} sent={[]} history={[]} live={l} />);
+    await u.click(screen.getByRole('checkbox', { name: /Arjun/ }));
+    await u.click(screen.getByRole('checkbox', { name: /Meera/ }));
+    await u.click(screen.getByRole('button', { name: 'Approve 2' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Approve 2' })).at(-1)!);
+    expect(await screen.findByText('1 request was not approved')).toBeInTheDocument();
+    expect(screen.getByText(/Laptop b: This approval is already closed\./)).toBeInTheDocument();
+    expect(l.onDone).toHaveBeenCalledWith('Approved 1 request. The people who asked are told.');
+  });
+
+  it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);
+    expect(within(await screen.findByRole('dialog')).getByRole('link', { name: 'Open to decide' })).toHaveAttribute('href', '/yx/payroll/reopen-requests');
+    await u.keyboard('{Escape}');
+    await u.click(screen.getByRole('button', { name: 'Set up delegation' }));
+    expect(await screen.findByText('When I am away')).toBeInTheDocument();
   });
 });

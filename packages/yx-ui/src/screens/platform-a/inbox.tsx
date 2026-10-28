@@ -357,21 +357,22 @@ export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history';
 
 const APPROVAL_TYPES = ['Leave', 'Expense', 'Timesheet', 'Regularisation', 'Bank change', 'Access request', 'Offer'];
 
-/** Days a request is past its due date (0 = due today or later). */
-const daysOverdue = (due: Date) => Math.max(0, Math.round((new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()).getTime() - due.getTime()) / 86_400_000));
-const isDueToday = (due: Date) => due.toDateString() === TODAY.toDateString();
-export const overdueCount = (rows: ApprovalRow[]) => rows.filter((r) => daysOverdue(r.due) > 0).length;
-/** Overdue first, then due today, then by date (founder review 30 Sep 2026). */
-const byUrgency = (rows: ApprovalRow[]) => [...rows].sort((a, b) => a.due.getTime() - b.due.getTime());
+/** Days a request is past its due date (0 = due today, later, or no due date). */
+const daysOverdue = (due: Date | null, today = TODAY) => (due ? Math.max(0, Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - due.getTime()) / 86_400_000)) : 0);
+const isDueToday = (due: Date | null, today = TODAY) => due?.toDateString() === today.toDateString();
+export const overdueCount = (rows: ApprovalRow[], today = TODAY) => rows.filter((r) => daysOverdue(r.due, today) > 0).length;
+/** Overdue first, then due today, then by date; no due date last (founder review 30 Sep 2026). */
+const byUrgency = (rows: ApprovalRow[]) => [...rows].sort((a, b) => (a.due?.getTime() ?? Infinity) - (b.due?.getTime() ?? Infinity));
 
-function DueCell({ due }: { due: Date }) {
-  const late = daysOverdue(due);
+function DueCell({ due, today = TODAY }: { due: Date | null; today?: Date }) {
+  if (!due) return <span className="yx-plt-muted">No due date</span>;
+  const late = daysOverdue(due, today);
   if (late > 0) return <Badge tone="warning">Overdue {late} day{late === 1 ? '' : 's'}</Badge>;
-  if (isDueToday(due)) return <Badge tone="info">Due today</Badge>;
+  if (isDueToday(due, today)) return <Badge tone="info">Due today</Badge>;
   return <span>{formatDate(due).replace(/ \d{4}$/, '')}</span>;
 }
 
-const approvalColumnsBase: TableColumn<ApprovalRow>[] = [
+const approvalColumnsBase = (today: Date): TableColumn<ApprovalRow>[] => [
   { key: 'requester', header: 'Requester', type: 'person', value: (r) => r.requester, person: (r) => ({ name: r.requester, secondary: r.requesterRole }), width: 200 },
   { key: 'type', header: 'Type', type: 'status', value: (r) => r.type, statusTone: () => 'neutral', width: 124 },
   {
@@ -397,13 +398,16 @@ const approvalColumnsBase: TableColumn<ApprovalRow>[] = [
     render: (r) => (r.policy.ok ? <Badge tone="success">Within policy</Badge> : <Badge tone="warning">Above limit</Badge>),
     width: 130,
   },
-  { key: 'due', header: 'Due', value: (r) => r.due.getTime(), render: (r) => <DueCell due={r.due} />, width: 146 },
+  { key: 'due', header: 'Due', value: (r) => r.due?.getTime() ?? Infinity, render: (r) => <DueCell due={r.due} today={today} />, width: 146 },
 ];
-/** Waiting tabs don't repeat "Waiting" on every row; sent and history keep Status. */
-const approvalColumns = (withStatus: boolean): TableColumn<ApprovalRow>[] =>
-  withStatus ? [...approvalColumnsBase, { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) }] : approvalColumnsBase;
+/** Waiting tabs don't repeat "Waiting" on every row; sent and history keep Status. Live: no policy column (the engine has no policy check yet). */
+const approvalColumns = (withStatus: boolean, today = TODAY, live = false): TableColumn<ApprovalRow>[] => {
+  const base = approvalColumnsBase(today).filter((c) => !live || c.key !== 'policy');
+  return withStatus ? [...base, { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) }] : base;
+};
 
 function approvalSteps(r: ApprovalRow): ApprovalStep[] {
+  if (r.timeline) return r.timeline;
   return [
     { id: 's', label: r.raisedBy ? `Submitted by ${r.raisedBy} on behalf of ${r.requester}` : 'Submitted', status: 'done', approver: r.raisedBy ?? r.requester, at: r.submitted },
     { id: 'm', label: r.step, status: r.status === 'Approved' ? 'done' : r.status === 'Rejected' ? 'rejected' : 'current', approver: r.onBehalfOf ? `Divya Raghunathan (for ${r.onBehalfOf})` : 'Divya Raghunathan' },
@@ -424,24 +428,55 @@ const DECISION_TEXT: Record<Exclude<Decision, null>, { title: string; field: str
  * Approval decision (founder review 30 Sep 2026): the body shows the request; every decision sits in the footer
  * (Approve, Send back, Reject; Ask and Reassign under ⋯). Approving outside policy asks for a reason for the audit trail.
  */
-function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean) {
+/** Live: the engine decides (approve, or do not approve with a reason the requester sees). */
+type LiveDecide = (decision: 'approve' | 'reject', reason: string) => Promise<unknown>;
+/** Live wording: "Do not approve" with a reason (founder 26 Oct 2026), never "Reject". */
+const LIVE_REJECT = { title: 'Do not approve this request?', field: 'Reason', confirm: 'Do not approve', done: 'Not approved' };
+
+function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: { decide: LiveDecide; today: Date }) {
   const [decision, setDecision] = useState<Decision>(defaultDecision);
   const [reason, setReason] = useState('');
   const [to, setTo] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const pick = (d: Decision) => {
     setDecision(d);
     setReason('');
     setTried(false);
+    setFailed(null);
+  };
+  const send = async (d: 'approve' | 'reject') => {
+    if (!live) return;
+    setBusy(d);
+    setFailed(null);
+    try {
+      await live.decide(d, reason.trim());
+      onDone(d === 'approve' ? 'Approved' : 'Not approved');
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
   };
   const confirm = () => {
     setTried(true);
-    if (decision === 'reassign' ? !to : reason.trim().length < 5) return;
+    // Never a disabled button: pressed too early, the field says what is missing and takes focus.
+    if (decision === 'reassign' ? !to : reason.trim().length < (live ? 1 : 5)) {
+      setTimeout(() => document.getElementById('ap-reason')?.focus(), 0);
+      return;
+    }
+    if (live) return void send('reject');
     onDone(decision ? DECISION_TEXT[decision].done : 'Approved');
   };
-  const text = decision ? DECISION_TEXT[decision] : null;
+  const text = decision ? (live ? LIVE_REJECT : DECISION_TEXT[decision]) : null;
   const body = (
     <div className="yx-plt-stack">
+      {failed && (
+        <InlineAlert tone="danger" title="Not decided">
+          {failed}
+        </InlineAlert>
+      )}
       {!row.policy.ok && (
         <InlineAlert tone="warning" title="Policy flag">
           {row.policy.reason}
@@ -487,7 +522,7 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
           ))}
         </ul>
       </Card>
-      <ApprovalTimeline steps={approvalSteps(row)} now={TODAY} />
+      <ApprovalTimeline steps={approvalSteps(row)} now={live?.today ?? TODAY} />
       {decision && text && (
         <Card title={text.title}>
           {decision === 'reassign' ? (
@@ -496,9 +531,10 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
             </FormField>
           ) : (
             <FormField
+              id="ap-reason"
               label={text.field}
               required
-              error={tried && reason.trim().length < 5 ? (decision === 'exception' ? 'Say why this is fine; it is kept in the audit trail.' : 'Write a reason the requester can act on.') : null}
+              error={tried && reason.trim().length < (live ? 1 : 5) ? (live ? 'Say why, so the person who asked knows.' : decision === 'exception' ? 'Say why this is fine; it is kept in the audit trail.' : 'Write a reason the requester can act on.') : null}
               helper={decision === 'sendback' ? 'The requester edits and resubmits. Unchanged requests resume at your step.' : decision === 'exception' ? 'Kept with the request for finance and audit.' : undefined}
             >
               <TextArea value={reason} onChange={setReason} rows={3} />
@@ -508,11 +544,28 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       )}
     </div>
   );
-  const footer = !actionable || row.status !== 'Waiting' ? undefined : decision && text ? (
+  const footer = !actionable || row.status !== 'Waiting' ? undefined : live && row.decideAt ? (
+    <div className="yx-plt-decide">
+      <span className="yx-plt-muted">Decided on its own page, with a fresh sign-in check.</span>
+      <span className="yx-plt-decide__gap" />
+      <Button asChild variant="primary">
+        <a href={row.decideAt}>Open to decide</a>
+      </Button>
+    </div>
+  ) : decision && text ? (
     <div className="yx-plt-decide">
       <Button onClick={() => pick(null)}>Cancel</Button>
-      <Button variant={decision === 'reject' ? 'danger' : 'primary'} onClick={confirm}>
+      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject'} onClick={confirm}>
         {text.confirm}
+      </Button>
+    </div>
+  ) : live ? (
+    // Live: the engine approves or does not approve; send back, ask and reassign wait for their backend.
+    <div className="yx-plt-decide">
+      <span className="yx-plt-decide__gap" />
+      <Button onClick={() => pick('reject')}>Do not approve</Button>
+      <Button variant="approve" icon={Check} loading={busy === 'approve'} onClick={() => void send('approve')}>
+        Approve
       </Button>
     </div>
   ) : (
@@ -548,7 +601,7 @@ export function ApprovalDetail({ row, defaultDecision = null, onDone }: { row: A
   );
 }
 
-function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, actionable }: {
+function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, actionable, live }: {
   row: ApprovalRow;
   list: ApprovalRow[];
   onMove: (id: string) => void;
@@ -556,8 +609,9 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   defaultDecision: Decision;
   onDone: (text: string) => void;
   actionable: boolean;
+  live?: { decide: LiveDecide; today: Date };
 }) {
-  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable);
+  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable, live);
   const i = list.findIndex((r) => r.id === row.id);
   return (
     <Drawer
@@ -591,6 +645,25 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   );
 }
 
+/**
+ * PLT-04 live (P03 approvals engine). The page maps the engine's rows (waiting rows are task ids; delegated ones carry
+ * onBehalfOf; a row with decideAt is decided on its own page) and turns "done" texts into toasts.
+ */
+export interface LiveApprovals {
+  today: Date;
+  onRetry?: () => void;
+  /** Approve, or do not approve with a reason the requester sees. */
+  onDecide: (row: ApprovalRow, decision: 'approve' | 'reject', reason: string) => Promise<unknown>;
+  /** Approve several: the server checks each again. Returns the ones it refused, with why. */
+  onBulkApprove: (rows: ApprovalRow[]) => Promise<{ id: string; message: string }[]>;
+  /** "Set up delegation" opens "When I am away": the designed delegation form (PLT-07). */
+  delegation: LiveDelegation;
+  /** Success messages (toasts). */
+  onDone: (text: string) => void;
+  /** Shown under the list (approve from chat apps). */
+  footer?: ReactNode;
+}
+
 export interface ApprovalsInboxScreenProps {
   waiting: ApprovalRow[];
   sent: ApprovalRow[];
@@ -601,37 +674,87 @@ export interface ApprovalsInboxScreenProps {
   defaultSelected?: string[];
   bulkConfirmOpen?: boolean;
   state?: 'ready' | 'loading' | 'error';
+  live?: LiveApprovals;
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, state = 'ready' }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, state = 'ready', live }: ApprovalsInboxScreenProps) {
   const [tab, setTab] = useState<string>(defaultTab);
-  const [items, setItems] = useState(() => byUrgency(waiting));
+  const [own, setItems] = useState(() => byUrgency(waiting));
+  // Live: the rows are the server's; a decided one leaves when the list reloads.
+  const items = live ? byUrgency(waiting) : own;
   const [open, setOpen] = useState<string | null>(openId ?? null);
+  const [openDecision, setOpenDecision] = useState<Decision>(null);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(bulkConfirmOpen ? defaultSelected ?? [] : null);
-  const [live, setLive] = useState('');
+  const [away, setAway] = useState(false);
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [refused, setRefused] = useState<{ title: string; message: string }[]>([]);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState('');
+  const today = live?.today ?? TODAY;
   const mine = items.filter((r) => !r.onBehalfOf);
   const delegated = items.filter((r) => r.onBehalfOf);
   const rows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : history;
   const current = [...items, ...sent, ...history].find((r) => r.id === open) ?? null;
   const decide = (ids: string[], text: string) => {
     const next = rows.filter((r) => !ids.includes(r.id));
-    setItems((xs) => xs.filter((x) => !ids.includes(x.id)));
-    setLive(`${text}: ${ids.length} request${ids.length === 1 ? '' : 's'}.`);
+    if (!live) setItems((xs) => xs.filter((x) => !ids.includes(x.id)));
+    setAnnounce(`${text}: ${ids.length} request${ids.length === 1 ? '' : 's'}.`);
     // Stay in the panel and move to the next request, if there is one.
     const at = rows.findIndex((r) => r.id === ids[0]);
     setOpen(ids.length === 1 && next.length > 0 ? next[Math.min(at, next.length - 1)].id : null);
+    setOpenDecision(null);
+  };
+  const doneText = (r: ApprovalRow, text: string) => `${text}: ${r.summary}${r.requester ? `. ${r.requester} is told by email and in their bell.` : '.'}`;
+  const approveRow = async (r: ApprovalRow) => {
+    if (!live) return decide([r.id], 'Approved');
+    setBusyRow(r.id);
+    setRowError(null);
+    try {
+      await live.onDecide(r, 'approve', '');
+      live.onDone(doneText(r, 'Approved'));
+      decide([r.id], 'Approved');
+    } catch (e) {
+      setRowError(e instanceof Error && e.message ? `${r.summary}: ${e.message}` : 'That did not work. Try again.');
+    } finally {
+      setBusyRow(null);
+    }
+  };
+  const openRow = (id: string, d: Decision = null) => {
+    setOpen(id);
+    setOpenDecision(d);
   };
   const actionable = tab === 'waiting' || tab === 'delegated';
-  const overdue = overdueCount(items);
-  return (
-    <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Approvals', items.length)} scope="none">
+  const overdue = overdueCount(items, today);
+  const page = (
       <ListPage
         title="Approvals"
         description="Everything waiting for your decision, including requests delegated to you."
         facts={`${items.length} waiting${overdue ? ` · ${overdue} overdue` : ''}`}
-        actions={<Button>Set up delegation</Button>}
-        above={<span className="yx-visually-hidden" aria-live="polite">{live}</span>}
+        actions={<Button onClick={live ? () => setAway(true) : undefined}>Set up delegation</Button>}
+        above={
+          <>
+            <span className="yx-visually-hidden" aria-live="polite">
+              {announce}
+            </span>
+            {rowError && (
+              <InlineAlert tone="danger" title="Not approved">
+                {rowError}
+              </InlineAlert>
+            )}
+            {refused.length > 0 && (
+              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not approved`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
+                <ul className="yx-plt-list">
+                  {refused.map((x) => (
+                    <li key={x.title}>
+                      {x.title}: {x.message}
+                    </li>
+                  ))}
+                </ul>
+              </InlineAlert>
+            )}
+          </>
+        }
         tabs={[
           { id: 'waiting', label: 'Waiting for me', count: mine.length },
           { id: 'delegated', label: 'Delegated to me', count: delegated.length },
@@ -641,15 +764,16 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         tab={tab}
         onTabChange={setTab}
         label="Approval requests"
-        columns={approvalColumns(!actionable)}
+        columns={approvalColumns(!actionable, today, Boolean(live))}
         rows={rows}
         getRowId={(r) => r.id}
         filters={[
-          { key: 'type', label: 'Type', type: 'multi', options: APPROVAL_TYPES.map((t) => ({ value: t, label: t })) },
+          { key: 'type', label: 'Type', type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
           { key: 'due', label: 'Due', type: 'date' },
         ]}
         searchPlaceholder="Search name or reference"
         state={state}
+        onRetry={live?.onRetry}
         empty={
           <EmptyState
             title={tab === 'waiting' ? 'Nothing is waiting for you.' : tab === 'delegated' ? 'Nobody has delegated approvals to you.' : 'No requests here yet.'}
@@ -668,27 +792,59 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             <span className="yx-plt-muted">{check.reason}</span>
           );
         }}
-        rowButtons={actionable ? (r) => (r.lowRisk ? <Button variant="approve" size="sm" icon={Check} onClick={() => decide([r.id], 'Approved')}>Approve</Button> : <Button variant="review" size="sm" onClick={() => setOpen(r.id)}>Review</Button>) : undefined}
-        rowActions={actionable ? (r) => (
-          <>
-            <MenuItem onSelect={() => setOpen(r.id)}>Open request</MenuItem>
-            <MenuItem onSelect={() => setOpen(r.id)}>Send back</MenuItem>
-            <MenuItem destructive onSelect={() => setOpen(r.id)}>Reject</MenuItem>
-          </>
-        ) : undefined}
-        onRowClick={(r) => setOpen(r.id)}
+        rowButtons={
+          actionable
+            ? (r) =>
+                r.lowRisk ? (
+                  <Button variant="approve" size="sm" icon={Check} loading={busyRow === r.id} onClick={() => void approveRow(r)}>
+                    Approve
+                  </Button>
+                ) : (
+                  <Button variant="review" size="sm" onClick={() => openRow(r.id)}>
+                    Review
+                  </Button>
+                )
+            : undefined
+        }
+        rowActions={
+          actionable
+            ? (r) =>
+                live ? (
+                  <>
+                    <MenuItem onSelect={() => openRow(r.id)}>Open request</MenuItem>
+                    {!r.decideAt && <MenuItem onSelect={() => openRow(r.id, 'reject')}>Do not approve</MenuItem>}
+                  </>
+                ) : (
+                  <>
+                    <MenuItem onSelect={() => setOpen(r.id)}>Open request</MenuItem>
+                    <MenuItem onSelect={() => setOpen(r.id)}>Send back</MenuItem>
+                    <MenuItem destructive onSelect={() => setOpen(r.id)}>
+                      Reject
+                    </MenuItem>
+                  </>
+                )
+            : undefined
+        }
+        onRowClick={(r) => openRow(r.id)}
         activeRowId={open}
       >
         {current && (
           <ApprovalDrawer
-            key={current.id}
+            key={`${current.id}-${openDecision ?? ''}`}
             row={current}
             list={rows}
-            onMove={setOpen}
-            onClose={() => setOpen(null)}
-            defaultDecision={current.id === openId ? defaultDecision ?? null : null}
-            onDone={(t) => decide([current.id], t)}
-            actionable={actionable}
+            onMove={(id) => openRow(id)}
+            onClose={() => {
+              setOpen(null);
+              setOpenDecision(null);
+            }}
+            defaultDecision={openDecision ?? (current.id === openId ? defaultDecision ?? null : null)}
+            onDone={(t) => {
+              live?.onDone(doneText(current, t));
+              decide([current.id], t);
+            }}
+            actionable={actionable && items.some((x) => x.id === current.id)}
+            live={live ? { decide: (d, reason) => live.onDecide(current, d, reason), today } : undefined}
           />
         )}
         {confirmIds && (
@@ -698,10 +854,28 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             title={`Approve ${confirmIds.length} ${items.find((i) => i.id === confirmIds[0])?.type.toLowerCase() ?? ''} requests?`}
             consequence="Each request is checked again before approval. Requesters are notified."
             confirmLabel={`Approve ${confirmIds.length}`}
-            onConfirm={() => decide(confirmIds, 'Approved')}
+            onConfirm={async () => {
+              if (!live) return decide(confirmIds, 'Approved');
+              const picked = items.filter((r) => confirmIds.includes(r.id));
+              const failed = await live.onBulkApprove(picked);
+              const ok = picked.length - failed.length;
+              setRefused(failed.map((f) => ({ title: picked.find((r) => r.id === f.id)?.summary ?? f.id, message: f.message })));
+              if (ok) live.onDone(`Approved ${ok} request${ok === 1 ? '' : 's'}. The people who asked are told.`);
+              decide(confirmIds, 'Approved');
+            }}
           />
         )}
+        {live && away && (
+          <Drawer open onOpenChange={(o) => !o && setAway(false)} title="When I am away" subtitle="Choose who approves requests for you while you are away." size="md">
+            <DelegationForm key={live.delegation.current?.id ?? 'new'} live={live.delegation} />
+          </Drawer>
+        )}
       </ListPage>
+  );
+  return (
+    <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Approvals', items.length)} scope="none">
+      {page}
+      {live?.footer}
     </DesktopFrame>
   );
 }
