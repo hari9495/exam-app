@@ -6,12 +6,11 @@ import { ErrorSummary, FormField, useSaveErrors } from '../../../components/fiel
 import { CodeField, TextField } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
-import { AuthFrame } from '../../auth/kit';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { IrreversibleSheet } from '../pay-kit';
 import { monthText } from './periods';
-import type { Confirmation, ExchangeFile, ExchangeFiles, LoadState, PayDocument, PayDocuments, VerifyResult } from './types';
+import type { Confirmation, ExchangeFile, ExchangeFiles, LoadState, PayDocument, PayDocuments } from './types';
 
 // Pay documents (P05, PAY-1.09 / 1.10) and exchange files (PAY-1.11): issued documents never change (a correction
 // supersedes them), each has a reference without gaps, a SHA-256 and a public verify code; files carry their hash, rows
@@ -306,58 +305,8 @@ export function ExchangeFilesScreen(p: ExchangeFilesScreenProps) {
   );
 }
 
-// ------------------------------------------------------------------------------------------ public verify and the alumni portal
-
-export interface VerifyDocumentScreenProps {
-  code: string;
-  onCode: (code: string) => void;
-  onCheck: (code: string) => Promise<VerifyResult>;
-}
-
-/** The public page behind a document's code (YX-DOC-11): company, kind, name, date and whether it is current. */
-export function VerifyDocumentScreen(p: VerifyDocumentScreenProps) {
-  const [result, setResult] = useState<VerifyResult | null>(null);
-  const { busy, error, run } = useRun();
-  const errors = /^[A-Za-z2-9]{10}$/.test(p.code.trim())
-    ? []
-    : [
-        {
-          fieldId: 'vf-code',
-          message: 'Enter the 10-letter code printed on the document.',
-        },
-      ];
-  const save = useSaveErrors(errors);
-  return (
-    <AuthFrame title="Check a document" subtitle="Type the 10-letter code printed at the foot of a letter, payslip or certificate to see whether it is genuine and current." note="Anyone holding the document can check it">
-        <form
-          className="yx-tim-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (errors.length) return save.reveal();
-            void run('check', async () => setResult(await p.onCheck(p.code.trim().toUpperCase())));
-          }}
-        >
-          <ErrorSummary errors={save.shownErrors} />
-          <FormField id="vf-code" label="Code on the document" required error={save.errorOf('vf-code')}>
-            <TextField value={p.code} onChange={p.onCode} autoComplete="off" spellCheck={false} />
-          </FormField>
-          <Button type="submit" variant="primary" loading={busy === 'check'}>
-            Check
-          </Button>
-          {error && (
-            <InlineAlert tone="danger" title="Not found">
-              {error}
-            </InlineAlert>
-          )}
-          {result && (
-            <InlineAlert tone={result.status === 'current' ? 'success' : 'warning'} title={result.status === 'current' ? 'This document is genuine and current' : 'This document was replaced by a corrected one'}>
-              {result.kind} for {result.name}, issued by {result.company} on {dateText(result.issuedOn)}.
-            </InlineAlert>
-          )}
-        </form>
-    </AuthFrame>
-  );
-}
+// ------------------------------------------------------------------------------------------ the pay documents portal's sign-in
+// (The public verify page is the designed T9-08 VerifyPageScreen with its live path.)
 
 export interface PayPortalSignInProps {
   company: string;

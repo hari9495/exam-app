@@ -78,7 +78,7 @@ export interface PortalDoc {
   title: string;
   period?: string;
   issuedOn: Date;
-  size: string;
+  size?: string;
   status?: 'released' | 'pending' | 'submitted';
 }
 

@@ -15,7 +15,7 @@ import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { AlumniMe, ExitStep, Handoff, Letter } from './types';
+import type { ExitStep, Handoff } from './types';
 import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
@@ -546,56 +546,5 @@ export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string
         </ConfirmDialog>
       )}
     </Card>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ alumni (T9-02)
-
-export interface AlumniScreenProps {
-  data: AlumniMe;
-  onDownload: (l: Letter) => Promise<unknown>;
-  onSignOut: () => void;
-}
-
-export function AlumniScreen({ data, onDownload, onSignOut }: AlumniScreenProps) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const download = async (l: Letter) => {
-    setBusy(l.id);
-    try {
-      await onDownload(l);
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <div className="yx-auth__page">
-      <Card
-        title={`${data.company}: your documents`}
-        actions={
-          <Button size="sm" onClick={onSignOut}>
-            Sign out
-          </Button>
-        }
-      >
-        <Text as="p">{`Hello ${data.name}. You can read your letters here until ${dateText(data.accessUntil)}.`}</Text>
-        {data.letters.length ? (
-          <ul className="yx-lif-list">
-            {data.letters.map((l) => (
-              <li key={l.id}>
-                <Text>{l.title.split(': ')[0]}</Text>
-                <Text tone="secondary" size="sm">
-                  {l.referenceNo ?? ''}
-                </Text>
-                <Button size="sm" loading={busy === l.id} onClick={() => void download(l)}>
-                  Download
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState compact title="No letters yet." description="Your relieving and experience letters appear here when HR issues them." />
-        )}
-      </Card>
-    </div>
   );
 }

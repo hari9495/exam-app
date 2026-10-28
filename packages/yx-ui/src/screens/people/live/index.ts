@@ -24,8 +24,6 @@ export {
   MyAssetsScreen,
   StartExitDialog,
   AddAssetDrawer,
-  AlumniScreen,
-  type AlumniScreenProps,
   type MyAssetsScreenProps,
   type ExitCasesScreenProps,
   type ExitCaseScreenProps,
@@ -43,3 +41,5 @@ export {
   type UpcomingExitsScreenProps,
   type RetrenchmentScreenProps,
 } from './special';
+// The alumni login renders the designed T9-02 portal with its live path.
+export { AlumniPortalScreen, type AlumniPortalScreenProps, type LiveAlumniPortal } from '../../portals/t9-workforce';

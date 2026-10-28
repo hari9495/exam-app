@@ -66,11 +66,9 @@ const KNOWN_UNDESIGNED: Record<string, string[]> = {
     'IdentityProvidersScreen @ (app)/settings/identity-providers/page.tsx',
     'SignatoriesDrawer @ (app)/settings/letters/page.tsx',
     'ActionLinkScreen @ act/[token]/page.tsx',
-    'AlumniScreen @ alumni/[org]/page.tsx',
     'PayPortalSignIn @ consultant/[org]/page.tsx',
     'PayPortalSignIn @ pay-portal/[org]/page.tsx',
     'MyPayDocumentsScreen @ pay-portal/[org]/page.tsx',
-    'VerifyDocumentScreen @ verify/[code]/page.tsx',
   ],
 };
 

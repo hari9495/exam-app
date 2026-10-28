@@ -8,14 +8,14 @@ export {
   PayDocumentsScreen,
   MyPayDocumentsScreen,
   ExchangeFilesScreen,
-  VerifyDocumentScreen,
   PayPortalSignIn,
   type PayDocumentsScreenProps,
   type MyPayDocumentsScreenProps,
   type ExchangeFilesScreenProps,
-  type VerifyDocumentScreenProps,
   type PayPortalSignInProps,
 } from './documents';
+// The public verify page is the designed T9-08 screen with its live path.
+export { VerifyPageScreen, type LiveVerifyPage } from '../../portals/t9-workforce';
 // Batch 5b (PAY-2.04 … 2.13): payroll set-up, pay groups, the payslip layout, statutory rules and coverage, imports,
 // the component library, salary templates and compensation.
 export * from './types-5b';

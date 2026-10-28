@@ -1,12 +1,12 @@
 // T9 portals for people linked to the workforce: pre-joiners, alumni and nominees, external trainers,
 // POSH IC external members and external parties, the audit-committee chair, anonymous reporters and the public verify page.
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Download, FileText, Lock, Send, Upload } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
-import { FormField, FieldRow } from '../../components/field';
+import { FormField, FieldRow, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea, TextField, MaskedField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -25,9 +25,14 @@ import {
   nomineeShareError,
   verifyDocument,
   type VerifiableDoc,
+  type VerifyResult as DocVerifyResult,
 } from './portals-logic';
+import type { VerifyResult as PayVerifyResult } from '../pay/live/types';
 import { BlockNote, ConsentPanel, Fact, FactRow, OtpInput, QrCode, StepDots, TenantPortal } from './portals-kit';
 import type { IcCase, Nominee, PortalDoc, PreItem, TrainerSession, WbCase } from './t9-data';
+import { useRun } from '../org/org-kit';
+import { LEGAL_LINKS } from '../auth/kit';
+import type { AlumniMe, Letter } from '../people/live/types';
 
 const fakeUpload = () => Promise.resolve();
 const uploaded = (name: string, status: UploadItem['status'] = 'done', error?: string): UploadItem => ({
@@ -520,68 +525,97 @@ export function PreboardingDocuments({ items }: { items: PreItem[] }) {
 /* ================================================================== */
 
 // T9-02
-/** Alumni: own payslips, Form 16 and letters, read-only, for 7 years from exit (YX-DOC-16). */
-export function AlumniPortalScreen({
-  tenant,
-  accent,
-  person,
-  docs,
-  today,
-  tab = 'Payslip',
-}: {
-  tenant: string;
-  accent?: string;
-  person: { name: string; email: string; exitDate: Date; lastRole: string; code: string };
-  docs: PortalDoc[];
-  today: Date;
-  tab?: 'Payslip' | 'Form 16' | 'Letter';
-}) {
-  const ends = alumniAccessEnds(person.exitDate);
-  const kinds: ('Payslip' | 'Form 16' | 'Letter')[] = ['Payslip', 'Form 16', 'Letter'];
+/** The live alumni portal (LIFE-4.04): the letters HR issued, read-only, until the company's alumni period ends. */
+export interface LiveAlumniPortal {
+  data: AlumniMe;
+  /** The personal email they signed in with. */
+  email: string;
+  /** Today, YYYY-MM-DD. */
+  today: string;
+  onDownload: (l: Letter) => Promise<unknown>;
+  onSignOut: () => void;
+}
+type AlumniPerson = { name: string; email: string; exitDate: Date; lastRole?: string; code?: string };
+export type AlumniPortalScreenProps =
+  | { tenant: string; accent?: string; person: AlumniPerson; docs: PortalDoc[]; today: Date; tab?: 'Payslip' | 'Form 16' | 'Letter'; live?: undefined }
+  | { accent?: string; live: LiveAlumniPortal };
+
+const isoDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+
+/** Alumni: own payslips, Form 16 and letters, read-only, for 7 years from exit (YX-DOC-16). Live: the letters only. */
+export function AlumniPortalScreen(props: AlumniPortalScreenProps) {
+  const live = props.live;
+  const { busy, error, run } = useRun();
+  const tenant = live ? live.data.company : props.tenant;
+  const person: AlumniPerson = live ? { name: live.data.name, email: live.email, exitDate: isoDate(live.data.lastDay) } : props.person;
+  const docs: PortalDoc[] = live
+    ? live.data.letters.map((l) => ({ id: l.id, kind: 'Letter', title: l.title.split(': ')[0] ?? l.title, issuedOn: isoDate(l.issuedAt ?? live.data.lastDay) }))
+    : props.docs;
+  const today = live ? isoDate(live.today) : props.today;
+  const ends = live ? isoDate(live.data.accessUntil) : alumniAccessEnds(person.exitDate);
+  // Live: this portal serves letters only; payslips and Form 16 are in the pay documents portal.
+  const kinds: ('Payslip' | 'Form 16' | 'Letter')[] = live ? ['Letter'] : ['Payslip', 'Form 16', 'Letter'];
   const label = { Payslip: 'Payslips', 'Form 16': 'Form 16', Letter: 'Letters' } as const;
+  const onDownload = live ? (id: string) => void run(id, () => live.onDownload(live.data.letters.find((l) => l.id === id)!)) : undefined;
+  const list = (k: (typeof kinds)[number]) => {
+    const rows = docs.filter((x) => x.kind === k);
+    return rows.length === 0 ? (
+      <EmptyState title={`No ${label[k].toLowerCase()} were issued to you.`} description="If you expected one, ask the HR team; they can publish it here." />
+    ) : (
+      <DocList docs={rows} busy={busy} onDownload={onDownload} />
+    );
+  };
   return (
     <TenantPortal
       tenant={tenant}
       portal="Former employee documents"
-      accent={accent}
-      access={{ kind: 'otp', identity: person.email, endsOn: ends, today, endsBecause: '7 years after you left' }}
+      accent={props.accent}
+      noLanguage={Boolean(live)}
+      access={{ kind: 'otp', identity: person.email, endsOn: ends, today, endsBecause: live ? undefined : '7 years after you left' }}
       footer={{ privacy: 'Privacy notice for former employees (G-09)' }}
     >
       <section className="yx-ps-hero">
         <h1>Your documents from {tenant}</h1>
         <p>
-          {person.lastRole} · {person.code} · left on {formatDate(person.exitDate)}. You can view and download these, but not change them.
+          {[person.lastRole, person.code, `left on ${formatDate(person.exitDate)}`].filter(Boolean).join(' · ')}. You can view and download these, but not change them.
         </p>
       </section>
-      <Tabs defaultValue={tab.replace(/\s+/g, '-')}>
-        <TabsList aria-label="Document type">
+      {live && (
+        <div className="yx-ps-row">
+          <Button onClick={live.onSignOut}>Sign out</Button>
+        </div>
+      )}
+      {error && (
+        <InlineAlert tone="danger" title="Not downloaded">
+          {error}
+        </InlineAlert>
+      )}
+      {live ? (
+        list('Letter')
+      ) : (
+        <Tabs defaultValue={props.tab?.replace(/\s+/g, '-') ?? 'Payslip'}>
+          <TabsList aria-label="Document type">
+            {kinds.map((k) => (
+              <TabsTrigger key={k} value={k.replace(/\s+/g, '-')} count={docs.filter((x) => x.kind === k).length}>
+                {label[k]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
           {kinds.map((k) => (
-            <TabsTrigger key={k} value={k.replace(/\s+/g, '-')} count={docs.filter((x) => x.kind === k).length}>
-              {label[k]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {kinds.map((k) => {
-          const list = docs.filter((x) => x.kind === k);
-          return (
             <TabsContent key={k} value={k.replace(/\s+/g, '-')}>
-              {list.length === 0 ? (
-                <EmptyState title={`No ${label[k].toLowerCase()} were issued to you.`} description="If you expected one, ask the HR team; they can publish it here." />
-              ) : (
-                <DocList docs={list} />
-              )}
+              {list(k)}
             </TabsContent>
-          );
-        })}
-      </Tabs>
+          ))}
+        </Tabs>
+      )}
       <p className="yx-ps-muted">
-        Need a document that isn't here, like a salary certificate for a loan? <Link href="#">Ask the HR team</Link>.
+        Need a document that isn't here, like a salary certificate for a loan? {live ? 'Ask the HR team.' : <Link href="#">Ask the HR team</Link>}
       </p>
     </TenantPortal>
   );
 }
 
-function DocList({ docs }: { docs: PortalDoc[] }) {
+function DocList({ docs, busy, onDownload }: { docs: PortalDoc[]; busy?: string | null; onDownload?: (id: string) => void }) {
   const groups = Array.from(new Set(docs.map((x) => x.period ?? '')));
   return (
     <div className="yx-ps-stack">
@@ -596,10 +630,16 @@ function DocList({ docs }: { docs: PortalDoc[] }) {
                   <div className="yx-ps-list__main">
                     <span className="yx-ps-list__title">{x.title}</span>
                     <span className="yx-ps-list__meta">
-                      Issued {formatDate(x.issuedOn)} · PDF · {x.size}
+                      Issued {formatDate(x.issuedOn)} · PDF{x.size ? ` · ${x.size}` : ''}
                     </span>
                   </div>
-                  {x.status === 'pending' ? <Badge tone="warning">HR is preparing this</Badge> : <Button size="sm" icon={Download}>Download</Button>}
+                  {x.status === 'pending' ? (
+                    <Badge tone="warning">HR is preparing this</Badge>
+                  ) : (
+                    <Button size="sm" icon={Download} loading={busy === x.id} onClick={onDownload ? () => onDownload(x.id) : undefined}>
+                      Download
+                    </Button>
+                  )}
                 </li>
               ))}
           </ul>
@@ -1372,28 +1412,54 @@ export function AnonymousCaseScreen({
 /* ================================================================== */
 
 // T9-08
+/** The live verify page (YX-DOC-11): the server checks the 10-letter code printed on a pay document. */
+export interface LiveVerifyPage {
+  onCheck: (code: string) => Promise<PayVerifyResult>;
+}
+const LIVE_CODE = /^[A-Za-z2-9]{10}$/;
+
 /** Public verify page: only company, letter type, name, issue date and current / superseded (P05 Q5). */
-export function VerifyPageScreen({ tenant, accent, docs, code: initialCode }: { tenant: string; accent?: string; docs: VerifiableDoc[]; code: string }) {
+export function VerifyPageScreen({ tenant, accent, docs, code: initialCode, live }: { tenant: string; accent?: string; docs: VerifiableDoc[]; code: string; live?: LiveVerifyPage }) {
   const [input, setInput] = useState(initialCode);
   const [code, setCode] = useState(initialCode);
-  const result = useMemo(() => verifyDocument(code, docs), [code, docs]);
+  const sample = useMemo(() => verifyDocument(code, docs), [code, docs]);
+  const [checked, setChecked] = useState<DocVerifyResult | null>(null);
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(live && !LIVE_CODE.test(input.trim()) ? [{ fieldId: 'vf-code', message: 'Enter the 10-letter code printed on the document.' }] : []);
+  const check = (c: string) =>
+    run('check', async () => {
+      setChecked(null);
+      const r = await live!.onCheck(c);
+      setChecked({ state: r.status, doc: { code: c, company: r.company, type: r.kind, name: r.name, issuedOn: new Date(`${r.issuedOn.slice(0, 10)}T00:00:00`), status: r.status === 'current' ? 'issued' : 'superseded' } });
+    });
+  // Scanning the QR code opens this page with the code: the answer shows at once, as in the design.
+  useEffect(() => {
+    if (live && LIVE_CODE.test(initialCode.trim())) void check(initialCode.trim().toUpperCase());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const result = live ? checked : code ? sample : null;
   return (
-    <TenantPortal tenant={tenant} portal="Verify a document" accent={accent} narrow access={{ kind: 'public' }} footer={{ privacy: 'Privacy notice (G-05)', cookies: true }}>
+    <TenantPortal tenant={tenant} portal="Verify a document" accent={accent} narrow noLanguage={Boolean(live)} access={{ kind: 'public' }} footer={{ privacy: 'Privacy notice (G-05)', cookies: true, ...(live ? { hrefs: LEGAL_LINKS } : {}) }}>
       <section className="yx-ps-hero">
         <h1>Verify a letter or certificate</h1>
-        <p>Scan the QR code on the document, or type the verification code printed under it.</p>
+        <p>{live ? 'Scan the QR code on the document, or type the 10-letter code printed at its foot.' : 'Scan the QR code on the document, or type the verification code printed under it.'}</p>
       </section>
       <div className="yx-ps-row">
-        <FormField label="Verification code">
-          <TextField value={input} onChange={setInput} className="yx-ps-mono" placeholder="KF-VRF-XXXX-XXXX" />
+        <FormField id="vf-code" label="Verification code" error={early.errorOf('vf-code')}>
+          <TextField value={input} onChange={setInput} className="yx-ps-mono" placeholder={live ? undefined : 'KF-VRF-XXXX-XXXX'} autoComplete="off" spellCheck={false} />
         </FormField>
       </div>
       <div className="yx-ps-row">
-        <Button variant="primary" onClick={() => setCode(input)}>
+        <Button variant="primary" loading={busy === 'check'} onClick={() => (live ? !early.stop() && void check(input.trim().toUpperCase()) : setCode(input))}>
           Verify
         </Button>
       </div>
-      {code &&
+      {live && error && (
+        <InlineAlert tone="danger" title="We couldn't verify this code">
+          {error}
+        </InlineAlert>
+      )}
+      {result &&
         (result.state === 'not-found' ? (
           <InlineAlert tone="danger" title="We couldn't verify this code">
             No current or past document from {tenant} has this code. Check the code, or ask the person to request a fresh copy from {tenant}.
