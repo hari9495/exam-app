@@ -835,6 +835,22 @@ export function FinishedRestructures({ rows, onOpen }: { rows: FinishedRestructu
   );
 }
 
+/** Payroll without the change key (founder 28 Oct 2026): no planning, only the done restructures to keep their checklists. */
+export function FinishedRestructuresScreen({ state, onRetry, rows, onOpen }: { state: 'loading' | 'ready' | 'error' | 'forbidden'; onRetry: () => void; rows: FinishedRestructure[] | null; onOpen: (id: string) => void }) {
+  return (
+    <PeopleFrame active="Restructure">
+      <PageHeader title="Restructure" description="Restructures that moved people into your legal entities. Open one to keep each person’s continuity checklist." />
+      {state === 'error' ? (
+        <ErrorState title="We couldn't load the restructures" description="Check your connection and try again." onRetry={onRetry} />
+      ) : state === 'forbidden' ? (
+        <NoAccessState what="restructures" grantedBy="your HR admin" />
+      ) : (
+        <FinishedRestructures rows={state === 'ready' ? rows : null} onOpen={onOpen} />
+      )}
+    </PeopleFrame>
+  );
+}
+
 /* ------------------------------------------------------------------ the restructure record */
 
 export interface RestructureRecordData extends RestructureSummary {

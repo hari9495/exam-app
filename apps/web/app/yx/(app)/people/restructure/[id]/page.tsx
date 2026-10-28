@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { RestructureRecord, type ContinuityItemData, type RestructureRecordData } from '@yukthix/ui/frame';
-import { loadState, todayIst } from '../../../../../../lib/yx-org';
+import { loadState, todayIst, useYxPermissions } from '../../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../../lib/yx-people';
 
 const enc = encodeURIComponent;
@@ -17,6 +17,8 @@ export default function YxRestructureRecordPage() {
   const data = usePeople<RestructureRecordData>(`/restructures/${enc(id)}`);
   const write = usePeopleWrite();
   const r = data.data;
+  // Payroll without the change key only keeps the checklist: letters are HR's (approve/reject/cancel come back false).
+  const hr = useYxPermissions().has('employee.change.manage');
   return (
     <RestructureRecord
       state={loadState(data) === 'no-access' ? 'forbidden' : data.isError ? 'error' : r ? 'ready' : 'loading'}
@@ -44,7 +46,7 @@ export default function YxRestructureRecordPage() {
         await write('PUT', `/restructures/continuity/${enc(item.id)}`, { done, version: item.version });
         toast({ tone: 'success', title: done ? `“${item.title}” done` : `“${item.title}” reopened` });
       }}
-      onLetters={(people, letterType) => router.push(`/yx/people/letters?people=${people.map(enc).join(',')}${letterType ? `&type=${enc(letterType)}` : ''}`)}
+      onLetters={hr ? (people, letterType) => router.push(`/yx/people/letters?people=${people.map(enc).join(',')}${letterType ? `&type=${enc(letterType)}` : ''}`) : undefined}
     />
   );
 }

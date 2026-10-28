@@ -3,9 +3,9 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
-import { RestructureWizard, type FinishedRestructure, type RestructureDraftState, type RestructurePreview, type RestructureSetup } from '@yukthix/ui/frame';
+import { FinishedRestructuresScreen, RestructureWizard, type FinishedRestructure, type RestructureDraftState, type RestructurePreview, type RestructureSetup } from '@yukthix/ui/frame';
 import type { LetterTemplates } from '@yukthix/ui/lifecycle';
-import { useYxPermissions } from '../../../../../lib/yx-org';
+import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { useJoinerPlaces, useLife } from '../../../../../lib/yx-lifecycle';
 
@@ -15,6 +15,7 @@ const id = encodeURIComponent;
 // checked by the API (a dry run through the change engine) and the plan goes for one approval by another HR person
 // (founder decision 21 Oct 2026: payroll does no HR work). Open restructures, the person's saved drafts and the finished
 // restructures (done, rejected, cancelled: back to the record) are listed at the top; ?draft= continues a saved draft.
+// Payroll without the change key sees only the done restructures into its entities, to keep their checklists (28 Oct 2026).
 function Restructure() {
   const router = useRouter();
   const { toast } = useToast();
@@ -23,7 +24,7 @@ function Restructure() {
   const draftId = useSearchParams()?.get('draft') ?? null;
   const setup = usePeople<RestructureSetup>(canPlan ? '/restructures/setup' : null);
   const drafts = usePeople<{ id: string; title: string; updatedAt: string }[]>(canPlan ? '/restructures/drafts' : null);
-  const finished = usePeople<FinishedRestructure[]>(canPlan ? '/restructures?status=finished' : null);
+  const finished = usePeople<FinishedRestructure[]>('/restructures?status=finished');
   const draft = usePeople<{ id: string; state: RestructureDraftState }>(canPlan && draftId ? `/restructures/drafts/${id(draftId)}` : null);
   const templates = useLife<LetterTemplates>(canPlan ? '/letters/templates' : null);
   const letterTypes = [...new Map((templates.data?.templates ?? []).filter((t) => t.status === 'active').map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
@@ -32,6 +33,10 @@ function Restructure() {
   // A new wizard after "Save and exit" (the start page again, empty).
   const [round, setRound] = useState(0);
   const waiting = draftId && !draft.data && !draft.isError;
+  if (perms.isSuccess && !canPlan) {
+    const st = loadState(finished);
+    return <FinishedRestructuresScreen state={st === 'no-access' ? 'forbidden' : st} onRetry={() => void finished.refetch()} rows={finished.data ?? null} onOpen={(r) => router.push(`/yx/people/restructure/${id(r)}`)} />;
+  }
   return (
     <RestructureWizard
       key={`${draftId ?? 'new'}-${round}-${waiting ? 'wait' : 'ready'}`}
