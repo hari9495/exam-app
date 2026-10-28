@@ -8,13 +8,16 @@ module.exports = {
   // without this, record-visibility.integration.spec.ts fails on DATABASE_URL-not-found.
   testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
   // openid-client, oauth4webapi, jose, franc-min (with its trigram-utils, n-gram, collapse-white-space) and file-type (with strtok3,
-  // token-types, uint8array-extras, @tokenizer/inflate, @borewit/text-codec) ship ESM only. Node loads them through require(esm);
+  // token-types, uint8array-extras, @tokenizer/inflate, @borewit/text-codec) and sanitize-html's parser (htmlparser2 12 with
+  // domelementtype, domhandler, domutils, dom-serializer, entities) ship ESM only. Node loads them through require(esm);
   // Jest's CommonJS loader cannot, so they are down-levelled here (same in test/jest-e2e.json).
   transform: {
-    '/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
+    '/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec|htmlparser2|domelementtype|domhandler|domutils|dom-serializer|entities)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/)'],
+  // Only the innermost package of a path counts, so a listed package nested under another one (sanitize-html's own
+  // htmlparser2 12) is transformed too.
+  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec|htmlparser2|domelementtype|domhandler|domutils|dom-serializer|entities)/)[^/]+/(?!(.*/)?node_modules/)'],
   collectCoverageFrom: [
     '**/*.(t|j)s',
   ],
