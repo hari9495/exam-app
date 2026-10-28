@@ -626,11 +626,11 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Draft (Coverage and draft) | feature not built |
-| Demand (Demand editor) | feature not built |
-| Running (Generating) | feature not built |
-| Explain (Unfilled slot explained) | feature not built |
-| Approved (Approved · publish) | feature not built |
+| Draft (Coverage and draft) | /yx/time/auto-roster (`AutoRosterScreen live`, auto-roster-live.tsx) → Coverage and draft tab: KPIs (slots filled, unfilled, over-staffed, new drafts, nights per person), coverage chips per shift and day (got/need of the latest run), "Why slots are unfilled", the week's draft grid; empty: "No draft for this week yet" + Generate; failed run: the reason + Run again. OT hours KPI: gap (no OT forecast in the API) |
+| Demand (Demand editor) | /yx/time/auto-roster → Demand tab: people needed per shift and weekday at the location (0–500), Save demand, or Run again saves then generates; not set up: "Not set up" badge and Demand tab first. "Import forecast (CSV)" and the festival-sale date override: gap (demand is per weekday only; no CSV import in the API) |
+| Running (Generating) | /yx/time/auto-roster while Generate runs, or when another planner's run is going ("Check again"); a second Generate gets 409 "already running" |
+| Explain (Unfilled slot explained) | /yx/time/auto-roster → a red chip or Explain → drawer: reasons with counts and each person checked with the guard's reason; "Offer as open shift" links to /yx/time/open-shifts. The "Plain-words summary (1 AI credit)" card: gap (no AI explain in the API) |
+| Approved (Approved · publish) | /yx/time/auto-roster → Approve draft (page step, no API) → Publish roster → POST /time/roster/publish (all the planner's drafts for the two weeks; every rule re-checked; a refusal stays on the page). Unfilled slots are not sent as open shifts automatically: gap, the planner offers them on /yx/time/open-shifts |
 
 ### TIM-35 · Open shifts and bids
 
