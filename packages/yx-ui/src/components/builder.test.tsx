@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -7,14 +7,6 @@ import { ConditionBuilder } from './condition';
 import { RichTextEditor } from './editor';
 import { FormField } from './field';
 import { BuilderCanvas, VersionCompare, diffFlows, outlineFlow, type Flow, type FlowVersion } from './builder';
-
-// ProseMirror measures ranges when it scrolls the selection into view; jsdom has no layout.
-beforeAll(() => {
-  const rect = { x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, toJSON() {} } as DOMRect;
-  Range.prototype.getBoundingClientRect ??= () => rect;
-  Range.prototype.getClientRects ??= () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
-  document.elementFromPoint ??= () => null;
-});
 
 const SCHEMA: RuleSchema = {
   triggers: [
