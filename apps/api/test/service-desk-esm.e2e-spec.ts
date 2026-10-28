@@ -423,7 +423,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await bulk('mgr', { taskIds: [], decision: 'approve' }).expect(400);
       await bulk('mgr', { taskIds: ['not-a-uuid'], decision: 'approve' }).expect(400);
       // The cost-centre owner says no to one; the manager sees that in Team history, with the reason.
-      const cco = (await inbox('cco')).filter((x) => x.title.startsWith('New laptop'));
+      const cco = (await inbox('cco')).filter((x) => mine.some((t) => t.requestId === x.requestId)); // only this test's two orders; earlier tests leave others open
       expect(cco).toHaveLength(2);
       await decide('cco', cco[0].taskId, 'reject', 'Use the spare one').expect(200);
       type H = { requestId: string; decision: string; by: string; byMe: boolean; reason: string | null; requestStatus: string };
