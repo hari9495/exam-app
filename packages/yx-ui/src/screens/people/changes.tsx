@@ -138,6 +138,8 @@ function DraftList({ drafts, onOpen }: { drafts: DraftRow[]; onOpen?: (id: strin
 const IN_PROGRESS = [
   { id: 'w1', name: 'Nisha Rao', kind: 'Manager change', effective: new Date(2026, 10, 2), waitingFor: 'Karthik Subramanian', mine: true },
   { id: 'w2', name: 'Aisha Khan', kind: 'Manager change', effective: new Date(2026, 9, 12), waitingFor: 'Lakshmi Venkatesan', mine: false },
+  // Founder 28 Oct 2026: an inter-entity transfer sent from here waits too; Open goes to People › Restructure.
+  { id: 'w3', name: 'Rahul Sharma', kind: 'Inter-entity transfer', effective: new Date(2026, 10, 1), waitingFor: 'Karthik Subramanian or Lakshmi Venkatesan', mine: false },
 ];
 
 export interface ChangeActionSheetProps {

@@ -100,5 +100,22 @@ describe('/yx/people/changes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(posted).toEqual([{ confirmRebase: false }]));
   });
+
+  it('pending inter-entity transfers wait in the same list; Open goes to that restructure (founder 28 Oct 2026)', async () => {
+    const push = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    route({
+      [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage', 'employee.change.approve'],
+      'GET /people/changes': [CHANGE],
+      'GET /people/restructures/pending-transfers': [{ id: 'r-1', employeeId: 'p-kavya', name: 'Kavya Reddy', effectiveDate: '2026-11-01', waitingFor: ['Karthik Subramanian'], requestedAt: '2026-10-27T10:00:00Z' }],
+    });
+    wrap(<YxJobChangesPage />);
+    expect(await screen.findByText('Kavya Reddy · Inter-entity transfer')).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for approval \(2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for Karthik Subramanian/)).toBeInTheDocument();
+    const row = screen.getByText('Kavya Reddy · Inter-entity transfer').closest('li') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Open' }));
+    expect(push).toHaveBeenCalledWith('/yx/people/restructure/r-1');
+  });
 });
 

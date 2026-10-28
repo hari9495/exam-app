@@ -527,6 +527,15 @@ describe('Change action (PPL-04) and Scheduled (PPL-05)', () => {
     expect(onOpenWaiting).toHaveBeenCalledWith('c1');
   });
 
+  it('an inter-entity transfer waits beside the job changes, counted in the heading; the design shows one (founder 28 Oct 2026)', async () => {
+    const onOpenWaiting = vi.fn();
+    render(<ChangeActionSheet persona="hr" kind="Promotion" effective={day('2026-10-20')} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), people: [], waiting: [{ id: 'c1', name: 'Kavya Reddy', kind: 'Manager change', effective: day('2026-11-16'), note: 'raised 19 Oct 2026', canOpen: false }, { id: 'r1', name: 'Rahul Sharma', kind: 'Inter-entity transfer', effective: day('2026-11-01'), note: 'waiting for Lakshmi Venkatesan', canOpen: true }], onStart: vi.fn(), onOpenWaiting }} />);
+    expect(screen.getByText('Waiting for approval (2)')).toBeInTheDocument();
+    expect(screen.getByText('Rahul Sharma · Inter-entity transfer')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open' }));
+    expect(onOpenWaiting).toHaveBeenCalledWith('r1');
+  });
+
   it('cancelling a scheduled change needs a reason of 5 characters', async () => {
     const onCancel = vi.fn(async () => undefined);
     render(<ScheduledChangesScreen rows={[{ id: 's1', name: 'Arjun Kulkarni', code: 'KF-0142', type: 'Promotion', effective: day('2026-11-01'), summary: 'Quality Lead · G3', raisedBy: '', status: 'Scheduled' }]} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), onEdit: vi.fn(), onOpen: vi.fn(), onCancel }} />);
