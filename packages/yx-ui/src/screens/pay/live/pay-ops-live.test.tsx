@@ -215,7 +215,10 @@ describe('payroll operations screens', () => {
     );
     await ue.click(screen.getByRole('button', { name: 'Issue 1 ready' }));
     const confirm = screen.getAllByRole('button', { name: 'Issue' }).pop()!;
-    expect(confirm).toBeDisabled();
+    // Never disabled: pressed before the phrase is typed, it says what to type.
+    await ue.click(confirm);
+    expect(screen.getAllByText(/exactly, in capitals\./).length).toBeGreaterThan(0);
+    expect(onIssueAll).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'ISSUE FORM16 2025-26');
     await ue.click(confirm);
     await waitFor(() => expect(onIssueAll).toHaveBeenCalledWith(expect.objectContaining({ phrase: 'ISSUE FORM16 2025-26' })));

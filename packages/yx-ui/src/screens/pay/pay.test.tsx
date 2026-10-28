@@ -213,20 +213,24 @@ describe('loans, gratuity, bonus, special pay', () => {
 });
 
 describe('screens', () => {
-  it('irreversible sheet enables confirm only with the exact phrase', async () => {
+  it('irreversible sheet confirms only with the exact phrase (never disabled: it says what is missing)', async () => {
     const u = userEvent.setup();
     const onConfirm = vi.fn();
     render(
       <IrreversibleSheet open onOpenChange={() => {}} title="Approve and lock" impact={[{ label: 'Net', value: '₹1' }]} cannotUndo="x" correction="y" phrase="KAVERI FOODS SEP 2026" maker="A" checker="B" confirmLabel="Approve and lock" onConfirm={onConfirm} />,
     );
     const btn = screen.getByRole('button', { name: 'Approve and lock' });
-    expect(btn).toBeDisabled();
+    expect(btn).toBeEnabled();
     const input = screen.getByLabelText(/Type KAVERI FOODS SEP 2026 to confirm/);
+    await u.click(btn);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByText('Type KAVERI FOODS SEP 2026 exactly, in capitals.')).toBeInTheDocument();
+    expect(input).toHaveFocus();
     await u.type(input, 'kaveri foods sep 2026');
-    expect(btn).toBeDisabled();
+    await u.click(btn);
+    expect(onConfirm).not.toHaveBeenCalled();
     await u.clear(input);
     await u.type(input, 'KAVERI FOODS SEP 2026');
-    expect(btn).toBeEnabled();
     await u.click(btn);
     expect(onConfirm).toHaveBeenCalled();
   });

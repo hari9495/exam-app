@@ -48,7 +48,9 @@ describe('To pay (EXP-06)', () => {
     await ue.click(screen.getByRole('tab', { name: /Bank files/ }));
     await ue.click(screen.getByRole('button', { name: 'Release' }));
     const confirm = screen.getAllByRole('button', { name: 'Release' }).pop()!;
-    expect(confirm).toBeDisabled();
+    // Never disabled: pressed before the phrase is typed, it says what to type.
+    await ue.click(confirm);
+    expect(screen.getAllByText(/exactly, in capitals\./).length).toBeGreaterThan(0);
     await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'RELEASE 1');
     await ue.click(confirm);
     await waitFor(() => expect(p.onRelease).toHaveBeenCalledWith(TO_PAY.batches[0], 'RELEASE 1'));

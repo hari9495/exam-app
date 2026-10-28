@@ -11,7 +11,7 @@ import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { EntityPicker, statuteText } from './setup';
+import { EntityPicker, statuteText, useTooEarly } from './setup';
 import type { LoadState } from './types';
 import type {
   Breakup,
@@ -98,6 +98,7 @@ export function ComponentLibraryLiveScreen(p: ComponentLibraryLiveProps) {
     c: ComponentInput;
   } | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const compEarly = useTooEarly([...(edit && !edit.c.name.trim() ? [{ fieldId: 'pc-name', message: 'Name the component.' }] : []), ...(edit && !edit.c.code ? [{ fieldId: 'pc-code', message: 'Give the component a code.' }] : [])]);
   const kinds = Object.keys(KIND) as ComponentKind[];
   return (
     <LivePage
@@ -184,9 +185,9 @@ export function ComponentLibraryLiveScreen(p: ComponentLibraryLiveProps) {
           <Button
             variant="primary"
             loading={busy === 'save'}
-            disabled={!edit?.c.code || !edit?.c.name.trim()}
             onClick={() =>
               edit &&
+              !compEarly.stop() &&
               void run('save', async () => {
                 await p.onSave(edit.id, edit.c);
                 setDone(`${edit.c.name} saved.`);
@@ -201,10 +202,10 @@ export function ComponentLibraryLiveScreen(p: ComponentLibraryLiveProps) {
         {edit && (
           <div className="yx-tim-stack">
             {edit.statutory && <InlineAlert tone="info" title="A statutory component: its amount comes from the published rules. Only its name and whether it shows on the payslip change here." />}
-            <FormField id="pc-name" label="Name" required>
+            <FormField id="pc-name" label="Name" required error={compEarly.errorOf('pc-name')}>
               <TextField value={edit.c.name} onChange={(v) => setEdit({ ...edit, c: { ...edit.c, name: v } })} />
             </FormField>
-            <FormField id="pc-code" label="Code" helper="Lower-case letters, digits and _. Fixed once a payslip uses it.">
+            <FormField id="pc-code" label="Code" helper="Lower-case letters, digits and _. Fixed once a payslip uses it." error={compEarly.errorOf('pc-code')}>
               <TextField
                 value={edit.c.code}
                 disabled={!!edit.statutory}
@@ -330,6 +331,8 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
   } | null>(null);
   const [checks, setChecks] = useState<Record<number, FormulaCheck>>({});
   const [sample, setSample] = useState<Breakup | null>(null);
+  const [needSample, setNeedSample] = useState(false);
+  const createEarly = useTooEarly(!name.trim() ? [{ fieldId: 'st-name', message: 'Name the template.' }] : []);
   const codes = (p.components ?? []).filter((c) => c.status === 'active');
   const start = (t: SalaryTemplate) => {
     setChecks({});
@@ -377,13 +380,13 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
       )}
       <Card className="yx-pay-card" title="New template">
         <div className="yx-tim-row">
-          <FormField id="st-name" label="Name">
+          <FormField id="st-name" label="Name" error={createEarly.errorOf('st-name')}>
             <TextField value={name} onChange={setName} />
           </FormField>
           <FormField id="st-entity" label="Legal entity" helper="Leave empty for the whole company.">
             <Select value={entityId} onChange={setEntityId} clearable placeholder="Whole company" options={p.entities.map((e) => ({ value: e.id, label: e.name }))} />
           </FormField>
-          <Button variant="primary" disabled={!name.trim()} loading={busy === 'create'} onClick={() => void run('create', async () => (await p.onCreate(name.trim(), entityId), setName('')))}>
+          <Button variant="primary" loading={busy === 'create'} onClick={() => !createEarly.stop() && void run('create', async () => (await p.onCreate(name.trim(), entityId), setName('')))}>
             Create
           </Button>
         </div>
@@ -424,15 +427,15 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
             </Button>
             <Button
               variant="primary"
-              disabled={!sample}
-              title={!sample ? 'Test it on the sample first' : undefined}
               loading={busy === 'savev'}
               onClick={() =>
                 build &&
-                void run('savev', async () => {
+                (!sample
+                  ? setNeedSample(true)
+                  : void run('savev', async () => {
                   await p.onSaveVersion(build.template.id, build.v);
                   setBuild(null);
-                })
+                }))
               }
             >
               Save version
@@ -442,6 +445,11 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
       >
         {build && (
           <div className="yx-tim-stack">
+            {needSample && !sample && (
+              <InlineAlert tone="warning" title="Test it on the sample first">
+                Press Test on the sample: a version is saved only after its formulas have worked out a real breakup.
+              </InlineAlert>
+            )}
             <FormField id="tv-from" label="From">
               <TextField type="date" value={build.v.validFrom} onChange={(v) => setBuild({ ...build, v: { ...build.v, validFrom: v } })} />
             </FormField>
@@ -642,6 +650,11 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
     vpfPercent: '0',
     reason: '',
   });
+  const letterEarly = useTooEarly(signatory.trim().length < 2 ? [{ fieldId: 'cp-sign', message: 'Give the name of the person who signs the letter.' }] : []);
+  const previewEarly = useTooEarly(!form.templateVersionId ? [{ fieldId: 'cp-tpl', message: 'Choose the salary template.' }] : []);
+  const suggestEarly = useTooEarly(!/^\d{1,12}(\.\d{1,2})?$/.test(form.annualCtc ?? '') ? [{ fieldId: 'cp-ctc', message: 'Give the annual CTC in rupees, for example 726000.' }] : []);
+  const submitEarly = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'cp-reason', message: 'Say why (at least 3 letters).' }] : []);
+  const profileEarly = useTooEarly(prof.reason.trim().length < 5 ? [{ fieldId: 'sp-reason', message: 'Say why (at least 5 letters).' }] : []);
   useEffect(() => (setPreview(null), setDone(null)), [p.employee]);
   const versions = (p.templates ?? []).flatMap((t) =>
     t.versions.map((v) => ({
@@ -718,13 +731,12 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                     )}
                     {p.current.package && !p.current.package.letterDocumentId && (
                       <div className="yx-tim-row">
-                        <FormField id="cp-sign" label="Letter signed by">
+                        <FormField id="cp-sign" label="Letter signed by" error={letterEarly.errorOf('cp-sign')}>
                           <TextField value={signatory} onChange={setSignatory} />
                         </FormField>
                         <Button
-                          disabled={signatory.trim().length < 2}
                           loading={busy === 'letter'}
-                          onClick={() => void run('letter', async () => setDone(`Revision letter ${(await p.onLetter(p.current!.changeId, signatory.trim())).referenceNo} issued.`))}
+                          onClick={() => !letterEarly.stop() && void run('letter', async () => setDone(`Revision letter ${(await p.onLetter(p.current!.changeId, signatory.trim())).referenceNo} issued.`))}
                         >
                           Issue the revision letter
                         </Button>
@@ -741,7 +753,7 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                   <FormField id="cp-date" label="From">
                     <TextField type="date" value={form.effectiveDate} onChange={(v) => (setPreview(null), setForm({ ...form, effectiveDate: v }))} />
                   </FormField>
-                  <FormField id="cp-tpl" label="Template">
+                  <FormField id="cp-tpl" label="Template" error={previewEarly.errorOf('cp-tpl')}>
                     <Select value={form.templateVersionId || null} onChange={(v) => (setPreview(null), setForm({ ...form, templateVersionId: v ?? '' }))} options={versions} />
                   </FormField>
                   <FormField id="cp-mode" label="Enter">
@@ -757,7 +769,7 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                   </FormField>
                 </div>
                 {form.entryMode === 'ctc' ? (
-                  <FormField id="cp-ctc" label="Annual CTC" className="yx-pay-narrow">
+                  <FormField id="cp-ctc" label="Annual CTC" className="yx-pay-narrow" error={suggestEarly.errorOf('cp-ctc')}>
                     <TextField
                       prefix="₹"
                       value={form.annualCtc ?? ''}
@@ -793,11 +805,11 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                   </FormField>
                 )}
                 <div className="yx-tim-row">
-                  <Button disabled={!form.templateVersionId} loading={busy === 'preview'} onClick={() => void run('preview', async () => setPreview(await p.onPreview(form)))}>
+                  <Button loading={busy === 'preview'} onClick={() => !previewEarly.stop() && void run('preview', async () => setPreview(await p.onPreview(form)))}>
                     Work out the breakup
                   </Button>
                   {p.onSuggest && form.entryMode === 'ctc' && (
-                    <Button disabled={!/^\d{1,12}(\.\d{1,2})?$/.test(form.annualCtc ?? '')} loading={busy === 'suggest'} onClick={() => void run('suggest', async () => setSuggestions(await p.onSuggest!(form.annualCtc!, form.effectiveDate)))}>
+                    <Button loading={busy === 'suggest'} onClick={() => !suggestEarly.stop() && void run('suggest', async () => setSuggestions(await p.onSuggest!(form.annualCtc!, form.effectiveDate)))}>
                       Suggest a split
                     </Button>
                   )}
@@ -837,14 +849,14 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                 {preview && (
                   <>
                     <BreakupTable b={preview} />
-                    <FormField id="cp-reason" label="Reason" required>
+                    <FormField id="cp-reason" label="Reason" required error={submitEarly.errorOf('cp-reason')}>
                       <TextField value={reason} onChange={setReason} />
                     </FormField>
                     <Button
                       variant="primary"
-                      disabled={reason.trim().length < 3}
                       loading={busy === 'submit'}
                       onClick={() =>
+                        !submitEarly.stop() &&
                         void run('submit', async () => {
                           await p.onSubmit!({ ...form, reason: reason.trim() });
                           setDone('Sent for approval. It takes effect once someone else approves it.');
@@ -902,14 +914,14 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                       <TextField value={prof.vpfPercent} onChange={(v) => setProf({ ...prof, vpfPercent: v })} />
                     </FormField>
                   </div>
-                  <FormField id="sp-reason" label="Reason" required>
+                  <FormField id="sp-reason" label="Reason" required error={profileEarly.errorOf('sp-reason')}>
                     <TextField value={prof.reason} onChange={(v) => setProf({ ...prof, reason: v })} />
                   </FormField>
                   <Button
                     variant="primary"
-                    disabled={prof.reason.trim().length < 5}
                     loading={busy === 'profile'}
                     onClick={() =>
+                      !profileEarly.stop() &&
                       void run(
                         'profile',
                         async () => (

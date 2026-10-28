@@ -95,7 +95,10 @@ describe('Payroll set-up (PAY-16 / CMP-02)', () => {
     await ue.type(screen.getByRole('textbox', { name: 'Registration number' }), 'KNBNG0045123000');
     await ue.click(screen.getByRole('button', { name: 'Save registrations' }));
     await waitFor(() => expect(onSaveRegistrations).toHaveBeenCalledWith([expect.objectContaining({ statute: 'IN.PF', registrationNo: 'KNBNG0045123000' })]));
-    expect(screen.getByRole('button', { name: 'Save option' })).toBeDisabled();
+    // Never disabled: pressed with nothing chosen, it says what is missing and saves nothing.
+    await ue.click(screen.getByRole('button', { name: 'Save option' }));
+    expect(screen.getByText('Choose the value.')).toBeInTheDocument();
+    expect(onSetOption).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('radio', { name: 'On actual wage' }));
     await ue.type(screen.getByLabelText('From'), '2026-04-01');
     await ue.click(screen.getByRole('button', { name: 'Save option' }));
@@ -140,7 +143,9 @@ describe('Salary templates (PAY-13)', () => {
     await ue.type(formula, 'process.exit()');
     await ue.tab();
     expect(await within(dialog).findByText('process is not a name you can use here.')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Save version' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save version' }));
+    expect(within(dialog).getByText('Test it on the sample first')).toBeInTheDocument();
+    expect(onSaveVersion).not.toHaveBeenCalled();
     await ue.click(within(dialog).getByRole('button', { name: 'Test on the sample' }));
     expect(await within(dialog).findByRole('table', { name: 'Salary breakup' })).toBeInTheDocument();
     await ue.click(within(dialog).getByRole('button', { name: 'Save version' }));
@@ -174,7 +179,9 @@ describe('Compensation (PAY-12)', () => {
     await ue.click(screen.getByRole('button', { name: 'Work out the breakup' }));
     expect(await screen.findByText(/below the minimum or floor wage/)).toBeInTheDocument();
     expect(screen.getByText('Provident fund 2025-v1 (verify)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(screen.getByText('Say why (at least 3 letters).')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Annual review');
     await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ annualCtc: '726000', templateVersionId: 'v1', reason: 'Annual review' })));
@@ -198,7 +205,8 @@ describe('Payslip layout (PAY-15)', () => {
     expect(within(screen.getByRole('list', { name: 'Always shown' })).getByText('Net wages paid')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: /Net wages paid/ })).toBeNull();
     expect(screen.getByRole('checkbox', { name: /Department/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Use this layout' })).toBeDisabled();
+    // Never disabled: pressed before a preview, it says to preview first.
+    expect(screen.getByRole('button', { name: 'Use this layout' })).toBeEnabled();
   });
 
   it('saves a second language with English always kept (5b-D2)', async () => {
@@ -227,6 +235,7 @@ describe('Imports (PAY-2.12)', () => {
     await ue.paste('employeeCode,month,componentCode,amount\nNOPE,2026-03,basic,1');
     await ue.click(screen.getByRole('button', { name: 'Check 1 rows' }));
     expect(await screen.findByText(/Row 1: No employee/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Commit 0 rows' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Commit 0 rows' }));
+    expect(screen.getByText(/nothing is imported while a row has a problem/)).toBeInTheDocument();
   });
 });

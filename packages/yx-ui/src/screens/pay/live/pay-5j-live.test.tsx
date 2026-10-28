@@ -83,7 +83,10 @@ describe('batch 5j payroll screens', () => {
     rerender(<PayRunScreen {...p} run={{ ...RUN, status: 'submitted', preparedByMe: false, approval: { canDecide: true, phrase: 'APPROVE KFPL 2026-09', step: 1, steps: 2 } }} />);
     await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
     const confirm = screen.getAllByRole('button', { name: 'Approve and lock' }).pop()!;
-    expect(confirm).toBeDisabled();
+    // Never disabled: pressed before the phrase is typed, it says what to type.
+    await ue.click(confirm);
+    expect(screen.getAllByText(/exactly, in capitals\./).length).toBeGreaterThan(0);
+    expect(p.onDecide).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'APPROVE KFPL 2026-09');
     await ue.click(confirm);
     await waitFor(() => expect(p.onDecide).toHaveBeenCalledWith('approve', null, expect.objectContaining({ phrase: 'APPROVE KFPL 2026-09' })));

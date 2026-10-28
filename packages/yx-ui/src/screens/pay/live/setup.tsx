@@ -3,7 +3,7 @@ import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { FormField } from '../../../components/field';
+import { FormField, useSaveErrors } from '../../../components/field';
 import { TextArea, TextField } from '../../../components/inputs';
 import { Checkbox } from '../../../components/choice';
 import { Segment } from '../../../components/segment';
@@ -39,12 +39,27 @@ import type {
 // monitor (PAY-30) and imports from the old system. Presentational: the API checks every call (keys, entity scope,
 // step-up, the pay guard).
 
-export function EntityPicker({ entities, value, onChange, id = 'pay-entity' }: { entities: SetupEntity[]; value: string | null; onChange: (id: string | null) => void; id?: string }) {
+export function EntityPicker({ entities, value, onChange, id = 'pay-entity', error }: { entities: SetupEntity[]; value: string | null; onChange: (id: string | null) => void; id?: string; error?: string }) {
   return (
-    <FormField id={id} label="Legal entity">
+    <FormField id={id} label="Legal entity" error={error}>
       <Select value={value} onChange={onChange} placeholder="Choose a legal entity" options={entities.map((e) => ({ value: e.id, label: e.name }))} />
     </FormField>
   );
+}
+
+/** Never a disabled confirm button (founder rule): pressed too early, the errors show and the first field takes focus. */
+export function useTooEarly(errors: { fieldId: string; message: string }[]) {
+  const shown = useSaveErrors(errors);
+  return {
+    errorOf: shown.errorOf,
+    /** True when something is missing (and now shown); the caller stops there. */
+    stop: () => {
+      if (!errors.length) return false;
+      shown.reveal();
+      document.getElementById(errors[0]!.fieldId)?.focus();
+      return true;
+    },
+  };
 }
 
 const STATUTE: Record<string, string> = {
@@ -273,6 +288,7 @@ function LegalOptionsCard({ options, onSet, busy }: { options: LegalOption[]; on
   const [value, setValue] = useState('');
   const [from, setFrom] = useState('');
   const spec = OPTION_CHOICES[key];
+  const early = useTooEarly([...(!value ? [{ fieldId: 'lo-value', message: 'Choose the value.' }] : []), ...(!from ? [{ fieldId: 'lo-from', message: 'Choose the date it applies from.' }] : [])]);
   return (
     <Card className="yx-pay-card" title="Legal options">
       <p className="yx-tim-note">Only what the law leaves to the employer. Each value is dated; history is kept.</p>
@@ -307,13 +323,13 @@ function LegalOptionsCard({ options, onSet, busy }: { options: LegalOption[]; on
             }))}
           />
         </FormField>
-        <FormField id="lo-value" label="Value" helper={spec.help}>
+        <FormField id="lo-value" label="Value" helper={spec.help} error={early.errorOf('lo-value')}>
           {spec.choices ? <Segment label={spec.label} value={value || null} onChange={setValue} options={spec.choices} /> : <TextField value={value} onChange={setValue} placeholder="0.0833" />}
         </FormField>
-        <FormField id="lo-from" label="From">
+        <FormField id="lo-from" label="From" error={early.errorOf('lo-from')}>
           <TextField type="date" value={from} onChange={setFrom} />
         </FormField>
-        <Button variant="primary" disabled={!value || !from} loading={busy} onClick={() => onSet(key, value, from)}>
+        <Button variant="primary" loading={busy} onClick={() => early.stop() || onSet(key, value, from)}>
           Save option
         </Button>
       </div>
@@ -351,7 +367,13 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<EmployeeHit[]>([]);
   const [pick, setPick] = useState<string[]>([]);
+  const groupEarly = useTooEarly([
+    ...(edit && !edit.legalEntityId ? [{ fieldId: 'pg-entity', message: 'Choose the legal entity.' }] : []),
+    ...(edit && !edit.name?.trim() ? [{ fieldId: 'pg-name', message: 'Name the group.' }] : []),
+    ...(edit && !edit.id && edit.frequency && edit.frequency !== 'monthly' && !/^\d{4}-\d{2}-\d{2}$/.test(edit.anchorDate ?? '') ? [{ fieldId: 'pg-anchor', message: 'Choose the first day of a pay period.' }] : []),
+  ]);
   const [from, setFrom] = useState(p.today);
+  const addEarly = useTooEarly([...(!pick.length ? [{ fieldId: 'pg-search', message: 'Find and tick the people to add.' }] : []), ...(!from ? [{ fieldId: 'pg-from', message: 'Choose the date they join the group.' }] : [])]);
   const entityName = (id: string) => p.entities.find((e) => e.id === id)?.name ?? '';
   const show = (g: PayGroup) => {
     setOpen(g);
@@ -442,9 +464,9 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
           <Button
             variant="primary"
             loading={busy === 'save'}
-            disabled={!edit?.legalEntityId || !edit?.name?.trim() || (!edit?.id && edit?.frequency !== 'monthly' && !/^\d{4}-\d{2}-\d{2}$/.test(edit?.anchorDate ?? ''))}
             onClick={() =>
               edit &&
+              !groupEarly.stop() &&
               void run('save', async () => {
                 await p.onSave(edit.id ?? null, {
                   legalEntityId: edit.legalEntityId!,
@@ -465,8 +487,8 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
       >
         {edit && (
           <div className="yx-tim-stack">
-            {!edit.id && <EntityPicker id="pg-entity" entities={p.entities} value={edit.legalEntityId} onChange={(v) => setEdit({ ...edit, legalEntityId: v })} />}
-            <FormField id="pg-name" label="Name" required>
+            {!edit.id && <EntityPicker id="pg-entity" entities={p.entities} value={edit.legalEntityId} onChange={(v) => setEdit({ ...edit, legalEntityId: v })} error={groupEarly.errorOf('pg-entity')} />}
+            <FormField id="pg-name" label="Name" required error={groupEarly.errorOf('pg-name')}>
               <TextField value={edit.name ?? ''} onChange={(v) => setEdit({ ...edit, name: v })} />
             </FormField>
             {!edit.id && (
@@ -484,7 +506,7 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
               </FormField>
             )}
             {!edit.id && edit.frequency && edit.frequency !== 'monthly' && (
-              <FormField id="pg-anchor" label="First day of a pay period" required helper="Periods run from this day and are cut at month ends.">
+              <FormField id="pg-anchor" label="First day of a pay period" required helper="Periods run from this day and are cut at month ends." error={groupEarly.errorOf('pg-anchor')}>
                 <TextField type="date" value={edit.anchorDate ?? ''} onChange={(v) => setEdit({ ...edit, anchorDate: v })} />
               </FormField>
             )}
@@ -519,7 +541,7 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
                 <EmptyState compact title="No one in this group yet" />
               )}
               <div className="yx-tim-row">
-                <FormField id="pg-search" label="Find people">
+                <FormField id="pg-search" label="Find people" error={addEarly.errorOf('pg-search')}>
                   <TextField value={q} onChange={setQ} placeholder="Name" />
                 </FormField>
                 <Button size="sm" onClick={() => void run('search', async () => setHits(await p.onSearch(q)))} loading={busy === 'search'}>
@@ -535,14 +557,14 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
                 />
               ))}
               <div className="yx-tim-row">
-                <FormField id="pg-from" label="From">
+                <FormField id="pg-from" label="From" error={addEarly.errorOf('pg-from')}>
                   <TextField type="date" value={from} onChange={setFrom} />
                 </FormField>
                 <Button
                   variant="primary"
-                  disabled={!pick.length || !from}
                   loading={busy === 'add'}
                   onClick={() =>
+                    !addEarly.stop() &&
                     void run('add', async () => {
                       await p.onAddMembers(open.id, pick, from);
                       setPick([]);
@@ -627,6 +649,8 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
   const latest = p.data?.layouts[0] ?? null;
   const active = p.data?.layouts.find((l) => l.status === 'active') ?? null;
   const draft = latest?.status === 'draft' ? latest : null;
+  // Preview or Use pressed too early: the next step, said under the buttons (they are never disabled).
+  const [tooEarly, setTooEarly] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
   const [second, setSecond] = useState<string | null>(null);
   useEffect(() => {
@@ -670,22 +694,25 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
                 <Button size="sm" loading={busy === 'save'} onClick={() => void run('save', () => p.onSave(blocks, second ? ['en', second] : ['en']))}>
                   Save draft
                 </Button>
-                <Button size="sm" disabled={!draft} loading={busy === 'preview'} onClick={() => void run('preview', p.onPreview)}>
+                <Button size="sm" loading={busy === 'preview'} onClick={() => (draft ? void run('preview', p.onPreview) : setTooEarly('Save the draft first, then preview it.'))}>
                   Preview PDF
                 </Button>
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={!draft?.previewedAt}
-                  title={draft && !draft.previewedAt ? 'Preview it first' : undefined}
                   loading={busy === 'activate'}
-                  onClick={() => void run('activate', p.onActivate)}
+                  onClick={() => (draft?.previewedAt ? void run('activate', p.onActivate) : setTooEarly(draft ? 'Preview the PDF first: a layout is used only after someone has looked at it.' : 'Save the draft and preview it first.'))}
                 >
                   Use this layout
                 </Button>
               </div>
             }
           >
+            {tooEarly && (
+              <InlineAlert tone="warning" title="Not yet">
+                {tooEarly}
+              </InlineAlert>
+            )}
             <FormField id="pl-lang" label="Second language" helper="English is always on the payslip. A second language shows each label in that script too.">
               <Select value={second} onChange={setSecond} clearable placeholder="English only" options={LANGUAGES} />
             </FormField>
@@ -888,6 +915,9 @@ export function PayImportsScreen(p: PayImportsScreenProps) {
   const [check, setCheck] = useState<GoLiveCheck | null>(null);
   const spec = IMPORT_KINDS.find((k) => k.value === kind)!;
   const rows = parseCsv(text);
+  const stageEarly = useTooEarly([...(!entityId ? [{ fieldId: 'pay-entity', message: 'Choose the legal entity.' }] : []), ...(!rows.length ? [{ fieldId: 'imp-text', message: 'Paste the rows, with the header line first.' }] : [])]);
+  const liveEarly = useTooEarly([...(!entityId ? [{ fieldId: 'pay-entity', message: 'Choose the legal entity.' }] : []), ...(!month ? [{ fieldId: 'imp-month', message: 'Choose the first month paid in YukthiX.' }] : [])]);
+  const [commitWhy, setCommitWhy] = useState(false);
   return (
     <LivePage
       title="Import from the old payroll"
@@ -897,7 +927,7 @@ export function PayImportsScreen(p: PayImportsScreenProps) {
       what="payroll imports"
       grantedBy="your payroll admin"
     >
-      <EntityPicker entities={p.entities} value={entityId} onChange={setEntityId} />
+      <EntityPicker entities={p.entities} value={entityId} onChange={setEntityId} error={stageEarly.errorOf('pay-entity') ?? liveEarly.errorOf('pay-entity')} />
       {error && (
         <InlineAlert tone="danger" title="That didn’t work">
           {error}
@@ -908,14 +938,13 @@ export function PayImportsScreen(p: PayImportsScreenProps) {
         <FormField id="imp-kind" label="What you are importing">
           <Segment label="Import kind" value={kind} onChange={(v) => (setKind(v), setBatch(null))} options={IMPORT_KINDS} />
         </FormField>
-        <FormField id="imp-text" label="Rows" helper={`Paste comma-separated rows with this header: ${spec.header}`}>
+        <FormField id="imp-text" label="Rows" helper={`Paste comma-separated rows with this header: ${spec.header}`} error={stageEarly.errorOf('imp-text')}>
           <TextArea rows={8} value={text} onChange={(v) => (setText(v), setBatch(null))} placeholder={spec.header} />
         </FormField>
         <Button
           variant="primary"
-          disabled={!entityId || !rows.length}
           loading={busy === 'stage'}
-          onClick={() => void run('stage', async () => (setCommitted(null), setBatch(await p.onStage(entityId!, kind, rows))))}
+          onClick={() => !stageEarly.stop() && void run('stage', async () => (setCommitted(null), setBatch(await p.onStage(entityId!, kind, rows))))}
         >
           Check {rows.length || ''} rows
         </Button>
@@ -936,12 +965,20 @@ export function PayImportsScreen(p: PayImportsScreenProps) {
               </ul>
             </InlineAlert>
           )}
+          {commitWhy && batch.status === 'staged' && batch.errors.length > 0 && (
+            <p className="yx-field__error" role="alert">
+              Fix the rows above and check them again; nothing is imported while a row has a problem.
+            </p>
+          )}
           <Button
             variant="primary"
-            disabled={batch.errors.length > 0 || batch.status !== 'staged'}
             loading={busy === 'commit'}
             onClick={() =>
-              void run('commit', async () => {
+              batch.status !== 'staged'
+                ? undefined
+                : batch.errors.length > 0
+                  ? setCommitWhy(true)
+                  : void run('commit', async () => {
                 await p.onCommit(batch.id);
                 setBatch({ ...batch, status: 'committed' });
                 setCommitted(`${batch.valid} rows imported.`);
@@ -954,10 +991,10 @@ export function PayImportsScreen(p: PayImportsScreenProps) {
       )}
       <Card className="yx-pay-card" title="Go-live check">
         <div className="yx-tim-row">
-          <FormField id="imp-month" label="First month paid in YukthiX">
+          <FormField id="imp-month" label="First month paid in YukthiX" error={liveEarly.errorOf('imp-month')}>
             <TextField type="month" value={month} onChange={setMonth} />
           </FormField>
-          <Button disabled={!entityId || !month} loading={busy === 'golive'} onClick={() => void run('golive', async () => setCheck(await p.onGoLive(entityId!, month)))}>
+          <Button loading={busy === 'golive'} onClick={() => !liveEarly.stop() && void run('golive', async () => setCheck(await p.onGoLive(entityId!, month)))}>
             Check
           </Button>
         </div>

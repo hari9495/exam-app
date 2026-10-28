@@ -1,7 +1,7 @@
 // Pay-area building blocks (M03 §7): frames with the Pay panel (APX-D §1.2), net-first money summary,
 // days strip, "why this number" lines, run stage track, due-date strip, per-employee progress and the
 // irreversible-action sheet (APX-D §6.4). Token-only CSS in pay.css.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, Lock, RotateCcw, Send } from 'lucide-react';
 import type { IconComponent } from '../../components/foundations';
 import { TODAY } from '../_kit/data';
@@ -667,6 +667,9 @@ const REASON_MIN = 5;
 export function IrreversibleSheet(p: IrreversibleSheetProps) {
   const [typed, setTyped] = useState(p.defaultTyped ?? '');
   const [reason, setReason] = useState(p.defaultReason ?? '');
+  // Pressed before it is ready: the unmet field says why and takes focus (the button is never disabled, founder rule).
+  const [tried, setTried] = useState(false);
+  const fid = useId();
   const needReason = p.reasonRequired || p.selfApproval;
   const phraseOk = confirmPhraseMatches(typed, p.phrase);
   const reasonOk = !needReason || reason.trim().length >= REASON_MIN;
@@ -685,11 +688,17 @@ export function IrreversibleSheet(p: IrreversibleSheetProps) {
       : !reasonOk
         ? `Add a reason (at least ${REASON_MIN} characters)`
         : null;
+  const confirm = () => {
+    if (ok) return p.onConfirm(reason);
+    setTried(true);
+    if (!p.blocked) document.getElementById(`${fid}-${!reasonOk ? 'reason' : 'phrase'}`)?.focus();
+  };
   const close = (open: boolean) => {
     // Cancel clears the typed phrase and reason, so reopening never starts half-confirmed (B9).
     if (!open) {
       setTyped(p.defaultTyped ?? '');
       setReason(p.defaultReason ?? '');
+      setTried(false);
     }
     p.onOpenChange(open);
   };
@@ -714,9 +723,13 @@ export function IrreversibleSheet(p: IrreversibleSheetProps) {
           </>
         ) : (
           <>
-            {why && <span className="yx-pay-irrev__why">{why}</span>}
+            {why && (
+              <span className="yx-pay-irrev__why" id={`${fid}-why`}>
+                {why}
+              </span>
+            )}
             <Button onClick={() => close(false)}>Cancel</Button>
-            <Button variant={confirmVariant} icon={confirmIcon} disabled={!ok} onClick={() => p.onConfirm(reason)}>
+            <Button variant={confirmVariant} icon={confirmIcon} aria-describedby={why ? `${fid}-why` : undefined} onClick={confirm}>
               {p.confirmLabel}
             </Button>
           </>
@@ -789,12 +802,12 @@ export function IrreversibleSheet(p: IrreversibleSheetProps) {
               )}
             </section>
             {makerCheckerOk && needReason && (
-              <FormField label="Reason" required helper={`At least ${REASON_MIN} characters. Stored with the audit event.`}>
+              <FormField id={`${fid}-reason`} label="Reason" required helper={`At least ${REASON_MIN} characters. Stored with the audit event.`} error={tried && !reasonOk ? `Add a reason (at least ${REASON_MIN} characters).` : undefined}>
                 <TextArea value={reason} onChange={setReason} rows={2} />
               </FormField>
             )}
             {makerCheckerOk && (
-              <FormField label={`Type ${p.phrase} to confirm`} required helper="Must match exactly, in capitals. The phrase and the totals above are stored with the audit event.">
+              <FormField id={`${fid}-phrase`} label={`Type ${p.phrase} to confirm`} required helper="Must match exactly, in capitals. The phrase and the totals above are stored with the audit event." error={tried && !phraseOk ? `Type ${p.phrase} exactly, in capitals.` : undefined}>
                 <TextField value={typed} onChange={setTyped} autoComplete="off" spellCheck={false} />
               </FormField>
             )}

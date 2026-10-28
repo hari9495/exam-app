@@ -73,7 +73,10 @@ describe('Reopen requests (YX-LOCK-05)', () => {
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     const sheet = screen.getByRole('dialog');
     const confirm = within(sheet).getByRole('button', { name: 'Approve' });
-    expect(confirm).toBeDisabled();
+    // Never disabled: pressed before the phrase is typed, it says what to type.
+    await ue.click(confirm);
+    expect(screen.getAllByText(/exactly, in capitals\./).length).toBeGreaterThan(0);
+    expect(onDecide).not.toHaveBeenCalled();
     await ue.type(within(sheet).getByRole('textbox', { name: /Type REOPEN KFPL-TN 2026-09 to confirm/ }), 'REOPEN KFPL-TN 2026-09');
     await ue.click(confirm);
     await waitFor(() => expect(onDecide).toHaveBeenCalledWith('r1', 'approve', null, expect.objectContaining({ phrase: 'REOPEN KFPL-TN 2026-09' })));
