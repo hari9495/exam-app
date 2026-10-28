@@ -129,7 +129,8 @@ export function TicketKbCard(p: TicketKbCardProps) {
         {p.canWork && p.solved && p.spaces.length > 0 && (
           <div className="yx-ops-stack" data-gap="sm">
             {made ? (
-              <InlineAlert tone="success" title="Draft article made">
+              // Stays: it carries the link to the new draft.
+              <InlineAlert tone="info" title="Draft article made">
                 It goes through review before anyone reads it.{' '}
                 <button type="button" className="yx-desk-link" onClick={() => p.onOpenArticle(made)}>
                   Open the draft

@@ -11,11 +11,12 @@ import { describe, expect, it } from 'vitest';
 // success alerts in ~90 files; widen AREAS as each area is moved over.
 
 const SCREENS = join(__dirname, 'screens');
-const AREAS = ['time/live', 'pay/live', 'desk'];
+// Time: every designed Time file (the live pages render them); its old live copies are gone.
+const AREAS = ['time', 'pay/live', 'desk'];
 
 /** Allowed, with the reason. Matched against "file: text of the offending tag". */
 const ALLOWED: Record<string, string> = {
-  'time/live/setup.tsx: <InlineAlert tone="success" title="Year end is being posted">': 'runs in the background, so it stays until the balances update (founder approved)',
+  'time/leave-admin.tsx: <InlineAlert tone="success" title={postedTitle} actions={postedActions}>': 'runs in the background, so it stays until the balances update (founder approved)',
 };
 /** Owned by another builder (Me, Approvals, Settings, portals) at the time; move them over there. A stale line fails. */
 const OTHER_BUILDER = ['desk/approvals.tsx', 'desk/portal.tsx'];

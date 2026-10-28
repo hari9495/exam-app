@@ -12,11 +12,18 @@ import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { FormField } from '../../components/field';
 import { formatDate } from '../../lib/format';
+import { useToast } from '../../components/notify';
 import { FENCES, FIELD_DAY, GENERAL_SHIFT, HOLIDAYS, HR_ADMIN, ME, NOW_MIN, SEPTEMBER, TEAM, TODAY, TODAY_PUNCHES, balancesFor, type TimeUser } from './time-data';
 import { PUBLISHED_ROSTER } from './roster';
 import { CameraFrame, GeoMap, Kpis, PunchList, TimePage, type MapPin as Pin } from './time-kit';
 import { evaluateClock, fmt12, fmtDuration, formatDistance, geofenceVerdict, toHHMM, toMin, type ClockState } from './time-logic';
 import './time.css';
+
+/** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
+function useSay() {
+  const { toast } = useToast();
+  return { toast, say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()) };
+}
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -61,6 +68,7 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 'var(--yx-space-2
 
 /** `saved`: the offline check-in has already been tapped and is waiting on the phone. */
 export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = false }: { scenario?: CheckInScenario; saved?: boolean }) {
+  const { say, toast } = useSay();
   const s = SCEN[scenario];
   const [open, setOpen] = useState(true);
   const [sent, setSent] = useState<null | 'hr' | 'device'>(null);
@@ -118,7 +126,7 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
             : done === 'retry' ? { tone: 'info' as const, title: 'Location updated', body: code === 'coarse' ? `Accuracy is still ±${s.pin.accuracyM} m. Move near a window and retry.` : undefined }
               : null;
   const retry = <Button variant={code === 'coarse' ? 'primary' : 'secondary'} size={code === 'coarse' ? 'lg' : 'sm'} fullWidth={code === 'coarse'} icon={RotateCw} onClick={() => setDone('retry')}>Retry location</Button>;
-  const checkOut = <Button variant="primary" size="lg" fullWidth disabled={!actions.includes('clock_out')} onClick={early ? undefined : () => setDone('out')}>Check out</Button>;
+  const checkOut = <Button variant="primary" size="lg" fullWidth onClick={() => say(!actions.includes('clock_out') && 'You are not checked in yet.', early ? undefined : () => setDone('out'))}>Check out</Button>;
   // A saved offline check-in is finished too: the badge and alert say it's waiting to sync.
   const finished = done === 'in' || done === 'wfh' || done === 'od' || done === 'out' || (offline && saved);
   return (
@@ -151,17 +159,17 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
               ) : offline ? (
                 <Button variant="primary" size="lg" fullWidth onClick={() => setSaved(true)}>Check in</Button>
               ) : (
-                <Button variant="primary" size="lg" fullWidth disabled={!actions.includes('clock_in')} onClick={() => setDone('in')}>Check in</Button>
+                <Button variant="primary" size="lg" fullWidth onClick={() => say(!actions.includes('clock_in') && 'You are already checked in.', () => setDone('in'))}>Check in</Button>
               )}
               {code === 'outside' && (
                 <>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setDone('wfh')}>Check in as WFH</Button>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setDone('od')}>Check in on duty</Button>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setSent('hr')}>Ask HR to fix today's attendance</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => setDone('wfh'))}>Check in as WFH</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => setDone('od'))}>Check in on duty</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => { setSent('hr'); toast({ tone: 'success', title: 'Sent to HR', description: `HR will review your ${nowText} attempt.` }); })}>Ask HR to fix today's attendance</Button>
                   {sent === 'hr' && <p className="yx-tim-muted">You asked HR to fix today. Wait for their decision.</p>}
                 </>
               )}
-              {code === 'device' && <Button fullWidth disabled={sent === 'device'} onClick={() => setSent('device')}>Ask HR to approve this phone</Button>}
+              {code === 'device' && <Button fullWidth onClick={() => say(sent === 'device' && 'You already asked HR to approve this phone.', () => { setSent('device'); toast({ tone: 'success', title: 'Request sent to HR', description: 'HR approves phones in Devices.' }); })}>Ask HR to approve this phone</Button>}
             </div>
           )
         }
@@ -201,8 +209,8 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
                 : 'Your check-in will be saved on this phone with the time and location, and syncs when you are back online.'}
             </InlineAlert>
           )}
-          {sent === 'hr' && <InlineAlert tone="success" title="Sent to HR">HR will review your {nowText} attempt. You'll get a notification when they decide.</InlineAlert>}
-          {sent === 'device' && <InlineAlert tone="success" title="Request sent to HR">HR approves phones in Devices. You can check in from this {THIS_PHONE} once they do.</InlineAlert>}
+          {sent === 'hr' && <InlineAlert tone="info" title="Waiting for HR">HR will review your {nowText} attempt. You'll get a notification when they decide.</InlineAlert>}
+          {sent === 'device' && <InlineAlert tone="info" title="Waiting for HR">HR approves phones in Devices. You can check in from this {THIS_PHONE} once they do.</InlineAlert>}
           {s.state === 'working' && <PunchList punches={[TODAY_IN]} />}
         </div>
       </BottomSheet>
@@ -256,6 +264,7 @@ const booked = (note?: string) => note === 'On leave' || note === 'Requested';
 const reqRow = { flexWrap: 'nowrap' } as const;
 
 export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
+  const { say, toast } = useSay();
   const [v, setV] = useState<KioskView>(view === 'unknown_code' ? 'code' : view);
   const [code, setCode] = useState(view === 'unknown_code' ? '9999' : '');
   const [unknown, setUnknown] = useState(view === 'unknown_code');
@@ -325,7 +334,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           )}
           <div className="yx-tim-row">
             <Button icon={QrCode} onClick={() => setV('qr')}>Scan ID card</Button>
-            <Button variant="primary" disabled={code.length < 4 || unknown} onClick={() => (code === KAVITHA_DIGITS ? setV('pin') : setUnknown(true))}>Next</Button>
+            <Button variant="primary" onClick={() => say(code.length < 4 ? 'Type all 4 digits of your code.' : unknown && 'This code is not known. Check it and type it again.', () => (code === KAVITHA_DIGITS ? setV('pin') : setUnknown(true)))}>Next</Button>
           </div>
           <p className="yx-tim-muted">{now} · Tue 29 Sep 2026</p>
         </div>
@@ -353,7 +362,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           <p className="yx-tim-muted">{pin.length < 4 ? more(4 - pin.length) : 'PIN complete'}</p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('code')}>Back</Button>
-            <Button variant="primary" disabled={pin.length < 4} onClick={() => { setPin(''); setV('menu'); }}>Continue</Button>
+            <Button variant="primary" onClick={() => say(pin.length < 4 && 'Type all 4 digits of your PIN.', () => { setPin(''); setV('menu'); })}>Continue</Button>
           </div>
         </div>
       )}
@@ -399,7 +408,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           <p><strong>Food safety refresher</strong> · 9:00 am · Training room 1</p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
-            <Button variant="primary" disabled={toMin(KIOSK_IN) < toMin(TRAINING_OPENS)} onClick={() => setMarked(true)}>Mark me present</Button>
+            <Button variant="primary" onClick={() => say(toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && `Training opens at ${fmt12(TRAINING_OPENS)}.`, () => setMarked(true))}>Mark me present</Button>
           </div>
           {toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && <p className="yx-tim-muted">Opens at {fmt12(TRAINING_OPENS)}</p>}
         </div>
@@ -418,7 +427,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           {/* Short labels so both options fit a phone; the waiting days and sick leave go on the line below. */}
           <ButtonGroup aria-label="Leave type">
             {(['CL', 'EL'] as const).map((t) => (
-              <Button key={t} size="lg" aria-pressed={leaveType === t} disabled={available(t) <= 0} onClick={() => setLeaveType(t)}>
+              <Button key={t} size="lg" aria-pressed={leaveType === t} onClick={() => say(available(t) <= 0 && 'No days of this leave are left.', () => setLeaveType(t))}>
                 {t === 'CL' ? 'Casual' : 'Earned'} · {available(t)} left
               </Button>
             ))}
@@ -433,7 +442,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
               const on = !!from && !!end && d.date >= from && d.date <= end && !d.note;
               const line2 = d.note ?? d.hint;
               return (
-                <Button key={d.date.toISOString()} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} disabled={!!d.note} onClick={() => pickDay(d.date)}>
+                <Button key={d.date.toISOString()} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} onClick={() => say(d.note ? `You cannot pick this day: ${d.note}.` : false, () => pickDay(d.date))}>
                   <span style={{ display: 'flex', flexDirection: 'column' }}>
                     <span>{dayLabel(d.date)}</span>
                     {line2 && <span className="yx-tim-note" style={{ color: 'inherit' }}>{line2}</span>}
@@ -448,7 +457,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           </p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
-            <Button variant="primary" disabled={picked.length === 0 || after < 0} onClick={sendLeave}>Send leave request</Button>
+            <Button variant="primary" onClick={() => say(picked.length === 0 ? 'Pick at least one day.' : after < 0 && 'Not enough leave left for these days.', sendLeave)}>Send leave request</Button>
           </div>
           {after < 0 && <p className="yx-tim-muted">Not enough {leaveName(leaveType).toLowerCase()} for these days ({available(leaveType)} left after pending requests)</p>}
         </div>
@@ -547,6 +556,7 @@ function VisitList({ visits, showPerson, flagOpen = true }: { visits: FieldVisit
 }
 
 export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: { persona?: 'mgr' | 'hr'; openId?: string; state?: 'ready' | 'empty' }) {
+  const { say, toast } = useSay();
   const user = persona === 'hr' ? HR_ADMIN : SALES_MANAGER;
   const rows = persona === 'hr' ? FIELD : FIELD.filter((f) => f.reportsTo === user.name);
   const [open, setOpen] = useState(openId ?? null);
@@ -584,7 +594,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
           <EmptyState
             title="Field tracking is off for your group"
             description={askedHr ? 'Request sent to HR. Each person gives consent before any location is recorded.' : 'Ask HR to turn on field tracking for your group. Each person then gives consent before any location is recorded.'}
-            action={<Button disabled={askedHr} onClick={() => setAskedHr(true)}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
+            action={<Button onClick={() => say(askedHr && 'You already asked HR.', () => setAskedHr(true))}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
           />
         )
       ) : (
@@ -663,7 +673,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
                 tone={nowMin > toMin(person.shiftStart) ? 'warning' : 'info'}
                 title="Not on duty yet"
                 actions={
-                  <Button size="sm" disabled={messaged.includes(person.id)} onClick={() => setMessaged((m) => [...m, person.id])}>
+                  <Button size="sm" onClick={() => say(messaged.includes(person.id) && 'Message already sent.', () => setMessaged((m) => [...m, person.id]))}>
                     {messaged.includes(person.id) ? 'Message sent' : `Message ${first}`}
                   </Button>
                 }
@@ -696,7 +706,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
                     title={`Mock location detected ${fmt12(person.flag.at)}`}
                     actions={
                       <>
-                        <Button size="sm" disabled={flag === 'asked'} onClick={() => setFlag('asked')}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>
+                        <Button size="sm" onClick={() => say(flag === 'asked' && 'Note already requested.', () => setFlag('asked'))}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>
                         <Button size="sm" variant="review" onClick={() => setFlag('reviewed')}>Mark reviewed</Button>
                       </>
                     }
@@ -704,7 +714,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
                     Flags are never penalised automatically.{flag === 'asked' ? ` ${first}'s note shows here once added.` : ''}
                   </InlineAlert>
                 )}
-                {person.flag && flag === 'reviewed' && <InlineAlert tone="success" title="Flag reviewed">Marked reviewed by {user.name}.</InlineAlert>}
+                {person.flag && flag === 'reviewed' && <InlineAlert tone="info" title="Flag reviewed">Marked reviewed by {user.name}.</InlineAlert>}
               </>
             )}
             <Card title="Visits today"><VisitList visits={visitsOf(person.id)} flagOpen={flagOpen} /></Card>
@@ -750,6 +760,7 @@ const startMin = (t: string) => {
 };
 
 export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
+  const { say, toast } = useSay();
   const [v, setV] = useState<FieldPhoneView>(view);
   const [consent, setConsent] = useState<'on' | 'off' | 'withdrawn'>(view === 'withdrawn' ? 'withdrawn' : view === 'consent' ? 'off' : 'on');
   const [checkedIn, setCheckedIn] = useState(view === 'visit' || view === 'photo');
@@ -819,7 +830,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
         onConfirm={() => setDayEnded(true)}
       />
     ) : (
-      <Button fullWidth disabled={!!openId || dayEnded} onClick={() => setDayEnded(true)}>{dayEnded ? 'Day ended' : 'End day'}</Button>
+      <Button fullWidth onClick={() => say(openId ? 'Check out of the open visit first.' : dayEnded && 'Your day has already ended.', () => setDayEnded(true))}>{dayEnded ? 'Day ended' : 'End day'}</Button>
     )
   );
   const km = consent === 'on' ? FIELD_DAY.km : consent === 'withdrawn' ? Math.round((KM_WITHDRAWN.trail + KM_WITHDRAWN.after) * 10) / 10 : KM_ESTIMATED;
@@ -833,7 +844,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
         <InlineAlert
           tone="info"
           title={v === 'pwa' ? 'Tracking only while this page is open' : 'Location tracking is on'}
-          actions={v === 'pwa' ? <Button size="sm" disabled={installAsked} onClick={() => setInstallAsked(true)}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : undefined}
+          actions={v === 'pwa' ? <Button size="sm" onClick={() => say(installAsked && 'Follow your browser’s prompt.', () => setInstallAsked(true))}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : undefined}
         >
           {v === 'pwa' ? 'You are using the web app: location is recorded only while this page is open. Install the app for background tracking.' : `Location is recorded ${TRACKING_RULE}.`}
         </InlineAlert>
@@ -864,7 +875,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
         </InlineAlert>
       )}
       {dayEnded && (v === 'beat' || v === 'pwa' || v === 'withdrawn') && (
-        <InlineAlert tone="success" title={`Day ended at ${VISIT_IN}`} actions={<Button size="sm" onClick={() => setV('conveyance')}>Review mileage</Button>}>
+        <InlineAlert tone="info" title={`Day ended at ${VISIT_IN}`} actions={<Button size="sm" onClick={() => setV('conveyance')}>Review mileage</Button>}>
           Tracking has stopped. Your draft mileage claim is ready to review.
         </InlineAlert>
       )}
@@ -892,7 +903,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
             })}
             <li>
               <div className="yx-tim-stack" style={{ flex: 1 }}>
-                <Button fullWidth disabled={!!openId || dayEnded} onClick={() => startVisit('u')}>Add unplanned visit</Button>
+                <Button fullWidth onClick={() => say(openId ? 'Check out of the open visit first.' : dayEnded && 'Your day has already ended.', () => startVisit('u'))}>Add unplanned visit</Button>
                 {endDayButton}
                 {openId && <p className="yx-tim-muted">Check out of {cur.place.split(',')[0]} first.</p>}
               </div>
@@ -922,14 +933,14 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
               <FormField label="Outcome" required><Select value={outcome} onChange={setOutcome} placeholder="Pick an outcome" options={OUTCOMES} /></FormField>
               <FormField label="Notes" optional><TextArea rows={2} value={notes} onChange={setNotes} /></FormField>
               {photoUsed ? <div className="yx-tim-row"><Badge tone="success">Photo added · {PHOTO_AT}</Badge></div> : <Button fullWidth onClick={() => { setShot(false); setV('photo'); }}>Take photo (camera only)</Button>}
-              <Button variant="primary" fullWidth disabled={!outcome} onClick={checkOut}>Check out of visit</Button>
+              <Button variant="primary" fullWidth onClick={() => say(!outcome && 'Choose how the visit went.', checkOut)}>Check out of visit</Button>
               {!outcome && <p className="yx-tim-muted">Pick an outcome to check out.</p>}
             </>
           ) : unplanned ? (
             <>
               <FormField label="Shop name" required><TextField value={shop} onChange={setShop} /></FormField>
               <FormField label="Purpose" optional><TextField value={purpose} onChange={setPurpose} /></FormField>
-              <Button variant="primary" fullWidth disabled={!shop.trim()} onClick={() => setCheckedIn(true)}>Check in here</Button>
+              <Button variant="primary" fullWidth onClick={() => say(!shop.trim() && 'Type the shop name.', () => setCheckedIn(true))}>Check in here</Button>
               {!shop.trim() && <p className="yx-tim-muted">Enter the shop name to check in.</p>}
             </>
           ) : (
@@ -962,7 +973,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
             height={170}
           />
           <InlineAlert tone="info" title="Draft mileage line">{km} km {dayEnded ? 'today' : 'so far'} · two-wheeler. The line updates until you end your day, then waits for you in Pay › Expenses. Nothing is paid until you confirm and it's approved.</InlineAlert>
-          <Button variant="primary" fullWidth disabled={!dayEnded || claimSaved} onClick={() => setClaimSaved(true)}>{claimSaved ? 'Sent to Pay › Expenses' : 'Send to Pay › Expenses'}</Button>
+          <Button variant="primary" fullWidth onClick={() => say(!dayEnded ? 'End your day first.' : claimSaved && 'Already sent to Pay › Expenses.', () => setClaimSaved(true))}>{claimSaved ? 'Sent to Pay › Expenses' : 'Send to Pay › Expenses'}</Button>
           {/* The blocked button's reason carries the action that unblocks it. */}
           {!dayEnded && (
             <>
