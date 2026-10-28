@@ -2998,7 +2998,7 @@ function LiveHolidayFeedScreen({ live }: { live: LiveHolidayFeeds }) {
                       return (
                         <li key={ch.id}>
                           <span className="yx-tim-list__main">
-                            <strong>{ch.action === 'add' ? `Add ${ch.name}` : `Remove ${ch.name}`} · {isoWeekday(ch.on)} {isoDay(ch.on)}</strong>
+                            <strong>{ch.action === 'add' ? `Add ${ch.name}` : `Remove ${ch.name}`} · {isoDay(ch.on)}</strong>
                             <span className="yx-tim-muted">{ch.calendar} calendar</span>
                             {ch.peopleOnLeave > 0 && <span className="yx-tim-muted">{plural(ch.peopleOnLeave, 'person has', 'people have')} leave that day. When you publish, that leave goes back to their balance and they are notified.</span>}
                           </span>

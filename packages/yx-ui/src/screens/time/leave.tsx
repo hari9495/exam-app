@@ -2931,7 +2931,7 @@ function LiveCompOffClaim({ data, onClaim, onClose }: LiveCompOff & { onClose: (
     <div className="yx-tim-form">
       {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
       <FormField id="co-day" label="Day you worked" required error={tried && !pick ? 'Choose the day you worked.' : null} helper="Holidays and weekly offs with punches">
-        <RadioGroup aria-label="Day you worked" value={on ?? undefined} onChange={(v: string) => { setOn(v); const x = days.find((y) => y.on === v); if (x && x.maxDays < 1) setAmount('half'); }} options={days.map((x) => ({ value: x.on, label: `${WD[isoDate(x.on).getDay()]} ${fd(x.on)} · ${x.holiday ?? 'Weekly off'}`, description: `Worked ${hm(x.workedMinutes)}` }))} />
+        <RadioGroup aria-label="Day you worked" value={on ?? undefined} onChange={(v: string) => { setOn(v); const x = days.find((y) => y.on === v); if (x && x.maxDays < 1) setAmount('half'); }} options={days.map((x) => ({ value: x.on, label: `${fd(x.on)} · ${x.holiday ?? 'Weekly off'}`, description: `Worked ${hm(x.workedMinutes)}` }))} />
       </FormField>
       <FormField id="co-amount" label="Claim" error={tried && tooMuch && pick ? `You worked ${hm(pick.workedMinutes)}: claim a half day.` : null}>
         <Segment label="Claim" value={amount} onChange={setAmount} options={[{ value: 'half' as const, label: 'Half day' }, { value: 'full' as const, label: 'Full day' }]} />
