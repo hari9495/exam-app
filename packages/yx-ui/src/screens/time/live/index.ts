@@ -29,3 +29,8 @@ export type { LiveFieldForce, FieldMap, FieldMapPerson, FieldMapVisit, FieldPers
 export { HybridPlannerScreen } from '../roster';
 export type { LiveHybrid, HybridMe, HybridTeam, HybridCompliance, HybridPolicyGroup, HybridDay, HybridRule, HybridPlace } from '../hybrid-live';
 export type { LivePrefill, PrefillTools, PrefillSuggestions, ToolProvider } from '../prefill-live';
+// Open shifts and bids (TIM-35) and standby and call-out (TIM-38): the designed screens with `live`; OpenShiftsPanel is the
+// open-shifts table alone, for the roster's "Open shifts" tab.
+export { OpenShiftsScreen, StandbyScreen } from '../roster';
+export { OpenShiftsPanel, type LiveOpenShifts, type OpenShiftsData, type OpenShiftRow, type OpenShiftBid, type OpenShiftInput, type OpenShiftRule, type OpenShiftShift } from '../open-shifts-live';
+export type { LiveStandby, StandbyData, StandbyCallOut, StandbySlot, StandbyShift } from '../standby-live';

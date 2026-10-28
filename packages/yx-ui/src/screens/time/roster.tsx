@@ -43,6 +43,8 @@ import { LoadingBlock, type ViewState } from './attendance';
 import { COLOURS, NightWorkTab, OvertimeRulesTab, ProjectsTab, SCOPES, fromMinute, toMinute, type LiveShiftSetup } from './live/shifts-setup';
 import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
 import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
+import { type LiveOpenShifts, LiveOpenShiftsScreen } from './open-shifts-live';
+import { type LiveStandby, LiveStandbyScreen } from './standby-live';
 import './time.css';
 
 /** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
@@ -102,7 +104,7 @@ const AWAY: Shift = { code: 'Away', name: 'Away', hours: 0 };
 const STAFF_SHIFTS = [...PLANT_SHIFTS, AWAY];
 const legendText = (s: Shift) => (s.code === 'SB' ? 'Standby 6 pm – 6 am (on call, not counted in hours)' : s.code === 'SB+' ? 'Standby, called out (paid call-out time counted in hours)' : s.code === 'OFF' ? 'Weekly off' : s.code === AWAY.code ? 'on leave' : `${s.name} ${shiftTimes(s)}`);
 /** Key for the shift codes, shown wherever the grid has no palette (staff and read-only views): small read-only chips, one line each. */
-function Legend({ shifts = PLANT_SHIFTS }: { shifts?: Shift[] }) {
+export function Legend({ shifts = PLANT_SHIFTS }: { shifts?: Shift[] }) {
   return (
     <div className="yx-tim-row" role="list" aria-label="Shift key">
       {shifts.map((s) => <span key={s.code} role="listitem" className="yx-tim-nowrap"><Badge tone="neutral"><span className="yx-roster__code">{s.code}</span> {legendText(s)}</Badge></span>)}
@@ -1939,7 +1941,10 @@ function BidWindowPanel() {
   );
 }
 
-export function OpenShiftsScreen({ state = 'ready' }: { state?: ViewState }) {
+export function OpenShiftsScreen({ live, ...story }: { state?: ViewState; /** The live app's /time/open-shifts. */ live?: LiveOpenShifts }) {
+  return live ? <LiveOpenShiftsScreen live={live} /> : <SampleOpenShiftsScreen {...story} />;
+}
+function SampleOpenShiftsScreen({ state = 'ready' }: { state?: ViewState }) {
   const [offer, setOffer] = useState(false);
   return (
     <TimePage active="Roster" user={PLANT_MANAGER}>
@@ -2064,7 +2069,10 @@ const slotMins = (s: string) => (toMins(s) >= toMins('18:00') ? toMins(s) - 1440
 /** Clock time for minutes that may run before midnight (negative) or past it. */
 const clockAt = (m: number) => clock(posMod(m, 1440));
 
-export function StandbyScreen({ dialog = false, moved = false }: { dialog?: boolean; moved?: boolean }) {
+export function StandbyScreen({ live, ...story }: { dialog?: boolean; moved?: boolean; /** The live app's /time/standby. */ live?: LiveStandby }) {
+  return live ? <LiveStandbyScreen live={live} /> : <SampleStandbyScreen {...story} />;
+}
+function SampleStandbyScreen({ dialog = false, moved = false }: { dialog?: boolean; moved?: boolean }) {
   const [open, setOpen] = useState(dialog);
   const [moving, setMoving] = useState(false);
   /** Anil's moved start today (minutes), or null while it is still 9:30 am. `moved` opens with it already moved (11 h after the 2:30 am call-out). */
