@@ -14,7 +14,7 @@ import type { ScopeUser } from '../access/scope';
 import { AttendanceOpsService } from './attendance-ops.service';
 import { DeviceBackfillService } from './device-backfill.service';
 import { IndustrialActionService } from './industrial-action.service';
-import { DeviceRefQueryDto, EntityQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
+import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
 import { PresenceService } from './presence.service';
@@ -73,8 +73,8 @@ export class AttendanceOpsController {
   }
 
   @Get('exceptions')
-  exceptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OpsMonthQueryDto) {
-    return this.ops.exceptions(ctx, this.user(req), q.month, q.legalEntityId);
+  exceptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ExceptionsQueryDto) {
+    return this.ops.exceptions(ctx, this.user(req), q);
   }
 
   @Post('exceptions/resolve')
@@ -225,7 +225,7 @@ export class AttendanceOpsController {
   @Get('device-batches')
   @RequirePermissions('attendance.lock')
   deviceBatches(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityQueryDto) {
-    return this.device.batches(ctx, this.user(req), q.legalEntityId ?? '00000000-0000-0000-0000-000000000000');
+    return this.device.batches(ctx, this.user(req), q.legalEntityId);
   }
 
   @Get('device-batches/preview')

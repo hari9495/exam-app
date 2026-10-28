@@ -32,10 +32,19 @@ export class DeviceBackfillService {
     return v;
   }
 
-  /** Devices with punches waiting in the legal entity. */
-  async batches(ctx: TenantContext, user: ScopeUser, entityId: string) {
-    await this.viewer(user, entityId);
-    return { batches: await this.payPeriods.heldPunches(ctx, user, entityId) };
+  /**
+   * Devices with punches waiting, with their legal entity: the one asked for, else every entity the person may lock
+   * (attendance.lock company-wide, or granted on the entity). Nobody gets another entity's batches.
+   */
+  async batches(ctx: TenantContext, user: ScopeUser, entityId?: string | null) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [...TIME_KEYS]);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    const covers = (id: string) => tenantWide(v, 'attendance.lock') || (v.scopes.get('attendance.lock') ?? []).some((s) => s.type === 'legal_entity' && s.id === id);
+    const entities = (await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } }))).filter((e) => covers(e.id));
+    if (entityId && !entities.length) throw new NotFoundException('Not found');
+    const out = [];
+    for (const e of entities) for (const b of await this.payPeriods.heldPunches(ctx, user, e.id)) out.push({ ...b, legalEntityId: e.id, entityName: e.name });
+    return { entities: entities.length, batches: out };
   }
 
   /** Inserts a day's device punches (skipping any already recorded) and works the day out again. */

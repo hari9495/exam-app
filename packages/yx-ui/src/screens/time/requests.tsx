@@ -1738,11 +1738,11 @@ function SampleDeviceBackfillWizard({ current = 'batch', done = false }: { curre
 export interface LiveDeviceBackfill {
   state: LoadState;
   onRetry?: () => void;
-  /** Devices with punches waiting in the legal entity. */
+  /** Devices with punches waiting, in every legal entity the person may lock (each batch names its entity). */
   batches: DeviceBatch[] | null;
-  onPreview: (deviceRef: string) => Promise<DevicePreview>;
+  onPreview: (legalEntityId: string, deviceRef: string) => Promise<DevicePreview>;
   /** Applies the batch (the second sign-in step is asked); `punches` is the count reviewed. */
-  onApply: (deviceRef: string, reason: string, punches: number) => Promise<{ id: string; punches: number; people: number; personDays: number; openDays: number; corrections: number }>;
+  onApply: (legalEntityId: string, deviceRef: string, reason: string, punches: number) => Promise<{ id: string; punches: number; people: number; personDays: number; openDays: number; corrections: number }>;
   musterHref: string;
   periodsHref: string;
 }
@@ -1767,11 +1767,12 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
   const [done, setDone] = useState<Awaited<ReturnType<LiveDeviceBackfill['onApply']>> | null>(null);
   const { busy, error, run } = useRun();
   const batches = live.batches ?? [];
-  const chosen = batches.find((b) => b.deviceRef === device) ?? (batches.length === 1 ? batches[0] : null);
-  const load = (ref: string) => void run('preview', async () => setPreview(await live.onPreview(ref)));
+  const keyOf = (b: DeviceBatch) => `${b.legalEntityId}|${b.deviceRef}`;
+  const chosen = batches.find((b) => keyOf(b) === device) ?? (batches.length === 1 ? batches[0] : null);
+  const load = (b: DeviceBatch) => void run('preview', async () => setPreview(await live.onPreview(b.legalEntityId, b.deviceRef)));
   useEffect(() => {
-    if (chosen && preview?.deviceRef !== chosen.deviceRef) load(chosen.deviceRef);
-  }, [chosen?.deviceRef]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (chosen) load(chosen);
+  }, [chosen && keyOf(chosen)]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasonErr = reason.trim().length < 10 ? 'Give the reason in a sentence (at least 10 letters).' : null;
   if (done)
     return (
@@ -1794,6 +1795,8 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
     );
   return (
     <TimePage active="Periods">
+      {/* The wizard's own title is the page heading; the other states get the same heading. */}
+      {!(live.state === 'ready' && batches.length) && <PageHeader title="Device punches correction" />}
       <LiveGate state={live.state} onRetry={live.onRetry} what="device punches">
         {!batches.length ? (
           <EmptyState title="No device punches waiting" description="When a kiosk or reader that was offline sends its stored punches late, they wait here to be applied once." action={<Button asChild><a href={live.periodsHref}>Back to Periods</a></Button>} />
@@ -1802,6 +1805,7 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
           {error && busy === null && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
           <Stepper
             title="Device punches correction"
+            showTitle
             finishLabel="Apply punches"
             finishing={busy === 'apply'}
             onContinue={(id) => {
@@ -1820,7 +1824,7 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
             onFinish={() => {
               if (reasonErr || !chosen || !preview) return setTried(true);
               void run('apply', async () => {
-                const r = await live.onApply(chosen.deviceRef, reason.trim(), preview.punches);
+                const r = await live.onApply(chosen.legalEntityId, chosen.deviceRef, reason.trim(), preview.punches);
                 toast({ tone: 'success', title: `${plural(r.punches, 'punch', 'punches')} applied for ${plural(r.people, 'person', 'people')}` });
                 setDone(r);
               });
@@ -1835,14 +1839,14 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
                   <div className="yx-tim-form">
                     <InlineAlert tone="info" title="Late punches from a device">Apply a device's stored punches once, with one audit record, instead of a request from each person.</InlineAlert>
                     <FormField id="bf-device" label="Device" required error={!chosen && tried ? 'Choose the device' : null}>
-                      <Select value={chosen?.deviceRef ?? null} onChange={(v) => { setDevice(v); setPreview(null); }} options={batches.map((b) => ({ value: b.deviceRef, label: `${b.deviceRef} · ${plural(b.punches, 'punch', 'punches')}` }))} />
+                      <Select value={chosen ? keyOf(chosen) : null} onChange={(v) => { setDevice(v); setPreview(null); }} options={batches.map((b) => ({ value: keyOf(b), label: `${b.deviceRef} · ${b.entityName} · ${plural(b.punches, 'punch', 'punches')}` }))} />
                     </FormField>
                     {chosen && (
                       <FormField label="Dates" helper="Set by the batch: the days the punches are for">
                         <p>{chosen.from && chosen.to ? `${isoDate(chosen.from)} – ${isoDate(chosen.to)}` : '—'}</p>
                       </FormField>
                     )}
-                    {chosen && <p className="yx-tim-muted">{chosen.receivedAt ? `Batch received ${isoDate(chosen.receivedAt)} · ` : ''}{plural(chosen.punches, 'punch', 'punches')} · {plural(chosen.people, 'person', 'people')}</p>}
+                    {chosen && <p className="yx-tim-muted">{chosen.entityName} · {chosen.receivedAt ? `Batch received ${isoDate(chosen.receivedAt)} · ` : ''}{plural(chosen.punches, 'punch', 'punches')} · {plural(chosen.people, 'person', 'people')}</p>}
                   </div>
                 ),
                 summary: chosen ? `${chosen.deviceRef} · ${plural(chosen.punches, 'punch', 'punches')}` : 'No device chosen',
@@ -1852,7 +1856,7 @@ function LiveDeviceBackfillWizard({ live }: { live: LiveDeviceBackfill }) {
                 title: 'Preview',
                 description: 'What changes',
                 content: !preview ? (
-                  busy === 'preview' ? <Skeleton height={120} /> : <InlineAlert tone="danger" title="The preview did not load" actions={chosen ? <Button size="sm" onClick={() => load(chosen.deviceRef)}>Try again</Button> : undefined}>{error ?? 'Try again.'}</InlineAlert>
+                  busy === 'preview' ? <Skeleton height={120} /> : <InlineAlert tone="danger" title="The preview did not load" actions={chosen ? <Button size="sm" onClick={() => load(chosen)}>Try again</Button> : undefined}>{error ?? 'Try again.'}</InlineAlert>
                 ) : (
                   <div className="yx-tim-stack">
                     <Kpis items={[{ label: 'People', value: preview.people }, { label: 'Days rechecked', value: preview.personDays }, { label: 'Absences that become present', value: preview.becomePresent }, { label: 'Late marks removed', value: preview.lateRemoved }, { label: 'New late marks', value: preview.lateAdded }]} />
