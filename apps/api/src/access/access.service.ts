@@ -20,6 +20,33 @@ import { ROLE_TEMPLATES } from './role-templates';
 
 type GrantRow = Prisma.RoleGrantGetPayload<object>;
 
+async function grantOr404(tx: Tx, c: CompanyContext, id: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`role-grant:${c.organizationId}:${id}`}))`;
+  const row = await tx.roleGrant.findFirst({ where: { id, organizationId: c.organizationId } });
+  if (!row) throw new NotFoundException('Grant not found');
+  return row;
+}
+
+/**
+ * Ends a grant now (Roles & access › Revoke, and People › Team pay access › End access). A team pay access request the
+ * grant came from, still open, ends with it: who, when and why, and its last day becomes today.
+ */
+export async function revokeGrant(tx: Tx, c: CompanyContext, id: string, actorUserId: string, reason: string) {
+  const why = reason.trim();
+  const row = await grantOr404(tx, c, id);
+  if (row.status !== 'active' && row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
+  const now = new Date();
+  const updated = await tx.roleGrant.update({ where: { id }, data: { status: 'revoked', revokedBy: actorUserId, revokedAt: now, decisionNote: why } });
+  await audit(tx, c, 'access.grant.revoked', 'role_grant', id, { userId: row.userId, reason: why });
+  const today = todayIst();
+  const pay = await tx.payAccessRequest.findFirst({ where: { organizationId: c.organizationId, grantId: id, endedAt: null, validTo: { gte: asDate(today) } }, select: { id: true, validTo: true } });
+  if (pay) {
+    await tx.payAccessRequest.update({ where: { id: pay.id }, data: { endedBy: actorUserId, endedAt: now, endNote: why, validTo: asDate(today) } });
+    await audit(tx, c, 'employee.pay_access.ended', 'pay_access_request', pay.id, { grantId: id, lastDayWas: isoDate(pay.validTo!), reason: why });
+  }
+  return updated;
+}
+
 /** Keys the effective-access preview counts people for ("can approve job changes for 4 people", P02 §7). */
 const PREVIEW_KEYS: readonly { key: string; label: string }[] = [
   { key: 'employee.profile.view', label: 'See job records' },
@@ -251,17 +278,10 @@ export class AccessService {
     return result.view;
   }
 
-  private async grantOr404(tx: Tx, c: CompanyContext, id: string) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`role-grant:${c.organizationId}:${id}`}))`;
-    const row = await tx.roleGrant.findFirst({ where: { id, organizationId: c.organizationId } });
-    if (!row) throw new NotFoundException('Grant not found');
-    return row;
-  }
-
   /** YX-SEC-11: approved by an admin who neither asked for it nor receives it. */
   decide(ctx: TenantContext, actorUserId: string, id: string, outcome: 'active' | 'rejected', note: string | undefined) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const row = await this.grantOr404(tx, c, id);
+      const row = await grantOr404(tx, c, id);
       if (row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
       if (row.userId === actorUserId) throw new ForbiddenException('A grant to yourself is decided by another admin (YX-SEC-11).');
       if (row.grantedBy === actorUserId) throw new ForbiddenException('You asked for this grant, so another admin decides it (YX-SEC-11).');
@@ -273,11 +293,7 @@ export class AccessService {
 
   revoke(ctx: TenantContext, actorUserId: string, id: string, reason: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const row = await this.grantOr404(tx, c, id);
-      if (row.status !== 'active' && row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
-      const updated = await tx.roleGrant.update({ where: { id }, data: { status: 'revoked', revokedBy: actorUserId, revokedAt: new Date(), decisionNote: reason.trim() } });
-      await audit(tx, c, 'access.grant.revoked', 'role_grant', id, { userId: row.userId, reason: reason.trim() });
-      return (await this.views(tx, c, [updated]))[0];
+      return (await this.views(tx, c, [await revokeGrant(tx, c, id, actorUserId, reason)]))[0];
     });
   }
 

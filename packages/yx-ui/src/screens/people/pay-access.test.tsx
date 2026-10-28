@@ -160,6 +160,46 @@ describe('PayAccessRequests (HR, PPL-50)', () => {
     expect(screen.queryByRole('button', { name: 'Decide' })).toBeNull();
   });
 
+  it('ending open access early: the reason is required, then a toast', async () => {
+    const onEnd = vi.fn().mockResolvedValue(undefined);
+    wrap(<PayAccessRequests rows={PAY_ACCESS_ROWS} onDecide={vi.fn()} onEnd={onEnd} />);
+    await userEvent.click(screen.getByRole('radio', { name: 'Active (1)' }));
+    await userEvent.click(within(screen.getByRole('row', { name: /Vikram Rao/ })).getByRole('button', { name: 'End access' }));
+    const dialog = await screen.findByRole('dialog', { name: /End Vikram Rao's access to pay/ });
+    expect(within(dialog).getByText(/hidden from them now, not on 31 Oct 2026/)).toBeInTheDocument();
+    const confirm = within(dialog).getByRole('button', { name: 'End access' });
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    expect(onEnd).not.toHaveBeenCalled();
+    expect(await within(dialog).findByText('Say why you end it.')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Reason/ }), ' Budget closed ');
+    await userEvent.click(confirm);
+    expect(onEnd).toHaveBeenCalledWith(active.id, 'Budget closed');
+    expect(await screen.findByText('Access ended')).toBeInTheDocument();
+  });
+
+  it('ending: the server’s refusal stays in the dialog; without the key there is no End access', async () => {
+    const onEnd = vi.fn().mockRejectedValue(new Error('Only access that is open now can be ended.'));
+    const { unmount } = wrap(<PayAccessRequests rows={PAY_ACCESS_ROWS} onEnd={onEnd} defaultOpenId={active.id} />);
+    const dialog = await screen.findByRole('dialog', { name: /End Vikram Rao's access to pay/ });
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Done');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'End access' }));
+    expect(await within(dialog).findByText('Only access that is open now can be ended.')).toBeInTheDocument();
+    unmount();
+    wrap(<PayAccessRequests rows={PAY_ACCESS_ROWS} onDecide={vi.fn()} />);
+    await userEvent.click(screen.getByRole('radio', { name: 'Active (1)' }));
+    expect(screen.queryByRole('button', { name: 'End access' })).toBeNull();
+  });
+
+  it('access ended early shows the day and who ended it', () => {
+    const early = { ...active, state: 'ended' as const, validTo: '2026-10-28', canEnd: false, ended: { by: 'Lakshmi Venkatesan', at: '2026-10-28T06:30:00Z', note: 'Budget closed' } };
+    wrap(<PayAccessRequests rows={[early]} onEnd={vi.fn()} defaultOpenId={early.id} />);
+    expect(screen.getByRole('radio', { name: 'Ended or refused (1)' })).toBeChecked();
+    expect(screen.getByText('Ended 28 Oct 2026')).toBeInTheDocument();
+    expect(screen.getByText('Ended early by Lakshmi Venkatesan')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'End access' })).toBeNull();
+  });
+
   it('says when there is no access', () => {
     wrap(<PayAccessRequests rows={[]} state="no-access" />);
     expect(screen.getByText(/You don't have access to team pay access requests/)).toBeInTheDocument();

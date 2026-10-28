@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { RequestUser } from '../employee-history/employee-history.service';
 import { buildViewer } from '../access/scope';
-import { PayAccessAskDto, PayAccessDecisionDto } from './dto';
+import { PayAccessAskDto, PayAccessDecisionDto, PayAccessEndDto } from './dto';
 import { PayAccessService } from './pay-access.service';
 
 // Team pay access (founder 28 Oct 2026). A manager asks for their own team (the service checks they manage the people);
@@ -51,5 +51,13 @@ export class PayAccessController {
   async decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PayAccessDecisionDto) {
     ownSession(req);
     return this.payAccess.decide(ctx, await this.viewer(req), id, dto);
+  }
+
+  @Post(':id/end')
+  @RequirePermissions('employee.pay_access.approve')
+  @RequireStepUp()
+  async end(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PayAccessEndDto) {
+    ownSession(req);
+    return this.payAccess.end(ctx, await this.viewer(req), id, dto);
   }
 }

@@ -211,6 +211,55 @@ describe('Team pay access: a manager asks, two HR people approve', () => {
     expect(mine).toEqual(['active', 'refused', 'ended']);
   });
 
+  const end = async (who: Who, id: string, body: Record<string, unknown>, status = 201) => {
+    await markSteppedUp(tenantPrisma, token[who]);
+    return (await api(who, 'post', `/people/pay-access/${id}/end`).send(body).expect(status)).body;
+  };
+  const grantOf = (requestId: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.payAccessRequest.findUniqueOrThrow({ where: { id: requestId } })).then((r) => r.grantId!);
+  const audits = (entityId: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, entityId } })).then((rows) => rows.map((r) => r.action));
+
+  it('HR ends open access early with a reason: the grant is revoked, the manager loses the pay and reads why', async () => {
+    const open = (await api('hr2', 'get', '/people/pay-access').expect(200)).body.rows.find((r: { state: string; manager: { id: string } }) => r.state === 'active' && r.manager.id === ids.mgr);
+    expect(open).toMatchObject({ canEnd: true, ended: null });
+    // Negative: no reason, a blank one, nobody without the key, another company.
+    await end('hr2', open.id, {}, 400);
+    await end('hr2', open.id, { reason: '   ' }, 400);
+    await end('mgr', open.id, { reason: 'Not mine to end' }, 403);
+    await end('adminB', open.id, { reason: 'Other company' }, 403);
+    expect(await payAccess('mgr', ids.meera)).toBe(true);
+
+    const done = await end('hr2', open.id, { reason: ' Increment cycle closed ' });
+    expect(done).toMatchObject({ state: 'ended', validTo: today, canEnd: false, ended: { by: expect.any(String), note: 'Increment cycle closed' } });
+    const grantId = await grantOf(open.id);
+    const grant = (await grants()).find((g) => g.id === grantId);
+    expect(grant).toMatchObject({ status: 'revoked', revokedBy: users.hr2, decisionNote: 'Increment cycle closed' });
+    expect(await payAccess('mgr', ids.meera)).toBe(false);
+    expect(await payAccess('mgr', ids.arjun)).toBe(false);
+    expect((await notices('mgr', 'employee.pay_access.decided')).some((n) => /HR ended your access .*: Increment cycle closed/.test(n.contextText ?? ''))).toBe(true);
+    expect(await audits(open.id)).toContain('employee.pay_access.ended');
+    expect((await api('mgr', 'get', '/people/pay-access/mine').expect(200)).body.requests[0]).toMatchObject({ state: 'ended', validTo: today });
+
+    // Already ended, or refused: nothing to end.
+    await end('hr3', open.id, { reason: 'Again' }, 409);
+    const refused = (await api('hr2', 'get', '/people/pay-access').expect(200)).body.rows.find((r: { state: string }) => r.state === 'refused');
+    expect(refused.canEnd).toBe(false);
+    await end('hr2', refused.id, { reason: 'Refused already' }, 409);
+  });
+
+  it('revoking the grant in Roles & access marks the request ended too', async () => {
+    const asked = (await api('mgr', 'post', '/people/pay-access').send({ scope: 'person', employeeId: ids.meera, reason: 'Retention case for Meera' }).expect(201)).body;
+    await decide('hr2', asked.id, { decision: 'approve' });
+    await decide('hr3', asked.id, { decision: 'approve' });
+    expect(await payAccess('mgr', ids.meera)).toBe(true);
+    await markSteppedUp(tenantPrisma, token.adminA);
+    await api('adminA', 'post', `/access/grants/${await grantOf(asked.id)}/revoke`).send({ reason: 'Moved to another plant' }).expect(201);
+    expect(await payAccess('mgr', ids.meera)).toBe(false);
+    const row = (await api('hr2', 'get', '/people/pay-access').expect(200)).body.rows.find((r: { id: string }) => r.id === asked.id);
+    expect(row).toMatchObject({ state: 'ended', validTo: today, canEnd: false, ended: { by: expect.any(String), note: 'Moved to another plant' } });
+    expect(await audits(asked.id)).toContain('employee.pay_access.ended');
+    await end('hr2', asked.id, { reason: 'Again' }, 409);
+  });
+
   it('the database itself refuses one HR person giving both approvals', async () => {
     const r = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.payAccessRequest.create({ data: { organizationId: org.A.id, requestedBy: users.loner, managerEmployeeId: ids.loner, scope: 'team', reason: 'Check', days: 30, firstBy: users.hr2 } }));
     await expect(tenantPrisma.forTenant(ctx('A'), (tx) => tx.payAccessRequest.update({ where: { id: r.id }, data: { status: 'refused', decidedBy: users.hr2, decidedAt: new Date() } }))).rejects.toThrow(/four_eyes/);

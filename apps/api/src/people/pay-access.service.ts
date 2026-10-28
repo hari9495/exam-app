@@ -10,14 +10,16 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsEngine, InboxItem } from '../workflow/approvals-engine.service';
 import { settingFor } from './probation';
 import { PAY_ACCESS_ROLE } from '../access/role-templates';
-import { PayAccessAskDto, PayAccessDecisionDto } from './dto';
+import { revokeGrant } from '../access/access.service';
+import { PayAccessAskDto, PayAccessDecisionDto, PayAccessEndDto } from './dto';
 
 // Founder decisions 28 Oct 2026: a manager asks to see their team's pay (the whole team or one named person), with a
 // reason. Two different HR people approve (employee.pay_access.approve over every person it covers; never the manager,
 // never one of the people covered, and the second never the first). The company sets how long access lasts and the
 // default scope (pay_access.days / pay_access.scope); the approving HR person may change both. The second approval
 // creates a role grant of employee.salary.view over only those people (the team scope, or one_report), valid until the
-// end date, so the pay is hidden again the day after without any job. A refusal grants nothing.
+// end date, so the pay is hidden again the day after without any job. A refusal grants nothing. HR may end open access
+// early with a reason (End access, or Revoke in Roles & access): the grant is revoked and the request shows Ended today.
 
 const KEY = 'employee.pay_access.approve';
 const ROLE_KEYS = JSON.stringify(['employee.salary.view']);
@@ -207,6 +209,25 @@ export class PayAccessService implements OnModuleInit {
     return view;
   }
 
+  /** An HR person whose key reaches the people ends open access now, with a reason the manager reads. */
+  async end(ctx: TenantContext, v: Viewer, id: string, dto: PayAccessEndDto) {
+    if (v.actingForOther || !v.userId) throw new ForbiddenException('Not available while acting for someone else.');
+    const actor = v.userId;
+    const reason = dto.reason.trim();
+    if (!reason) throw new BadRequestException('Say why you end it.');
+    const row = await this.history.run(ctx, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pay-access:${c.organizationId}:${id}`}))`;
+      const r = await tx.payAccessRequest.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!r || !(await this.reachesAll(tx, c, v, r))) throw new NotFoundException('Request not found');
+      if (r.status !== 'approved' || r.endedAt || !r.grantId || isoDate(r.validTo!) < todayIst()) throw new ConflictException('Only access that is open now can be ended.');
+      await revokeGrant(tx, c, r.grantId, actor, reason);
+      return tx.payAccessRequest.findFirstOrThrow({ where: { organizationId: c.organizationId, id } });
+    });
+    const view = await this.history.run(ctx, async (tx, c) => (await this.views(tx, c, [row], v))[0]);
+    await this.tell(ctx, actor, [row.requestedBy], 'employee.pay_access.decided', row.id, `HR ended your access to the pay of ${view.covers}: ${reason}`);
+    return view;
+  }
+
   /** The company role the grants use (employee.salary.view only), made once. */
   private async role(tx: Tx, c: CompanyContext): Promise<string> {
     const found = await tx.permissionProfile.findFirst({ where: { organizationId: c.organizationId, templateKey: PAY_ACCESS_ROLE, permissionsJson: ROLE_KEYS }, select: { id: true } });
@@ -280,7 +301,7 @@ export class PayAccessService implements OnModuleInit {
     const org = c.organizationId;
     const today = todayIst();
     const employeeIds = [...new Set(rows.flatMap((r) => [r.managerEmployeeId, ...(r.employeeId ? [r.employeeId] : [])]))];
-    const userIds = [...new Set(rows.flatMap((r) => [r.firstBy, r.decidedBy]).filter((x): x is string => Boolean(x)))];
+    const userIds = [...new Set(rows.flatMap((r) => [r.firstBy, r.decidedBy, r.endedBy]).filter((x): x is string => Boolean(x)))];
     const [employees, users] = await Promise.all([
       tx.employee.findMany({ where: { organizationId: org, id: { in: employeeIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
       userIds.length ? tx.user.findMany({ where: { organizationId: org, id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [],
@@ -298,7 +319,7 @@ export class PayAccessService implements OnModuleInit {
       const team = await this.team(tx, c, r.managerEmployeeId);
       const person = r.employeeId ? { id: r.employeeId, name: nameOf(r.employeeId) } : null;
       const validTo = r.validTo ? isoDate(r.validTo) : null;
-      const state = r.status === 'pending' ? (r.firstBy ? 'second' : 'first') : r.status === 'refused' ? 'refused' : validTo && validTo >= today ? 'active' : 'ended';
+      const state = r.status === 'pending' ? (r.firstBy ? 'second' : 'first') : r.status === 'refused' ? 'refused' : !r.endedAt && validTo && validTo >= today ? 'active' : 'ended';
       const decider = v && r.status === 'pending' && (await this.reachesAll(tx, c, v, r)) && !(await this.refusal(tx, c, v, r, r.scope === 'team' ? team : team.filter((p) => p.id === r.employeeId)));
       out.push({
         id: r.id,
@@ -312,7 +333,10 @@ export class PayAccessService implements OnModuleInit {
         askedAt: r.createdAt.toISOString(),
         first: r.firstBy ? { by: who(r.firstBy), at: r.firstAt!.toISOString(), note: r.firstNote } : null,
         decided: r.decidedBy ? { by: who(r.decidedBy), at: r.decidedAt!.toISOString(), note: r.decisionNote } : null,
+        ended: r.endedBy ? { by: who(r.endedBy), at: r.endedAt!.toISOString(), note: r.endNote } : null,
         validTo,
+        // HR lists only requests their key reaches, so an HR viewer may end any open one.
+        canEnd: Boolean(v && has(v, KEY) && state === 'active'),
         // Only for an HR person who may decide it now: the team to narrow it to one person.
         ...(decider ? { canDecide: true, team } : { canDecide: false }),
       });

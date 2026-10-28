@@ -1,6 +1,7 @@
 // PPL-50 Team pay access (founder decisions 28 Oct 2026): a manager asks to see the pay of their whole team or of one
 // person in it, with a reason. Two different HR people approve; the company sets how long it lasts and who it covers by
-// default, and the approving HR person may change both on the request. Access ends by itself on the last day.
+// default, and the approving HR person may change both on the request. Access ends by itself on the last day, or
+// earlier when HR ends it with a reason (End access, or Revoke in Roles & access).
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -10,7 +11,7 @@ import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
 import { useToast } from '../../components/notify';
-import { Dialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { PageHeader } from '../../components/shell';
@@ -36,8 +37,12 @@ export interface PayAccessRow {
   askedAt: string;
   first: { by: string | null; at: string; note: string | null } | null;
   decided: { by: string | null; at: string; note: string | null } | null;
+  /** HR ended it before its last day (validTo is then that day). */
+  ended: { by: string | null; at: string; note: string | null } | null;
   /** The last day access lasts (approved requests). */
   validTo: string | null;
+  /** This HR person may end the open access now. */
+  canEnd: boolean;
   /** This HR person may approve or refuse it now (the API decides: never the manager, never both approvals). */
   canDecide: boolean;
   /** The manager's team today, to narrow a request to one person (only when canDecide). */
@@ -279,6 +284,35 @@ export function PayAccessDecide({ row, onDecide, onClose }: { row: PayAccessRow;
   );
 }
 
+/* ------------------------------------------------------------------ HR ends open access early */
+
+export function PayAccessEnd({ row, onEnd, onClose }: { row: PayAccessRow; onEnd: (id: string, reason: string) => Promise<void>; onClose: () => void }) {
+  const { toast } = useToast();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`End ${row.manager.name}'s access to pay?`}
+      consequence={`The pay of ${row.covers} is hidden from them now, not on ${day(row.validTo!)}. The request stays on the record.`}
+      confirmLabel="End access"
+      destructive
+      onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
+        await onEnd(row.id, reason.trim());
+        toast({ tone: 'success', title: 'Access ended', description: `${row.manager.name} is told why.` });
+        onClose();
+      }}
+    >
+      <FormField id="pa-end-reason" label="Reason" required helper="The manager reads this." error={tried && !reason.trim() ? 'Say why you end it.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 /* ------------------------------------------------------------------ PPL-50 the HR list */
 
 export interface PayAccessRequestsProps {
@@ -287,23 +321,27 @@ export interface PayAccessRequestsProps {
   onRetry?: () => void;
   /** employee.pay_access.approve: decide a request. Stories without it show the list only. */
   onDecide?: (id: string, d: PayAccessDecision) => Promise<void>;
-  /** Stories: open this request's decision at once. */
+  /** employee.pay_access.approve: end open access before its last day, with a reason. */
+  onEnd?: (id: string, reason: string) => Promise<void>;
+  /** Stories: show this request's view, and open its decision or End access at once. */
   defaultOpenId?: string;
 }
 
 type Show = 'waiting' | 'active' | 'closed';
 const SHOWN: Record<Show, PayAccessState[]> = { waiting: ['first', 'second'], active: ['active'], closed: ['ended', 'refused'] };
 
-export function PayAccessRequests({ rows, state = 'ready', onRetry, onDecide, defaultOpenId }: PayAccessRequestsProps) {
-  const [show, setShow] = useState<Show>('waiting');
+export function PayAccessRequests({ rows, state = 'ready', onRetry, onDecide, onEnd, defaultOpenId }: PayAccessRequestsProps) {
+  const opened = rows.find((r) => r.id === defaultOpenId);
+  const [show, setShow] = useState<Show>(() => (opened ? (Object.keys(SHOWN) as Show[]).find((s) => SHOWN[s].includes(opened.state))! : 'waiting'));
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const open = rows.find((r) => r.id === openId && r.canDecide) ?? null;
+  const ending = rows.find((r) => r.id === openId && r.canEnd) ?? null;
   const count = (s: Show) => rows.filter((r) => SHOWN[s].includes(r.state)).length;
   const cols: TableColumn<PayAccessRow>[] = [
     { key: 'manager', header: 'Manager', type: 'person', value: (r) => r.manager.name, person: (r) => ({ name: r.manager.name }), width: 220, hideable: false },
     { key: 'covers', header: 'Pay of', value: (r) => r.covers, render: (r) => <span className="yx-ppl__cell-two"><span>{r.person ? r.person.name : 'Whole team'}</span><span className="yx-ppl__sub">{`${r.days} days`}</span></span>, width: 180 },
     { key: 'reason', header: 'Reason', value: (r) => r.reason, width: 260 },
-    { key: 'state', header: 'Status', value: (r) => r.state, render: (r) => <PayAccessBadge row={r} />, width: 190 },
+    { key: 'state', header: 'Status', value: (r) => r.state, render: (r) => (r.ended ? <span className="yx-ppl__cell-two"><span><PayAccessBadge row={r} /></span><span className="yx-ppl__sub">{`Ended early by ${r.ended.by ?? 'HR'}`}</span></span> : <PayAccessBadge row={r} />), width: 190 },
     { key: 'asked', header: 'Asked', type: 'date', value: (r) => new Date(r.askedAt), width: 130, optional: true },
   ];
   return (
@@ -336,7 +374,11 @@ export function PayAccessRequests({ rows, state = 'ready', onRetry, onDecide, de
             cardSummary
             empty={<EmptyState compact title={show === 'waiting' ? 'Nothing is waiting.' : show === 'active' ? 'No manager has access now.' : 'No ended or refused requests yet.'} />}
             rowButtons={(r) =>
-              !onDecide ? null : r.canDecide ? (
+              onEnd && r.canEnd ? (
+                <Button size="sm" onClick={() => setOpenId(r.id)}>
+                  End access
+                </Button>
+              ) : !onDecide ? null : r.canDecide ? (
                 <Button size="sm" variant="primary" onClick={() => setOpenId(r.id)}>
                   Decide
                 </Button>
@@ -349,6 +391,7 @@ export function PayAccessRequests({ rows, state = 'ready', onRetry, onDecide, de
         </>
       )}
       {open && onDecide && <PayAccessDecide key={open.id} row={open} onDecide={onDecide} onClose={() => setOpenId(null)} />}
+      {ending && onEnd && <PayAccessEnd key={ending.id} row={ending} onEnd={onEnd} onClose={() => setOpenId(null)} />}
     </PeopleFrame>
   );
 }
