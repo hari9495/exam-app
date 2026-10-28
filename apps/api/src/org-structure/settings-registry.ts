@@ -140,6 +140,32 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   },
   // M02 L1: the leave year starts in this month (1 = calendar year, 4 = financial year), per company or legal entity.
   'leave.year_start_month': { label: 'Leave year starts in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '1' },
+  // Leave v2 (29 Oct 2026). Company choices with a default; HR overrides per company, entity or location.
+  // Leave during the notice period: allowed with no change to the last day, allowed and the last day moves by the
+  // leave days, or only sick and unpaid leave.
+  'leave.notice_period.leave': { label: 'Leave during the notice period', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no_change', 'extends_last_day', 'sick_and_unpaid_only'], default: 'no_change' },
+  // Leave while on probation: every type, casual / sick / unpaid only, or unpaid only.
+  'leave.probation.leave': { label: 'Leave while on probation', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['all', 'casual_sick_unpaid', 'unpaid_only'], default: 'all' },
+  // Company block dates: planned leave on them is refused, or allowed with a warning to the approver.
+  'leave.block_dates.mode': { label: 'Planned leave on company block dates', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['block', 'warn'], default: 'block' },
+  // TIM-22: comp-off for work on a weekly off or holiday is claimed within N days and used within N days of the work.
+  'leave.comp_off.claim_within_days': { label: 'Claim comp-off within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['7', '15', '30', '45', '60'], default: '30' },
+  'leave.comp_off.expiry_days': { label: 'Comp-off must be used within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['30', '45', '60', '90', '180', '365', 'never'], default: '60' },
+  // TIM-24: encashment while in service: the month the window is open (off: only at exit), the most days a year and
+  // the days that must stay after encashing. The daily rate follows payroll.leave_encashment_basis.
+  'leave.encashment.window': { label: 'Leave can be cashed in while working', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'any_month', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: 'off' },
+  'leave.encashment.max_days': { label: 'Most days cashed in a year', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10', '15', '20', '30'], default: '7' },
+  'leave.encashment.min_left': { label: 'Days that must stay after cashing in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '5', '7', '10', '15', '30'], default: '7' },
+  'leave.encashment.divisor': { label: 'Daily rate for cashing in: monthly pay divided by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['26', '30'], default: '26' },
+  // TIM-25: sabbatical and long unpaid leave earn leave or not (maternity always counts as service: Maternity Benefit Act).
+  'leave.long_absence.accrues': { label: 'Leave is earned during a sabbatical or long unpaid leave', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no', 'yes'], default: 'no' },
+  // TIM-23: optional holidays are prorated by the months left after a move to another calendar.
+  'leave.optional_holiday.prorate_on_move': { label: 'Prorate optional holidays after a move to another office', scopes: ['tenant', 'legal_entity'], dated: false, values: ['yes', 'no'], default: 'yes' },
+  // TIM-39: people in these designations or departments take a block of consecutive working days off each leave year.
+  'leave.block_leave.required': { label: 'Block leave is required', scopes: ['tenant', 'legal_entity', 'location', 'department', 'designation'], dated: false, values: ['no', 'yes'], default: 'no' },
+  'leave.block_leave.days': { label: 'Block leave length (working days in a row)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
+  // TIM-42: public-holiday feeds (provider: to decide; dev-fake until then).
+  'holiday.feeds': { label: 'Use public-holiday feeds', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
   // TIM-07 / settings 3.5 (19 Oct 2026): work-from-home days a month with manager approval only; beyond that HR approves too.

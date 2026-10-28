@@ -143,7 +143,7 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
-export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string }): AccrualDue[] {
+export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[] }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);
   const yearEnd = start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
@@ -153,7 +153,10 @@ export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn:
     const a = from < o.joinedOn ? o.joinedOn : from;
     const b = to > last ? last : to;
     if (b < a) return 0;
-    return line.proRata ? (daysBetween(a, b) + 1) / (daysBetween(from, to) + 1) : 1;
+    // Days of a long absence that earns no leave come off the month's share.
+    const away = (o.notEarning ?? []).reduce((n, x) => { const p = x.from < a ? a : x.from; const q = x.to > b ? b : x.to; return q < p ? n : n + daysBetween(p, q) + 1; }, 0);
+    const kept = daysBetween(a, b) + 1 - away;
+    return line.proRata || away ? kept / (daysBetween(from, to) + 1) : 1;
   };
   if (line.frequency === 'yearly') {
     const on = o.yearStart < o.joinedOn ? o.joinedOn : o.yearStart;
