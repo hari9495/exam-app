@@ -731,7 +731,8 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await entity('kf').expect(400);
       await entity('KF-').expect(200);
       try {
-        expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Prefix', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toBe('KF-0001');
+        // One more than the highest code in the series: KF-0057 was typed at hire earlier in this file.
+        expect((await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Prefix', joinedOn: today, overrideReason: undefined })).expect(201)).body.employeeCode).toBe('KF-0058');
       } finally {
         await entity(null).expect(200);
       }

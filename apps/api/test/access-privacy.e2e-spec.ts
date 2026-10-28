@@ -930,7 +930,8 @@ ${await codeOf(ids.lakshmi)},KFPL,redesignation,${addDays(today, 16)},Title,AN
       await api('approverA', 'post', `/people/changes/${sched.id}/approve`).send({ confirmRebase: true }).expect(201);
       await api('hrOps', 'post', `/people/changes/${sched.id}/cancel`).send({ reason: 'Undo' }).expect(403);
       await api('hrAll', 'post', `/people/changes/${sched.id}/cancel`).send({ reason: 'Postponed', confirmRebase: true }).expect(201);
-      const bell = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, entityId: sched.id } }));
+      // The approvers' bell also has the "waiting for your approval" notices from when it was raised (since 28 Oct 2026).
+      const bell = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, entityId: sched.id, type: { not: 'employee.change.approval_needed' } } }));
       expect(bell.map((n) => [n.recipientUserId, n.type])).toEqual([[users.approverA, 'employee.change.cancelled']]);
     });
 
