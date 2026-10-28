@@ -671,10 +671,11 @@ Standby allowance per slot and call-out pay rates are payroll's (PAY on-call rul
 
 | story (sub-page) | where it shows live |
 |---|---|
-| List (Requirements) | feature not built |
-| Blocked (Roster block · expired licence) | feature not built |
-| Empty | feature not built |
-| Loading | feature not built |
+| List (Requirements) | /yx/time/setup/licences as HR (leave.settings.manage company-wide; else no access): one row per licence type, "Required for" = its roles / shifts (with location), Role / Shift / Role and shift, Licence + note, Legal / Company, Holders, Needs action (expired / expiring from the API's watch list, overrides counted as "overridden"), "Only needing action". Who needs action drawer: DueBadge per person, Ask to renew / Ask all to renew (once a day per person), Override… (company licences, expired holders: reason 5–300 + until ≤ 90 days), Record licence. Edit dialog: name, note, type, reminders (version check: "Someone else changed this licence…"), requirements listed with Remove and added with Role/Shift Segment + role or shift + optional location. Add requirement = the type (Code field, prefilled from the name) + its first requirement. Live: GET /time/licences, POST types, PUT types/:id, POST requirements, requirements/:id/remove, holders, overrides, renew-asks. Gap: "Skill" (the design's third kind) has no data model, so the Segment offers Role and Shift; no "active" switch (the API keeps it, the dialog sends it unchanged) |
+| Record (Record licence) | /yx/time/setup/licences → Who needs action → Record licence: Person, Licence number, Valid from, Expires on (empty = never); a renewal is recorded the same way (the latest counts). Design added first (story Record) |
+| Blocked (Roster block · expired licence) | shown on the roster (/yx/time/roster: Licence conflict in Law and rule checks, and LICENCE_GUARD refusal); the licences API does not list who is rostered within 14 days, so this page shows no Blocked alert |
+| Empty | /yx/time/setup/licences with no licence types: "No licence requirements yet" + Add requirement |
+| Loading | /yx/time/setup/licences while GET /time/licences loads (also error with Try again, and no access) |
 
 ### TIM-41 · Hybrid office days
 
