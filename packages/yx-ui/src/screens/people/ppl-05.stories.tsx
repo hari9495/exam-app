@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ScheduledChangesScreen } from './changes';
 import { SCHEDULED, TODAY } from './people-data';
+import { ChangeReview } from '../history';
+import { CHANGES, IMPACT } from '../history/data';
+import { ok } from './popup-play';
 
 const meta: Meta = { title: 'Screens/People/PPL-05 · Scheduled changes', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -10,3 +13,6 @@ export const Next30: S = { name: 'Next 30 days', render: () => <ScheduledChanges
 export const Next90: S = { name: 'Next 90 days (two changes for one person)', render: () => <ScheduledChangesScreen rows={SCHEDULED} today={TODAY} defaultWindow={90} /> };
 export const Cancel: S = { name: 'Cancel with reason', render: () => <ScheduledChangesScreen rows={SCHEDULED} today={TODAY} defaultCancelId="s2" /> };
 export const Empty: S = { name: '· empty', render: () => <ScheduledChangesScreen rows={[]} today={TODAY} /> };
+
+// The same review drawer opened from a scheduled change waiting for approval.
+export const Review: S = { name: 'Review a waiting change', render: () => <ChangeReview row={{ ...CHANGES[2], status: 'pending' }} onPreview={async () => IMPACT} onApprove={ok} onReject={() => undefined} onClose={() => undefined} /> };

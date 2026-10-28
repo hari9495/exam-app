@@ -3,6 +3,9 @@ import { userEvent, within } from 'storybook/test';
 import type { ExitWorkspace } from './live/types';
 import { ExitCasesList, ExitCaseWorkspace } from './exits';
 import { EXIT_CASES, TODAY } from './people-data';
+import { StartExitDialog } from './live/exits';
+import { IR_PERMISSION_CHOICES, PERSON_CHOICES, TODAY_KEY } from './people-data';
+import { choose, date, pick, play, press, type } from './popup-play';
 
 const meta: Meta = { title: 'Screens/People/PPL-19 · Exit cases', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -49,3 +52,13 @@ export const Withdrawn: S = {
     />
   ),
 };
+
+// Start an exit (People › Exit cases): the live dialog HR opens for an exit the company starts.
+const startExit = (onStart: Parameters<typeof StartExitDialog>[0]['onStart'] = async () => ({ id: 'x-new' })) => <StartExitDialog people={PERSON_CHOICES} permissions={IR_PERMISSION_CHOICES} today={TODAY_KEY} onClose={() => undefined} onStart={onStart} />;
+const fillRetrenchment = [pick('Person', /Imran Qureshi/), pick('Kind of exit', 'Retrenchment'), type(/^How the worker was chosen/, 'Last come, first go in the packing operator category'), choose('Wages in lieu'), pick('Government permission', /Hosur plant retrenchment/), date('Last working day', '31 Oct 2026'), type(/^Reason/, 'Packing line 3 closes after the move to Hosur unit 2')];
+export const StartExit: S = { name: 'Start exit · open', render: () => startExit() };
+export const StartExitRetrenchment: S = { name: 'Start exit · retrenchment filled (basis, notice, permission)', render: () => startExit(), play: play(...fillRetrenchment) };
+export const StartExitTermination: S = { name: 'Start exit · termination (another HR person approves)', render: () => startExit(), play: play(pick('Person', /Rohit Menon/), pick('Kind of exit', 'Termination')) };
+export const StartExitAbsconding: S = { name: 'Start exit · absconding (last day present, a past date)', render: () => startExit(), play: play(pick('Kind of exit', 'Absconding')) };
+export const StartExitMissing: S = { name: 'Start exit · Start pressed with nothing filled', render: () => startExit(), play: play(press('Start exit')) };
+export const StartExitFailed: S = { name: 'Start exit · the server refuses', render: () => startExit(async () => { throw new Error('Imran Qureshi already has an open exit case.'); }), play: play(...fillRetrenchment, press('Start exit')) };

@@ -3,6 +3,9 @@ import { PayTab, PersonWorkspace, SAMPLE_PAY } from './record';
 import { ARJUN, ARJUN_CUSTOM_VALUES, EMPLOYEE_FIELDS, d, TODAY } from './people-data';
 import { CustomFieldsDrawer, EmployeeFieldsScreen } from './custom-fields';
 import { ContactsDrawer, FamilyDrawer } from './family';
+import { CancelDialog, ChangeDialog, PersonalDialog } from '../access';
+import { PROFILE_SELF, REQUESTS } from '../access/data';
+import { fails, ok, pick, play, press, type } from './popup-play';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -53,3 +56,19 @@ export const CustomFieldsSettingsEmpty: S = {
   name: 'Settings · custom fields (none yet)',
   render: () => <EmployeeFieldsScreen state="ready" fields={[]} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
 };
+
+// The record's own dialogs: personal details (edited at once), identity or bank change (sent for approval), withdraw.
+const STATES = [{ code: 'IN-KA', name: 'Karnataka' }, { code: 'IN-TN', name: 'Tamil Nadu' }, { code: 'IN-MH', name: 'Maharashtra' }];
+export const EditPersonal: S = { name: 'Personal details · open (filled from the record)', render: () => <PersonalDialog initial={PROFILE_SELF.personal!} states={STATES} onSave={ok} onClose={() => undefined} /> };
+export const EditPersonalFailed: S = { name: 'Personal details · the server refuses', render: () => <PersonalDialog initial={PROFILE_SELF.personal!} states={STATES} onSave={fails('Enter a personal email like name@example.com.')} onClose={() => undefined} />, play: play(press('Save')) };
+const change = (onRequest: Parameters<typeof ChangeDialog>[0]['onRequest'] = ok) => <ChangeDialog pending={['bank_reimbursement']} onRequest={onRequest} onClose={() => undefined} />;
+const fillBank = [pick('What changes', 'Salary bank account'), type(/^Account holder/, 'Divya Raghunathan'), type(/^Account number/, '50100234567812'), type(/^IFSC/, 'HDFC0001234'), type(/^Reason/, 'Moved my salary to a new HDFC account')];
+export const RequestChange: S = { name: 'Identity or bank change · open', render: () => change() };
+export const RequestChangeFilled: S = { name: 'Identity or bank change · new salary account filled', render: () => change(), play: play(...fillBank) };
+export const RequestChangeMissing: S = { name: 'Identity or bank change · Send pressed with nothing filled', render: () => change(), play: play(press('Send for approval')) };
+export const RequestChangeInvalid: S = { name: 'Identity or bank change · PAN in the wrong form', render: () => change(), play: play(pick('What changes', 'PAN'), type(/^New PAN/, 'BRGPR7712'), press('Send for approval')) };
+export const RequestChangeFailed: S = { name: 'Identity or bank change · the server refuses', render: () => change(fails('A salary bank account change is already waiting.')), play: play(...fillBank, press('Send for approval')) };
+const withdraw = (onCancel: Parameters<typeof CancelDialog>[0]['onCancel'] = ok) => <CancelDialog request={REQUESTS[0]} onCancel={onCancel} onClose={() => undefined} />;
+export const WithdrawChange: S = { name: 'Withdraw a waiting change · open', render: () => withdraw() };
+export const WithdrawChangeMissing: S = { name: 'Withdraw a waiting change · no reason', render: () => withdraw(), play: play(press('Withdraw')) };
+export const WithdrawChangeFailed: S = { name: 'Withdraw a waiting change · the server refuses', render: () => withdraw(fails('HR already approved this change.')), play: play(type(/^Reason/, 'Typed the wrong account'), press('Withdraw')) };
