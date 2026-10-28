@@ -59,6 +59,7 @@ Old live copies deleted: live/my-attendance.tsx (MyAttendanceScreen, TodayCard, 
 | Freeze · Freeze inputs | gap: freeze/lock live on /yx/time/periods (Periods), not on the muster |
 | Frozen · all exceptions resolved | gap: the muster API returns no period stage |
 | FrozenBlocked · lock blocked | gap: as above |
+| Lock · typed confirmation (August) | gap: locking a month lives on /yx/time/periods (Periods), not on the muster; the muster API returns no period stage |
 | Locked (August) | gap: as above |
 | Bulk · mark present with reason | feature not built (no bulk mark-present API) |
 | Empty | /yx/time/muster with no one in scope ("No one on the muster") |
