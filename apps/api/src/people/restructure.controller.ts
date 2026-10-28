@@ -115,7 +115,7 @@ const UUID_MAP = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 //   employee.change.manage    plan, check and send (each person in reach; hiring into the new entity in reach)
 //   employee.change.approve   with employee.change.manage (HR, founder decision 21 Oct 2026: payroll does no HR work):
 //                             approve or reject, never one's own and never a plan that moves oneself (YX-SEC-11)
-//   payroll.run.prepare       payroll of the new entity keeps the continuity checklist too
+//   payroll.run.prepare       payroll of the new entity keeps the continuity checklist too, and opens done restructures into it
 @Controller('people/restructures')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RestructureController {
@@ -149,10 +149,11 @@ export class RestructureController {
     return this.restructures.setup(ctx, await this.viewer(req));
   }
 
+  // Payroll (founder 28 Oct 2026): done restructures into its entity only, to keep their continuity checklists.
   @Get()
-  @RequirePermissions('employee.change.manage')
+  @RequireAnyPermission('employee.change.manage', 'payroll.run.prepare')
   async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ListQueryDto) {
-    return this.restructures.list(ctx, await this.viewer(req), q.status === 'finished');
+    return this.restructures.list(ctx, await this.viewer(req), this.user(req), q.status === 'finished');
   }
 
   @Post('preview')
@@ -227,9 +228,9 @@ export class RestructureController {
   }
 
   @Get(':id')
-  @RequirePermissions('employee.change.manage')
+  @RequireAnyPermission('employee.change.manage', 'payroll.run.prepare')
   async get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.restructures.get(ctx, await this.viewer(req), id);
+    return this.restructures.get(ctx, await this.viewer(req), id, this.user(req));
   }
 
   /** Approving moves many people at once: a fresh second factor, as for bulk changes (P12 YX-IAM-02). */

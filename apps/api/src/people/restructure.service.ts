@@ -727,15 +727,17 @@ export class RestructureService {
   /**
    * Restructures, newest first; `finished` (founder 28 Oct 2026): done, rejected and cancelled ones, so HR gets back to a
    * record (letters, continuity checklist), each with its open continuity items. Only plans naming someone the viewer's
-   * employee.change.manage reaches today (every plan for company-wide HR).
+   * employee.change.manage reaches today (every plan for company-wide HR), and done ones payroll of the new entity
+   * keeps the checklist for (founder 28 Oct 2026: payroll never sees a plan before it is done).
    */
-  list(ctx: TenantContext, v: Viewer, finished = false) {
+  list(ctx: TenantContext, v: Viewer, user: RequestUser, finished = false) {
     return this.history.run(ctx, async (tx, c) => {
       const org = c.organizationId;
+      const pays = await this.payrollOf(user);
       const rows = await tx.restructure.findMany({ where: { organizationId: org, ...(finished ? { status: { in: FINISHED } } : {}) }, orderBy: finished ? [{ effectiveOn: 'desc' }, { requestedAt: 'desc' }] : { requestedAt: 'desc' }, take: 100 });
       const people = await tx.restructurePerson.findMany({ where: { organizationId: org, restructureId: { in: rows.map((r) => r.id) } }, select: { restructureId: true, employeeId: true } });
       const reached = await this.history.reachedIds(tx, c, v, 'employee.change.manage', [...new Set(people.map((p) => p.employeeId))]);
-      const seen = rows.filter((r) => people.some((p) => p.restructureId === r.id && reached.has(p.employeeId)));
+      const seen = rows.filter((r) => people.some((p) => p.restructureId === r.id && reached.has(p.employeeId)) || (r.status === 'done' && pays(r.intoEntityId)));
       const open = await tx.continuityItem.groupBy({ by: ['restructureId'], where: { organizationId: org, restructureId: { in: seen.map((r) => r.id) }, status: 'open' }, _count: { _all: true } });
       return Promise.all(seen.map(async (r) => ({ ...(await this.summary(tx, c, v, r)), openItems: open.find((o) => o.restructureId === r.id)?._count._all ?? 0 })));
     });
@@ -767,8 +769,14 @@ export class RestructureService {
     });
   }
 
-  get(ctx: TenantContext, v: Viewer, id: string) {
-    return this.history.run(ctx, async (tx, c) => this.view(tx, c, v, await this.restructureOr404(tx, c, id)));
+  /** `user` only for the payroll check; approve and close reply with the record to HR, who hold the change key. */
+  get(ctx: TenantContext, v: Viewer, id: string, user?: RequestUser) {
+    return this.history.run(ctx, async (tx, c) => {
+      const r = await this.restructureOr404(tx, c, id);
+      // Payroll without the change key: only a done move into its entity (its checklist); anything else does not exist for it.
+      if (!has(v, 'employee.change.manage') && !(r.status === 'done' && user && (await this.payrollOf(user))(r.intoEntityId))) throw new NotFoundException('No such restructure.');
+      return this.view(tx, c, v, r);
+    });
   }
 
   // ------------------------------------------------------------------------------------------ deciding and running
@@ -874,8 +882,13 @@ export class RestructureService {
     if (v.actingForOther) return false;
     const e = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId, legalEntityId: entityId }, orderBy: { joinedOn: 'desc' } });
     if (e && (await this.history.reachesFrom(tx, c, v, 'employee.change.manage', e, isoDate(e.joinedOn)))) return true;
+    return (await this.payrollOf(user))(entityId);
+  }
+
+  /** Whether the user's payroll.run.prepare covers a legal entity (company-wide, or a grant for that entity). */
+  private async payrollOf(user: RequestUser) {
     const k = await this.keys(user);
-    return tenantWide(k, 'payroll.run.prepare') || (k.scopes.get('payroll.run.prepare') ?? []).some((s) => s.type === 'legal_entity' && s.id === entityId);
+    return (entityId: string | null) => !!entityId && (tenantWide(k, 'payroll.run.prepare') || (k.scopes.get('payroll.run.prepare') ?? []).some((s) => s.type === 'legal_entity' && s.id === entityId));
   }
 
   continuity(ctx: TenantContext, v: Viewer, user: RequestUser, restructureId: string, employeeId: string) {
