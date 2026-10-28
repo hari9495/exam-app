@@ -89,6 +89,9 @@ export interface ScopeChoices {
 
 // ---- the record by class ----
 
+/** The personal details a company may require (Settings › Company rules › Personal details everyone must have). */
+export type PersonalField = 'dateOfBirth' | 'gender' | 'maritalStatus' | 'personalEmail' | 'personalPhone' | 'addressLine1' | 'addressLine2' | 'city' | 'stateCode' | 'postalCode';
+
 export interface PersonalDetails {
   dateOfBirth: string | null;
   gender: string | null;
@@ -129,6 +132,8 @@ export interface ProfileView {
   joinedOn: string | null;
   classes: { internal: boolean; personal: boolean; identity: boolean; aadhaar: boolean; pay: boolean };
   personal: PersonalDetails | null;
+  /** The personal details the company requires (Settings › Company rules); null without the Personal class. */
+  personalRequired?: PersonalField[] | null;
   identity: IdentityView | null;
   /** Internal class: the work phone. */
   work?: { phone: string | null; email?: string | null } | null;

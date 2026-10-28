@@ -8,10 +8,11 @@ import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
+import { ID_SPECS, isEmail } from '../../lib/validators';
 import { errorText } from '../org/org-kit';
 import { ifscBank } from '../people/people-logic';
 import { GENDER_LABEL, KIND_LABEL, MARITAL_LABEL } from './access-kit';
-import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
+import type { LoadState, PersonalDetails, PersonalField, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
 
 // People › the person record's dialogs (PPL-03 / PPL-32; P02 §4.4–4.5), used by the designed record: personal details
 // edited directly, identity, bank and legal-name changes sent for approval, a waiting change withdrawn.
@@ -61,12 +62,52 @@ KIND_FIELDS.bank_reimbursement = KIND_FIELDS.bank_salary;
 /** PPL-46: an account abroad has its own page (International bank details), not this dialog. */
 const DIALOG_KINDS = (Object.keys(KIND_LABEL) as RequestKind[]).filter((k) => k !== 'bank_international');
 
-export function PersonalDialog({ initial, states, onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
+export type { PersonalField };
+/** The starter list of required personal details (the API's default for the setting). */
+export const PERSONAL_REQUIRED_DEFAULT: PersonalField[] = ['dateOfBirth', 'gender', 'personalPhone', 'addressLine1', 'city', 'stateCode'];
+const MISSING: Record<PersonalField, string> = {
+  dateOfBirth: 'Choose the date of birth.',
+  gender: 'Choose the gender.',
+  maritalStatus: 'Choose the marital status.',
+  personalEmail: 'Enter the personal email.',
+  personalPhone: 'Enter the personal phone.',
+  addressLine1: 'Enter the address.',
+  addressLine2: 'Enter the second address line.',
+  city: 'Enter the city.',
+  stateCode: 'Choose the state.',
+  postalCode: 'Enter the PIN code.',
+};
+/** Nobody under 14 works (Child and Adolescent Labour Act 1986); the API checks the same. */
+const MIN_AGE = 14;
+
+/** What to fix in the personal details, field by field (the API checks again). */
+export function personalErrors(d: PersonalDetails, required: PersonalField[], today = new Date()): Partial<Record<PersonalField, string>> {
+  const out: Partial<Record<PersonalField, string>> = {};
+  for (const k of required) if (!String(d[k] ?? '').trim()) out[k] = MISSING[k];
+  const youngest = dayKey(new Date(today.getFullYear() - MIN_AGE, today.getMonth(), today.getDate()));
+  if (d.dateOfBirth && d.dateOfBirth > youngest) out.dateOfBirth = `The person must be at least ${MIN_AGE} years old.`;
+  if (d.personalEmail && !isEmail(d.personalEmail)) out.personalEmail = 'Enter a personal email like name@example.com.';
+  const phone = d.personalPhone ? ID_SPECS.phone.validate(ID_SPECS.phone.normalise(d.personalPhone)) : null;
+  if (phone) out.personalPhone = `${phone}.`;
+  return out;
+}
+
+export function PersonalDialog({ initial, states, required = [], onSave, onClose }: { initial: PersonalDetails; states: ProfileScreenProps['states']; required?: PersonalField[]; onSave: ProfileScreenProps['onSavePersonal']; onClose: () => void }) {
   const [d, setD] = useState(initial);
   const set = <K extends keyof PersonalDetails>(k: K, v: PersonalDetails[K]) => setD((x) => ({ ...x, [k]: v }));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tried, setTried] = useState(false);
+  const errors = personalErrors(d, required);
+  const err = (k: PersonalField) => (tried ? errors[k] ?? null : null);
+  const req = (k: PersonalField) => required.includes(k);
+  // Save stays enabled: a click with something missing or wrong names it under the field and puts the cursor there.
   const save = async () => {
+    setTried(true);
+    if (Object.keys(errors).length) {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('[role="dialog"] .yx-field[data-invalid] :is(input, button)')?.focus());
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -97,34 +138,34 @@ export function PersonalDialog({ initial, states, onSave, onClose }: { initial: 
         </>
       }
     >
-      <FormField id="pd-dob" label="Date of birth">
+      <FormField id="pd-dob" label="Date of birth" required={req('dateOfBirth')} error={err('dateOfBirth')}>
         <DatePicker value={d.dateOfBirth ? new Date(`${d.dateOfBirth}T00:00:00`) : null} onChange={(v) => set('dateOfBirth', v ? dayKey(v) : null)} max={new Date()} />
       </FormField>
-      <FormField id="pd-gender" label="Gender">
+      <FormField id="pd-gender" label="Gender" required={req('gender')} error={err('gender')}>
         <Select aria-label="Gender" value={d.gender} onChange={(v) => set('gender', v)} clearable options={Object.entries(GENDER_LABEL).map(([value, label]) => ({ value, label }))} />
       </FormField>
-      <FormField id="pd-marital" label="Marital status">
+      <FormField id="pd-marital" label="Marital status" required={req('maritalStatus')} error={err('maritalStatus')}>
         <Select aria-label="Marital status" value={d.maritalStatus ?? null} onChange={(v) => set('maritalStatus', v)} clearable options={Object.entries(MARITAL_LABEL).map(([value, label]) => ({ value, label }))} />
       </FormField>
-      <FormField id="pd-email" label="Personal email">
+      <FormField id="pd-email" label="Personal email" required={req('personalEmail')} error={err('personalEmail')}>
         <TextField type="email" value={d.personalEmail ?? ''} onChange={(v) => set('personalEmail', v || null)} maxLength={254} />
       </FormField>
-      <FormField id="pd-phone" label="Personal phone" helper="With the country code, e.g. +91 98450 12345.">
+      <FormField id="pd-phone" label="Personal phone" required={req('personalPhone')} helper="A 10-digit mobile number, with or without +91." error={err('personalPhone')}>
         <TextField type="tel" value={d.personalPhone ?? ''} onChange={(v) => set('personalPhone', v || null)} maxLength={30} />
       </FormField>
-      <FormField id="pd-line1" label="Address">
+      <FormField id="pd-line1" label="Address" required={req('addressLine1')} error={err('addressLine1')}>
         <TextField value={d.addressLine1 ?? ''} onChange={(v) => set('addressLine1', v || null)} maxLength={200} />
       </FormField>
-      <FormField id="pd-line2" label="Address line 2" optional>
+      <FormField id="pd-line2" label="Address line 2" required={req('addressLine2')} optional error={err('addressLine2')}>
         <TextField value={d.addressLine2 ?? ''} onChange={(v) => set('addressLine2', v || null)} maxLength={200} />
       </FormField>
-      <FormField id="pd-city" label="City">
+      <FormField id="pd-city" label="City" required={req('city')} error={err('city')}>
         <TextField value={d.city ?? ''} onChange={(v) => set('city', v || null)} maxLength={100} />
       </FormField>
-      <FormField id="pd-state" label="State">
+      <FormField id="pd-state" label="State" required={req('stateCode')} error={err('stateCode')}>
         <Select aria-label="State" value={d.stateCode} onChange={(v) => set('stateCode', v)} clearable searchable options={states.map((s) => ({ value: s.code, label: s.name }))} />
       </FormField>
-      <FormField id="pd-pin" label="PIN code">
+      <FormField id="pd-pin" label="PIN code" required={req('postalCode')} error={err('postalCode')}>
         <TextField value={d.postalCode ?? ''} onChange={(v) => set('postalCode', v.replace(/\D/g, '').slice(0, 6) || null)} inputMode="numeric" />
       </FormField>
       <Checkbox checked={d.hideBirthday} onChange={(v) => set('hideBirthday', v)} label="Hide my birthday from the colleague directory" />

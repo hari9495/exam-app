@@ -9,6 +9,11 @@ import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-fi
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
+
+/** Child and Adolescent Labour Act 1986: nobody under 14 works (no company setting for a minimum age exists). */
+const MIN_WORKING_AGE = 14;
+const minBirthDate = (today: string) => `${Number(today.slice(0, 4)) - MIN_WORKING_AGE}${today.slice(4)}`;
+const PERSONAL_LABEL = { dateOfBirth: 'Date of birth', gender: 'Gender', maritalStatus: 'Marital status', personalEmail: 'Personal email', personalPhone: 'Personal phone', addressLine1: 'Address', addressLine2: 'Address line 2', city: 'City', stateCode: 'State', postalCode: 'PIN code' } as const;
 import { settingFor } from './probation';
 import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
 
@@ -107,6 +112,8 @@ export class ProfileService {
           pay: covers(a.payPeriods, today),
         },
         personal: personal ? this.personalView(details) : null,
+        // The company's required personal details (Settings › Company rules), for the form to mark.
+        personalRequired: personal ? await this.personalRequired(tx, c) : null,
         // PPL-03 family, nominations and emergency contacts: Personal class, like the details above.
         family: personal ? await this.familyView(tx, c, employeeId) : null,
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
@@ -129,6 +136,11 @@ export class ProfileService {
   private async birthday(tx: Tx, c: CompanyContext, employeeId: string) {
     const d = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { dateOfBirth: true, hideBirthday: true } });
     return d?.dateOfBirth && !d.hideBirthday ? isoDate(d.dateOfBirth).slice(5) : null;
+  }
+
+  private async personalRequired(tx: Tx, c: CompanyContext) {
+    const v = await settingFor(tx, c, 'employee.personal.required', { legalEntityId: '' });
+    return v ? (v.split(',') as (keyof typeof PERSONAL_LABEL)[]) : [];
   }
 
   private personalView(d: PersonalRow | null) {
@@ -202,6 +214,7 @@ export class ProfileService {
       if (!a.self && !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Editing personal details needs employee.profile.edit for this person.');
       const today = todayIst();
       if (dto.dateOfBirth && (dto.dateOfBirth > today || dto.dateOfBirth < '1900-01-01')) throw new BadRequestException('The date of birth must be a real past date.');
+      if (dto.dateOfBirth && dto.dateOfBirth > minBirthDate(today)) throw new BadRequestException(`The person must be at least ${MIN_WORKING_AGE} years old.`);
       const current = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId } });
       const data: Record<string, unknown> = {};
       const set = (k: keyof PersonalDetailsDto, value: unknown) => {
@@ -211,11 +224,10 @@ export class ProfileService {
       set('gender', dto.gender ?? null);
       set('personalEmail', dto.personalEmail?.trim().toLowerCase() || null);
       if (dto.personalPhone) {
-        try {
-          data.personalPhone = e164(dto.personalPhone);
-        } catch {
-          throw new BadRequestException('That phone number is not valid.');
-        }
+        // An Indian mobile: 10 digits from 6 to 9, with or without +91 or a leading 0 (the form checks the same).
+        const phone = dto.personalPhone.replace(/[\s-]/g, '');
+        if (!/^(\+?91|0)?[6-9]\d{9}$/.test(phone)) throw new BadRequestException('Enter a 10-digit mobile number starting with 6, 7, 8 or 9.');
+        data.personalPhone = e164(phone);
       } else set('personalPhone', null);
       for (const k of ['addressLine1', 'addressLine2', 'city', 'postalCode'] as const) set(k, dto[k]?.trim() || null);
       set('country', dto.country ?? null);
@@ -226,6 +238,9 @@ export class ProfileService {
       const state = (data.stateCode !== undefined ? data.stateCode : current?.stateCode) as string | null;
       if (country && !isCountry(country)) throw new BadRequestException('Unknown country');
       if (state && (!country || !isSubdivisionOf(state, country))) throw new BadRequestException('The state is not a subdivision of the country.');
+      // The company's required details may not be left empty (checked on every save: the form shows them all).
+      const missing = (await this.personalRequired(tx, c)).filter((k) => ((data[k] !== undefined ? data[k] : (current as Record<string, unknown> | null)?.[k]) ?? '') === '');
+      if (missing.length) throw new BadRequestException(`Fill in the required personal details: ${missing.map((k) => PERSONAL_LABEL[k]).join(', ')}.`);
       const fields = Object.keys(data).filter((k) => JSON.stringify(data[k]) !== JSON.stringify((current as Record<string, unknown> | null)?.[k] ?? null));
       if (!fields.length) return { view: this.personalView(current), tell: [] as string[], organizationId: c.organizationId };
       const row = await tx.employeePersonalDetails.upsert({

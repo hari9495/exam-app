@@ -142,6 +142,35 @@ describe('/yx/people/profile', () => {
   });
 });
 
+describe('/yx/people/profile personal details (PPL-03, founder 28 Oct 2026)', () => {
+  it("the company's required details are marked; a missing one is named on Save, then the filled form is sent", async () => {
+    const puts: unknown[] = [];
+    route({
+      [`GET ${PERMS_PATH}`]: [],
+      'GET /people/me': { employeeId: 'p-divya', name: 'Divya Raghunathan' },
+      'GET /people/employees/p-divya/profile': { ...PROFILE, personalRequired: ['dateOfBirth', 'gender', 'personalPhone', 'addressLine1', 'city', 'stateCode'] },
+      'GET /people/profile-requests': { rows: [] },
+      'GET /org/reference': { states: [{ code: 'IN-KA', name: 'Karnataka', country: 'IN' }], regions: [] },
+      'GET /people/employees/p-divya/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-divya' } },
+      'GET /people/employees/p-divya/history': HISTORY,
+      'GET /people/employees/p-divya/person': { id: 'per-divya', roles: [] },
+      'GET /people/profile-requests?status=pending': { rows: [] },
+      'GET /me/leave': { balances: [] },
+      'PUT /people/employees/p-divya/personal': (_: string, init: RequestInit) => (puts.push(JSON.parse(String(init.body))), PROFILE.personal),
+    });
+    wrap(<YxProfilePage />);
+    await screen.findByText('XXXXXX821K');
+    await ue.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Edit personal details' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter the address.')).toBeInTheDocument();
+    expect(puts).toEqual([]);
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Address(?! line 2)/ }), '14, 3rd Cross, Jayanagar');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(puts).toEqual([expect.objectContaining({ addressLine1: '14, 3rd Cross, Jayanagar', city: 'Bengaluru' })]));
+  });
+});
+
 describe('/yx/people/profile-requests', () => {
   it('approves a change with the duplicate-value reason when the API asks for one', async () => {
     const bodies: unknown[] = [];

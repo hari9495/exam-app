@@ -18,7 +18,7 @@ export class PersonalDetailsDto {
   @IsOptional() @IsIn(GENDERS)
   gender?: string | null;
 
-  @IsOptional() @IsEmail() @MaxLength(254)
+  @IsOptional() @IsEmail({}, { message: 'Enter a personal email like name@example.com.' }) @MaxLength(254)
   personalEmail?: string | null;
 
   @IsOptional() @IsString() @MaxLength(30)

@@ -348,7 +348,7 @@ export class SettingDto {
   scopeId?: string;
 
   @IsString()
-  @MaxLength(100)
+  @MaxLength(200)
   value!: string;
 
   /** Dated keys only. */

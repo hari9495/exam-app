@@ -510,7 +510,25 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
     it('self-service: Personal edited directly (audited without values); identity / bank changes need step-up and approval (§4.5)', async () => {
       const mine = (await api('imranU', 'get', '/people/me').expect(200)).body;
       expect(mine.employeeId).toBe(ids.imran);
-      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ dateOfBirth: '1990-05-17', personalEmail: `imran.home-${runId}@mail.test`, personalPhone: '098450 77777', addressLine1: '5 Main Rd', city: 'Hosur', stateCode: 'IN-TN', country: 'IN' }).expect(200);
+      const personal = (body: object) => api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send(body);
+      // PPL-03 (founder 28 Oct 2026): the company's required details (starter: date of birth, gender, personal
+      // phone, address, city, state) are refused empty on every save, naming each one.
+      const refused = (await personal({ dateOfBirth: '1990-05-17', personalEmail: `imran.home-${runId}@mail.test`, personalPhone: '098450 77777', addressLine1: '5 Main Rd', stateCode: 'IN-TN', country: 'IN' }).expect(400)).body;
+      expect(refused.message).toBe('Fill in the required personal details: Gender, City.');
+      expect((await api('imranU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.personalRequired).toEqual(['dateOfBirth', 'gender', 'personalPhone', 'addressLine1', 'city', 'stateCode']);
+      await personal({ dateOfBirth: '1990-05-17', gender: 'male', personalEmail: `imran.home-${runId}@mail.test`, personalPhone: '098450 77777', addressLine1: '5 Main Rd', city: 'Hosur', stateCode: 'IN-TN', country: 'IN' }).expect(200);
+      expect((await personal({ city: null }).expect(400)).body.message).toBe('Fill in the required personal details: City.');
+      // Formats: an Indian mobile (with or without +91), a real email, and at least 14 years old.
+      for (const p of ['12345', '+44 20 7946 0958', '5845077777']) expect((await personal({ personalPhone: p }).expect(400)).body.message).toBe('Enter a 10-digit mobile number starting with 6, 7, 8 or 9.');
+      await personal({ personalPhone: '+91 98450 77777' }).expect(200);
+      expect((await personal({ personalEmail: 'imran.home' }).expect(400)).body.message).toEqual(expect.arrayContaining(['Enter a personal email like name@example.com.']));
+      expect((await personal({ dateOfBirth: `${Number(today.slice(0, 4)) - 10}-01-01` }).expect(400)).body.message).toBe('The person must be at least 14 years old.');
+      // HR changes the list in Settings › Company rules: any of the listed fields, none at all included.
+      await api('adminA', 'put', '/org/settings').send({ key: 'employee.personal.required', scopeType: 'tenant', value: 'dateOfBirth,shoeSize' }).expect(400);
+      const none = (await api('adminA', 'put', '/org/settings').send({ key: 'employee.personal.required', scopeType: 'tenant', value: '' }).expect(200)).body;
+      await personal({ city: null }).expect(200);
+      await api('adminA', 'delete', `/org/settings/${none.id}`).expect(204);
+      await personal({ city: 'Hosur' }).expect(200);
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ stateCode: 'IN-KX' }).expect(400);
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ dateOfBirth: addDays(today, 1) }).expect(400);
       await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ salary: 1 }).expect(400);

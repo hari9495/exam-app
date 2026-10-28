@@ -17,6 +17,8 @@ export interface SettingDef {
    * guard belong to whoever manages access (P02 §4.2; YX-SEC-02 least privilege).
    */
   guard?: 'access.role.manage';
+  /** The value is a comma list of any of `values` (none: empty), e.g. which fields are required. */
+  multi?: true;
 }
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
@@ -124,6 +126,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'transfer.service': { label: 'Service continuity', scopes: ['tenant'], dated: false, values: ['keep', 'restart'], default: 'keep' },
   'transfer.code': { label: 'Employee code', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
   'transfer.salary': { label: 'Salary structure', scopes: ['tenant'], dated: false, values: ['keep', 'new'], default: 'keep' },
+  // PPL-03 (founder 28 Oct 2026): the personal details every record must have; the form and the server require them.
+  'employee.personal.required': { label: 'Personal details everyone must have', scopes: ['tenant'], dated: false, multi: true, values: ['dateOfBirth', 'gender', 'maritalStatus', 'personalEmail', 'personalPhone', 'addressLine1', 'addressLine2', 'city', 'stateCode', 'postalCode'], default: 'dateOfBirth,gender,personalPhone,addressLine1,city,stateCode' },
   // PPL-32: an employee's own identity or bank change carries proof (a cancelled cheque, the PAN card, a gazette notice).
   'employee.profile_change.proof': { label: 'Proof with an identity or bank change', scopes: ['tenant', 'legal_entity'], dated: false, values: ['required', 'optional'], default: 'required', guard: 'access.role.manage' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.

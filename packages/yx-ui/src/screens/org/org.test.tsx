@@ -376,6 +376,24 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
   });
 
+  it('Employee records: the required personal details are a list HR ticks; only listed fields are taken', async () => {
+    const key = 'employee.personal.required';
+    const def = SETTING_REGISTRY[key];
+    expect(settingInput(key, def, { scopeType: 'tenant', scopeId: null, value: 'dateOfBirth,shoeSize', validFrom: null }).input).toBeNull();
+    expect(settingInput(key, def, { scopeType: 'tenant', scopeId: null, value: '', validFrom: null }).input).toEqual({ key, scopeType: 'tenant', value: '' });
+    const onSave = ok();
+    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('Personal details everyone must have').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Date of birth, Gender, Personal phone, Address, City, State')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('checkbox', { name: 'Gender' })).toBeChecked();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Gender' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Marital status' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key, scopeType: 'tenant', value: 'dateOfBirth,maritalStatus,personalPhone,addressLine1,city,stateCode' }));
+  });
+
   it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
     const onSave = ok();
     render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);

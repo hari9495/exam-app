@@ -394,6 +394,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       {editing && prof?.personal && (
         <PersonalDialog
           initial={prof.personal}
+          required={prof.personalRequired ?? []}
           states={(reference.data?.states ?? []).filter((s) => s.country === 'IN')}
           onSave={async (input) => {
             await write('PUT', `/employees/${p}/personal`, input);

@@ -3,7 +3,7 @@ import { PayTab, PersonWorkspace, SAMPLE_PAY } from './record';
 import { ARJUN, ARJUN_CUSTOM_VALUES, EMPLOYEE_FIELDS, d, TODAY } from './people-data';
 import { CustomFieldsDrawer, EmployeeFieldsScreen } from './custom-fields';
 import { ContactsDrawer, FamilyDrawer } from './family';
-import { CancelDialog, ChangeDialog, PersonalDialog } from '../access';
+import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from '../access';
 import { PROFILE_SELF, REQUESTS } from '../access/data';
 import { fails, ok, pick, play, press, type } from './popup-play';
 
@@ -59,8 +59,12 @@ export const CustomFieldsSettingsEmpty: S = {
 
 // The record's own dialogs: personal details (edited at once), identity or bank change (sent for approval), withdraw.
 const STATES = [{ code: 'IN-KA', name: 'Karnataka' }, { code: 'IN-TN', name: 'Tamil Nadu' }, { code: 'IN-MH', name: 'Maharashtra' }];
-export const EditPersonal: S = { name: 'Personal details · open (filled from the record)', render: () => <PersonalDialog initial={PROFILE_SELF.personal!} states={STATES} onSave={ok} onClose={() => undefined} /> };
-export const EditPersonalFailed: S = { name: 'Personal details · the server refuses', render: () => <PersonalDialog initial={PROFILE_SELF.personal!} states={STATES} onSave={fails('Enter a personal email like name@example.com.')} onClose={() => undefined} />, play: play(press('Save')) };
+// The company's required details (Settings › Company rules) are marked Required; Save names what is missing or wrong.
+const personal = (initial = PROFILE_SELF.personal!, onSave: Parameters<typeof PersonalDialog>[0]['onSave'] = ok) => <PersonalDialog initial={initial} states={STATES} required={PERSONAL_REQUIRED_DEFAULT} onSave={onSave} onClose={() => undefined} />;
+export const EditPersonal: S = { name: 'Personal details · open (filled from the record)', render: () => personal() };
+export const EditPersonalMissing: S = { name: 'Personal details · Save pressed with required details missing', render: () => personal({ ...PROFILE_SELF.personal!, dateOfBirth: null, gender: null, addressLine1: null, city: null, stateCode: null, personalPhone: null }), play: play(press('Save')) };
+export const EditPersonalWrong: S = { name: 'Personal details · Save pressed with a wrong email and phone', render: () => personal({ ...PROFILE_SELF.personal!, personalEmail: 'divya.home', personalPhone: '12345' }), play: play(press('Save')) };
+export const EditPersonalFailed: S = { name: 'Personal details · the server refuses', render: () => personal(PROFILE_SELF.personal!, fails('Fill in the required personal details: Marital status.')), play: play(press('Save')) };
 const change = (onRequest: Parameters<typeof ChangeDialog>[0]['onRequest'] = ok) => <ChangeDialog pending={['bank_reimbursement']} onRequest={onRequest} onClose={() => undefined} />;
 const fillBank = [pick('What changes', 'Salary bank account'), type(/^Account holder/, 'Divya Raghunathan'), type(/^Account number/, '50100234567812'), type(/^IFSC/, 'HDFC0001234'), type(/^Reason/, 'Moved my salary to a new HDFC account')];
 export const RequestChange: S = { name: 'Identity or bank change · open', render: () => change() };

@@ -161,6 +161,8 @@ export interface SettingDef {
   default: string;
   /** A second key needed to change it (access and fraud guards). */
   guard?: string;
+  /** The value is a comma list of any of `values` (none: empty), e.g. which fields are required. */
+  multi?: true;
 }
 
 export interface SettingOverride {

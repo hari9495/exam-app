@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
-import { CancelDialog, ChangeDialog, PersonalDialog } from './profile';
+import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
 import { EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
@@ -156,7 +156,7 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
 describe('Profile dialogs (P02 §4.4–4.5; the person record PPL-03 opens them)', () => {
   it('saving personal details sends the edited details', async () => {
     const onSave = ok();
-    render(<PersonalDialog initial={PROFILE_SELF.personal!} states={[{ code: 'IN-KA', name: 'Karnataka' }]} onSave={onSave} onClose={vi.fn()} />);
+    render(<PersonalDialog initial={PROFILE_SELF.personal!} states={[{ code: 'IN-KA', name: 'Karnataka' }]} required={PERSONAL_REQUIRED_DEFAULT} onSave={onSave} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     const phone = within(dialog).getByRole('textbox', { name: /Personal phone/ });
     await ue.clear(phone);
@@ -164,6 +164,40 @@ describe('Profile dialogs (P02 §4.4–4.5; the person record PPL-03 opens them)
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(onSave.mock.calls[0][0]).toMatchObject({ personalPhone: '+91 98450 22233', city: 'Bengaluru' });
+  });
+
+  it('required personal details are marked; Save names each missing one, focuses the first and sends nothing', async () => {
+    const onSave = ok();
+    const blank = { ...PROFILE_SELF.personal!, dateOfBirth: null, gender: null, personalPhone: null, city: '  ' };
+    render(<PersonalDialog initial={blank} states={[{ code: 'IN-KA', name: 'Karnataka' }]} required={PERSONAL_REQUIRED_DEFAULT} onSave={onSave} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText('Required')).toHaveLength(PERSONAL_REQUIRED_DEFAULT.length);
+    const save = within(dialog).getByRole('button', { name: 'Save' });
+    expect(save).toBeEnabled();
+    await ue.click(save);
+    for (const m of ['Choose the date of birth.', 'Choose the gender.', 'Enter the personal phone.', 'Enter the city.']) expect(within(dialog).getByText(m)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Enter the address.')).toBeNull();
+    await waitFor(() => expect(document.activeElement?.closest('.yx-field')?.textContent).toMatch(/Date of birth/));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('a wrong email, a non-mobile phone and a birth date under 14 years are refused in the form', async () => {
+    const onSave = ok();
+    const year = new Date().getFullYear() - 10;
+    render(<PersonalDialog initial={{ ...PROFILE_SELF.personal!, personalEmail: 'divya.home', personalPhone: '+91 12345 67890', dateOfBirth: `${year}-01-01` }} states={[{ code: 'IN-KA', name: 'Karnataka' }]} onSave={onSave} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter a personal email like name@example.com.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Enter a 10-digit mobile number starting with 6, 7, 8 or 9.')).toBeInTheDocument();
+    expect(within(dialog).getByText('The person must be at least 14 years old.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    // Nothing is required here (the company list is empty): empty email and phone are fine; the age still is not.
+    for (const name of [/Personal email/, /Personal phone/]) await ue.clear(within(dialog).getByRole('textbox', { name }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).queryByText('Enter a personal email like name@example.com.')).toBeNull();
+    expect(within(dialog).queryByText(/starting with 6, 7, 8 or 9/)).toBeNull();
+    expect(within(dialog).getByText('The person must be at least 14 years old.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('a PAN change is checked before it is sent, then goes to approval', async () => {

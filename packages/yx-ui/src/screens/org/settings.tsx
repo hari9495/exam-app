@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Checkbox } from '../../components/choice';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
@@ -57,9 +58,15 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'transfer.salary': { keep: 'Keep', new: 'Assign new' },
   'pay_access.scope': { team: 'Their whole team', person: 'Only the person asked about' },
   'pay_access.days': { '7': '7 days', '15': '15 days', '30': '30 days', '60': '60 days', '90': '90 days' },
+  'employee.personal.required': { dateOfBirth: 'Date of birth', gender: 'Gender', maritalStatus: 'Marital status', personalEmail: 'Personal email', personalPhone: 'Personal phone', addressLine1: 'Address', addressLine2: 'Address line 2', city: 'City', stateCode: 'State', postalCode: 'PIN code' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
 };
-export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
+export const valueLabel = (key: string, value: unknown) => {
+  const v = String(value);
+  if (VALUE_LABEL[key]?.[v]) return VALUE_LABEL[key][v];
+  // A list (a multi setting): each part in words; an empty list is none.
+  return v ? v.split(',').map((p) => VALUE_LABEL[key]?.[p] ?? p).join(', ') : 'None';
+};
 
 /** A single choice of 2-4 short options is the joined Segment control, never a dropdown (DESIGN R11; validation 8 Oct 2026). */
 const isPickOne = (count: number) => count >= 2 && count <= 4;
@@ -81,6 +88,7 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
     { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },
     { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
     { title: 'Regulated declarations', description: 'For designated persons (BFSI): when each financial year’s holdings, related persons and conflicts are due, and the trading pre-clearance rules.', keys: ['bfsi.declaration_due', 'bfsi.preclearance_threshold', 'bfsi.preclearance_valid_days', 'bfsi.preclearance_decide_days'] },
+    { title: 'Employee records', description: 'The personal details every record must hold. The personal details form marks them Required and does not save without them.', keys: ['employee.personal.required'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
   access: [
@@ -110,17 +118,19 @@ interface Draft {
 export function settingInput(key: string, def: SettingDef, d: Draft): { input: SettingInput | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (d.scopeType !== 'tenant' && !d.scopeId) errors.push({ fieldId: 'set-scope-id', message: `Choose the ${SCOPE_LABEL[d.scopeType].toLowerCase()}` });
-  if (!d.value || !def.values.includes(d.value)) errors.push({ fieldId: 'set-value', message: 'Choose the value' });
+  if (def.multi ? (d.value ?? '').split(',').some((p) => p && !def.values.includes(p)) : !d.value || !def.values.includes(d.value)) errors.push({ fieldId: 'set-value', message: 'Choose the value' });
   const from = d.validFrom ? dayKey(d.validFrom) : null;
   if (def.dated && !from) errors.push({ fieldId: 'set-from', message: 'Choose the date it applies from' });
   if (errors.length) return { input: null, errors };
-  return { input: { key, scopeType: d.scopeType, ...(d.scopeType === 'tenant' ? {} : { scopeId: d.scopeId! }), value: d.value!, ...(def.dated ? { validFrom: from! } : {}) }, errors };
+  return { input: { key, scopeType: d.scopeType, ...(d.scopeType === 'tenant' ? {} : { scopeId: d.scopeId! }), value: d.value ?? '', ...(def.dated ? { validFrom: from! } : {}) }, errors };
 }
 
-function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { settingKey: string; def: SettingDef; choices: SettingScopeChoices; today: string; onClose: () => void; onSave: (input: SettingInput) => Promise<void> }) {
+function SettingEditor({ settingKey, def, current, choices, today, onClose, onSave }: { settingKey: string; def: SettingDef; current?: string; choices: SettingScopeChoices; today: string; onClose: () => void; onSave: (input: SettingInput) => Promise<void> }) {
   // Only scopes with records to name (pay groups and people are set elsewhere).
   const scopes = def.scopes.filter((s) => s === 'tenant' || (choices[s]?.length ?? 0) > 0);
-  const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: null, validFrom: null });
+  // A multi setting starts from the company's current list (the starter value until one is set).
+  const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: def.multi ? current ?? def.default : null, validFrom: null });
+  const picked = (draft.value ?? '').split(',').filter(Boolean);
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
@@ -158,7 +168,9 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
       )}
       <FormSection title="Value">
         <FormField id="set-value" label="New value" required error={errorOf('set-value')}>
-          {isPickOne(def.values.length) ? (
+          {def.multi ? (
+            def.values.map((v) => <Checkbox key={v} checked={picked.includes(v)} onChange={(c) => set({ value: def.values.filter((x) => (x === v ? c : picked.includes(x))).join(',') })} label={valueLabel(settingKey, v)} />)
+          ) : isPickOne(def.values.length) ? (
             <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
           ) : (
             <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
@@ -311,7 +323,7 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
         );
       })}
       {dialog}
-      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} choices={props.choices} today={props.today} onClose={() => setEditing(null)} onSave={async (input) => {
+      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} current={String(companyValue(editDef, props.overrides.filter((r) => r.key === editing.key), props.today).value)} choices={props.choices} today={props.today} onClose={() => setEditing(null)} onSave={async (input) => {
         await props.onSave(input);
         toast({ tone: 'success', title: 'Saved.' });
       }} />}
