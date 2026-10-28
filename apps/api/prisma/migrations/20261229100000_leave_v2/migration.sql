@@ -168,3 +168,7 @@ BEGIN
 END $$;
 -- Records are corrected by new rows or a state change, never deleted.
 REVOKE DELETE, TRUNCATE ON TABLE "leave_block_dates", "comp_off_claims", "leave_encashments", "long_absences", "block_leave_plans", "holiday_feeds", "holiday_feed_changes" FROM app_runtime;
+
+-- TIM-24: approved encashment takes its days off the ledger as its own kind of entry.
+ALTER TABLE "leave_ledger" DROP CONSTRAINT "leave_ledger_kind_check";
+ALTER TABLE "leave_ledger" ADD CONSTRAINT "leave_ledger_kind_check" CHECK ("kind" IN ('opening', 'accrual', 'taken', 'cancelled', 'adjustment', 'carry_forward', 'lapse', 'comp_off', 'encashed'));
