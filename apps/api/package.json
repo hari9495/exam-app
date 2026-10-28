@@ -57,7 +57,7 @@
     "libphonenumber-js": "^1.13.14",
     "luxon": "3.7.2",
     "mailauth": "8.0.4",
-    "mailparser": "3.9.28",
+    "mailparser": "3.12.4",
     "mjml": "^5.4.1",
     "multer": "^2.3.0",
     "nodemailer": "^10.0.15",
