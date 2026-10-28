@@ -3188,5 +3188,151 @@
       "TIM-14"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-TIM-41-01",
+    "area": "Time · Office days",
+    "screen": "Hybrid policy · set office days for the company",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open My time › Office days and click the \"Policy\" tab (or the page opens on it).",
+      "Keep \"Policy for\" on Whole company. Click \"Save policy\" without changing anything.",
+      "Set Office days per week to 1 and tick Tuesday and Thursday as anchor days. Click \"Save policy\".",
+      "Set Office days per week to 3 (anchor days Tuesday and Thursday stay). Untick every Evidence box and click \"Save policy\".",
+      "Tick \"Punch inside an office geofence\", \"Punch from the office network\" and \"Kiosk check-in\". Click \"Save policy\".",
+      "Change \"Policy for\" to a department, change a value, then switch \"Policy for\" again."
+    ],
+    "expected": "Step 2: a toast \"No changes yet\"; nothing is saved. Step 3: \"At least 2, the number of anchor days\" shows under Office days per week and the cursor goes there; nothing is saved. Step 4: a toast \"Pick at least one kind of evidence\". Step 5: a toast \"Policy saved\" naming the evidence; the header says \"Whole company · 3 office days a week · anchor days Tue and Thu · not linked to pay or ratings\". Step 6: a dialog \"Discard your changes to the … policy?\"; \"Discard and switch\" opens that group with its own values. Pay and ratings only says missed days do not affect pay (no setting: product question).",
+    "stories": [
+      "TIM-41"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-41-02",
+    "area": "Time · Office days",
+    "screen": "My office days · plan next week",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "arjun@demo-org.test",
+    "steps": [
+      "After MT-TIM-41-01, open My time › Office days.",
+      "Look at this week, then click the right arrow (Next week).",
+      "Click the right arrow again.",
+      "Click \"Save plan\" without changing anything.",
+      "Pick Office for Monday and Home for Wednesday, then click \"Save plan\".",
+      "Reload the page and go to next week again."
+    ],
+    "expected": "Step 2: the header says 3 office days a week, anchor days Tue and Thu. Tuesday and Thursday show \"Office · anchor\" (no Home choice); holidays and leave days show a grey badge (Holiday · name / Leave); today and earlier days of this week show \"Today\" / \"Over\". Step 3: a toast \"Plans open one week ahead\". Step 4: a toast \"No changes yet: pick office days first\". Step 5: \"You: 3 of 3 office days\" and a toast \"Plan for week of <Monday> saved\". Step 6: the choices are still there. \"Who else is in\" lists colleagues with the same manager who planned the office.",
+    "stories": [
+      "TIM-41"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-41-03",
+    "area": "Time · Office days",
+    "screen": "My office days · refused days (negative)",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "arjun@demo-org.test",
+    "steps": [
+      "Ask the developer to call PUT /api/v1/time/hybrid/plan as Arjun with: a day of last week; a Saturday; Thursday (an anchor day) as \"home\"; a date three weeks ahead; and another person’s employee id.",
+      "Ask HR (Lakshmi) to set Office days per week to 0 for Arjun’s department (Policy for: that department), then reload Office days as Arjun."
+    ],
+    "expected": "Step 1: each call answers 400 with a plain reason (\"This day is over.\", \"… is a Saturday. Plan Monday to Friday.\", \"Thursday is an anchor day: everyone is in the office.\", \"Plan days of this week and next week only.\") and another person’s id answers 404; nothing changes. Step 2: the page says \"No office-day rule for you\"; there is nothing to plan. Ask HR to put the department back afterwards.",
+    "stories": [
+      "TIM-41"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-41-04",
+    "area": "Time · Office days",
+    "screen": "Office days · manager team plan and reminder",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Open My time › Office days. Go to next week with the right arrow.",
+      "In the grid, click a team member’s Home/Office button for a day that is not an anchor day, then click \"Save plan\".",
+      "For a person marked \"Short by …\", click \"Remind\". Click \"Remind\" again for the same person.",
+      "Ask the developer to call the reminder API for the same person again today."
+    ],
+    "expected": "Step 1: the title is \"Office days · Your team\"; rows are Divya (you) and her team (Arjun, Meera, Kiran); the last column shows \"Short by N\" or \"N of 3\"; the footer \"In office\" counts each day. Step 2: a toast \"Plan for week of … saved\" with \"Updated for <name>\". Step 3: a toast \"Reminder sent to <name>\"; the button then reads \"Reminded\" and pressing it says \"Already reminded today\". The person gets a bell notice \"… reminded you to plan your office days …\" that opens Office days. Step 4: 409 \"… was already reminded today. You can remind them again tomorrow.\"",
+    "stories": [
+      "TIM-41"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-41-05",
+    "area": "Time · Office days",
+    "screen": "Office days · weekly compliance",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As Arjun, on a planned office day, check in from the office (inside the geofence or on the office network); on another planned office day, check in from home or not at all.",
+      "The next week, sign in as Divya, open Office days and click the \"Compliance\" tab.",
+      "Sign in as hr@demo-org.test and open Office days › Compliance.",
+      "Sign in as arjun@demo-org.test and look for a Compliance tab."
+    ],
+    "expected": "Step 2: \"Week of <last Monday>\" lists each team member: \"N office days\" (+ \"N leave\" when on leave), \"planned but not in: <weekday>\" for a planned office day with no office check-in, then \"Met\" (green) or \"N of 3\" with \"Remind about next week\"; a person with no rule shows \"No rule\". Step 3: HR sees everyone in their scope. Step 4: Arjun has no Compliance tab (the API answers 403).",
+    "stories": [
+      "TIM-41"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-43-01",
+    "area": "Time · Timesheet",
+    "screen": "Pre-fill from my tools · not set up (negative)",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "arjun@demo-org.test",
+    "steps": [
+      "Open My time › My timesheet on this week.",
+      "Click \"Pre-fill from my tools\"."
+    ],
+    "expected": "The drawer says \"Not set up for your company\" with \"Ask HR to turn them on, or fill the week by hand.\" and a \"Fill week by hand\" button that closes it. (The setting \"People may connect calendars and work tools\" is off by default.)",
+    "stories": [
+      "TIM-43"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-43-02",
+    "area": "Time · Timesheet",
+    "screen": "Pre-fill from my tools · connect and accept",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "hr@demo-org.test, then arjun@demo-org.test",
+    "steps": [
+      "As HR, turn on \"People may connect calendars and work tools for timesheet suggestions\" for the company (setting timesheet.tool_suggestions = on).",
+      "As Arjun, open My timesheet (this week, from Tuesday on) and click \"Pre-fill from my tools\".",
+      "Click \"Connect work calendar\", then \"Connect\" for Issue tracker.",
+      "On the suggestion \"Client workshop\", click \"Accept\".",
+      "Choose project FSSAI-AUDIT in its \"Choose a project\" box, then click \"Accept\".",
+      "On the FSSAI-AUDIT line checks suggestion, click \"Edit\", clear the hours and click \"Save hours\"; then type 3 and click \"Save hours\"; then \"Accept\".",
+      "Click \"Back to timesheet\", look at the grid, then click \"Save draft\"."
+    ],
+    "expected": "Step 3: toasts \"Work calendar connected\" / \"Issue tracker connected\"; each shows \"Connected\" with \"(dev-fake)\" (provider: to decide). Suggestions appear only for days up to today, each with its source text; estimates carry the AI badge. Step 4: \"Choose a project first: \"Client workshop\" is not one of your projects.\" and the cursor goes to the project box; nothing is added. Step 5: the row shows \"Added to <day> · FSSAI-AUDIT\" with Undo. Step 6: \"Enter the hours first.\" then the row shows 3 h. Step 7: the hours are in the grid; nothing was saved until \"Save draft\" (toast \"Draft saved for …\").",
+    "stories": [
+      "TIM-43"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-43-03",
+    "area": "Time · Timesheet",
+    "screen": "Pre-fill from my tools · revoke",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "arjun@demo-org.test",
+    "steps": [
+      "Open \"Pre-fill from my tools\" and click \"Revoke\" for Work calendar.",
+      "Click \"Connect\" for Work calendar twice quickly.",
+      "Ask HR to turn the setting off again, then open the drawer."
+    ],
+    "expected": "Step 1: a toast \"Work calendar revoked\"; its suggestions disappear (hours already accepted stay on the grid). Step 2: one connection only (\"Connected\" once; the API answers the second press with the same connection). Step 3: \"Not set up for your company\"; revoking is never blocked.",
+    "stories": [
+      "TIM-43"
+    ],
+    "note": ""
   }
 ]
