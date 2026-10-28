@@ -58,7 +58,6 @@ const KNOWN_UNDESIGNED: Record<string, string[]> = {
   'Other live screens with no design yet (approvals, performance, settings, portals)': [
     'ApprovalsScreen @ (app)/approvals/page.tsx',
     'ChannelLinksCard @ (app)/approvals/page.tsx',
-    'IdentityProvidersScreen @ (app)/settings/identity-providers/page.tsx',
     'ActionLinkScreen @ act/[token]/page.tsx',
   ],
 };
