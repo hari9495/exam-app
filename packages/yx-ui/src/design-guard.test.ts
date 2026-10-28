@@ -53,27 +53,6 @@ for (const todo = [...IN_STORIES]; todo.length; )
 // Known gaps when the guard came in (28 Oct 2026): live pages that render a component no story shows. Each needs a
 // design story (or the designed screen instead); remove the line when it has one. A stale line fails the test too.
 const KNOWN_UNDESIGNED: Record<string, string[]> = {
-  'Helpdesk: live screens built before design twins': [
-    'CatalogScreen @ (app)/desk/catalog/page.tsx',
-    'RequesterChatScreen @ (app)/desk/chat/page.tsx',
-    'ChatPromptBanner @ (app)/desk/help/page.tsx',
-    'MyChannelsCard @ (app)/desk/help/page.tsx',
-    'MyDocumentsCard @ (app)/desk/help/[id]/page.tsx',
-    'RequestTracker @ (app)/desk/help/[id]/page.tsx',
-    'AgentChatScreen @ (app)/desk/live-chat/page.tsx',
-    'LifecycleAdmin @ (app)/desk/setup/page.tsx',
-    'SchedulesAdmin @ (app)/desk/setup/page.tsx',
-    'ChatQueuesAdmin @ (app)/desk/setup/page.tsx',
-    'MessagingAdmin @ (app)/desk/setup/page.tsx',
-    'DeskOrgAdmin @ (app)/desk/setup/page.tsx',
-    'CatalogAdmin @ (app)/desk/setup/page.tsx',
-    'RulesAdmin @ (app)/desk/setup/page.tsx',
-    'TeamScreen @ (app)/desk/team/page.tsx',
-    'RequestPanel @ (app)/desk/tickets/[id]/page.tsx',
-    'TicketEsmRail @ (app)/desk/tickets/[id]/page.tsx',
-    'TicketKbCard @ (app)/desk/tickets/[id]/page.tsx',
-    'EscalateDialog @ (app)/desk/tickets/[id]/page.tsx',
-  ],
   'Me: live screens with no design yet': [
     'MyAssetsScreen @ (app)/me/assets/page.tsx',
     'FirstThirtyDaysScreen @ (app)/me/first-30-days/page.tsx',
