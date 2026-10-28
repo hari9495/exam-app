@@ -12,7 +12,9 @@ import { ScheduleBook, assertOpen, lockedDates, nightGuard, oshOn } from './sche
 import { TimeSetupService, SCOPE_MODEL } from './setup.service';
 import { TIME_KEYS, Facts, asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
-import { Conflict, ShiftTimes, mondayOf, restConflicts } from './time-rules';
+import { Conflict, ShiftTimes, mondayOf } from './time-rules';
+import { RosterGuard } from './roster-guard';
+import { BLOCKING, GUARD_CODE, RuleBreak, addedBreaks, insideNotice, timeBreaks, type Limits, type PlanDay } from './roster-rules';
 
 // M02 §B2 shifts, patterns and the roster (Q1 / Q2, YX-AT-07), swaps through P03 (§B4), and the night-work law guard
 // (OSH Code, YX-AT-25): no path places a protected person (recorded as female or transgender, or opted in: founder
@@ -309,6 +311,8 @@ export class RosterService implements OnModuleInit {
         WHERE e.organization_id = ${org}::uuid AND (${own}::uuid IS NULL OR e.id <> ${own}::uuid) AND ${await visibleSql(tx, c, v, own, 'roster.manage', Prisma.sql`e.id`, week)}
         GROUP BY 1, 2, 3 ORDER BY 2 LIMIT 200`;
       const book = await ScheduleBook.load(tx, org);
+      const guard = await RosterGuard.load(tx, c, book);
+      let rules: Limits | null = null;
       const ids = people.map((p) => p.id);
       await book.prime(ids, addDays(week, -1), to);
       // From the day before the week: its draft decides the rest before the first day.
@@ -319,13 +323,14 @@ export class RosterService implements OnModuleInit {
         const leave = await leaveDays(tx, org, p.id, week, to, ['pending', 'approved', 'cancel_pending']);
         const locked = await lockedDates(tx, org, p.id, week, to);
         const cells = [];
-        const planned: { on: string; shift: ShiftTimes | null }[] = [];
+        const planned: PlanDay[] = [];
         let holidays = new Map<string, { name: string }>();
         let f0: Facts | null = null;
         for (let k = -1; k < span; k++) {
           const on = addDays(week, k);
           const f = await factsOn(tx, org, p.id, on);
           if (!f) {
+            planned.push({ on, shift: null, employed: false });
             if (k >= 0) cells.push({ on, employed: false });
             continue;
           }
@@ -338,13 +343,16 @@ export class RosterService implements OnModuleInit {
           const base = await book.day(f, on, false);
           const draft = e?.draft ?? null;
           const plan = draft === null ? effective : draft === 'off' ? { shift: null, weeklyOff: true, source: 'roster' as const } : draft === 'pattern' ? base : { shift: book.shiftOn(draft, on), weeklyOff: false, source: 'roster' as const };
-          planned.push({ on, shift: plan.shift });
+          planned.push({ on, shift: plan.shift, employed: true });
           if (k < 0) continue;
-          const conflicts: Conflict[] = [];
+          const conflicts: (Conflict | RuleBreak)[] = [];
           if (plan.shift && leave.get(on)) conflicts.push({ on, kind: 'leave', message: leave.get(on) === 'full' ? 'On leave' : 'Half day on leave' });
           if (plan.shift && holidays.get(on)) conflicts.push({ on, kind: 'holiday', message: `Holiday: ${holidays.get(on)!.name}` });
           const night = (draft === null && effective.guarded) || (await nightGuard(tx, org, f, on, plan.shift));
           if (night) conflicts.push({ on, kind: 'night', message: draft === null && effective.guarded ? `${night}: the night shift does not apply, so the usual shift does` : night });
+          // Rule 8: a shift (or the person's role) that needs a licence they do not hold in date.
+          const lic = plan.shift?.shiftId ? await guard.licenceBreak(f, on, plan.shift.shiftId) : null;
+          if (lic) conflicts.push(lic);
           cells.push({
             on,
             employed: true,
@@ -358,8 +366,10 @@ export class RosterService implements OnModuleInit {
             conflicts,
           });
         }
-        const minRest = f0 ? Number(await settingOn(tx, c, 'attendance.min_rest_hours', f0, week)) * 60 : 660;
-        for (const r of restConflicts(planned, minRest)) (cells.find((x) => x.on === r.on) as { conflicts?: Conflict[] } | undefined)?.conflicts?.push(r);
+        // Rules 1, 2 and 4: rest, hours a day and a week, the spread-over and the weekly off (the person's own limits).
+        const limits = f0 ? await guard.limits(f0, week) : null;
+        rules ??= limits;
+        for (const r of limits ? timeBreaks(planned, limits) : []) (cells.find((x) => x.on === r.on) as { conflicts?: (Conflict | RuleBreak)[] } | undefined)?.conflicts?.push(r);
         rows.push({ id: p.id, name: p.name, code: p.code, cells });
       }
       return {
@@ -372,6 +382,8 @@ export class RosterService implements OnModuleInit {
           return { id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, start: t?.shiftStart ?? null, end: t?.shiftEnd ?? null };
         }),
         drafts: entries.filter((e) => e.draft !== null && dateOf(e.workOn) >= week).length,
+        // The first person's limits (each person's own limits decide their conflicts above).
+        rules: rules && { minRestHours: rules.minRestMinutes / 60, maxDailyHours: rules.dailyMinutes / 60, maxWeeklyHours: rules.weeklyMinutes / 60, maxSpreadOverHours: rules.spreadMinutes / 60, minWeeklyOffs: rules.minWeeklyOffs },
         people: rows,
       };
     });
@@ -387,6 +399,8 @@ export class RosterService implements OnModuleInit {
       const today = todayIst();
       const book = await ScheduleBook.load(tx, org);
       const shiftIds = new Set([...book.shifts.values()].filter((s) => s.active).map((s) => s.id));
+      const guard = await RosterGuard.load(tx, c, book);
+      const changed: { employeeId: string; on: string; from: string | null; to: string }[] = [];
       for (const cell of cells) {
         if (cell.on < today) throw new BadRequestException('The roster can change from today on. Past days are fixed through attendance requests.');
         if (cell.on > addDays(today, 120)) throw new BadRequestException('Plan up to 120 days ahead.');
@@ -398,9 +412,13 @@ export class RosterService implements OnModuleInit {
           if (!shiftIds.has(cell.value)) throw new BadRequestException('Choose a shift in use.');
           const reason = await nightGuard(tx, org, f, cell.on, book.shiftOn(cell.value, cell.on));
           if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason} (${fmt(cell.on)}).` });
+          // Rule 8: an expired or missing licence is never drafted (no override for a legal licence).
+          const lic = await guard.licenceBreak(f, cell.on, cell.value);
+          if (lic) throw new ConflictException({ statusCode: 409, code: 'LICENCE_GUARD', message: `${lic.message} (${fmt(cell.on)}). Record a valid licence first, or choose someone else.` });
         }
         const key = { organizationId_employeeId_workOn: { organizationId: org, employeeId: cell.employeeId, workOn: asDate(cell.on) } };
         const row = await tx.rosterEntry.findUnique({ where: key });
+        changed.push({ employeeId: cell.employeeId, on: cell.on, from: row?.draft ?? (row?.published ? (row.isOff ? 'off' : row.shiftId) : null), to: cell.value });
         // Back to the pattern with nothing published: no row is needed.
         if (cell.value === 'pattern' && (!row || !row.published)) {
           if (row) await tx.rosterEntry.delete({ where: key });
@@ -408,7 +426,7 @@ export class RosterService implements OnModuleInit {
         }
         await tx.rosterEntry.upsert({ where: key, create: { organizationId: org, employeeId: cell.employeeId, workOn: asDate(cell.on), draft: cell.value, updatedBy: c.userId ?? null }, update: { draft: cell.value, updatedBy: c.userId ?? null, updatedAt: new Date() } });
       }
-      await audit(tx, c, 'time.roster.drafted', 'roster', org, { cells: cells.length });
+      await audit(tx, c, 'time.roster.drafted', 'roster', org, { cells: cells.length, changes: changed.slice(0, 200) });
       return { saved: cells.length };
     });
   }
@@ -431,7 +449,7 @@ export class RosterService implements OnModuleInit {
   }
 
   /** Publishes the viewer's drafts in a range (YX-AT-07): checked again, then in force, then the people are told. */
-  async publish(ctx: TenantContext, user: ScopeUser, weekIn: string, span = 14) {
+  async publish(ctx: TenantContext, user: ScopeUser, weekIn: string, span = 14, reason?: string) {
     const v = await this.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
     const week = mondayOf(weekIn);
@@ -441,18 +459,49 @@ export class RosterService implements OnModuleInit {
       const org = c.organizationId;
       const own = await this.ownId(tx, c, v);
       const book = await ScheduleBook.load(tx, org);
-      const drafts = await tx.rosterEntry.findMany({ where: { organizationId: org, draft: { not: null }, workOn: { gte: asDate(week), lte: asDate(to) } } });
+      const all = await tx.rosterEntry.findMany({ where: { organizationId: org, draft: { not: null }, workOn: { gte: asDate(week), lte: asDate(to) } } });
       const today = todayIst();
-      let n = 0;
-      for (const e of drafts) {
+      // Only the viewer's own reach is published; other planners' drafts stay theirs. Past days never change here.
+      const drafts: typeof all = [];
+      for (const e of all) {
         const on = dateOf(e.workOn);
-        // Only the viewer's own reach is published; other planners' drafts stay theirs.
+        if (on < today) continue;
         try {
           await this.mustPlan(tx, c, v, own, e.employeeId, on);
+          drafts.push(e);
         } catch {
           continue;
         }
-        if (on < today) continue;
+      }
+      // Rules 1–4 and 8: publishing never adds a rule break; rule 5: a change inside the notice needs a reason.
+      const guard = await RosterGuard.load(tx, c, book);
+      const late = new Set<string>();
+      const changes: { employeeId: string; on: string; from: string | null; to: string | null; late: boolean }[] = [];
+      for (const employeeId of new Set(drafts.map((e) => e.employeeId))) {
+        const days = drafts.filter((e) => e.employeeId === employeeId).map((e) => dateOf(e.workOn));
+        const { from, to: end } = RosterGuard.span(days);
+        const [was, will] = [await guard.plan(employeeId, from, end), await guard.plan(employeeId, from, end, { drafts: true })];
+        const before = await guard.breaks(employeeId, was);
+        const added = addedBreaks(before, await guard.breaks(employeeId, will)).filter((b) => BLOCKING.includes(b.kind));
+        if (added.length) {
+          const who = (await guard.factsOn(employeeId, days[0]))?.name ?? 'Someone';
+          throw new ConflictException({ statusCode: 409, code: GUARD_CODE[added[0].kind], message: `${who}, ${fmt(added[0].on)}: ${added[0].message}. Nothing was published; change that day first.`, breaks: added.map((b) => ({ ...b, employeeId, name: who })) });
+        }
+        const f = await guard.factsOn(employeeId, days[0]);
+        const notice = f ? Number(await settingOn(tx, c, 'roster.change_notice_hours', f, days[0])) : 0;
+        for (const on of days) {
+          const [a, b] = [was.find((d) => d.on === on)?.shift ?? null, will.find((d) => d.on === on)?.shift ?? null];
+          if ((a?.shiftId ?? null) === (b?.shiftId ?? null) && (a?.shiftStart ?? null) === (b?.shiftStart ?? null)) continue;
+          const isLate = Boolean(f) && insideNotice(on, [a?.shiftStart ?? null, b?.shiftStart ?? null], f!.zone, notice, new Date());
+          if (isLate) late.add(`${employeeId}|${on}`);
+          changes.push({ employeeId, on, from: a ? (a.shiftId ?? 'usual shift') : 'off', to: b ? (b.shiftId ?? 'usual shift') : 'off', late: isLate });
+        }
+      }
+      if (late.size && !reason?.trim())
+        throw new BadRequestException({ statusCode: 400, code: 'NOTICE_REASON', message: `${late.size} ${late.size === 1 ? 'change starts' : 'changes start'} sooner than the notice the people are owed. Give a reason; they are told at once.`, days: [...late].map((k) => ({ employeeId: k.split('|')[0], on: k.split('|')[1] })) });
+      let n = 0;
+      for (const e of drafts) {
+        const on = dateOf(e.workOn);
         await assertOpen(tx, org, e.employeeId, on);
         const key = { organizationId_employeeId_workOn: { organizationId: org, employeeId: e.employeeId, workOn: e.workOn } };
         if (e.draft === 'pattern') await tx.rosterEntry.delete({ where: key });
@@ -463,13 +512,13 @@ export class RosterService implements OnModuleInit {
             const reason = f ? await nightGuard(tx, org, f, on, book.shiftOn(shiftId, on)) : null;
             if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason} (${fmt(on)}). Nothing was published.` });
           }
-          await tx.rosterEntry.update({ where: key, data: { shiftId, isOff: shiftId === null, published: true, draft: null, source: 'manual', publishedAt: new Date(), publishedBy: c.userId ?? null, updatedAt: new Date() } });
+          await tx.rosterEntry.update({ where: key, data: { shiftId, isOff: shiftId === null, published: true, draft: null, source: 'manual', publishedAt: new Date(), publishedBy: c.userId ?? null, changeReason: late.has(`${e.employeeId}|${on}`) ? reason!.trim().slice(0, 300) : null, updatedAt: new Date() } });
         }
         told.add(e.employeeId);
         n++;
         if (on === today) await this.days.evaluate(tx, c, e.employeeId, on, on);
       }
-      await audit(tx, c, 'time.roster.published', 'roster', org, { from: week, to, entries: n, people: told.size });
+      await audit(tx, c, 'time.roster.published', 'roster', org, { from: week, to, entries: n, people: told.size, reason: late.size ? reason!.trim() : null, changes: changes.slice(0, 200) });
       const users = told.size ? (await tx.employee.findMany({ where: { organizationId: org, id: { in: [...told] } }, select: { userId: true } })).map((u) => u.userId).filter((x): x is string => Boolean(x)) : [];
       return { published: n, people: told.size, users };
     });
@@ -482,6 +531,65 @@ export class RosterService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------------------------------------ me: shifts and swaps
+
+  /**
+   * TIM-05 Staff (founder decision 29 Oct 2026, `roster.staff_see_team`, off by default): an employee's week, read-only and
+   * published only. On: their team (same manager) too, a colleague's leave shown only as "Away"; off: their own row only.
+   */
+  async team(ctx: TenantContext, weekIn: string) {
+    const week = mondayOf(weekIn);
+    const to = addDays(week, 6);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await myEmployeeId(tx, org, c.userId);
+      const today = todayIst();
+      const f = (await factsOn(tx, org, me, today < week ? week : today > to ? to : today)) ?? (await factsOn(tx, org, me, today));
+      if (!f) throw new NotFoundException('You are not working here this week.');
+      const open = (await settingOn(tx, c, 'roster.staff_see_team', f, week)) === 'on';
+      const mates =
+        open && f.managerEmployeeId
+          ? await tx.$queryRaw<{ id: string; name: string; code: string | null }[]>`
+              SELECT e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, max(m.employee_code)::text AS code FROM employees e
+              JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND daterange(a.valid_from, a.valid_to, '[]') && daterange(${week}::date, ${to}::date, '[]')
+              JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${week}::date)
+              WHERE e.organization_id = ${org}::uuid AND a.manager_employee_id = ${f.managerEmployeeId}::uuid AND e.id <> ${me}::uuid
+              GROUP BY 1, 2 ORDER BY 2 LIMIT 200`
+          : [];
+      const people = [{ id: me, name: f.name, code: f.code, me: true }, ...mates.map((m) => ({ ...m, me: false }))];
+      const book = await ScheduleBook.load(tx, org);
+      await book.prime(people.map((p) => p.id), week, to);
+      const rows = [];
+      for (const p of people) {
+        const leave = await leaveDays(tx, org, p.id, week, to, ['approved', 'cancel_pending']);
+        const cells = [];
+        for (let on = week; on <= to; on = addDays(on, 1)) {
+          const pf = await factsOn(tx, org, p.id, on);
+          const d = pf ? await book.day(pf, on) : null;
+          const l = leave.get(on);
+          cells.push({
+            on,
+            employed: Boolean(pf),
+            shift: d?.shift ? { shiftId: d.shift.shiftId, name: d.shift.name, start: d.shift.shiftStart, end: d.shift.shiftEnd } : null,
+            off: Boolean(d?.weeklyOff),
+            // Own leave says full or half; a colleague's only that they are away (the leave type stays private).
+            leave: l ? (p.me ? (l === 'full' ? 'full' : 'half') : 'away') : null,
+          });
+        }
+        rows.push({ id: p.id, name: p.name, code: p.code, me: p.me, cells });
+      }
+      return {
+        week,
+        to,
+        today,
+        team: open,
+        shifts: [...book.shifts.values()].filter((s) => s.active).map((s) => {
+          const t = book.shiftOn(s.id, week) ?? book.shiftOn(s.id, to);
+          return { id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, start: t?.shiftStart ?? null, end: t?.shiftEnd ?? null };
+        }),
+        people: rows,
+      };
+    });
+  }
 
   /** My shifts for two weeks, teammates I could swap with, and my swap requests. */
   async mine(ctx: TenantContext, weekIn: string) {
@@ -536,6 +644,11 @@ export class RosterService implements OnModuleInit {
         const reason = await nightGuard(tx, org, f, dto.on, s);
         if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason}. This swap can't be made.` });
       }
+      // Rules 1, 2, 4 and 8 for both people (TIM-08 RestBlocked): the swap may not add a rest, hours, weekly-off or licence break.
+      const guard = await RosterGuard.load(tx, c, book);
+      // A location's usual shift has no id: judged as the person's own usual shift ('base').
+      await guard.assert(me, new Map([[dto.on, b.shift ? (b.shift.shiftId ?? 'base') : null]]), "This swap can't be made.");
+      await guard.assert(theirs.employeeId, new Map([[dto.on, a.shift ? (a.shift.shiftId ?? 'base') : null]]), "This swap can't be made.");
       if (await tx.shiftSwapRequest.findFirst({ where: { organizationId: org, workOn: asDate(dto.on), status: 'pending', OR: [{ employeeId: me }, { colleagueEmployeeId: me }] } })) throw new ConflictException('A swap for that day is already waiting.');
       const r = await tx.shiftSwapRequest.create({ data: { organizationId: org, employeeId: me, colleagueEmployeeId: theirs.employeeId, workOn: asDate(dto.on), myShiftId: a.shift?.shiftId ?? null, theirShiftId: b.shift?.shiftId ?? null, reason: dto.reason, raisedBy: c.userId ?? null } });
       const label = (s: ShiftTimes | null) => (s ? `${s.name} ${hhmm(s.shiftStart)}–${hhmm(s.shiftEnd)}` : 'Weekly off');
@@ -598,6 +711,10 @@ export class RosterService implements OnModuleInit {
         const reason = await nightGuard(tx, org, f, on, sid ? book.shiftOn(sid, on) : null);
         if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason}. This swap can't be approved.` });
       }
+      // Checked again at approval: the roster may have changed since it was asked.
+      const guard = await RosterGuard.load(tx, { organizationId: org, isSuperAdmin: false } as CompanyContext, book);
+      await guard.assert(r.employeeId, new Map([[on, r.theirShiftId]]), "This swap can't be approved.");
+      await guard.assert(r.colleagueEmployeeId, new Map([[on, r.myShiftId]]), "This swap can't be approved.");
       for (const [emp, sid] of [[r.employeeId, r.theirShiftId], [r.colleagueEmployeeId, r.myShiftId]] as const) {
         const key = { organizationId_employeeId_workOn: { organizationId: org, employeeId: emp, workOn: r.workOn } };
         const data = { shiftId: sid, isOff: sid === null, published: true, draft: null, source: 'swap', publishedAt: new Date(), updatedAt: new Date() };

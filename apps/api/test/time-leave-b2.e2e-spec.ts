@@ -233,6 +233,9 @@ describe('Time and leave batch 2', () => {
       const row = plan.people.find((p: { id: string }) => p.id === ids.empEmp);
       const cell3 = row.cells.find((x: { on: string }) => x.on === d(3));
       expect(cell3.conflicts.map((c: { kind: string }) => c.kind)).toContain('rest');
+      // Feature sheet rule 1 (29 Oct 2026): publishing never adds a rest break; the planner fixes the day first.
+      expect((await api('mgr', 'post', '/time/roster/publish').send({ week: d(2) }).expect(409)).body.code).toBe('REST_GUARD');
+      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(3), value: 'off' }] }).expect(200);
       await api('mgr', 'post', '/time/roster/publish').send({ week: d(2) }).expect(200);
       expect((await api('emp', 'get', `/time/me/shifts?week=${d(2)}`).expect(200)).body.days.find((x: { on: string }) => x.on === d(2)).shift.name).toBe('Night');
       // Withdrawing consent applies from its date: the next change is refused again (no other effect).

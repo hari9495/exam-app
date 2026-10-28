@@ -11,6 +11,7 @@ import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-ti
 import type { ScopeUser } from '../access/scope';
 import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
+import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
@@ -161,8 +162,14 @@ export class TimeOpsController {
 
   @Post('roster/publish')
   @HttpCode(200)
-  rosterPublish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WeekQueryDto) {
-    return this.roster.publish(ctx, this.user(req), dto.week);
+  rosterPublish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterPublishDto) {
+    return this.roster.publish(ctx, this.user(req), dto.week, 14, dto.reason);
+  }
+
+  // TIM-05 Staff: my week, and my team's published roster when the company allows it (roster.staff_see_team).
+  @Get('roster/team')
+  rosterTeam(@CurrentTenant() ctx: TenantContext, @Query() q: WeekQueryDto) {
+    return this.roster.team(ctx, q.week);
   }
 
   // ------------------------------------------------------------------------------------------ me

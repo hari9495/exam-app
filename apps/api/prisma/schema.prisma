@@ -10642,6 +10642,7 @@ model LicenceType {
   code           String   @db.VarChar(20)
   name           String   @db.VarChar(100)
   legal          Boolean  @default(false)
+  note           String?  @db.VarChar(100)
   remindDays     Int[]    @default([60, 30, 7]) @map("remind_days")
   active         Boolean  @default(true)
   createdBy      String?  @map("created_by") @db.Uuid
@@ -10671,7 +10672,8 @@ model EmployeeLicence {
 model ShiftLicenceRequirement {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
-  shiftId        String   @map("shift_id") @db.Uuid
+  shiftId        String?  @map("shift_id") @db.Uuid
+  designationId  String?  @map("designation_id") @db.Uuid
   licenceTypeId  String   @map("licence_type_id") @db.Uuid
   locationId     String?  @map("location_id") @db.Uuid
   createdBy      String?  @map("created_by") @db.Uuid
@@ -10938,4 +10940,18 @@ model ToolConnection {
   revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
 
   @@map("tool_connections")
+}
+
+model LicenceOverride {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  licenceTypeId  String   @map("licence_type_id") @db.Uuid
+  reason         String   @db.VarChar(300)
+  until          DateTime @db.Date
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId, licenceTypeId], map: "licence_overrides_person_idx")
+  @@map("licence_overrides")
 }
