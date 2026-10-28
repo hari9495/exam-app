@@ -7,13 +7,14 @@ module.exports = {
   // suite already gets via test:e2e. Excluded from this no-DB unit run so CI stays green;
   // without this, record-visibility.integration.spec.ts fails on DATABASE_URL-not-found.
   testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
-  // openid-client, oauth4webapi, jose and franc-min (with its trigram-utils, n-gram, collapse-white-space) ship ESM only. Node loads them through require(esm);
+  // openid-client, oauth4webapi, jose, franc-min (with its trigram-utils, n-gram, collapse-white-space) and file-type (with strtok3,
+  // token-types, uint8array-extras, @tokenizer/inflate, @borewit/text-codec) ship ESM only. Node loads them through require(esm);
   // Jest's CommonJS loader cannot, so they are down-levelled here (same in test/jest-e2e.json).
   transform: {
-    '/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
+    '/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/)'],
+  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec)/)'],
   collectCoverageFrom: [
     '**/*.(t|j)s',
   ],

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { fromBuffer } from 'file-type';
+import { fileTypeFromBuffer } from 'file-type';
 import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { Scanner, scannerFromEnv } from '../common/scanner';
@@ -20,7 +20,7 @@ const EXT_OF: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg':
 export async function checkUpload(name: string, data: Buffer, allowedMime: readonly string[], maxMb: number): Promise<{ ok: true; mime: string } | { ok: false; reason: string }> {
   if (!data.length) return { ok: false, reason: 'The file is empty.' };
   if (data.length > maxMb * 1024 * 1024) return { ok: false, reason: `Files can be up to ${maxMb} MB.` };
-  const sniffed = await fromBuffer(data);
+  const sniffed = await fileTypeFromBuffer(data);
   const allowed = allowedMime.map((m) => EXT_OF[m]).filter(Boolean);
   if (!sniffed || !allowedMime.includes(sniffed.mime)) return { ok: false, reason: `Upload a ${allowed.map((e) => e.toUpperCase()).join(', ')} file.` };
   const ext = (name.match(/\.([A-Za-z0-9]{1,10})$/)?.[1] ?? '').toLowerCase();
