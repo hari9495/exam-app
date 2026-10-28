@@ -8,9 +8,9 @@ import { FirstThirtyDaysScreen, type FirstThirtyDaysScreenProps } from './lifecy
 import { JourneyTemplatesScreen, type JourneyTemplatesScreenProps } from './templates';
 import type { FirstThirtyDays, JourneyTask, JourneyTemplates, MyAsset, Signatory } from './types';
 
-// Live People pieces that had no design story: Me › My assets, Me › My first 30 days, Settings › Checklists and the
-// letter signatories drawer. The same components the pages render, with Kaveri Foods data (3 Nov 2026).
-const meta: Meta = { title: 'Screens/People/Live · My assets, first 30 days, checklists and signatories', parameters: { layout: 'fullscreen' } };
+// People pieces with no earlier design: Me › My assets, Me › My first 30 days, Settings › Checklists and the
+// letter signatories drawer. These stories are their design: the components the pages render, with Kaveri Foods data.
+const meta: Meta = { title: 'Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
