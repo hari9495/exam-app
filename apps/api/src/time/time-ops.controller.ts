@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
@@ -277,13 +277,13 @@ export class TimeOpsController {
   }
 
   @Get('periods')
-  @RequirePermissions('attendance.lock')
+  @RequireAnyPermission('attendance.lock', 'payroll.correction.approve')
   periodsOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearEntityQueryDto) {
     return this.periods.periods(ctx, this.user(req), q.year, q.legalEntityId);
   }
 
   @Get('periods/preflight')
-  @RequirePermissions('attendance.lock')
+  @RequireAnyPermission('attendance.lock', 'payroll.correction.approve')
   preflight(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodDto) {
     return this.periods.preflight(ctx, this.user(req), q.legalEntityId, q.month);
   }

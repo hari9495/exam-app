@@ -454,11 +454,8 @@ export class PayPeriodsService implements OnModuleInit {
           notHeld.push({ employeeCode: p.employeeCode, at: p.at, why: 'No one with this code in the legal entity' });
           continue;
         }
-        const period = await this.periodOn(tx, org, dto.legalEntityId, on);
-        if (!period || period.stage === 'open') {
-          notHeld.push({ employeeCode: p.employeeCode, at: p.at, why: 'The day is open: send it through the device feed' });
-          continue;
-        }
+        // TIM-10 (29 Oct 2026): punches for open days are held too and applied from Time › Device punches; there is no
+        // live device feed yet.
         const r = await tx.heldPunch.createMany({ data: [{ organizationId: org, legalEntityId: dto.legalEntityId, employeeId, punchedAt: at, workOn: asDate(on), kind: p.kind, deviceRef: dto.deviceRef, receivedBy: v.userId }], skipDuplicates: true });
         held += r.count;
       }
@@ -473,9 +470,9 @@ export class PayPeriodsService implements OnModuleInit {
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await requireEntity(tx, c, v, 'attendance.lock', entityId);
-      const rows = await tx.heldPunch.groupBy({ by: ['deviceRef'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' }, _count: { _all: true }, _min: { workOn: true }, _max: { workOn: true } });
+      const rows = await tx.heldPunch.groupBy({ by: ['deviceRef'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' }, _count: { _all: true }, _min: { workOn: true }, _max: { workOn: true, receivedAt: true } });
       const people = await tx.heldPunch.groupBy({ by: ['deviceRef', 'employeeId'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' } });
-      return rows.map((r) => ({ deviceRef: r.deviceRef, punches: r._count._all, people: people.filter((p) => p.deviceRef === r.deviceRef).length, from: r._min.workOn ? dateOf(r._min.workOn) : null, to: r._max.workOn ? dateOf(r._max.workOn) : null }));
+      return rows.map((r) => ({ deviceRef: r.deviceRef, punches: r._count._all, people: people.filter((p) => p.deviceRef === r.deviceRef).length, from: r._min.workOn ? dateOf(r._min.workOn) : null, to: r._max.workOn ? dateOf(r._max.workOn) : null, receivedAt: r._max.receivedAt ?? null }));
     });
   }
 
@@ -483,7 +480,16 @@ export class PayPeriodsService implements OnModuleInit {
    * HR's device backfill (YX-LOCK-09): one audited action for the whole held batch of a device, with a reason and what
    * was confirmed. Each person-day becomes an approved correction paid in the next payroll; the locked month is untouched.
    */
-  async backfill(ctx: TenantContext, user: ScopeUser, entityId: string, deviceRef: string, reason: string, confirmation: ConfirmationDto) {
+  async backfill(
+    ctx: TenantContext,
+    user: ScopeUser,
+    entityId: string,
+    deviceRef: string,
+    reason: string,
+    confirmation: ConfirmationDto,
+    /** TIM-10: applies the punches of a day whose month is still open (Time module: punches and the day engine). */
+    applyOpen?: (tx: Tx, c: CompanyContext, employeeId: string, on: string, punches: { at: Date; kind: string }[]) => Promise<void>,
+  ) {
     const v = await this.viewer(user);
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -498,17 +504,24 @@ export class PayPeriodsService implements OnModuleInit {
       for (const h of held) days.set(`${h.employeeId}|${dateOf(h.workOn)}`, [...(days.get(`${h.employeeId}|${dateOf(h.workOn)}`) ?? []), h]);
       const workOns = held.map((h) => dateOf(h.workOn)).sort();
       const b = await tx.deviceBackfill.create({ data: { organizationId: org, legalEntityId: entityId, deviceRef, fromOn: asDate(workOns[0]), toOn: asDate(workOns[workOns.length - 1]), punches: held.length, people: new Set(held.map((h) => h.employeeId)).size, reason, createdBy: v.userId! } });
+      let opened = 0;
       for (const [key, rows] of days) {
         const [employeeId, on] = key.split('|');
-        const period = (await this.periodOn(tx, org, entityId, on))!;
+        const period = await this.periodOn(tx, org, entityId, on);
+        if (!period || period.stage === 'open') {
+          if (!applyOpen) throw new ConflictException('Some punches are for days of an open month. Apply them from Time › Device punches.');
+          await applyOpen(tx, c, employeeId, on, rows.map((r) => ({ at: r.punchedAt, kind: r.kind })));
+          opened++;
+          continue;
+        }
         const target = await this.nextOpenMonth(tx, org, entityId, on.slice(0, 7));
         await tx.payCorrection.create({
           data: { organizationId: org, legalEntityId: entityId, employeeId, payPeriodId: period.id, workOn: asDate(on), kind: 'punches', source: 'device_backfill', change: { punches: rows.map((r) => ({ at: r.punchedAt.toISOString(), kind: r.kind })) }, reason, status: 'approved', backfillId: b.id, targetPeriod: asDate(`${target}-01`), createdBy: v.userId, decidedAt: new Date() },
         });
       }
       await tx.heldPunch.updateMany({ where: { organizationId: org, id: { in: held.map((h) => h.id) } }, data: { status: 'backfilled', backfillId: b.id } });
-      await audit(tx, c, 'payroll.device_backfill.applied', 'device_backfill', b.id, { legalEntityId: entityId, deviceRef, punches: held.length, personDays: days.size, reason, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
-      return { id: b.id, punches: held.length, personDays: days.size };
+      await audit(tx, c, 'payroll.device_backfill.applied', 'device_backfill', b.id, { legalEntityId: entityId, deviceRef, punches: held.length, personDays: days.size, openDays: opened, reason, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
+      return { id: b.id, punches: held.length, personDays: days.size, people: b.people, openDays: opened, corrections: days.size - opened };
     });
   }
 }

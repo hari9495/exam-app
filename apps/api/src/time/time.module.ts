@@ -20,12 +20,17 @@ import { TimesheetService } from './timesheet.service';
 import { LeaveV2Controller } from './leave-v2.controller';
 import { LeaveV2Service } from './leave-v2.service';
 import { DevFakeHolidayProvider, HOLIDAY_PROVIDER } from './holiday-feed.provider';
+import { AttendanceOpsController } from './attendance-ops.controller';
+import { AttendanceOpsService } from './attendance-ops.service';
+import { DeviceBackfillService } from './device-backfill.service';
+import { IndustrialActionService } from './industrial-action.service';
+import { PresenceService } from './presence.service';
 
 // M02 Time and leave (step 4, batches 1 and 2) on the shared P03 approvals engine and P19 conditions.
 @Module({
   imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule],
-  controllers: [TimeController, TimeOpsController, LeaveV2Controller],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }],
+  controllers: [TimeController, TimeOpsController, LeaveV2Controller, AttendanceOpsController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).
   // LeaveV2Service.creditCompOff: the one comp-off ledger, for overtime settled as comp-off (TIM-09).
   exports: [LeaveService, PeriodsService, LeaveV2Service],

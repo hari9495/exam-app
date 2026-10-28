@@ -10,7 +10,11 @@ import { DayEngine } from './day-engine.service';
 import { PunchDto, RegulariseDto, WfhDto } from './dto';
 import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { addDays, checkInVerdict, minutesInto, type Fence } from './time-maths';
-import { ScheduleBook, assertOpen } from './schedule';
+import { ScheduleBook, assertOpen, lockedDates } from './schedule';
+import { OvertimeService } from './overtime.service';
+import { PeriodsService } from './periods.service';
+import { grantCovers } from './time-core';
+import { settingFor } from '../people/probation';
 import { workOnForPunch } from './time-rules';
 
 // M02 Part B basics: web punches with the geofence / allowed-network check (Q6, YX-AT-01, every refused attempt
@@ -33,6 +37,8 @@ export class AttendanceService implements OnModuleInit {
     private readonly engine: ApprovalsEngine,
     private readonly days: DayEngine,
     private readonly notifications: NotificationsService,
+    private readonly overtime: OvertimeService,
+    private readonly periods: PeriodsService,
   ) {}
 
   onModuleInit() {
@@ -97,6 +103,9 @@ export class AttendanceService implements OnModuleInit {
         // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
         wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
         wfhToday: requests.some((r) => r.kind === 'wfh' && r.status === 'approved' && dateOf(r.workOn) === today),
+        // TIM-07 / Extra Locked: days of this month in a frozen or locked period take a late correction (paid next payroll).
+        locked: [...(await lockedDates(tx, org, f.employeeId, from, to < today ? to : today))].sort(),
+        lateRequestMaxDays: Number(await settingFor(tx, c, 'payroll.late_request_max_days', { legalEntityId: f.legalEntityId })),
       };
     });
   }
@@ -367,6 +376,10 @@ export class AttendanceService implements OnModuleInit {
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
       // Nudge (PLT-02): the days each person was already reminded, so Home shows "Reminded" after a reload too.
       const nudges = ids.length ? await tx.nudge.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, select: { employeeId: true, onDay: true } }) : [];
+      const ots = ids.length ? await tx.overtimeRequest.findMany({ where: { organizationId: c.organizationId, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true, workOn: true, payableMinutes: true, status: true } }) : [];
+      // TIM-02: the month's stage for the legal entity it is about (the one picked, else the company's only one).
+      const ent = await this.periods.musterEntity(tx, c, user, entityId);
+      const period = ent.id ? await this.periods.musterPeriod(tx, c, ent.v, ent.id, month) : null;
       const modes = new Map<string, { mode: string; effect: string }>();
       for (const id of ids) {
         const f = await factsOn(tx, c.organizationId, id, to);
@@ -377,6 +390,9 @@ export class AttendanceService implements OnModuleInit {
         from,
         to,
         scope: tenantWide(v, 'attendance.view') ? 'company' : has(v, 'attendance.view') ? 'granted' : 'team',
+        period,
+        // Bulk "mark present" (TIM-02) is HR's: leave.approve, checked again per person on the server.
+        canMarkPresent: has(v, 'leave.approve') && !v.actingForOther,
         people: people.map((p) => ({
           id: p.id,
           name: p.name,
@@ -386,7 +402,7 @@ export class AttendanceService implements OnModuleInit {
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
           remindedOn: nudges.filter((n) => n.employeeId === p.id).map((n) => dateOf(n.onDay)),
-          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised })),
+          days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, otMinutes: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.payableMinutes ?? 0 })),
         })),
       };
     });
@@ -440,10 +456,23 @@ export class AttendanceService implements OnModuleInit {
       const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: c.organizationId, employeeId, workOn: asDate(on) } } });
       // The day's shift (the day card's shift bar and late mark); null on a weekly off.
       const shift = (await (await ScheduleBook.load(tx, c.organizationId)).day(f, on)).shift;
+      const org = c.organizationId;
+      const month = monthRange(on.slice(0, 7));
+      const lateMarks = await tx.attendanceDay.count({ where: { organizationId: org, employeeId, workOn: { gte: asDate(month.from), lte: asDate(on) }, lateMinutes: { gt: 0 } } });
+      // TIM-03 HrFix: HR (leave.approve over the person, never their own day) may resolve a past day of an open month.
+      const hr = !v.actingForOther && employeeId !== own && (await grantCovers(tx, c, v, own, 'leave.approve', employeeId, on));
+      const locked = (await lockedDates(tx, org, employeeId, on, on)).size > 0;
+      const resolution = await tx.attendanceResolution.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(on) }, orderBy: { createdAt: 'desc' } });
+      const resolver = resolution ? await tx.user.findFirst({ where: { organizationId: org, id: resolution.resolvedBy }, select: { name: true, email: true } }) : null;
       return {
         person: { name: f.name, code: f.code },
         on,
         zone: f.zone,
+        ot: day?.workedMinutes ? await this.overtime.dayOt(tx, org, employeeId, on) : null,
+        lateMarks: { month: lateMarks, free: Number(await settingOn(tx, c, 'attendance.late_marks_free', f, on)) },
+        locked,
+        hrFix: hr ? (on >= todayIn(f.zone) ? { ok: false, why: 'Today is read only until the day is over.' } : locked ? { ok: false, why: 'The month is frozen or locked: record a correction for the next payroll.' } : { ok: true, why: null }) : null,
+        resolution: resolution ? { how: resolution.how, inMinute: resolution.inMinute, outMinute: resolution.outMinute, reason: resolution.reason, by: resolver?.name || resolver?.email || null, at: resolution.createdAt } : null,
         shift: shift ? { name: shift.name, start: shift.shiftStart, end: shift.shiftEnd, grace: shift.graceMinutes } : null,
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.

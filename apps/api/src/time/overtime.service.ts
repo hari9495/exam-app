@@ -263,13 +263,76 @@ export class OvertimeService implements OnModuleInit {
         ORDER BY r.work_on DESC LIMIT 500`;
       const full = rows.length ? await tx.overtimeRequest.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.id) } } }) : [];
       const canOverride = has(v, 'leave.approve') && !v.actingForOther;
+      // TIM-09 decisions on this page go through the same approvals engine as /yx/approvals: the viewer's open task.
+      const tasks = v.userId && !v.actingForOther ? await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId, status: 'open', requestId: { in: full.map((x) => x.wfRequestId).filter((x): x is string => Boolean(x)) } }, select: { id: true, requestId: true } }) : [];
+      const compOffType = Boolean(await tx.leaveType.findFirst({ where: { organizationId: org, kind: 'comp_off', active: true }, select: { id: true } }));
       const out = [];
       for (const r of rows) {
         const x = full.find((y) => y.id === r.id)!;
-        out.push({ ...this.view(x), name: r.name, code: r.code, canOverride: canOverride && x.overCapMinutes > 0 && !x.overrideReason && x.status === 'approved' && (await grantCovers(tx, c, v, own, 'leave.approve', x.employeeId, to)) });
+        const task = x.status === 'pending' && x.wfRequestId ? tasks.find((t) => t.requestId === x.wfRequestId) : undefined;
+        out.push({
+          ...this.view(x),
+          name: r.name,
+          code: r.code,
+          canOverride: canOverride && x.overCapMinutes > 0 && !x.overrideReason && x.status === 'approved' && (await grantCovers(tx, c, v, own, 'leave.approve', x.employeeId, to)),
+          taskId: task?.id ?? null,
+          // Comp-off instead of pay: never under the Factories Act (founder decision 9 Oct 2026), and only with a comp-off type in use.
+          canCompOff: Boolean(task) && x.settle === 'pay' && compOffType && !(await this.coveredOn(tx, org, x.employeeId, dateOf(x.workOn))),
+        });
       }
       return { month, scope: tenantWide(v, 'attendance.view') ? 'company' : has(v, 'attendance.view') ? 'granted' : 'team', claims: out };
     });
+  }
+
+  private async coveredOn(tx: Tx, org: string, employeeId: string, on: string): Promise<boolean> {
+    const f = await factsOn(tx, org, employeeId, on);
+    if (!f) return false;
+    return this.factoriesAct(tx, org, f, on, (await this.statutory(tx, f.state, on)).coveredCategories);
+  }
+
+  /**
+   * TIM-09: approve, reject or give comp-off on this page, as the viewer's own approval task (the one engine behind
+   * /yx/approvals: the same holder, step, self-approval and reason rules). Comp-off settles the claim as time off first
+   * (never under the Factories Act, only with a comp-off type), then approves it; if the approval fails, it is undone.
+   */
+  async decide(ctx: TenantContext, user: ScopeUser, id: string, decision: 'approve' | 'reject' | 'comp_off', reason: string | null) {
+    const v = await this.viewer(user);
+    if (v.actingForOther || !v.userId) throw new ForbiddenException('Not available while acting for someone else.');
+    if (decision === 'reject' && !reason?.trim()) throw new BadRequestException('Say why you are not approving it.');
+    const found = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const r = await tx.overtimeRequest.findFirst({ where: { organizationId: org, id } });
+      const task = r?.wfRequestId ? await tx.wfTask.findFirst({ where: { organizationId: org, requestId: r.wfRequestId, assigneeUserId: v.userId!, status: 'open' }, select: { id: true } }) : null;
+      // Someone else's claim is "not found": the same answer the approvals inbox gives.
+      if (!r || !task) throw new NotFoundException('Not found');
+      if (r.status !== 'pending') throw new ConflictException('This claim is already decided.');
+      if (decision !== 'comp_off') return { taskId: task.id, before: null };
+      if (r.settle === 'comp_off') return { taskId: task.id, before: null };
+      if (await this.coveredOn(tx, org, r.employeeId, dateOf(r.workOn))) throw new ConflictException('The Factories Act covers this person, so their overtime is paid at the legal rate, never comp-off.');
+      const rule = await tx.overtimeRule.findFirstOrThrow({ where: { organizationId: org, id: r.ruleId } });
+      if (!(await tx.leaveType.findFirst({ where: { organizationId: org, kind: 'comp_off', active: true }, select: { id: true } }))) throw new ConflictException('Add a comp-off leave type first, then give comp-off.');
+      const days = compOffDays(r.payableMinutes, rule.compOffHalfMinutes, rule.compOffFullMinutes);
+      if (days === 0) throw new ConflictException(`${hm(r.payableMinutes)} of overtime is less than half a day of comp-off. Approve it as pay or reject it.`);
+      await tx.overtimeRequest.update({ where: { id }, data: { settle: 'comp_off', compOffDays: days, version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'time.ot.settle_changed', 'overtime_request', id, { from: 'pay', to: 'comp_off', compOffDays: days, reason });
+      return { taskId: task.id, before: { settle: r.settle, compOffDays: r.compOffDays } };
+    });
+    try {
+      return await this.engine.decide({ organizationId: ctx.organizationId!, isSuperAdmin: false }, v.userId, found.taskId, decision === 'reject' ? 'reject' : 'approve', reason?.trim() || null);
+    } catch (e) {
+      if (found.before) await inCompany(this.tenantPrisma, ctx, (tx) => tx.overtimeRequest.updateMany({ where: { organizationId: ctx.organizationId!, id, status: 'pending' }, data: { settle: found.before!.settle, compOffDays: found.before!.compOffDays } }));
+      throw e;
+    }
+  }
+
+  /** TIM-03: the overtime a worked day gives (as the claim would fix it) and any claim for the day. */
+  async dayOt(tx: Tx, org: string, employeeId: string, on: string) {
+    const claim = await tx.overtimeRequest.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(on), status: { in: ['pending', 'approved'] } } });
+    if (claim) return { eligibleMinutes: claim.eligibleMinutes, payableMinutes: claim.payableMinutes, overCapMinutes: claim.overCapMinutes, category: claim.category, settle: claim.settle, claim: { id: claim.id, status: claim.status, overridden: Boolean(claim.overrideReason) } };
+    const f = await factsOn(tx, org, employeeId, on);
+    if (!f) return null;
+    const w = await this.workOut(tx, org, f, on, await ScheduleBook.load(tx, org));
+    return w.ot && w.ot.eligible > 0 ? { eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, category: w.ot.category, settle: w.ot.settle, claim: null } : null;
   }
 
   /**

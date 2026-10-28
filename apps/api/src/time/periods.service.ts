@@ -12,12 +12,16 @@ import { TIME_KEYS, asDate, dateOf, factsOn, monthRange, num, settingOn, visible
 import { addDays, daysBetween } from './time-maths';
 import { industrialPay, lateMarkDays, payOfDay, type IndustrialKind, type Legality } from './time-rules';
 import { PayPeriodsService } from '../payroll/periods.service';
+import { settingFor } from '../people/probation';
 
 // P08 attendance periods per legal entity and month (lock / unlock with a fresh second sign-in step, audited), the
 // §B6 payroll feed (per person and period, frozen when the period locks; a stable read for payroll in step 5), and the
 // statutory muster and leave registers of an establishment (P07 IN.REGISTERS formats per state; the law's columns are
 // always there, YX-DOC-22), as PDF or XLSX.
 
+/** TIM-11 two-step lock: payroll approves the month HR sent (the Payroll Admin role holds this key). */
+const PAYROLL_APPROVE = 'payroll.correction.approve';
+const HR_FREEZE = 'Inputs frozen by HR';
 const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const PENDING = { leave: ['pending', 'cancel_pending'] };
 /** Register day codes (the muster's legend). */
@@ -63,7 +67,7 @@ export class PeriodsService {
   ) {}
 
   private viewer(user: ScopeUser): Promise<Viewer> {
-    return buildViewer(this.prisma, this.tenantPrisma, user, [...TIME_KEYS]);
+    return buildViewer(this.prisma, this.tenantPrisma, user, [...TIME_KEYS, PAYROLL_APPROVE]);
   }
 
   private async ownId(tx: Tx, c: CompanyContext, v: Viewer) {
@@ -71,9 +75,13 @@ export class PeriodsService {
     return (await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null;
   }
 
-  /** attendance.lock reaches a legal entity company-wide or through a grant on that entity. */
-  private coversEntity(v: Viewer, entityId: string) {
-    return tenantWide(v, 'attendance.lock') || (v.scopes.get('attendance.lock') ?? []).some((s) => s.type === 'legal_entity' && s.id === entityId);
+  /** attendance.lock (or the payroll approval key) reaches a legal entity company-wide or through a grant on that entity. */
+  private coversEntity(v: Viewer, entityId: string, key: string = 'attendance.lock') {
+    return !v.actingForOther && (tenantWide(v, key) || (v.scopes.get(key) ?? []).some((s) => s.type === 'legal_entity' && s.id === entityId));
+  }
+
+  private lockFlow(tx: Tx, c: CompanyContext, entityId: string) {
+    return settingFor(tx, c, 'attendance.lock_flow', { legalEntityId: entityId }) as Promise<'one_step' | 'two_step'>;
   }
 
   // ------------------------------------------------------------------------------------------ periods
@@ -81,11 +89,13 @@ export class PeriodsService {
   /** The year's months per legal entity the viewer may lock, with their stage. */
   async periods(ctx: TenantContext, user: ScopeUser, year: string, entityId?: string | null) {
     const v = await this.viewer(user);
-    if (!has(v, 'attendance.lock')) throw new ForbiddenException('Locking attendance needs attendance.lock.');
+    if (!has(v, 'attendance.lock') && !has(v, PAYROLL_APPROVE)) throw new ForbiddenException('Attendance periods need attendance.lock (HR) or payroll.correction.approve (payroll).');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
+      const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id) || this.coversEntity(v, e.id, PAYROLL_APPROVE));
       const locks = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
-      const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: locks.map((l) => l.changedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: locks.flatMap((l) => [l.changedBy, l.lockRequestedBy]).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      const flows = new Map<string, string>();
+      for (const e of entities) flows.set(e.id, await this.lockFlow(tx, c, e.id));
       // PAY-1.02: "unlock" asks to reopen; a month with a request waiting shows it.
       const asked = new Set((await tx.periodReopenRequest.findMany({ where: { organizationId: c.organizationId, payPeriodId: { in: locks.map((l) => l.id) }, status: 'pending' }, select: { payPeriodId: true } })).map((r) => r.payPeriodId));
       const today = todayIst();
@@ -95,10 +105,14 @@ export class PeriodsService {
         entities: entities.map((e) => ({
           id: e.id,
           name: e.name,
+          // TIM-11: one step (attendance.lock locks) or two (HR sends, payroll approves); what this viewer may do here.
+          flow: flows.get(e.id) as 'one_step' | 'two_step',
+          canLock: this.coversEntity(v, e.id),
+          canApprove: this.coversEntity(v, e.id, PAYROLL_APPROVE),
           months: Array.from({ length: 12 }, (_, i) => {
             const month = `${year}-${String(i + 1).padStart(2, '0')}`;
-            const l = locks.find((x) => x.legalEntityId === e.id && dateOf(x.periodStart) === `${month}-01`);
-            return { month, stage: l?.stage ?? 'open', reopenAsked: Boolean(l && asked.has(l.id)), changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today };
+            const l = locks.find((x) => x.legalEntityId === e.id && x.payGroupId === null && dateOf(x.periodStart) === `${month}-01`);
+            return { month, stage: l?.stage ?? 'open', reopenAsked: Boolean(l && asked.has(l.id)), changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today, lockableFrom: this.lockableFrom(month), sentAt: l?.lockRequestedAt ?? null, sentBy: l?.lockRequestedBy ? (users.get(l.lockRequestedBy) ?? null) : null, sentByMe: Boolean(l?.lockRequestedBy && l.lockRequestedBy === v.userId) };
           }),
         })),
       };
@@ -161,14 +175,17 @@ export class PeriodsService {
     let exceptions = 0;
     for (const d of open) {
       const f = await factsOn(tx, org, d.employeeId, dateOf(d.workOn));
-      if (f && f.legalEntityId === entityId && (await settingOn(tx, c, 'attendance.missing_punch_effect', f, dateOf(d.workOn))) === 'block_payroll_approval') exceptions++;
+      if (!f || f.legalEntityId !== entityId || (await settingOn(tx, c, 'attendance.missing_punch_effect', f, dateOf(d.workOn))) !== 'block_payroll_approval') continue;
+      // A frozen day can't change: a correction recorded for it (waiting or approved) settles it for the next payroll.
+      if (await tx.payCorrection.findFirst({ where: { organizationId: org, employeeId: d.employeeId, workOn: d.workOn, status: { in: ['pending', 'approved'] } }, select: { id: true } })) continue;
+      exceptions++;
     }
     return { people: people.length, pending, exceptions };
   }
 
   async preflight(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
     const v = await this.viewer(user);
-    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
+    if (!this.coversEntity(v, entityId) && !this.coversEntity(v, entityId, PAYROLL_APPROVE)) throw new NotFoundException('Not found');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       if (!(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: entityId } }))) throw new NotFoundException('Not found');
       return { month, lockableFrom: this.lockableFrom(month), ...(await this.preflightIn(tx, c, entityId, month)) };
@@ -176,44 +193,176 @@ export class PeriodsService {
   }
 
   /**
-   * Locks a month for a legal entity (P08): days brought up to date, the pre-flight must be clear, then the period is
-   * locked and the payroll feed frozen, in one transaction. Step-up is checked by the guard.
+   * Locks a month for a legal entity (P08), one-step flow: whoever holds attendance.lock over the entity. In the two-step
+   * flow (setting attendance.lock_flow) HR sends the month and payroll approves the lock (approveLock). Step-up is
+   * checked by the guard.
    */
   async lock(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
     const v = await this.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
     if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.lockFlow(tx, c, entityId)) === 'two_step') throw new ConflictException({ statusCode: 409, code: 'LOCK_TWO_STEP', message: 'This company locks attendance in two steps: send the month for payroll approval, and payroll locks it.' });
+      return this.lockIn(tx, c, entityId, month, null);
+    });
+  }
+
+  /** TIM-11 two-step flow: payroll (payroll.correction.approve over the entity) approves the lock HR sent; never the sender. */
+  async approveLock(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (!this.coversEntity(v, entityId, PAYROLL_APPROVE)) throw new NotFoundException('Not found');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.lockFlow(tx, c, entityId)) !== 'two_step') throw new ConflictException('This company locks attendance in one step: HR locks it on the Periods page.');
+      return this.lockIn(tx, c, entityId, month, v.userId);
+    });
+  }
+
+  private async lockIn(tx: Tx, c: CompanyContext, entityId: string, month: string, approver: string | null) {
+    const org = c.organizationId;
     if (this.lockableFrom(month) > todayIst()) throw new BadRequestException(`${monthText(month)} can be locked from ${this.lockableFrom(month)}.`);
+    if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId } }))) throw new NotFoundException('Not found');
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
+    const { from, to } = monthRange(month);
+    const current = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(from) } });
+    if (current && (current.stage === 'locked' || current.stage === 'filed')) throw new ConflictException(`${monthText(month)} is already locked.`);
+    if (approver) {
+      if (!current?.lockRequestedBy) throw new ConflictException(`HR has not sent ${monthText(month)} for approval yet.`);
+      if (current.lockRequestedBy === approver) throw new ForbiddenException('You sent this month, so someone else in payroll must approve the lock.');
+    }
+    // Every day of the month evaluated with the inputs as they are now, before the check and the freeze.
+    const people = await this.employeesOf(tx, org, entityId, from, to);
+    const book = await ScheduleBook.load(tx, org);
+    // D2: a frozen month's days are already fixed (the database refuses changes to them); they are locked as they are.
+    if (current?.stage !== 'frozen') for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
+    const pre = await this.preflightIn(tx, c, entityId, month);
+    if (pre.pending.length || pre.exceptions) {
+      const parts = [...pre.pending.map((x) => `${x.count} ${x.kind.toLowerCase()} waiting`), ...(pre.exceptions ? [`${pre.exceptions} days with missing punches or timesheets`] : [])];
+      throw new ConflictException({ statusCode: 409, code: 'LOCK_PREFLIGHT', message: `${monthText(month)} can't be locked yet: ${parts.join(', ')}. Decide or fix them first.`, preflight: pre });
+    }
+    const lock = current
+      ? await tx.payPeriod.update({ where: { id: current.id }, data: { stage: 'locked', changedBy: c.userId ?? null, changedAt: new Date(), reason: null, lockedAt: new Date(), lockedBy: c.userId ?? null, version: { increment: 1 } } })
+      : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from), periodEnd: asDate(to), stage: 'locked', changedBy: c.userId ?? null, lockedAt: new Date(), lockedBy: c.userId ?? null } });
+    await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: lock.id, fromStage: current?.stage ?? 'open', toStage: 'locked', byUser: c.userId ?? null, reason: approver ? 'Lock approved by payroll' : null } });
+    const rows = await this.feedRows(tx, c, entityId, month);
+    if (rows.length)
+      await tx.payrollFeedRow.createMany({
+        data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes, layoffDays: r.layoffDays, heldDays: r.heldDays, lateLopDays: r.lateLopDays })),
+      });
+    // YX-AUD-09: what was seen and confirmed.
+    await audit(tx, c, 'time.period.locked', 'pay_period', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0), sentBy: current?.lockRequestedBy ?? null, approvedBy: approver });
+    return { id: lock.id, stage: 'locked', frozen: rows.length };
+  }
+
+  /**
+   * TIM-02 "Freeze inputs" (HR, attendance.lock): from the day the month may be locked, every day is worked out once more
+   * and then fixed (founder decision D2: the database refuses changes to frozen days; employees use a late request).
+   * Requests still waiting must be decided first, because a frozen day can no longer take their answer.
+   */
+  async freeze(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => this.freezeIn(tx, c, entityId, month));
+  }
+
+  private async freezeIn(tx: Tx, c: CompanyContext, entityId: string, month: string) {
+    const org = c.organizationId;
+    if (this.lockableFrom(month) > todayIst()) throw new BadRequestException(`${monthText(month)} can be frozen from ${this.lockableFrom(month)}, once its last night shift has ended.`);
+    if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId } }))) throw new NotFoundException('Not found');
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
+    const { from, to } = monthRange(month);
+    const current = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(from) } });
+    if (current && current.stage !== 'open') throw new ConflictException(`${monthText(month)} is already ${current.stage}.`);
+    const book = await ScheduleBook.load(tx, org);
+    for (const p of await this.employeesOf(tx, org, entityId, from, to)) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
+    const pre = await this.preflightIn(tx, c, entityId, month);
+    if (pre.pending.length) throw new ConflictException({ statusCode: 409, code: 'FREEZE_PENDING', message: `${monthText(month)} can't be frozen yet: ${pre.pending.map((x) => `${x.count} ${x.kind.toLowerCase()} waiting`).join(', ')}. Decide them first; after the freeze they could not change the month.`, preflight: pre });
+    const row = current
+      ? await tx.payPeriod.update({ where: { id: current.id }, data: { stage: 'frozen', changedBy: c.userId ?? null, changedAt: new Date(), reason: null, version: { increment: 1 } } })
+      : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from), periodEnd: asDate(to), stage: 'frozen', changedBy: c.userId ?? null } });
+    await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: row.id, fromStage: 'open', toStage: 'frozen', byUser: c.userId ?? null, reason: HR_FREEZE } });
+    await audit(tx, c, 'time.period.frozen', 'pay_period', row.id, { legalEntityId: entityId, month, people: pre.people, exceptions: pre.exceptions });
+    return { id: row.id, stage: 'frozen', exceptions: pre.exceptions };
+  }
+
+  /**
+   * Opens a month HR froze again, with a reason (attendance.lock). Not when payroll froze it for a run; a month sent for
+   * approval goes back to HR too.
+   */
+  async unfreeze(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, reason: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId } }))) throw new NotFoundException('Not found');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
-      const { from, to } = monthRange(month);
-      const current = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from) } });
-      if (current && (current.stage === 'locked' || current.stage === 'filed')) throw new ConflictException(`${monthText(month)} is already locked.`);
-      // Every day of the month evaluated with the inputs as they are now, before the check and the freeze.
-      const people = await this.employeesOf(tx, org, entityId, from, to);
-      const book = await ScheduleBook.load(tx, org);
-      // D2: a frozen month's days are already fixed (the database refuses changes to them); they are locked as they are.
-      if (current?.stage !== 'frozen') for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
+      const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(monthRange(month).from) } });
+      if (!p || p.stage !== 'frozen') throw new ConflictException(`${monthText(month)} is not frozen.`);
+      const last = await tx.periodLockEvent.findFirst({ where: { organizationId: org, payPeriodId: p.id, toStage: 'frozen' }, orderBy: { createdAt: 'desc' } });
+      if (last?.reason !== HR_FREEZE) throw new ConflictException(`Payroll froze ${monthText(month)} for its run, so only payroll can open it.`);
+      await tx.payPeriod.update({ where: { id: p.id }, data: { stage: 'open', changedBy: c.userId ?? null, changedAt: new Date(), reason, lockRequestedBy: null, lockRequestedAt: null, version: { increment: 1 } } });
+      await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: p.id, fromStage: 'frozen', toStage: 'open', byUser: c.userId ?? null, reason } });
+      await audit(tx, c, 'time.period.unfrozen', 'pay_period', p.id, { legalEntityId: entityId, month, reason, wasSent: Boolean(p.lockRequestedBy) });
+      return { id: p.id, stage: 'open' };
+    });
+  }
+
+  /**
+   * TIM-11 two-step flow: HR sends the month for payroll approval. It is frozen first (if it is not yet) and must pass
+   * the pre-lock checks, so payroll only confirms. Sending twice is a no-op.
+   */
+  async send(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if ((await this.lockFlow(tx, c, entityId)) !== 'two_step') throw new ConflictException('This company locks attendance in one step: lock the month instead.');
+      const from = monthRange(month).from;
+      let p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(from) } });
+      if (p && (p.stage === 'locked' || p.stage === 'filed')) throw new ConflictException(`${monthText(month)} is already locked.`);
+      if (p?.lockRequestedBy) return { id: p.id, stage: p.stage, sentAt: p.lockRequestedAt, repeat: true };
+      if (!p || p.stage === 'open') await this.freezeIn(tx, c, entityId, month);
       const pre = await this.preflightIn(tx, c, entityId, month);
       if (pre.pending.length || pre.exceptions) {
         const parts = [...pre.pending.map((x) => `${x.count} ${x.kind.toLowerCase()} waiting`), ...(pre.exceptions ? [`${pre.exceptions} days with missing punches or timesheets`] : [])];
-        throw new ConflictException({ statusCode: 409, code: 'LOCK_PREFLIGHT', message: `${monthText(month)} can't be locked yet: ${parts.join(', ')}. Decide or fix them first.`, preflight: pre });
+        throw new ConflictException({ statusCode: 409, code: 'LOCK_PREFLIGHT', message: `${monthText(month)} can't be sent yet: ${parts.join(', ')}. Resolve them first.`, preflight: pre });
       }
-      const lock = current
-        ? await tx.payPeriod.update({ where: { id: current.id }, data: { stage: 'locked', changedBy: c.userId ?? null, changedAt: new Date(), reason: null, lockedAt: new Date(), lockedBy: c.userId ?? null, version: { increment: 1 } } })
-        : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from), periodEnd: asDate(to), stage: 'locked', changedBy: c.userId ?? null, lockedAt: new Date(), lockedBy: c.userId ?? null } });
-      await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: lock.id, fromStage: current?.stage ?? 'open', toStage: 'locked', byUser: c.userId ?? null } });
-      const rows = await this.feedRows(tx, c, entityId, month);
-      if (rows.length)
-        await tx.payrollFeedRow.createMany({
-          data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes, layoffDays: r.layoffDays, heldDays: r.heldDays, lateLopDays: r.lateLopDays })),
-        });
-      // YX-AUD-09: what was seen and confirmed.
-      await audit(tx, c, 'time.period.locked', 'pay_period', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
-      return { id: lock.id, stage: 'locked', frozen: rows.length };
+      p = await tx.payPeriod.findFirstOrThrow({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(from) } });
+      await tx.payPeriod.update({ where: { id: p.id }, data: { lockRequestedBy: c.userId ?? null, lockRequestedAt: new Date(), version: { increment: 1 } } });
+      await audit(tx, c, 'time.period.sent_for_lock', 'pay_period', p.id, { legalEntityId: entityId, month, people: pre.people });
+      return { id: p.id, stage: 'frozen', sentAt: new Date(), repeat: false };
     });
+  }
+
+  /** The muster's period card (TIM-02): stage, when it may be frozen or locked, what blocks it, what the viewer may do. */
+  async musterPeriod(tx: Tx, c: CompanyContext, v: Viewer, entityId: string, month: string) {
+    const p = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, payGroupId: null, periodStart: asDate(monthRange(month).from) } });
+    const pre = await this.preflightIn(tx, c, entityId, month);
+    const entity = await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: entityId }, select: { name: true } });
+    return {
+      legalEntityId: entityId,
+      entityName: entity?.name ?? '',
+      stage: (p?.stage ?? 'open') as 'open' | 'frozen' | 'locked' | 'filed',
+      lockableFrom: this.lockableFrom(month),
+      lockable: this.lockableFrom(month) <= todayIst(),
+      flow: await this.lockFlow(tx, c, entityId),
+      sentAt: p?.lockRequestedAt ?? null,
+      lockedAt: p?.lockedAt ?? null,
+      exceptions: pre.exceptions,
+      pending: pre.pending,
+      canLock: this.coversEntity(v, entityId),
+      canApprove: this.coversEntity(v, entityId, PAYROLL_APPROVE),
+    };
+  }
+
+  /** The legal entity a muster's month is about: the one asked for, else the company's only one. */
+  async musterEntity(tx: Tx, c: CompanyContext, user: ScopeUser, entityId: string | null | undefined): Promise<{ v: Viewer; id: string | null }> {
+    const v = await this.viewer(user);
+    if (entityId) return { v, id: (await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: entityId }, select: { id: true } }))?.id ?? null };
+    const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true } });
+    return { v, id: all.length === 1 ? all[0].id : null };
   }
 
   /**
