@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { button, details, noticeEmail } from '../email/account-emails';
@@ -519,6 +519,25 @@ export class ApprovalsEngine {
     return res;
   }
 
+  /**
+   * PLT-04 bulk decide: each task through decide(), one transaction each, so every check holds per task and one refusal
+   * never undoes or hides the others. Every task gets a line: decided, or refused with the reason a single decision gives.
+   */
+  async decideMany(ctx: CompanyContext, userId: string, taskIds: string[], decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' = 'web') {
+    if (decision === 'reject' && !reason?.trim()) throw new BadRequestException('Say why you are not approving them.');
+    const results: BulkResult[] = [];
+    for (const taskId of [...new Set(taskIds)]) {
+      try {
+        const r = await this.decide(ctx, userId, taskId, decision, reason, channel);
+        results.push({ taskId, ok: true, requestStatus: r.status });
+      } catch (e) {
+        if (!(e instanceof HttpException)) this.logger.error(`bulk decide ${taskId}: ${(e as Error).message}`);
+        results.push({ taskId, ok: false, message: e instanceof HttpException ? httpMessage(e) : 'Not decided. Try this one again.' });
+      }
+    }
+    return { results };
+  }
+
   /** The module withdraws a pending request (the requester cancelled what it was for). */
   async withdraw(tx: Tx, ctx: CompanyContext, requestId: string, byUserId: string | null, reason: string) {
     const org = ctx.organizationId;
@@ -771,6 +790,40 @@ export class ApprovalsEngine {
   }
 
   /**
+   * PLT-04 "Team history": every decision (by anyone, newest first) on requests this person holds or held a task for,
+   * as approver or as the one a delegate acts for. The same requests view() already opens to them; requests they only
+   * sent are under "Sent by me".
+   */
+  async teamHistory(ctx: CompanyContext, userId: string) {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const held = await tx.wfTask.findMany({ where: { organizationId: org, OR: [{ assigneeUserId: userId }, { onBehalfOfUserId: userId }] }, select: { requestId: true }, distinct: ['requestId'], orderBy: { requestId: 'asc' }, take: 1000 });
+      const actions = await tx.wfAction.findMany({ where: { organizationId: org, requestId: { in: held.map((h) => h.requestId) }, action: { in: ['approved', 'self_approved', 'rejected'] } }, orderBy: { createdAt: 'desc' }, take: 200 });
+      const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: [...new Set(actions.map((a) => a.requestId))] } } })).map((r) => [r.id, r]));
+      const names = await this.names(tx, org, [...actions.flatMap((a) => [a.actorUserId, a.onBehalfOfUserId]), ...[...reqs.values()].map((r) => r.requesterUserId)]);
+      return actions.map((a) => {
+        const r = reqs.get(a.requestId)!;
+        return {
+          id: a.id,
+          requestId: a.requestId,
+          title: r.title,
+          type: this.types.get(r.requestType)?.label ?? r.requestType,
+          requester: r.requesterUserId ? (names.get(r.requesterUserId) ?? '') : '',
+          decision: a.action === 'rejected' ? 'rejected' : 'approved',
+          by: a.actorUserId ? (names.get(a.actorUserId) ?? '') : null,
+          byMe: a.actorUserId === userId,
+          onBehalfOf: a.onBehalfOfUserId ? (names.get(a.onBehalfOfUserId) ?? '') : null,
+          reason: a.reason,
+          step: a.step === null ? null : a.step + 1,
+          at: a.createdAt,
+          submittedAt: r.submittedAt,
+          requestStatus: r.status,
+        };
+      });
+    });
+  }
+
+  /**
    * PLT-06 My requests: what the person asked for (also when HR or a manager raised it for them), newest first, with
    * where each one is: the step it waits on and who holds it.
    */
@@ -831,4 +884,14 @@ export class ApprovalsEngine {
   }
 }
 
-export const isRuleError = (e: unknown): e is RuleError => e instanceof RuleError;
+/** One task of a bulk decision: decided (and where its request now is), or refused and why. */
+export type BulkResult = { taskId: string; ok: true; requestStatus: string } | { taskId: string; ok: false; message: string };
+
+/** The sentence an HTTP refusal carries ("This approval is already closed."). */
+export function httpMessage(e: HttpException): string {
+  const r = e.getResponse();
+  const m = typeof r === 'string' ? r : (r as { message?: unknown }).message;
+  return Array.isArray(m) ? m.join(' ') : typeof m === 'string' && m ? m : e.message;
+}
+
+export const isRuleError =(e: unknown): e is RuleError => e instanceof RuleError;

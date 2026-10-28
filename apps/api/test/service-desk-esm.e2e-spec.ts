@@ -401,6 +401,43 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await api('emp', 'post', `/desk/my/requests/${out.requests[0].ticketId}/cancel`).send({ reason: 'Test done' }).expect(200);
     });
 
+    it('PLT-04 bulk decide checks each task on its own and reports each; team history shows decisions on requests I hold', async () => {
+      const order = async () => (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body.requests[0].ticketId as string;
+      const tickets = [await order(), await order()];
+      const mine = (await api('mgr', 'get', '/workflow/approvals/inbox').expect(200)).body.filter((x: { title: string }) => x.title.startsWith('New laptop')) as { taskId: string; requestId: string }[];
+      expect(mine).toHaveLength(2);
+      const bulk = (who: Who, body: Record<string, unknown>) => api(who, 'post', '/workflow/approvals/tasks/decide').send(body);
+      // Not approving needs a reason; no task is touched.
+      await bulk('mgr', { taskIds: mine.map((t) => t.taskId), decision: 'reject' }).expect(400);
+      // Someone else's tasks are refused one by one (as "not found"), never decided.
+      expect((await bulk('other', { taskIds: [mine[0].taskId], decision: 'approve' }).expect(200)).body).toEqual({ results: [{ taskId: mine[0].taskId, ok: false, message: 'No such approval.' }] });
+      const stranger = randomUUID();
+      const res = (await bulk('mgr', { taskIds: [mine[0].taskId, stranger, mine[1].taskId, mine[0].taskId], decision: 'approve' }).expect(200)).body;
+      expect(res.results).toEqual([
+        { taskId: mine[0].taskId, ok: true, requestStatus: 'pending' },
+        { taskId: stranger, ok: false, message: 'No such approval.' },
+        { taskId: mine[1].taskId, ok: true, requestStatus: 'pending' },
+      ]);
+      // Decided already: said for each, not silently skipped.
+      expect((await bulk('mgr', { taskIds: [mine[0].taskId], decision: 'approve' }).expect(200)).body.results[0]).toEqual({ taskId: mine[0].taskId, ok: false, message: 'This approval is already closed.' });
+      await bulk('mgr', { taskIds: [], decision: 'approve' }).expect(400);
+      await bulk('mgr', { taskIds: ['not-a-uuid'], decision: 'approve' }).expect(400);
+      // The cost-centre owner says no to one; the manager sees that in Team history, with the reason.
+      const cco = (await inbox('cco')).filter((x) => x.title.startsWith('New laptop'));
+      expect(cco).toHaveLength(2);
+      await decide('cco', cco[0].taskId, 'reject', 'Use the spare one').expect(200);
+      type H = { requestId: string; decision: string; by: string; byMe: boolean; reason: string | null; requestStatus: string };
+      const history = (await api('mgr', 'get', '/workflow/approvals/team-history').expect(200)).body as H[];
+      const ours = history.filter((h) => mine.some((t) => t.requestId === h.requestId));
+      expect(ours.filter((h) => h.byMe && h.decision === 'approved')).toHaveLength(2);
+      expect(ours.find((h) => h.decision === 'rejected')).toMatchObject({ by: `cco ${run}`, byMe: false, reason: 'Use the spare one', requestStatus: 'rejected' });
+      // The person who only asked, and someone who held no task, see none of it there.
+      expect(((await api('emp', 'get', '/workflow/approvals/team-history').expect(200)).body as H[]).filter((h) => mine.some((t) => t.requestId === h.requestId))).toEqual([]);
+      expect(((await api('other', 'get', '/workflow/approvals/team-history').expect(200)).body as H[]).filter((h) => mine.some((t) => t.requestId === h.requestId))).toEqual([]);
+      expect((await api('empB', 'get', '/workflow/approvals/team-history').expect(200)).body).toEqual([]);
+      for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
+    });
+
     it('delegation: by hand (open tasks move, "on behalf of" is kept) and from leave (to the manager)', async () => {
       const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body;
       await api('mgr', 'post', '/workflow/delegations').send({ delegateUserId: users.mgr, startsOn: today, endsOn: today }).expect(400);

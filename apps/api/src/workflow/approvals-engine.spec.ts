@@ -1,5 +1,6 @@
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { RuleError } from '../rules-engine/conditions';
-import { approvalSubject, needOf, parseSteps, verdict } from './approvals-engine.service';
+import { ApprovalsEngine, approvalSubject, needOf, parseSteps, verdict } from './approvals-engine.service';
 
 describe('P03 quorum (US-G-044)', () => {
   it('any one, all, at least N and a percentage', () => {
@@ -64,5 +65,38 @@ describe('approvalSubject (email subjects in plain words, founder review 19 Oct 
   });
   it('without a known person it still reads plainly', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, null, false)).toBe('A request waits for you: Arjun Kulkarni: Casual leave, 21 Oct (1 day)');
+  });
+});
+
+describe('PLT-04 bulk decide (decideMany)', () => {
+  const ctx = { organizationId: 'org', isSuperAdmin: false };
+  const engine = new ApprovalsEngine(null as never, null as never, null as never);
+  afterEach(() => jest.restoreAllMocks());
+
+  it('decides each task on its own and reports each: refusals say why and never stop the others', async () => {
+    const decide = jest.spyOn(engine, 'decide').mockImplementation(async (_c, _u, taskId) => {
+      if (taskId === 'theirs') throw new NotFoundException('No such approval.');
+      if (taskId === 'closed') throw new ConflictException('This approval is already closed.');
+      if (taskId === 'own-page') throw new ConflictException({ statusCode: 409, code: 'DECIDE_ON_ITS_PAGE', message: 'Decide this on its own page: Reopen a pay month.' });
+      if (taskId === 'broken') throw new Error('db down');
+      return { id: `r-${taskId}`, status: 'approved', currentStep: 0 };
+    });
+    const out = await engine.decideMany(ctx, 'me', ['a', 'theirs', 'a', 'closed', 'own-page', 'broken', 'b'], 'approve', null);
+    // Each task once, in order, through the single-decision checks.
+    expect(decide.mock.calls.map((c) => c[2])).toEqual(['a', 'theirs', 'closed', 'own-page', 'broken', 'b']);
+    expect(out.results).toEqual([
+      { taskId: 'a', ok: true, requestStatus: 'approved' },
+      { taskId: 'theirs', ok: false, message: 'No such approval.' },
+      { taskId: 'closed', ok: false, message: 'This approval is already closed.' },
+      { taskId: 'own-page', ok: false, message: 'Decide this on its own page: Reopen a pay month.' },
+      { taskId: 'broken', ok: false, message: 'Not decided. Try this one again.' },
+      { taskId: 'b', ok: true, requestStatus: 'approved' },
+    ]);
+  });
+
+  it('not approving needs a reason before any task is touched', async () => {
+    const decide = jest.spyOn(engine, 'decide');
+    await expect(engine.decideMany(ctx, 'me', ['a'], 'reject', '  ')).rejects.toBeInstanceOf(BadRequestException);
+    expect(decide).not.toHaveBeenCalled();
   });
 });
