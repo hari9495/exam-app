@@ -27,18 +27,22 @@ export function tryAgainIn(seconds: number): string {
   return `Too many tries. Try again in ${parts}.`;
 }
 
-/** Seconds the API's account / IP lock asks us to wait, if this error is that lock. */
+/**
+ * Seconds a refusal asks us to wait: the account / IP lock, or any other 429 that says how long (the code-send limits'
+ * cooldown and hourly cap, which can be most of an hour; "wait a minute" was wrong there).
+ */
 export function lockWaitSeconds(err: unknown): number | null {
   const text = err instanceof Error ? err.message : '';
   const wait = (err as { body?: { retryAfterSeconds?: unknown } } | null)?.body?.retryAfterSeconds;
-  return text === API_LOCKED && typeof wait === 'number' && wait > 0 ? wait : null;
+  const refused = text === API_LOCKED || (err as { status?: number } | null)?.status === 429;
+  return refused && typeof wait === 'number' && wait > 0 ? wait : null;
 }
 
-/** A failed sign-in step as one sentence. A 429 other than the account / IP lock is the request throttle. */
+/** A failed sign-in step as one sentence. A 429 without a wait is the request throttle. */
 export function yxAuthMessage(err: unknown, fallback: string): string {
   const text = err instanceof Error && err.message ? err.message : fallback;
-  const wait = (err as { body?: { retryAfterSeconds?: unknown } } | null)?.body?.retryAfterSeconds;
-  if (text === API_LOCKED && typeof wait === 'number' && wait > 0) return tryAgainIn(wait);
+  const wait = lockWaitSeconds(err);
+  if (wait) return tryAgainIn(wait);
   if (PLAIN[text]) return PLAIN[text];
   return (err as { status?: number } | null)?.status === 429 ? TOO_MANY_TRIES : text;
 }
