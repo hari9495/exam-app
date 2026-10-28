@@ -3334,5 +3334,121 @@
       "TIM-43"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-TIM-35-01",
+    "area": "Time · Open shifts",
+    "screen": "Open shifts and bids · offer an open shift",
+    "url": "http://localhost:3000/yx/time/open-shifts",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Open Roster › Open shifts. Read the header.",
+      "Click \"Offer an open shift\". Leave Date empty and click \"Offer shift\".",
+      "Pick a date next week, Shift \"Night 10 pm – 6 am\", leave Licence needed empty, keep Award rule \"Manager picks\" (the company setting), set Bids close to the day before at 6:00 pm, Note \"Line 2 short\". Click \"Offer shift\".",
+      "Click \"Offer an open shift\" again. Try to pick yesterday in the date picker, and a date more than 120 days ahead.",
+      "Offer a Morning shift for next Saturday with Award rule \"First come\" (and Licence needed \"Forklift\" if the company has that licence type).",
+      "Sign out. Sign in as murugan@demo-org.test (a plant worker) and open http://localhost:3000/yx/time/open-shifts."
+    ],
+    "expected": "Step 1: \"Hosur plant · offered only to people who pass the licence, leave, rest and hour checks\", then the list or \"No open shifts\" with an \"Offer an open shift\" button; no page scroll at 1278 x 635. Step 2: \"Pick a date\" under Date and the cursor goes there; nothing is offered. Step 3: a toast \"Open shift offered\"; the row shows the weekday (small) and date, \"Open\", the days-to-go badge, \"Night 10 pm – 6 am\", \"0 claims · bids close …\", the note, Offered to \"Hosur plant\", Award rule \"Manager picks\". Step 4: those days cannot be picked. Step 5: a second row with Award rule \"First come\". Step 6: Murugan plans no one, so he has no access to this page (the employee side is the phone view, not built yet).",
+    "stories": [
+      "TIM-35"
+    ],
+    "note": "Employee claims and bids have no web page yet (phone stories). For MT-TIM-35-02 the developer places bids through the API, signed in as the workers."
+  },
+  {
+    "id": "MT-TIM-35-02",
+    "area": "Time · Open shifts",
+    "screen": "Open shifts and bids · award from the bids",
+    "url": "http://localhost:3000/yx/time/open-shifts",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Ask the developer to place bids on the Night shift from MT-TIM-35-01 as two of Kavya’s plant workers who are off that day (POST /api/v1/time/me/open-shifts/<id>/claim, signed in as each), and as one worker whose shift before it leaves too little rest.",
+      "Reload Roster › Open shifts. Read the row, then click \"Pick claimant\".",
+      "Read the dialog.",
+      "Pick the second person and click \"Award shift\".",
+      "On another open shift, have the developer publish a night before the day for the bidder after they bid. Click \"Pick claimant\", then \"Award shift\".",
+      "Open Roster for that week."
+    ],
+    "expected": "Step 2: the row says the number of claims. Step 3: the first in the fair order is chosen; each person shows \"Bid <date>, <time> · N open shifts won in 30 days · N h rostered that week · Nth in the fair order\" (fewest won in 30 days, then fewest hours that week, then the earliest bid); the short-rest worker is listed below with the reason. Step 4: a toast \"Shift awarded to <name>\"; the row shows \"Awarded\" and \"awarded to <name>\"; the winner and the others get a notification. Step 5: the dialog stays open with \"Not awarded\" and the rest reason; nothing changes. Step 6: the winner has that shift on that day, published.",
+    "stories": [
+      "TIM-35"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-35-03",
+    "area": "Time · Open shifts",
+    "screen": "Open shifts and bids · cancel an offer",
+    "url": "http://localhost:3000/yx/time/open-shifts",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "On an open row click \"Cancel offer\". Read the dialog, then click \"Keep it\".",
+      "Click \"Cancel offer\" again and click \"Cancel open shift\".",
+      "In a second tab opened before step 2, click \"Pick claimant\" → \"Award shift\" (or \"Cancel offer\" → \"Cancel open shift\") on the same row."
+    ],
+    "expected": "Step 1: \"Cancel the open shift on <date>?\" with \"N people who bid are told it was cancelled.\" (or \"No one has bid yet.\"); Keep it closes it and nothing changes. Step 2: a toast \"Open shift cancelled\"; the row shows \"Cancelled\" with no buttons; bidders get a notification. Step 3: \"This open shift was already cancelled …\" stays in the dialog; nothing is awarded.",
+    "stories": [
+      "TIM-35"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-38-01",
+    "area": "Time · Standby",
+    "screen": "Standby and call-outs · set and cancel standby",
+    "url": "http://localhost:3000/yx/time/standby",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Open Roster › Standby & call-outs. Read the header and the week switch.",
+      "Click \"Set standby\". Pick Murugan Selvam, From today 6:00 pm, Until tomorrow 7:00 pm. Click \"Set standby\".",
+      "Change the Until time to 6:00 am. Click \"Set standby\".",
+      "Click \"Set standby\" again for Murugan, today 10:00 pm until tomorrow 4:00 am.",
+      "Set standby for another worker on a day next week, 6:00 pm to 6:00 am. Switch to \"Next week\", then click \"Cancel\" on that slot in \"Standby slots\".",
+      "Sign in as murugan@demo-org.test and open http://localhost:3000/yx/time/standby."
+    ],
+    "expected": "Step 1: \"Standby is not a working shift · call-out paid at least 2 h · standby allowance and call-out rates are set in Pay\"; \"This week · <date>\" / \"Next week · <date>\"; no page scroll at 1278 x 635. Step 2: \"A standby slot is at most 24 hours\" under the end time and the cursor goes there; nothing is saved. Step 3: a toast \"Standby set\"; Murugan appears in the grid (SB on a day without a shift) and in \"Standby slots\" as Planned; he gets a notification. Step 4: \"Murugan Selvam is already on standby … Change that slot first.\" stays in the dialog. Step 5: a toast \"Standby cancelled\"; the slot shows Cancelled; a slot that has started has no Cancel button. Step 6: Murugan has no access (he plans no one).",
+    "stories": [
+      "TIM-38"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-38-02",
+    "area": "Time · Standby",
+    "screen": "Standby and call-outs · log a call-out",
+    "url": "http://localhost:3000/yx/time/standby",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Set a standby slot for Murugan that started an hour or more ago (for example today from 6:00 am), as in MT-TIM-38-01.",
+      "Click \"Log call-out\". Click \"Save call-out\" without entering anything.",
+      "Pick Murugan’s slot. Start: 50 minutes ago; End: 20 minutes ago. Reason \"Compressor trip, Line 2\", Source \"Phone call\". Read the Effect box. Click \"Save call-out\" twice quickly.",
+      "Log another call-out for Murugan with the same start and end.",
+      "Log a call-out whose end is later than now.",
+      "Read the Call-out log."
+    ],
+    "expected": "Step 2: \"Enter the start\" under Start and the cursor goes there; nothing is saved. Step 3: Effect says \"Paid 2 h (call-out minimum)\"; one toast \"Call-out logged\" with the paid time and the rest left before Murugan’s next shift; only one call-out is saved. Step 4: \"This overlaps the call-out already logged from <time>.\" Step 5: \"Log a call-out after it ends\" under End. Step 6: \"Murugan Selvam · <weekday> <date>, <start> – <end>\", \"Compressor trip, Line 2 (phone call) · worked 30 m · paid 2 h (minimum) · counts towards weekly hours\", and \"Next shift <weekday> <date>, <time> (<shift>) · N h rest\"; under 11 h it shows a \"Rest N h\" badge and \"Move next shift\". No money is shown (payroll).",
+    "stories": [
+      "TIM-38"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-38-03",
+    "area": "Time · Standby",
+    "screen": "Standby and call-outs · move the next shift for rest",
+    "url": "http://localhost:3000/yx/time/standby",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Use a call-out from MT-TIM-38-02 whose next shift leaves less than 11 h rest (log one late at night before a morning shift if needed). Click \"Move next shift\".",
+      "In \"Move to\" pick a shift that would break a rule (for example a Night ending when the next morning’s shift starts) and click \"Move shift\".",
+      "Clear the Reason, pick a later shift that gives 11 h rest, and click \"Move shift\" (the day is inside the 24 h notice).",
+      "Type the reason \"Rest after the night call-out\" and click \"Move shift\".",
+      "Open Roster for that week; then sign in as Murugan and open My shifts."
+    ],
+    "expected": "Step 1: \"Move Murugan Selvam’s shift on <date>?\" with the current shift, the rest and \"needs 11 h\"; the suggested shift is the first that gives 11 h. Step 2: \"Not moved\" with the rule, ending \"The shift was not moved.\" Step 3: \"This change starts sooner than the 24 h notice Murugan Selvam is owed. Give a reason; they are told at once.\" Step 4: a toast \"Shift moved\"; the log row shows the new next shift and the rest, no badge. Step 5: the day shows the new shift, published; Murugan got the notification \"Your shift on <date> changed\".",
+    "stories": [
+      "TIM-38"
+    ],
+    "note": "Past days and locked months never change here."
   }
 ]
