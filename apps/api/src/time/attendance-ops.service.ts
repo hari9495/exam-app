@@ -160,77 +160,102 @@ export class AttendanceOpsService {
 
   // ------------------------------------------------------------------------------------------ TIM-04 exceptions
 
-  async exceptions(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
-    const { from, to } = monthRange(month);
+  /**
+   * One page of the month's exceptions in the viewer's scope (server-paged and filtered: holds up for 10,000 rows).
+   * Open: a missing check-in / check-out, no approved timesheet or no attendance, not yet resolved by HR (a waiting fix
+   * makes it "Request pending"). Resolved: the days HR resolved this month (the latest resolution). Newest day first.
+   */
+  async exceptions(ctx: TenantContext, user: ScopeUser, q: { month: string; legalEntityId?: string | null; status?: string[]; kind?: string[]; search?: string; page?: number; pageSize?: number }) {
+    const { from, to } = monthRange(q.month);
     const v = await this.viewer(user);
+    const page = Math.max(1, q.page ?? 1);
+    const pageSize = q.pageSize ?? 50;
+    const statuses = q.status?.length ? q.status : ['Open', 'Request pending', 'Resolved'];
+    const kinds = q.kind?.length ? Object.entries(KIND).filter(([, k]) => q.kind!.includes(k)).map(([s]) => s) : null;
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const own = await this.own(tx, c, v);
       const today = todayIst();
       const last = to < today ? to : addDays(today, -1);
-      const people = await this.people(tx, c, v, own, from, entityId, to);
+      const base = { month: q.month, today, scope: this.scope(v), canResolve: has(v, 'leave.approve') && !v.actingForOther, page, pageSize };
+      const everyone = await this.people(tx, c, v, own, from, q.legalEntityId, to);
+      const term = (q.search ?? '').trim().toLowerCase();
+      const people = term ? everyone.filter((p) => p.name.toLowerCase().includes(term) || (p.code ?? '').toLowerCase().includes(term)) : everyone;
+      if (!everyone.length || last < from) return { ...base, total: 0, blocking: 0, rows: [] };
+      const all = everyone.map((p) => p.id);
       const ids = people.map((p) => p.id);
-      if (!ids.length || last < from) return { month, today, scope: this.scope(v), canResolve: false, rows: [] };
-      const [open, resolutions, requests, nudges, tasks] = await Promise.all([
-        tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(last) }, status: { in: EXCEPTION_STATUSES } }, orderBy: { workOn: 'asc' } }),
-        tx.attendanceResolution.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { createdAt: 'asc' } }),
-        tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, kind: { not: 'wfh' }, status: 'pending' } }),
-        tx.nudge.groupBy({ by: ['employeeId'], where: { organizationId: org, employeeId: { in: ids }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, _count: { _all: true } }),
+      const [{ blocking }] = await tx.$queryRaw<{ blocking: number }[]>`
+        SELECT count(*)::int AS blocking FROM attendance_days d
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${all}::uuid[]) AND d.work_on BETWEEN ${from}::date AND ${last}::date
+          AND d.status IN ('missing_in', 'missing_out', 'no_timesheet')
+          AND NOT EXISTS (SELECT 1 FROM attendance_resolutions r WHERE r.organization_id = d.organization_id AND r.employee_id = d.employee_id AND r.work_on = d.work_on)`;
+      const found = ids.length
+        ? await tx.$queryRaw<{ employeeId: string; on: string; status: string | null; st: string; resolutionId: string | null; total: number }[]>`
+          SELECT x.*, count(*) OVER()::int AS total FROM (
+            SELECT d.employee_id::text AS "employeeId", d.work_on::text AS on, d.status,
+                   CASE WHEN EXISTS (SELECT 1 FROM attendance_requests q WHERE q.organization_id = d.organization_id AND q.employee_id = d.employee_id AND q.work_on = d.work_on AND q.kind <> 'wfh' AND q.status = 'pending') THEN 'Request pending' ELSE 'Open' END AS st,
+                   NULL::text AS "resolutionId"
+            FROM attendance_days d
+            WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.work_on BETWEEN ${from}::date AND ${last}::date
+              AND d.status = ANY(${EXCEPTION_STATUSES}::text[])
+              AND NOT EXISTS (SELECT 1 FROM attendance_resolutions r WHERE r.organization_id = d.organization_id AND r.employee_id = d.employee_id AND r.work_on = d.work_on)
+            UNION ALL
+            (SELECT DISTINCT ON (r.employee_id, r.work_on) r.employee_id::text, r.work_on::text, NULL, 'Resolved', r.id::text
+             FROM attendance_resolutions r
+             WHERE r.organization_id = ${org}::uuid AND r.employee_id = ANY(${ids}::uuid[]) AND r.work_on BETWEEN ${from}::date AND ${to}::date
+             ORDER BY r.employee_id, r.work_on, r.created_at DESC)
+          ) x
+          WHERE x.st = ANY(${statuses}::text[]) AND (${kinds === null} OR x.status = ANY(${kinds ?? []}::text[]))
+          ORDER BY x.on DESC, x."employeeId" LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`
+        : [];
+      const total = found[0]?.total ?? 0;
+      const pageIds = [...new Set(found.map((r) => r.employeeId))];
+      const days = found.length ? await tx.attendanceDay.findMany({ where: { organizationId: org, OR: found.filter((r) => r.status).map((r) => ({ employeeId: r.employeeId, workOn: asDate(r.on) })) } }) : [];
+      const resolutions = found.some((r) => r.resolutionId) ? await tx.attendanceResolution.findMany({ where: { organizationId: org, id: { in: found.map((r) => r.resolutionId).filter((x): x is string => Boolean(x)) } } }) : [];
+      const [requests, nudges, tasks] = await Promise.all([
+        tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: { in: pageIds }, workOn: { gte: asDate(from), lte: asDate(to) }, kind: { not: 'wfh' }, status: 'pending' } }),
+        tx.nudge.groupBy({ by: ['employeeId'], where: { organizationId: org, employeeId: { in: pageIds }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, _count: { _all: true } }),
         v.userId ? tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId, status: 'open' }, select: { id: true, requestId: true } }) : Promise.resolve([]),
       ]);
-      const byId = new Map(people.map((p) => [p.id, p]));
+      const byId = new Map(everyone.map((p) => [p.id, p]));
       const userNames = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(resolutions.map((r) => r.resolvedBy))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
-      const rows: Record<string, unknown>[] = [];
-      const effects = new Map<string, { effect: string; zone: string }>();
-      const effectOf = async (employeeId: string, on: string) => {
-        const k = `${employeeId}|${on}`;
-        if (!effects.has(k)) {
-          const f = await factsOn(tx, org, employeeId, on);
-          effects.set(k, { effect: f ? await settingOn(tx, c, 'attendance.missing_punch_effect', f, on) : 'warning_only', zone: f?.zone ?? 'Asia/Kolkata' });
-        }
-        return effects.get(k)!;
-      };
       const book = await ScheduleBook.load(tx, org);
-      // Open days (with any request waiting), then days HR resolved this month.
-      for (const d of open) {
-        const on = dateOf(d.workOn);
-        const req = requests.find((r) => r.employeeId === d.employeeId && dateOf(r.workOn) === on);
-        const p = byId.get(d.employeeId)!;
+      const rows: Record<string, unknown>[] = [];
+      for (const x of found) {
+        const p = byId.get(x.employeeId)!;
+        const r = x.resolutionId ? resolutions.find((y) => y.id === x.resolutionId) : undefined;
+        if (r) {
+          rows.push({ id: `${x.employeeId}|${x.on}`, employeeId: x.employeeId, person: p.name, code: p.code, on: x.on, kind: 'Resolved by HR', status: 'Resolved', blocking: false, mode: 'Punch', detail: r.how === 'absent' ? 'Absent (unpaid)' : r.inMinute !== null ? `Present ${hhmm(r.inMinute)}–${hhmm(r.outMinute)}` : 'Present', firstIn: null, inAt: null, shiftEnd: null, nudged: 0, request: null, resolution: { how: r.how, reason: r.reason, by: userNames.get(r.resolvedBy) ?? null, at: r.createdAt } });
+          continue;
+        }
+        const d = days.find((y) => y.employeeId === x.employeeId && dateOf(y.workOn) === x.on)!;
+        const f = await factsOn(tx, org, x.employeeId, x.on);
+        const zone = f?.zone ?? 'Asia/Kolkata';
+        const effect = f ? await settingOn(tx, c, 'attendance.missing_punch_effect', f, x.on) : 'warning_only';
+        const sh = f ? ((d.shiftId ? book.shiftOn(d.shiftId, x.on) : null) ?? (await book.locationDay(f, x.on)).rule) : null;
+        const req = requests.find((y) => y.employeeId === x.employeeId && dateOf(y.workOn) === x.on);
         const task = req?.wfRequestId ? tasks.find((t) => t.requestId === req.wfRequestId) : undefined;
-        const fx = await effectOf(d.employeeId, on);
+        const inAt = d.firstIn ? hhmm(minutesInto(x.on, zone, d.firstIn)) : null;
         rows.push({
-          id: `${d.employeeId}|${on}`,
-          employeeId: d.employeeId,
+          id: `${x.employeeId}|${x.on}`,
+          employeeId: x.employeeId,
           person: p.name,
           code: p.code,
-          on,
+          on: x.on,
           kind: KIND[d.status],
-          status: req ? 'Request pending' : 'Open',
-          blocking: d.status !== 'absent' && fx.effect === 'block_payroll_approval',
+          status: x.st,
+          blocking: d.status !== 'absent' && effect === 'block_payroll_approval',
           mode: d.mode === 'timesheet' ? 'Timesheet' : 'Punch',
-          detail: d.status === 'missing_out' ? `Checked in ${hhmm(d.firstIn ? minutesInto(on, fx.zone, d.firstIn) : null) ?? ''}, no check-out` : d.status === 'missing_in' ? 'Checked out, no check-in' : d.status === 'no_timesheet' ? 'No approved timesheet for the day' : 'No punches, leave or request',
+          detail: d.status === 'missing_out' ? `Checked in ${inAt ?? ''}, no check-out` : d.status === 'missing_in' ? 'Checked out, no check-in' : d.status === 'no_timesheet' ? 'No approved timesheet for the day' : 'No punches, leave or request',
           firstIn: d.firstIn,
-          inAt: d.firstIn ? hhmm(minutesInto(on, fx.zone, d.firstIn)) : null,
-          shiftEnd: await (async () => {
-            const f = await factsOn(tx, org, d.employeeId, on);
-            const sh = f ? ((d.shiftId ? book.shiftOn(d.shiftId, on) : null) ?? (await book.locationDay(f, on)).rule) : null;
-            return sh ? hhmm(sh.shiftEnd) : null;
-          })(),
-          nudged: nudges.find((n) => n.employeeId === d.employeeId)?._count._all ?? 0,
+          inAt,
+          shiftEnd: sh ? hhmm(sh.shiftEnd) : null,
+          nudged: nudges.find((n) => n.employeeId === x.employeeId)?._count._all ?? 0,
           request: req ? { id: req.id, kind: req.kind, inMinute: req.inMinute, outMinute: req.outMinute, reason: req.reason, taskId: task?.id ?? null } : null,
           resolution: null,
         });
       }
-      const seen = new Set<string>();
-      for (const r of [...resolutions].reverse()) {
-        const on = dateOf(r.workOn);
-        const k = `${r.employeeId}|${on}`;
-        if (seen.has(k) || rows.some((x) => x.id === k)) continue;
-        seen.add(k);
-        const p = byId.get(r.employeeId)!;
-        rows.push({ id: k, employeeId: r.employeeId, person: p.name, code: p.code, on, kind: 'Resolved by HR', status: 'Resolved', blocking: false, mode: 'Punch', detail: r.how === 'absent' ? 'Absent (unpaid)' : r.inMinute !== null ? `Present ${hhmm(r.inMinute)}–${hhmm(r.outMinute)}` : 'Present', firstIn: null, inAt: null, shiftEnd: null, nudged: 0, request: null, resolution: { how: r.how, reason: r.reason, by: userNames.get(r.resolvedBy) ?? null, at: r.createdAt } });
-      }
-      return { month, today, scope: this.scope(v), canResolve: has(v, 'leave.approve') && !v.actingForOther, rows };
+      return { ...base, total, blocking, rows };
     });
   }
 

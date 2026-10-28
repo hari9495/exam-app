@@ -196,3 +196,40 @@ export class DeviceRefQueryDto {
   @MaxLength(100)
   deviceRef!: string;
 }
+
+const list = () => Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((x: string) => x.trim()).filter(Boolean) : value));
+
+/** TIM-04: one page of the month's exceptions, filtered on the server. */
+export class ExceptionsQueryDto extends OpsMonthQueryDto {
+  @IsOptional()
+  @list()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsIn(['Open', 'Request pending', 'Resolved'], { each: true })
+  status?: string[];
+
+  @IsOptional()
+  @list()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsIn(['Missing check-out', 'Missing check-in', 'No attendance', 'No approved timesheet'], { each: true })
+  kind?: string[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(80)
+  search?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([25, 50, 100])
+  pageSize?: number;
+}
