@@ -356,6 +356,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const { busy, error: failed, run } = useRun();
+  const early = useTooEarly(reason.trim() ? [] : [{ fieldId: 'act-reason', message: 'Say why, so the person who asked knows.' }]);
   return (
     <main className="yx-auth__page yx-desk yx-act">
       <Card title={view?.title ?? 'Approval'}>
@@ -382,7 +383,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
               <Rows rows={view.summary.map((s) => [s.label, s.value])} />
               <p className="yx-chat__meta">This link works once, until {when(view.expiresAt)}.</p>
               {rejecting && (
-                <FormField label="Why are you not approving it?" required>
+                <FormField id="act-reason" label="Why are you not approving it?" required error={early.errorOf('act-reason')}>
                   <TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} />
                 </FormField>
               )}
@@ -397,7 +398,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
                   </>
                 ) : (
                   <>
-                    <Button variant="danger" disabled={!reason.trim()} loading={busy === 'reject'} onClick={() => void run('reject', () => onDecide('reject', reason.trim()))}>
+                    <Button variant="danger" loading={busy === 'reject'} onClick={() => !early.stop() && void run('reject', () => onDecide('reject', reason.trim()))}>
                       Send: not approved
                     </Button>
                     <Button onClick={() => setRejecting(false)}>Back</Button>
@@ -419,6 +420,7 @@ export function ChannelLinksCard({ links, sent, onAdd, onRemove }: { links: Chan
   const [provider, setProvider] = useState<'teams' | 'slack'>('teams');
   const [ref, setRef] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly(ref.trim().length < 3 ? [{ fieldId: 'cl-ref', message: 'Enter your account in that app (at least 3 letters).' }] : []);
   if (!links) return null;
   return (
     <Card title="Approve from chat apps">
@@ -440,14 +442,15 @@ export function ChannelLinksCard({ links, sent, onAdd, onRemove }: { links: Chan
         {links.typedLinksAllowed && (
           <>
             <Segment label="App" value={provider} onChange={setProvider} options={[{ value: 'teams', label: 'Teams' }, { value: 'slack', label: 'Slack' }]} />
-            <FormField label="Your account in that app" helper="Demo only. In production you link from the YukthiX app inside Teams or Slack.">
+            <FormField id="cl-ref" label="Your account in that app" error={early.errorOf('cl-ref')} helper="Demo only. In production you link from the YukthiX app inside Teams or Slack.">
               <TextField value={ref} onChange={setRef} maxLength={200} />
             </FormField>
             <Problem error={error} />
             <div className="yx-ops-row">
-              <Button icon={Link2} disabled={ref.trim().length < 3} loading={busy === 'add'} onClick={() => void run('add', async () => {
+              <Button icon={Link2} loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => {
                 await onAdd(provider, ref.trim());
                 setRef('');
+                early.reset();
               })}>
                 Link
               </Button>

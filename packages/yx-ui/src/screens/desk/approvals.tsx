@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { Dialog } from '../../components/overlay';
@@ -58,11 +58,19 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
   const closeReject = () => {
     setRejecting(null);
     setReason('');
+    rejectEarly.reset();
   };
   const [delegate, setDelegate] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(new Date());
   const [to, setTo] = useState<Date | null>(null);
   const { busy, error, run } = useRun();
+  // Never a disabled button (founder rule): pressed too early, the missing field says so and takes focus.
+  const delegateEarly = useTooEarly([
+    ...(!delegate ? [{ fieldId: 'ap-delegate', message: 'Choose who approves for you.' }] : []),
+    ...(!from ? [{ fieldId: 'ap-from', message: 'Choose the first day.' }] : []),
+    ...(!to ? [{ fieldId: 'ap-to', message: 'Choose the last day.' }] : []),
+  ]);
+  const rejectEarly = useTooEarly(reason.trim() ? [] : [{ fieldId: 'ap-reason', message: 'Say why, so the person who asked knows.' }]);
   const pick = (_kind: PickKind, q: string) => props.onFindPeople(q);
   return (
     <DeskPage title="Approvals" description="Requests that need your decision. You see what the request needs you to know; the rest stays with the team doing the work." state={props.state} onRetry={props.onRetry} what="your approvals">
@@ -117,10 +125,10 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                         </div>
                       ) : (
                       <div className="yx-ops-row">
-                        <Button variant="approve" disabled={busy === t.taskId} onClick={() => void run(t.taskId, () => props.onDecide(t, 'approve', ''))}>
+                        <Button variant="approve" loading={busy === t.taskId} onClick={() => void run(t.taskId, () => props.onDecide(t, 'approve', ''))}>
                           Approve
                         </Button>
-                        <Button disabled={busy === t.taskId} onClick={() => setRejecting(t)}>
+                        <Button onClick={() => setRejecting(t)}>
                           Do not approve
                         </Button>
                       </div>
@@ -169,25 +177,27 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
             <div className="yx-ops-stack">
               <Card title="Someone approves for me">
                 <p className="yx-ops-muted">While you are away, the person you choose gets your approvals. They answer for you and the record says so. When your leave is approved in YukthiX HR, this is set for you.</p>
-                <FormField label="Who approves for me" required>
+                <FormField id="ap-delegate" label="Who approves for me" required error={delegateEarly.errorOf('ap-delegate')}>
                   <LivePicker kind="people" value={delegate} onChange={setDelegate} label="Colleague" onPick={pick} />
                 </FormField>
                 <div className="yx-ops-row">
-                  <FormField label="From" required>
+                  <FormField id="ap-from" label="From" required error={delegateEarly.errorOf('ap-from')}>
                     <DatePicker value={from} onChange={setFrom} />
                   </FormField>
-                  <FormField label="To" required>
+                  <FormField id="ap-to" label="To" required error={delegateEarly.errorOf('ap-to')}>
                     <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
                   </FormField>
                 </div>
                 <Button
                   variant="primary"
-                  disabled={!delegate || !from || !to || busy === 'delegate'}
+                  loading={busy === 'delegate'}
                   onClick={() =>
+                    !delegateEarly.stop() &&
                     void run('delegate', async () => {
                       await props.onDelegate({ delegateUserId: delegate!, startsOn: day(from!), endsOn: day(to!) });
                       setDelegate(null);
                       setTo(null);
+                      delegateEarly.reset();
                     })
                   }
                 >
@@ -203,11 +213,11 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                       <li key={d.id} className="yx-ops-row">
                         <span className="yx-esm-cart__name">{d.mine ? `${d.delegate} approves for you` : `You approve for ${d.person}`}</span>
                         <span className="yx-ops-muted">
-                          {d.startsOn} to {d.endsOn}
+                          {shown(d.startsOn)} to {shown(d.endsOn)}
                           {d.source === 'leave' ? ' · from leave' : ''}
                         </span>
                         {d.mine && (
-                          <Button size="sm" onClick={() => void run(`revoke-${d.id}`, () => props.onRevoke(d.id))}>
+                          <Button size="sm" loading={busy === `revoke-${d.id}`} onClick={() => void run(`revoke-${d.id}`, () => props.onRevoke(d.id))}>
                             Stop
                           </Button>
                         )}
@@ -230,8 +240,9 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
             <Button onClick={closeReject}>Cancel</Button>
             <Button
               variant="danger"
-              disabled={!reason.trim() || busy === 'reject'}
+              loading={busy === 'reject'}
               onClick={() =>
+                !rejectEarly.stop() &&
                 void run('reject', async () => {
                   await props.onDecide(rejecting!, 'reject', reason.trim());
                   closeReject();
@@ -243,7 +254,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
           </>
         }
       >
-        <FormField label="Reason" required>
+        <FormField id="ap-reason" label="Reason" required error={rejectEarly.errorOf('ap-reason')}>
           <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
         </FormField>
       </Dialog>

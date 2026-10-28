@@ -114,7 +114,10 @@ describe('approvals inbox (P03)', () => {
     expect(screen.getByRole('button', { name: 'Do not approve' })).not.toHaveAttribute('data-variant', 'danger');
     await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Do not approve' })).toBeDisabled();
+    // Never disabled: pressed with no reason, it says what is missing and sends nothing.
+    await ue.click(within(dialog).getByRole('button', { name: 'Do not approve' }));
+    expect(within(dialog).getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
     // Cancel drops the typed reason: opening again starts empty.
     await ue.type(within(dialog).getByRole('textbox'), 'test only');
     await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));

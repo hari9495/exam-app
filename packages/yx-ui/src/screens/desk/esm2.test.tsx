@@ -13,7 +13,10 @@ describe('3b-2 batch 2 screens', () => {
     render(<ActionLinkScreen view={{ state: 'open', title: 'Mouse for Arjun', summary: [{ label: 'Item', value: 'Mouse' }], expiresAt: new Date(Date.now() + 3_600_000).toISOString() }} error={null} done={null} onDecide={onDecide} onSignIn={vi.fn()} />);
     expect(onDecide).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Not approve' }));
-    expect(screen.getByRole('button', { name: 'Send: not approved' })).toBeDisabled();
+    // Never disabled: pressed with no reason, it says what is missing and sends nothing.
+    await ue.click(screen.getByRole('button', { name: 'Send: not approved' }));
+    expect(screen.getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Back' }));
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onDecide).toHaveBeenCalledWith('approve', '');

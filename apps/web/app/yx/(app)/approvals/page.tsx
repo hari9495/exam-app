@@ -47,8 +47,14 @@ function Approvals() {
         // A decision is "done": a toast says what happened (founder rule).
         toast({ tone: 'success', title: decision === 'approve' ? `Approved: ${t.title}` : `Not approved: ${t.title}`, ...(t.requester ? { description: `${t.requester} is told by email and in their bell.` } : {}) });
       }}
-      onDelegate={(input) => write('/delegations', input)}
-      onRevoke={(id) => write(`/delegations/${encodeURIComponent(id)}/revoke`)}
+      onDelegate={async (input) => {
+        await write('/delegations', input);
+        toast({ tone: 'success', title: 'Saved. Your approvals go to the person you chose for those days.' });
+      }}
+      onRevoke={async (id) => {
+        await write(`/delegations/${encodeURIComponent(id)}/revoke`);
+        toast({ tone: 'success', title: 'Stopped. Your approvals come to you again.' });
+      }}
       onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
       focusRequestId={focus}
     />
@@ -56,10 +62,14 @@ function Approvals() {
       <ChannelLinksCard
         links={links.data}
         sent={sent.data ?? null}
-        onAdd={(provider, externalRef) => write('/channel-links', { provider, externalRef })}
+        onAdd={async (provider, externalRef) => {
+          await write('/channel-links', { provider, externalRef });
+          toast({ tone: 'success', title: `${provider === 'teams' ? 'Microsoft Teams' : 'Slack'} linked. Approval cards go there too.` });
+        }}
         onRemove={async (id) => {
           await apiFetch(`/workflow/channel-links/${encodeURIComponent(id)}`, { method: 'DELETE' }, token);
           await qc.invalidateQueries({ queryKey: ['workflow'] });
+          toast({ tone: 'success', title: 'Unlinked. Approval cards no longer go to that app.' });
         }}
       />
     </div>

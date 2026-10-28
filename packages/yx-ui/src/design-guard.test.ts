@@ -50,18 +50,6 @@ for (const todo = [...IN_STORIES]; todo.length; )
       todo.push(c);
     }
 
-// Known gaps when the guard came in (28 Oct 2026): live pages that render a component no story shows. Each needs a
-// design story (or the designed screen instead); remove the line when it has one. A stale line fails the test too.
-const KNOWN_UNDESIGNED: Record<string, string[]> = {
-  'Me: live screens with no design yet': [
-  ],
-  'Other live screens with no design yet (approvals, performance, settings, portals)': [
-    'ApprovalsScreen @ (app)/approvals/page.tsx',
-    'ChannelLinksCard @ (app)/approvals/page.tsx',
-    'ActionLinkScreen @ act/[token]/page.tsx',
-  ],
-};
-
 describe('design guard', () => {
   it('(a) every @yukthix/ui component a YukthiX page renders has a design story', () => {
     const missing: string[] = [];
@@ -75,9 +63,8 @@ describe('design guard', () => {
         }
       for (const name of rendered(src)) if (fromUi.has(name) && !IN_STORIES.has(name)) missing.push(`${name} @ ${rel(f).replace('apps/web/app/yx/', '').replace('apps/web/', '')}`);
     }
-    const known = new Set(Object.values(KNOWN_UNDESIGNED).flat());
-    expect(missing.filter((m) => !known.has(m)), 'A live page renders a screen or control no story shows (component @ page). Add a story that renders it, or render the designed screen instead.').toEqual([]);
-    expect([...known].filter((k) => !missing.includes(k)), 'These now have a design (or are gone): remove them from KNOWN_UNDESIGNED.').toEqual([]);
+    // No allowlist: the gaps found when the guard came in (28 Oct 2026) all have a design now.
+    expect(missing, 'A live page renders a screen or control no story shows (component @ page). Add a story that renders it, or render the designed screen instead.').toEqual([]);
   });
 
   // Live twins that are not reached through their designed export, kept on purpose (one line each).

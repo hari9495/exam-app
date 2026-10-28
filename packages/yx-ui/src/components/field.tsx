@@ -181,6 +181,8 @@ export function useTooEarly(errors: { fieldId: string; message: string }[]) {
       document.getElementById(errors[0]!.fieldId)?.focus();
       return true;
     },
+    /** Hides the errors again (the form was sent or closed, so the next try starts clean). */
+    reset: shown.reset,
   };
 }
 
