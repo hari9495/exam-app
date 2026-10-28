@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fails, never, ok, play, press, pressFirst, type } from '../../_kit/story-play';
+import { fails, fill, never, ok, play, press, pressFirst, type } from '../../_kit/story-play';
 import { AuditScreen, type AuditScreenProps } from './audit';
-import { ExchangeFilesScreen, PayDocumentsScreen, type ExchangeFilesScreenProps, type PayDocumentsScreenProps } from './documents';
+import { ExchangeFilesScreen, MyPayDocumentsScreen, PayDocumentsScreen, PayPortalSignIn, type ExchangeFilesScreenProps, type MyPayDocumentsScreenProps, type PayDocumentsScreenProps, type PayPortalSignInProps } from './documents';
 import { PayPeriodsScreen, ReopenRequestsScreen, type PayPeriodsScreenProps, type ReopenRequestsScreenProps } from './periods';
 import { AUDIT_PAGE, CHAIN_BROKEN, CHAIN_OK, EXCHANGE_FILES, PAY_DOCUMENTS, PAY_PERIODS, PERIOD_HISTORY, REOPEN_REQUESTS } from './fixtures-5ab';
 
@@ -72,3 +72,25 @@ export const FilesError: S = { name: 'PAY-1.11 · Could not load', render: () =>
 export const Release: S = { name: 'Release a file · open (type the phrase)', render: () => files(), play: play(pressFirst('Release')) };
 export const ReleaseMissing: S = { name: 'Release a file · pressed without the phrase', render: () => files(), play: play(pressFirst('Release'), press('Release the file')) };
 export const ReleaseFailed: S = { name: 'Release a file · the server refuses', render: () => files({ onRelease: fails('The bank cut-off for today has passed; release tomorrow after 9:00 am.') }), play: play(pressFirst('Release'), type(/^Type RELEASE/, 'RELEASE 214'), press('Release the file')) };
+
+// ------------------------------------------------------------------ Me › Pay documents, and the pay documents portal after sign-in
+const MINE = PAY_DOCUMENTS.documents.filter((x) => x.employeeId === 'e-arjun').map(({ person: _p, ...x }) => x);
+const mine = (over: Partial<MyPayDocumentsScreenProps> = {}) => <MyPayDocumentsScreen state="ready" data={MINE} onDownload={ok} verifyUrl={(c) => `https://kaverifoods.yukthix.test/verify/${c}`} {...over} />;
+export const MyDocuments: S = { name: 'My pay documents · current and superseded', render: () => mine() };
+export const MyDocumentsPortal: S = { name: 'My pay documents · in the pay documents portal (former employee)', render: () => mine({ title: 'Your pay documents' }) };
+export const MyDocumentsPurged: S = { name: 'My pay documents · one deleted after its retention period', render: () => mine({ data: [{ ...MINE[0]!, purged: true }, MINE[1]!] }) };
+export const MyDocumentsDownloadFailed: S = { name: 'My pay documents · download refused', render: () => mine({ onDownload: fails('Your session ended after 30 minutes. Sign in again to download.') }), play: play(pressFirst('Download PDF')) };
+export const MyDocumentsEmpty: S = { name: 'My pay documents · none yet', render: () => mine({ data: [] }) };
+export const MyDocumentsLoading: S = { name: 'My pay documents · loading', render: () => mine({ state: 'loading', data: null }) };
+export const MyDocumentsError: S = { name: 'My pay documents · could not load', render: () => mine({ state: 'error', data: null, onRetry: () => undefined }) };
+
+// ------------------------------------------------------------------ Sign-in of the pay documents portal and the consultant portal
+const signIn = (over: Partial<PayPortalSignInProps> = {}) => <PayPortalSignIn company="Kaveri Foods Pvt Ltd" onSendCode={ok} onVerify={ok} {...over} />;
+const email = type(/^Email/, 'arjun.kulkarni@example.in');
+export const PortalSignIn: S = { name: 'Pay portal sign-in · open', render: () => signIn() };
+export const PortalSignInMissing: S = { name: 'Pay portal sign-in · Send me a code pressed with no email', render: () => signIn(), play: play(press('Send me a code')) };
+export const PortalSignInCode: S = { name: 'Pay portal sign-in · code sent', render: () => signIn(), play: play(email, press('Send me a code')) };
+export const PortalSignInCodeMissing: S = { name: 'Pay portal sign-in · Sign in pressed with no code', render: () => signIn(), play: play(email, press('Send me a code'), press('Sign in')) };
+export const PortalSignInFailed: S = { name: 'Pay portal sign-in · wrong code', render: () => signIn({ onVerify: fails('That code is wrong or has expired. Ask for a new one.') }), play: play(email, press('Send me a code'), fill(/^Code/, '482913'), press('Sign in')) };
+export const PortalSignInSending: S = { name: 'Pay portal sign-in · sending the code', render: () => signIn({ onSendCode: never }), play: play(email, press('Send me a code')) };
+export const ConsultantSignIn: S = { name: 'Consultant portal sign-in · open', render: () => signIn({ title: 'Consultants: your invoices', note: 'For consultants the company pays. Use the email the company has for you.' }) };

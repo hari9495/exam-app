@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
+import { FormField, useTooEarly } from '../../../components/field';
 import { CodeField, TextField } from '../../../components/inputs';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
@@ -341,7 +341,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
         ]
       : []),
   ];
-  const save = useSaveErrors(errors);
+  const early = useTooEarly(errors);
   return (
     <div className="yx-auth__page yx-tim-live">
       <Card title={p.title ?? `${p.company}: your pay documents`}>
@@ -349,7 +349,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
           className="yx-tim-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (errors.length) return save.reveal();
+            if (early.stop()) return;
             void run('go', async () => {
               if (!sent) {
                 await p.onSendCode(email.trim());
@@ -359,8 +359,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
           }}
         >
           <p className="yx-tim-muted">{p.note ?? 'For people who have left, for 7 years, and for nominees HR has added. Read only.'}</p>
-          <ErrorSummary errors={save.shownErrors} />
-          <FormField id="pp-email" label="Email" required error={save.errorOf('pp-email')}>
+          <FormField id="pp-email" label="Email" required error={early.errorOf('pp-email')}>
             <TextField type="email" value={email} onChange={setEmail} autoComplete="email" disabled={sent} />
           </FormField>
           {sent && (
@@ -368,7 +367,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
               <InlineAlert tone="info" title="Check your email">
                 If this email may sign in, a code is on its way. It works for 5 minutes.
               </InlineAlert>
-              <FormField id="pp-code" label="Code" required error={save.errorOf('pp-code')}>
+              <FormField id="pp-code" label="Code" required error={early.errorOf('pp-code')}>
                 <CodeField value={code} onChange={setCode} />
               </FormField>
             </>
