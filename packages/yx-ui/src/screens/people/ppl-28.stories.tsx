@@ -2,23 +2,20 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { userEvent, within } from 'storybook/test';
 import { ToastProvider } from '../../components/notify';
 import { REVIEW_ID } from '../../components/stepper';
-import { BulkLetterWizard, IssuedLettersRegister, IssueLetterSheet } from './documents';
-import { INCREMENT_LETTER_PDF, ISSUED_LETTERS, TODAY } from './people-data';
+import { BulkLetterWizard, IssuedLettersRegister } from './documents';
+import { INCREMENT_LETTER_PDF, ISSUED_LETTERS } from './people-data';
 import type { Letter, LetterTemplate } from './live/types';
 
 const meta: Meta = { title: 'Screens/People/PPL-28 · Issue letters', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
-export const Issue: S = { name: 'Issue letter · preview with real data', render: () => <IssueLetterSheet today={TODAY} /> };
-export const Approval: S = { name: 'Issue letter · approval before issue', render: () => <IssueLetterSheet today={TODAY} pendingApproval /> };
-export const Missing: S = { name: 'Issue letter · missing fields block generation', render: () => <IssueLetterSheet today={TODAY} missing /> };
 export const Bulk: S = { name: 'Bulk issue · preview with failures', render: () => <BulkLetterWizard current="preview" /> };
 export const BulkConfirm: S = { name: 'Bulk issue · typed confirmation', render: () => <BulkLetterWizard current={REVIEW_ID} confirmOpen /> };
 export const Register: S = { name: 'Issued letters register (superseded, held)', render: () => <IssuedLettersRegister rows={ISSUED_LETTERS} /> };
 export const Empty: S = { name: '· register empty', render: () => <IssuedLettersRegister rows={[]} /> };
 
-/** The live sheet with the API's shapes: two templates, one needing approval; HR opened it from Arjun's record. */
+/** The issue sheet with the API's shapes: two templates, one needing approval; HR opened it from Arjun's record. */
 const T = (id: string, letterType: string, name: string, requiresApproval: boolean): LetterTemplate => ({ id, letterType, name, legalEntityId: null, language: 'en', source: 'starter', fields: [], requiresApproval, personSigns: false, companyDsc: false, onePerPerson: false, version: 2, status: 'active', previewViewed: true, createdAt: '2026-09-01T00:00:00Z' });
 const liveIssue = (onPreview: () => Promise<string>) => ({
   state: 'ready' as const,
@@ -44,9 +41,9 @@ const pickType =
     await userEvent.click(await body.findByRole('option', { name: label }));
   };
 const missingFields = () => Promise.reject(Object.assign(new Error('This letter cannot be made yet.'), { code: 'LETTER_FIELDS_MISSING', body: { errors: { new_ctc: 'Annual CTC after the raise', effective_date: 'Raise effective from' } } }));
-export const LiveIssue: S = { name: 'Live · issue letter · preview with real data', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Experience letter') };
-export const LiveApproval: S = { name: 'Live · issue letter · approval before issue', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
-export const LiveMissing: S = { name: 'Live · issue letter · missing fields block generation', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(missingFields)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
+export const Issue: S = { name: 'Issue letter · preview with real data', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Experience letter') };
+export const Approval: S = { name: 'Issue letter · approval before issue', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(async () => INCREMENT_LETTER_PDF)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
+export const Missing: S = { name: 'Issue letter · missing fields block generation', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={liveIssue(missingFields)} /></ToastProvider>, play: pickType('Promotion with pay change (approval required)') };
 
 /** The live bulk issue with the API's shapes: four people chosen in the directory, two that can't get the letter. */
 const liveBulk = {

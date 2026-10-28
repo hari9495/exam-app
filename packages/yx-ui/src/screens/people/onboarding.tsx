@@ -2,7 +2,6 @@
 // PPL-15 Pre-boarding actions · PPL-16 Probation queue · PPL-17 Probation review · PPL-41 Buddy panel (M01 §3.4, §3.5, §3.11).
 import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, Check, FileText, Lock, Plus, Upload, UserPlus } from 'lucide-react';
-import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { KanbanBoard, type KanbanCard, type KanbanColumn } from '../../components/kanban';
@@ -22,12 +21,12 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate } from '../../lib/format';
 import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
-import { addDays, daysBetween, extensionAllowed, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
+import { addDays, daysBetween, journeyProgress, overdueTasks, probationState, reanchor, taskDue, type JourneyTask, type Persona } from './people-logic';
 import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData } from './live/types';
 import { TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
 import { taskButtons, taskRow } from './checklists';
 import { useRun } from '../org/org-kit';
-import { BATCHES, BUDDIES, d, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
+import { BATCHES, BUDDIES, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
 import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-11 onboarding board */
@@ -573,7 +572,7 @@ const liveWhen = (offset: number, kind: LiveJourneyData['kind']) => {
 function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) {
   const j = live.journey;
   const [ask, setAsk] = useState<TaskAsk | null>(null);
-  const [changing, setChanging] = useState(false);
+  const [changing, setChanging] = useState(Boolean(live.preboard?.open));
   const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
   if (live.state !== 'ready' || !j)
     return (
@@ -670,7 +669,7 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
       </div>
       {live.children}
       {ask && <TaskDialog ask={ask} actions={live.actions} onClose={() => setAsk(null)} />}
-      {changing && live.preboard && <PreboardingActionDrawer who={j.person} join={live.preboard.joiningOn} tasks={live.preboard.tasks} initial="postpone" initialDate={null} rehire={live.preboard.rehire} open onClose={() => setChanging(false)} live={live.preboard} />}
+      {changing && live.preboard && <PreboardingActionDrawer who={j.person} live={live.preboard} onClose={() => setChanging(false)} />}
     </PeopleFrame>
   );
 }
@@ -1025,31 +1024,32 @@ export interface LivePreboardAction {
   rehire: { first: string; code: string } | null;
   onPostpone: (joiningOn: string) => Promise<unknown>;
   onCancel: (outcome: PreboardOutcome, reason: string) => Promise<unknown>;
+  /** The design stories: Change status is already open with this choice. */
+  open?: { action: PreboardAction; date?: Date | null; reason?: string; reasonError?: boolean };
 }
 
 const PREBOARD_LABEL: Record<PreboardAction, string> = { postpone: 'Change joining date', 'did-not-join': 'Mark did not join', reneged: 'Record reneged', withdraw: 'Withdraw offer' };
 
-/** The Change status drawer; the sample (story) and the live journey record share it. */
-function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initialReason = '', reasonError = false, rehire, open, onClose, live }: { who: string; join: Date; tasks: PreboardTask[]; initial: PreboardAction; initialDate: Date | null; initialReason?: string; reasonError?: boolean; rehire: { first: string; code: string } | null; open: boolean; onClose: () => void; live?: LivePreboardAction }) {
-  const [action, setAction] = useState<PreboardAction>(initial);
-  const [date, setDate] = useState<Date | null>(initialDate);
-  const [reason, setReason] = useState(initialReason);
-  const [tried, setTried] = useState(reasonError);
+/** The journey record's Change status drawer (the stories open it with sample data). */
+function PreboardingActionDrawer({ who, live, onClose }: { who: string; live: LivePreboardAction; onClose: () => void }) {
+  const [action, setAction] = useState<PreboardAction>(live.open?.action ?? 'postpone');
+  const [date, setDate] = useState<Date | null>(live.open?.date ?? null);
+  const [reason, setReason] = useState(live.open?.reason ?? '');
+  const [tried, setTried] = useState(Boolean(live.open?.reasonError));
   const { busy, error, run } = useRun();
+  const { joiningOn: join, tasks, rehire } = live;
   const unwind = action !== 'postpone';
   const shift = date ? daysBetween(join, date) : 0;
   const reasonMissing = action === 'withdraw' && !reason.trim();
-  // Founder 27 Oct 2026: a candidate may also join early, so any day from today (the server checks the same).
-  const earliest = live ? live.today : undefined;
   const submit = async () => {
     setTried(true);
-    if (!live || (action === 'postpone' ? !date : reasonMissing)) return;
+    if (action === 'postpone' ? !date : reasonMissing) return;
     const ok = await run('go', () => (action === 'postpone' ? live.onPostpone(dayKeyOf(date!)) : live.onCancel(OUTCOME[action], reason.trim())));
     if (ok) onClose();
   };
   return (
     <Drawer
-      open={open}
+      open
       onOpenChange={(o) => !o && onClose()}
       title={`Change pre-boarding for ${who}`}
       footer={
@@ -1081,8 +1081,9 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
         </FormField>
         {action === 'postpone' && (
           <>
+            {/* Founder 27 Oct 2026: a candidate may also join early, so any day from today (the server checks the same). */}
             <FormField label="New joining date" required error={tried && !date ? 'Pick the new joining date.' : null}>
-              <DatePicker value={date} onChange={setDate} min={earliest} />
+              <DatePicker value={date} onChange={setDate} min={live.today} />
             </FormField>
             <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Open tasks re-anchor; done tasks stay, scrolls sideways on small screens">
               <table className="yx-ppl__impact">
@@ -1110,19 +1111,21 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
         {unwind && (
           <>
             <InlineAlert tone="warning" title="This unwinds pre-boarding in one audited step">
-              {live
-                ? `The checklist, desk requests, background checks, unsigned letters and the pre-boarding login are cancelled (kept, not deleted).${live.requisition ? ` ${live.requisition.planned ? 'The headcount-plan slot is released and the' : 'The'} requisition for ${live.requisition.title} reopens.` : ''}${live.fromOffer ? ` The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.` : ''}${action === 'withdraw' ? ' The withdrawal letter is drafted for your review.' : ''}`
-                : `The employee, employment, draft compensation and pre-boarding login are cancelled (kept, not deleted). The headcount-plan slot is released and requisition REQ-2026-0288 reopens. The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.`}
+              {`The checklist, desk requests, background checks, unsigned letters and the pre-boarding login are cancelled (kept, not deleted).${live.requisition ? ` ${live.requisition.planned ? 'The headcount-plan slot is released and the' : 'The'} requisition for ${live.requisition.title} reopens.` : ''}${live.fromOffer ? ` The candidate is marked ${action === 'withdraw' ? 'withdrawn' : 'reneged'} in Hiring.` : ''}${action === 'withdraw' ? ' The withdrawal letter is drafted for your review.' : ''}`}
             </InlineAlert>
             <FormField label="Reason" required={action === 'withdraw'} optional={action !== 'withdraw'} error={tried && reasonMissing ? 'Enter a reason. It goes on the withdrawal letter and the audit log.' : null}>
               <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
             </FormField>
-            {action === 'withdraw' && <Text size="sm" tone="secondary" as="p">{live ? 'A withdrawal letter (starter template) is drafted for your review in People › Letters. BGV discrepancies never withdraw an offer automatically.' : 'A withdrawal letter (starter template) is created for your review. BGV discrepancies never withdraw an offer automatically.'}</Text>}
+            {action === 'withdraw' && (
+              <Text size="sm" tone="secondary" as="p">
+                A withdrawal letter (starter template) is drafted for your review in People › Letters. BGV discrepancies never withdraw an offer automatically.
+              </Text>
+            )}
           </>
         )}
         {rehire && (
           <InlineAlert tone="info" title="Rehire: what the unwind reverses">
-            {live ? `${rehire.first}'s old employment, code ${rehire.code} and UAN stay as they were; the rehire options you chose are discarded.` : `The new employment on ${rehire.first}'s existing record is cancelled. His old employment, code ${rehire.code} and UAN stay as they were; the rehire options you chose are discarded.`}
+            {`${rehire.first}'s old employment, code ${rehire.code} and UAN stay as they were; the rehire options you chose are discarded.`}
           </InlineAlert>
         )}
       </div>
@@ -1130,28 +1133,61 @@ function PreboardingActionDrawer({ who, join, tasks, initial, initialDate, initi
   );
 }
 
-// PPL-15
+// PPL-15: the journey record with Change status open, on sample data (the live record passes the API's).
 export function PreboardingActionSheet({ action, rehire = false, reasonError = false }: { action: PreboardAction; rehire?: boolean; reasonError?: boolean }) {
-  const [open, setOpen] = useState(true);
   const who = rehire ? 'Suresh Nair' : 'Kavya Reddy';
   const join = rehire ? new Date(2026, 9, 12) : KAVYA_JOIN;
-  const tasks = ONBOARDING_TASKS.slice(0, 6).map((t) => ({ id: t.id, title: t.title, dueOn: taskDue(join, t), done: t.status === 'done' }));
+  const sample = ONBOARDING_TASKS.slice(0, 6);
+  const tasks: LiveJourneyData['tasks'] = sample.map((t) => ({
+    id: t.id,
+    key: t.id,
+    title: t.title,
+    kind: t.locked ? 'letter' : 'tick',
+    ownerType: 'hr',
+    ownerLabel: t.owner,
+    assignee: null,
+    dueOn: dayKeyOf(taskDue(join, t)),
+    dueOffsetDays: t.offset,
+    status: t.status === 'done' ? 'done' : 'open',
+    overdue: false,
+    required: true,
+    locked: Boolean(t.locked),
+    form: null,
+    documentType: null,
+    answers: null,
+    link: null,
+    completedAt: null,
+    completedBy: null,
+    skipReason: null,
+    canComplete: false,
+    canSkip: false,
+    version: 1,
+  }));
+  const none = async () => {};
   return (
-    <PeopleFrame active="Onboarding board">
-      <ObjectHeader name={`${who} · pre-boarding`} person secondary={`${rehire ? 'Maintenance Technician (rehire)' : 'Quality Inspector'} · joins ${formatDate(join)}`} status={<Badge tone="info">Pre-boarding</Badge>} actions={<Button onClick={() => setOpen(true)}>Change status</Button>} />
-      <PreboardingActionDrawer
-        who={who}
-        join={join}
-        tasks={tasks}
-        initial={action}
-        initialDate={new Date(2026, 9, 19)}
-        initialReason={!reasonError && action === 'reneged' ? 'Accepted a counter-offer from the current employer.' : ''}
-        reasonError={reasonError}
-        rehire={rehire ? { first: 'Suresh', code: 'KF-0077' } : null}
-        open={open}
-        onClose={() => setOpen(false)}
-      />
-    </PeopleFrame>
+    <JourneyRecord
+      tasks={[]}
+      joining={join}
+      today={TODAY}
+      live={{
+        state: 'ready',
+        onRetry: () => {},
+        journey: { id: 'j1', kind: 'onboarding', person: who, personId: 'p1', subjectType: 'preboarding', subjectId: 'pb1', anchorOn: dayKeyOf(join), status: 'active', progress: 33, template: 'Standard onboarding', joiner: { status: 'invited', outcome: null, joined: false }, owner: 'Lakshmi Venkatesan', canManage: true, today: dayKeyOf(TODAY), tasks },
+        joiner: { role: rehire ? 'Maintenance Technician (rehire)' : 'Quality Inspector', location: 'Hosur plant', manager: 'Divya Menon', buddy: null },
+        actions: { onComplete: none, onSkip: none },
+        preboard: {
+          joiningOn: join,
+          today: TODAY,
+          tasks: sample.map((t) => ({ id: t.id, title: t.title, dueOn: taskDue(join, t), done: t.status === 'done' })),
+          fromOffer: true,
+          requisition: { title: 'Quality Inspector', planned: true },
+          rehire: rehire ? { first: 'Suresh', code: 'KF-0077' } : null,
+          onPostpone: none,
+          onCancel: none,
+          open: { action, date: new Date(2026, 9, 19), reason: !reasonError && action === 'reneged' ? 'Accepted a counter-offer from the current employer.' : '', reasonError },
+        },
+      }}
+    />
   );
 }
 
@@ -1222,7 +1258,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
     setOpenId(r.id);
   };
   // Live: the manager reviews their direct reports; HR decides any open probation. "Remind manager" has no live action yet.
-  const mayAct = (r: Row) => (live ? (mgr ? Boolean(r.live?.canReview) : live.canDecide || Boolean(r.live?.canReview)) : true);
+  const mayAct = (r: Row) => (live ? (mgr ? Boolean(r.live?.canReview) : live.canDecide || Boolean(r.live?.canReview)) : r.state !== 'running');
   const action = (r: Row) => {
     if (live) {
       if (r.state === 'waiting') return <Button size="sm" variant="review" onClick={live.onOpenApproval}>Review</Button>;
@@ -1240,23 +1276,23 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
   const sorted = [...withState].sort((a, b) => a.end.getTime() - b.end.getTime());
   // PPL-16: HR decides with the same review as the manager (confirm, extend or recommend ending, rating, comments);
   // the API takes HR's review on everyone its job-change grant reaches.
-  const outcomes: ProbationOutcome[] = ['confirm', 'extend', 'terminate'];
-  const problem =
-    !live || !open
-      ? null
-      : outcome === 'extend' && (!months || months < 1 || months > (open.live?.maxMonthsLeft ?? 0))
+  // The sample: 6 months' probation, at most 12 in all (company policy).
+  const maxMonths = open ? (open.live?.maxMonthsLeft ?? 6 - open.extended) : 0;
+  const problem = !open
+    ? null
+    : outcome === 'extend' && (!months || months < 1 || months > maxMonths)
         ? 'months'
         : draft.comments.trim().length < 3
             ? 'comments'
             : null;
   const submit = async () => {
-    if (!live || !open) return;
+    if (!open) return;
     setTried(true);
     if (problem) return;
     setBusy(true);
     setFailed(null);
     try {
-      await live.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
+      await live?.onReview(open.id, outcome, outcome === 'extend' ? months : null, draft);
       setOpenId(null);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'That did not work. Try again.');
@@ -1320,19 +1356,14 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
         title={`Probation review: ${open?.name ?? ''}`}
         subtitle={open ? `${open.role ? `${open.role} · ` : ''}probation ${formatDate(open.start)} to ${formatDate(open.end)}` : undefined}
         footer={
-          open && (live ? !mayAct(open) : open.state === 'running') ? (
+          open && !mayAct(open) ? (
             <Button onClick={() => setOpenId(null)}>Close</Button>
-          ) : live ? (
+          ) : (
             <>
               <Button onClick={() => setOpenId(null)}>Cancel</Button>
               <Button variant={outcome === 'terminate' ? 'danger' : 'primary'} loading={busy} onClick={() => void submit()}>
                 {outcome === 'confirm' ? `Confirm ${first}` : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
               </Button>
-            </>
-          ) : (
-            <>
-              <Button onClick={() => setOpenId(null)}>Save draft</Button>
-              <Button variant={outcome === 'terminate' ? 'danger' : 'primary'}>{outcome === 'confirm' ? `Confirm ${first}` : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}</Button>
             </>
           )
         }
@@ -1345,7 +1376,7 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
                 Probation ended on {formatDate(open.end)} and {open.manager || 'the manager'} didn&apos;t review it, so HR decides.{open.manager ? ` ${open.manager} is told the outcome.` : ''}
               </InlineAlert>
             )}
-            {(live ? !mayAct(open) : open.state === 'running') ? (
+            {!mayAct(open) ? (
               <InlineAlert tone="info">
                 The review opens on {formatDate(open.live?.reviewDueOn ?? addDays(open.end, -15))}. {open.manager || 'The manager'} gets the form then.
               </InlineAlert>
@@ -1357,16 +1388,10 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
                 setMonths={setMonths}
                 first={first}
                 end={open.end}
-                extended={open.extended}
-                {...(live
-                  ? {
-                      outcomes,
-                      draft,
-                      setDraft,
-                      maxMonths: open.live?.maxMonthsLeft ?? 0,
-                      errors: tried ? problem : null,
-                    }
-                  : {})}
+                draft={draft}
+                setDraft={setDraft}
+                maxMonths={maxMonths}
+                errors={tried ? problem : null}
               />
             )}
           </div>
@@ -1390,94 +1415,48 @@ function EndsCell({ row, today }: { row: Prob; today: Date }) {
   );
 }
 
-/* ================================================================== PPL-17 probation review */
+/* ================================================================== PPL-17 probation review (in the queue's drawer) */
 
 export type ProbationOutcome = 'confirm' | 'extend' | 'terminate';
-/** Divya's own report whose review is due (same person as on the Probation queue). */
-const ROHIT = { name: 'Rohit Menon', first: 'Rohit', role: 'QA Engineer', dept: 'Quality', start: d(2026, 4, 13), end: d(2026, 10, 12) };
-const ROHIT_COMMENT = 'Owns the regression suite for the label printer; bug reports are clearer since the day-30 check-in.';
 const addMonths = (date: Date, n: number) => new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
 
-const OUTCOME_TEXT: Record<ProbationOutcome, { label: string; description: (first: string, live: boolean, confirmFrom: boolean) => string }> = {
-  confirm: { label: 'Confirm', description: (_f, live, hr) => (live ? (hr ? 'Sends the confirmation for approval by someone else. They stay on probation until it is approved.' : 'HR approves the confirmation; until then they stay on probation.') : 'Sends a confirmation letter. Notice becomes 60 days and earned leave starts.') },
-  extend: { label: 'Extend', description: () => 'Up to 12 months of probation in total (company policy).' },
+const OUTCOME_TEXT: Record<ProbationOutcome, { label: string; description: (first: string, maxMonths: number) => string }> = {
+  confirm: { label: 'Confirm', description: () => 'HR approves the confirmation; until then they stay on probation.' },
+  extend: { label: 'Extend', description: (_f, max) => `Up to ${plural(max, 'more month')} (company policy).` },
   terminate: { label: 'Recommend ending employment', description: (first) => `HR reviews it and decides. Nothing is shared with ${first} until then.` },
 };
 
-function ProbationFields({
-  outcome,
-  setOutcome,
-  months,
-  setMonths,
-  first,
-  end,
-  extended = 0,
-  comment,
-  outcomes = ['confirm', 'extend', 'terminate'],
-  draft,
-  setDraft,
-  maxMonths,
-  confirmFrom = false,
-  errors = null,
-}: {
-  outcome: ProbationOutcome;
-  setOutcome: (o: ProbationOutcome) => void;
-  months: number | null;
-  setMonths: (m: number | null) => void;
-  first: string;
-  end: Date;
-  extended?: number;
-  comment?: string;
-  /** Live: the outcomes the viewer may choose, the controlled form, the months left and who decides. */
-  outcomes?: ProbationOutcome[];
-  draft?: ProbationDraft;
-  setDraft?: (d: ProbationDraft) => void;
-  maxMonths?: number;
-  confirmFrom?: boolean;
-  errors?: 'months' | 'from' | 'comments' | null;
-}) {
-  const [rating, setRating] = useState<string | null>(null);
+function ProbationFields({ outcome, setOutcome, months, setMonths, first, end, draft, setDraft, maxMonths, errors }: { outcome: ProbationOutcome; setOutcome: (o: ProbationOutcome) => void; months: number | null; setMonths: (m: number | null) => void; first: string; end: Date; draft: ProbationDraft; setDraft: (d: ProbationDraft) => void; maxMonths: number; errors: 'months' | 'comments' | null }) {
   const [raised, setRaised] = useState<string | null>(null);
   const [raisedOn, setRaisedOn] = useState<Date | null>(null);
-  const live = Boolean(draft && setDraft);
-  const set = (patch: Partial<ProbationDraft>) => draft && setDraft?.({ ...draft, ...patch });
-  const ok = live ? errors !== 'months' : outcome !== 'extend' || !months || extensionAllowed(6, extended, months, 12);
+  const set = (patch: Partial<ProbationDraft>) => setDraft({ ...draft, ...patch });
   return (
     <div className="yx-ppl__form">
       <FormField label="Outcome" required>
-        <RadioGroup
-          value={outcome}
-          onChange={(v) => setOutcome(v as ProbationOutcome)}
-          options={outcomes.map((o) => ({ value: o, label: OUTCOME_TEXT[o].label, description: o === 'extend' && live ? `Up to ${plural(maxMonths ?? 0, 'more month')} (company policy).` : OUTCOME_TEXT[o].description(first, live, confirmFrom) }))}
-        />
+        <RadioGroup value={outcome} onChange={(v) => setOutcome(v as ProbationOutcome)} options={(['confirm', 'extend', 'terminate'] as const).map((o) => ({ value: o, label: OUTCOME_TEXT[o].label, description: OUTCOME_TEXT[o].description(first, maxMonths) }))} />
       </FormField>
-      {outcome === 'confirm' && confirmFrom && (
-        <FormField label="Confirmed from" required helper="Usually the day after the probation ends." error={errors === 'from' ? 'Choose the day the confirmation starts.' : null}>
-          <DatePicker value={draft?.from ?? null} onChange={(v) => set({ from: v })} />
-        </FormField>
-      )}
       {outcome === 'extend' && (
         <>
           <FormField
             label="Extend by (months)"
             required
-            error={ok ? null : live ? `Extend by 1 to ${maxMonths} ${maxMonths === 1 ? 'month' : 'months'}. Probation has a company maximum in total.` : 'Extend by 1 to 6 months. Probation can be 12 months at most in total.'}
-            helper={ok && months ? `New end date: ${formatDate(addMonths(end, months))}` : undefined}
+            error={errors === 'months' ? `Extend by 1 to ${maxMonths} ${maxMonths === 1 ? 'month' : 'months'}. Probation has a company maximum in total.` : null}
+            helper={errors !== 'months' && months ? `New end date: ${formatDate(addMonths(end, months))}` : undefined}
           >
             <NumberField value={months} onChange={setMonths} />
           </FormField>
-          <FormField label="What needs to improve" required={!live} optional={live} helper={`${first} sees this, so they know what to work on.`}>
-            {live ? <TextArea rows={3} value={draft!.improve} onChange={(v) => set({ improve: v })} maxLength={1000} /> : <TextArea rows={3} />}
+          <FormField label="What needs to improve" optional helper={`${first} sees this, so they know what to work on.`}>
+            <TextArea rows={3} value={draft.improve} onChange={(v) => set({ improve: v })} maxLength={1000} />
           </FormField>
         </>
       )}
       {outcome === 'terminate' && (
         <>
-          <FormField label={`Did you raise these concerns with ${first} earlier?`} required={!live} optional={live}>
+          <FormField label={`Did you raise these concerns with ${first} earlier?`} optional>
             <RadioGroup value={raised ?? undefined} onChange={setRaised} orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
           </FormField>
           {raised === 'yes' && (
-            <FormField label="When" required={!live} optional={live}>
+            <FormField label="When" optional>
               <DatePicker value={raisedOn} onChange={setRaisedOn} />
             </FormField>
           )}
@@ -1488,91 +1467,13 @@ function ProbationFields({
           )}
         </>
       )}
-      {!confirmFrom && (
-        <FormField label="Rating" optional>
-          <Select options={['Exceeds', 'Meets', 'Below'].map((x) => ({ value: x, label: x }))} value={live ? draft!.rating : rating} onChange={live ? (v) => set({ rating: v }) : setRating} placeholder="Choose a rating" />
-        </FormField>
-      )}
-      <FormField label={confirmFrom ? 'Reason' : 'Comments'} required helper={confirmFrom ? 'Kept on the record.' : `Shared with HR. ${first} sees the outcome and the letter.`} error={errors === 'comments' ? (confirmFrom ? 'Enter the reason.' : 'Enter your comments.') : null}>
-        {live ? <TextArea rows={3} value={draft!.comments} onChange={(v) => set({ comments: v })} maxLength={2000} /> : <TextArea rows={3} defaultValue={comment} />}
+      <FormField label="Rating" optional>
+        <Select options={['Exceeds', 'Meets', 'Below'].map((x) => ({ value: x, label: x }))} value={draft.rating} onChange={(v) => set({ rating: v })} placeholder="Choose a rating" />
+      </FormField>
+      <FormField label="Comments" required helper={`Shared with HR. ${first} sees the outcome and the letter.`} error={errors === 'comments' ? 'Enter your comments.' : null}>
+        <TextArea rows={3} value={draft.comments} onChange={(v) => set({ comments: v })} maxLength={2000} />
       </FormField>
     </div>
-  );
-}
-
-/** What the manager needs in front of them to decide. No pay. */
-function HowItWent() {
-  const notes: ChecklistRow[] = [
-    { id: 'n1', title: 'Day-30 check-in · 13 May 2026', owner: 'Divya Raghunathan', status: 'Done', note: 'Picks up the test framework quickly; bug reports need clearer steps to reproduce.' },
-    { id: 'n2', title: 'Buddy feedback · 12 Jun 2026', owner: 'Imran Qureshi', status: 'Done', note: 'Asks good questions and has settled into the team well.' },
-  ];
-  return (
-    <Card title="How it went">
-      <div className="yx-ppl__stack">
-        <dl className="yx-ppl__dl">
-          <div className="yx-ppl__dl-row"><dt>Attendance</dt><dd>96% · 4 days absent</dd></div>
-          <div className="yx-ppl__dl-row"><dt>Leave taken</dt><dd>4 days (casual 2, sick 2)</dd></div>
-          <div className="yx-ppl__dl-row"><dt>Goals</dt><dd>2 of 3 on track</dd></div>
-          <div className="yx-ppl__dl-row"><dt>Warnings</dt><dd>None</dd></div>
-        </dl>
-        <StatusChecklist label="Earlier check-ins" rows={notes} />
-      </div>
-    </Card>
-  );
-}
-
-const mainLabel = (o: ProbationOutcome, first: string) => (o === 'confirm' ? `Confirm ${first}` : o === 'extend' ? 'Extend probation' : 'Send to HR');
-const mainVariant = (o: ProbationOutcome) => (o === 'confirm' ? 'approve' : o === 'extend' ? 'primary' : 'danger') as 'approve' | 'primary' | 'danger';
-const deadline = (end: Date, today: Date) => `Decide by ${formatDate(end)} (in ${plural(daysBetween(today, end), 'day')}). If you don't, HR decides.`;
-
-// PPL-17
-export function ProbationReviewForm({ outcome: initial = 'confirm', months: m = null }: { outcome?: ProbationOutcome; months?: number | null }) {
-  const [outcome, setOutcome] = useState<ProbationOutcome>(initial);
-  const [months, setMonths] = useState<number | null>(m);
-  return (
-    <PeopleFrame active="Probation" persona="mgr">
-      <ObjectHeader
-        name={`Probation review: ${ROHIT.name}`}
-        avatarName={ROHIT.name}
-        person
-        secondary={`${ROHIT.role} · ${ROHIT.dept} · probation ${formatDate(ROHIT.start)} to ${formatDate(ROHIT.end)}`}
-        status={<StatusBadge status="Review due" />}
-      />
-      <InlineAlert tone="info">{deadline(ROHIT.end, TODAY)}</InlineAlert>
-      <div className="yx-ppl__grid2 yx-ppl__grid2--aside-first">
-        <HowItWent />
-        <div className="yx-ppl__stack">
-          <ProbationFields outcome={outcome} setOutcome={setOutcome} months={months} setMonths={setMonths} first={ROHIT.first} end={ROHIT.end} comment={ROHIT_COMMENT} />
-          <div className="yx-ppl__row">
-            <Button>Save draft</Button>
-            <Button variant={mainVariant(outcome)}>{mainLabel(outcome, ROHIT.first)}</Button>
-          </div>
-        </div>
-      </div>
-    </PeopleFrame>
-  );
-}
-
-// PPL-17 · phone
-export function ProbationReviewPhone({ outcome: initial = 'confirm', months: m = null }: { outcome?: ProbationOutcome; months?: number | null }) {
-  const [outcome, setOutcome] = useState<ProbationOutcome>(initial);
-  const [months, setMonths] = useState<number | null>(m);
-  return (
-    <PhoneFrame tab="requests" title="Probation review">
-      <ObjectHeader name={ROHIT.name} person secondary={`${ROHIT.role} · ends ${formatDate(ROHIT.end)}`} status={<StatusBadge status="Review due" />} />
-      <InlineAlert tone="info">{deadline(ROHIT.end, TODAY)}</InlineAlert>
-      <details className="yx-ppl__done-fold">
-        <summary>How it went</summary>
-        <HowItWent />
-      </details>
-      <ProbationFields outcome={outcome} setOutcome={setOutcome} months={months} setMonths={setMonths} first={ROHIT.first} end={ROHIT.end} comment={ROHIT_COMMENT} />
-      <div className="yx-ppl__stack">
-        <Button variant={mainVariant(outcome)} fullWidth>
-          {mainLabel(outcome, ROHIT.first)}
-        </Button>
-        <Button fullWidth>Save draft</Button>
-      </div>
-    </PhoneFrame>
   );
 }
 

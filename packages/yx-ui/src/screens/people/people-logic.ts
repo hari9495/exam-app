@@ -149,10 +149,6 @@ export function probationState(end: Date, today: Date, reviewDaysBefore = 15, re
   if (left === 0) return 'overdue';
   return left <= reviewDaysBefore ? 'review due' : 'running';
 }
-/** Extension must keep total probation within the policy maximum. */
-export function extensionAllowed(originalMonths: number, alreadyExtended: number, extendBy: number, maxTotalMonths: number): boolean {
-  return extendBy > 0 && originalMonths + alreadyExtended + extendBy <= maxTotalMonths;
-}
 
 /* ------------------------------------------------------------------ journeys (YX-LC-02, YX-LC-13) */
 

@@ -6,7 +6,6 @@ import {
   addWorkingDays,
   applyIncrement,
   canSeePay,
-  extensionAllowed,
   fieldVisibility,
   fnfTotals,
   gratuity,
@@ -32,7 +31,7 @@ import { d, HOLIDAYS, MATCHES, MEERA_FNF, ONBOARDING_TASKS, SPLITS, TODAY, WORKF
 import { BulkChangesWizard, ChangeActionSheet, EmployeeImportWizard, RestructureWizard, incrementPreview, SAMPLE_IMPORT, ScheduledChangesScreen } from './changes';
 import { DirectoryScreen } from './directory';
 import { PersonWorkspace, InternationalBankTab } from './record';
-import { BOARD, BuddyPanel, JourneyRecord, OnboardingBoard, PreboardingBatches, ProbationQueue, ProbationReviewForm, ReadyToOnboardQueue } from './onboarding';
+import { BOARD, BuddyPanel, JourneyRecord, OnboardingBoard, PreboardingBatches, ProbationQueue, ReadyToOnboardQueue } from './onboarding';
 import { BATCHES, BUDDIES, KAVYA_JOIN, PROBATIONS, READY_TO_ONBOARD, SCHEDULED } from './people-data';
 
 describe('P02 field visibility', () => {
@@ -100,8 +99,6 @@ describe('lifecycle rules', () => {
     expect(probationState(d(2026, 9, 29), TODAY)).toBe('overdue');
     expect(probationState(d(2026, 9, 15), TODAY)).toBe('escalated');
     expect(probationState(d(2026, 12, 1), TODAY)).toBe('running');
-    expect(extensionAllowed(6, 0, 6, 12)).toBe(true);
-    expect(extensionAllowed(6, 3, 6, 12)).toBe(false);
   });
   it('re-anchors open tasks only', () => {
     const m = reanchor(ONBOARDING_TASKS, d(2026, 10, 5), d(2026, 10, 19));
@@ -209,11 +206,6 @@ describe('screens', () => {
     await u.click(screen.getByRole('button', { name: 'Hide PAN' }));
     expect(screen.getByText('XXXXXX821M')).toBeTruthy();
     expect(screen.queryByText('AKDPK4821M')).toBeNull();
-  });
-
-  it('probation: extending past the maximum shows an error', () => {
-    render(<ProbationReviewForm outcome="extend" months={9} />);
-    expect(screen.getByText(/12 months at most/)).toBeTruthy();
   });
 
   it('scheduled changes: cancel needs a reason', async () => {
@@ -345,23 +337,35 @@ describe('buddies', () => {
   });
 });
 
-describe('probation review form', () => {
-  it('reviews the manager’s own report, with a deadline and no pre-filled rating', () => {
-    render(<ProbationReviewForm />);
-    expect(screen.getByText('Probation review: Rohit Menon')).toBeTruthy();
-    expect(screen.getByText(/Decide by 12 Oct 2026 \(in 13 days\)/)).toBeTruthy();
-    expect(screen.getByText('Choose a rating')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Confirm Rohit' }).dataset.variant).toBe('approve');
+describe('probation review (the queue drawer, sample data)', () => {
+  const review = () => {
+    render(<ProbationQueue rows={PROBATIONS} today={TODAY} persona="mgr" defaultOpenId="p6" />);
+    return within(screen.getByRole('dialog'));
+  };
+  it('reviews the manager’s own report with no pre-filled rating; comments are asked for on Confirm', async () => {
+    const u = userEvent.setup();
+    const dlg = review();
+    expect(dlg.getByText('Probation review: Rohit Menon')).toBeTruthy();
+    expect(dlg.getByText('Choose a rating')).toBeTruthy();
+    await u.click(dlg.getByRole('button', { name: 'Confirm Rohit' }));
+    expect(dlg.getByText('Enter your comments.')).toBeTruthy();
   });
-  it('extending shows the new end date', () => {
-    render(<ProbationReviewForm outcome="extend" months={3} />);
-    expect(screen.getByText('New end date: 12 Jan 2027')).toBeTruthy();
+  it('extending shows the new end date, and past the maximum an error', async () => {
+    const u = userEvent.setup();
+    const dlg = review();
+    await u.click(dlg.getByRole('radio', { name: /Extend/ }));
+    await u.type(dlg.getByRole('textbox', { name: /Extend by/ }), '3');
+    expect(dlg.getByText('New end date: 12 Jan 2027')).toBeTruthy();
+    await u.type(dlg.getByRole('textbox', { name: /Extend by/ }), '0');
+    await u.click(dlg.getByRole('button', { name: 'Extend probation' }));
+    expect(dlg.getByText(/Extend by 1 to 6 months/)).toBeTruthy();
   });
   it('a recommendation to end employment asks whether concerns were raised', async () => {
     const u = userEvent.setup();
-    render(<ProbationReviewForm outcome="terminate" />);
-    await u.click(screen.getByRole('radio', { name: 'No' }));
-    expect(screen.getByText(/Talk to Rohit first/)).toBeTruthy();
+    const dlg = review();
+    await u.click(dlg.getByRole('radio', { name: /Recommend ending employment/ }));
+    await u.click(dlg.getByRole('radio', { name: 'No' }));
+    expect(dlg.getByText(/Talk to Rohit first/)).toBeTruthy();
   });
 });
 

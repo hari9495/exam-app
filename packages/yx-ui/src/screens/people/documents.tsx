@@ -284,60 +284,6 @@ export const PROMOTION_LETTER: LetterData = {
   signatory: { name: 'Lakshmi Venkatesan', designation: 'Head of People' },
 };
 
-// PPL-28 · issue sheet
-export function IssueLetterSheet({ missing = false, pendingApproval = false, today }: { missing?: boolean; pendingApproval?: boolean; today: Date }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <PeopleFrame active="Documents & letters">
-      <IssuedLettersBody rows={ISSUED_LETTERS} />
-      <Drawer
-        open={open}
-        onOpenChange={setOpen}
-        size="lg"
-        title="Issue a letter"
-        subtitle="Type, template, preview with real data, approval, issue"
-        footer={
-          <>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={missing}>
-              {pendingApproval ? 'Send for approval' : 'Issue letter'}
-            </Button>
-          </>
-        }
-      >
-        <div className="yx-ppl__stack">
-          <div className="yx-ppl__form">
-            <FormField label="Employee" required>
-              <Select options={[{ value: 'a', label: 'Arjun Kulkarni · KF-0142' }]} value="a" onChange={() => {}} />
-            </FormField>
-            <FormField label="Letter type" required>
-              <Select options={[{ value: 'promo', label: 'Promotion (approval required)' }]} value="promo" onChange={() => {}} />
-            </FormField>
-            <FormField label="Template" required>
-              <Select options={[{ value: 't2', label: 'Promotion with pay change · v2 · English' }]} value="t2" onChange={() => {}} />
-            </FormField>
-          </div>
-          {missing ? (
-            <InlineAlert tone="danger" title="We can't generate this letter yet">
-              Fill these on Arjun's record first: new grade pay band (compensation), effective date of the change. Letters never go out with blanks.
-            </InlineAlert>
-          ) : (
-            <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Letter preview">
-              <LetterDocument data={PROMOTION_LETTER} />
-            </div>
-          )}
-          {pendingApproval && (
-            <Card title="Approval before issue">
-              <ApprovalTimeline now={today} steps={[{ id: '1', label: 'Prepared', status: 'done', approver: 'Fatima Shaikh', at: today }, { id: '2', label: 'HR head', status: 'current', approver: 'Lakshmi Venkatesan' }]} />
-            </Card>
-          )}
-          <Text size="sm" tone="secondary" as="p">Issued letters are final: a reference number, a QR verification code and a sealed PDF. A correction is a new letter that supersedes this one.</Text>
-        </div>
-      </Drawer>
-    </PeopleFrame>
-  );
-}
-
 type Letter = (typeof ISSUED_LETTERS)[number];
 
 function IssuedLettersBody({ rows }: { rows: Letter[] }) {
@@ -433,9 +379,9 @@ function missingText(first: string, missing: Record<string, string>) {
   return [onRecord.length ? `Fill these on ${first}'s record first: ${onRecord.join(', ')}.` : '', keys.length > onRecord.length ? 'Name who signs for their legal entity in Settings › Letter templates.' : '', 'Letters never go out with blanks.'].filter(Boolean).join(' ');
 }
 
-// PPL-28 · issue sheet, live: the designed sheet (IssueLetterSheet) with the API's templates, preview and approval rule.
+// PPL-28 · issue sheet: the API's templates, preview and approval rule (the stories give it sample data).
 // `reviewing` (PPL-15): a drafted letter, the person, type and wording fixed, reviewed in the same preview, then issued.
-function LiveIssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: { issue?: LiveLetters['issue']; open: boolean; onOpenChange: (open: boolean) => void; correcting?: LiveLetter | null; reviewing?: { letter: LiveLetter; onPreview: (l: LiveLetter) => Promise<string>; onIssue: (l: LiveLetter) => Promise<void> } }) {
+function IssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: { issue?: LiveLetters['issue']; open: boolean; onOpenChange: (open: boolean) => void; correcting?: LiveLetter | null; reviewing?: { letter: LiveLetter; onPreview: (l: LiveLetter) => Promise<string>; onIssue: (l: LiveLetter) => Promise<void> } }) {
   const draft = reviewing?.letter;
   // A correction keeps the person and the letter type of the letter it replaces; a draft keeps all of it.
   const [who, setWho] = useState<string | null>(draft?.personId ?? correcting?.personId ?? issue?.person ?? null);
@@ -696,8 +642,8 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
         />
         </div>
       )}
-      {live.issue && <LiveIssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
-      {live.draft && reviewing && <LiveIssueLetterSheet key={reviewing.id} issue={live.issue} open onOpenChange={(o) => !o && setReviewing(null)} reviewing={{ letter: reviewing, onPreview: live.draft.onPreview, onIssue: live.draft.onIssue }} />}
+      {live.issue && <IssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
+      {live.draft && reviewing && <IssueLetterSheet key={reviewing.id} issue={live.issue} open onOpenChange={(o) => !o && setReviewing(null)} reviewing={{ letter: reviewing, onPreview: live.draft.onPreview, onIssue: live.draft.onIssue }} />}
       <Dialog
         open={discarding !== null}
         onOpenChange={(o) => !o && setDiscarding(null)}
@@ -1039,16 +985,6 @@ function SampleBulkLetterWizard({ current = 'source', confirmOpen = false }: { c
 /* ================================================================== PPL-29 templates */
 
 type Tpl = (typeof TEMPLATES)[number];
-const FIELDS = [
-  { key: '{{employee_name}}', label: 'Employee name', cls: 'Public' as const },
-  { key: '{{designation}}', label: 'Designation', cls: 'Public' as const },
-  { key: '{{joining_date}}', label: 'Joining date', cls: 'Internal' as const },
-  { key: '{{ctc}}', label: 'Annual CTC', cls: 'Confidential' as const },
-  { key: '{{manager_name}}', label: 'Reporting manager', cls: 'Public' as const },
-  { key: '{{#each salary_lines}}', label: 'Salary annexure (repeating)', cls: 'Confidential' as const },
-  { key: '{{#if probation}}', label: 'Only when on probation', cls: 'Internal' as const },
-  { key: '{{pan}}', label: 'PAN', cls: 'Confidential' as const },
-];
 
 // PPL-29 · list
 export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLetterTemplates }) {
@@ -1083,129 +1019,6 @@ export function LetterTemplatesList({ rows, live }: { rows: Tpl[]; live?: LiveLe
 }
 
 export type TemplateTab = 'upload' | 'editor' | 'fields' | 'test';
-
-// PPL-29 · template workspace
-export function LetterTemplateWorkspace({ tab = 'upload', previewViewed = false }: { tab?: TemplateTab; previewViewed?: boolean }) {
-  const [t, setT] = useState<TemplateTab>(tab);
-  const [viewed, setViewed] = useState(previewViewed);
-  return (
-    <PeopleFrame active="Documents & letters">
-      <ObjectHeader
-        name="Relieving and experience"
-        icon={FileUp}
-        secondary="Relieving letter · uploaded Word · English · version 1"
-        status={<Badge tone="neutral">Draft</Badge>}
-        actions={
-          <>
-            <Button icon={Download}>Download as Word</Button>
-            <Button variant="primary" disabled={!viewed}>
-              Activate
-            </Button>
-          </>
-        }
-      />
-      {!viewed && <InlineAlert tone="info">View a test render with a sample employee before you activate this template.</InlineAlert>}
-      <Tabs value={t} onValueChange={(v) => setT(v as TemplateTab)}>
-        <TabsList aria-label="Template">
-          <TabsTrigger value="upload">Word upload</TabsTrigger>
-          <TabsTrigger value="editor">Editor</TabsTrigger>
-          <TabsTrigger value="fields">Field cheat-sheet</TabsTrigger>
-          <TabsTrigger value="test">Test render</TabsTrigger>
-        </TabsList>
-        <TabsContent value="upload">
-          <div className="yx-ppl__stack">
-            <FormField label="Per person" helper={ONE_PER_PERSON}>
-              <Segment label="Per person" value="one" onChange={() => {}} options={PER_PERSON} />
-            </FormField>
-            <FileUpload upload={async () => {}} accept={['.docx']} maxSize={5 * 1024 * 1024} />
-            <Card title="Validation report · relieving-experience.docx">
-              <ul className="yx-ppl__successors">
-                <li><span>14 placeholders match the field registry</span><Badge tone="success">OK</Badge></li>
-                <li><span>Repeating block <code className="yx-ppl__code">{'{{#each salary_lines}}'}</code></span><Badge tone="success">OK</Badge></li>
-                <li><span>Conditional <code className="yx-ppl__code">{'{{#if probation}}'}</code></span><Badge tone="success">OK</Badge></li>
-                <li>
-                  <span>
-                    Unknown placeholder <code className="yx-ppl__code">{'{{emp_nme}}'}</code> on page 1. Did you mean <code className="yx-ppl__code">{'{{employee_name}}'}</code>?
-                  </span>
-                  <Button size="sm">Use suggestion</Button>
-                </li>
-                <li>
-                  <span>
-                    <code className="yx-ppl__code">{'{{pan}}'}</code> is Confidential. Issuers without that class can't generate this letter.
-                  </span>
-                  <Badge tone="warning">Check</Badge>
-                </li>
-              </ul>
-            </Card>
-          </div>
-        </TabsContent>
-        <TabsContent value="editor">
-          <div className="yx-ppl__stack">
-            <FormField label="Per person" helper={ONE_PER_PERSON}>
-              <Segment label="Per person" value="one" onChange={() => {}} options={PER_PERSON} />
-            </FormField>
-            <div className="yx-ppl__row">
-              <Select aria-label="Letterhead" size="sm" options={[{ value: 'ka', label: 'Letterhead: Kaveri Foods Pvt Ltd' }, { value: 'tn', label: 'Letterhead: Kaveri Foods Pvt Ltd (Tamil Nadu)' }]} value="ka" onChange={() => {}} />
-              <Select aria-label="Language" size="sm" options={[{ value: 'en', label: 'English' }, { value: 'ta', label: 'Tamil' }]} value="en" onChange={() => {}} />
-            </div>
-            <RichTextEditor
-              aria-label="Letter body"
-              hide={['code']}
-              defaultValue="<p>Dear {{employee_name}},</p><p>This is to certify that {{employee_name}} worked with {{company.name}} as {{designation}} from {{joining_date}} to {{last_working_day}}.</p><p>We wish you the very best.</p>"
-              mergeFields={[
-                { value: 'employee_name', label: 'Employee name' },
-                { value: 'designation', label: 'Designation' },
-                { value: 'joining_date', label: 'Joining date' },
-                { value: 'last_working_day', label: 'Last working day' },
-                { value: 'company.name', label: 'Company name' },
-              ]}
-            />
-          </div>
-        </TabsContent>
-        <TabsContent value="fields">
-          <Card title="Fields you can use">
-            <ul className="yx-ppl__cheats">
-              {FIELDS.map((f) => (
-                <li key={f.key}>
-                  <span>
-                    <code className="yx-ppl__code">{f.key}</code> {f.label}
-                  </span>
-                  <span className="yx-ppl__row">
-                    <ClassBadge cls={f.cls} />
-                    <IconButton icon={Copy} size="sm" label={`Copy ${f.key}`} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </TabsContent>
-        <TabsContent value="test">
-          <div className="yx-ppl__stack">
-            <FormField label="Sample employee">
-              <Select options={[{ value: 'm', label: 'Meera Iyer · leaves 19 Oct 2026' }]} value="m" onChange={() => {}} />
-            </FormField>
-            <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Test render preview" onScroll={() => setViewed(true)}>
-              <LetterDocument
-                data={{
-                  company: KAVERI,
-                  date: new Date(2026, 9, 19),
-                  reference: 'KF/HR/2026/TEST',
-                  recipient: { name: 'Meera Iyer', lines: ['Lab Analyst, Quality', 'Hosur plant'] },
-                  subject: 'Relieving and experience letter',
-                  body: <><p>Dear Meera,</p><p>This is to certify that Meera Iyer worked with Kaveri Foods Pvt Ltd as Lab Analyst from 14 Feb 2021 to 19 Oct 2026.</p><p>We wish you the very best.</p></>,
-                  signatory: { name: 'Lakshmi Venkatesan', designation: 'Head of People' },
-                }}
-              />
-            </div>
-            <div>
-              <Button onClick={() => setViewed(true)}>{viewed ? 'Preview viewed' : 'Mark preview as viewed'}</Button>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </PeopleFrame>
-  );
-}
 
 /** A template's settings: a new one (not saved yet) or the next version of one. */
 export interface TemplateSpec {
@@ -1376,7 +1189,7 @@ function LiveTemplatesList({ live }: { live: LiveLetterTemplates }) {
     else setWs(null);
     return Boolean(t);
   });
-  if (ws) return <LiveTemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} onClose={close} />;
+  if (ws) return <TemplateWorkspace key={ws.t?.id ?? 'new'} live={live} ws={ws} onChange={setWs} onClose={close} />;
   const cols: TableColumn<LetterTemplate>[] = [
     { key: 'name', header: 'Template', value: (r) => r.name, width: 280 },
     { key: 'type', header: 'Letter type', value: (r) => typeName(d, r.letterType), groupable: true, width: 180 },
@@ -1552,8 +1365,8 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
 
 type UploadReport = { file: File; fixes: Record<string, string>; unknown?: Record<string, string>; refused?: string };
 
-// PPL-29 · template workspace, live: the designed workspace for one template (or a new one not saved yet).
-function LiveTemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTemplates; ws: Workspace; onChange: (ws: Workspace) => void; onClose: () => void }) {
+// PPL-29 · template workspace: one template (or a new one not saved yet); the stories give it sample data.
+function TemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTemplates; ws: Workspace; onChange: (ws: Workspace) => void; onClose: () => void }) {
   const { t, spec } = ws;
   const d = live.data;
   const { toast } = useToast();
