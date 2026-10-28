@@ -5,6 +5,7 @@ import { useToast } from '@yukthix/ui';
 import { DisabilityDeclaration, type DisabilityInput } from '@yukthix/ui/frame';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { useDeclarationsSwitch } from '../../../../../lib/yx-declarations';
 
 interface Mine {
   company: string;
@@ -14,6 +15,7 @@ interface Mine {
 
 // Me › Declarations (PPL-38): my voluntary disability declaration, with consent, withdrawable at any time.
 export default function YxMyDeclarationsPage() {
+  const switcher = useDeclarationsSwitch('disability');
   const router = useRouter();
   const { toast } = useToast();
   const mine = usePeople<Mine>('/me/disability');
@@ -22,6 +24,7 @@ export default function YxMyDeclarationsPage() {
   const d = mine.data?.declaration;
   return (
     <DisabilityDeclaration
+      switcher={switcher}
       live={{
         state: mine.isError ? 'error' : mine.data ? 'ready' : 'loading',
         onRetry: () => void mine.refetch(),

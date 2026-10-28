@@ -156,7 +156,7 @@ export class PreclearanceService {
       const user = (await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: r.employeeId }, select: { userId: true } })).userId;
       return { user, text: approve ? `Pre-clearance ${r.referenceNo} approved, valid until ${validUntil}` : `Pre-clearance ${r.referenceNo} rejected: ${note!.trim()}`, employeeId: r.employeeId };
     });
-    if (out.user && v.userId) void this.notifications.notify(ctx, v.userId, [out.user], 'workflow.approval.decided', { entityType: 'employee', entityId: out.employeeId, contextText: out.text, linkPath: '/yx/me/pre-clearance' }).catch(() => undefined);
+    if (out.user && v.userId) void this.notifications.notify(ctx, v.userId, [out.user], 'workflow.approval.decided', { entityType: 'employee', entityId: out.employeeId, contextText: out.text, linkPath: '/yx/me/declarations/pre-clearance' }).catch(() => undefined);
     return { decided: true };
   }
 }

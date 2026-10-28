@@ -1,12 +1,15 @@
-import { accountLinks, activeLink, buildNav, type NavInput } from './yx-nav';
+import { accountLinks, activeLink, buildNav, panelOf, type NavInput } from './yx-nav';
 
 // The menu by product area (design audit step 1). These replace the old WorkspaceShell menu tests: each link shows to
 // exactly the people who may open its page, by the same keys as before.
 const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
 const nav = (keys: string[] = [], over: Partial<NavInput> = {}) => buildNav({ ...base, has: (k) => keys.includes(k), ...over });
 const areas = (n: ReturnType<typeof buildNav>) => n.map((a) => a.id);
-const labels = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.flatMap((s) => s.items.map((l) => l.label)) ?? [];
-const sections = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.map((s) => s.label ?? '') ?? [];
+// An area's own panel: People's Me section is the separate "Me" panel (meOf).
+const labels = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.filter((s) => s.label !== 'Me').flatMap((s) => s.items.map((l) => l.label)) ?? [];
+const sections = (n: ReturnType<typeof buildNav>, id: string) => n.find((a) => a.id === id)?.sections.filter((s) => s.label !== 'Me').map((s) => s.label ?? '') ?? [];
+const meOf = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'people')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label) ?? [];
+const ME6 = ['Profile', 'Documents & letters', 'Change requests', 'Declarations', 'Privacy', 'My exit'];
 
 describe('buildNav: areas', () => {
   it('someone with no keys and no record: Home (Home, Approvals, Notifications, Search, My requests) and the Helpdesk; nothing unbuilt', () => {
@@ -46,7 +49,7 @@ describe('buildNav: People', () => {
     const n = nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true });
     expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'Probation', 'Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Job history', 'Possible same person']);
     expect(sections(n, 'people')).toEqual(['', 'Onboarding', 'Changes', 'More']);
-    expect(labels(n, 'home')).toContain('Profile');
+    expect(meOf(n)).toEqual(['Profile']);
   });
 
   it('a manager without HR keys gets "For my team"; raising on behalf adds Change action', () => {
@@ -69,8 +72,9 @@ describe('buildNav: People', () => {
     expect(labels(nav([], { tasks: true }), 'people')).toEqual(['My checklist tasks']);
   });
 
-  it('a new hire gets My first 30 days first in Me; others do not', () => {
+  it('a new hire gets My first 30 days on Home (not in the six-item Me menu); others do not', () => {
     expect(labels(nav([], { employee: true, firstDays: true }), 'home')[5]).toBe('My first 30 days');
+    expect(meOf(nav([], { employee: true, firstDays: true }))).toEqual(ME6);
     expect(labels(nav(['lifecycle.onboarding.view']), 'home')).not.toContain('My first 30 days');
   });
 
@@ -108,7 +112,8 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
-    expect(labels(s, 'home')).toEqual(['Home', 'Search', 'Profile', 'Documents & letters', 'Change requests', 'Declarations', 'Privacy', 'My exit']);
+    expect(labels(s, 'home')).toEqual(['Home', 'Search']);
+    expect(meOf(s)).toEqual(ME6);
     expect(labels(s, 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Security settings', 'Single sign-on providers', 'Login activity', 'Emails', 'Text messages (SMS)']);
   });
 });
@@ -163,9 +168,38 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
-    expect(n.find((a) => a.id === 'home')?.sections.find((s) => s.label === 'Me')?.items.map((l) => l.label)).toEqual(['Profile', 'Documents & letters', 'Change requests', 'Declarations', 'Privacy', 'My exit']);
+    expect(meOf(n)).toEqual(ME6);
     expect(activeLink(n, '/yx/me/letters')).toBeNull();
     expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Language', 'My security']);
     expect(accountLinks({ support: true, employee: false }).map((l) => l.label)).toEqual(['My security']);
+  });
+});
+
+describe('the Me menu under People (founder 28 Oct 2026: follow the design)', () => {
+  const people = (n: ReturnType<typeof buildNav>) => n.find((a) => a.id === 'people')!;
+  it('has exactly the six designed entries, also for a designated person; nothing of Me is left on Home', () => {
+    const n = nav([], { employee: true, designated: true });
+    expect(meOf(n)).toEqual(ME6);
+    expect(n.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.label)))).not.toEqual(expect.arrayContaining(['Annual declarations']));
+    expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
+    // The annual declarations' count shows on Declarations; for anyone else it has none.
+    expect(people(n).sections.flatMap((s) => s.items).find((l) => l.label === 'Declarations')?.count).toBe('declarationsDue');
+    expect(people(nav([], { employee: true })).sections.flatMap((s) => s.items).find((l) => l.label === 'Declarations')?.count).toBeUndefined();
+  });
+  it('an employee with no People work opens People on Me; HR and managers open it on the directory', () => {
+    expect(people(nav([], { employee: true })).sections[0].items[0].label).toBe('Profile');
+    expect(people(nav(['employee.profile.view'], { employee: true })).sections[0].items[0].label).toBe('Directory');
+    expect(people(nav([], { employee: true, manager: true })).sections[0].items[0].label).toBe('Directory');
+  });
+  it('on a Me page the panel is "Me" with the six; elsewhere the People panel without them; the moved declarations light up Declarations', () => {
+    const n = nav(['employee.profile.view'], { employee: true, designated: true });
+    const hit = activeLink(n, '/yx/me/declarations/annual')!;
+    expect(hit.link.label).toBe('Declarations');
+    expect(panelOf(hit.area, hit.link.id)).toEqual({ title: 'Me', sections: [{ items: expect.any(Array) }] });
+    expect(panelOf(hit.area, hit.link.id).sections[0].items.map((l) => l.label)).toEqual(ME6);
+    const dir = activeLink(n, '/yx/people/directory')!;
+    expect(panelOf(dir.area, dir.link.id).title).toBe('People');
+    expect(panelOf(dir.area, dir.link.id).sections.flatMap((s) => s.items.map((l) => l.label))).not.toContain('Privacy');
+    expect(activeLink(n, '/yx/me/declarations/pre-clearance')?.link.label).toBe('Declarations');
   });
 });

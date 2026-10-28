@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { PreclearancePhone, PreclearanceQueue, TradingPreclearance } from './selfservice';
+import { DeclarationsSwitch, PreclearancePhone, PreclearanceQueue, TradingPreclearance } from './selfservice';
 import { d, TODAY } from './people-data';
 
 const meta: Meta = { title: 'Screens/People/PPL-44 · Trading pre-clearance', parameters: { layout: 'fullscreen' } };
@@ -12,5 +12,6 @@ export const Approved: S = { name: 'Approved · validity window and trade report
 export const Blocked: S = { name: 'Blocked · trading window closed', render: () => <TradingPreclearance view="blocked" today={TODAY} /> };
 export const Expired: S = { name: 'Expired without report', render: () => <TradingPreclearance view="expired" today={TODAY} /> };
 export const Reported: S = { name: 'Trade reported', render: () => <TradingPreclearance view="report" today={d(2026, 10, 1)} /> };
+export const Switch: S = { name: 'Employee · under Me › Declarations (switch)', render: () => <TradingPreclearance today={TODAY} switcher={<DeclarationsSwitch value="preclearance" onChange={() => {}} />} /> };
 export const Officer: S = { name: 'Compliance officer · decisions', render: () => <PreclearanceQueue /> };
 export const Phone: S = { name: '· phone', ...phone, render: () => <PreclearancePhone today={TODAY} /> };

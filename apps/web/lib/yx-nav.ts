@@ -50,6 +50,17 @@ const when = <T,>(ok: boolean, ...items: T[]): T[] => (ok ? items : []);
 const sec = (label: string | undefined, items: NavLink[]): NavSection[] => (items.length ? [{ ...(label ? { label } : {}), items }] : []);
 
 export const ME_SECURITY = '/yx/me/security';
+const ME = 'Me';
+
+/**
+ * The side panel for the page (design: PeopleFrame and MeFrame): on a Me page the People rail shows the panel "Me"
+ * with the Me links alone; elsewhere the area's panel without them.
+ */
+export function panelOf(area: NavArea, linkId: string | undefined): { title: string; sections: NavSection[] } {
+  const me = area.sections.find((s) => s.label === ME);
+  if (me && me.items.some((l) => l.id === linkId)) return { title: ME, sections: [{ items: me.items }] };
+  return { title: area.title, sections: area.sections.filter((s) => s !== me) };
+}
 
 export function buildNav(n: NavInput): NavArea[] {
   const { has, support, employee, manager } = n;
@@ -73,72 +84,73 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(!support, L('notifications', 'Notifications', '/yx/notifications', 'notifications')),
         L('search', 'Search', '/yx/search'),
         ...when(!support, L('my-requests', 'My requests', '/yx/me/requests')),
-      ]),
-      // The designed Me menu (PPL-30 MeFrame, founder 26 Oct 2026). Personal settings are in the avatar menu (accountLinks).
-      ...sec('Me', [
+        // A new hire's own steps: not in the designed six-item Me menu, so on Home (founder 28 Oct 2026).
         ...when(self && n.firstDays, L('first-30', 'My first 30 days', '/yx/me/first-30-days')),
-        ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
-        ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations'), ...when(Boolean(n.designated), L('my-annual-declarations', 'Annual declarations', '/yx/me/annual-declarations', 'declarationsDue'), L('my-preclearance', 'Trading pre-clearance', '/yx/me/pre-clearance')), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
       ]),
     ],
   };
+  // The designed Me menu (PPL-30 MeFrame, founder 28 Oct 2026): under People, exactly these six. A designated person's
+  // annual declarations and trading pre-clearance are pages of Declarations. Personal settings are in the avatar menu.
+  const me = sec(ME, [
+    ...when(hr || employee, L('profile', 'Profile', '/yx/people/profile')),
+    ...when(employee, L('my-documents', 'Documents & letters', '/yx/me/documents'), L('my-changes', 'Change requests', '/yx/me/change-requests'), L('my-declarations-self', 'Declarations', '/yx/me/declarations', n.designated ? 'declarationsDue' : undefined), L('my-data', 'Privacy', '/yx/me/privacy'), L('resign', 'My exit', '/yx/me/resignation')),
+  ]);
 
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
-  const people: NavArea = {
-    id: 'people',
-    title: 'People',
-    sections: [
-      ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
-      ...sec(team ? 'For my team' : 'Onboarding', [
-        ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
-        ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
-        // Probation decisions are HR's (employee.change.manage) or the manager's; payroll does no HR work (founder 21 Oct 2026).
-        ...when(manager || has('employee.change.manage'), L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
-        ...when(onboardView, L('buddies', 'Buddies', '/yx/people/buddies')),
-        ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
-        ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
-        ...when(team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
-      ]),
-      ...sec('Changes', [
-        ...when(!team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
-        ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled')),
-        ...when(has('employee.change.manage'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
-        // Founder decision 21 Oct 2026: HR plans and approves restructures; payroll does no HR work, yet opens the done ones
-        // to keep its continuity checklist (28 Oct 2026).
-        ...when(any('employee.change.manage', 'payroll.run.prepare'), L('restructure', 'Restructure', '/yx/people/restructure')),
-        ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
-        ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
-        ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
-        // PPL-50: HR decides managers' requests to see their team's pay (two HR people each).
-        ...when(has('employee.pay_access.approve'), L('pay-access', 'Team pay access', '/yx/people/pay-access')),
-      ]),
-      ...sec('Exits', [
-        ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
-        // Same F&F page as Pay's, at a People address so HR stays in the People menu (founder decision 26 Oct 2026).
-        ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/people/fnf')),
-        ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
-        ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
-        ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
-      ]),
-      ...sec(undefined, [
-        ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
-        ...when(has('letter.issue'), L('letters', 'Letters', '/yx/people/letters')),
-        ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
-        ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
-      ]),
-      // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
-      ...sec('More', [
-        ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
-        ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
-        ...when(has('document.manage'), L('reverification', 'Re-verification', '/yx/people/reverification')),
-        ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
-        ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations'), L('pre-clearance', 'Pre-clearance requests', '/yx/people/pre-clearance')),
-      ]),
-    ],
-  };
+  const peopleWork: NavSection[] = [
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
+    ...sec(team ? 'For my team' : 'Onboarding', [
+      ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
+      ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
+      // Probation decisions are HR's (employee.change.manage) or the manager's; payroll does no HR work (founder 21 Oct 2026).
+      ...when(manager || has('employee.change.manage'), L('probation', 'Probation', '/yx/people/probation', 'probationsDue')),
+      ...when(onboardView, L('buddies', 'Buddies', '/yx/people/buddies')),
+      ...when(onboardView, L('life-events', 'Life events', '/yx/people/life-events')),
+      ...when(n.tasks || has('lifecycle.onboarding.manage'), L('my-tasks', 'My checklist tasks', '/yx/people/my-tasks')),
+      ...when(team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+      ...when(team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
+      ...when(team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
+    ]),
+    ...sec('Changes', [
+      ...when(!team && (any('employee.change.manage', 'request.raise_on_behalf')), L('job-changes', 'Change action', '/yx/people/changes')),
+      ...when(any('employee.change.manage', 'employee.change.approve'), L('scheduled-changes', 'Scheduled', '/yx/people/scheduled')),
+      ...when(has('employee.change.manage'), L('bulk-changes', 'Bulk changes', '/yx/people/bulk-changes')),
+      // Founder decision 21 Oct 2026: HR plans and approves restructures; payroll does no HR work, yet opens the done ones
+      // to keep its continuity checklist (28 Oct 2026).
+      ...when(any('employee.change.manage', 'payroll.run.prepare'), L('restructure', 'Restructure', '/yx/people/restructure')),
+      ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
+      ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
+      ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
+      // PPL-50: HR decides managers' requests to see their team's pay (two HR people each).
+      ...when(has('employee.pay_access.approve'), L('pay-access', 'Team pay access', '/yx/people/pay-access')),
+    ]),
+    ...sec('Exits', [
+      ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),
+      // Same F&F page as Pay's, at a People address so HR stays in the People menu (founder decision 26 Oct 2026).
+      ...when(!team && any('payroll.fnf.manage', 'payroll.notice.waive'), L('people-fnf', 'F&F', '/yx/people/fnf')),
+      ...when(!team && (n.clearance || has('lifecycle.exit.manage')), L('clearance', 'Clearance', '/yx/people/clearance', 'clearanceToDo')),
+      ...when(exitView, L('upcoming-exits', 'Retirements and contracts', '/yx/people/upcoming-exits')),
+      ...when(has('lifecycle.exit.manage'), L('absconding', 'Absconding', '/yx/people/absconding')),
+    ]),
+    ...sec(undefined, [
+      ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
+      ...when(has('letter.issue'), L('letters', 'Letters', '/yx/people/letters')),
+      ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
+      ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
+    ]),
+    // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
+    ...sec('More', [
+      ...when(!support && Boolean(n.samePerson), L('same-person', 'Possible same person', '/yx/people/same-person', 'possibleSamePerson')),
+      ...when(has('lifecycle.exit.manage'), L('unions', 'Union register', '/yx/people/unions'), L('retrenchment', 'VRS schemes', '/yx/people/retrenchment')),
+      ...when(has('document.manage'), L('reverification', 'Re-verification', '/yx/people/reverification')),
+      ...when(has('employee.disability.view'), L('declarations', 'Declarations', '/yx/people/declarations')),
+      ...when(has('compliance.declaration.manage'), L('regulated-declarations', 'Regulated declarations', '/yx/people/regulated-declarations'), L('pre-clearance', 'Pre-clearance requests', '/yx/people/pre-clearance')),
+    ]),
+  ];
+  // Someone with no People work beyond the directory opens People on their own pages (Me).
+  const peopleAdmin = hr || manager || peopleWork.length > 1;
+  const people: NavArea = { id: 'people', title: 'People', sections: peopleAdmin ? [...peopleWork, ...me] : [...me, ...peopleWork] };
 
   const time: NavArea = {
     id: 'time',

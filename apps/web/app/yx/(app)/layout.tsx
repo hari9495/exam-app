@@ -22,7 +22,7 @@ import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib
 import { hiddenToday, hideForToday, localStore } from '../../../lib/yx-notice';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
-import { ME_SECURITY, accountLinks, activeLink, buildNav, withAccount, type NavArea } from '../../../lib/yx-nav';
+import { ME_SECURITY, accountLinks, activeLink, buildNav, panelOf, withAccount, type NavArea } from '../../../lib/yx-nav';
 import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 
@@ -153,12 +153,15 @@ function Frame({ children }: { children: React.ReactNode }) {
     const a = nav.find((x) => x.id === r.id);
     return a ? [{ ...r, href: first(a).href }] : [];
   });
-  const panel = area.sections.map((s) => ({
+  // On a Me page the People rail shows the designed panel "Me"; elsewhere the area's own panel (panelOf).
+  const shown = panelOf(area, hit?.link.id);
+  const panel = shown.sections.map((s) => ({
     label: s.label,
     items: s.items.map((l) => ({ label: l.label, href: l.href, active: l.id === hit?.link.id, count: l.count ? counts.data?.[l.count] : undefined })),
   }));
   // Breadcrumbs below the top level (founder decision 15 Oct 2026): Area › Page.
-  const crumbs = hit && (hit.link.id !== first(hit.area).id || pathname !== hit.link.href) ? [{ label: hit.area.title, href: first(hit.area).href }, { label: hit.link.label }] : undefined;
+  const top = shown.sections[0]?.items[0];
+  const crumbs = hit && top && (hit.link.id !== top.id || pathname !== hit.link.href) ? [{ label: shown.title, href: top.href }, { label: hit.link.label }] : undefined;
   const go = (href: string) => router.push(href);
 
   const mfaMissing = Boolean(mfa.data?.required && mfa.data.factors.length === 0);
@@ -227,7 +230,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   return (
     <DesktopFrame
       area={area.id}
-      panelTitle={area.title}
+      panelTitle={shown.title}
       panel={panel}
       railItems={rail}
       live={{

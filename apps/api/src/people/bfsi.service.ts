@@ -241,7 +241,7 @@ export class BfsiService {
       const user = (await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employeeId }, select: { userId: true } })).userId;
       return { user, due: await this.due(tx, c, employeeId, cycle) };
     });
-    if (out.user && v.userId) void this.notifications.notify(ctx, v.userId, [out.user], 'document.requested', { entityType: 'employee', entityId: employeeId, contextText: `Submit your annual declarations by ${out.due}`, linkPath: '/yx/me/annual-declarations' }).catch(() => undefined);
+    if (out.user && v.userId) void this.notifications.notify(ctx, v.userId, [out.user], 'document.requested', { entityType: 'employee', entityId: employeeId, contextText: `Submit your annual declarations by ${out.due}`, linkPath: '/yx/me/declarations/annual' }).catch(() => undefined);
     return { reminded: true };
   }
 

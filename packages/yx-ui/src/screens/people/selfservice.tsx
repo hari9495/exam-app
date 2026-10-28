@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { addDays, daysBetween, ifscBank, isIfsc, isPan, preclearanceState } from './people-logic';
 import { ACCESS_LOG } from './people-data';
-import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, StatusBadge } from './people-kit';
+import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, Segment, StatusBadge } from './people-kit';
 import { useRun } from '../org/org-kit';
 import { KIND_FIELDS } from '../access/profile';
 import type { AccessLog, ChangeForm, ProfileRequest, ProfileRequestInput, RequestKind } from '../access/types';
@@ -559,6 +559,23 @@ const certStatus = (status: string | undefined, expiringSoon: boolean) => (statu
 
 const ANSWER_LABEL: Record<DisabilityAnswer, string> = { yes: 'Yes', no: 'No', skip: 'Prefer not to say' };
 
+/** A designated person's declarations pages, all under Me › Declarations (founder 28 Oct 2026). */
+export type DeclarationsPage = 'disability' | 'annual' | 'preclearance';
+export function DeclarationsSwitch({ value, onChange, due }: { value: DeclarationsPage; onChange: (p: DeclarationsPage) => void; due?: number }) {
+  return (
+    <Segment
+      label="Declarations"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: 'disability', label: 'Disability' },
+        { value: 'annual', label: due ? `Annual declarations (${due} due)` : 'Annual declarations' },
+        { value: 'preclearance', label: 'Trading pre-clearance' },
+      ]}
+    />
+  );
+}
+
 function DisabilityFields({ consent, setConsent, company = 'Kaveri Foods', live }: { consent: boolean; setConsent: (b: boolean) => void; company?: string; live?: { form: DisabilityForm; set: (f: Partial<DisabilityForm>) => void; errorOf: (id: string) => string | undefined; onUpload: LiveDisability['onUpload'] } }) {
   const f = live?.form;
   return (
@@ -614,7 +631,7 @@ interface DisabilityForm {
 }
 
 // PPL-38
-export function DisabilityDeclaration({ declared = false, persona = 'emp', live, liveList }: { declared?: boolean; persona?: 'emp' | 'hr'; live?: LiveDisability; liveList?: LiveDisabilityList }) {
+export function DisabilityDeclaration({ declared = false, persona = 'emp', live, liveList, switcher }: { declared?: boolean; persona?: 'emp' | 'hr'; live?: LiveDisability; liveList?: LiveDisabilityList; switcher?: ReactNode }) {
   const [consent, setConsent] = useState(declared);
   const [form, setForm] = useState<DisabilityForm>({ answer: 'yes', category: null, percent: null, validUntil: null, certificateId: null, adjustments: '' });
   const [withdrawing, setWithdrawing] = useState(false);
@@ -730,6 +747,7 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
   return (
     <MeFrame active="Declarations">
       <PageHeader title="Disability declaration" status={isDeclared && (!d || d.answer === 'yes') ? <StatusBadge status={verified ? 'Verified' : rejected ? 'Rejected' : 'Waiting'} /> : undefined} />
+      {switcher}
       {isDeclared ? (
         <Card title="Your declaration" actions={<Button variant="danger" onClick={live ? () => setWithdrawing(true) : undefined}>Withdraw consent</Button>}>
           <div className="yx-ppl__stack">
@@ -892,7 +910,7 @@ function RelatedDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddRelated']; on
 }
 
 // PPL-43
-export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, live }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; today?: Date; live?: LiveBfsi }) {
+export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, live, switcher }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; today?: Date; live?: LiveBfsi; switcher?: ReactNode }) {
   const [t, setT] = useState(tab);
   const [adding, setAdding] = useState<'holding' | 'related' | null>(null);
   const [coi, setCoi] = useState<'yes' | 'no' | null>(live?.coi?.answer ?? null);
@@ -920,6 +938,7 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
         description={`You are a designated person. Submit holdings, related persons and conflicts by ${live ? formatDate(live.due) : '15 Oct 2026'}, and attest the code of conduct.`}
         status={status}
       />
+      {switcher}
       {done && <InlineAlert tone="success" title={`Submitted on ${formatDate(live!.submittedAt!)}`}>Ask the compliance officer if something has to change.</InlineAlert>}
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <Tabs value={t} onValueChange={(v) => setT(v as typeof t)}>
@@ -1285,13 +1304,14 @@ function TradeReport({ item, today, live }: { item: PreclearanceItem; today: Dat
   );
 }
 
-function LivePreclearancePage({ today, live }: { today: Date; live: LivePreclearance }) {
+function LivePreclearancePage({ today, live, switcher }: { today: Date; live: LivePreclearance; switcher?: ReactNode }) {
   const [asking, setAsking] = useState(false);
   const item = live.requests[0];
   const state = (i: PreclearanceItem) => (i.status === 'Done' ? 'trade reported' : i.status === 'Expired' ? 'expired: report or re-apply' : 'valid');
   return (
     <MeFrame active="Declarations">
       <PageHeader title="Trading pre-clearance" description={preclearDescription(live.rules, true)} actions={item && !asking && item.status !== 'Pending' ? <Button onClick={() => setAsking(true)}>New request</Button> : undefined} />
+      {switcher}
       {live.state === 'error' ? (
         <ErrorState title="We couldn't load your pre-clearances" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live.state === 'loading' ? (
@@ -1318,14 +1338,15 @@ function LivePreclearancePage({ today, live }: { today: Date; live: LivePreclear
 }
 
 // PPL-44
-export function TradingPreclearance({ view = 'request', today, live }: { view?: PreclearView; today: Date; live?: LivePreclearance }) {
-  if (live) return <LivePreclearancePage today={today} live={live} />;
+export function TradingPreclearance({ view = 'request', today, live, switcher }: { view?: PreclearView; today: Date; live?: LivePreclearance; switcher?: ReactNode }) {
+  if (live) return <LivePreclearancePage today={today} live={live} switcher={switcher} />;
   const approvedOn = view === 'expired' ? new Date(2026, 8, 14) : new Date(2026, 8, 28);
   const state = preclearanceState(approvedOn, 7, today, view === 'report', view === 'blocked');
   const validUntil = addDays(approvedOn, 6);
   return (
     <MeFrame active="Declarations">
       <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 }, false)} actions={view === 'approved' || view === 'expired' || view === 'report' ? <Button>New request</Button> : undefined} />
+      {switcher}
       {view === 'blocked' && <InlineAlert tone="danger" title="Trading window closed until 16 Oct 2026">Quarterly results are due. You can't request or use a pre-clearance until the window reopens.</InlineAlert>}
       {view === 'request' || view === 'blocked' ? (
         <PreclearanceForm disabled={view === 'blocked'} />
