@@ -2910,5 +2910,142 @@
       "TIM-02"
     ],
     "note": "POSITIVE + NEGATIVE (fix 29 Oct 2026)."
+  },
+  {
+    "id": "MT-TIM-32-01",
+    "area": "Time · Field force",
+    "screen": "Field force · tracking off for the group",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "panel@demo-org.test (Manager - Divya), then hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Make sure \"Track field staff on duty\" is off in Settings › Company rules (the default).",
+      "As panel@ open Time › Field force.",
+      "As hr@ open Time › Field force.",
+      "Click \"Open settings\"."
+    ],
+    "expected": "Divya sees \"Field tracking is off for your group\" with the advice to ask HR and no map. Lakshmi sees \"Field tracking is off for this group\"; \"Open settings\" opens Settings › Company rules.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-32-02",
+    "area": "Time · Field force",
+    "screen": "Field force · person not checked in",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "hr@demo-org.test, then panel@demo-org.test",
+    "steps": [
+      "As hr@ open Settings › Company rules, find \"Track field staff on duty (with their consent)\" and set it to on for the whole company. Save.",
+      "As panel@ open Time › Field force (before Arjun checks in today).",
+      "Click \"Open\" next to Arjun."
+    ],
+    "expected": "The Live map tab shows Divya's team (Arjun, Meera, Kiran) with \"Not checked in\" and no pins. Arjun's panel says \"Not on duty yet · Shift started … Nothing is recorded until Arjun checks in.\" No map, no \"Message\" button.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "Header reads \"Your team · duty time only · trails kept 30 days\"."
+  },
+  {
+    "id": "MT-TIM-32-03",
+    "area": "Time · Field force",
+    "screen": "Field force · checked in, no consent",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test, then panel@demo-org.test",
+    "steps": [
+      "As arjun@ open Me › Attendance and clock in.",
+      "As panel@ reload Time › Field force and open Arjun."
+    ],
+    "expected": "Arjun's row shows \"No trail\". His panel shows \"No trail: Arjun has not agreed to location tracking\" and \"Visits are still logged as field check-ins\". No location anywhere.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "NEGATIVE test: tracking is on, but nothing is recorded without consent (DPDP Act)."
+  },
+  {
+    "id": "MT-TIM-32-04",
+    "area": "Time · Field force",
+    "screen": "Field force · live trail and integrity flag",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test (developer step), then panel@demo-org.test",
+    "steps": [
+      "Developer step (no phone app yet): as arjun@ call the API with the dev tool (Swagger / curl): GET /api/v1/time/me/field (read notice.version), then POST /time/me/field/consent with that noticeVersion.",
+      "POST /time/me/field/pings with sentAt = now and three readings a minute apart near the Bengaluru office (accuracyM 15, new clientRef each); give the middle one \"mock\": true.",
+      "As panel@ reload Time › Field force.",
+      "Open Arjun. Click \"Mark reviewed\"."
+    ],
+    "expected": "The map shows pin \"A\" (caption \"A = Arjun\"); Arjun's row shows the distance in km and \"Flag: mock location\". His panel shows the duty trail, \"Mock location detected <time>\" and \"Flags are never penalised automatically\". After \"Mark reviewed\": a toast \"Flags marked reviewed\" (5 s), then \"Flag reviewed · Marked reviewed by Divya Raghunathan\".",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "Repeating the same pings upload answers \"repeats: 3\" and adds nothing."
+  },
+  {
+    "id": "MT-TIM-32-05",
+    "area": "Time · Field force",
+    "screen": "Field force · another person's trail is not reachable",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test",
+    "steps": [
+      "As arjun@ type the address /yx/time/field-force.",
+      "Developer step (no phone app yet): as arjun@ call the API with the dev tool (Swagger / curl): GET /api/v1/time/field/people/<Meera's employee id>."
+    ],
+    "expected": "The page shows the no-access state (Field force is for managers and HR); the menu has no Field force link. The API answers 404 Not found.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-TIM-32-06",
+    "area": "Time · Field force",
+    "screen": "Field force · consent withdrawn",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test (developer step), then panel@demo-org.test",
+    "steps": [
+      "Developer step (no phone app yet): as arjun@ call the API with the dev tool (Swagger / curl): POST /api/v1/time/me/field/consent/withdraw.",
+      "POST /time/me/field/pings again with a new reading.",
+      "As panel@ reload Time › Field force and open Arjun."
+    ],
+    "expected": "The withdrawal answers with the number of readings erased. The new upload is refused (\"You have not agreed to location tracking. Nothing was recorded.\"). Arjun has no pin and no distance; his panel says \"No trail: consent withdrawn at <time>\". His attendance for today is unchanged.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-TIM-32-07",
+    "area": "Time · Field force",
+    "screen": "Field force · after check-out",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test, then panel@demo-org.test",
+    "steps": [
+      "As arjun@ agree again (POST /time/me/field/consent), send one reading, then clock out in Me › Attendance.",
+      "Send one more reading (developer step).",
+      "As panel@ reload Time › Field force."
+    ],
+    "expected": "The reading after check-out is refused (\"You are not checked in … Nothing was recorded.\"). Arjun's pin is gone from the live map; nothing is drawn after the check-out time.",
+    "stories": [
+      "TIM-32"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-TIM-33-01",
+    "area": "Time · Field force",
+    "screen": "Field force · beat plan and visit log",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "panel@demo-org.test (developer step), then arjun@demo-org.test (developer step)",
+    "steps": [
+      "As panel@ call POST /api/v1/time/field/visits for Arjun today: place \"Anand Stores, Indiranagar\", lat/lng of the shop, radiusM 200, plannedMinute 600.",
+      "As arjun@ (clocked in) call POST /time/me/field/visits/<id>/check-in at the shop, then /check-out with outcome \"Order taken\".",
+      "As panel@ open Time › Field force › Visit log and Beat coverage.",
+      "As arjun@ try POST /time/field/visits for himself."
+    ],
+    "expected": "The visit log shows \"Anand Stores, Indiranagar · Planned · Inside site · <m> · Order taken\" with \"Done\". Beat coverage shows 1 of 1 planned done. Arjun planning his own visit is refused (403 \"Your own visits are planned by your manager.\").",
+    "stories": [
+      "TIM-33"
+    ],
+    "note": "The phone screens (TIM-33) are phone view; only the API and the web log are live."
   }
 ]
