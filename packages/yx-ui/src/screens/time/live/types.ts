@@ -1,6 +1,8 @@
 // What the time and leave API returns (apps/api/src/time). The screens stay presentational; the API checks every call.
 
-export type { LoadState } from '../../org/types';
+import type { LoadState as BaseLoadState } from '../../org/types';
+/** Time pages add 'no-record': the signed-in person has no employee record (or no job today); retrying never helps. */
+export type LoadState = BaseLoadState | 'no-record';
 export type Half = 'full' | 'first' | 'second';
 
 export interface LeaveBalanceRow {
@@ -733,6 +735,12 @@ export interface ExceptionsList {
   today: string;
   scope: Scope;
   canResolve: boolean;
+  /** One page of the list (the server pages and filters it). */
+  page: number;
+  pageSize: number;
+  total: number;
+  /** Open days with a missing punch or timesheet in the whole scope (the header badge). */
+  blocking: number;
   rows: {
     id: string;
     employeeId: string;
@@ -836,6 +844,8 @@ export interface TeamPresence {
 
 /** TIM-10 device backfill. */
 export interface DeviceBatch {
+  legalEntityId: string;
+  entityName: string;
   deviceRef: string;
   punches: number;
   people: number;

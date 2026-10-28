@@ -23,7 +23,7 @@ import { BarChart, LineChart } from '../../components/charts';
 import { checkTimesheet, newTimesheetLine, TimesheetGrid, type TimesheetDay, type TimesheetLine, type TimesheetProject, type TimesheetStatus } from '../../components/timesheet';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { DueBadge, Kpis, TimePage } from './time-kit';
+import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
@@ -56,6 +56,7 @@ export function LiveGate({ state, onRetry, what, children }: { state: LoadState;
     );
   if (state === 'error') return <ErrorState title={`We couldn't load ${what}.`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />;
   if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what} />;
+  if (state === 'no-record') return <NoRecordState />;
   return <>{children}</>;
 }
 /** DataTable shows loading and error itself; no access is a LiveGate. */

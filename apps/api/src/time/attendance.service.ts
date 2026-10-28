@@ -53,7 +53,7 @@ export class AttendanceService implements OnModuleInit {
   private async meFacts(tx: Tx, c: CompanyContext): Promise<{ f: Facts; today: string }> {
     const id = await myEmployeeId(tx, c.organizationId, c.userId);
     const f = await factsOn(tx, c.organizationId, id, new Date().toISOString().slice(0, 10));
-    if (!f) throw new NotFoundException('You have no job assignment today. Ask HR to check your record.');
+    if (!f) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no job assignment today. Ask HR to check your record.' });
     const today = todayIn(f.zone);
     return { f: (await factsOn(tx, c.organizationId, id, today)) ?? f, today };
   }

@@ -40,6 +40,8 @@ export function useTimeRead() {
 
 export function timeState(...qs: { isError: boolean; error: unknown; data: unknown }[]): LoadState {
   const err = qs.find((q) => q.isError)?.error as { status?: number; code?: string } | undefined;
+  // No employee record (or no job today) for "my" pages: say so plainly; retrying never helps.
+  if (err?.code === 'NO_EMPLOYEE_RECORD') return 'no-record';
   if (err) return err.status === 403 && err.code !== 'MFA_REQUIRED' ? 'no-access' : 'error';
   return qs.every((q) => q.data !== undefined) ? 'ready' : 'loading';
 }

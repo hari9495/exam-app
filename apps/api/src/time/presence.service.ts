@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -35,7 +35,7 @@ export class PresenceService {
   private async me(tx: Tx, c: CompanyContext) {
     const id = await myEmployeeId(tx, c.organizationId, c.userId);
     const f = await factsOn(tx, c.organizationId, id, new Date().toISOString().slice(0, 10));
-    if (!f) throw new BadRequestException('You have no job assignment today. Ask HR to check your record.');
+    if (!f) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no job assignment today. Ask HR to check your record.' });
     return f;
   }
 

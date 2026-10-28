@@ -346,7 +346,7 @@ export class LeaveService implements OnModuleInit {
     const id = await myEmployeeId(tx, c.organizationId, userId);
     const now = await factsOn(tx, c.organizationId, id, new Date().toISOString().slice(0, 10));
     const f = now ?? (await factsOn(tx, c.organizationId, id, addDays(new Date().toISOString().slice(0, 10), 1)));
-    if (!f) throw new NotFoundException('You have no job assignment today. Ask HR to check your record.');
+    if (!f) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no job assignment today. Ask HR to check your record.' });
     return { f, today: todayIn(f.zone) };
   }
 

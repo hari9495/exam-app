@@ -5,7 +5,7 @@ import { Clock, Coffee, LogIn, LogOut, MapPin, RotateCw, StickyNote } from 'luci
 import { DesktopFrame, EMPLOYEE_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
-import { InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
 import { TextArea } from '../../components/inputs';
 import { formatDate } from '../../lib/format';
 import {
@@ -1111,4 +1111,12 @@ export function DayCardBody({
       )}
     </div>
   );
+}
+
+/**
+ * The signed-in person has no employee record here (or no job today), so a "my" page has nothing to show: say so and
+ * what to do (house rule: the fact, then the next step). Retrying never helps, so there is no Try again.
+ */
+export function NoRecordState() {
+  return <EmptyState title="You have no employee record here" description="Your sign-in is not linked to an employee with a job today, so there is no attendance or leave to show. Ask HR to link your sign-in to your employee record." />;
 }

@@ -134,7 +134,7 @@ export class OvertimeService implements OnModuleInit {
       const org = c.organizationId;
       const id = await myEmployeeId(tx, org, c.userId);
       const now = await factsOn(tx, org, id, todayIst());
-      if (!now) throw new NotFoundException('You have no job assignment today. Ask HR to check your record.');
+      if (!now) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no job assignment today. Ask HR to check your record.' });
       const today = todayIn(now.zone);
       const claims = await tx.overtimeRequest.findMany({ where: { organizationId: org, employeeId: id }, orderBy: { workOn: 'desc' }, take: 60 });
       const claimed = new Set(claims.filter((x) => x.status === 'pending' || x.status === 'approved').map((x) => dateOf(x.workOn)));

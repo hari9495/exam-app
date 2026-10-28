@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { ErrorState, NoAccessState, Skeleton } from '../../../components/feedback';
+import { NoRecordState } from '../time-kit';
 import { PageHeader } from '../../../components/shell';
 import type { DayStatus, LeaveStatus, LoadState } from './types';
 
@@ -18,6 +19,7 @@ export function LivePage({ title, description, actions, state, onRetry, what, gr
       )}
       {state === 'error' && <ErrorState title={`We couldn't load ${what}.`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy={grantedBy} what={what} />}
+      {state === 'no-record' && <NoRecordState />}
       {state === 'ready' && <div className="yx-tim-stack">{children}</div>}
     </div>
   );

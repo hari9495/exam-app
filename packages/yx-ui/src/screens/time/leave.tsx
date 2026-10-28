@@ -51,7 +51,7 @@ import {
   type LeaveRequestRow,
   type TimeUser,
 } from './time-data';
-import { DueBadge, Kpis, TimePage } from './time-kit';
+import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
 import { countLeaveDays, daysUntil, encashAmount, fmt12, fmtDuration, leaveWarnings, type Half } from './time-logic';
 import { LoadingBlock, type ViewState } from './attendance';
 import './time.css';
@@ -2102,6 +2102,7 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
   if (state === 'loading') return <LoadingBlock rows={8} />;
   if (state === 'error') return <ErrorState title={`${what} didn't load`} description="Try again. Nothing was changed." onRetry={onRetry} />;
   if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what.toLowerCase()} />;
+  if (state === 'no-record') return <NoRecordState />;
   return <>{children}</>;
 }
 

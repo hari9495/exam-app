@@ -195,7 +195,8 @@ export async function factsOn(tx: Tx, org: string, employeeId: string, on: strin
 /** The signed-in person's employee record, or 404 in plain words. */
 export async function myEmployeeId(tx: Tx, org: string, userId: string | null | undefined): Promise<string> {
   const e = userId ? await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } }) : null;
-  if (!e) throw new NotFoundException('You have no employee record in this company. Ask HR to link your login.');
+  // NO_EMPLOYEE_RECORD: the web shows "no employee record" (retrying never helps) instead of "could not load".
+  if (!e) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no employee record in this company. Ask HR to link your login.' });
   return e.id;
 }
 
