@@ -3,13 +3,11 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { DeathInServiceFlow, ExitCaseWorkspace } from '@yukthix/ui/frame';
-import { type DeathFacts, type ExitStep, type ExitWorkspace, type Handoff, type InterviewAnswers, type Payee, type Payees, type QueueDocument } from '@yukthix/ui/lifecycle';
+import { type DeathFacts, type ExitStep, type ExitWorkspace, type Handoff, type Payee, type Payees, type QueueDocument } from '@yukthix/ui/lifecycle';
 import type { FnfSettlementView } from '@yukthix/ui/pay';
 import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useLife, useLifeWrite } from '../../../../../../lib/yx-lifecycle';
 import { usePay, usePayWrite } from '../../../../../../lib/yx-pay';
-import { useAuth } from '../../../../../../lib/auth-context';
-import { apiFetch } from '../../../../../../lib/api-client';
 
 const id = encodeURIComponent;
 
@@ -17,7 +15,6 @@ const id = encodeURIComponent;
 export default function YxExitPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { accessToken } = useAuth();
   const { id: caseId } = useParams<{ id: string }>();
   const perms = useYxPermissions();
   const data = useLife<ExitWorkspace>(`/lifecycle/exits/${id(caseId)}`);
@@ -109,8 +106,7 @@ export default function YxExitPage() {
         ),
         onHrFacts: said((x: Parameters<typeof write>[2] & object) => write('PUT', `/lifecycle/exits/${id(caseId)}/hr`, x), () => `HR facts for ${who} saved`),
         onSignOff: signOff,
-        onInterview: () => apiFetch(`/lifecycle/exits/${id(caseId)}/interview`, {}, accessToken ?? undefined) as Promise<InterviewAnswers>,
-        onInterviewNotes: said((notes: string) => write('PUT', `/lifecycle/exits/${id(caseId)}/interview`, { notes }), () => `Notes on ${who}'s exit interview saved`),
+        interviewHref: `/yx/people/exits/${id(caseId)}/interview`,
         checklistHref: (j) => `/yx/people/onboarding/${id(j)}`,
         steps: steps.data ?? null,
         onRetryStep: said((s: ExitStep) => write('POST', `/lifecycle/exits/${id(caseId)}/steps/${id(s.handler)}/retry`), (s) => `${s.label} tried again for ${who}`),

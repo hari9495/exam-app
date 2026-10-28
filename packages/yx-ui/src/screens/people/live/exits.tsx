@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
@@ -15,9 +15,8 @@ import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
-import { TaskForm } from './lifecycle';
 import type { AlumniMe, ExitStep, Handoff, Letter } from './types';
-import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset } from './types';
+import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
 // acknowledge), HR's exit cases and the exit workspace (PPL-19, with "Start exit"), clearance sign-offs (PPL-20) and the
@@ -55,61 +54,6 @@ function Facts({ rows }: { rows: [string, string | null | undefined][] }) {
           </div>
         ))}
     </dl>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ exit interview (PPL-21)
-
-export interface ExitInterviewScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: InterviewForm | null;
-  onSubmit: (answers: Record<string, unknown>) => Promise<unknown>;
-}
-
-export function ExitInterviewScreen(p: ExitInterviewScreenProps) {
-  const [answers, setAnswers] = useState<Record<string, unknown>>({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const d = p.data;
-  const missing = d ? d.form.sections.flatMap((s) => s.fields).filter((f) => f.required && (answers[f.key] === undefined || answers[f.key] === null || answers[f.key] === '')) : [];
-  return (
-    <LivePage title="Exit interview" description="Thank you for your time here. Only HR reads your answers; your manager only learns that you answered." state={p.state} onRetry={p.onRetry} what="your exit interview">
-      {d && d.status !== 'sent' && <EmptyState compact title={d.status === 'submitted' ? 'Your answers are in. Thank you.' : 'You have no exit interview to answer.'} />}
-      {d && d.status === 'sent' && (
-        <Card title="Your answers">
-          {error && (
-            <InlineAlert tone="danger" title="Not sent">
-              {error}
-            </InlineAlert>
-          )}
-          <TaskForm form={d.form} answers={answers} onChange={setAnswers} errors={errors} />
-          <div className="yx-ppl__form-actions">
-          <Button
-            variant="primary"
-            disabled={missing.length > 0}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await p.onSubmit(answers);
-              } catch (e) {
-                const body = e as { message?: string; body?: { fieldErrors?: Record<string, string> } };
-                setErrors(body.body?.fieldErrors ?? {});
-                setError(body.message ?? 'Try again in a moment.');
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Send answers
-          </Button>
-          </div>
-        </Card>
-      )}
-    </LivePage>
   );
 }
 
@@ -247,8 +191,8 @@ export interface ExitCaseScreenProps {
   onNotice: (input: { kind: 'early_release' | 'buyout' | 'lwd_change'; lwd: string; buyoutBy: 'employee' | 'company' | null; buyoutDays: number | null; reason: string; version: number }) => Promise<unknown>;
   onHrFacts: (input: { rehireEligible: boolean | null; rehireReason: string | null; regretted: boolean | null; backfillRequested: boolean; hold: boolean; holdReason: string | null; holdReviewOn: string | null; version: number }) => Promise<unknown>;
   onSignOff: SignOffHandler;
-  onInterview: () => Promise<InterviewAnswers>;
-  onInterviewNotes: (notes: string) => Promise<unknown>;
+  /** HR with the confidential exit key: the leaver's answered exit interview (PPL-21). */
+  interviewHref: string;
   checklistHref: (journeyId: string) => string;
   /** 6d: the steps after the last day (HR) and the payroll hand-off (HR or payroll). */
   steps?: ExitStep[] | null;
@@ -386,41 +330,6 @@ export function HrFactsDialog({ d, onClose, onSave }: { d: ExitWorkspace; onClos
           </FormField>
         </div>
       )}
-    </ConfirmDialog>
-  );
-}
-
-export function InterviewDialog({ onClose, load, onNotes }: { onClose: () => void; load: () => Promise<InterviewAnswers>; onNotes: (notes: string) => Promise<unknown> }) {
-  const [data, setData] = useState<InterviewAnswers | null>(null);
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    void load()
-      .then((x) => {
-        setData(x);
-        setNotes(x.hrNotes ?? '');
-      })
-      .catch((e: Error) => setError(e.message));
-    // Load once when the dialog opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const fields = data?.form.sections.flatMap((s) => s.fields) ?? [];
-  const shown = (key: string, v: unknown) => {
-    const f = fields.find((x) => x.key === key);
-    return f?.options?.find((o) => o.value === v)?.label ?? (v === undefined || v === null ? '' : String(v));
-  };
-  return (
-    // confirmDisabled kept: the answers are still loading (or failed to load); nothing in this dialog can fix that.
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title="Exit interview (HR only)" confirmLabel="Save notes" confirmDisabled={!data} onConfirm={async () => { await onNotes(notes); onClose(); }}>
-      {error && (
-        <InlineAlert tone="danger" title="Not loaded">
-          {error}
-        </InlineAlert>
-      )}
-      {data?.answers && <Facts rows={fields.map((f) => [f.label, shown(f.key, data.answers![f.key])])} />}
-      <FormField id="iv-notes" label="HR notes" optional>
-        <TextArea value={notes} onChange={setNotes} rows={3} maxLength={2000} />
-      </FormField>
     </ConfirmDialog>
   );
 }

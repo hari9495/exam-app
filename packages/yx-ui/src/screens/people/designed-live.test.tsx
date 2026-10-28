@@ -269,13 +269,22 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     name: 'Ravi Kumar', employeeCode: 'E1', journeyId: null, interview: 'sent', hr: null, can: { manage: false, confidential: false, interview: false },
     clearance: [{ id: 'c1', department: 'finance', title: 'Advances settled', owner: 'Lakshmi', status: 'open', note: null, recoveryAmount: null, recoveryReason: null, signedOffAt: null, version: 1 }],
   };
-  const props = (o: Partial<ExitCaseScreenProps>): ExitCaseScreenProps => ({ state: 'ready', data: base, today: '2026-10-09', onBack: vi.fn(), onNotice: vi.fn(), onHrFacts: vi.fn(), onSignOff: vi.fn(), onInterview: vi.fn(), onInterviewNotes: vi.fn(), checklistHref: () => '#', ...o });
+  const props = (o: Partial<ExitCaseScreenProps>): ExitCaseScreenProps => ({ state: 'ready', data: base, today: '2026-10-09', onBack: vi.fn(), onNotice: vi.fn(), onHrFacts: vi.fn(), onSignOff: vi.fn(), interviewHref: '/iv', checklistHref: () => '#', ...o });
 
   it('a manager sees no HR facts and cannot sign off or change the day', () => {
     wrap(<ExitCaseWorkspace today={day('2026-10-09')} persona="mgr" live={props({})} />);
     expect(screen.getByText('HR handles case checks for exits.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Change last day' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sign off' })).toBeNull();
+  });
+
+  it('an answered exit interview opens on its own page for HR with the confidential key, never for others', () => {
+    const { unmount } = wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, interview: 'submitted', can: { manage: true, confidential: true, interview: true } } })} />);
+    expect(screen.getByText('Open interview').closest('a')).toHaveAttribute('href', '/iv');
+    unmount();
+    wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, interview: 'submitted' } })} />);
+    expect(screen.getByText('Ravi answered the exit interview.')).toBeInTheDocument();
+    expect(screen.queryByText('Open interview')).toBeNull();
   });
 
   it('HR records a recovery only with an amount and what it is for', async () => {

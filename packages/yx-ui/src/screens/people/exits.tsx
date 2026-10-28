@@ -12,7 +12,6 @@ import { FieldRow, FormField } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea, TextField } from '../../components/inputs';
-import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { ApprovalTimeline } from '../../components/timeline';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
@@ -23,10 +22,11 @@ import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
 import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
-import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
+import { HandoffCard, HrFactsDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesDialog, VrsCard } from './live/special';
+import { TaskForm } from './live/lifecycle';
 import { dayKey } from '../../lib/dates';
-import type { AbscondingRow, Choice, ClearanceItem, ExitStatus, ExitStep, ExitWorkspace, LoadState, MyClearanceItem, MyResignation, MyVrsScheme, Payee, Payees } from './live/types';
+import type { AbscondingRow, Choice, ClearanceItem, ExitStatus, ExitStep, ExitWorkspace, FormDef, InterviewAnswers, InterviewForm, LoadState, MyClearanceItem, MyResignation, MyVrsScheme, Payee, Payees } from './live/types';
 import { Segment } from './people-kit';
 import { useRun } from '../org/org-kit';
 import type { FnfSettlementView, FnfSlipLine } from '../pay/live/types-5j';
@@ -460,7 +460,7 @@ const isoDay = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 
 function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps; persona: Persona }) {
   const d = p.data;
-  const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | 'withdraw' | null>(null);
+  const [ask, setAsk] = useState<'notice' | 'hr' | 'withdraw' | null>(null);
   const [signing, setSigning] = useState<ClearanceItem | null>(null);
   const [manual, setManual] = useState<ExitStep | null>(null);
   const [note, setNote] = useState('');
@@ -637,7 +637,9 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
                 <Text as="p">{d.interview === 'submitted' ? `${first} answered the exit interview.` : d.interview === 'sent' ? `${first} has the exit interview and has not answered yet.` : d.interview === 'skipped' ? 'The exit interview was skipped.' : `No exit interview for this ${d.typeLabel.toLowerCase()}.`}</Text>
                 {d.can.interview && d.interview === 'submitted' && (
                   <div>
-                    <Button onClick={() => setAsk('interview')}>Open interview</Button>
+                    <Button asChild>
+                      <a href={p.interviewHref}>Open interview</a>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -715,7 +717,6 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
         />
       )}
       {ask === 'hr' && d.hr && <HrFactsDialog d={d} onClose={() => setAsk(null)} onSave={p.onHrFacts} />}
-      {ask === 'interview' && <InterviewDialog onClose={() => setAsk(null)} load={p.onInterview} onNotes={p.onInterviewNotes} />}
       {signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={p.onSignOff} />}
       {manual && p.onStepDone && (
         <ConfirmDialog
@@ -963,76 +964,168 @@ export function ClearancePhone() {
 
 /* ================================================================== PPL-21 exit interview */
 
-const RATING = ['1', '2', '3', '4', '5'].map((x) => ({ value: x, label: x }));
+/** The leaver answers their interview (Me), or HR reads one leaver's answers and keeps notes (People › Exit cases). */
+export type LiveExitInterview =
+  | { kind: 'mine'; state: LoadState; onRetry: () => void; data: InterviewForm | null; onSubmit: (answers: Record<string, unknown>) => Promise<unknown> }
+  | { kind: 'hr'; state: LoadState; onRetry: () => void; name: string; data: InterviewAnswers | null; onNotes: (notes: string) => Promise<unknown>; onBack: () => void };
 
-function InterviewFields() {
-  return (
-    <div className="yx-ppl__form">
-      <fieldset className="yx-ppl__stack">
-        <legend className="yx-ppl__section-title">Main reasons for leaving</legend>
-        {['Career growth', 'Pay', 'Manager', 'Work hours or shifts', 'Commute or relocation', 'Higher studies'].map((r, i) => (
-          <Checkbox key={r} label={r} defaultChecked={i === 0 || i === 1} />
-        ))}
-      </fieldset>
-      {['Your manager', 'Growth and learning', 'Pay and benefits', 'Team and culture'].map((q, i) => (
-        <FormField key={q} label={`${q} (1 poor, 5 great)`} required>
-          <RadioGroup aria-label={q} orientation="horizontal" options={RATING} defaultValue={['4', '2', '3', '4'][i]} />
-        </FormField>
-      ))}
-      <FormField label="Would you work with us again?" required>
-        <RadioGroup aria-label="Would you work with us again" orientation="horizontal" options={[{ value: 'yes', label: 'Yes' }, { value: 'maybe', label: 'Maybe' }, { value: 'no', label: 'No' }]} defaultValue="yes" />
-      </FormField>
-      <FormField label="Anything else" optional>
-        <TextArea rows={3} defaultValue="The lab team was great. I wanted a lead role and it wasn't open this year." />
-      </FormField>
-      <Switch label="Keep my answers confidential" description="Only HR sees confidential answers, never your manager." defaultChecked />
-    </div>
-  );
-}
+/** The API's starter form (setting exit.interview.form), as the design's sample. */
+const INTERVIEW_FORM: FormDef = {
+  sections: [
+    {
+      id: 'why',
+      fields: [
+        { key: 'main_reason', type: 'choice', label: 'The main reason you are leaving', required: true, options: [{ value: 'better_opportunity', label: 'A better opportunity' }, { value: 'compensation', label: 'Pay and benefits' }, { value: 'manager', label: 'My manager' }, { value: 'work_environment', label: 'The work or the team' }, { value: 'growth', label: 'Growth and learning' }, { value: 'personal', label: 'Personal or family reasons' }, { value: 'other', label: 'Something else' }] },
+        { key: 'would_return', type: 'choice', label: 'Would you work here again?', required: true, options: [{ value: 'yes', label: 'Yes' }, { value: 'maybe', label: 'Maybe' }, { value: 'no', label: 'No' }] },
+        { key: 'rating', type: 'number', label: 'How was working here, from 1 (poor) to 5 (great)?', required: true, min: 1, max: 5 },
+        { key: 'keep', type: 'textarea', label: 'What should we keep doing?', max: 2000 },
+        { key: 'change', type: 'textarea', label: 'What should we change?', max: 2000 },
+      ],
+    },
+  ],
+  rules: [],
+};
+const MEERA_ANSWERS = { main_reason: 'growth', would_return: 'yes', rating: 4, keep: 'The lab team and the day-30 check-ins.', change: "I wanted a lead role and it wasn't open this year." };
+const blank = (v: unknown) => v === undefined || v === null || v === '';
 
-// PPL-21
-export function ExitInterview({ persona = 'emp' }: { persona?: Persona }) {
-  if (persona === 'hr')
-    return (
-      <PeopleFrame active="Exit cases">
-        <ObjectHeader name="Exit interview · Meera Iyer" person secondary="Answered 26 Sep 2026 · confidential" status={<Badge tone="warning">Confidential: HR only</Badge>} />
-        <div className="yx-ppl__grid2">
-          <Card title="Answers">
-            <dl className="yx-ppl__rail-facts">
-              <div><dt>Reasons</dt><dd>Career growth, Pay</dd></div>
-              <div><dt>Manager</dt><dd>4 of 5</dd></div>
-              <div><dt>Growth and learning</dt><dd>2 of 5</dd></div>
-              <div><dt>Pay and benefits</dt><dd>3 of 5</dd></div>
-              <div><dt>Team and culture</dt><dd>4 of 5</dd></div>
-              <div><dt>Would rejoin</dt><dd>Yes</dd></div>
-            </dl>
-          </Card>
-          <Card title="Interviewer notes">
-            <FormField label="Notes" helper="Visible to HR roles only. Feeds attrition analytics as aggregates.">
-              <TextArea rows={6} defaultValue="Wants a lead role; open to returning in 2027 if the Chennai quality manager role is approved. Rehire eligible." />
-            </FormField>
-            <Button variant="primary">Save notes</Button>
-          </Card>
-        </div>
-      </PeopleFrame>
-    );
+function MyExitInterview({ live, initial }: { live: Extract<LiveExitInterview, { kind: 'mine' }>; initial: Record<string, unknown> }) {
+  const [answers, setAnswers] = useState(initial);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [failed, setFailed] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const d = live.data;
+  const send = async () => {
+    const missing = d!.form.sections.flatMap((s) => s.fields).filter((f) => f.required && blank(answers[f.key]));
+    setErrors(Object.fromEntries(missing.map((f) => [f.key, 'Answer this question.'])));
+    if (missing.length) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onSubmit(answers);
+    } catch (e) {
+      const x = e as { message?: string; body?: { fieldErrors?: Record<string, string> } };
+      setErrors(x.body?.fieldErrors ?? {});
+      setFailed(x.message ?? 'Try again in a moment.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <MeFrame active="My exit">
-      <PageHeader title="Exit interview" description="About 5 minutes. Your answers help us improve." />
-      <InterviewFields />
-      <div className="yx-ppl__row">
-        <Button>Save for later</Button>
-        <Button variant="primary">Send answers</Button>
-      </div>
+      <PageHeader title="Exit interview" description="About 5 minutes. Only HR reads your answers; your manager only learns that you answered." />
+      {live.state !== 'ready' || !d ? (
+        live.state === 'error' ? (
+          <ErrorState title="We couldn't load your exit interview" description="Check your connection and try again." onRetry={live.onRetry} />
+        ) : live.state === 'no-access' ? (
+          <NoAccessState what="your exit interview" grantedBy="HR" />
+        ) : (
+          <ListSkeleton label="Loading your exit interview" />
+        )
+      ) : d.status !== 'sent' ? (
+        <EmptyState title={d.status === 'submitted' ? 'Your answers are in. Thank you.' : 'You have no exit interview to answer.'} />
+      ) : (
+        <>
+          {failed && (
+            <InlineAlert tone="danger" title="Not sent">
+              {failed}
+            </InlineAlert>
+          )}
+          <TaskForm form={d.form} answers={answers} onChange={setAnswers} errors={errors} />
+          <div className="yx-ppl__row">
+            <Button variant="primary" loading={busy} onClick={() => void send()}>
+              Send answers
+            </Button>
+          </div>
+        </>
+      )}
     </MeFrame>
   );
 }
 
+function ExitInterviewAnswers({ live }: { live: Extract<LiveExitInterview, { kind: 'hr' }> }) {
+  const d = live.data;
+  const [notes, setNotes] = useState(d?.hrNotes ?? '');
+  const [busy, setBusy] = useState(false);
+  const fields = d?.form.sections.flatMap((s) => s.fields) ?? [];
+  const shown = (key: string, v: unknown) => fields.find((f) => f.key === key)?.options?.find((o) => o.value === v)?.label ?? (blank(v) ? '' : String(v));
+  return (
+    <PeopleFrame active="Exit cases">
+      <ObjectHeader
+        name={`Exit interview · ${live.name}`}
+        avatarName={live.name}
+        person
+        secondary={d?.submittedAt ? `Answered ${formatDate(new Date(d.submittedAt))} · confidential` : 'Confidential'}
+        status={<Badge tone="warning">Confidential: HR only</Badge>}
+        actions={<Button onClick={live.onBack}>Back to the exit</Button>}
+      />
+      {live.state !== 'ready' || !d ? (
+        live.state === 'error' ? (
+          <ErrorState title="We couldn't load the exit interview" description="Check your connection and try again." onRetry={live.onRetry} />
+        ) : live.state === 'no-access' ? (
+          <NoAccessState what="exit interview answers" grantedBy="your HR admin" note="Only people with the confidential exit key read them." />
+        ) : (
+          <ListSkeleton label="Loading the exit interview" />
+        )
+      ) : (
+        <div className="yx-ppl__grid2">
+          <Card title="Answers">
+            {d.answers ? (
+              <dl className="yx-ppl__rail-facts">
+                {fields.map((f) => (
+                  <div key={f.key}>
+                    <dt>{f.label}</dt>
+                    <dd>{shown(f.key, d.answers![f.key]) || 'Not answered'}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <Text as="p">{`${live.name.split(' ')[0]} has not answered yet.`}</Text>
+            )}
+          </Card>
+          <Card title="Interviewer notes">
+            <FormField label="Notes" helper="Visible to HR roles only. Feeds attrition analytics as aggregates.">
+              <TextArea rows={6} value={notes} onChange={setNotes} maxLength={2000} />
+            </FormField>
+            <div>
+              <Button
+                variant="primary"
+                loading={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await live.onNotes(notes);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Save notes
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+    </PeopleFrame>
+  );
+}
+
+// PPL-21: the story shows the sample (the API's starter form, Meera's answers); the app passes `live`.
+export function ExitInterview({ persona = 'emp', live }: { persona?: Persona; live?: LiveExitInterview }) {
+  const none = async () => {};
+  const shown: LiveExitInterview =
+    live ??
+    (persona === 'hr'
+      ? { kind: 'hr', state: 'ready', onRetry: () => {}, name: MEERA.name, data: { form: INTERVIEW_FORM, status: 'submitted', submittedAt: '2026-09-26T10:00:00Z', answers: MEERA_ANSWERS, hrNotes: 'Wants a lead role; open to returning in 2027 if the Chennai quality manager role is approved. Rehire eligible.' }, onNotes: none, onBack: () => {} }
+      : { kind: 'mine', state: 'ready', onRetry: () => {}, data: { form: INTERVIEW_FORM, status: 'sent', lastDay: '2026-10-19' }, onSubmit: none });
+  return shown.kind === 'hr' ? <ExitInterviewAnswers key={shown.data ? 'loaded' : 'loading'} live={shown} /> : <MyExitInterview live={shown} initial={live ? {} : MEERA_ANSWERS} />;
+}
+
 // PPL-21 · phone
 export function ExitInterviewPhone() {
+  const [answers, setAnswers] = useState<Record<string, unknown>>(MEERA_ANSWERS);
   return (
     <PhoneFrame tab="me" title="Exit interview" hideTabs>
-      <InterviewFields />
+      <TaskForm form={INTERVIEW_FORM} answers={answers} onChange={setAnswers} errors={{}} />
       <Button variant="primary" fullWidth>
         Send answers
       </Button>

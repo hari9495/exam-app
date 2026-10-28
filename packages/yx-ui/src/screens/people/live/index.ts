@@ -21,13 +21,11 @@ export {
   type SignatoriesDrawerProps,
 } from './joining';
 export {
-  ExitInterviewScreen,
   MyAssetsScreen,
   StartExitDialog,
   AddAssetDrawer,
   AlumniScreen,
   type AlumniScreenProps,
-  type ExitInterviewScreenProps,
   type MyAssetsScreenProps,
   type ExitCasesScreenProps,
   type ExitCaseScreenProps,
