@@ -675,10 +675,10 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Manager (Manager · team plan) | feature not built |
-| Compliance (Weekly compliance) | feature not built |
-| Policy (HR · policy) | feature not built |
-| Employee | feature not built |
+| Manager (Manager · team plan) | /yx/time/hybrid as a manager (Divya): "Plan week" grid of the manager (you) and their own team for this or next week, Home/Office switch per open day, anchor and closed days (holiday, leave, today, over) as badges, "Short by N" + Remind (once a day, bell notice), "In office" totals; Save plan (toast). Live: GET /time/hybrid/me, /team, PUT /plan, POST /remind. Small differences: this week is the same grid (open days still plannable) instead of a read-only "Who's in this week" card; a day not yet planned shows "Not set"; a manager's change says "Updated for …" (no notice to the person) |
+| Compliance (Weekly compliance) | /yx/time/hybrid → Compliance (manager: own team; HR: attendance.view in scope): last week per person, office days with evidence (geofence / office network / kiosk per hybrid.evidence) + full leave days vs hybrid.office_days, "planned but not in" days, Met / N of M / No rule, "Remind about next week". Gap: on-duty days are not counted (no on-duty request in the API); no week picker (the design shows one week) |
+| Policy (HR · policy) | /yx/time/hybrid as HR with org.settings.manage ("Hybrid policy" when it is their only tab, else a "Policy" tab): group = company, legal entity, location or department; office days (0 = no rule), anchor days, evidence; saved through PUT /org/settings (three settings). Gap / Question: "Link to pay deductions or ratings" has no setting (no pay link), so the form only says missed days don't affect pay |
+| Employee | /yx/time/hybrid as an employee (Arjun): Home/Office Segment per open day, anchor days fixed, "You: N of M office days" + Short badge, "Who else is in" (same manager), Save plan (toast; pressed with no change says why). No rule (office days 0): "No office-day rule for you" |
 | Phone (Phone · my office days) | phone view, mobile app not built |
 
 ### Counts
@@ -791,9 +791,9 @@ Question: there is no list of past events in the design; the API has GET /time/i
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Suggestions · rule and AI (`Suggestions`) | Design only, feature not built (no tool connections or suggestions in the API). |
-| Connect tools (`Connect`) | Design only, feature not built. |
-| No suggestions (`None`) | Design only, feature not built. |
+| Suggestions · rule and AI (`Suggestions`) | /yx/time/timesheet → "Pre-fill from my tools" (only while timesheet.tool_suggestions is on for the person): suggestions for days up to today from the connected tools, mapped onto active projects (an unknown project asks "Choose a project" and Accept pressed first says so and focuses it); Accept / Edit / Reject / Undo / Accept all new put hours into the grid only; the week is saved by Save draft. Providers: to decide (work calendar, issue tracker, code host; dev-fake today). Gap: "Manage rules" (personal matching rules) is not in the API; matching is by project code or name |
+| Connect tools (`Connect`) | Same drawer: "Your tools" card, Connect / Revoke per tool (one live connection per tool, revoke audited and always allowed); "Connect a tool to get suggestions" when none is connected; "Not set up for your company" when the setting is off |
+| No suggestions (`None`) | Same drawer, connected tools with nothing to match this week: "No suggestions for this week" + Fill week by hand / Connect the next tool |
 | Phone (`Phone`) | Phone view, mobile app not built. |
 
 #### Kit (time-kit.stories.tsx: shared parts, not pages)
