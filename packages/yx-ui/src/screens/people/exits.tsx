@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noticeOutcome, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
 import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
-import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, type ExitCaseScreenProps } from './live/exits';
+import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesDialog } from './live/special';
 import type { AbscondingRow, Choice, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem, Payee, Payees } from './live/types';
 import { Segment } from './people-kit';
@@ -270,7 +270,7 @@ const isoDay = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 
 function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps; persona: Persona }) {
   const d = p.data;
-  const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | null>(null);
+  const [ask, setAsk] = useState<'notice' | 'hr' | 'interview' | 'withdraw' | null>(null);
   const [signing, setSigning] = useState<ClearanceItem | null>(null);
   const [manual, setManual] = useState<ExitStep | null>(null);
   const [note, setNote] = useState('');
@@ -298,6 +298,8 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
   const fnfDue = p.handoff?.current ? isoDay(p.handoff.current.wagesDueBy) : addWorkingDays(lwd, 2, []);
   const fnfLate = daysBetween(fnfDue, today) > 0 && !p.handoff?.settledOutside;
   const canSign = d.can.manage && ['accepted', 'cleared'].includes(d.status);
+  // HR undoes an exit HR started, until the last working day (the server also refuses once the F&F is finalised).
+  const canWithdraw = Boolean(p.onWithdraw) && d.can.manage && d.initiatedBy === 'company' && ['submitted', 'accepted', 'cleared'].includes(d.status) && lwd > today;
   const current = d.status === 'submitted' ? 'approval' : d.status === 'accepted' && d.clearance.some((c) => c.status === 'open') ? 'clearance' : d.status === 'accepted' && d.interview === 'sent' ? 'interview' : d.status === 'exited' || d.status === 'closed' ? 'documents' : 'fnf';
   const stepRow = (s: ExitStep): ChecklistRow => ({
     id: s.handler,
@@ -362,12 +364,18 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
               </Button>
             )}
             {d.can.manage && d.status === 'accepted' && !d.pendingChange && <Button onClick={() => setAsk('notice')}>Change last day</Button>}
+            {canWithdraw && <Button onClick={() => setAsk('withdraw')}>Withdraw exit</Button>}
           </>
         }
       />
       {d.lettersHeld && d.hr && (
         <InlineAlert tone="warning" title="Relieving and experience letters are held">
           {d.hr.holdReason ?? 'HR holds the letters.'} F&F wage lines still go out within 2 working days.
+        </InlineAlert>
+      )}
+      {d.status === 'withdrawn' && (
+        <InlineAlert tone="info" title="This exit was withdrawn">
+          {d.withdrawalReason ?? `${first} stays with the company.`}
         </InlineAlert>
       )}
       {d.pendingChange && (
@@ -499,6 +507,14 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
         </Card>
       </div>
       {ask === 'notice' && <NoticeDialog d={d} today={p.today} onClose={() => setAsk(null)} onNotice={p.onNotice} />}
+      {ask === 'withdraw' && p.onWithdraw && (
+        <WithdrawExitDialog
+          name={d.name}
+          approvalPending={d.status === 'submitted'}
+          onClose={() => setAsk(null)}
+          onWithdraw={p.onWithdraw}
+        />
+      )}
       {ask === 'hr' && d.hr && <HrFactsDialog d={d} onClose={() => setAsk(null)} onSave={p.onHrFacts} />}
       {ask === 'interview' && <InterviewDialog onClose={() => setAsk(null)} load={p.onInterview} onNotes={p.onInterviewNotes} />}
       {signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={p.onSignOff} />}

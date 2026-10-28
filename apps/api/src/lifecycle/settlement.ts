@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { payScope } from '../payroll/pay-access';
+import { PAY_RUN_EDITABLE, payScope, withPayScope } from '../payroll/pay-access';
 import { daysFrom, wagesDueBy } from './exit-rules';
 
 // LIFE-4.05 the payroll hand-off (design §11): one frozen record per exit case, a new revision whenever something
@@ -91,4 +91,28 @@ export async function settlementOf(tx: Tx, org: string, exitCaseId: string, lega
   const rows = await tx.exitSettlementInput.findMany({ where: { organizationId: org, exitCaseId }, orderBy: { revision: 'desc' } });
   await payScope(tx, []);
   return rows;
+}
+
+/** The exit's F&F settlement, read under payroll's guard: finalised once settled or once its run is submitted. */
+export async function fnfStateOf(tx: Tx, org: string, exitCaseId: string, legalEntityId: string) {
+  return withPayScope(tx, [legalEntityId], async () => {
+    const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, exitCaseId, status: { not: 'cancelled' } } });
+    if (!f) return null;
+    const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId }, select: { status: true } }) : null;
+    return { id: f.id, finalised: f.status === 'settled' || Boolean(run && !PAY_RUN_EDITABLE.includes(run.status)) };
+  });
+}
+
+/**
+ * A withdrawn exit: the open F&F made at acceptance is cancelled with its system lines, or the person would stay out of
+ * the regular pay run (a leaver is paid through F&F). A finalised one is left to payroll.
+ */
+export async function cancelFnfIn(tx: Tx, org: string, exitCaseId: string, legalEntityId: string): Promise<boolean> {
+  const f = await fnfStateOf(tx, org, exitCaseId, legalEntityId);
+  if (!f || f.finalised) return false;
+  await withPayScope(tx, [legalEntityId], async () => {
+    await tx.fnfSettlement.update({ where: { id: f.id }, data: { status: 'cancelled', version: { increment: 1 } } });
+    await tx.oneTimePay.updateMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, status: 'approved' }, data: { status: 'cancelled' } });
+  });
+  return true;
 }

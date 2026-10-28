@@ -117,6 +117,7 @@ export default function YxExitPage() {
         onStepDone: said((s: ExitStep, note: string) => write('POST', `/lifecycle/exits/${id(caseId)}/steps/${id(s.handler)}/done`, { note }), (s) => `${s.label} marked done for ${who}`),
         handoff: handoff.data ?? null,
         onSettledOutside: said((x: { settledOn: string; reason: string }) => write('POST', `/lifecycle/exits/${id(caseId)}/settled-outside`, x), () => `${who}'s F&F marked settled outside`),
+        ...(manage ? { onWithdraw: said((reason: string) => write('POST', `/lifecycle/exits/${id(caseId)}/withdraw`, { reason }), () => `The exit of ${who} is withdrawn`) } : {}),
       }}
     />
   );

@@ -315,6 +315,35 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     expect(onSettledOutside).toHaveBeenCalledWith({ settledOn: '2026-11-02', reason: 'Bank transfer' });
   });
 
+  it('HR withdraws an exit HR started: a reason is required on click, then the dialog closes; not for a resignation or after the last day', async () => {
+    const ws: ExitWorkspace = { ...base, exitType: 'end_of_contract', typeLabel: 'End of contract', initiatedBy: 'company', can: { manage: true, confidential: false, interview: false } };
+    const onWithdraw = vi.fn(async () => ({}));
+    wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: ws, onWithdraw })} />);
+    await ue.click(screen.getByRole('button', { name: 'Withdraw exit' }));
+    const dialog = screen.getByRole('dialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Withdraw exit' });
+    expect(confirm).toBeEnabled(); // never a disabled confirm
+    await ue.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 3 characters.')).toBeInTheDocument();
+    expect(onWithdraw).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Contract renewed');
+    await ue.click(confirm);
+    expect(onWithdraw).toHaveBeenCalledWith('Contract renewed');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); // the page shows the toast
+  });
+
+  it('no Withdraw exit for a resignation, without the key, or once the last day is reached', () => {
+    const company: ExitWorkspace = { ...base, initiatedBy: 'company', can: { manage: true, confidential: false, interview: false } };
+    const { unmount } = wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...company, initiatedBy: 'employee' }, onWithdraw: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
+    unmount();
+    const second = wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...company, can: { manage: false, confidential: false, interview: false } }, onWithdraw: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
+    second.unmount();
+    wrap(<ExitCaseWorkspace today={day('2026-10-31')} live={props({ data: company, today: '2026-10-31', onWithdraw: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: 'Withdraw exit' })).toBeNull();
+  });
+
   it('Clearance: waiving needs a note', async () => {
     const rows: MyClearanceItem[] = [{ ...base.clearance[0], exitCaseId: 'k', person: 'Ravi Kumar', lastDay: '2026-10-31' }];
     const onSignOff = vi.fn(async () => ({}));

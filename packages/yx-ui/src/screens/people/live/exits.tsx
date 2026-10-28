@@ -416,8 +416,37 @@ export interface ExitCaseScreenProps {
   onStepDone?: (s: ExitStep, note: string) => Promise<unknown>;
   handoff?: Handoff | null;
   onSettledOutside?: (input: { settledOn: string; reason: string }) => Promise<unknown>;
+  /** HR undoes an exit HR started, before the last working day (founder 28 Oct 2026). */
+  onWithdraw?: (reason: string) => Promise<unknown>;
 }
 export type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
+
+/** HR withdraws an exit HR started: a reason is required (shown on click, never a disabled confirm). */
+export function WithdrawExitDialog({ name, approvalPending, onClose, onWithdraw }: { name: string; approvalPending: boolean; onClose: () => void; onWithdraw: (reason: string) => Promise<unknown> }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const short = reason.trim().length < 3;
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Withdraw the exit of ${name}?`}
+      consequence={`${approvalPending ? 'The approval request ends. ' : ''}The offboarding checklist and clearance stop, and ${name.split(' ')[0]} stays with the company. Any assets stay with them. Their manager is told.`}
+      confirmLabel="Withdraw exit"
+      destructive
+      onConfirm={async () => {
+        setTried(true);
+        if (short) return false;
+        await onWithdraw(reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="wd-exit-reason" label="Why" required error={tried && short ? 'Enter a reason of at least 3 characters.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
 
 export function NoticeDialog({ d, today, onClose, onNotice }: { d: ExitWorkspace; today: string; onClose: () => void; onNotice: ExitCaseScreenProps['onNotice'] }) {
   const [kind, setKind] = useState<'early_release' | 'buyout' | 'lwd_change'>('early_release');

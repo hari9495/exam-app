@@ -182,7 +182,7 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.eventOutbox.count({ where: { eventType: 'exit.lwd.changed', payload: { path: ['exitCaseId'], equals: ids.raviCase } } }))).toBe(1);
   });
 
-  it('clearance: owners see only their items; a return clears its item; a lost asset becomes a recovery; all done → cleared', async () => {
+  it('clearance: owners see only their items; a return clears its item; a lost asset becomes a recovery; all done â†’ cleared', async () => {
     const mgrItems = (await api('mgr', 'get', '/lifecycle/clearance/mine').expect(200)).body.rows;
     expect(mgrItems.map((i: { department: string }) => i.department)).toEqual(['manager_handover']);
     await api('ravi', 'get', '/lifecycle/clearance/mine').expect(200).expect((r) => expect(r.body.rows).toHaveLength(0));
@@ -318,7 +318,7 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.probationReview.count({ where: { exitCaseId: k.id } }))).toBe(1);
   });
 
-  it('PPL-03: a manager reads their team member’s assets and leave balances; a peer, another company: not found', async () => {
+  it('PPL-03: a manager reads their team memberâ€™s assets and leave balances; a peer, another company: not found', async () => {
     const tag = `TB-${run}`;
     const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Tablet', name: 'Tab A9', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
     await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
@@ -351,6 +351,62 @@ describe('Lifecycle batch 6c', () => {
     const item = (who: Who) => api(who, 'get', '/lifecycle/clearance/mine').expect(200).then((r) => (r.body.rows as { title: string }[]).find((i) => i.title.includes(tag)));
     expect(await item('it')).toBeTruthy();
     expect(await item('hr')).toBeUndefined(); // HR issued it, but IT takes it back
+  });
+
+  it('HR withdraws an exit HR started (founder 28 Oct 2026): the checklist and clearance stop, the asset stays; refusals', async () => {
+    const hireOne = async (given: string, code: string) =>
+      (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: run, employeeCode: code, joinedOn: '2026-04-06', workEmail: `${code.toLowerCase()}@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const exit = async (employeeId: string, exitType: string, lwd = addDays(today, 30)) => (await api('hr', 'post', '/lifecycle/exits').send({ employeeId, exitType, lwd, reasonText: 'Recorded by mistake' }).expect(201)).body;
+    const withdraw = (who: Who, id: string, body: object) => api(who, 'post', `/lifecycle/exits/${id}/withdraw`).send(body);
+
+    // Positive: an end of contract with an asset out.
+    const leela = await hireOne('Leela', 'EX-008');
+    const tag = `WD-${run}`;
+    const asset = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Latitude 5450', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${asset}/issue`).send({ employeeId: leela, issuedOn: today, condition: 'New' }).expect(200);
+    const k = await exit(leela, 'end_of_contract');
+    expect(k.status).toBe('accepted');
+    await withdraw('hr', k.id, {}).expect(400); // the reason is required
+    await withdraw('hr', k.id, { reason: 'x' }).expect(400);
+    await withdraw('mgr', k.id, { reason: 'Not mine to undo' }).expect(403); // no lifecycle.exit.manage
+    await withdraw('adminB', k.id, { reason: 'Another company' }).expect(404);
+    const done = (await withdraw('hr', k.id, { reason: 'Contract was renewed last week' }).expect(200)).body;
+    expect(done).toMatchObject({ status: 'withdrawn', withdrawalReason: 'Contract was renewed last week' });
+    expect(done.clearance.length).toBeGreaterThan(0);
+    expect(done.clearance.every((i: { status: string }) => i.status === 'waived')).toBe(true);
+    const row = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { id: k.id } }));
+    expect(row).toMatchObject({ withdrawnBy: users.hr, withdrawalReason: 'Contract was renewed last week' });
+    const journey = await inA((tx) => tx.journey.findFirstOrThrow({ where: { subjectType: 'exit_case', subjectId: k.id } }));
+    expect(journey.status).toBe('cancelled');
+    expect(await inA((tx) => tx.journeyTask.count({ where: { journeyId: journey.id, status: { in: ['open', 'waiting'] } } }))).toBe(0);
+    expect((await inA((tx) => tx.assetAssignment.findFirstOrThrow({ where: { assetId: asset } }))).returnedOn).toBeNull(); // still with her
+    const ev = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'exit.case.withdrawn', entityId: k.id } }));
+    expect(ev.actorUserId).toBe(users.hr);
+    expect(JSON.parse(ev.metadataJson!)).toMatchObject({ before: 'accepted', by: users.hr, reason: 'Contract was renewed last week' });
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { organizationId: org.A.id, recipientUserId: users.mgr, type: 'exit.case.update', entityId: k.id } }))).toBe(1);
+    expect((await withdraw('hr', k.id, { reason: 'Once more' }).expect(400)).body.message).toMatch(/already withdrawn/);
+
+    // A termination still waiting for the second HR approval: its approval request ends too.
+    const t = await exit(await hireOne('Tara', 'EX-009'), 'termination');
+    expect(t.status).toBe('submitted');
+    await withdraw('hr', t.id, { reason: 'Wrong person picked' }).expect(200);
+    const tRow = await inA((tx) => tx.exitCase.findFirstOrThrow({ where: { id: t.id } }));
+    expect(tRow.status).toBe('withdrawn');
+    expect((await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: tRow.wfRequestId! } }))).status).toBe('withdrawn');
+    expect(await inA((tx) => tx.wfTask.count({ where: { requestId: tRow.wfRequestId!, status: 'open' } }))).toBe(0);
+
+    // Refused: the last working day reached; the F&F finalised; an employee's resignation.
+    const late = await exit(await hireOne('Usha', 'EX-010'), 'retirement');
+    await inA((tx) => tx.exitCase.update({ where: { id: late.id }, data: { approvedLwd: new Date(`${today}T00:00:00Z`) } }));
+    expect((await withdraw('hr', late.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/last working day/);
+    const paid = await exit(await hireOne('Vani', 'EX-011'), 'end_of_contract');
+    await inA(async (tx) => {
+      const e = await tx.employment.findFirstOrThrow({ where: { employeeId: paid.employeeId } });
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: paid.employeeId, employmentId: e.id, exitCaseId: paid.id, exitType: 'end_of_contract', inputRevision: 1, lwd: new Date(`${addDays(today, 30)}T00:00:00Z`), deadline: new Date(`${addDays(today, 32)}T00:00:00Z`), status: 'settled' } });
+    });
+    expect((await withdraw('hr', paid.id, { reason: 'Too late now' }).expect(400)).body.message).toMatch(/full and final/);
+    expect((await withdraw('hr', ids.raviCase, { reason: 'Not HR to undo' }).expect(400)).body.message).toMatch(/employee/);
   });
 
   it('two companies apart', async () => {

@@ -16,7 +16,7 @@ import type { LetterFnf } from '../documents/letters/fields';
 import { hashValue, sealValue } from '../people/profile.service';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
-import { entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
+import { PAY_RUN_EDITABLE, entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { FNF_COMPONENTS } from './starter';
 import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 
@@ -48,7 +48,7 @@ const inr = (x: Prisma.Decimal) => {
 export const moneyText = (s: string) => s.replace(/₹(\d+)(?:\.(\d{2}))?/g, (_m, i: string, f?: string) => `₹${grouped(i)}${f && f !== '00' ? `.${f}` : ''}`);
 type Settlement = Prisma.FnfSettlementGetPayload<object>;
 type Payee = { kind: string; name: string; relation: string; sharePercent: string; accountEnc?: string | null; accountHash?: string | null; accountLast4?: string | null; ifsc?: string | null };
-const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
+const EDITABLE = PAY_RUN_EDITABLE;
 // The reason on the lines worked out here (a line payroll adds carries its own reason).
 const WORKED_OUT = 'Full and final settlement';
 // Wage lines: paid within the 2-working-day deadline (Code on Wages s.17(2)); gratuity has its own 30 days.
