@@ -59,6 +59,7 @@ function toRow(r: Row): WorkforceRow {
     department: r.department?.name ?? '',
     ...(r.departmentPath ? { departmentPath: r.departmentPath } : {}),
     location: r.location?.name ?? r.legalEntity?.name ?? '',
+    ...(r.location && r.legalEntity?.name ? { entity: r.legalEntity.name } : {}),
     manager: r.manager?.name ?? '',
     email: r.workEmail ?? '',
     phone: r.phone ?? '',

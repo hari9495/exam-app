@@ -1311,8 +1311,8 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
     heading: 'People',
     prefix: '@',
     items: [
-      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · QA Engineer · Quality', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
-      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Brand Manager · Sales', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
+      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · Kaveri Foods Pvt Ltd (Tamil Nadu) · QA Engineer · Quality · Chennai office', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
+      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Kaveri Foods Pvt Ltd · Brand Manager · Sales · Bengaluru head office', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
       { id: 'pp3', label: 'Ananya Kulkarni', secondary: 'Candidate · Quality Analyst', icon: Users, keywords: pfx('@', ['Ananya Kulkarni']) },
     ],
   },

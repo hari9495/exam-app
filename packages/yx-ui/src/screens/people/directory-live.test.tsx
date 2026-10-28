@@ -41,6 +41,15 @@ describe('DirectoryScreen live', () => {
     expect(screen.queryAllByText('Sara Das')).toHaveLength(0);
   });
 
+  it('shows the legal entity under the location, whole words only, and in the card (founder 28 Oct 2026)', () => {
+    const rows = [{ ...ROWS[0], id: 'e1', name: 'Quinn Rao', code: 'KFT-0031', location: 'Hosur plant', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }];
+    render(<DirectoryScreen persona="hr" rows={rows} live={live()} />);
+    const cell = screen.getAllByText('Kaveri Foods Pvt Ltd (Tamil Nadu)')[0];
+    expect(cell).toHaveClass('yx-ppl__sub');
+    expect(cell.parentElement).toHaveTextContent('Hosur plantKaveri Foods Pvt Ltd (Tamil Nadu)');
+    expect(screen.getAllByText('KFT-0031').length).toBeGreaterThan(0);
+  });
+
   it('All persons: N roles held by M people', async () => {
     render(<DirectoryScreen persona="hr" rows={ROWS} live={live()} />);
     await userEvent.click(screen.getByRole('tab', { name: /All persons/ }));

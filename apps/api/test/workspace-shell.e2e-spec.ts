@@ -156,10 +156,13 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     const hr = await search('hrA', WORD);
     expect(hr.people).toHaveLength(1);
     expect(hr.people[0].href).toBe(`/yx/people/profile?person=${ids.zA}`);
+    // The code with its legal entity's name next to it (founder 28 Oct 2026).
+    expect(hr.people[0].secondary).toMatch(/^\S+ · Entity A( · |$)/);
     const emp = await search('arjunA', WORD);
     expect(emp.people).toHaveLength(1);
     expect(emp.people[0].href).toMatch(/^\/yx\/people\/directory\?q=/);
     expect(emp.people[0].secondary).not.toMatch(/EMP|\d{3}/);
+    expect(emp.people[0].secondary).toMatch(/^Entity A( · |$)/);
   });
 
   it('people: someone with no employee record and no HR key gets no people at all', async () => {

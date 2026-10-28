@@ -18,6 +18,7 @@
 /* The send button below a form keeps the same gap as the fields above it. */
 .yx-ppl__form-actions { margin-top: var(--yx-space-4); }
 .yx-ppl__section-title { margin: 0; font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-weight: var(--yx-weight-semibold); }
+.yx-ppl__cell-two { display: flex; flex-direction: column; gap: var(--yx-space-half); min-width: 0; }
 .yx-ppl__sub { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }
 /* PPL-03 family and nominees, emergency contacts (founder 22 Oct 2026). */
 .yx-ppl__subhead { margin: 0 0 var(--yx-space-2); text-align: left; font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); }
