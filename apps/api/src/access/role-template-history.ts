@@ -982,6 +982,14 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "org.structure.view"
     ]
   ],
+  "hr_pay_approver": [
+    [
+      "employee.change.approve",
+      "employee.profile.view",
+      "employee.salary.view",
+      "org.structure.view"
+    ]
+  ],
   "interview_coordinator": [
     [
       "ats.candidate.view",
