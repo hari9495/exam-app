@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FieldForceScreen } from './field';
 
-const meta: Meta<typeof FieldForceScreen> = { title: 'Screens/Time/TIM-32 · Field-force map', component: FieldForceScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof FieldForceScreen> = { title: 'Screens/Time/TIM-32 · Field-force map', component: FieldForceScreen, parameters: { layout: 'fullscreen' }, render: (args) => <FieldForceScreen {...args} /> };
 export default meta;
 type S = StoryObj<typeof FieldForceScreen>;
 

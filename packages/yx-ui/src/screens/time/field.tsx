@@ -5,7 +5,7 @@ import { KioskFrame, PhoneFrame } from '../_kit/frames';
 import { Button, ButtonGroup, IconButton } from '../../components/button';
 import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Select } from '../../components/select';
@@ -19,6 +19,9 @@ import { CameraFrame, GeoMap, Kpis, PunchList, TimePage, type MapPin as Pin } fr
 import { evaluateClock, fmt12, fmtDuration, formatDistance, geofenceVerdict, toHHMM, toMin, type ClockState } from './time-logic';
 import { LiveGate, monthText, shiftMonth } from './ops';
 import type { LoadState, MyPresence, PresenceDayRow, TeamPresence } from './live/types';
+import { LoadingBlock } from './attendance';
+import { useRun } from '../org/org-kit';
+import { teamDrawing, trailDrawing, visitRow, type FieldPerson, type FieldVisit, type LiveFieldForce, type VisitStatus } from './field-force-live';
 import './time.css';
 
 /** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
@@ -483,11 +486,8 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
    TIM-32 · Field-force live map & visit log
    ===================================================================== */
 
-type VisitStatus = 'Done' | 'On site' | 'Upcoming' | 'Missed';
-/** `flagged`: a done visit with an open integrity flag (shows amber until the flag is reviewed). */
-interface FieldVisit { id: string; person: string; place: string; time: string; status: VisitStatus; planned: boolean; detail: string; flagged?: true }
-/** `audit`: on duty for a one-off audit, not a sales beat (left out of Beat coverage). `trackingOff`: no trail today (TEAM). */
-interface FieldPerson { id: string; name: string; beat: string; audit?: true; reportsTo: string; inAt?: string; km: number | null; shiftStart: string; withdrawnAt?: string; trackingOff?: string; flag?: { at: string }; x: number; y: number }
+// The row and visit shapes (FieldPerson, FieldVisit; `flagged`: a done visit with an open integrity flag) are shared with
+// the live variant in field-force-live.tsx.
 
 const VIKRAM = TEAM.find((t) => t.name === FIELD_DAY.person)!;
 /** Nisha's audit day comes from TEAM t6, including her tracking being off for the audit. */
@@ -526,20 +526,20 @@ const VISITS: FieldVisit[] = [
 ];
 
 const VISIT_TONE: Record<VisitStatus, BadgeTone> = { Done: 'success', 'On site': 'info', Upcoming: 'neutral', Missed: 'danger' };
-const visitsOf = (id: string) => VISITS.filter((x) => x.person === id);
+const visitsOf = (id: string, list: FieldVisit[] = VISITS) => list.filter((x) => x.person === id);
 /** A done visit with an open flag isn't counted as done until the flag is reviewed. */
-const doneOf = (id: string, flagOpen = true) => visitsOf(id).filter((x) => x.status === 'Done' && !(flagOpen && x.flagged)).length;
-const visitCount = (id: string, flagOpen = true) => {
-  const flagged = flagOpen ? visitsOf(id).filter((x) => x.flagged).length : 0;
-  return `${doneOf(id, flagOpen)} of ${visitsOf(id).length}${flagged ? ` (${flagged} flagged)` : ''}`;
+const doneOf = (id: string, flagOpen = true, list: FieldVisit[] = VISITS) => visitsOf(id, list).filter((x) => x.status === 'Done' && !(flagOpen && x.flagged)).length;
+const visitCount = (id: string, flagOpen = true, list: FieldVisit[] = VISITS) => {
+  const flagged = flagOpen ? visitsOf(id, list).filter((x) => x.flagged).length : 0;
+  return `${doneOf(id, flagOpen, list)} of ${visitsOf(id, list).length}${flagged ? ` (${flagged} flagged)` : ''}`;
 };
 /** Visits and distance in one line; distance left out when there is no trail, and "Tracking off" said when it's off. */
-const visitsLine = (p: FieldPerson, flagOpen = true) =>
-  [`${visitCount(p.id, flagOpen)} visits`, p.km !== null ? `${p.km} km` : p.trackingOff && 'Tracking off'].filter(Boolean).join(' · ');
-const nameOf = (id: string) => FIELD.find((f) => f.id === id)?.name ?? '';
+const visitsLine = (p: FieldPerson, flagOpen = true, list: FieldVisit[] = VISITS) =>
+  [`${visitCount(p.id, flagOpen, list)} visits`, p.km !== null ? `${p.km} km` : p.trackingOff && 'Tracking off'].filter(Boolean).join(' · ');
 
 /** `flagOpen`: a flagged visit shows an amber "Flagged" badge until its flag is reviewed. */
-function VisitList({ visits, showPerson, flagOpen = true }: { visits: FieldVisit[]; showPerson?: boolean; flagOpen?: boolean }) {
+function VisitList({ visits, showPerson, flagOpen = true, people = FIELD }: { visits: FieldVisit[]; showPerson?: boolean; flagOpen?: boolean; people?: FieldPerson[] }) {
+  const nameOf = (id: string) => people.find((f) => f.id === id)?.name ?? '';
   return (
     <ul className="yx-tim-list">
       {visits.map((x) => (
@@ -556,20 +556,61 @@ function VisitList({ visits, showPerson, flagOpen = true }: { visits: FieldVisit
   );
 }
 
-export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: { persona?: 'mgr' | 'hr'; openId?: string; state?: 'ready' | 'empty' }) {
-  const { say, toast } = useSay();
+/** Minutes since midnight in India now (live: the "shift started" comparison). */
+const istNowMin = () => {
+  const d = new Date(Date.now() + 330 * 60_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+const FLAG_TITLE = { mock: 'Mock location detected', speed: 'Impossible speed detected' } as const;
+
+// TIM-32: the story shows the Chennai sales sample; the app passes `live` (the manager's team or HR's scope, today).
+export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready', live }: { persona?: 'mgr' | 'hr'; openId?: string; state?: 'ready' | 'empty'; live?: LiveFieldForce }) {
+  if (live && (live.state !== 'ready' || !live.data)) return <FieldForcePending live={live} />;
+  return <FieldForceView persona={persona} openId={openId} state={state} live={live} />;
+}
+
+function FieldForcePending({ live }: { live: LiveFieldForce }) {
+  return (
+    <TimePage active="Today">
+      <PageHeader title="Field force · today" description="Duty time only" />
+      {live.state === 'error' ? (
+        <ErrorState title="The field force map didn't load" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' ? (
+        <NoAccessState what="the field force map" grantedBy="HR" note="Managers see their own team; HR sees the people in their scope." />
+      ) : (
+        <LoadingBlock rows={6} />
+      )}
+    </TimePage>
+  );
+}
+
+function FieldForceView({ persona: personaProp, openId, state: stateProp, live }: { persona: 'mgr' | 'hr'; openId?: string; state: 'ready' | 'empty'; live?: LiveFieldForce }) {
+  const { say } = useSay();
+  const { busy, error, run } = useRun();
+  const d = live?.data ?? null;
+  const drawn = d ? teamDrawing(d) : null;
+  const persona = d ? (d.scope === 'granted' ? 'hr' : 'mgr') : personaProp;
   const user = persona === 'hr' ? HR_ADMIN : SALES_MANAGER;
-  const rows = persona === 'hr' ? FIELD : FIELD.filter((f) => f.reportsTo === user.name);
-  const [open, setOpen] = useState(openId ?? null);
+  const people = drawn ? drawn.rows : FIELD;
+  // Live: each visit's flag stays open until that person's flags are reviewed (the API sends it per person).
+  const visits = d ? d.visits.map((x) => visitRow(x, Boolean(d.people.find((p) => p.id === x.employeeId)?.flag))) : VISITS;
+  const rows = live || persona === 'hr' ? people : people.filter((f) => f.reportsTo === user.name);
+  const state = d ? (rows.length ? 'ready' : 'empty') : stateProp;
+  const [openLocal, setOpenLocal] = useState(openId ?? null);
+  const open = live ? live.openId : openLocal;
+  const setOpen = live ? live.onOpen : setOpenLocal;
   const [who, setWho] = useState<string | null>('all');
   const [flag, setFlag] = useState<'open' | 'asked' | 'reviewed'>('open');
   const [messaged, setMessaged] = useState<string[]>([]);
   const [askedHr, setAskedHr] = useState(false);
   const person = rows.find((f) => f.id === open);
-  const nowMin = NOW_MIN;
-  const tracked = rows.filter((f) => f.inAt && f.km !== null);
-  const flagOpen = flag !== 'reviewed';
-  const teamVisits = VISITS.filter((x) => rows.some((r) => r.id === x.person));
+  const nowMin = live ? istNowMin() : NOW_MIN;
+  const tracked = rows.filter((f) => f.inAt && f.km !== null && !f.offMap);
+  // Live flags are per person (open until reviewed, from the API); the sample has one flag.
+  const flagOpen = live ? true : flag !== 'reviewed';
+  const flagShown = live ? Boolean(person?.flag) : Boolean(person?.flag) && flag !== 'reviewed';
+  const flagReviewed = live ? Boolean(person && !person.flag && person.reviewedBy) : Boolean(person?.flag) && flag === 'reviewed';
+  const teamVisits = visits.filter((x) => rows.some((r) => r.id === x.person));
   const shownVisits = who && who !== 'all' ? teamVisits.filter((x) => x.person === who) : teamVisits;
   // Beat coverage counts the same people its By beat list shows (audits are not beats).
   const beatRows = rows.filter((f) => !f.audit);
@@ -577,25 +618,32 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
   const isDone = (x: FieldVisit) => x.status === 'Done' && !(flagOpen && x.flagged);
   const count = (s: VisitStatus) => beatVisits.filter((x) => x.status === s).length;
   const planned = beatVisits.filter((x) => x.planned);
+  const late = (f: FieldPerson) => Boolean(f.shiftStart) && nowMin > toMin(f.shiftStart);
   const statusBadge = (f: FieldPerson) =>
-    !f.inAt ? <Badge tone={nowMin > toMin(f.shiftStart) ? 'warning' : 'neutral'}>Not checked in</Badge>
-      : f.withdrawnAt ? <Badge tone="neutral">No trail</Badge>
-        : f.flag ? <Badge tone="warning">Flag: mock location</Badge>
-          : visitsOf(f.id).some((x) => x.status === 'On site') ? <Badge tone="info">On site</Badge>
+    !f.inAt ? <Badge tone={late(f) ? 'warning' : 'neutral'}>Not checked in</Badge>
+      : f.withdrawnAt || f.withdrawnOn || f.noConsent ? <Badge tone="neutral">No trail</Badge>
+        : f.flag ? <Badge tone="warning">{f.flag.kind === 'speed' ? 'Flag: impossible speed' : 'Flag: mock location'}</Badge>
+          : visitsOf(f.id, visits).some((x) => x.status === 'On site') ? <Badge tone="info">On site</Badge>
             : null;
   const first = person?.name.split(' ')[0];
-  const done = person ? visitsOf(person.id).filter((x) => x.status === 'Done') : [];
+  const done = person ? visitsOf(person.id, visits).filter((x) => x.status === 'Done') : [];
+  const day = live?.person.data && live.person.data.person.id === person?.id ? live.person.data : null;
+  const trail = day ? trailDrawing(day) : null;
+  const officeFences = drawn ? drawn.fences : [{ id: 'o', label: 'Chennai office', x: 70, y: 150, r: 18 }];
   return (
     <TimePage active="Today" user={user}>
-      <PageHeader title="Field force · today" description={`${persona === 'hr' ? 'All field staff' : 'Your team'}${state === 'empty' ? '' : ' · duty time only · trails kept 90 days, then only distance and visits'}`} />
+      <PageHeader title="Field force · today" description={`${persona === 'hr' ? 'All field staff' : 'Your team'}${state === 'empty' ? '' : d ? ` · duty time only · trails kept ${d.retentionDays} days` : ' · duty time only · trails kept 90 days, then only distance and visits'}`} />
       {state === 'empty' ? (
-        persona === 'hr' ? (
-          <EmptyState title="Field tracking is off for this group" description="Turn it on per group in Settings › Check-in & devices. Each person then gives consent before any location is recorded." action={<StoryLink to="checkInSettings">Open settings</StoryLink>} />
+        d && !d.trackingOff ? (
+          <EmptyState title="No field staff to show" description="No one in your reach has field tracking on or visits planned today." />
+        ) : persona === 'hr' ? (
+          <EmptyState title="Field tracking is off for this group" description="Turn it on per group in Settings › Check-in & devices. Each person then gives consent before any location is recorded." action={live ? <Button asChild><a href={live.settingsHref}>Open settings</a></Button> : <StoryLink to="checkInSettings">Open settings</StoryLink>} />
         ) : (
           <EmptyState
             title="Field tracking is off for your group"
             description={askedHr ? 'Request sent to HR. Each person gives consent before any location is recorded.' : 'Ask HR to turn on field tracking for your group. Each person then gives consent before any location is recorded.'}
-            action={<Button onClick={() => say(askedHr && 'You already asked HR.', () => setAskedHr(true))}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
+            // Asking HR from here is not built yet (live shows the advice only).
+            action={live ? undefined : <Button onClick={() => say(askedHr && 'You already asked HR.', () => setAskedHr(true))}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
           />
         )
       ) : (
@@ -605,7 +653,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
             <div className="yx-tim-grid">
               <div data-span="8">
                 <GeoMap
-                  fences={[{ id: 'o', label: 'Chennai office', x: 70, y: 150, r: 18 }]}
+                  fences={officeFences}
                   pins={tracked.map((f) => ({ id: f.id, label: f.name, x: f.x, y: f.y, kind: 'person' as const, tone: f.flag ? ('warn' as const) : undefined }))}
                   // Pins show an initial, so the caption names them (no hover on a phone).
                   caption={`Live positions during duty hours${tracked.length ? ` · ${tracked.map((f) => `${f.name[0]} = ${f.name.split(' ')[0]}`).join(', ')}` : ''}`}
@@ -618,7 +666,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
                     {rows.map((f) => (
                       <li key={f.id}>
                         <span className="yx-tim-list__main">
-                          <PersonLabel name={f.name} secondary={persona === 'hr' ? `${visitsLine(f, flagOpen)} · ${f.reportsTo}` : visitsLine(f, flagOpen)} />
+                          <PersonLabel name={f.name} secondary={persona === 'hr' ? `${visitsLine(f, flagOpen, visits)} · ${f.reportsTo}` : visitsLine(f, flagOpen, visits)} />
                         </span>
                         <span className="yx-tim-row">
                           {statusBadge(f)}
@@ -636,7 +684,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
               <FormField label="Person">
                 <Select value={who} onChange={setWho} options={[{ value: 'all', label: 'Everyone' }, ...rows.map((r) => ({ value: r.id, label: r.name }))]} />
               </FormField>
-              <VisitList visits={shownVisits} showPerson flagOpen={flagOpen} />
+              {shownVisits.length ? <VisitList visits={shownVisits} showPerson flagOpen={flagOpen} people={rows} /> : <EmptyState title="No visits today" description="Visits show here once they are planned or checked in." />}
             </div>
           </TabsContent>
           <TabsContent value="beats">
@@ -645,7 +693,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
               <Card title="By beat">
                 <ul className="yx-tim-list">
                   {beatRows.map((f) => {
-                    const mine = visitsOf(f.id);
+                    const mine = visitsOf(f.id, visits);
                     const plan = mine.filter((x) => x.planned);
                     const planDone = plan.filter(isDone).length;
                     const extra = mine.length - plan.length;
@@ -671,54 +719,63 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
           <div className="yx-tim-stack">
             {!person.inAt ? (
               <InlineAlert
-                tone={nowMin > toMin(person.shiftStart) ? 'warning' : 'info'}
+                tone={late(person) ? 'warning' : 'info'}
                 title="Not on duty yet"
                 actions={
-                  <Button size="sm" onClick={() => say(messaged.includes(person.id) && 'Message already sent.', () => setMessaged((m) => [...m, person.id]))}>
-                    {messaged.includes(person.id) ? 'Message sent' : `Message ${first}`}
-                  </Button>
+                  // Messaging from here is not built yet (live shows the state only).
+                  live ? undefined : (
+                    <Button size="sm" onClick={() => say(messaged.includes(person.id) && 'Message already sent.', () => setMessaged((m) => [...m, person.id]))}>
+                      {messaged.includes(person.id) ? 'Message sent' : `Message ${first}`}
+                    </Button>
+                  )
                 }
               >
-                Shift started {fmt12(person.shiftStart)}. Nothing is recorded until {first} checks in.
+                {person.shiftStart ? `Shift started ${fmt12(person.shiftStart)}. ` : 'No shift today. '}Nothing is recorded until {first} checks in.
               </InlineAlert>
             ) : (
               <>
                 <Kpis
                   items={[
                     ...(person.km === null ? [] : [{ label: 'Distance', value: `${person.km} km`, note: 'From duty trail' }]),
-                    { label: 'Visits', value: visitCount(person.id, flagOpen) },
+                    { label: 'Visits', value: visitCount(person.id, flagOpen, visits) },
                   ]}
                 />
-                {person.withdrawnAt ? (
-                  <InlineAlert tone="info" title={`No trail: consent withdrawn at ${fmt12(person.withdrawnAt)}`}>Visits are still logged as field check-ins.</InlineAlert>
+                {person.withdrawnAt || person.withdrawnOn ? (
+                  <InlineAlert tone="info" title={person.withdrawnAt ? `No trail: consent withdrawn at ${fmt12(person.withdrawnAt)}` : `No trail: consent withdrawn on ${person.withdrawnOn}`}>Visits are still logged as field check-ins.</InlineAlert>
                 ) : person.trackingOff ? (
                   <InlineAlert tone="info" title={`Tracking off today: ${person.trackingOff}`}>No location trail is recorded. Visits are still logged as check-ins.</InlineAlert>
+                ) : person.noConsent ? (
+                  <InlineAlert tone="info" title={`No trail: ${first} has not agreed to location tracking`}>Visits are still logged as field check-ins.</InlineAlert>
+                ) : live && !trail ? (
+                  live.person.state === 'error' ? <InlineAlert tone="danger" title="The trail didn't load">Close this panel and open it again.</InlineAlert> : <LoadingBlock rows={3} />
                 ) : (
                   <GeoMap
-                    fences={[{ id: 'o', label: 'Office', x: 60, y: 150, r: 16 }]}
-                    pins={done.map((x, i) => ({ id: x.id, label: x.place.split(',')[0], x: 120 + i * 60, y: 120 - i * 35, kind: 'visit' as const }))}
-                    trail={[[60, 150], ...done.map((_, i) => [120 + i * 60, 120 - i * 35] as [number, number])]}
+                    fences={trail ? trail.fences : [{ id: 'o', label: 'Office', x: 60, y: 150, r: 16 }]}
+                    pins={trail ? trail.pins : done.map((x, i) => ({ id: x.id, label: x.place.split(',')[0], x: 120 + i * 60, y: 120 - i * 35, kind: 'visit' as const }))}
+                    trail={trail ? trail.trail : [[60, 150], ...done.map((_, i) => [120 + i * 60, 120 - i * 35] as [number, number])]}
                     caption="Trail during duty only"
                   />
                 )}
-                {person.flag && flag !== 'reviewed' && (
+                {person.flag && flagShown && (
                   <InlineAlert
                     tone="warning"
-                    title={`Mock location detected ${fmt12(person.flag.at)}`}
+                    title={`${FLAG_TITLE[person.flag.kind ?? 'mock']} ${fmt12(person.flag.at)}`}
                     actions={
                       <>
-                        <Button size="sm" onClick={() => say(flag === 'asked' && 'Note already requested.', () => setFlag('asked'))}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>
-                        <Button size="sm" variant="review" onClick={() => setFlag('reviewed')}>Mark reviewed</Button>
+                        {/* Asking for a note is not built yet (live: review only). */}
+                        {!live && <Button size="sm" onClick={() => say(flag === 'asked' && 'Note already requested.', () => setFlag('asked'))}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>}
+                        <Button size="sm" variant="review" loading={busy === 'review'} onClick={() => (live ? void run('review', () => live.onReview(person.id)) : setFlag('reviewed'))}>Mark reviewed</Button>
                       </>
                     }
                   >
                     Flags are never penalised automatically.{flag === 'asked' ? ` ${first}'s note shows here once added.` : ''}
                   </InlineAlert>
                 )}
-                {person.flag && flag === 'reviewed' && <InlineAlert tone="info" title="Flag reviewed">Marked reviewed by {user.name}.</InlineAlert>}
+                {error && <InlineAlert tone="danger" title="Not marked reviewed">{error}</InlineAlert>}
+                {flagReviewed && <InlineAlert tone="info" title="Flag reviewed">Marked reviewed by {live ? person.reviewedBy : user.name}.</InlineAlert>}
               </>
             )}
-            <Card title="Visits today"><VisitList visits={visitsOf(person.id)} flagOpen={flagOpen} /></Card>
+            <Card title="Visits today">{visitsOf(person.id, visits).length ? <VisitList visits={visitsOf(person.id, visits)} flagOpen={flagOpen} people={rows} /> : <p className="yx-tim-muted">No visits planned today.</p>}</Card>
             <p className="yx-tim-note">No per-minute timeline outside duty hours. Nothing is recorded on leave, weekly offs or after check-out.</p>
           </div>
         )}
