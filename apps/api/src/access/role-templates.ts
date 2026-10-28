@@ -83,16 +83,18 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Pay, pay ranges and entity tax identifiers; reads approved bank details to pay people.',
     // Founder 21 Oct 2026: payroll does not do HR work (job changes, adding people, probation, the annual increment,
     // changing pay) and does not approve bank or identity changes (HR does).
-    cannot: 'HR settings, job changes, adding people, probation decisions, approving bank and identity changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
+    // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
+    cannot: 'HR settings, job changes or approving them, adding people, probation decisions, approving bank and identity changes.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
     name: 'Payroll Approver',
     typicalScope: 'legal_entity',
-    summary: 'Checks and approves pay changes, bank account changes and payroll files prepared by others; the first check of a request to reopen a locked month.',
-    cannot: 'Prepare pay changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
+    summary: 'Checks and approves payroll runs, loans and payroll files prepared by others; the first check of a request to reopen a locked month.',
+    // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
+    cannot: 'Prepare pay changes, approve job changes.',
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
   },
   {
     key: 'finance',

@@ -13,7 +13,7 @@ async function ensure<T>(find: () => Promise<T | null>, create: () => Promise<T>
 
 const IST = 'Asia/Kolkata';
 // P02 §4.2 templates as permission profiles: Payroll Admin holds pay; HR Admin runs records without pay.
-export const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
+export const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
 // Founder 21 Oct 2026: the demo HR sees salaries and runs the annual increment (the salary grant and pay ranges).
 export const HR_PAY = ['employee.salary.view', 'employee.salary.manage', 'pay.range.view'];
 // Founder 21 Oct 2026: bank and identity changes are approved by HR only (payroll reads the approved details).
