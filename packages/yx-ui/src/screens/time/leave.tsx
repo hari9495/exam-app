@@ -4,7 +4,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Download, Minus, Plus } from '
 import { PhoneFrame } from '../_kit/frames';
 import { Segment } from '../people/people-kit';
 import { Button, IconButton } from '../../components/button';
-import { Badge, PersonLabel } from '../../components/display';
+import { Badge, DayDate, PersonLabel } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
@@ -64,15 +64,12 @@ const ALT_SAT = [new Date(2026, 9, 10), new Date(2026, 9, 24)]; // 2nd / 4th Sat
 /* ---------- small date helpers (local) ---------- */
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const day0 = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const same = (a: Date, b: Date) => day0(a).getTime() === day0(b).getTime();
 const TODAY0 = day0(TODAY);
 /** "12 Oct 2026" (house date format). */
 const dm = (d: Date) => formatDate(d);
-/** "Sat 10 Oct 2026": the weekday as a small lead word. */
-const wdm = (d: Date) => `${WD[d.getDay()]} ${dm(d)}`;
 /** "12 Oct 2026", "12 Oct 2026 – 13 Oct 2026" */
 const span = (a: Date, b: Date) => (same(a, b) ? dm(a) : `${dm(a)} – ${dm(b)}`);
 const first = (name: string) => name.split(' ')[0];
@@ -457,7 +454,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
   const clashDay = clash && range.from ? (day0(clash.from) > day0(range.from) ? clash.from : range.from) : null;
   const errors = [
     ...w.errors,
-    ...blockHits.map((b) => `${wdm(b.date)} is a company block date (${b.reason}). Pick other dates.`),
+    ...blockHits.map((b) => `${dm(b.date)} is a company block date (${b.reason}). Pick other dates.`),
     ...(clash && clashDay ? [`${dm(clashDay)} is already in ${own ? 'your' : `${first(person)}'s`} ${clash.status.toLowerCase()} request (${clash.type} ${span(clash.from, clash.to)}).`] : []),
   ];
   const overlap = range.from && range.to ? othersOff(person, range.from, range.to) : [];
@@ -567,7 +564,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
           {sw > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under {own ? 'your' : 'the'} policy.</p>}
           {count && (
             <ul className="yx-tim-days">
-              {count.days.map((d) => <li key={d.date.getTime()}><span style={{ whiteSpace: 'nowrap' }}>{wdm(d.date)}</span><span>{dayLabel(d)}</span></li>)}
+              {count.days.map((d) => <li key={d.date.getTime()}><DayDate date={d.date} /><span>{dayLabel(d)}</span></li>)}
             </ul>
           )}
           {warnings.map((x) => <InlineAlert key={x} tone="warning">{x}</InlineAlert>)}
@@ -984,7 +981,7 @@ function HolidayList({ optional = [] }: { optional?: string[] }) {
       {items.map((h) => (
         // The countdown always stays on the right of the name and date, at every width.
         <li key={h.name} style={{ flexWrap: 'nowrap' }}>
-          <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}</span><span className="yx-tim-muted">{wdm(h.date)}{h.optional ? ' · Optional' : ''}</span></span>
+          <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}</span><span className="yx-tim-muted"><DayDate date={h.date} />{h.optional ? ' · Optional' : ''}</span></span>
           <DueBadge date={h.date} />
         </li>
       ))}
@@ -1551,14 +1548,14 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
   ) : st === 'sent' ? (
     <div className="yx-tim-stack">
       <InlineAlert tone="info" title={`Sent to ${ME.manager}`}>
-        {amountText} comp-off for {wdm(CLAIM_DAY)}. It's listed on My leave until it's decided.
+        {amountText} comp-off for {dm(CLAIM_DAY)}. It's listed on My leave until it's decided.
       </InlineAlert>
       <div className="yx-tim-row"><span className="yx-tim-muted">Use by {dm(CLAIM_USE_BY)}</span><DueBadge date={CLAIM_USE_BY} /></div>
     </div>
   ) : (
     <div className="yx-tim-form">
       <FormField label="Day you worked" required helper="Holidays and weekly offs with punches in the last 30 days">
-        <RadioGroup aria-label="Day you worked" defaultValue="26" options={[{ value: '26', label: `${wdm(CLAIM_DAY)} · ${CLAIM.kind}`, description: `Worked ${fmt12(CLAIM.in)} – ${fmt12(CLAIM.out)} (${worked}) · ${CLAIM.where}` }]} />
+        <RadioGroup aria-label="Day you worked" defaultValue="26" options={[{ value: '26', label: `${dm(CLAIM_DAY)} · ${CLAIM.kind}`, description: `Worked ${fmt12(CLAIM.in)} – ${fmt12(CLAIM.out)} (${worked}) · ${CLAIM.where}` }]} />
       </FormField>
       <FormField label="Claim" helper={CLAIM_WORKED < FULL_DAY_MIN ? `Full day needs 8 h; you worked ${worked} on ${dm(CLAIM_DAY)}.` : undefined}>
         <RadioGroup aria-label="Claim" value={amount} onChange={setAmount} orientation="horizontal" options={[{ value: 'half', label: 'Half day (4 h or more)', disabled: CLAIM_WORKED < HALF_DAY_MIN }, { value: 'full', label: 'Full day (8 h or more)', disabled: CLAIM_WORKED < FULL_DAY_MIN }]} />
@@ -1573,7 +1570,7 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
       {creditedHoliday && coBal && coBal.credited > 0 && (
         <InlineAlert tone="info" title="Already credited">
           <div className="yx-tim-row" style={{ flexWrap: 'nowrap', justifyContent: 'space-between' }}>
-            <span>{wdm(creditedHoliday.date)} ({creditedHoliday.name}): +{plural(coBal.credited, 'day')} · use by {dm(CO_EXPIRES)}</span>
+            <span>{dm(creditedHoliday.date)} ({creditedHoliday.name}): +{plural(coBal.credited, 'day')} · use by {dm(CO_EXPIRES)}</span>
             <DueBadge date={CO_EXPIRES} />
           </div>
         </InlineAlert>
@@ -1590,12 +1587,12 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
       open={!!withdrawing}
       onOpenChange={(o) => !o && setWithdrawing(null)}
       title="Withdraw this comp-off claim?"
-      consequence={withdrawing ? `It hasn't been approved yet, so it's withdrawn at once. You can claim ${wdm(withdrawing.worked)} again within 30 days of working it.` : ''}
+      consequence={withdrawing ? `It hasn't been approved yet, so it's withdrawn at once. You can claim ${dm(withdrawing.worked)} again within 30 days of working it.` : ''}
       confirmLabel="Withdraw claim"
       cancelLabel="Keep claim"
       destructive
       onConfirm={() => {
-        if (withdrawing) toast({ title: `Comp-off claim for ${wdm(withdrawing.worked)} withdrawn`, tone: 'success' });
+        if (withdrawing) toast({ title: `Comp-off claim for ${dm(withdrawing.worked)} withdrawn`, tone: 'success' });
         if (withdrawing?.id === 'co-new') setClaimed(false);
         setWithdrawing(null);
       }}
@@ -1608,7 +1605,7 @@ export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 
         {pending.map((r) => (
           <li key={r.id}>
             <span className="yx-tim-list__main" style={MAIN}>
-              <strong>{r.days === 0.5 ? 'Half day' : plural(r.days, 'day')} · worked {wdm(r.worked)}</strong>
+              <strong>{r.days === 0.5 ? 'Half day' : plural(r.days, 'day')} · worked {dm(r.worked)}</strong>
               <span className="yx-tim-muted">Waiting for {r.approver} · use by {dm(r.useBy)}</span>
             </span>
             <Button size="sm" onClick={() => setWithdrawing(r)}>Withdraw</Button>
@@ -1708,7 +1705,7 @@ function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = 
           return (
             <li key={o.id}>
               <div className="yx-tim-row">
-                <Checkbox label={`${o.name} · ${wdm(o.date)}`} description={reason} checked={picked} disabled={locked} onChange={(c) => setSel(c ? [...sel, o.id] : sel.filter((x) => x !== o.id))} />
+                <Checkbox label={`${o.name} · ${dm(o.date)}`} description={reason} checked={picked} disabled={locked} onChange={(c) => setSel(c ? [...sel, o.id] : sel.filter((x) => x !== o.id))} />
                 {/* A countdown only on rows you can pick or have picked. */}
                 {!o.past && !locked && <DueBadge date={o.date} />}
               </div>
@@ -2158,7 +2155,7 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
                         <ul className="yx-tim-list">
                           {upcoming.map((h) => (
                             <li key={h.id} style={{ flexWrap: 'nowrap' }}>
-                              <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}{h.halfDay ? ' (half day)' : ''}</span><span className="yx-tim-muted">{WD[isoDate(h.on).getDay()]} {fd(h.on)}{h.chosen ? ' · Optional' : ''}</span></span>
+                              <span className="yx-tim-list__main" style={{ flex: '1 1 auto' }}><span>{h.name}{h.halfDay ? ' (half day)' : ''}</span><span className="yx-tim-muted"><DayDate date={isoDate(h.on)} />{h.chosen ? ' · Optional' : ''}</span></span>
                               <DueBadge date={isoDate(h.on)} today={today} />
                             </li>
                           ))}
@@ -2405,7 +2402,7 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
                 {plan.sandwichDays > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under your policy.</p>}
                 {plan.days.length > 0 && (
                   <ul className="yx-tim-days">
-                    {plan.days.map((x) => <li key={x.on}><span style={{ whiteSpace: 'nowrap' }}>{WD[isoDate(x.on).getDay()]} {fd(x.on)}</span><span>{x.countedAs === 'leave' && x.portion === 0.5 ? 'Half day' : COUNTED_AS[x.countedAs]}</span></li>)}
+                    {plan.days.map((x) => <li key={x.on}><DayDate date={isoDate(x.on)} /><span>{x.countedAs === 'leave' && x.portion === 0.5 ? 'Half day' : COUNTED_AS[x.countedAs]}</span></li>)}
                   </ul>
                 )}
                 {plan.warnings.map((w) => <InlineAlert key={w} tone="warning">{w}</InlineAlert>)}
@@ -2456,7 +2453,7 @@ function LiveOptionalHolidaysPanel({ data, onChoose, onClose }: { data: MyLeave;
             return (
               <li key={h.id}>
                 <div className="yx-tim-row">
-                  <Checkbox label={`${h.name} · ${WD[isoDate(h.on).getDay()]} ${fd(h.on)}`} description={reason} checked={picked} disabled={past || (!picked && full)} onChange={(c) => setSel(c ? [...sel, h.id] : sel.filter((x) => x !== h.id))} />
+                  <Checkbox label={`${h.name} · ${fd(h.on)}`} description={reason} checked={picked} disabled={past || (!picked && full)} onChange={(c) => setSel(c ? [...sel, h.id] : sel.filter((x) => x !== h.id))} />
                   {!past && <DueBadge date={isoDate(h.on)} today={isoDate(data.today)} />}
                 </div>
               </li>

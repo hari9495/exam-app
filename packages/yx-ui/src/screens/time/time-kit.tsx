@@ -814,7 +814,7 @@ const LEGEND_ORDER: DayCode[] = ['P', 'L', 'HD', 'A', 'LOP', 'CL', 'EL', 'SL', '
 /** Legend with counts per code and the month totals. */
 export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean }) {
   const s = monthSummary(days);
-  const short = (d: AttendanceDay) => formatDate(d.date).replace(/^0/, '').replace(/ \d{4}$/, '');
+  const short = (d: AttendanceDay) => formatDate(d.date);
   // Today's late check-in is a late mark too (the "Late days" KPI counts it), though its cell reads "Today".
   const legendCount = (c: DayCode) => (s.counts[c] ?? 0) + (c === 'L' ? days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length : 0);
   return (
@@ -906,8 +906,8 @@ export interface DayCardBodyProps {
  * request also needs HR, so it goes to the next month's run: October in the story world. One source for every screen.
  */
 export const latePayrollMonth = (today?: Date) => (today ? new Date(today.getFullYear(), today.getMonth() + 1, 1).toLocaleDateString('en-IN', { month: 'long' }) : LATE_PAYROLL);
-/** "21 Aug" (no leading zero, no year). */
-const shortDate = (d: Date) => formatDate(d).replace(/^0/, '').replace(/ \d{4}$/, '');
+/** "21 Aug 2026": the house date, always with the year. */
+const shortDate = formatDate;
 
 /** Legal overtime limit a quarter (the OT review screen, TIM-09, flags rows over it). */
 const OT_QUARTER_LIMIT = 75;

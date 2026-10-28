@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ArrowLeft, Delete, MapPin, QrCode, RotateCw } from 'lucide-react';
 import { KioskFrame, PhoneFrame } from '../_kit/frames';
 import { Button, ButtonGroup, IconButton } from '../../components/button';
-import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
+import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog } from '../../components/overlay';
@@ -26,9 +26,8 @@ function useSay() {
 }
 
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** "Mon 28 Sep" (no year, no comma). */
-const dayLabel = (d: Date) => `${DOW[d.getDay()]} ${formatDate(d).slice(0, -5).replace(/^0/, '')}`;
+/** "28 Sep 2026": the weekday goes beside it with <DayDate>, never merged in. */
+const dayLabel = formatDate;
 /** Links to other screens' stories (same pattern as roster.tsx). */
 const storyHref = (id: string) => `/?path=/story/${id}`;
 const STORY = {
@@ -444,7 +443,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
               return (
                 <Button key={d.date.toISOString()} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} onClick={() => say(d.note ? `You cannot pick this day: ${d.note}.` : false, () => pickDay(d.date))}>
                   <span style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span>{dayLabel(d.date)}</span>
+                    <DayDate date={d.date} stacked />
                     {line2 && <span className="yx-tim-note" style={{ color: 'inherit' }}>{line2}</span>}
                   </span>
                 </Button>
@@ -1049,7 +1048,7 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
   /** Without consent the web check-in and check-out decide the day; no check-out means no status yet. */
   const statusOf = (d: PresenceDay): DayStatus => (hasConsent(d) || d.webOut ? d.status : 'No check-out');
   const webLine = (d: PresenceDay) => (d.webIn ? `Checked in ${fmt12(d.webIn)} on the web` : 'No check-in');
-  const fmtDay = (d: Date) => formatDate(d).slice(0, -5).replace(/^0/, '');
+  const fmtDay = formatDate;
   return (
     <TimePage active={isEmp ? 'My attendance' : 'Muster'} user={persona === 'hr' ? HR_ADMIN : ME}>
       <PageHeader title={isEmp ? 'My work-from-home days' : persona === 'mgr' ? 'Presence days · My team' : 'Presence days'} description={consent === 'none' ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from Teams status and the YukthiX desktop app'} />
@@ -1071,7 +1070,7 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
               {days.map((d) => (
                 <li key={d.id}>
                   <span className="yx-tim-list__main">
-                    <strong>{isEmp ? dayLabel(d.date) : `${d.person} · ${dayLabel(d.date)}`}</strong>
+                    <strong>{isEmp ? <DayDate date={d.date} /> : <>{d.person} · <DayDate date={d.date} /></>}</strong>
                     <span className="yx-tim-muted">{hasConsent(d) ? `Active ${d.active}` : webLine(d)}</span>
                   </span>
                   <Badge tone={statusTone(statusOf(d))}>{statusOf(d)}</Badge>

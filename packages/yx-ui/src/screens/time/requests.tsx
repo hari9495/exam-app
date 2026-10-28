@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Download, Lock, Send, Unlock, X } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
-import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
+import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
+import { formatDate } from '../../lib/format';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
@@ -37,10 +38,8 @@ import './time.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** "10 Sep": no leading zero. */
-const dm = (d: Date) => `${d.getDate()} ${MON[d.getMonth()]}`;
-const dmy = (d: Date) => `${dm(d)} ${d.getFullYear()}`;
+/** "10 Sep 2026": the house date, always with the year. */
+const dm = formatDate;
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -181,7 +180,7 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const nothing = type === 'regularise' && !locked ? nothingToFix(date) : null;
   const off = date ? dayType(date) : 'normal day';
   const holidayName = date ? HOLIDAYS.find((h) => h.date.toDateString() === date.toDateString())?.name : undefined;
-  const wfhOffErr = type === 'wfh' && date && off !== 'normal day' ? `${WD[date.getDay()]} ${dm(date)} is ${off === 'holiday' ? `a holiday (${holidayName})` : 'your weekly off'}` : null;
+  const wfhOffErr = type === 'wfh' && date && off !== 'normal day' ? `${dm(date)} is ${off === 'holiday' ? `a holiday (${holidayName})` : 'your weekly off'}` : null;
   const fixNow = fixOptions.some((o) => o.value === fix) ? fix : fixOptions[0].value;
   const route = regularisationRoute({ usedThisMonth: type === 'regularise' && !locked ? used : 0, dateLocked: locked });
   // WFH has its own monthly limit: past it, HR approves too.
@@ -237,7 +236,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
   // A fix for a day in the open month is paid this month only if it is approved before payroll closes.
   const payDeadline = (type === 'regularise' || type === 'on_duty') && !locked && !s.nothing && !!date && date.getMonth() === TODAY.getMonth() && dayStart(date) <= dayStart(TODAY);
   const lockedMonth = date ? MONTH[date.getMonth()] : '';
-  const lateRule = `Days before 1 ${MON[MONTH_START.getMonth()]} go as a late request (up to ${LATE_DAYS} days back).`;
+  const lateRule = `Days before ${dm(MONTH_START)} go as a late request (up to ${LATE_DAYS} days back).`;
   const helper =
     locked
       ? `${lockedMonth} is locked, so this goes as a late request.`
@@ -304,7 +303,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
         <TextArea rows={2} value={s.reason} onChange={s.setReason} />
       </FormField>
       <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
-        <strong>Effect on {date ? dmy(date) : 'the day'}</strong>
+        <strong>Effect on {date ? dm(date) : 'the day'}</strong>
         <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={locked && type === 'regularise' ? 'danger' : 'neutral'}>{beforeText(s)}</Badge></div>
         <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{afterMissing ? <Badge tone="neutral">{afterMissing}</Badge> : <Badge tone="success">{after}</Badge>}</div>
         {type === 'wfh' && date && (
@@ -546,7 +545,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
           <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
         </FormField>
         <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
-          <strong>Effect on {date ? dmy(date) : 'the day'}</strong>
+          <strong>Effect on {date ? dm(date) : 'the day'}</strong>
           <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone="neutral">{type === 'wfh' ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
           <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : <Badge tone="success">{after}</Badge>}</div>
           {type === 'wfh' && on && (
@@ -582,7 +581,7 @@ const NIGHT_FROM = 19;
 const NIGHT_TO = 6;
 const WEEK_START = new Date(2026, 9, 1); // Thu 1 Oct; the week list runs Thu 1 – Tue 6 Oct
 const dayDate = (i: number) => addDays(WEEK_START, i);
-const dayName = (i: number) => { const d = dayDate(i); return `${WD[d.getDay()]} ${dm(d)}`; };
+const dayName = (i: number) => dm(dayDate(i));
 const hourText = (h: number) => {
   const x = ((h % 24) + 24) % 24;
   return fmt12(`${String(Math.floor(x)).padStart(2, '0')}:${String(Math.round((x % 1) * 60)).padStart(2, '0')}`).replace(':00', '');
@@ -709,7 +708,7 @@ function SampleShiftSwap({ view, surface, blocked }: { view: 'request' | 'consen
         const h = holiday(i);
         return (
           <li key={i}>
-            <span className="yx-tim-row">{dayName(i)} · {shiftLabel(w)}{h && <Badge tone="neutral">Holiday · {h.name}</Badge>}</span>
+            <span className="yx-tim-row"><DayDate date={dayDate(i)} /> · {shiftLabel(w)}{h && <Badge tone="neutral">Holiday · {h.name}</Badge>}</span>
             {pendingDay(i)
               ? <Badge tone="neutral">{sent.some((x) => x.give === i && x.take < 0) ? 'Change pending' : 'Swap pending'}</Badge>
               : view === 'request' && w !== 'OFF' && <Button size="sm" onClick={() => { setGive(i); setKind('swap'); setOpen(true); }}>Ask to swap</Button>}
@@ -787,10 +786,10 @@ function SampleShiftSwap({ view, surface, blocked }: { view: 'request' | 'consen
             </>
           )}
           {kind === 'swap' && (!plan || plan.issues.length > 0) ? (
-            <p className="yx-tim-muted">If sent, needs approval by {WD[approveBy.getDay()]} {dm(approveBy)}.</p>
+            <p className="yx-tim-muted">If sent, needs approval by {dm(approveBy)}.</p>
           ) : (
             <div className="yx-tim-row">
-              <span className="yx-tim-muted">Needs approval by {WD[approveBy.getDay()]} {dm(approveBy)}</span>
+              <span className="yx-tim-muted">Needs approval by {dm(approveBy)}</span>
               <DueBadge date={approveBy} />
             </div>
           )}
@@ -809,7 +808,7 @@ function SampleShiftSwap({ view, surface, blocked }: { view: 'request' | 'consen
           {hours(consentPlan.theirs) === hours(consenter.week) ? ` Your hours for ${range(dayDate(0), dayDate(5))} stay ${hours(consenter.week)} h.` : ''}
         </p>
         <div className="yx-tim-row">
-          <span className="yx-tim-muted">Reply by {WD[replyBy.getDay()]} {dm(replyBy)}</span>
+          <span className="yx-tim-muted">Reply by {dm(replyBy)}</span>
           <DueBadge date={replyBy} />
         </div>
         {agreed && <InlineAlert tone="info" title="You agreed">{APPROVER} decides next. Your roster changes only after approval.</InlineAlert>}
@@ -878,10 +877,8 @@ export interface LiveMyShifts {
 }
 
 const SWAP_STATUS: Record<MyShifts['swaps'][number]['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting', tone: 'info' }, approved: { label: 'Approved', tone: 'success' }, rejected: { label: 'Not approved', tone: 'danger' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } };
-const swapDay = (iso: string) => {
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  return `${WD[d.getDay()]} ${dm(d)}`;
-};
+const swapDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+const swapDay = (iso: string) => dm(swapDate(iso));
 const minText = (m: number) => fmt12(`${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`).replace(':00', '');
 const swapShift = (s: MyShifts['days'][number]['shift']) => (s ? `${s.name} ${minText(s.start)} – ${minText(s.end)}` : 'Weekly off');
 
@@ -940,7 +937,7 @@ function LiveMyShiftsPage({ live: p }: { live: LiveMyShifts }) {
               <ul className="yx-tim-list" aria-label="My shifts">
                 {days.map((x) => (
                   <li key={x.on}>
-                    <span className="yx-tim-row">{swapDay(x.on)} · {swapShift(x.shift)}{x.on === p.today && <Badge tone="info">Today</Badge>}</span>
+                    <span className="yx-tim-row"><DayDate date={swapDate(x.on)} /> · {swapShift(x.shift)}{x.on === p.today && <Badge tone="info">Today</Badge>}</span>
                     {pendingOn(x.on) ? <Badge tone="neutral">Swap pending</Badge> : x.on >= p.today && x.shift && d.colleagues.length > 0 && <Button size="sm" onClick={() => ask(x.on)}>Ask to swap</Button>}
                   </li>
                 ))}
@@ -953,7 +950,7 @@ function LiveMyShiftsPage({ live: p }: { live: LiveMyShifts }) {
                 <ul className="yx-tim-list" aria-label="Swaps">
                   {decided.map((s) => (
                     <li key={s.id}>
-                      <span>{swapDay(s.on)} with {s.with}{s.mine ? '' : ' (they asked you)'}</span>
+                      <span className="yx-tim-row"><DayDate date={swapDate(s.on)} /> with {s.with}{s.mine ? '' : ' (they asked you)'}</span>
                       <Badge tone={SWAP_STATUS[s.status].tone}>{SWAP_STATUS[s.status].label}</Badge>
                     </li>
                   ))}
@@ -1506,7 +1503,7 @@ const BACKFILL_DAYS = 131;
 const BACKFILL_EXAMPLES = BACKFILL_CHANGES.slice(0, 3);
 /** ponytail: stub export built from the change list above; the real file comes from the API. */
 function downloadChanges() {
-  const csv = ['Employee,Date,Change', ...BACKFILL_CHANGES.map((c) => `${c.name},${dmy(c.date)},"${c.change}"`)].join('\n');
+  const csv = ['Employee,Date,Change', ...BACKFILL_CHANGES.map((c) => `${c.name},${dm(c.date)},"${c.change}"`)].join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = 'BKF-0917-changes.csv';
@@ -1559,7 +1556,7 @@ export function DeviceBackfillWizard({ current = 'batch', done = false }: { curr
                   <p>{BACKFILL_DEVICE}</p>
                 </FormField>
                 <FormField label="Dates" helper="Set by the batch: the days the kiosk was offline">
-                  <p>{range(BACKFILL_FROM, BACKFILL_TO)} {BACKFILL_TO.getFullYear()}</p>
+                  <p>{range(BACKFILL_FROM, BACKFILL_TO)}</p>
                 </FormField>
                 <p className="yx-tim-muted">Batch received 28 Sep, 11:02 pm · 412 punches · 2 duplicates ignored</p>
               </div>
@@ -2213,7 +2210,7 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
             {!started && !cancelled ? <DueBadge date={from} prefix="Starts" /> : <Badge tone="neutral">{cancelled ? 'Cancelled' : ended ? 'Ended' : 'In progress'}</Badge>}
           </span>
         }
-        description={`${range(from, to)} ${to.getFullYear()} · ${count} workers · ${legText}`}
+        description={`${range(from, to)} · ${count} workers · ${legText}`}
         actions={cancelled ? undefined : (
           <>
             {!ended && <Button onClick={() => { setEFrom(from); setETo(to); setEditing(true); }}>Edit dates</Button>}
@@ -2280,7 +2277,7 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
       >
         <FieldRow>
           {started ? (
-            <FormField label="From" helper="Already started, so the start stays"><p>{dmy(from)}</p></FormField>
+            <FormField label="From" helper="Already started, so the start stays"><p>{dm(from)}</p></FormField>
           ) : (
             <FormField label="From" required><DatePicker value={eFrom} onChange={setEFrom} min={dayStart(TODAY)} /></FormField>
           )}

@@ -431,7 +431,7 @@ export function teamOffDuring(person: string, from: Date, to: Date): string[] {
   return TEAM_ABSENCES.filter((a) => scope.includes(a.memberId) && dayStart(a.start) <= dayStart(to) && dayStart(a.end) >= dayStart(from))
     .map((a) => TEAM.find((p) => p.id === a.memberId)!.name);
 }
-/** "1 & 3 Oct": `person`'s working days from `from` to `to` (their weekly offs and holidays left out), as the leave lists show them. */
+/** "1 & 3 Oct 2026": `person`'s working days from `from` to `to` (their weekly offs and holidays left out), as the leave lists show them. */
 export function workingDaysText(person: string, from: Date, to: Date): string {
   const days: Date[] = [];
   for (let d = new Date(dayStart(from)); d.getTime() <= dayStart(to); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1))
@@ -445,7 +445,8 @@ export function workingDaysText(person: string, from: Date, to: Date): string {
   const mon = (d: Date) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
   const run = ([a, b]: [Date, Date]) => (a === b ? `${a.getDate()}` : `${a.getDate()}–${b.getDate()}`);
   const oneMonth = days.every((d) => d.getMonth() === from.getMonth());
-  return oneMonth ? `${runs.map(run).join(runs.length === 2 ? ' & ' : ', ')} ${mon(from)}` : runs.map((r) => `${run(r)} ${mon(r[0])}`).join(', ');
+  const year = runs.length ? ` ${runs[runs.length - 1][1].getFullYear()}` : '';
+  return (oneMonth ? `${runs.map(run).join(runs.length === 2 ? ' & ' : ', ')} ${mon(from)}` : runs.map((r) => `${run(r)} ${mon(r[0])}`).join(', ')) + year;
 }
 
 /**

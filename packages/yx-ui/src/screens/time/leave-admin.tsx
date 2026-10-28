@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Check, Copy, Plus, RefreshCw } from 'lucide-react';
 import { Icon } from '../../components/foundations';
 import { Button, IconButton } from '../../components/button';
-import { Badge } from '../../components/display';
+import { Badge, DayDate } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { useToast } from '../../components/notify';
@@ -44,10 +44,9 @@ function Num({ initial, onDirty, label }: { initial: number | null; onDirty?: ()
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-const weekday = (d: Date) => d.toLocaleDateString('en-IN', { weekday: 'short' });
 /** "1 Jan 2027". */
 const day = formatDate;
-const dayShort = (d: Date) => formatDate(d).replace(/ \d{4}$/, '');
+const dayShort = formatDate;
 /** 1.25, 1.5, 4.5: at most two decimals, no trailing zeros. */
 const num = (n: number) => String(Number(n.toFixed(2)));
 const daysFromToday = (d: Date) => Math.round((d.getTime() - TODAY.getTime()) / 86_400_000);
@@ -192,7 +191,7 @@ function SampleCalendarPanel({ loc, rows, rules, saved, onRules, onSaveRules, dr
       key: 'date', header: 'Date', type: 'date', value: (r) => r.date,
       render: (r) => (
         <span className="yx-tim-row">
-          <span>{weekday(r.date)} {day(r.date)}</span>
+          <DayDate date={r.date} />
           {r.date >= TODAY && daysFromToday(r.date) <= 30 && <DueBadge date={r.date} />}
         </span>
       ),
@@ -354,7 +353,7 @@ function SampleHolidayCalendars({ loc = 'maa', dialog, state = 'ready' }: { loc?
             label={`${cur.name} 2027 holidays`}
             columns={[
               { key: 'name', header: 'Holiday', value: (r: Holiday) => r.name },
-              { key: 'date', header: 'Date', type: 'date', value: (r: Holiday) => r.date, render: (r: Holiday) => `${weekday(r.date)} ${day(r.date)}` },
+              { key: 'date', header: 'Date', type: 'date', value: (r: Holiday) => r.date, render: (r: Holiday) => <DayDate date={r.date} /> },
               { key: 'kind', header: 'Type', type: 'status', value: (r: Holiday) => (r.moves && !nextPublished[tab] ? 'Confirm date' : r.optional ? 'Optional' : 'Holiday'), statusTone: (v) => (v === 'Confirm date' ? 'warning' : v === 'Optional' ? 'info' : 'neutral') },
             ]}
             rows={nextRows}
@@ -448,7 +447,7 @@ function SampleHolidayCalendars({ loc = 'maa', dialog, state = 'ready' }: { loc?
         open={!!hol}
         onOpenChange={(o) => !o && setHol(null)}
         title={hol?.orig ? `Change the date of ${hol.orig.name}?` : `Add a holiday to ${cur.name}`}
-        consequence={`${hol?.orig ? `${weekday(hol.orig.date)} ${day(hol.orig.date)} becomes a working day. ` : ''}People with leave on ${hol?.date ? `${weekday(hol.date)} ${day(hol.date)}` : 'the new date'} get that day back when you publish.`}
+        consequence={`${hol?.orig ? `${day(hol.orig.date)} becomes a working day. ` : ''}People with leave on ${hol?.date ? day(hol.date) : 'the new date'} get that day back when you publish.`}
         confirmLabel={hol?.orig ? 'Change date' : 'Add holiday'}
         onConfirm={saveHoliday}
       >
@@ -466,7 +465,7 @@ function SampleHolidayCalendars({ loc = 'maa', dialog, state = 'ready' }: { loc?
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing?.name ?? ''} from the ${cur.name} calendar?`}
-        consequence={removing ? `${weekday(removing.date)} ${day(removing.date)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
+        consequence={removing ? `${day(removing.date)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
         confirmLabel="Remove holiday"
         destructive
         onConfirm={() => { changeRows(tab, (rs) => rs.filter((h) => h !== removing)); setRemoving(null); }}
@@ -781,8 +780,8 @@ function SampleLeaveTypeEditor({ section = 'counting', statutory = false }: { se
             <Card title="Live example">
               <div className="yx-tim-stack">
                 <FormField label="Preview for"><Select value={person} onChange={setPerson} options={EXAMPLE_PEOPLE.map((p) => ({ value: p, label: p }))} /></FormField>
-                <p className="yx-tim-muted">{person} applies Fri 13 Nov – Mon 16 Nov (Sat 14 and Sun 15 Nov are weekly offs)</p>
-                <ul className="yx-tim-days">{ex.days.map((d) => <li key={d.date.getTime()}><span>{weekday(d.date)} {day(d.date)}</span><strong>{d.kind === 'counted' ? '1' : d.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
+                <p className="yx-tim-muted">{person} applies 13 Nov 2026 – 16 Nov 2026 (the Saturday and Sunday between are weekly offs)</p>
+                <ul className="yx-tim-days">{ex.days.map((d) => <li key={d.date.getTime()}><DayDate date={d.date} /><strong>{d.kind === 'counted' ? '1' : d.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
                 <Kpis items={[{ label: 'Days counted', value: ex.total }, { label: 'Earned leave balance', value: `${num(elBalance)}${elPending > 0 ? ` (${num(elPending)} pending)` : ''} → ${num(elBalance - elPending - ex.total)}` }]} />
                 <p className="yx-tim-note">{person} is on {EXAMPLE_POLICY.name}, {creditText(EXAMPLE_POLICY, creditBy[EXAMPLE_POLICY.id])}.</p>
               </div>
@@ -1952,7 +1951,6 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 const isoOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const dateOfIso = (iso: string) => new Date(`${iso}T00:00:00`);
 const isoDay = (iso: string) => day(dateOfIso(iso));
-const isoWeekday = (iso: string) => weekday(dateOfIso(iso));
 
 const KINDS = [
   { value: 'earned', label: 'Earned' },
@@ -2432,8 +2430,8 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
         <div className="yx-tim-sticky">
           <Card title="Live example">
             <div className="yx-tim-stack">
-              <p className="yx-tim-muted">Someone applies {weekday(fri)} {day(fri)} – {weekday(mon)} {day(mon)} with Saturday and Sunday off</p>
-              <ul className="yx-tim-days">{ex.days.map((x) => <li key={x.date.getTime()}><span>{weekday(x.date)} {day(x.date)}</span><strong>{x.kind === 'counted' ? '1' : x.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
+              <p className="yx-tim-muted">Someone applies {day(fri)} – {day(mon)}, Friday to Monday, with Saturday and Sunday off</p>
+              <ul className="yx-tim-days">{ex.days.map((x) => <li key={x.date.getTime()}><DayDate date={x.date} /><strong>{x.kind === 'counted' ? '1' : x.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
               <Kpis items={[{ label: 'Days counted', value: ex.total }]} />
             </div>
           </Card>
@@ -2521,7 +2519,7 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
       key: 'date', header: 'Date', type: 'date', value: (h) => dateOfIso(h.on),
       render: (h) => (
         <span className="yx-tim-row">
-          <span>{isoWeekday(h.on)} {isoDay(h.on)}</span>
+          <DayDate date={dateOfIso(h.on)} />
           {h.on >= d.today && daysBetween(d.today, h.on) <= 30 && <DueBadge date={dateOfIso(h.on)} today={dateOfIso(d.today)} />}
         </span>
       ),
@@ -2575,7 +2573,7 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
         open={!!hol}
         onOpenChange={(o) => !o && setHol(null)}
         title={`Add a holiday to ${t.name}`}
-        consequence={`People with leave on ${hol?.date ? `${weekday(hol.date)} ${day(hol.date)}` : 'the new date'} get that day back.`}
+        consequence={`People with leave on ${hol?.date ? day(hol.date) : 'the new date'} get that day back.`}
         confirmLabel="Add holiday"
         onConfirm={async () => {
           setTriedHol(true);
@@ -2599,7 +2597,7 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing?.name ?? ''} from the ${t.name} calendar?`}
-        consequence={removing ? `${isoWeekday(removing.on)} ${isoDay(removing.on)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
+        consequence={removing ? `${isoDay(removing.on)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
         confirmLabel="Remove holiday"
         destructive
         onConfirm={async () => {

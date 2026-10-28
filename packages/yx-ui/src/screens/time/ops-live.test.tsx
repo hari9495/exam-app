@@ -150,7 +150,7 @@ describe('My timesheet (TIM-15 live)', () => {
     render(<TimesheetScreen live={live} />);
     await ue.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(live.onSave).toHaveBeenCalledTimes(1));
-    expect((await screen.findAllByText('Draft saved for 26 Oct – 1 Nov.'))[0]).toBeInTheDocument();
+    expect((await screen.findAllByText('Draft saved for 26 Oct 2026 – 1 Nov 2026.'))[0]).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Submit week' }));
     await waitFor(() => expect(live.onSubmit).toHaveBeenCalledWith('2026-10-26'));
     expect(live.onSave).toHaveBeenCalledTimes(2);

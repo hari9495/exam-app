@@ -76,7 +76,7 @@ describe('Me › Attendance today (live clock page)', () => {
     render(<MyAttendanceTodayScreen live={live()} />);
     expect(screen.getByText('1 of 4 used this month')).toBeInTheDocument();
     expect(screen.getByText(/Bengaluru head office \(within 150 m\)/)).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct' }));
+    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct 2026' }));
     expect(screen.getByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
   });
 });
@@ -149,7 +149,7 @@ describe('Me › Attendance (live calendar)', () => {
   it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
     const onFix = vi.fn(async () => ({}));
     render(<AttendanceCalendarScreen live={live({ onFix })} />);
-    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct' }));
+    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct 2026' }));
     const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
     await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
     expect(within(sheet).getAllByText('Enter the check-out time').length).toBeGreaterThan(0);
@@ -169,14 +169,14 @@ describe('Me › Attendance (live calendar)', () => {
     await ue.clear(date);
     await ue.type(date, '4 Oct 2026');
     fireEvent.blur(date);
-    expect(await within(sheet).findAllByText('4 Oct is a weekly off: nothing to fix')).not.toHaveLength(0);
+    expect(await within(sheet).findAllByText('4 Oct 2026 is a weekly off: nothing to fix')).not.toHaveLength(0);
   });
 
   it('a waiting request can be withdrawn after a confirm', async () => {
     const onWithdrawFix = vi.fn(async () => ({}));
     render(<AttendanceCalendarScreen live={live({ onWithdrawFix, data: { ...ATT, requests: [{ id: 'r1', on: '2026-10-06', kind: 'missed_out', inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' }] } })} />);
     const card = screen.getByRole('list', { name: 'Waiting for approval' });
-    expect(within(card).getByText('6 Oct · Regularisation')).toBeInTheDocument();
+    expect(within(card).getByText('6 Oct 2026 · Regularisation')).toBeInTheDocument();
     await ue.click(within(card).getByRole('button', { name: 'Withdraw' }));
     await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Withdraw request' }));
     await waitFor(() => expect(onWithdrawFix).toHaveBeenCalledWith('r1'));

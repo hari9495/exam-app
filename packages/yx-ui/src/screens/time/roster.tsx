@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Lock, Play,
 import { PhoneFrame } from '../_kit/frames';
 import { locationHeadcount } from '../_kit/data';
 import { Button, IconButton } from '../../components/button';
-import { AiBadge, Badge, PersonLabel, Tag } from '../../components/display';
+import { AiBadge, Badge, DayDate, PersonLabel, Tag } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
@@ -73,11 +73,9 @@ const STORY = {
 const PLANT_MANAGER: TimeUser = { name: 'Ramesh Gowda', email: 'ramesh.g@kaverifoods.in', role: 'Head of Operations' };
 const LINE_OPERATOR: TimeUser = { name: 'Rekha Balan', email: 'rekha.b@kaverifoods.in', role: 'Line Operator' };
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** "Wed 7 Oct" */
-const dayName = (d: Date) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
-/** "7 Oct" */
-const shortDate = (d: Date) => `${d.getDate()} ${MON[d.getMonth()]}`;
+/** "7 Oct 2026": in a list of days, show the weekday beside it with <DayDate>, never merged into the text. */
+const dayName = (d: Date) => formatDate(d);
+const shortDate = dayName;
 /** "7 Oct 2026" (no leading zero, like the rest of the app). */
 const longDate = (d: Date) => formatDate(d);
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -1064,7 +1062,7 @@ function PatternsPanel({ patterns, pattern, started, onPick, onAdd, onRemove, on
             // Weekly patterns follow the weekday (Mon = first day); cycles count days from the start date.
             const s = shiftOf(codeOn(d));
             const firstNew = eff && d.getTime() === eff.getTime();
-            return <li key={i}><span className="yx-tim-row">{dayName(d)}{firstNew && <Badge tone="info">Changes from here</Badge>}</span><strong>{!s?.start ? 'Off' : `${s.name} ${shiftTimes(s)}`}</strong></li>;
+            return <li key={i}><span className="yx-tim-row"><DayDate date={d} />{firstNew && <Badge tone="info">Changes from here</Badge>}</span><strong>{!s?.start ? 'Off' : `${s.name} ${shiftTimes(s)}`}</strong></li>;
           })}
         </ul>
       </Card>
@@ -1421,7 +1419,7 @@ function useLivePatternsTab(d: SetupData, p: LiveShiftSetup) {
       </div>
       <Card title={`${length === 14 ? '14 days' : `One full cycle (${length} days)`} from ${dayName(from)}`}>
         <ul className="yx-tim-days">
-          {days.map((dt, i) => <li key={i}><span>{dayName(dt)}</span><strong>{dayText(codeOn(dt, i))}</strong></li>)}
+          {days.map((dt, i) => <li key={i}><DayDate date={dt} /><strong>{dayText(codeOn(dt, i))}</strong></li>)}
         </ul>
       </Card>
     </div>
@@ -1836,7 +1834,7 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
     { key: 'when', header: 'Shift', width: 260, value: (r) => r.date, render: (r) => (
       <span className="yx-tim-list__main">
         <span className="yx-tim-row">
-          <strong>{dayName(r.date)}</strong>
+          <strong><DayDate date={r.date} /></strong>
           <Badge tone={r.status === 'Open' ? 'warning' : 'success'}>{r.status}</Badge>
           {r.status === 'Open' ? <DueBadge date={r.date} /> : <Badge tone="neutral">{capFirst(relativeDue(r.date, TODAY).text)}</Badge>}
         </span>
@@ -1991,7 +1989,7 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
             return (
               <li key={s.id}>
                 <span className="yx-tim-list__main">
-                  <span className="yx-tim-row"><strong>{dayName(SHIFT_DAY)}</strong><DueBadge date={SHIFT_DAY} /></span>
+                  <span className="yx-tim-row"><strong><DayDate date={SHIFT_DAY} /></strong><DueBadge date={SHIFT_DAY} /></span>
                   <span style={nowrap}>{s.name} {s.time}</span>
                   <span className="yx-tim-muted">{s.detail}</span>
                   {other && !claimed.includes(s.id) && <span className="yx-tim-muted">Clashes with your {other.name.toLowerCase()} claim (8 h rest)</span>}
@@ -2231,7 +2229,7 @@ const restoreOn = (to: Date) => {
   while (d.getDay() === 0 || d.getDay() === 6 || HOLIDAY_TIMES.includes(d.getTime())) d = addDays(d, 1);
   return d;
 };
-const shortRange = (a: Date, b: Date) => `${a.getDate()}${a.getMonth() === b.getMonth() ? '' : ` ${MON[a.getMonth()]}`}–${b.getDate()} ${MON[b.getMonth()]}${b.getFullYear() !== TODAY.getFullYear() ? ` ${b.getFullYear()}` : ''}`;
+const shortRange = (a: Date, b: Date) => (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear() ? `${a.getDate()}–${formatDate(b)}` : `${formatDate(a)} – ${formatDate(b)}`);
 
 export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false }: { persona?: 'hr' | 'mgr'; confirm?: boolean }) {
   const [sel, setSel] = useState<BlockRow | null>(confirm ? BLOCK_ROWS[0] : null);

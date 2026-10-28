@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { Bell, ChevronLeft, ChevronRight, Download, Lock, Snowflake } from 'lucide-react';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
-import { Badge, type BadgeTone } from '../../components/display';
+import { Badge, DayDate, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
@@ -77,8 +77,8 @@ const SEP_1 = new Date(2026, 8, 1);
 const SEP_CUTOFF = new Date(2026, 8, 30);
 const sameDay = (a: Date, b: Date) => daysUntil(a, b) === 0;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** "22 Sep" (fixed month names: the en-IN locale gives "Sept"). */
-const shortDate = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+/** "22 Sep 2026": the house date, always with the year. */
+const shortDate = formatDate;
 const firstName = (name: string) => name.split(' ')[0];
 const userFor = (persona: Persona): TimeUser => (persona === 'hr' ? HR_ADMIN : ME);
 /** Keep "9:00 am" on one line. */
@@ -633,11 +633,11 @@ function SampleAttendanceToday({ clock, regulariseOpen = false }: MyAttendanceTo
           <Card title="This week">
             <ul className="yx-tim-list">
               {WEEK.map((d) => {
-                const label = `${d.date.toLocaleDateString('en-IN', { weekday: 'short' })} ${shortDate(d.date)}`;
+                const label = shortDate(d.date);
                 const text = d.code === 'TODAY' ? todayText : d.code === 'P' ? `Present · ${fmt12(mon[0].time)} – ${fmt12(mon[1].time)}` : d.code === 'H' ? `Holiday · ${d.note}` : 'General shift';
                 return (
                   <li key={label}>
-                    <span>{label}</span>
+                    <DayDate date={d.date} />
                     <span className={d.code === 'FUT' ? 'yx-tim-muted' : undefined}>{text}</span>
                   </li>
                 );
@@ -1360,9 +1360,9 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
   const lockBlock = !cutoffPassed
     ? `Lock opens after the ${shortDate(cutoff)} cut-off${exceptions > 0 ? ` and when ${exceptions} open exceptions are resolved` : ''}`
     : exceptions > 0 ? `Lock opens when ${exceptions} open exceptions are resolved` : null;
-  // Days from today to the cut-off that aren't over yet ("29 and 30 Sep").
+  // Days from today to the cut-off that aren't over yet ("29 and 30 Sep 2026").
   const daysLeft = cutoffPassed ? [] : monthDays.filter((d) => daysUntil(d.date, today) >= 0 && daysUntil(d.date, cutoff) <= 0).map((d) => d.date.getDate());
-  const daysLeftText = daysLeft.length > 1 ? `${daysLeft.slice(0, -1).join(', ')} and ${daysLeft[daysLeft.length - 1]} ${MONTHS[cutoff.getMonth()]}` : daysLeft.length ? `${daysLeft[0]} ${MONTHS[cutoff.getMonth()]}` : '';
+  const daysLeftText = daysLeft.length > 1 ? `${daysLeft.slice(0, -1).join(', ')} and ${daysLeft[daysLeft.length - 1]} ${MONTHS[cutoff.getMonth()]} ${cutoff.getFullYear()}` : daysLeft.length ? shortDate(cutoff) : '';
   const ready = state === 'ready' && shown.length > 0;
   const toggle = (id: string, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((x) => x !== id));
   const sheetRow = monthOf ? rows.find((r) => r.id === monthOf) : null;
@@ -2388,7 +2388,7 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
                 <ul className="yx-tim-list">
                   {week.map((date) => (
                     <li key={date.getTime()}>
-                      <span>{`${date.toLocaleDateString('en-IN', { weekday: 'short' })} ${shortDate(date)}`}</span>
+                      <DayDate date={date} />
                       <span className={isoOf(date) > d.today ? 'yx-tim-muted' : undefined}>{weekText(date)}</span>
                     </li>
                   ))}

@@ -77,7 +77,7 @@ describe('TIM-05 Roster, live (YX-AT-07)', () => {
     render(<RosterScreen live={roster({ onCopy })} />);
     await ue.click(screen.getByRole('button', { name: 'Copy last week' }));
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Copy week of 5 Oct into this week?');
+    expect(dialog).toHaveTextContent('Copy week of 5 Oct 2026 into this week?');
     await ue.click(within(dialog).getByRole('button', { name: 'Copy week' }));
     expect(onCopy).toHaveBeenCalledWith('2026-10-05', '2026-10-12');
     expect(await within(screen.getByRole('dialog')).findByText(/no published roster to copy/)).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('TIM-08 My shifts and swaps, live', () => {
   it('lists my shifts; a pending swap can be withdrawn', async () => {
     const live = mine();
     render(<ShiftSwapSheet live={live} />);
-    expect(screen.getByRole('list', { name: 'My shifts' })).toHaveTextContent('Fri 9 Oct · Morning 6 am – 2 pm');
+    expect(screen.getByRole('list', { name: 'My shifts' })).toHaveTextContent('Fri 9 Oct 2026 · Morning 6 am – 2 pm');
     expect(screen.getByText('Swap pending')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
     expect(live.onWithdrawSwap).toHaveBeenCalledWith('sw1');

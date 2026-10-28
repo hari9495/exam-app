@@ -445,8 +445,8 @@ function weekData(o: number, storyStatus: TimesheetStatus): WeekData {
   return { days: PLAIN_DAYS, lines: AUG_LINES, status: 'locked' };
 }
 const addWeeks = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * n);
-/** "6 Sep", "28 Sep" (no year, no trailing space). */
-const dayMonth = (d: Date) => formatDate(d).replace(/ \d{4}$/, '');
+/** "6 Sep 2026": the house date, always with the year. */
+const dayMonth = formatDate;
 /** Fills this week's empty cells before `LOCK_FROM` from last week's hours. Returns the new lines and the days that changed. */
 function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   const open = TS_DAYS.map((_, i) => i).filter((i) => new Date(THIS_MONDAY.getFullYear(), THIS_MONDAY.getMonth(), THIS_MONDAY.getDate() + i) < LOCK_FROM && TS_DAYS[i].expected > 0);

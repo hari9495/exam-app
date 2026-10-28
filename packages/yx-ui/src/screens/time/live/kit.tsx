@@ -24,10 +24,10 @@ export function LivePage({ title, description, actions, state, onRetry, what, gr
 }
 
 const D = (iso: string) => new Date(`${iso}T00:00:00Z`);
-/** "Mon 12 Oct" */
-export const dayText = (iso: string) => D(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 /** "12 Oct 2026" */
 export const dateText = (iso: string) => D(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+/** Same as dateText: a date always shows its year; show a weekday with <DayDate>, never merged in. */
+export const dayText = dateText;
 export const rangeText = (from: string, to: string) => (from === to ? dayText(from) : `${dayText(from)} to ${dayText(to)}`);
 export const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 export const addDays = (iso: string, n: number) => new Date(D(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);
