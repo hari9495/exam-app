@@ -109,6 +109,14 @@ const START: LiveRestructure = {
   onContinueDraft: () => {},
   onDeleteDraft: noop,
 };
+// Walkthrough 28 Oct 2026: Continue on an empty step 1 stays there and says what is missing under each field.
+export const ScopeMissing: S = {
+  name: 'Step 1 · Continue with required fields missing',
+  render: () => <RestructureWizard live={START} />,
+  play: async ({ canvasElement }) => {
+    [...canvasElement.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === 'Continue')?.click();
+  },
+};
 export const Drafts: S = {
   name: 'Start · saved drafts (Save and exit)',
   render: () => <RestructureWizard live={{ ...START, drafts: [{ id: 'd1', title: 'Merge Kaveri Foods Pvt Ltd (Tamil Nadu) into Kaveri Foods Pvt Ltd', updatedAt: '2026-10-20T10:00:00Z' }] }} />,

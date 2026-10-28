@@ -1,6 +1,6 @@
 // PPL-09 Bulk transfer and restructure, live; the restructure record (approval and results) and the PPL-10 continuity
 // checklist with live items. The API checks every person again; this screen only lays out the plan and the results.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
@@ -296,6 +296,16 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
 
   const across = kind !== 'within';
   const picking = by === 'people' && (kind === 'demerge' || kind === 'within');
+  // The required fields of "What moves": Continue stays enabled and its click shows these under the fields (walkthrough 28 Oct 2026).
+  const scopeErrors = {
+    from: from ? null : 'Choose the legal entity.',
+    into: across && !into ? 'Choose the legal entity people move into.' : null,
+    people: from && picking && !picked.length ? 'Pick at least one person who moves.' : null,
+    locations: from && kind === 'demerge' && !picking && !locations.length ? 'Choose at least one location.' : null,
+    effective: effective ? null : 'Choose the effective date.',
+    reason: reason.trim() ? null : 'Enter the reason.',
+  };
+  const scopeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setEntityPeople(null);
     if (!picking || !from || !live.onEntityPeople) return;
@@ -527,7 +537,17 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
             : {})}
           continueBlocked={step === 'options' ? mapBlocked : undefined}
           // Continue stays enabled with no one picked: the click says what is missing under the field.
-          onContinue={(id) => (id === 'scope' && picking && !picked.length ? (setTried(true), false) : undefined)}
+          onContinue={(id) => {
+            if (id !== 'scope' || !Object.values(scopeErrors).some(Boolean)) return undefined;
+            setTried(true);
+            // The step box scrolls: bring the first missing field into view and put the cursor in it.
+            requestAnimationFrame(() => {
+              const field = scopeRef.current?.querySelector<HTMLElement>('.yx-field[data-invalid]');
+              field?.scrollIntoView?.({ block: 'nearest' });
+              field?.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, button, [tabindex]:not([tabindex="-1"])')?.focus();
+            });
+            return false;
+          }}
           finishLabel="Send for approval"
           finishBlocked={finishBlocked}
           onFinish={() => setConfirm(true)}
@@ -538,7 +558,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
               title: 'What moves',
               summary: preview ? `${persons(ready.length)} · ${across ? `into ${intoE?.name ?? ''}` : 'inside the entity'} · ${date}` : 'Not filled in yet',
               content: (
-                <div className="yx-ppl__stack">
+                <div className="yx-ppl__stack" ref={scopeRef}>
                   <div className="yx-ppl__form-cols">
                     <FormField label="Action" required>
                       <RadioGroup
@@ -553,11 +573,11 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                       />
                     </FormField>
                     <div className="yx-ppl__form">
-                      <FormField label={kind === 'within' ? 'Legal entity' : 'From entity'} required>
+                      <FormField label={kind === 'within' ? 'Legal entity' : 'From entity'} required error={tried ? scopeErrors.from : null}>
                         <Select options={entityOptions} value={from} onChange={(v) => (setFrom(v), setLocations([]), setDepartments([]), setPicked([]), setMap({}), setMasterMap({}), setTarget({}))} placeholder="Choose a legal entity" />
                       </FormField>
                       {across && (
-                        <FormField label={kind === 'close' ? 'Transfer people to' : 'Into entity'} required>
+                        <FormField label={kind === 'close' ? 'Transfer people to' : 'Into entity'} required error={tried ? scopeErrors.into : null}>
                           <Select options={entityOptions.filter((e) => e.value !== from)} value={into} onChange={(v) => (setInto(v), setMap({}), setMasterMap({}))} placeholder="Choose a legal entity" />
                         </FormField>
                       )}
@@ -568,11 +588,11 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                           <Segment label="Who moves" value={by} onChange={(v) => (setBy(v), setPicked([]), setLocations([]), setDepartments([]), setTried(false))} options={[{ value: 'place', label: kind === 'demerge' ? 'By location' : 'By location and department' }, { value: 'people', label: 'Pick people' }]} />
                         </FormField>
                         {picking ? (
-                          <FormField label="People" required helper="Only the people you pick move." error={tried && !picked.length ? 'Pick at least one person who moves.' : null}>
-                            <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" emptyText={entityPeople ? 'No matches' : 'Loading the people'} options={(entityPeople ?? []).map((p) => ({ value: p.id, label: [p.name, p.code].filter(Boolean).join(' · '), description: p.location ?? undefined }))} value={picked} onChange={(v) => (setPicked(v), setTried(false))} />
+                          <FormField label="People" required helper="Only the people you pick move." error={tried ? scopeErrors.people : null}>
+                            <MultiSelect aria-label="People" placeholder="Search people" searchable searchPlaceholder="Name or employee code" emptyText={entityPeople ? 'No matches' : 'Loading the people'} options={(entityPeople ?? []).map((p) => ({ value: p.id, label: [p.name, p.code].filter(Boolean).join(' · '), description: p.location ?? undefined }))} value={picked} onChange={setPicked} />
                           </FormField>
                         ) : (
-                          <FormField label="Locations" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'}>
+                          <FormField label="Locations" required={kind === 'demerge'} helper={kind === 'demerge' ? 'Everyone at the chosen locations moves.' : 'Everyone at the chosen locations and departments moves.'} error={tried ? scopeErrors.locations : null}>
                             <MultiSelect aria-label="Locations" placeholder="Locations" options={fromLocations.map((l) => ({ value: l.id, label: `${l.name} · ${persons(l.people)}` }))} value={locations} onChange={setLocations} />
                           </FormField>
                         )}
@@ -583,10 +603,10 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                         )}
                       </>
                     )}
-                    <FormField label="Effective date" required>
+                    <FormField label="Effective date" required error={tried ? scopeErrors.effective : null}>
                       <DatePicker value={effective} onChange={setEffective} />
                     </FormField>
-                    <FormField label="Reason" required helper="Shown on every person's job history.">
+                    <FormField label="Reason" required helper="Shown on every person's job history." error={tried ? scopeErrors.reason : null}>
                       <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
                     </FormField>
                   </div>
