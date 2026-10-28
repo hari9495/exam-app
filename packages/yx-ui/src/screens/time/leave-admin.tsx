@@ -23,7 +23,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
+import type { HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -1679,7 +1679,8 @@ const TN_STATE = 'Tamil Nadu';
 const FEED_STATES = ['Karnataka', 'Tamil Nadu', 'Kerala', 'Maharashtra'];
 const locsIn = (state: string | null) => CAL_LOCS.filter((l) => l.state === state).map((l) => l.name);
 
-export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | 'review' | 'off' }) {
+export function HolidayFeedScreen({ view = 'settings', live }: { view?: 'settings' | 'review' | 'off'; /** The app: the company's feeds and the changes waiting for review. */ live?: LiveHolidayFeeds }) {
+  if (live) return <LiveHolidayFeedScreen live={live} />;
   const { toast } = useToast();
   const [on, setOn] = useState(view !== 'off');
   const [feeds, setFeeds] = useState(FEEDS);
@@ -1935,7 +1936,11 @@ export interface LiveHolidayCalendars extends SetupLive {
 }
 export interface LiveYearEnd extends SetupLive {
   onYearEndPreview: (yearEnd: string) => Promise<YearEndPreview>;
-  onYearEndRun: (yearEnd: string) => Promise<unknown>;
+  /** acknowledgePending: post with leave requests still waiting (they stay pending into the new year). */
+  onYearEndRun: (yearEnd: string, acknowledgePending: boolean) => Promise<unknown>;
+  /** Opens a waiting request (the Approvals inbox). */
+  pendingHref?: string;
+  onNavigate?: (href: string) => void;
 }
 export interface LiveLocations extends SetupLive {
   onSetRule: (locationId: string, input: LocationRuleInput) => Promise<unknown>;
@@ -1964,7 +1969,7 @@ const KINDS = [
 ];
 const kindText = (k: string) => KINDS.find((x) => x.value === k)?.label ?? k;
 const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
-const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
 const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const HOLIDAY_KINDS = [
   { value: 'national', label: 'National holiday' },
@@ -2405,6 +2410,7 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
               <FormSection title="Rules">
                 <FieldRow>
                   <FormField id="lt-notice" label="Apply at least (days ahead)" helper="0 for none."><NumberField value={r.noticeDays} onChange={(v) => set('noticeDays', v ?? 0)} min={0} max={90} /></FormField>
+                  {r.noticeDays > 0 && <FormField label="Shorter notice"><Segment label="Shorter notice" value={r.noticeMode ?? 'block'} onChange={(v) => set('noticeMode', v)} options={[{ value: 'block' as const, label: 'Refuse it' }, { value: 'warn' as const, label: 'Allow and flag to the approver' }]} /></FormField>}
                   {numField('minDays', 'Least days in one request', 'Leave empty for no minimum.')}
                   {numField('maxDays', 'Most days in one request', 'Leave empty for no maximum.')}
                 </FieldRow>
@@ -2629,6 +2635,7 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
   const [onlyLosing, setOnlyLosing] = useState(false);
   const [c, setC] = useState(false);
   const [posted, setPosted] = useState(false);
+  const [ack, setAck] = useState(false);
   const iso = yearEnd ? isoOf(yearEnd) : null;
   useEffect(() => {
     if (!iso) return;
@@ -2685,7 +2692,10 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
         ? 'The preview is still loading'
         : preview.lapses === 0
           ? 'Nothing lapses on that date, so there is nothing to post'
-          : undefined;
+          : (preview.pending?.length ?? 0) > 0 && !ack
+            ? `Decide the ${plural(preview.pending!.length, 'pending leave request')} first, or tick "Post anyway" in Scope`
+            : undefined;
+  const pending = preview?.pending ?? [];
   return (
     <>
       <PageHeader title={title} description={start && yearEnd ? `Carry forward and lapse each person’s leave for ${day(start)} – ${day(yearEnd)}, up to each policy’s limit (never below the legal minimum).` : undefined} />
@@ -2704,6 +2714,15 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
                   <DatePicker value={yearEnd} onChange={setYearEnd} max={dateOfIso(d.today)} />
                 </FormField>
                 {start && yearEnd && <DescriptionList items={[{ label: 'Leave year', value: `${day(start)} – ${day(yearEnd)}` }]} />}
+                {pending.length > 0 && (
+                  <div className="yx-tim-stack">
+                    <InlineAlert tone="warning" title={`${plural(pending.length, 'leave request')} from this year ${pending.length === 1 ? 'is' : 'are'} still pending`} actions={live.pendingHref && live.onNavigate ? <Button size="sm" onClick={() => live.onNavigate!(live.pendingHref!)}>Open requests</Button> : undefined}>
+                      Decide them before you post, or post anyway and they stay pending in the new year.
+                      <ul className="yx-tim-list">{pending.slice(0, 5).map((p) => <li key={p.id}><span>{p.name} · {p.type}</span><span className="yx-tim-muted">{isoDay(p.from)}{p.to !== p.from ? ` – ${isoDay(p.to)}` : ''}</span></li>)}</ul>
+                    </InlineAlert>
+                    <Checkbox label={`Post anyway: ${pending.length === 1 ? 'this request stays' : `these ${pending.length} requests stay`} pending in the new year`} checked={ack} onChange={setAck} />
+                  </div>
+                )}
               </div>
             ),
             summary: start && yearEnd ? `${day(start)} – ${day(yearEnd)}` : 'No date chosen',
@@ -2750,7 +2769,7 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
         objectName={`LEAVE YEAR ${yr}`}
         confirmLabel="Post entries"
         onConfirm={async () => {
-          await live.onYearEndRun(iso!);
+          await live.onYearEndRun(iso!, ack);
           setPosted(true);
         }}
       />
@@ -2885,4 +2904,184 @@ function clockText(minute: number): string {
   const m = ((minute % 1440) + 1440) % 1440;
   const h = Math.floor(m / 60);
   return `${h % 12 === 0 ? 12 : h % 12}:${pad2(m % 60)} ${h < 12 ? 'am' : 'pm'}`;
+}
+
+/* ---------------- TIM-42 live: public-holiday feeds (provider behind an adapter; provider: to decide) ---------------- */
+
+export interface LiveHolidayFeeds {
+  state: LoadState;
+  onRetry?: () => void;
+  data: HolidayFeeds | null;
+  onSwitch: (on: boolean) => Promise<unknown>;
+  onAdd: (state: string) => Promise<unknown>;
+  onRemove: (id: string) => Promise<unknown>;
+  onCheck: () => Promise<{ feeds: number; found: number; failed: number }>;
+  onDecide: (accept: string[], ignore: string[]) => Promise<{ accepted: number; ignored: number; leaveReturned: number }>;
+  calendarsHref: string;
+  onNavigate: (href: string) => void;
+}
+
+function LiveHolidayFeedScreen({ live }: { live: LiveHolidayFeeds }) {
+  const d = live.data;
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const [decisions, setDecisions] = useState<Record<string, 'accepted' | 'ignored' | undefined>>({});
+  const [adding, setAdding] = useState<string | null | undefined>(undefined);
+  const [tried, setTried] = useState(false);
+  const [removing, setRemoving] = useState<HolidayFeeds['feeds'][number] | null>(null);
+  const [offAsk, setOffAsk] = useState(false);
+  const [checked, setChecked] = useState<string | null>(null);
+  const changes = d?.changes ?? [];
+  const accepted = changes.filter((x) => decisions[x.id] === 'accepted');
+  const ignored = changes.filter((x) => decisions[x.id] === 'ignored');
+  const undecided = changes.length - accepted.length - ignored.length;
+  const subscribed = new Set((d?.feeds ?? []).map((f) => f.state));
+  const publish = () => {
+    if (undecided > 0) return void toast({ tone: 'warning', title: `Accept or ignore ${undecided === changes.length ? 'each change' : `the ${plural(undecided, 'change')} left`}` });
+    void run('publish', async () => {
+      const r = await live.onDecide(accepted.map((x) => x.id), ignored.map((x) => x.id));
+      setDecisions({});
+      toast({ tone: 'success', title: r.accepted ? `Published ${plural(r.accepted, 'change')}${r.leaveReturned ? ` · ${plural(r.leaveReturned, 'leave day')} given back` : ''}` : 'Changes dismissed' });
+    });
+  };
+  return (
+    <TimePage active="Holiday calendars">
+      <PageHeader
+        title="Public-holiday feeds"
+        description={d ? `Calendars follow a state feed. Changes wait for your review before employees see them. Feed: ${d.provider === 'dev-fake' ? 'test feed (the provider is still to be decided)' : d.provider}.` : undefined}
+        actions={d?.on ? (
+          <div className="yx-tim-row">
+            <Button icon={Plus} onClick={() => { setTried(false); setAdding(d.states.find((x) => !subscribed.has(x.code))?.code ?? null); }}>Add feed</Button>
+            <Button icon={RefreshCw} loading={busy === 'check'} onClick={() => void run('check', async () => { const r = await live.onCheck(); setChecked(r.failed ? `${plural(r.failed, 'feed')} did not answer. Try again later.` : r.found ? `${plural(r.found, 'new change')} to review.` : 'No new changes.'); })}>Check for updates</Button>
+          </div>
+        ) : undefined}
+      />
+      <SetupStates state={live.state} onRetry={live.onRetry} what="Holiday feeds">
+        {d && (
+          <>
+            {error && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
+            {checked && <InlineAlert tone="info" title="Checked all feeds">{checked}</InlineAlert>}
+            <Card title="Subscriptions">
+              <div className="yx-tim-stack">
+                <Switch label="Use public-holiday feeds" checked={d.on} onChange={(v) => (!v && changes.length > 0 ? setOffAsk(true) : void run('switch', () => live.onSwitch(v)))} />
+                {d.on ? (
+                  d.feeds.length === 0 ? <p className="yx-tim-muted">No feeds yet. Add the states your offices are in.</p> : (
+                    <ul className="yx-tim-list">
+                      {d.feeds.map((f) => (
+                        <li key={f.id}>
+                          <span className="yx-tim-list__main">
+                            <strong>India · {f.stateName}</strong>
+                            <span className="yx-tim-muted">{f.locations.length ? f.locations.map((l) => l.name).join(', ') : 'No location in this state yet'} · {f.checkedAt ? `last checked ${formatDate(new Date(f.checkedAt))}` : 'first check pending'}</span>
+                            {f.locations.filter((l) => !l.hasCalendar).map((l) => <span key={l.id} className="yx-tim-muted">{l.name} · no calendar yet</span>)}
+                            {f.checkError && <span className="yx-tim-muted">{f.checkError}</span>}
+                          </span>
+                          <span className="yx-tim-row">
+                            {f.locations.some((l) => !l.hasCalendar) && <Button size="sm" onClick={() => live.onNavigate(live.calendarsHref)}>Start a calendar</Button>}
+                            {!f.checkedAt ? <Badge tone="neutral">First check pending</Badge> : f.checkError ? <Badge tone="warning">Did not answer</Badge> : f.waiting ? <Badge tone="neutral">{plural(f.waiting, 'change')} to review</Badge> : <Badge tone="success">Up to date</Badge>}
+                            <Button size="sm" onClick={() => setRemoving(f)}>Remove</Button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : (
+                  <InlineAlert tone="info" title="Feeds are off" actions={<Button size="sm" onClick={() => live.onNavigate(live.calendarsHref)}>Open holiday calendars</Button>}>Calendars keep their holidays. You add changes by hand in Holiday calendars.</InlineAlert>
+                )}
+              </div>
+            </Card>
+            {d.on && changes.length > 0 && (
+              <Card title="Changes from the feeds · review before publishing">
+                <div className="yx-tim-stack">
+                  <ul className="yx-tim-list">
+                    {changes.map((ch) => {
+                      const dec = decisions[ch.id];
+                      return (
+                        <li key={ch.id}>
+                          <span className="yx-tim-list__main">
+                            <strong>{ch.action === 'add' ? `Add ${ch.name}` : `Remove ${ch.name}`} · {isoWeekday(ch.on)} {isoDay(ch.on)}</strong>
+                            <span className="yx-tim-muted">{ch.calendar} calendar</span>
+                            {ch.peopleOnLeave > 0 && <span className="yx-tim-muted">{plural(ch.peopleOnLeave, 'person has', 'people have')} leave that day. When you publish, that leave goes back to their balance and they are notified.</span>}
+                          </span>
+                          <span className="yx-tim-row">
+                            {dec ? (
+                              <>
+                                <Badge tone={dec === 'accepted' ? 'success' : 'neutral'}>{dec === 'accepted' ? 'Accepted' : 'Ignored'}</Badge>
+                                <Button size="sm" onClick={() => setDecisions((x) => ({ ...x, [ch.id]: undefined }))}>Undo</Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button size="sm" onClick={() => setDecisions((x) => ({ ...x, [ch.id]: 'ignored' }))}>Ignore</Button>
+                                <Button size="sm" variant="approve" onClick={() => setDecisions((x) => ({ ...x, [ch.id]: 'accepted' }))}>Accept</Button>
+                              </>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="yx-tim-row">
+                    <Button variant="primary" loading={busy === 'publish'} onClick={publish}>{accepted.length > 0 ? `Publish ${plural(accepted.length, 'change')}` : ignored.length > 0 ? `Dismiss ${plural(ignored.length, 'change')}` : 'Publish changes'}</Button>
+                    {undecided > 0 && <span className="yx-tim-muted">Accept or ignore {undecided === changes.length ? 'each change' : `the ${plural(undecided, 'change')} left`}</span>}
+                  </div>
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+      </SetupStates>
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove the ${removing?.stateName ?? ''} feed?`}
+        consequence={removing ? `Calendars keep their current holidays.${removing.waiting ? ` The ${plural(removing.waiting, 'waiting change')} ${removing.waiting === 1 ? 'is' : 'are'} not applied.` : ''} New state changes are no longer shown here.` : undefined}
+        confirmLabel="Remove feed"
+        destructive
+        onConfirm={async () => {
+          if (removing) await live.onRemove(removing.id);
+          setRemoving(null);
+        }}
+      />
+      <ConfirmDialog
+        open={offAsk}
+        onOpenChange={setOffAsk}
+        title="Turn off holiday feeds?"
+        consequence={`The ${plural(changes.length, 'waiting change')} won't be added. Add them by hand in Holiday calendars.`}
+        confirmLabel="Turn off feeds"
+        destructive
+        onConfirm={async () => {
+          await live.onSwitch(false);
+          setOffAsk(false);
+        }}
+      />
+      <ConfirmDialog
+        open={adding !== undefined}
+        onOpenChange={(o) => !o && setAdding(undefined)}
+        title="Add a holiday feed"
+        confirmLabel="Add feed"
+        onConfirm={async () => {
+          setTried(true);
+          if (!adding || subscribed.has(adding)) return false;
+          await live.onAdd(adding);
+          setAdding(undefined);
+        }}
+      >
+        {d && (
+          <div className="yx-tim-form">
+            <FormField label="Country"><Select value="in" onChange={() => {}} options={[{ value: 'in', label: 'India' }]} /></FormField>
+            <FormField label="State" required error={tried && !adding ? 'Choose the state.' : tried && adding && subscribed.has(adding) ? 'Choose a state not already subscribed.' : null}>
+              <Select value={adding ?? null} onChange={(v) => setAdding(v)} options={d.states.map((x) => ({ value: x.code, label: x.name, description: subscribed.has(x.code) ? 'Already subscribed' : undefined }))} />
+            </FormField>
+          </div>
+        )}
+      </ConfirmDialog>
+    </TimePage>
+  );
+}
+
+/** Loading, could not load and no access for a live set-up page that loads its own data. */
+function SetupStates({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
+  if (state === 'error') return <ErrorState title={`${what} didn't load`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />;
+  if (state === 'no-access') return <NoAccessState grantedBy="your HR admin" what={what.toLowerCase()} />;
+  if (state === 'loading') return <div className="yx-tim-stack" role="status" aria-busy="true" aria-label={`Loading ${what.toLowerCase()}`}><Skeleton height={96} /><Skeleton height={160} /></div>;
+  return <>{children}</>;
 }

@@ -54,7 +54,8 @@ export interface MyLeave {
   year: { start: string; end: string };
   balances: LeaveBalanceRow[];
   requests: LeaveRequestRow[];
-  holidays: { calendar: { id: string; name: string; optionalLimit: number } | null; list: HolidayRow[] };
+  /** optionalLimit: this year's limit (prorated after a move); yearlyLimit: the calendar's own. */
+  holidays: { calendar: { id: string; name: string; optionalLimit: number; yearlyLimit?: number; movedOn?: string | null } | null; list: HolidayRow[] };
 }
 
 export interface LeaveInput {
@@ -83,6 +84,9 @@ export interface LeavePlan {
   certificateNeeded: boolean;
   blocks: string[];
   warnings: string[];
+  blockDates?: { from: string; to: string; reason: string }[];
+  notice?: { lastDay: string; newLastDay: string } | null;
+  shortNotice?: boolean;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -223,6 +227,8 @@ export interface LeaveRules {
   minDays: number | null;
   maxDays: number | null;
   noticeDays: number;
+  /** Shorter notice is refused (block) or allowed and flagged to the approver (warn). */
+  noticeMode?: 'block' | 'warn';
   certificateAfterDays: number | null;
   medical: boolean;
   negativeLimit: number;
@@ -275,6 +281,8 @@ export interface YearEndPreview {
   yearEnd: string;
   lapses: number;
   rows: { employeeId: string; name: string; code: string | null; type: string; balance: number; carry: number; lapse: number; encashable: boolean }[];
+  /** TIM-29: requests still waiting with days in the closing year. */
+  pending?: { id: string; employeeId: string; name: string; type: string; from: string; to: string; days: number }[];
 }
 
 export interface PersonOption {
@@ -510,4 +518,136 @@ export interface PayrollFeed {
 export interface Registers {
   month: string;
   locations: { id: string; name: string; state: string; entityId: string; entity: string; people: number; locked: boolean; formats: { type: 'muster' | 'leave'; title: string; form: string; columns: string[] }[]; source: string | null; verify: boolean }[];
+}
+
+// ------------------------------------------------------------------------------------------ leave v2 (29 Oct 2026)
+
+/** GET /time/me/leave/ledger: my leave card (TIM-21 employee). */
+export interface MyLeaveCard {
+  employee: { id: string; name: string; code: string | null };
+  today: string;
+  year: { start: string; end: string };
+  balances: LeaveBalanceRow[];
+  ledger: LedgerRow[];
+  pending: { id: string; leaveTypeId: string; from: string; to: string; days: number }[];
+}
+
+/** GET /time/me/comp-off (TIM-22). */
+export interface MyCompOff {
+  enabled: boolean;
+  today: string;
+  within: number;
+  expiryDays: number | null;
+  eligible: { on: string; kind: 'weekly_off' | 'holiday'; holiday: string | null; workedMinutes: number; maxDays: number }[];
+  claims: { id: string; on: string; kind: string; workedMinutes: number; days: number; reason: string; status: string; useBy: string | null; createdAt: string; decidedAt: string | null }[];
+  credits: { id: string; on: string; days: number; reason: string; useBy: string | null }[];
+}
+
+/** GET /time/me/encashment (TIM-24). */
+export interface MyEncashment {
+  today: string;
+  window: string;
+  open: boolean;
+  maxPerYear: number;
+  minLeft: number;
+  divisor: number;
+  basis: string;
+  monthly: number | null;
+  dailyRate: number | null;
+  year: { start: string; end: string };
+  types: { leaveTypeId: string; name: string; balance: number; pending: number; available: number; encashedThisYear: number; max: number }[];
+  taxNote: string;
+  waiting: EncashmentRow | null;
+  history: EncashmentRow[];
+}
+export interface EncashmentRow {
+  id: string;
+  leaveTypeId: string;
+  days: number;
+  dailyRate: number | null;
+  amount: number | null;
+  status: string;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+/** A long absence (TIM-25). */
+export interface LongAbsenceRow {
+  id: string;
+  employeeId: string;
+  name: string | null;
+  kind: 'maternity' | 'sabbatical' | 'lwp';
+  from: string;
+  to: string;
+  plannedTo: string;
+  accrues: boolean;
+  linkedRequest: string | null;
+  returnAskedOn: string | null;
+  returnAskedNote: string | null;
+  note: string;
+  version: number;
+}
+
+/** GET /time/hr/leave-home (TIM-17 HR). */
+export interface HrLeaveHome {
+  today: string;
+  pending: { total: number; rows: { id: string; employeeId: string; name: string; type: string; from: string; to: string; days: number; sent: string; approvers: string | null }[] };
+  away: { employeeId: string; name: string; from: string; to: string; type: string; pending: boolean }[];
+  negative: number;
+  certificates: { id: string; name: string; type: string; from: string; to: string }[] | null;
+  yearEnd: { on: string; posted: boolean; nextOn: string };
+}
+
+export type LeaveReportKind = 'balances' | 'taken' | 'ledger' | 'lop' | 'negative';
+export interface LeaveReportQuery {
+  report: LeaveReportKind;
+  entityId?: string;
+  locationId?: string;
+  departmentId?: string;
+  q?: string;
+  month?: string;
+  page: number;
+  pageSize: number;
+}
+/** GET /time/hr/leave-report (TIM-30). Rows differ by report. */
+export interface LeaveReport {
+  report: LeaveReportKind;
+  types: { id: string; code: string; name: string; kind: string; hasBalance: boolean; paid: boolean }[];
+  total: number;
+  page: number;
+  pageSize: number;
+  month?: string;
+  filters: { entities: { id: string; name: string }[]; locations: { id: string; name: string }[]; departments: { id: string; name: string }[] };
+  rows: LeaveReportRow[];
+}
+export interface LeaveReportRow {
+  employeeId: string;
+  name: string;
+  code: string | null;
+  location?: string | null;
+  department?: string | null;
+  values?: Record<string, number>;
+  id?: string;
+  on?: string;
+  type?: string;
+  kind?: string;
+  days?: number;
+  reason?: string;
+  lopLeave?: number;
+  absent?: number;
+}
+
+/** GET /time/hr/block-leave (TIM-39). */
+export interface BlockLeaveList {
+  today: string;
+  rows: { employeeId: string; name: string; code: string | null; need: number; status: 'taken' | 'planned' | 'not_planned'; plan: { from: string; to: string; accessPause: 'none' | 'scheduled'; version: number } | null; nudgedAt: string | null; earnedLeft: number; canPlan: boolean }[];
+}
+
+/** GET /time/setup/holiday-feeds (TIM-42). */
+export interface HolidayFeeds {
+  on: boolean;
+  provider: string;
+  states: { code: string; name: string }[];
+  feeds: { id: string; state: string; stateName: string; provider: string; checkedAt: string | null; checkError: string | null; locations: { id: string; name: string; hasCalendar: boolean }[]; waiting: number }[];
+  changes: { id: string; feedId: string; calendar: string; action: 'add' | 'remove'; on: string; name: string; peopleOnLeave: number }[];
 }

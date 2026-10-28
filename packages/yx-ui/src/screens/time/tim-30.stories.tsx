@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LeaveReportsScreen } from './ops';
 
-const meta: Meta<typeof LeaveReportsScreen> = { title: 'Screens/Time/TIM-30 · Leave reports', component: LeaveReportsScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof LeaveReportsScreen> = { title: 'Screens/Time/TIM-30 · Leave reports', component: LeaveReportsScreen, render: (args) => <LeaveReportsScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof LeaveReportsScreen>;
 

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { HolidayFeedScreen } from './leave-admin';
 
-const meta: Meta<typeof HolidayFeedScreen> = { title: 'Screens/Time/TIM-42 · Holiday feed settings', component: HolidayFeedScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof HolidayFeedScreen> = { title: 'Screens/Time/TIM-42 · Holiday feed settings', component: HolidayFeedScreen, render: (args) => <HolidayFeedScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof HolidayFeedScreen>;
 

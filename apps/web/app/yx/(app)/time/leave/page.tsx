@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LeaveHomeScreen, type LeavePlan, type MyLeave, type PersonOption } from '@yukthix/ui/time';
+import { LeaveHomeScreen, type LeavePlan, type LongAbsenceRow, type MyCompOff, type MyEncashment, type MyLeave, type PersonOption } from '@yukthix/ui/time';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
@@ -20,6 +20,9 @@ function MyLeave() {
     if (apply) router.replace('/yx/time/leave', { scroll: false });
   }, [apply, router]);
   const leave = useTime<MyLeave>('/me/leave');
+  const compOff = useTime<MyCompOff>('/me/comp-off');
+  const encash = useTime<MyEncashment>('/me/encashment');
+  const absence = useTime<{ absence: LongAbsenceRow | null }>('/me/long-absence');
   const write = useTimeWrite();
   return (
     <LeaveHomeScreen
@@ -34,6 +37,10 @@ function MyLeave() {
         onChooseHoliday: (hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back'),
         onFindPeople: (q) => apiFetch(`/workflow/people?q=${id(q)}`, {}, accessToken ?? undefined) as Promise<PersonOption[]>,
         startApplying: apply,
+        compOff: { data: compOff.data ?? null, onClaim: (input) => write('/me/comp-off', 'POST', input, true, 'Comp-off claim sent to your manager'), onWithdraw: (cid) => write(`/me/comp-off/${id(cid)}/withdraw`, 'POST', undefined, true, 'Comp-off claim withdrawn') },
+        encash: { data: encash.data ?? null, onRequest: (input) => write('/me/encashment', 'POST', input, true, 'Encashment sent for approval'), onWithdraw: (eid) => write(`/me/encashment/${id(eid)}/withdraw`, 'POST', undefined, true, 'Encashment request withdrawn') },
+        absence: { data: absence.data?.absence ?? null, onAskReturn: (aid, on, note) => write(`/me/long-absence/${id(aid)}/return-date`, 'POST', { on, note }, true, 'Sent to HR to confirm') },
+        onOpenCard: () => router.push('/yx/time/leave/card'),
       }}
     />
   );

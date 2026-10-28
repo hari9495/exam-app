@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
-import type { HrBalances, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, MaternityCase, MyLeave, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -659,7 +659,8 @@ export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: se
   );
 }
 
-export function ApplyLeaveSheet(p: ApplyLeaveProps & { surface?: 'desk' | 'phone'; sent?: boolean }) {
+export function ApplyLeaveSheet({ live, ...p }: ApplyLeaveProps & { surface?: 'desk' | 'phone'; sent?: boolean; /** The app: the request drawer on My leave. */ live?: { data: MyLeave; live: LiveLeaveHome; onClose: () => void } }) {
+  if (live) return <ApplyLeavePanel open onOpenChange={(o) => !o && live.onClose()} live={{ data: live.data, live: live.live }} />;
   const [open, setOpen] = useState(true);
   if (p.surface === 'phone') return <PhoneFrame tab="time" title="Leave"><ApplyLeavePanel {...p} open={open} onOpenChange={setOpen} /></PhoneFrame>;
   const n = p.self && p.self !== ME.name ? ON_NOTICE[p.self] : undefined;
@@ -785,7 +786,8 @@ const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
 /** TIM-17: the story shows the sample (persona, state); the app passes `live` (My leave, the signed-in employee). */
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome }) {
+export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome }) {
+  if (hrLive) return <LiveHrLeaveHomeScreen live={hrLive} />;
   if (live) return <LiveLeaveHomeScreen live={live} />;
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
   const [apply, setApply] = useState(false);
@@ -1070,7 +1072,8 @@ export function LeaveHomePhone({ persona = 'emp' }: { persona?: 'emp' | 'mgr' })
    TIM-19 · Leave request detail + withdraw / cancel
    ===================================================================== */
 
-export function LeaveRequestDetail({ id = 'lr1', persona = 'emp', action, surface = 'desk' }: { id?: string; persona?: 'emp' | 'mgr'; action?: ReqAction; surface?: 'desk' | 'phone' }) {
+export function LeaveRequestDetail({ id = 'lr1', persona = 'emp', action, surface = 'desk', live }: { id?: string; persona?: 'emp' | 'mgr'; action?: ReqAction; surface?: 'desk' | 'phone'; /** The app: one of my requests in a drawer. */ live?: LiveRequestProps }) {
+  if (live) return <LeaveRequestView live={live} />;
   const base = persona === 'emp' ? LEAVE_REQUESTS.filter((x) => x.person === ME.name) : LEAVE_REQUESTS.filter((x) => x.approver === ME.name);
   const [cur, setCur] = useState<{ r: LeaveRequestRow; action?: ReqAction } | null>({ r: LEAVE_REQUESTS.find((x) => x.id === id)!, action });
   // Decisions made in the drawer update the list behind it: new status, or gone (withdrawn, sent back).
@@ -1410,13 +1413,16 @@ function projectBalance(b: LeaveBalance, on: Date, person = ME.name) {
   return { value, note };
 }
 
-export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, live }: {
+export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, live, mine }: {
   persona?: 'emp' | 'hr'; adjustOpen?: boolean; surface?: 'desk' | 'phone';
   /** HR view only: whose card (default the signed-in employee, ME). */
   person?: string;
   /** The app (HR › Leave balances): everyone in HR's scope, one card at a time. */
   live?: LiveLeaveCard;
+  /** The app (Me › My leave card): my own ledger and projection. */
+  mine?: LiveMyLeaveCard;
 }) {
+  if (mine) return <LiveMyLeaveCardScreen live={mine} />;
   if (live) return <LiveLeaveCardScreen live={live} />;
   const person = persona === 'hr' && personArg ? personArg : ME.name;
   const isMe = person === ME.name;
@@ -1517,7 +1523,8 @@ const CLAIM_WORKED = toMinutes(CLAIM.out) - toMinutes(CLAIM.in);
 const FULL_DAY_MIN = 8 * 60;
 const HALF_DAY_MIN = 4 * 60;
 
-export function CompOffClaim({ surface = 'desk', state = 'ready' }: { surface?: 'desk' | 'phone'; state?: 'ready' | 'none' | 'sent' }) {
+export function CompOffClaim({ surface = 'desk', state = 'ready', live }: { surface?: 'desk' | 'phone'; state?: 'ready' | 'none' | 'sent'; /** The app: the claim drawer on My leave. */ live?: LiveCompOff & { onClose: () => void } }) {
+  if (live) return <LiveCompOffClaim {...live} />;
   const [open, setOpen] = useState(true);
   const [st, setSt] = useState(state);
   const [reason, setReason] = useState('Vendor audit preparation');
@@ -1729,7 +1736,8 @@ function OptionalHolidaysPanel({ open, onOpenChange, surface = 'desk', chosen = 
   return <Drawer open={open} onOpenChange={onSheet} title="Optional holidays" footer={footer}>{body}</Drawer>;
 }
 
-export function OptionalHolidaysSheet({ surface = 'desk', chosen = ['o1'], transferred = false }: { surface?: 'desk' | 'phone'; chosen?: string[]; transferred?: boolean }) {
+export function OptionalHolidaysSheet({ surface = 'desk', chosen = ['o1'], transferred = false, live }: { surface?: 'desk' | 'phone'; chosen?: string[]; transferred?: boolean; /** The app: the calendar's optional days. */ live?: { data: MyLeave; onChoose: LiveLeaveHome['onChooseHoliday']; onClose: () => void } }) {
+  if (live) return <OptionalHolidaysPanel open onOpenChange={(o) => !o && live.onClose()} live={{ data: live.data, onChoose: live.onChoose }} />;
   const [open, setOpen] = useState(true);
   const [saved, setSaved] = useState(chosen);
   const { toast } = useToast();
@@ -1759,7 +1767,8 @@ const ENCASH = { maxPerYear: EL_ENCASH_MAX, minLeft: EL_ENCASH_MIN_LEFT, monthly
 /** The request already waiting in the "blocked" story (one at a time). */
 const ENCASH_WAITING = { days: 5, sent: new Date(2026, 8, 22) };
 
-export function EncashmentRequest({ surface = 'desk', days: d0 = 5, blocked }: { surface?: 'desk' | 'phone'; days?: number; blocked?: boolean }) {
+export function EncashmentRequest({ surface = 'desk', days: d0 = 5, blocked, live }: { surface?: 'desk' | 'phone'; days?: number; blocked?: boolean; /** The app: the encashment drawer on My leave. */ live?: LiveEncash & { onClose: () => void } }) {
+  if (live) return <LiveEncashment {...live} />;
   const [days, setDays] = useState<number | null>(d0);
   const [open, setOpen] = useState(true);
   const [sent, setSent] = useState(false);
@@ -1854,7 +1863,8 @@ const nextWorkingDay = (d: Date) => {
   return x;
 };
 
-export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface = 'desk' }: { kind?: 'maternity' | 'sabbatical' | 'lwp'; persona?: 'emp' | 'hr'; surface?: 'desk' | 'phone' }) {
+export function LongAbsenceCard({ kind = 'maternity', persona = 'emp', surface = 'desk', live }: { kind?: 'maternity' | 'sabbatical' | 'lwp'; persona?: 'emp' | 'hr'; surface?: 'desk' | 'phone'; /** The app: one absence's status in a drawer (employee or HR). */ live?: LiveAbsence }) {
+  if (live) return <LiveLongAbsence {...live} />;
   const info = ABSENCES_LONG[kind];
   const [dlg, setDlg] = useState<'change' | 'extend' | 'early' | null>(null);
   const [date, setDate] = useState<Date | null>(null);
@@ -2008,6 +2018,53 @@ export interface LiveLeaveHome {
   onFindPeople: (q: string) => Promise<LivePersonOption[]>;
   /** Opens Apply leave at once (a link from Home, Ctrl K › N L). */
   startApplying?: boolean;
+  /** TIM-22: comp-off claims (shown when the company has a comp-off type). */
+  compOff?: LiveCompOff;
+  /** TIM-24: encashment (the button shows while the window is open or a request waits). */
+  encash?: LiveEncash;
+  /** TIM-25: my current or next long absence. */
+  absence?: { data: LongAbsenceRow | null; onAskReturn: (id: string, on: string, note: string) => Promise<unknown> };
+  /** My leave card (TIM-21 employee). */
+  onOpenCard?: () => void;
+}
+
+export interface LiveCompOff {
+  data: MyCompOff | null;
+  onClaim: (input: { on: string; days: number; reason: string }) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+export interface LiveEncash {
+  data: MyEncashment | null;
+  onRequest: (input: { leaveTypeId: string; days: number }) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+export interface LiveAbsence {
+  absence: LongAbsenceRow;
+  persona: 'emp' | 'hr';
+  today: string;
+  onClose: () => void;
+  /** Employee: tell HR a new return date. */
+  onAskReturn?: (on: string, note: string) => Promise<unknown>;
+  /** HR: a new last day, or the first day back. */
+  onChange?: (how: 'extend' | 'early', on: string, note: string, version: number) => Promise<unknown>;
+}
+/** HR › Leave (TIM-17 HR). */
+export interface LiveHrLeaveHome {
+  state: LoadState;
+  onRetry?: () => void;
+  data: HrLeaveHome | null;
+  onRemind: (requestId: string) => Promise<unknown>;
+  onNavigate: (href: string) => void;
+  hrefs: { approvals: string; calendar: string; negative: string; yearEnd: string; request: (id: string) => string };
+  /** TIM-25 HR: long absences now and coming, each opening its status to extend or end early. */
+  absences?: { data: LongAbsenceRow[] | null; onChange: (id: string, how: 'extend' | 'early', on: string, note: string, version: number) => Promise<unknown> };
+}
+/** Me › My leave card (TIM-21 employee). */
+export interface LiveMyLeaveCard {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyLeaveCard | null;
+  onApply: () => void;
 }
 
 /** Team leave in the app (TIM-20): the page loads the range asked for. */
@@ -2093,7 +2150,13 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
   }, [live.startApplying]);
   const [open, setOpen] = useState<{ r: LiveRequest; action?: 'withdraw' | 'cancel' } | null>(null);
   const [holidays, setHolidays] = useState(false);
+  const [sheet, setSheet] = useState<'comp-off' | 'encash' | 'absence' | null>(null);
+  const [withdraw, setWithdraw] = useState<{ kind: 'claim' | 'encash'; id: string; text: string } | null>(null);
   const today = d ? isoDate(d.today) : TODAY0;
+  const co = live.compOff?.data;
+  const en = live.encash?.data;
+  const waitingClaims = co?.claims.filter((x) => x.status === 'pending') ?? [];
+  const ab = live.absence?.data ?? null;
   const optional = d ? d.holidays.list.filter((h) => h.kind === 'optional' || h.kind === 'restricted') : [];
   const chosen = optional.filter((h) => h.chosen).length;
   const limit = d?.holidays.calendar?.optionalLimit ?? 0;
@@ -2103,11 +2166,41 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
       <PageHeader
         title="My leave"
         description={d ? `Leave year ${fd(d.year.start)} – ${fd(d.year.end)}${d.holidays.calendar ? ` · ${d.holidays.calendar.name}` : ''}` : undefined}
-        actions={live.state === 'ready' ? <Button variant="primary" icon={CalendarPlus} onClick={() => setApply(true)}>Apply leave</Button> : undefined}
+        actions={live.state === 'ready' ? (
+          <div className="yx-tim-row">
+            {live.onOpenCard && <Button onClick={live.onOpenCard}>My leave card</Button>}
+            {co?.enabled && <Button onClick={() => setSheet('comp-off')}>Claim comp-off</Button>}
+            {en && (en.open || en.waiting) && <Button onClick={() => setSheet('encash')}>Encash leave</Button>}
+            <Button variant="primary" icon={CalendarPlus} onClick={() => setApply(true)}>Apply leave</Button>
+          </div>
+        ) : undefined}
       />
       <LiveStates state={live.state} onRetry={live.onRetry} what="Your leave">
         {d && (
           <>
+            {ab && (
+              <Card title={`${ABSENCE_TITLE[ab.kind]} until ${fd(ab.to)}`} actions={<Button size="sm" onClick={() => setSheet('absence')}>Open status</Button>}>
+                <div className="yx-tim-row"><span className="yx-tim-muted">Back on {fd(isoAdd(ab.to, 1))}</span><DueBadge date={isoDate(isoAdd(ab.to, 1))} today={today} /></div>
+              </Card>
+            )}
+            {(waitingClaims.length > 0 || en?.waiting) && (
+              <Card title={`Waiting for approval (${waitingClaims.length + (en?.waiting ? 1 : 0)})`}>
+                <ul className="yx-tim-list">
+                  {waitingClaims.map((x) => (
+                    <li key={x.id}>
+                      <span className="yx-tim-list__main" style={MAIN}><strong>Comp-off · {x.days === 0.5 ? 'half day' : daysWord(x.days)} · worked {fd(x.on)}</strong><span className="yx-tim-muted">{x.useBy ? `Use by ${fd(x.useBy)}` : 'No expiry'}</span></span>
+                      <Button size="sm" onClick={() => setWithdraw({ kind: 'claim', id: x.id, text: `Comp-off for ${fd(x.on)}` })}>Withdraw</Button>
+                    </li>
+                  ))}
+                  {en?.waiting && (
+                    <li>
+                      <span className="yx-tim-list__main" style={MAIN}><strong>Encash · {daysWord(en.waiting.days)} {en.types.find((t) => t.leaveTypeId === en.waiting!.leaveTypeId)?.name ?? ''}</strong><span className="yx-tim-muted">Sent {formatDate(new Date(en.waiting.createdAt))} · its days are held until it is decided</span></span>
+                      <Button size="sm" onClick={() => setWithdraw({ kind: 'encash', id: en.waiting!.id, text: 'This encashment request' })}>Withdraw</Button>
+                    </li>
+                  )}
+                </ul>
+              </Card>
+            )}
             <BalanceCards
               live={{
                 balances: d.balances,
@@ -2167,9 +2260,26 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
                 </Card>
               </div>
             </div>
-            <ApplyLeavePanel open={apply} onOpenChange={setApply} live={{ data: d, live }} />
-            {open && <LeaveRequestView key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null) }} />}
-            <OptionalHolidaysPanel open={holidays} onOpenChange={setHolidays} live={{ data: d, onChoose: live.onChooseHoliday }} />
+            {apply && <ApplyLeaveSheet live={{ data: d, live, onClose: () => setApply(false) }} />}
+            {open && <LeaveRequestDetail key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null) }} />}
+            {holidays && <OptionalHolidaysSheet live={{ data: d, onChoose: live.onChooseHoliday, onClose: () => setHolidays(false) }} />}
+            {sheet === 'comp-off' && live.compOff && <CompOffClaim live={{ ...live.compOff, onClose: () => setSheet(null) }} />}
+            {sheet === 'encash' && live.encash && <EncashmentRequest live={{ ...live.encash, onClose: () => setSheet(null) }} />}
+            {sheet === 'absence' && ab && live.absence && <LongAbsenceCard live={{ absence: ab, persona: 'emp', today: d.today, onClose: () => setSheet(null), onAskReturn: (on, note) => live.absence!.onAskReturn(ab.id, on, note) }} />}
+            <ConfirmDialog
+              open={!!withdraw}
+              onOpenChange={(o) => !o && setWithdraw(null)}
+              title="Withdraw this request?"
+              consequence={withdraw ? `${withdraw.text} hasn't been approved yet, so it's withdrawn at once.` : ''}
+              confirmLabel="Withdraw"
+              cancelLabel="Keep it"
+              destructive
+              onConfirm={async () => {
+                if (!withdraw) return;
+                await (withdraw.kind === 'claim' ? live.compOff!.onWithdraw(withdraw.id) : live.encash!.onWithdraw(withdraw.id));
+                setWithdraw(null);
+              }}
+            />
           </>
         )}
       </LiveStates>
@@ -2397,6 +2507,7 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
                   {plan.holidaysExcluded > 0 && <div className="yx-tim-effect__row"><dt>Holidays / weekly offs not counted</dt><dd>{plan.holidaysExcluded}</dd></div>}
                   {plan.balanceAfter !== null && <div className="yx-tim-effect__row"><dt>Balance after</dt><dd>{plan.balanceAfter < 0 ? <Badge tone="danger">{`${plan.balanceAfter}`}</Badge> : plan.balanceAfter}</dd></div>}
                   {plan.balanceAfter === null && chosen && !chosen.paid && <div className="yx-tim-effect__row"><dt>Unpaid days this year (with this)</dt><dd>{chosen.takenThisYear + plan.total}</dd></div>}
+                  {plan.notice && <div className="yx-tim-effect__row"><dt>Last working day</dt><dd>{plan.notice.newLastDay === plan.notice.lastDay ? `Stays ${fd(plan.notice.lastDay)}` : `${fd(plan.notice.lastDay)} → ${fd(plan.notice.newLastDay)}`}</dd></div>}
                   <div className="yx-tim-effect__row"><dt>Your team</dt><dd>{plan.othersOff ? `${plan.othersOff} ${plan.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else is off then'}</dd></div>
                 </dl>
                 {plan.sandwichDays > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under your policy.</p>}
@@ -2444,6 +2555,8 @@ function LiveOptionalHolidaysPanel({ data, onChoose, onClose }: { data: MyLeave;
     >
       <div className="yx-tim-form">
         <p>Choose <strong>{n}</strong> of {list.length} optional holidays · {data.holidays.calendar?.name}.</p>
+        {data.holidays.calendar?.movedOn && <InlineAlert tone="info" title="Prorated after your move">You moved to this office on {fd(data.holidays.calendar.movedOn)}, so you get {plural(n, 'optional holiday')} for the rest of the year.</InlineAlert>}
+        {initial.length > n && <InlineAlert tone="warning" title={`${initial.length} chosen, the limit is now ${n}`}>Untick {plural(initial.length - n, 'holiday')} you have not taken, then save.</InlineAlert>}
         {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
         <ul className="yx-tim-check">
           {list.map((h) => {
@@ -2653,3 +2766,324 @@ export const LEAVE_COLS: TableColumn<LeaveRequestRow>[] = [
   { key: 'days', header: 'Days', type: 'number', value: (r) => r.days, total: 'sum' },
   { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Pending' ? 'warning' : 'neutral') },
 ];
+
+/* =====================================================================
+   Live, leave v2 (29 Oct 2026): HR leave home, my leave card, comp-off claim, encashment, long absence.
+   ===================================================================== */
+
+const ABSENCE_TITLE: Record<LongAbsenceRow['kind'], string> = { maternity: 'Maternity leave', sabbatical: 'Sabbatical', lwp: 'Long leave without pay' };
+const hm = (mins: number) => `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
+const daysBetweenIso = (a: string, b: string) => Math.round((isoDate(b).getTime() - isoDate(a).getTime()) / 86_400_000);
+
+/** TIM-17 HR in the app: requests waiting with their approvers, who is away this week, what needs HR. */
+function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
+  const d = live.data;
+  const [reminded, setReminded] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [absence, setAbsence] = useState<LongAbsenceRow | null>(null);
+  const today = d ? isoDate(d.today) : TODAY0;
+  const absences = live.absences?.data ?? [];
+  const remind = (id: string) => {
+    setError(null);
+    live.onRemind(id).then(() => setReminded((x) => [...x, id]), (e: unknown) => setError(e instanceof Error ? e.message : 'The reminder was not sent.'));
+  };
+  return (
+    <TimePage active="Team leave">
+      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="Leave">
+        {d && (
+          <div className="yx-tim-grid">
+            <div data-span="7">
+              <Card title={`Pending leave with managers (${d.pending.total})`} actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.approvals)}>Open requests</Button>}>
+                {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+                {d.pending.rows.length === 0 ? <EmptyState compact title="Nothing waiting" description="Leave requests waiting for a manager show here." /> : (
+                  <ul className="yx-tim-list">
+                    {d.pending.rows.map((r) => {
+                      const age = Math.max(0, Math.round((today.getTime() - day0(new Date(r.sent)).getTime()) / 86_400_000));
+                      return (
+                        <li key={r.id}>
+                          <span className="yx-tim-list__main" style={MAIN}>
+                            <PersonLabel name={r.name} secondary={`${r.type} · ${isoSpan(r.from, r.to)}`} />
+                            <span className="yx-tim-muted">Waiting for {r.approvers ?? 'an approver'} · sent {age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age} days ago`}</span>
+                          </span>
+                          {age > 2 && (reminded.includes(r.id) ? <span className="yx-tim-muted">Reminded</span> : <Button size="sm" onClick={() => remind(r.id)}>Remind approver</Button>)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            </div>
+            <div data-span="5" className="yx-tim-stack">
+              <Card title="Away this week" actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.calendar)}>Open leave calendar</Button>}>
+                {d.away.length === 0 ? <p className="yx-tim-muted">No one is away this week.</p> : (
+                  <ul className="yx-tim-list">
+                    {d.away.map((a) => <li key={`${a.employeeId}-${a.from}`}><PersonLabel name={a.name} secondary={`${a.type} · ${isoSpan(a.from, a.to)}${a.pending ? ' · pending' : ''}`} /></li>)}
+                  </ul>
+                )}
+              </Card>
+              <Card title="Needs HR">
+                <ul className="yx-tim-list">
+                  <li>
+                    <span className="yx-tim-list__main" style={MAIN}><span>Negative balances</span><span className="yx-tim-muted">{d.negative === 0 ? 'No one is below zero' : plural(d.negative, 'person', 'people')}</span></span>
+                    {d.negative > 0 && <Button size="sm" onClick={() => live.onNavigate(live.hrefs.negative)}>Review balances</Button>}
+                  </li>
+                  {d.certificates && (
+                    <li>
+                      <span className="yx-tim-list__main" style={MAIN}><span>Certificates to verify</span><span className="yx-tim-muted">{d.certificates.length === 0 ? 'None' : d.certificates.map((c) => `${c.name} · ${c.type} ${isoSpan(c.from, c.to)}`).join(', ')}</span></span>
+                      {d.certificates.length > 0 && <Button size="sm" onClick={() => live.onNavigate(live.hrefs.request(d.certificates![0]!.id))}>Verify certificate</Button>}
+                    </li>
+                  )}
+                  {absences.map((a) => (
+                    <li key={a.id}>
+                      <span className="yx-tim-list__main" style={MAIN}><span>{a.name} · {ABSENCE_TITLE[a.kind]}</span><span className="yx-tim-muted">{isoSpan(a.from, a.to)}{a.returnAskedOn ? ` · asks to return ${fd(a.returnAskedOn)}` : ''}</span></span>
+                      <Button size="sm" onClick={() => setAbsence(a)}>Open status</Button>
+                    </li>
+                  ))}
+                  <li>
+                    <span>Year-end {fd(d.yearEnd.on)}</span>
+                    {d.yearEnd.posted ? <Badge tone="success">Posted</Badge> : <Button size="sm" onClick={() => live.onNavigate(live.hrefs.yearEnd)}>Open year-end</Button>}
+                  </li>
+                </ul>
+              </Card>
+            </div>
+          </div>
+        )}
+      </LiveStates>
+      {absence && d && live.absences && <LongAbsenceCard live={{ absence, persona: 'hr', today: d.today, onClose: () => setAbsence(null), onChange: (how, on, note, version) => live.absences!.onChange(absence.id, how, on, note, version) }} />}
+    </TimePage>
+  );
+}
+
+/** TIM-21 employee in the app: my balances, every ledger line, and what a balance will be on a date. */
+function LiveMyLeaveCardScreen({ live }: { live: LiveMyLeaveCard }) {
+  const d = live.data;
+  const withBalance = d ? d.balances.filter((b) => b.hasBalance) : [];
+  const [typeId, setTypeId] = useState<string | null>(null);
+  const [on, setOn] = useState<Date | null>(null);
+  const type = withBalance.find((b) => b.leaveTypeId === typeId) ?? withBalance[0];
+  const items: TimelineItem[] = (d?.ledger ?? []).map((l) => ({ id: l.id, at: isoDate(l.on), actor: { name: l.kind === 'adjustment' ? 'HR' : SYSTEM_ACTOR }, action: `${LEDGER_TEXT[l.kind] ?? l.kind} ${l.days > 0 ? '+' : ''}${l.days} ${l.type}${l.reason ? ` · ${l.reason}` : ''}` }));
+  // Today's balance less the pending requests that start by the date; credits after today are not counted.
+  const proj = d && type && on ? (() => {
+    const by = isoOf(on);
+    const pend = d.pending.filter((p) => p.leaveTypeId === type.leaveTypeId && p.from <= by);
+    const days = pend.reduce((a, p) => a + p.days, 0);
+    return { value: Math.round((type.balance - days) * 100) / 100, note: pend.length ? `If ${pend.map((p) => isoSpan(p.from, p.to)).join(', ')} ${pend.length > 1 ? 'are' : 'is'} approved · ${daysWord(type.balance)} if not` : 'Nothing pending · credits after today are not counted' };
+  })() : null;
+  return (
+    <TimePage active="My leave">
+      <PageHeader title="My leave card" description={d ? `Leave year ${fd(d.year.start)} – ${fd(d.year.end)}` : undefined} actions={live.state === 'ready' ? <Button variant="primary" icon={CalendarPlus} onClick={live.onApply}>Apply leave</Button> : undefined} />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="Your leave card">
+        {d && (
+          <div className="yx-tim-stack">
+            <BalanceCards live={{ balances: d.balances }} />
+            <div className="yx-tim-grid">
+              <div data-span="7">
+                <Card title="History · every change to your balance">
+                  {items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
+                  <p className="yx-tim-note">Each balance is the sum of its entries. Pending requests are held from what is available until decided.</p>
+                </Card>
+              </div>
+              <div data-span="5">
+                <Card title="What will my balance be?">
+                  {withBalance.length === 0 ? <p className="yx-tim-muted">No leave with a balance yet.</p> : (
+                    <div className="yx-tim-form">
+                      <FormField label="Leave type"><Select value={type?.leaveTypeId ?? null} onChange={setTypeId} options={withBalance.map((b) => ({ value: b.leaveTypeId, label: b.name }))} /></FormField>
+                      <FormField label="On date" helper={`Leave year ends ${fd(d.year.end)}`}><DatePicker value={on} onChange={setOn} min={isoDate(d.today)} max={isoDate(d.year.end)} /></FormField>
+                      {proj && on && type && <Kpis items={[{ label: `${type.name} on ${formatDate(on)}`, value: daysWord(proj.value), note: proj.note }]} />}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+      </LiveStates>
+    </TimePage>
+  );
+}
+
+/** TIM-22 in the app: pick a worked weekly off or holiday, half or full day, with a reason. */
+function LiveCompOffClaim({ data, onClaim, onClose }: LiveCompOff & { onClose: () => void }) {
+  const days = data?.eligible ?? [];
+  const [on, setOn] = useState<string | null>(days[0]?.on ?? null);
+  const pick = days.find((x) => x.on === on);
+  const [amount, setAmount] = useState<'half' | 'full'>(days[0]?.maxDays === 1 ? 'full' : 'half');
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const { busy, error, run } = useRun();
+  const n = amount === 'full' ? 1 : 0.5;
+  const useBy = pick && typeof data?.expiryDays === 'number' ? isoAdd(pick.on, data.expiryDays) : null;
+  const tooMuch = Boolean(pick && n > pick.maxDays);
+  const send = () => {
+    setTried(true);
+    if (!pick) return void document.getElementById('co-day')?.focus();
+    if (tooMuch) return void document.getElementById('co-amount')?.focus();
+    if (!reason.trim()) return void document.getElementById('co-reason')?.focus();
+    void run('claim', async () => {
+      await onClaim({ on: pick.on, days: n, reason: reason.trim() });
+      onClose();
+    });
+  };
+  const body = days.length === 0 ? (
+    <EmptyState title="No eligible days to claim" description={`You can claim comp-off for work on a holiday or weekly off in the last ${data?.within ?? 30} days. Days already credited or claimed are not listed. If you worked one and it is not here, check your punches for that day.`} />
+  ) : (
+    <div className="yx-tim-form">
+      {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+      <FormField id="co-day" label="Day you worked" required error={tried && !pick ? 'Choose the day you worked.' : null} helper="Holidays and weekly offs with punches">
+        <RadioGroup aria-label="Day you worked" value={on ?? undefined} onChange={(v: string) => { setOn(v); const x = days.find((y) => y.on === v); if (x && x.maxDays < 1) setAmount('half'); }} options={days.map((x) => ({ value: x.on, label: `${WD[isoDate(x.on).getDay()]} ${fd(x.on)} · ${x.holiday ?? 'Weekly off'}`, description: `Worked ${hm(x.workedMinutes)}` }))} />
+      </FormField>
+      <FormField id="co-amount" label="Claim" error={tried && tooMuch && pick ? `You worked ${hm(pick.workedMinutes)}: claim a half day.` : null}>
+        <Segment label="Claim" value={amount} onChange={setAmount} options={[{ value: 'half' as const, label: 'Half day' }, { value: 'full' as const, label: 'Full day' }]} />
+      </FormField>
+      <FormField id="co-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}><TextArea rows={2} value={reason} onChange={setReason} maxLength={500} /></FormField>
+      {pick && data && (
+        <section className="yx-tim-effect">
+          <strong>What you will get</strong>
+          <p className="yx-tim-muted">+{n === 1 ? '1 day' : 'half a day'} comp-off after your manager approves</p>
+          {useBy && <div className="yx-tim-row"><span className="yx-tim-muted">Use by {fd(useBy)}</span><DueBadge date={isoDate(useBy)} today={isoDate(data.today)} /></div>}
+        </section>
+      )}
+    </div>
+  );
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Claim comp-off" dirty={Boolean(reason)} footer={days.length === 0 ? <Button onClick={onClose}>Close</Button> : <DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'claim'} onClick={send}>Send claim</Button>} />}>
+      {body}
+    </Drawer>
+  );
+}
+
+/** TIM-24 in the app: days to cash in, the amount before tax, the tax note, and payroll. */
+function LiveEncashment({ data, onRequest, onWithdraw, onClose }: LiveEncash & { onClose: () => void }) {
+  const types = data?.types ?? [];
+  const [typeId, setTypeId] = useState<string | null>(types[0]?.leaveTypeId ?? null);
+  const t = types.find((x) => x.leaveTypeId === typeId);
+  const [days, setDays] = useState<number | null>(t && t.max > 0 ? Math.min(t.max, 1) : null);
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const n = days ?? 0;
+  const max = t?.max ?? 0;
+  const minLeft = data?.minLeft ?? 0;
+  const err = !t ? 'Choose the leave to cash in.' : n <= 0 ? 'Cash in at least half a day.' : Math.round(n * 2) !== n * 2 ? 'Cash in whole or half days.' : n > max ? (max === 0 ? `Nothing can be cashed in now: ${minLeft} days must stay.` : `At most ${daysWord(max)}: ${minLeft} days must stay, ${data?.maxPerYear ?? 0} a year.`) : null;
+  const amount = data?.dailyRate ? Math.round(data.dailyRate * n * 100) / 100 : null;
+  const send = () => {
+    if (err) return void document.getElementById('enc-days')?.focus();
+    void run('send', async () => {
+      await onRequest({ leaveTypeId: t!.leaveTypeId, days: n });
+      onClose();
+    });
+  };
+  const waiting = data?.waiting;
+  const body = !data ? <LoadingBlock rows={4} /> : waiting ? (
+    <InlineAlert tone="info" title="You already have an encashment request waiting" actions={<Button size="sm" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => { await onWithdraw(waiting.id); onClose(); })}>Withdraw request</Button>}>
+      {daysWord(waiting.days)}, sent {formatDate(new Date(waiting.createdAt))}. You can send another once it is decided or withdrawn.
+    </InlineAlert>
+  ) : !data.open ? (
+    <InlineAlert tone="info" title="Encashment is closed">{data.window === 'off' ? 'Your company does not cash in leave while you work. Leave left at exit is paid in your final settlement.' : `Leave can be cashed in only in ${MON[Number(data.window) - 1]}.`}</InlineAlert>
+  ) : (
+    <div className="yx-tim-form">
+      {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+      {types.length > 1 ? (
+        <FormField label="Leave type"><Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ value: x.leaveTypeId, label: x.name, description: `${daysWord(x.available)} available` }))} /></FormField>
+      ) : t && <dl className="yx-tim-effect__row"><dt>Leave type</dt><dd style={{ textAlign: 'end' }}>{t.name} · {t.available} available<br /><span className="yx-tim-note">{t.balance} days, {t.pending} pending</span></dd></dl>}
+      <FormField id="enc-days" label="Days to encash" required helper={err ? undefined : `You can encash up to ${daysWord(max)} (${minLeft} must remain; ${data.maxPerYear} a year)`} error={err}>
+        <div className="yx-tim-row">
+          <IconButton variant="secondary" icon={Minus} label="Fewer days" onClick={() => (n <= 0.5 ? toast({ title: 'Cash in at least half a day', tone: 'warning' }) : setDays(Math.max(0.5, n - 1)))} />
+          <NumberField value={days} onChange={setDays} aria-label="Days" min={0.5} />
+          <IconButton variant="secondary" icon={Plus} label="More days" onClick={() => (n >= max ? toast({ title: `You can encash at most ${daysWord(max)}`, tone: 'warning' }) : setDays(Math.min(max, n + 1)))} />
+        </div>
+      </FormField>
+      <section className="yx-tim-effect" aria-live="polite">
+        <strong>What you will get</strong>
+        {err ? <p className="yx-tim-muted">Fix the days above to see the amount.</p> : (
+          <dl className="yx-tim-stack">
+            {data.dailyRate && data.monthly && amount !== null ? (
+              <>
+                <div className="yx-tim-effect__row"><dt>Rate</dt><dd style={{ textAlign: 'end' }}>({data.basis === 'gross' ? 'Gross' : 'Basic + DA'} {formatINR(data.monthly)}) ÷ {data.divisor}<br />= {formatINR(data.dailyRate, { decimals: 2 })} a day</dd></div>
+                <div className="yx-tim-effect__row"><dt>Amount (before tax)</dt><dd>{n} × {formatINR(data.dailyRate, { decimals: 2 })} = {formatINR(amount)}</dd></div>
+              </>
+            ) : <div className="yx-tim-effect__row"><dt>Amount</dt><dd>Payroll works it out from your pay on the day it is approved</dd></div>}
+            <div className="yx-tim-effect__row"><dt>Balance after</dt><dd>{Math.round(((t?.available ?? 0) - n) * 100) / 100} days available</dd></div>
+            <div className="yx-tim-effect__row"><dt>Paid in</dt><dd>The payroll of the month it is approved</dd></div>
+          </dl>
+        )}
+        <p className="yx-tim-note">{data.taxNote}</p>
+      </section>
+    </div>
+  );
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Encash leave" footer={waiting || !data?.open ? <Button onClick={onClose}>Close</Button> : <DrawerFoot hint={err ? 'Fix the days to send' : undefined} rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'send'} onClick={send}>Send request</Button>} />}>
+      {body}
+    </Drawer>
+  );
+}
+
+/** TIM-25 in the app: progress, return date, pay and accrual effect; the employee tells HR, HR extends or ends it. */
+function LiveLongAbsence({ absence: a, persona, today, onClose, onAskReturn, onChange }: LiveAbsence) {
+  const [dlg, setDlg] = useState<'change' | 'extend' | 'early' | null>(null);
+  const [date, setDate] = useState<Date | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const total = daysBetweenIso(a.from, a.to) + 1;
+  const dayN = Math.min(total, Math.max(0, daysBetweenIso(a.from, today) + 1));
+  const back = isoAdd(a.to, 1);
+  const who = a.name ?? 'This person';
+  const pay = a.kind === 'maternity' ? 'Maternity benefit: paid by ESI where the person is covered, otherwise by the company (Maternity Benefit Act).' : `Unpaid for all ${total} days`;
+  const close = () => {
+    setDlg(null);
+    setDate(null);
+    setNote('');
+    setTried(false);
+  };
+  const cfg =
+    dlg === 'change'
+      ? { title: 'Tell HR your return date changed', label: 'New return date', confirm: 'Send to HR', min: addDays(isoDate(today), 1), max: undefined, effect: (x: Date) => `HR gets your new return date, ${formatDate(x)}, and confirms it with you.` }
+      : dlg === 'extend'
+        ? { title: `Extend ${who}'s ${ABSENCE_TITLE[a.kind].toLowerCase()}`, label: 'New last day', confirm: 'Extend', min: isoDate(isoAdd(a.to, 1)), max: undefined, effect: (x: Date) => `${daysWord(daysBetweenIso(a.to, isoOf(x)))} more; back on ${formatDate(addDays(x, 1))}.` }
+        : { title: `Record ${who}'s early return`, label: 'First day back', confirm: 'Record return', min: isoDate(isoAdd(a.from, 1)), max: isoDate(a.to), effect: (x: Date) => `Back on ${formatDate(x)}; the absence ends ${formatDate(addDays(x, -1))}.` };
+  return (
+    <>
+      <Drawer open={!dlg} onOpenChange={(o) => !o && onClose()} title={`${ABSENCE_TITLE[a.kind]}${a.name ? ` · ${a.name}` : ''}`} subtitle="Long-absence status" footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="yx-tim-stack">
+          <div className="yx-tim-row"><Badge tone="info">{ABSENCE_TITLE[a.kind]}</Badge><span className="yx-tim-muted">{isoSpan(a.from, a.to)}</span></div>
+          <Meter label="Absence progress" value={dayN} max={total} valueText={`Day ${dayN} of ${total}`} />
+          <ul className="yx-tim-list">
+            <li><span>Expected return</span><span className="yx-tim-row"><strong>{fd(back)}</strong><DueBadge date={isoDate(back)} today={isoDate(today)} />{a.returnAskedOn && <Badge tone="neutral">{`Waiting for HR · ${fd(a.returnAskedOn)}`}</Badge>}</span></li>
+            <li><span>Pay effect</span><span className="yx-tim-muted">{pay}</span></li>
+            <li><span>Leave accrual</span><span className="yx-tim-muted">{a.accrues ? 'Keeps earning leave' : 'No leave earned while away'}</span></li>
+            {a.to !== a.plannedTo && <li><span>First planned to</span><span className="yx-tim-muted">{fd(a.plannedTo)}</span></li>}
+          </ul>
+          {persona === 'hr' && onChange && (
+            <div className="yx-tim-row">
+              <Button onClick={() => setDlg('extend')}>Extend</Button>
+              <Button variant="primary" onClick={() => setDlg('early')}>Record early return</Button>
+            </div>
+          )}
+          {persona === 'emp' && onAskReturn && <Button onClick={() => setDlg('change')}>Tell HR my return date changed</Button>}
+        </div>
+      </Drawer>
+      {dlg && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && close()}
+          title={cfg.title}
+          consequence={date ? cfg.effect(date) : 'Pick a date to see the effect.'}
+          confirmLabel={cfg.confirm}
+          onConfirm={async () => {
+            setTried(true);
+            if (!date || !note.trim()) return false;
+            if (dlg === 'change') await onAskReturn!(isoOf(date), note.trim());
+            else await onChange!(dlg, isoOf(date), note.trim(), a.version);
+            close();
+            onClose();
+          }}
+        >
+          <div className="yx-tim-stack">
+            <FormField label={cfg.label} required error={tried && !date ? 'Choose the date.' : null}><DatePicker value={date} onChange={setDate} min={cfg.min} max={cfg.max} /></FormField>
+            <FormField label="Reason" required error={tried && !note.trim() ? 'Enter a reason.' : null}><TextArea rows={2} value={note} onChange={setNote} maxLength={500} /></FormField>
+          </div>
+        </ConfirmDialog>
+      )}
+    </>
+  );
+}

@@ -706,7 +706,14 @@ export class LeaveV2Service implements OnModuleInit {
   report(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
     return this.inScope(ctx, user, async (tx, c, scope) => {
       const out = await this.reportRows(tx, c, scope, q, false);
-      return { ...out, page: q.page ?? 1, pageSize: q.pageSize ?? 50 };
+      // The filter lists (entities, locations, departments of this company).
+      const org = { organizationId: c.organizationId };
+      const filters = {
+        entities: (await tx.legalEntity.findMany({ where: { ...org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: String(x.name) })),
+        locations: (await tx.location.findMany({ where: org, select: { id: true, name: true }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: String(x.name) })),
+        departments: (await tx.department.findMany({ where: org, select: { id: true, name: true }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: String(x.name) })),
+      };
+      return { ...out, filters, page: q.page ?? 1, pageSize: q.pageSize ?? 50 };
     });
   }
 
@@ -746,7 +753,8 @@ export class LeaveV2Service implements OnModuleInit {
           if (!f || (await settingOn(tx, c, 'leave.block_leave.required', f, today)) !== 'yes') continue;
           const need = Number(await settingOn(tx, c, 'leave.block_leave.days', f, today));
           const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
-          rows.push({ ...(await this.blockStatus(tx, c, book, f, year, need, today)), canPlan: has(v, 'leave.view') });
+          const { offs: _offs, managerEmployeeId: _m, ...row } = await this.blockStatus(tx, c, book, f, year, need, today);
+          rows.push({ ...row, canPlan: has(v, 'leave.view') });
         }
         return { today, rows };
       },

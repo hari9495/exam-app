@@ -27,7 +27,7 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
-import type { LoadState, MyTimesheet, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import './time.css';
 
@@ -1374,7 +1374,8 @@ const LOP: LopRow[] = [
 ];
 
 type LeaveReport = 'balances' | 'ledger' | 'taken' | 'lop' | 'liability' | 'negative';
-export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state = 'ready' }: { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState }) {
+export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state = 'ready', live }: { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState; /** The app: HR › Leave balances (everyone in scope). */ live?: LiveLeaveReports }) {
+  if (live) return <LiveLeaveReports live={live} />;
   const { toast } = useToast();
   const fin = persona === 'fin';
   const [r, setR] = useState<LeaveReport>(fin ? 'liability' : report);
@@ -1496,6 +1497,140 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
           />
           {people.length > 0 && loadState === 'ready' && sample}
         </>
+      )}
+    </TimePage>
+  );
+}
+
+/* ---------------- TIM-30 live: leave reports for everyone in HR's scope (server paging, filters, export) ---------------- */
+
+/** HR › Leave balances in the app: the report rows a page at a time; a row opens that person's leave card (TIM-21). */
+export interface LiveLeaveReports {
+  state: LoadState;
+  onRetry?: () => void;
+  data: LiveLeaveReport | null;
+  query: LeaveReportQuery;
+  onQuery: (q: LeaveReportQuery) => void;
+  /** Downloads the whole report (every page) as CSV. */
+  onExport: (q: LeaveReportQuery) => Promise<unknown>;
+  onOpenCard: (employeeId: string) => void;
+}
+
+const REPORT_OPTIONS: { value: LeaveReportKind; label: string }[] = [
+  { value: 'balances', label: 'Balances' },
+  { value: 'ledger', label: 'Ledger' },
+  { value: 'taken', label: 'Leave taken' },
+  { value: 'lop', label: 'Unpaid leave (LOP) to payroll' },
+  { value: 'negative', label: 'Negative balances' },
+];
+const LEDGER_KIND: Record<string, string> = { opening: 'Opening balance', accrual: 'Credited', taken: 'Leave taken', cancelled: 'Leave given back', adjustment: 'Adjusted by HR', carry_forward: 'Carried forward', lapse: 'Lapsed', comp_off: 'Comp-off credited', encashed: 'Cashed in' };
+const isoMonth = (iso: string) => {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(y!, m! - 1, 1);
+};
+
+function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
+  const d = live.data;
+  const q = live.query;
+  const [search, setSearch] = useState(q.q ?? '');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const set = (patch: Partial<LeaveReportQuery>) => live.onQuery({ ...q, ...patch, page: patch.page ?? 1 });
+  useEffect(() => {
+    const h = setTimeout(() => search !== (q.q ?? '') && set({ q: search.trim() || undefined }), 400);
+    return () => clearTimeout(h);
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  const person: TableColumn<LeaveReportRow> = { key: 'name', header: 'Employee', type: 'person', width: PERSON_W, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: [x.code, x.location].filter(Boolean).join(' · ') || undefined }) };
+  const typeCols: TableColumn<LeaveReportRow>[] = (d?.types ?? []).map((t) => ({
+    key: t.id,
+    header: t.kind === 'lop' && q.report !== 'taken' ? `${t.name} taken` : t.name,
+    type: 'number' as const,
+    value: (x: LeaveReportRow) => x.values?.[t.id] ?? 0,
+    render: (x: LeaveReportRow) => {
+      const v = x.values?.[t.id] ?? 0;
+      return v < 0 ? <Badge tone="danger">{String(v)}</Badge> : v;
+    },
+  }));
+  const cols: TableColumn<LeaveReportRow>[] =
+    q.report === 'ledger'
+      ? [
+          { key: 'on', header: 'Date', type: 'date', width: 110, value: (x) => (x.on ? isoMonth(x.on) : null), render: (x) => (x.on ? formatDate(new Date(`${x.on}T00:00:00`)) : '') },
+          person,
+          { key: 'type', header: 'Leave', width: 140, value: (x) => x.type },
+          { key: 'kind', header: 'Entry', width: 150, value: (x) => LEDGER_KIND[x.kind ?? ''] ?? x.kind },
+          { key: 'days', header: 'Change', type: 'number', width: 96, value: (x) => x.days, render: (x) => ((x.days ?? 0) > 0 ? `+${x.days}` : String(x.days)) },
+          { key: 'reason', header: 'Reason', value: (x) => x.reason, optional: true },
+        ]
+      : q.report === 'lop'
+        ? [
+            person,
+            { key: 'department', header: 'Department', value: (x) => x.department, optional: true },
+            { key: 'lopLeave', header: 'Unpaid leave', type: 'number', width: 120, value: (x) => x.lopLeave, total: 'sum' },
+            { key: 'absent', header: 'Absent, no leave', type: 'number', width: 140, value: (x) => x.absent, total: 'sum' },
+            { key: 'days', header: 'Unpaid days', type: 'number', width: 120, value: (x) => x.days, total: 'sum' },
+          ]
+        : [person, { key: 'department', header: 'Department', value: (x) => x.department, optional: true }, ...typeCols];
+  const months = Array.from({ length: 13 }, (_, i) => {
+    const now = new Date();
+    const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return { value: `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`, label: m.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) };
+  });
+  const from = d && d.total ? (d.page - 1) * d.pageSize + 1 : 0;
+  const to = d ? Math.min(d.total, d.page * d.pageSize) : 0;
+  const all = (label: string) => [{ value: '', label }];
+  const filtered = Boolean(q.entityId || q.locationId || q.departmentId || q.q);
+  const label = REPORT_OPTIONS.find((o) => o.value === q.report)?.label ?? 'Leave report';
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title="Leave reports"
+        description={q.report === 'ledger' || q.report === 'lop' ? months.find((m) => m.value === (q.month ?? months[0]!.value))?.label : 'Balances as of today · leave taken in this leave year'}
+        actions={
+          <div className="yx-tim-row">
+            <div className="yx-tim-picker"><Select aria-label="Report" value={q.report} onChange={(v) => v && set({ report: v as LeaveReportKind })} options={REPORT_OPTIONS} /></div>
+            {live.state === 'ready' && <Button icon={Download} loading={busy === 'export'} onClick={() => void run('export', () => live.onExport(q))}>Export CSV</Button>}
+          </div>
+        }
+      />
+      {error && <InlineAlert tone="danger" title="Not exported">{error}</InlineAlert>}
+      {live.state === 'no-access' ? <NoAccessState grantedBy="HR" what="leave reports" /> : (
+        <DataTable
+          key={q.report}
+          label={label}
+          columns={cols}
+          rows={d?.rows ?? []}
+          getRowId={(x) => x.id ?? x.employeeId}
+          state={live.state === 'ready' ? 'ready' : live.state === 'error' ? 'error' : 'loading'}
+          onRetry={live.onRetry}
+          filtered={filtered}
+          onClearFilters={() => { setSearch(''); live.onQuery({ report: q.report, month: q.month, page: 1, pageSize: q.pageSize }); }}
+          toolbar={
+            <div className="yx-tim-row">
+              <TextField aria-label="Search by name or code" placeholder="Search by name or code" value={search} onChange={setSearch} />
+              <Select aria-label="Legal entity" value={q.entityId ?? ''} onChange={(v) => set({ entityId: v || undefined })} options={[...all('All entities'), ...(d?.filters.entities ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
+              <Select aria-label="Location" value={q.locationId ?? ''} onChange={(v) => set({ locationId: v || undefined })} options={[...all('All locations'), ...(d?.filters.locations ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
+              <Select aria-label="Department" value={q.departmentId ?? ''} onChange={(v) => set({ departmentId: v || undefined })} options={[...all('All departments'), ...(d?.filters.departments ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
+              {(q.report === 'ledger' || q.report === 'lop') && <Select aria-label="Month" value={q.month ?? months[0]!.value} onChange={(v) => v && set({ month: v })} options={months} />}
+            </div>
+          }
+          rowButtons={q.report === 'ledger' ? undefined : (x) => <Button size="sm" onClick={() => live.onOpenCard(x.employeeId)}>Open leave card</Button>}
+          empty={
+            filtered ? <EmptyState title="No one matches these filters" description="Change or clear the filters." action={<Button onClick={() => { setSearch(''); live.onQuery({ report: q.report, month: q.month, page: 1, pageSize: q.pageSize }); }}>Clear filters</Button>} />
+            : q.report === 'negative' ? <EmptyState title="No one is below zero" description="No one has used more leave than they have." />
+            : q.report === 'lop' ? <EmptyState title="No unpaid days this month" description="Nothing goes to payroll for unpaid leave this month." />
+            : q.report === 'ledger' ? <EmptyState title="No ledger entries" description="No leave was taken, credited or adjusted this month." />
+            : <EmptyState title="Nothing to show" description="People in your HR scope appear here." />
+          }
+        />
+      )}
+      {d && d.total > 0 && (
+        <div className="yx-tim-row" style={{ justifyContent: 'space-between' }}>
+          <span className="yx-tim-muted">Showing {from}–{to} of {d.total}. Export has every row.</span>
+          <span className="yx-tim-row">
+            <Button size="sm" onClick={() => (d.page <= 1 ? toast({ title: 'This is the first page', tone: 'warning' }) : set({ page: d.page - 1 }))}>Previous</Button>
+            <Button size="sm" onClick={() => (to >= d.total ? toast({ title: 'This is the last page', tone: 'warning' }) : set({ page: d.page + 1 }))}>Next</Button>
+          </span>
+        </div>
       )}
     </TimePage>
   );

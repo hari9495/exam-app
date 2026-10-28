@@ -41,7 +41,7 @@ import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './tim
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
 import { COLOURS, NightWorkTab, OvertimeRulesTab, ProjectsTab, SCOPES, fromMinute, toMinute, type LiveShiftSetup } from './live/shifts-setup';
-import type { LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
+import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup } from './live/types';
 import './time.css';
 
 /** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
@@ -2231,7 +2231,8 @@ const restoreOn = (to: Date) => {
 };
 const shortRange = (a: Date, b: Date) => (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear() ? `${a.getDate()}–${formatDate(b)}` : `${formatDate(a)} – ${formatDate(b)}`);
 
-export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false }: { persona?: 'hr' | 'mgr'; confirm?: boolean }) {
+export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false, live }: { persona?: 'hr' | 'mgr'; confirm?: boolean; /** The app: the people whose role needs block leave (HR plans; managers see their team). */ live?: LiveBlockLeave }) {
+  if (live) return <LiveBlockLeavePlanner live={live} />;
   const [sel, setSel] = useState<BlockRow | null>(confirm ? BLOCK_ROWS[0] : null);
   const why = useWhy();
   const done = useDone();
@@ -2870,5 +2871,116 @@ export function HybridPhone() {
         {!dirty && !saved && <span className="yx-tim-muted">No changes yet</span>}
       </span>
     </PhoneFrame>
+  );
+}
+
+/* ---------------- TIM-39 live: block leave for the roles that need it (company setting) ---------------- */
+
+export interface LiveBlockLeave {
+  state: LoadState;
+  onRetry?: () => void;
+  data: BlockLeaveList | null;
+  onPlan: (employeeId: string, from: string, to: string) => Promise<unknown>;
+  onNudge: (employeeId: string) => Promise<unknown>;
+  onPause: (employeeId: string, pause: boolean) => Promise<unknown>;
+  teamLeaveHref: string;
+  onNavigate: (href: string) => void;
+}
+
+const isoOfDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateOfIso = (s: string) => new Date(`${s}T00:00:00`);
+const BLOCK_STATUS = { taken: ['Taken', 'success'], planned: ['Planned', 'info'], not_planned: ['Not planned', 'warning'] } as const;
+
+function LiveBlockLeavePlanner({ live }: { live: LiveBlockLeave }) {
+  const d = live.data;
+  const rows = d?.rows ?? [];
+  const today = d ? dateOfIso(d.today) : TODAY;
+  const [planFor, setPlanFor] = useState<BlockLeaveList['rows'][number] | null>(null);
+  const [pFrom, setPFrom] = useState<Date | null>(null);
+  const [pTo, setPTo] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
+  const [pause, setPause] = useState<BlockLeaveList['rows'][number] | null>(null);
+  const { busy, error, run } = useRun();
+  const count = (s: string) => rows.filter((r) => r.status === s).length;
+  const planErr = !pFrom ? 'Choose the first day.' : !pTo ? 'Choose the last day.' : pTo < pFrom ? 'The last day is before the first.' : null;
+  return (
+    <TimePage active="Block leave">
+      <PageHeader title="Block leave" description="Some roles take a block of working days off in a row each leave year. Their system access can be paused while away." />
+      {live.state !== 'ready' ? (
+        live.state === 'loading' ? <LoadingBlock rows={6} /> : live.state === 'no-access' ? <NoAccessState grantedBy="HR" what="block leave" /> : <ErrorState title="Block leave didn't load" description="Try again. Nothing was changed." onRetry={live.onRetry} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No one in a block-leave role"
+          description="Block leave applies to the roles HR names in the leave settings. Other leave is on the team leave calendar."
+          action={<Button onClick={() => live.onNavigate(live.teamLeaveHref)}>Open team leave calendar</Button>}
+        />
+      ) : (
+        <>
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          <Kpis items={[{ label: 'People', value: rows.length }, { label: 'Taken', value: count('taken') }, { label: 'Planned', value: count('planned') }, { label: 'Not planned', value: count('not_planned') }]} />
+          <Card title="People in scope">
+            <ul className="yx-tim-list">
+              {rows.map((r) => {
+                const [label, tone] = BLOCK_STATUS[r.status];
+                const startsIn = r.plan ? Math.round((dateOfIso(r.plan.from).getTime() - today.getTime()) / 86_400_000) : 0;
+                return (
+                  <li key={r.employeeId}>
+                    <PersonLabel name={r.name} secondary={r.code ?? undefined} />
+                    <span className="yx-tim-row">
+                      <span className="yx-tim-muted">{r.plan ? `${formatDate(dateOfIso(r.plan.from))} – ${formatDate(dateOfIso(r.plan.to))} · ` : ''}{r.need} working days · {r.earnedLeft} days earned leave left</span>
+                      <Badge tone={tone}>{label}</Badge>
+                      {r.plan && startsIn > 1 && <DueBadge date={dateOfIso(r.plan.from)} today={today} prefix="Starts" />}
+                      {r.canPlan && r.status === 'not_planned' && (
+                        <>
+                          {r.nudgedAt ? <span className="yx-tim-muted">Nudged {formatDate(new Date(r.nudgedAt))}</span> : <Button size="sm" loading={busy === `n${r.employeeId}`} onClick={() => void run(`n${r.employeeId}`, () => live.onNudge(r.employeeId))}>Nudge to plan</Button>}
+                          <Button size="sm" onClick={() => { setTried(false); setPFrom(null); setPTo(null); setPlanFor(r); }}>Plan block leave</Button>
+                        </>
+                      )}
+                      {r.canPlan && r.plan && r.status !== 'taken' && (
+                        r.plan.accessPause === 'scheduled'
+                          ? <span className="yx-tim-row"><span className="yx-tim-muted">Access pause scheduled from {formatDate(dateOfIso(r.plan.from))}</span><Button size="sm" loading={busy === `p${r.employeeId}`} onClick={() => void run(`p${r.employeeId}`, () => live.onPause(r.employeeId, false))}>Cancel pause</Button></span>
+                          : <Button size="sm" onClick={() => setPause(r)}>Schedule access pause</Button>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </>
+      )}
+      <ConfirmDialog
+        open={!!pause}
+        onOpenChange={(o) => !o && setPause(null)}
+        title={pause?.plan ? `Pause ${pause.name}'s access from ${formatDate(dateOfIso(pause.plan.from))}?` : ''}
+        consequence={pause?.plan ? `${pause.name}'s access is paused from ${formatDate(dateOfIso(pause.plan.from))} and restored after ${formatDate(dateOfIso(pause.plan.to))}. Each exception is logged.` : undefined}
+        confirmLabel="Schedule access pause"
+        confirmVariant="danger"
+        onConfirm={async () => {
+          if (pause) await live.onPause(pause.employeeId, true);
+          setPause(null);
+        }}
+      />
+      <ConfirmDialog
+        open={!!planFor}
+        onOpenChange={(o) => !o && setPlanFor(null)}
+        title={planFor ? `Plan block leave for ${planFor.name}` : ''}
+        confirmLabel="Plan block"
+        onConfirm={async () => {
+          setTried(true);
+          if (planErr || !planFor) return false;
+          await live.onPlan(planFor.employeeId, isoOfDate(pFrom!), isoOfDate(pTo!));
+          setPlanFor(null);
+        }}
+      >
+        <div className="yx-tim-stack">
+          <FieldRow>
+            <FormField label="First day" required error={tried && !pFrom ? 'Choose the first day.' : null}><DatePicker value={pFrom} min={addDays(today, 1)} onChange={setPFrom} /></FormField>
+            <FormField label="Last day" required error={tried && pFrom && (!pTo || pTo < pFrom) ? (planErr ?? null) : null}><DatePicker value={pTo} min={pFrom ?? addDays(today, 1)} onChange={setPTo} /></FormField>
+          </FieldRow>
+          {planFor && <p className="yx-tim-muted">{planFor.need} working days in a row · charged to earned leave ({planFor.earnedLeft} days left now). {planFor.name} and their manager are told.</p>}
+        </div>
+      </ConfirmDialog>
+    </TimePage>
   );
 }

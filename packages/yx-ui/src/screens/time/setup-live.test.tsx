@@ -172,8 +172,28 @@ describe('TIM-29 Year-end wizard, live', () => {
     const dialog = screen.getByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox'), 'LEAVE YEAR 2025');
     await ue.click(within(dialog).getByRole('button', { name: 'Post entries' }));
-    await waitFor(() => expect(onYearEndRun).toHaveBeenCalledWith('2025-12-31'));
+    await waitFor(() => expect(onYearEndRun).toHaveBeenCalledWith('2025-12-31', false));
     expect(await screen.findByText('Year end is being posted')).toBeInTheDocument();
+  });
+
+  it('pending requests are listed; posting is blocked until HR ticks Post anyway, then it posts with them', async () => {
+    const onYearEndPreview = vi.fn(async () => ({ ...YEAR_END, pending: [{ id: 'r1', employeeId: 'e1', name: 'Arun Prakash', type: 'Casual leave', from: '2025-12-30', to: '2025-12-31', days: 2 }] }));
+    const onYearEndRun = vi.fn(async () => ({ queued: true }));
+    wrap(<YearEndWizard live={{ ...base, onYearEndPreview, onYearEndRun }} />);
+    expect(await screen.findByText('1 leave request from this year is still pending')).toBeInTheDocument();
+    expect(screen.getByText('Arun Prakash · Casual leave')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    expect(screen.getByText('Decide the 1 pending leave request first, or tick "Post anyway" in Scope')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: /Scope/ })[0]!);
+    await ue.click(screen.getByRole('checkbox', { name: /Post anyway/ }));
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    await ue.click(screen.getByRole('button', { name: /^Continue/ }));
+    await ue.click(screen.getByRole('button', { name: 'Post year-end' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'LEAVE YEAR 2025');
+    await ue.click(within(dialog).getByRole('button', { name: 'Post entries' }));
+    await waitFor(() => expect(onYearEndRun).toHaveBeenCalledWith('2025-12-31', true));
   });
 
   it('nothing to lapse: posting is blocked and says why; a failed preview offers Try again', async () => {
