@@ -158,7 +158,7 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: [
       ...sec(undefined, [
         ...when(manager || has('attendance.view'), L('today', 'Today', '/yx/time/today'), L('muster', 'Muster', '/yx/time/muster'), L('exceptions', 'Exceptions', '/yx/time/exceptions')),
-        ...when(manager || has('roster.manage'), L('roster', 'Roster', '/yx/time/roster')),
+        ...when(manager || has('roster.manage'), L('roster', 'Roster', '/yx/time/roster'), L('open-shifts', 'Open shifts', '/yx/time/open-shifts')),
         ...when(manager || has('roster.manage'), L('auto-roster', 'Auto-roster', '/yx/time/auto-roster'), L('standby', 'Standby & call-outs', '/yx/time/standby')),
         ...when(manager || has('attendance.view'), L('field-force', 'Field force', '/yx/time/field-force')),
         ...when(has('leave.view'), L('hr-leave', 'Leave', '/yx/time/leave-home')),

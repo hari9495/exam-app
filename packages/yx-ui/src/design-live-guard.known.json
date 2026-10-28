@@ -529,10 +529,8 @@
     "time: MobileCheckInSheet",
     "time: MyShiftsPhone",
     "time: OpenShiftsPhone",
-    "time: OpenShiftsScreen",
     "time: PrefillPhone",
     "time: StandbyPhone",
-    "time: StandbyScreen",
     "time: TeamLeaveCalendarPhone",
     "time: TeamTodayPhone"
   ]
