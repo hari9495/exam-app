@@ -272,11 +272,11 @@ describe('TimesheetGrid', () => {
       return <TimesheetGrid weekStart={new Date(2026, 8, 28)} days={days} status="draft" lines={lines} onLinesChange={setLines} projects={projects} onSubmit={submit} layout="grid" />;
     }
     render(<T />);
-    const tue = screen.getByRole('textbox', { name: /Website Tue 29 Sep hours/ });
+    const tue = screen.getByRole('textbox', { name: /Website Tue 29 Sep 2026 hours/ });
     await u.type(tue, '7:30');
     await u.tab();
     expect(latest[0].hours[1]).toBe(7.5);
-    const wed = screen.getByRole('textbox', { name: /Website Wed 30 Sep hours/ });
+    const wed = screen.getByRole('textbox', { name: /Website Wed 30 Sep 2026 hours/ });
     await u.type(wed, '30');
     await u.tab();
     await u.click(screen.getByRole('button', { name: 'Submit week' }));

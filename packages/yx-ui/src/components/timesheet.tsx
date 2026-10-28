@@ -5,7 +5,7 @@ import { formatDate } from '../lib/format';
 import { formatHours, parseHours } from '../lib/table';
 import { Button, IconButton } from './button';
 import { Checkbox } from './choice';
-import { Badge, type BadgeTone } from './display';
+import { Badge, DayDate, type BadgeTone } from './display';
 import { InlineAlert } from './feedback';
 import { Select } from './select';
 
@@ -96,7 +96,6 @@ const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 /** "1 Oct 2026" (no leading zero). */
 const longDate = (d: Date) => formatDate(d).replace(/^0/, '');
-const shortDate = (d: Date) => longDate(d).replace(/ \d{4}$/, ''); // "29 Sep", "1 Oct"
 const sum = (xs: (number | null)[]) => Math.round(xs.reduce<number>((a, b) => a + (b ?? 0), 0) * 100) / 100;
 
 function useNarrow() {
@@ -371,7 +370,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
           This week is locked with the payroll period. Corrections go in an open week as an adjustment line.
         </InlineAlert>
       )}
-      {editable && lockFrom && dates.some((_, d) => dayLocked(d)) && <p className="yx-ts__muted">Hours from {shortDate(lockFrom)} can be added on the day.</p>}
+      {editable && lockFrom && dates.some((_, d) => dayLocked(d)) && <p className="yx-ts__muted">Hours from {longDate(lockFrom)} can be added on the day.</p>}
       {problems.length > 0 && (
         <InlineAlert tone="danger" title="Fix these before submitting">
           <ul className="yx-ts__problems">
@@ -425,10 +424,10 @@ export function TimesheetGrid(props: TimesheetGridProps) {
           </section>
         )}
         {dates.map((date, d) => (
-          <section key={d} className="yx-ts__day" data-kind={days[d].kind} aria-label={`${DAY[d]} ${shortDate(date)}`}>
+          <section key={d} className="yx-ts__day" data-kind={days[d].kind} aria-label={`${DAY[d]} ${longDate(date)}`}>
             <header className="yx-ts__day-head">
               <span className="yx-ts__day-name">
-                {DAY[d]} {shortDate(date)}
+                <DayDate date={date} />
               </span>
               <span className="yx-ts__day-meta">
                 {days[d].kind === 'holiday' || days[d].kind === 'weekend' || days[d].label
@@ -521,8 +520,8 @@ export function TimesheetGrid(props: TimesheetGridProps) {
               </th>
               {dates.map((date, d) => (
                 <th key={d} scope="col" className="yx-ts__col-day" data-kind={days[d].kind} data-invalid={badDays.has(d) || undefined}>
-                  {/* One line for the date ("Wed 30 Sep"), one hint line. */}
-                  <span className="yx-ts__dayname">{DAY[d]} {shortDate(date)}</span>
+                  {/* The weekday as a small label above the date ("Wed" / "30 Sep 2026"), then one hint line. */}
+                  <span className="yx-ts__dayname"><DayDate date={date} stacked /></span>
                   <span className="yx-ts__dayexp">{dayExp(d)}</span>
                 </th>
               ))}
@@ -590,7 +589,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
                   ) : (
                     l.hours.map((h, d) => (
                       <td key={d} className="yx-ts__col-day" data-kind={days[d].kind} data-queried={queried(l.id, d) ? true : undefined} title={queried(l.id, d)}>
-                        <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${shortDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
+                        <HourCell value={h} editable={editable && !dayLocked(d)} r={r} c={d} label={`${rowName} ${DAY[d]} ${longDate(dates[d])} hours`} onCommit={(v) => setHour(l.id, d, v)} />
                       </td>
                     ))
                   )}

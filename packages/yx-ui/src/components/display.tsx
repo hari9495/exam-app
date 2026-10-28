@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cx } from '../lib/cx';
-import { initials } from '../lib/format';
+import { formatDate, initials } from '../lib/format';
 import { Tooltip } from './tooltip';
 import { Icon } from './foundations';
 
@@ -99,6 +99,17 @@ export function PersonLabel({ name, src, secondary, size = 24 }: { name: string;
         <span className="yx-person__name">{name}</span>
         {secondary && <span className="yx-person__sub">{secondary}</span>}
       </span>
+    </span>
+  );
+}
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** A date with its weekday as a separate small muted label: "Mon" beside (or, stacked, above) "26 Oct 2026". Never merge the two into one string. */
+export function DayDate({ date, stacked = false }: { date: Date; stacked?: boolean }) {
+  return (
+    <span className={cx('yx-daydate', stacked && 'yx-daydate--stacked')}>
+      <span className="yx-daydate__wd">{WEEKDAY[date.getDay()]}</span>{' '}
+      <span>{formatDate(date)}</span>
     </span>
   );
 }
