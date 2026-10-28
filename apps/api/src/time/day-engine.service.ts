@@ -3,6 +3,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScheduleBook, lockedDates } from './schedule';
 import { asDate, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
 import { HolidayOn, addDays, daysBetween, eachDay, evaluateDay, type PunchKind } from './time-maths';
+import { presenceDay } from './time-rules';
 
 // M02 §B3 day engine: works out each day's status from the expected day (the roster / pattern / location shift and
 // weekly off, holidays, leave), the attendance mode (P01 scoped, dated setting, D1) and punches / approved fixes /
@@ -22,6 +23,11 @@ export class DayEngine {
     const wfh = new Set(approved.filter((x) => x.kind === 'wfh').map((x) => x.workOn.toISOString().slice(0, 10)));
     const sheets = await this.approvedMinutes(tx, org, employeeId, from, to);
     const locked = await lockedDates(tx, org, employeeId, from, to);
+    // Time ops: HR resolutions (the latest per day wins), industrial-action events and presence (TIM-04, 37, 36).
+    const resolutions = await tx.attendanceResolution.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { createdAt: 'asc' } });
+    const events = await tx.industrialActionEvent.findMany({ where: { organizationId: org, status: 'active', fromOn: { lte: asDate(to) }, toOn: { gte: asDate(from) } } });
+    const consents = wfh.size ? await tx.presenceConsent.findMany({ where: { organizationId: org, employeeId } }) : [];
+    const signals = consents.length ? await tx.presenceSignal.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
     const sched = book ?? (await ScheduleBook.load(tx, org));
     await sched.prime([employeeId], from, to);
     const holidays = new Map<string, Map<string, HolidayOn>>();
@@ -36,6 +42,12 @@ export class DayEngine {
       const rule = day.shift ?? (await sched.locationDay(f, on)).rule;
       const fix = fixes.filter((x) => x.workOn.toISOString().slice(0, 10) === on).pop();
       const mode = (await settingOn(tx, c, 'attendance.mode', f, on)) as 'punch' | 'assumed_present' | 'timesheet';
+      const resolution = resolutions.filter((x) => x.workOn.toISOString().slice(0, 10) === on).pop();
+      const event = events.find((e) => e.locationId === f.locationId && (!e.departmentId || e.departmentId === f.departmentId) && e.fromOn.toISOString().slice(0, 10) <= on && e.toOn.toISOString().slice(0, 10) >= on);
+      // Presence counts only with consent in force all through the day and the company's switch on.
+      const dayStart = new Date(`${on}T00:00:00.000Z`);
+      const consented = wfh.has(on) && consents.some((x) => x.givenAt <= new Date(dayStart.getTime() + 86_400_000) && (!x.withdrawnAt || x.withdrawnAt > new Date(dayStart.getTime() + 86_400_000))) && (await settingOn(tx, c, 'attendance.presence', f, on)) === 'on';
+      const presence = consented ? presenceDay(signals.filter((x) => x.workOn.toISOString().slice(0, 10) === on).map((x) => ({ at: x.at, state: x.state as 'active' }))) : null;
       const r = evaluateDay({
         on,
         zone: f.zone,
@@ -49,6 +61,9 @@ export class DayEngine {
         now,
         timesheetMinutes: sheets.has(on) ? sheets.get(on)! : null,
         wfh: wfh.has(on),
+        resolution: resolution ? { how: resolution.how as 'present' | 'absent', inMinute: resolution.inMinute, outMinute: resolution.outMinute } : null,
+        action: (event?.kind as 'strike' | 'lockout' | 'layoff' | undefined) ?? null,
+        presence,
       });
       const data = { mode, status: r.status, leavePart: r.leavePart, firstIn: r.firstIn, lastOut: r.lastOut, workedMinutes: r.workedMinutes, lateMinutes: r.lateMinutes, regularised: r.regularised, evaluatedAt: now, shiftId: day.shift?.shiftId ?? null };
       await tx.attendanceDay.upsert({

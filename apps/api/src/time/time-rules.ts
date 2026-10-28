@@ -249,3 +249,47 @@ export function payOfDay(d: { status: string; leavePart: 'full' | 'first' | 'sec
 
 /** The Monday of a date's week. */
 export const mondayOf = (on: string) => addDays(on, 1 - DateTime.fromISO(on, { zone: 'utc' }).weekday);
+
+// ------------------------------------------------------------------------------------------ time ops (29 Oct 2026)
+
+/**
+ * Late marks over the company's free number cost unpaid days (settings attendance.late_marks_free and
+ * attendance.late_mark_penalty, default 3 free and 0 days: no deduction unless the company turns it on).
+ */
+export const lateMarkDays = (marks: number, free: number, perMark: number) => Math.max(0, marks - free) * perMark;
+
+export type IndustrialKind = 'strike' | 'lockout' | 'layoff';
+export type Legality = 'legal' | 'illegal' | 'undetermined';
+
+/**
+ * How a day of industrial action is paid (TIM-37; Industrial Disputes Act 1947 and Payment of Wages Act 1936, P07 verify
+ * list). A strike is unpaid whether legal or not (no work, no pay; a tribunal may later award wages, which is a
+ * correction). A legal lockout is unpaid; an illegal one pays full wages. A legal lay-off is unpaid in attendance and paid
+ * as lay-off compensation (s.25C: 50 % of basic pay and dearness allowance) by payroll; an illegal one pays full wages.
+ * Undetermined: neither paid nor unpaid yet, the day is held until HR sets the legality.
+ */
+export function industrialPay(kind: IndustrialKind, legality: Legality): { paid: number; lop: number; layoff: number; held: number } {
+  if (legality === 'undetermined') return { paid: 0, lop: 0, layoff: 0, held: 1 };
+  if (kind === 'strike') return { paid: 0, lop: 1, layoff: 0, held: 0 };
+  if (legality === 'illegal') return { paid: 1, lop: 0, layoff: 0, held: 0 };
+  return kind === 'layoff' ? { paid: 0, lop: 1, layoff: 1, held: 0 } : { paid: 0, lop: 1, layoff: 0, held: 0 };
+}
+
+/**
+ * A day of presence signals (TIM-36): the first and last time the person was active, and the active minutes (from each
+ * "active" signal to the next signal of any state). Null when there was no activity.
+ */
+export function presenceDay(signals: readonly { at: Date; state: 'active' | 'idle' | 'offline' }[]): { first: Date; last: Date; activeMinutes: number } | null {
+  const s = [...signals].sort((a, b) => a.at.getTime() - b.at.getTime());
+  let first: Date | null = null;
+  let last: Date | null = null;
+  let active = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i].state !== 'active') continue;
+    first ??= s[i].at;
+    const end = s[i + 1]?.at ?? s[i].at;
+    last = end;
+    active += end.getTime() - s[i].at.getTime();
+  }
+  return first && last ? { first, last, activeMinutes: Math.floor(active / 60_000) } : null;
+}

@@ -318,7 +318,7 @@ export function workOnFor(at: Date, zone: string, rule: Pick<DayRule, 'shiftStar
   return on;
 }
 
-export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started';
+export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started' | 'strike' | 'lockout' | 'layoff';
 
 export interface DayInput {
   on: string;
@@ -337,6 +337,12 @@ export interface DayInput {
   timesheetMinutes?: number | null;
   /** An approved work-from-home day (TIM-07): present, with or without punches. */
   wfh?: boolean;
+  /** HR's latest resolution of the day (TIM-04): present (times optional) or absent. It outranks the employee's fix. */
+  resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null } | null;
+  /** An industrial-action event covering the person on the day (TIM-37); ignored when they checked in (they worked). */
+  action?: 'strike' | 'lockout' | 'layoff' | null;
+  /** Presence on a work-from-home day with consent in force (TIM-36): it decides the day when there are no punches. */
+  presence?: { first: Date; last: Date; activeMinutes: number } | null;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -403,7 +409,13 @@ export function evaluateDay(i: DayInput): DayResult {
   const workStart = offHalf === 'first' ? mid : r.shiftStart;
   const workEnd = offHalf === 'second' ? mid : end;
   const halfFactor = offHalf ? 0.5 : 1;
-  const fix = i.fix;
+  // TIM-37: weekly offs, holidays and approved leave inside an event stay as they are; a worker who checked in worked.
+  if (i.action && !i.punches.some((p) => p.kind === 'in')) return { ...none, status: i.action, leavePart };
+  const res = i.resolution ?? null;
+  if (res?.how === 'absent') return { ...none, status: 'absent', leavePart, regularised: true };
+  if (res?.how === 'present' && (res.inMinute === null || res.outMinute === null)) return { ...none, status: 'present', leavePart, regularised: true };
+  // HR's resolution with times reads like a "wrong time" fix.
+  const fix = res ? { kind: 'wrong_time' as const, inMinute: res.inMinute, outMinute: res.outMinute } : i.fix;
   if (fix?.kind === 'full_day') return { ...none, status: 'present', leavePart, regularised: true };
 
   const ins = i.punches.filter((p) => p.kind === 'in').map((p) => p.at.getTime());
@@ -418,7 +430,7 @@ export function evaluateDay(i: DayInput): DayResult {
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;
     const shown = { firstIn, lastOut, workedMinutes: both ? netWorked(i.punches, firstIn!, lastOut!, r) : null };
-    if (i.mode === 'assumed_present') return { ...none, ...shown, status: 'present', leavePart };
+    if (i.mode === 'assumed_present' || res) return { ...none, ...shown, status: 'present', leavePart, regularised: Boolean(res) };
     // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
     const t = i.timesheetMinutes;
     if (t === null || t === undefined) return { ...none, ...shown, status: 'no_timesheet', leavePart };
@@ -430,6 +442,12 @@ export function evaluateDay(i: DayInput): DayResult {
 
   const late = firstIn ? Math.max(0, minutesInto(i.on, i.zone, firstIn) - workStart - r.graceMinutes) : null;
   // Work from home (19 Oct 2026): approved, the day counts as present; punches still give the hours and lateness.
+  // Presence (TIM-36): with consent and no punches, the active time decides the day against the shift's thresholds.
+  if (i.wfh && i.presence && !firstIn && !lastOut) {
+    const p = i.presence;
+    const status: DayStatus = p.activeMinutes >= r.fullDayMinutes * halfFactor ? 'present' : p.activeMinutes >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+    return { status, leavePart, firstIn: p.first, lastOut: p.last, workedMinutes: p.activeMinutes, lateMinutes: Math.max(0, minutesInto(i.on, i.zone, p.first) - workStart - r.graceMinutes), regularised };
+  }
   if (i.wfh) return { status: 'present', leavePart, firstIn, lastOut, workedMinutes: firstIn && lastOut ? netWorked(i.punches, firstIn, lastOut, r) : null, lateMinutes: late, regularised };
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };

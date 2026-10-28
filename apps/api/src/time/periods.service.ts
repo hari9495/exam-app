@@ -10,7 +10,7 @@ import { DayEngine } from './day-engine.service';
 import { ScheduleBook } from './schedule';
 import { TIME_KEYS, asDate, dateOf, factsOn, monthRange, num, settingOn, visibleSql } from './time-core';
 import { addDays, daysBetween } from './time-maths';
-import { payOfDay } from './time-rules';
+import { industrialPay, lateMarkDays, payOfDay, type IndustrialKind, type Legality } from './time-rules';
 import { PayPeriodsService } from '../payroll/periods.service';
 
 // P08 attendance periods per legal entity and month (lock / unlock with a fresh second sign-in step, audited), the
@@ -39,6 +39,11 @@ export interface FeedRow {
   timesheetMinutes: number;
   /** Days not evaluated yet (before go-live, or not yet run): neither paid nor loss of pay. */
   unevaluatedDays: number;
+  /** TIM-37: legal lay-off days (payroll pays the lay-off compensation) and days on hold while legality is undetermined. */
+  layoffDays: number;
+  heldDays: number;
+  /** Late marks over the free number turned into unpaid days (already inside lopDays). */
+  lateLopDays: number;
 }
 
 interface RegisterFormat {
@@ -203,7 +208,7 @@ export class PeriodsService {
       const rows = await this.feedRows(tx, c, entityId, month);
       if (rows.length)
         await tx.payrollFeedRow.createMany({
-          data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })),
+          data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes, layoffDays: r.layoffDays, heldDays: r.heldDays, lateLopDays: r.lateLopDays })),
         });
       // YX-AUD-09: what was seen and confirmed.
       await audit(tx, c, 'time.period.locked', 'pay_period', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
@@ -239,8 +244,13 @@ export class PeriodsService {
     const night = new Set((await tx.shift.findMany({ where: { organizationId: org, night: true }, select: { id: true } })).map((s) => s.id));
     const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'approved', weekStart: { gte: asDate(addDays(from, -6)), lte: asDate(to) } } });
     const lines = sheets.length ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((s) => s.id) } } }) : [];
+    const events = await tx.industrialActionEvent.findMany({ where: { organizationId: org, legalEntityId: entityId, status: 'active', fromOn: { lte: asDate(to) }, toOn: { gte: asDate(from) } } });
     const out: FeedRow[] = [];
     for (const p of people) {
+      let layoff = 0;
+      let held = 0;
+      let lateMarks = 0;
+      let lastFacts: Awaited<ReturnType<typeof factsOn>> = null;
       let calendarDays = 0;
       let mode = 'punch';
       const mine = new Map(days.filter((d) => d.employeeId === p.id).map((d) => [dateOf(d.workOn), d]));
@@ -259,12 +269,27 @@ export class PeriodsService {
           unevaluated++;
           continue;
         }
+        lastFacts = f;
+        if (d.status === 'strike' || d.status === 'lockout' || d.status === 'layoff') {
+          const e = events.find((x) => x.kind === d.status && x.locationId === f.locationId && (!x.departmentId || x.departmentId === f.departmentId) && dateOf(x.fromOn) <= on && dateOf(x.toOn) >= on);
+          const ip = industrialPay(d.status as IndustrialKind, (e?.legality ?? 'undetermined') as Legality);
+          paid += ip.paid;
+          lop += ip.lop;
+          layoff += ip.layoff;
+          held += ip.held;
+          continue;
+        }
+        if ((d.lateMinutes ?? 0) > 0) lateMarks++;
         const lp = leavePaid.find((x) => x.employeeId === p.id && x.on === on);
         const pay = payOfDay({ status: d.status, leavePart: d.leavePart as 'full' | 'first' | 'second' | null, leavePaid: lp ? lp.paid : null });
         paid += pay.paid;
         lop += pay.lop;
         if (d.shiftId && night.has(d.shiftId) && (d.status === 'present' || d.status === 'half_day')) nights++;
       }
+      // Late marks over the free number cost unpaid days (company settings; default: no deduction). Never below zero paid.
+      const lateLop = lastFacts ? Math.min(paid, lateMarkDays(lateMarks, Number(await settingOn(tx, c, 'attendance.late_marks_free', lastFacts, to)), Number(await settingOn(tx, c, 'attendance.late_mark_penalty', lastFacts, to)))) : 0;
+      paid -= lateLop;
+      lop += lateLop;
       const myOt = ot.filter((x) => x.employeeId === p.id);
       const otOf = (cat: string) => myOt.filter((x) => x.category === cat && x.settle === 'pay').reduce((s, x) => s + x.payableMinutes + (x.overrideReason ? x.overCapMinutes : 0), 0);
       let tsMinutes = 0;
@@ -291,6 +316,9 @@ export class PeriodsService {
         compOffDays: myOt.filter((x) => x.settle === 'comp_off').reduce((s, x) => s + num(x.compOffDays), 0),
         timesheetMinutes: tsMinutes,
         unevaluatedDays: unevaluated,
+        layoffDays: layoff,
+        heldDays: held,
+        lateLopDays: lateLop,
       });
     }
     return out;
@@ -321,7 +349,7 @@ export class PeriodsService {
         const people = new Map((await this.employeesOf(tx, org, entityId, from, to)).map((p) => [p.id, p]));
         rows = (await tx.payrollFeedRow.findMany({ where: { organizationId: org, payPeriodId: lock!.id, supersededAt: null }, orderBy: { frozenAt: 'desc' } }))
           .filter((r) => visible.has(r.employeeId))
-          .map((r) => ({ employeeId: r.employeeId, name: people.get(r.employeeId)?.name ?? '', code: people.get(r.employeeId)?.code ?? null, mode: r.mode, calendarDays: r.calendarDays, paidDays: num(r.paidDays), lopDays: num(r.lopDays), otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: num(r.compOffDays), timesheetMinutes: r.timesheetMinutes, unevaluatedDays: 0, frozenAt: r.frozenAt }))
+          .map((r) => ({ employeeId: r.employeeId, name: people.get(r.employeeId)?.name ?? '', code: people.get(r.employeeId)?.code ?? null, mode: r.mode, calendarDays: r.calendarDays, paidDays: num(r.paidDays), lopDays: num(r.lopDays), otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: num(r.compOffDays), timesheetMinutes: r.timesheetMinutes, unevaluatedDays: 0, layoffDays: num(r.layoffDays), heldDays: num(r.heldDays), lateLopDays: num(r.lateLopDays), frozenAt: r.frozenAt }))
           .sort((a, b) => a.name.localeCompare(b.name));
       } else rows = await this.feedRows(tx, c, entityId, month, visible);
       await audit(tx, c, 'time.payroll_feed.viewed', 'legal_entity', entityId, { month, rows: rows.length, frozen });

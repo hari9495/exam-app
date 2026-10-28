@@ -2276,27 +2276,27 @@ model SmsUsageMonthly {
 // row; they are deliberately not modelled as Prisma relations.
 
 model LegalEntity {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String    @map("organization_id") @db.Uuid
-  name              String    @db.Citext
-  shortName         String    @map("short_name") @db.Citext
-  country           String    @default("IN") @db.Char(2)
-  currency          String    @default("INR") @db.Char(3)
-  fyStartMonth      Int       @default(4) @map("fy_start_month") @db.SmallInt
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  shortName          String    @map("short_name") @db.Citext
+  country            String    @default("IN") @db.Char(2)
+  currency           String    @default("INR") @db.Char(3)
+  fyStartMonth       Int       @default(4) @map("fy_start_month") @db.SmallInt
   /// New people get codes like KF-0001 (YX-ORG-16); null keeps E0001.
-  employeeCodePrefix String?  @map("employee_code_prefix") @db.VarChar(12)
-  registeredAddress Json?     @map("registered_address")
-  dataRegion        String    @default("IN") @map("data_region") @db.VarChar(8)
+  employeeCodePrefix String?   @map("employee_code_prefix") @db.VarChar(12)
+  registeredAddress  Json?     @map("registered_address")
+  dataRegion         String    @default("IN") @map("data_region") @db.VarChar(8)
   // Confidential (P02 §4.4): returned only to org.entity.statutory.manage.
-  pan               String?   @db.VarChar(10)
-  tan               String?   @db.VarChar(10)
-  gstin             String?   @db.VarChar(15)
-  cin               String?   @db.VarChar(21)
-  isDefault         Boolean   @default(false) @map("is_default")
-  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
-  createdBy         String?   @map("created_by") @db.Uuid
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  pan                String?   @db.VarChar(10)
+  tan                String?   @db.VarChar(10)
+  gstin              String?   @db.VarChar(15)
+  cin                String?   @db.VarChar(21)
+  isDefault          Boolean   @default(false) @map("is_default")
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("legal_entities")
@@ -2707,21 +2707,21 @@ model Probation {
 }
 
 model EmployeeChangeBatch {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  status         String    @default("pending") @db.VarChar(16)
-  source         String    @db.VarChar(16)
-  fileName       String?   @map("file_name") @db.VarChar(200)
-  reason         String    @db.VarChar(1000)
-  rowCount       Int       @map("row_count")
-  requestedBy    String?   @map("requested_by") @db.Uuid
-  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
-  decidedBy      String?   @map("decided_by") @db.Uuid
-  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
-  decisionNote   String?   @map("decision_note") @db.VarChar(1000)
-  compCycleId    String?   @map("comp_cycle_id") @db.Uuid
-  letterTemplateId String? @map("letter_template_id") @db.Uuid
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  status           String    @default("pending") @db.VarChar(16)
+  source           String    @db.VarChar(16)
+  fileName         String?   @map("file_name") @db.VarChar(200)
+  reason           String    @db.VarChar(1000)
+  rowCount         Int       @map("row_count")
+  requestedBy      String?   @map("requested_by") @db.Uuid
+  requestedAt      DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy        String?   @map("decided_by") @db.Uuid
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote     String?   @map("decision_note") @db.VarChar(1000)
+  compCycleId      String?   @map("comp_cycle_id") @db.Uuid
+  letterTemplateId String?   @map("letter_template_id") @db.Uuid
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("employee_change_batches")
@@ -2810,26 +2810,26 @@ model EmployeePersonalDetails {
 
 /// P01 §4.4 employee_identifiers: encrypted values, keyed hashes (YX-EMP-02), last four (P02 §4.4).
 model EmployeeIdentifiers {
-  organizationId String   @map("organization_id") @db.Uuid
-  employeeId     String   @map("employee_id") @db.Uuid
-  legalName      String?  @map("legal_name") @db.VarChar(200)
-  panEnc         String?  @map("pan_enc")
-  panHash        String?  @map("pan_hash") @db.Char(64)
-  panLast4       String?  @map("pan_last4") @db.Char(4)
-  aadhaarEnc     String?  @map("aadhaar_enc")
-  aadhaarHash    String?  @map("aadhaar_hash") @db.Char(64)
-  aadhaarLast4   String?  @map("aadhaar_last4") @db.Char(4)
-  uanEnc         String?  @map("uan_enc")
-  uanHash        String?  @map("uan_hash") @db.Char(64)
-  uanLast4       String?  @map("uan_last4") @db.Char(4)
-  esicEnc        String?  @map("esic_enc")
-  esicHash       String?  @map("esic_hash") @db.Char(64)
-  esicLast4      String?  @map("esic_last4") @db.Char(4)
+  organizationId    String    @map("organization_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  legalName         String?   @map("legal_name") @db.VarChar(200)
+  panEnc            String?   @map("pan_enc")
+  panHash           String?   @map("pan_hash") @db.Char(64)
+  panLast4          String?   @map("pan_last4") @db.Char(4)
+  aadhaarEnc        String?   @map("aadhaar_enc")
+  aadhaarHash       String?   @map("aadhaar_hash") @db.Char(64)
+  aadhaarLast4      String?   @map("aadhaar_last4") @db.Char(4)
+  uanEnc            String?   @map("uan_enc")
+  uanHash           String?   @map("uan_hash") @db.Char(64)
+  uanLast4          String?   @map("uan_last4") @db.Char(4)
+  esicEnc           String?   @map("esic_enc")
+  esicHash          String?   @map("esic_hash") @db.Char(64)
+  esicLast4         String?   @map("esic_last4") @db.Char(4)
   passportEnc       String?   @map("passport_enc")
   passportHash      String?   @map("passport_hash") @db.Char(64)
   passportLast4     String?   @map("passport_last4") @db.Char(4)
   passportExpiresOn DateTime? @map("passport_expires_on") @db.Date
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([organizationId, employeeId])
   @@map("employee_identifiers")
@@ -5470,21 +5470,23 @@ model TimesheetLine {
 
 /// P08 pay periods (batch 5a, the one lock model; step 4's attendance locks carried over). Pay groups arrive in 5b.
 model PayPeriod {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  legalEntityId  String    @map("legal_entity_id") @db.Uuid
-  payGroupId     String?   @map("pay_group_id") @db.Uuid
-  periodStart    DateTime  @map("period_start") @db.Date
-  periodEnd      DateTime  @map("period_end") @db.Date
-  stage          String    @db.VarChar(8)
-  cutOffAt       DateTime? @map("cut_off_at") @db.Timestamptz(3)
-  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(3)
-  lockedBy       String?   @map("locked_by") @db.Uuid
-  lockedByRunId  String?   @map("locked_by_run_id") @db.Uuid
-  changedBy      String?   @map("changed_by") @db.Uuid
-  changedAt      DateTime  @default(now()) @map("changed_at") @db.Timestamptz(3)
-  reason         String?   @db.VarChar(500)
-  version        Int       @default(1)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  payGroupId      String?   @map("pay_group_id") @db.Uuid
+  periodStart     DateTime  @map("period_start") @db.Date
+  periodEnd       DateTime  @map("period_end") @db.Date
+  stage           String    @db.VarChar(8)
+  cutOffAt        DateTime? @map("cut_off_at") @db.Timestamptz(3)
+  lockedAt        DateTime? @map("locked_at") @db.Timestamptz(3)
+  lockedBy        String?   @map("locked_by") @db.Uuid
+  lockedByRunId   String?   @map("locked_by_run_id") @db.Uuid
+  changedBy       String?   @map("changed_by") @db.Uuid
+  changedAt       DateTime  @default(now()) @map("changed_at") @db.Timestamptz(3)
+  reason          String?   @db.VarChar(500)
+  version         Int       @default(1)
+  lockRequestedBy String?   @map("lock_requested_by") @db.Uuid
+  lockRequestedAt DateTime? @map("lock_requested_at") @db.Timestamptz(3)
 
   @@map("pay_periods")
 }
@@ -5773,6 +5775,9 @@ model PayrollFeedRow {
   nightShifts        Int       @default(0) @map("night_shifts") @db.SmallInt
   compOffDays        Decimal   @default(0) @map("comp_off_days") @db.Decimal(4, 1)
   timesheetMinutes   Int       @default(0) @map("timesheet_minutes")
+  layoffDays         Decimal   @default(0) @map("layoff_days") @db.Decimal(5, 2)
+  heldDays           Decimal   @default(0) @map("held_days") @db.Decimal(5, 2)
+  lateLopDays        Decimal   @default(0) @map("late_lop_days") @db.Decimal(5, 2)
   frozenAt           DateTime  @default(now()) @map("frozen_at") @db.Timestamptz(3)
   supersededAt       DateTime? @map("superseded_at") @db.Timestamptz(3)
 
@@ -9553,11 +9558,11 @@ model PieceOutput {
 }
 
 model Union {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  legalEntityId  String   @map("legal_entity_id") @db.Uuid
-  name           String   @db.VarChar(200)
-  registrationNo String?  @map("registration_no") @db.VarChar(60)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  registrationNo String?   @map("registration_no") @db.VarChar(60)
   /// PPL-39 union register: the establishment, recognition and basis, its period and office bearers.
   locationId     String?   @map("location_id") @db.Uuid
   recognition    String    @default("not_recognised") @db.VarChar(16)
@@ -9565,8 +9570,8 @@ model Union {
   validFrom      DateTime? @map("valid_from") @db.Date
   validTo        DateTime? @map("valid_to") @db.Date
   bearers        String?   @db.VarChar(500)
-  createdBy      String   @map("created_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("unions")
 }
@@ -10342,15 +10347,15 @@ model SavedView {
 
 /// Monthly head counts for the directory cards; legalEntityId null is the whole company.
 model WorkforceSnapshot {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  legalEntityId  String?  @map("legal_entity_id") @db.Uuid
-  month          DateTime @db.Date
-  employees      Int
-  consultants    Int
-  persons        Int
-  employeePersons Int     @map("employee_persons")
-  takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  legalEntityId   String?  @map("legal_entity_id") @db.Uuid
+  month           DateTime @db.Date
+  employees       Int
+  consultants     Int
+  persons         Int
+  employeePersons Int      @map("employee_persons")
+  takenAt         DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
 
   @@map("workforce_snapshots")
 }
@@ -10559,4 +10564,70 @@ model ReverificationAsk {
 
   @@unique([organizationId, ruleId, employeeId, dueOn], map: "reverification_asks_once_key")
   @@map("reverification_asks")
+}
+
+// ---- Time ops (TIM-02/03/04/11/36/37), migration 20261129100000_time_ops. ----
+
+model AttendanceResolution {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  workOn         DateTime @map("work_on") @db.Date
+  how            String   @db.VarChar(8)
+  inMinute       Int?     @map("in_minute") @db.SmallInt
+  outMinute      Int?     @map("out_minute") @db.SmallInt
+  reason         String   @db.VarChar(500)
+  batchId        String?  @map("batch_id") @db.Uuid
+  resolvedBy     String   @map("resolved_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("attendance_resolutions")
+}
+
+model IndustrialActionEvent {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  departmentId   String?   @map("department_id") @db.Uuid
+  kind           String    @db.VarChar(8)
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime  @map("to_on") @db.Date
+  legality       String    @default("undetermined") @db.VarChar(12)
+  legalitySetAt  DateTime? @map("legality_set_at") @db.Timestamptz(3)
+  legalitySetBy  String?   @map("legality_set_by") @db.Uuid
+  notice         String    @db.VarChar(200)
+  status         String    @default("active") @db.VarChar(10)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@unique([organizationId, id], map: "industrial_action_events_org_id_key")
+  @@map("industrial_action_events")
+}
+
+model PresenceConsent {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  noticeVersion  String    @map("notice_version") @db.VarChar(40)
+  givenAt        DateTime  @default(now()) @map("given_at") @db.Timestamptz(3)
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+
+  @@map("presence_consents")
+}
+
+model PresenceSignal {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  workOn         DateTime @map("work_on") @db.Date
+  at             DateTime @db.Timestamptz(3)
+  state          String   @db.VarChar(10)
+  source         String   @db.VarChar(16)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, at, state], map: "presence_signals_key")
+  @@map("presence_signals")
 }

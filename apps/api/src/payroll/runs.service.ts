@@ -467,7 +467,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         const time = this.moduleRef.get(TimePeriodsService, { strict: false });
         const rows = time ? await time.feedRows(tx, c, run.legalEntityId, month) : [];
         await tx.payrollFeedRow.updateMany({ where: { organizationId: org, payPeriodId: period.id, supersededAt: null }, data: { supersededAt: new Date() } });
-        if (rows.length) await tx.payrollFeedRow.createMany({ data: rows.map((r) => ({ organizationId: org, payPeriodId: period.id, legalEntityId: run.legalEntityId, periodStart: run.periodStart, employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })) });
+        if (rows.length) await tx.payrollFeedRow.createMany({ data: rows.map((r) => ({ organizationId: org, payPeriodId: period.id, legalEntityId: run.legalEntityId, periodStart: run.periodStart, employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes, layoffDays: r.layoffDays, heldDays: r.heldDays, lateLopDays: r.lateLopDays })) });
       }
       const skip = new Set(checks.filter((x) => x.checkKey === 'no_compensation').map((x) => x.employeeId));
       const members = await this.members(tx, org, run);

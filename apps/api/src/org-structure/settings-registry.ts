@@ -204,6 +204,14 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'payroll.mid_period.revision': { label: 'A pay change in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
   'payroll.mid_period.cutoff_day': { label: 'Whole-month cut-off day (changes after it are paid next month)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['10', '15', '20', '25'], default: '15' },
   'payroll.document_retention_years': { label: 'Keep issued pay documents for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '10', '12', '15'], default: '8', guard: 'access.role.manage' },
+  // Time ops (29 Oct 2026, TIM-11): who closes an attendance month. one_step: whoever holds attendance.lock locks it.
+  // two_step: HR (attendance.lock) sends it, then payroll (payroll.correction.approve) approves the lock; never the same person.
+  'attendance.lock_flow': { label: 'Locking an attendance month', scopes: ['tenant', 'legal_entity'], dated: false, values: ['one_step', 'two_step'], default: 'one_step' },
+  // TIM-03 / §B6: late marks a month that cost nothing, and what each late mark over them costs in unpaid days.
+  'attendance.late_marks_free': { label: 'Late marks a month without a deduction', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '3' },
+  'attendance.late_mark_penalty': { label: 'Each late mark over the free ones costs (days of pay)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '0.5', '1'], default: '0' },
+  // TIM-36: presence-based attendance on work-from-home days (desktop app / Teams presence), only with each person's consent.
+  'attendance.presence': { label: 'Presence-based attendance on work-from-home days', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'attendance.factories_act': {
     label: 'Factories Act (overtime is paid at the legal rate)',
     scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],
