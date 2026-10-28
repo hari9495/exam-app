@@ -267,6 +267,28 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(l.onPreview).not.toHaveBeenCalled();
   });
 
+  it('jumping ahead from the step list checks step 1 like Continue; going back stays free', async () => {
+    wrap(<RestructureWizard live={live({ draft: DRAFT })} />);
+    const stepButton = (name: RegExp) => screen.getAllByRole('button', { name }).find((b) => b.classList.contains('yx-stepper__step'))!;
+    const current = () => document.querySelector('[aria-current="step"]');
+    await waitFor(() => expect(current()).not.toHaveTextContent(/What moves/));
+    // Back to step 1 from the list: free.
+    await ue.click(stepButton(/What moves/));
+    expect(current()).toHaveTextContent(/What moves/);
+    // Negative: with the reason emptied, the list does not jump past it; the error shows and the cursor goes there.
+    const reason = screen.getByRole('textbox', { name: /Reason/ });
+    await ue.clear(reason);
+    await ue.click(stepButton(/Transfer options/));
+    expect(current()).toHaveTextContent(/What moves/);
+    expect(screen.getByText('Enter the reason.')).toBeInTheDocument();
+    await waitFor(() => expect(reason).toHaveFocus());
+    // Positive: filled again, the list jumps ahead.
+    await ue.type(reason, 'Merger');
+    await ue.click(stepButton(/Transfer options/));
+    await waitFor(() => expect(current()).toHaveTextContent(/Transfer options/));
+    expect(screen.queryByText('Enter the reason.')).toBeNull();
+  });
+
   it('moving people inside the entity has no Into entity, so it is not asked for', async () => {
     wrap(<RestructureWizard live={live()} />);
     await ue.click(screen.getByRole('radio', { name: /Move people inside the entity/ }));

@@ -154,7 +154,8 @@ export function Stepper({
               className="yx-stepper__step"
               aria-current={i === index ? 'step' : undefined}
               disabled={!canOpen(s, i)}
-              onClick={() => go(i)}
+              // Jumping forward from the list checks the current step the way Continue does; going back stays free.
+              onClick={() => (i > index && (continueBlocked || onContinue?.(step.id) === false) ? undefined : go(i))}
             >
               <span className="yx-stepper__marker">
                 {st === 'todo' || st === 'current' || st === 'open' ? <span aria-hidden="true">{i + 1}</span> : <Icon icon={icon} />}
