@@ -302,7 +302,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
   const canWithdraw = Boolean(p.onWithdraw) && d.can.manage && d.initiatedBy === 'company' && ['submitted', 'accepted', 'cleared'].includes(d.status) && lwd >= today;
   // A withdrawn exit: the steps after approval did not finish and never will.
   const stopped = d.status === 'withdrawn' ? { status: 'stopped' as const, statusNote: 'exit withdrawn' } : {};
-  const current = d.status === 'submitted' ? 'approval' : d.status === 'accepted' && d.clearance.some((c) => c.status === 'open') ? 'clearance' : d.status === 'accepted' && d.interview === 'sent' ? 'interview' : d.status === 'exited' || d.status === 'closed' ? 'documents' : 'fnf';
+  const current = d.status === 'submitted' || d.status === 'withdrawn' ? 'approval' : d.status === 'accepted' && d.clearance.some((c) => c.status === 'open') ? 'clearance' : d.status === 'accepted' && d.interview === 'sent' ? 'interview' : d.status === 'exited' || d.status === 'closed' ? 'documents' : 'fnf';
   const stepRow = (s: ExitStep): ChecklistRow => ({
     id: s.handler,
     title: s.label,
@@ -394,6 +394,7 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
           {
             id: 'approval',
             title: 'Approval and notice',
+            ...(d.status === 'withdrawn' ? { status: 'done' as const } : {}),
             summary: d.status === 'submitted' ? 'Waiting for the manager and HR' : `Accepted · last working day ${formatDate(lwd)}`,
             content: (
               <div className="yx-ppl__stack">
@@ -456,8 +457,10 @@ function LiveExitCaseWorkspace({ live: p, persona }: { live: ExitCaseScreenProps
             id: 'fnf',
             title: 'F&F',
             ...stopped,
-            summary: p.handoff?.settledOutside ? `Settled outside on ${formatDate(isoDay(p.handoff.settledOutside.on))}` : `Due ${formatDate(fnfDue)}`,
-            content: (
+            summary: d.status === 'withdrawn' ? 'No F&F' : p.handoff?.settledOutside ? `Settled outside on ${formatDate(isoDay(p.handoff.settledOutside.on))}` : `Due ${formatDate(fnfDue)}`,
+            content: d.status === 'withdrawn' ? (
+              <Text as="p">No F&amp;F: the exit was withdrawn, so {first} stays and is paid in the regular payroll.</Text>
+            ) : (
               <div className="yx-ppl__stack">
                 {p.handoff?.settledOutside ? null : fnfLate ? (
                   <InlineAlert tone="danger" title={`F&F was due ${formatDate(fnfDue)}`}>

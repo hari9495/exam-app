@@ -352,6 +352,8 @@ describe('Exit case (PPL-19 / PPL-20)', () => {
     wrap(<ExitCaseWorkspace today={day('2026-10-09')} live={props({ data: { ...base, initiatedBy: 'company', status: 'withdrawn', withdrawalReason: 'Started by mistake' } })} />);
     expect(screen.getAllByText(/Stopped · exit withdrawn/)).toHaveLength(4);
     expect(screen.queryByText(/In progress/)).toBeNull();
+    // It opens on the approval step, not on an F&F that was cancelled.
+    expect(screen.getByRole('button', { name: /Approval and notice/ })).toHaveAttribute('aria-current', 'step');
   });
 
   it('Clearance: waiving needs a note', async () => {
