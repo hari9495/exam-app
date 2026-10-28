@@ -3450,5 +3450,65 @@
       "TIM-38"
     ],
     "note": "Past days and locked months never change here."
+  },
+  {
+    "id": "MT-TIM-34-01",
+    "area": "Time · Auto-roster",
+    "screen": "Auto-roster · demand editor (not set up)",
+    "url": "http://localhost:3000/yx/time/auto-roster",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Open Roster › Auto-roster. Read the header and the badge.",
+      "Use the arrow next to the week to go to next week.",
+      "Without typing any number, click \"Generate\" at the top.",
+      "On the Demand tab type 2 for Morning on Monday to Friday and 1 for Night on Saturday. Type 600 in one cell, then -3 in another.",
+      "Click \"Save demand\". Then click \"Save demand\" again without changing anything.",
+      "Reload the page and open the Demand tab."
+    ],
+    "expected": "Step 1: \"Auto-roster · Hosur plant\", \"Week of <date like 2 Nov 2026> · N people you plan · not run yet\", badge \"Not set up\"; the Demand tab is open with every number 0; no page scroll at 1278 x 635. Step 3: the box \"Set the people needed first\" shows and the cursor is in the first number; nothing runs. Step 4: 600 becomes 500 and -3 becomes 0 (0 to 500 only). Step 5: a toast \"Demand saved\"; the second click shows a toast \"Nothing changed\". Step 6: the numbers you saved are still there; the badge now says \"Not generated\".",
+    "stories": [
+      "TIM-34"
+    ],
+    "note": "Demand is per location (Hosur plant) and shared by everyone who plans people there. If Kavya has no team at Hosur in the demo data, use lakshmi (HR, roster.manage) instead."
+  },
+  {
+    "id": "MT-TIM-34-02",
+    "area": "Time · Auto-roster",
+    "screen": "Auto-roster · generate, coverage and draft, unfilled slot explained",
+    "url": "http://localhost:3000/yx/time/auto-roster",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "Next week, with the demand from MT-TIM-34-01 saved, first open Roster (http://localhost:3000/yx/time/roster) for next week and set one person to \"Off\" on Monday (a draft). Note who.",
+      "Back on Auto-roster (next week), click \"Generate\".",
+      "Read the \"Coverage and draft\" tab: the numbers, the coverage chips and the grid.",
+      "If a chip is red (short), click it; else click \"Explain\" on a row of \"Why slots are unfilled\".",
+      "Close the drawer. Click \"Run again\".",
+      "Change the Saturday Night number to 5, do not save, and click \"Approve draft\".",
+      "Go to a week in the past with the arrow and click \"Run again\"."
+    ],
+    "expected": "Step 2: \"Generating the roster for N people and M slots…\" briefly, then a toast \"Draft generated\" and the Coverage and draft tab. Step 3: \"Slots filled X of Y\", \"Unfilled\", \"New drafts\", (Nights per person when a night was placed); chips green (filled), red (short) or amber (over); the grid shows the new shifts; the person you set Off on Monday is still Off (a draft or published day is never changed). Step 4: a drawer \"<shift> · <date>\" with the weekday small under it, \"N people short\", the reasons with counts (for example \"On leave\", \"Would pass the weekly hours\", \"No valid licence\", \"Night work not allowed\") and each person checked with why; \"Offer as open shift\" goes to Open shifts. Step 5: nothing new is placed in days already drafted (\"New drafts 0\" unless a day became fillable). Step 6: a toast \"Run again to use the new demand\"; nothing is approved. Step 7: an error \"That week has passed. Choose this week or a later one.\"",
+    "stories": [
+      "TIM-34"
+    ],
+    "note": "People on leave (approved or waiting), on a holiday, without a valid licence for the shift, without night-work consent, or who would break rest, hours or the weekly off are never placed. Two planners pressing Generate for the same week at once: the second gets \"already running\" (tested by the developer, e2e)."
+  },
+  {
+    "id": "MT-TIM-34-03",
+    "area": "Time · Auto-roster",
+    "screen": "Auto-roster · approved, publish; who may use it",
+    "url": "http://localhost:3000/yx/time/auto-roster",
+    "account": "kavya@demo-org.test (Production supervisor - Kavya, Hosur plant)",
+    "steps": [
+      "After MT-TIM-34-02, click \"Approve draft\".",
+      "Click \"Publish roster\", read the dialog and click \"Publish roster\".",
+      "Open Roster (http://localhost:3000/yx/time/roster) for the same week.",
+      "Back on Auto-roster, click \"Run again\" and confirm.",
+      "Sign out. Sign in as murugan@demo-org.test (a plant worker, plans no one) and open http://localhost:3000/yx/time/auto-roster."
+    ],
+    "expected": "Step 1: a toast \"Draft approved\"; the badge \"Approved · ready to publish\"; the button becomes \"Publish roster\". Step 2: the dialog says all your drafts for this week and next are published, every rule is checked again and the people are told, and how many slots stay short; after it, a toast \"Roster published\" and a box \"Published · the people are told\" listing the slots still short with \"Open open shifts\". If a rule now fails, a red box says who, which day and why, and nothing is published. Step 3: the week shows \"Published\" and the new shifts. Step 4: the confirm says running again discards the approval; it fills only days still empty. Step 5: no access to this page (the menu does not show Auto-roster).",
+    "stories": [
+      "TIM-34"
+    ],
+    "note": "Publish is the roster's own publish: a change inside the notice window (24 h by default) asks for a reason on the Roster page."
   }
 ]
