@@ -3047,5 +3047,146 @@
       "TIM-33"
     ],
     "note": "The phone screens (TIM-33) are phone view; only the API and the web log are live."
+  },
+  {
+    "id": "MT-TIM-14-01",
+    "area": "Time · Devices",
+    "screen": "Devices and kiosks · register a kiosk",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time › Set-up › Devices & kiosks.",
+      "Click \"Register kiosk\", then click \"Register kiosk\" in the dialog without filling anything.",
+      "Type \"Gate 1\" as Place on site, choose Hosur plant, keep Mode on Attendance, click \"Register kiosk\".",
+      "Note the set-up key in the blue box at the top, then click \"Done\"."
+    ],
+    "expected": "Step 2: \"Enter the place on site.\" shows under the field and the cursor goes there; nothing is saved. Step 3: a toast \"HSR-K1 registered…\" and a box \"Set-up key for HSR-K1: XXXX-XXXX-XXXX\" that stays until Done. The kiosk row shows Status \"Not set up\", Last seen \"Not yet\", Check-ins \"—\" and a \"New set-up key\" button.",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-14-02",
+    "area": "Time · Devices",
+    "screen": "Devices and kiosks · no access and another company",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open http://localhost:3000/yx/time/setup/devices."
+    ],
+    "expected": "A \"You don't have access to devices and kiosks\" page, no kiosks or phones listed (the API answers 403).",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-13-01",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · set-up with the one-time key",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "Not signed in (a second browser, or a private window, as the tablet)",
+    "steps": [
+      "Open http://localhost:3000/yx/kiosk in a private window.",
+      "Click \"Set up kiosk\" with the key box empty.",
+      "Type \"AAAA-BBBB-CCCC\" and click \"Set up kiosk\".",
+      "Type the key from MT-TIM-14-01 and click \"Set up kiosk\".",
+      "Back on Devices & kiosks as hr@, reload the page."
+    ],
+    "expected": "Step 2: \"Type all 12 letters and digits of the set-up key.\" Step 3: \"This set-up code is not right or has expired…\". Step 4: the kiosk shows \"Enter your employee code\" with \"KF-____\" and the header \"<company> · Hosur plant · Gate 1 kiosk\". Step 5: HSR-K1 is \"Online\", last seen \"1 min ago\". Using the same key again on another window is refused.",
+    "stories": [
+      "TIM-13",
+      "TIM-14"
+    ],
+    "note": "A key older than 30 minutes is refused the same way: use \"New set-up key\"."
+  },
+  {
+    "id": "MT-TIM-13-02",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · code and PIN, check in",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "The kiosk window from MT-TIM-13-01; the employee needs a kiosk PIN",
+    "steps": [
+      "Ask the developer to set a kiosk PIN 4071 for an employee at Hosur plant (POST /api/v1/time/devices/me/pin signed in as that person; there is no screen for it yet) and note their employee code.",
+      "On the kiosk click \"Next\" with no digits.",
+      "Type the 4 digits of the code, click Next, type PIN 4071, click Continue.",
+      "Click \"My requests\", then \"Back\", then \"Check in\".",
+      "Wait 30 seconds without touching."
+    ],
+    "expected": "Step 2: \"Type all 4 digits of your code.\" Step 3: \"Hello, <first name>\" (first name only; no name is shown before the PIN). Step 4: the person's leave and attendance requests of the last 30 days with their status; then a green \"Checked in\" with the time and \"Hosur plant\". Step 5: the kiosk goes back to \"Enter your employee code\" and nothing personal stays. The person's Me › Attendance shows the check-in with source kiosk.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-13-03",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · wrong code or PIN, lock",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "The kiosk window; the employee from MT-TIM-13-02",
+    "steps": [
+      "Type code 9999, Next, PIN 1111, Continue.",
+      "Type the real code, Next, PIN 1111, Continue.",
+      "Repeat step 2 four more times (5 wrong PINs in all).",
+      "Type the real code and the right PIN 4071."
+    ],
+    "expected": "Steps 1 and 2 show exactly the same message: \"Code or PIN didn't match. After 5 wrong tries a code locks for 15 minutes…\" (an unknown code can't be told from a wrong PIN). Step 4: the same refusal: the code is locked for 15 minutes, even with the right PIN. After 15 minutes the right PIN works again.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-14-03",
+    "area": "Time · Devices",
+    "screen": "Devices and kiosks · reset a kiosk key",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On the HSR-K1 row click \"Reset kiosk key\", then \"Reset key\".",
+      "On the kiosk window type a code and press Next."
+    ],
+    "expected": "A toast \"HSR-K1 key reset…\" and a new set-up key box. The kiosk window goes back to \"Set up this kiosk\" at its next call (the old secret answers 401). The new key sets it up again.",
+    "stories": [
+      "TIM-14",
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-14-04",
+    "area": "Time · Devices",
+    "screen": "Devices and kiosks · new phone requests",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Ask the developer to raise a phone request for a demo employee (POST /api/v1/time/devices/me/bind as that person with model \"Pixel 7a\"; the phone app is not built).",
+      "Open the \"New phone requests\" tab, click \"Reject\", then \"Reject request\" without a reason.",
+      "Choose \"Phone model not allowed\", click \"Reject request\".",
+      "Have a second request raised; click \"Approve\"."
+    ],
+    "expected": "Step 2: \"Choose a reason.\" and nothing is sent. Step 3: toast \"Rejected · <name> is told why: phone model not allowed.\" and the row goes. Step 4: a first phone is approved at once (toast \"…can check in from it now.\"); a replacement asks \"Approve and sign out <old phone>\" first. Approving the same request twice (two tabs) answers \"This request was already decided\" the second time.",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-14-05",
+    "area": "Time · Devices",
+    "screen": "Devices and kiosks · remote sign-out",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On \"Employee phones\" find the approved phone from MT-TIM-14-04 and click \"Sign out phone\", then \"Sign out phone\" in the dialog.",
+      "In the employee's browser, click anywhere in YukthiX."
+    ],
+    "expected": "Toast \"<name>'s <phone> is signed out.\" The phone shows \"Signed out\". The employee is sent to sign-in on every device (sign-ins are not tied to one phone). With \"Phone check-in only from an approved phone\" on, that phone can no longer punch.",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
   }
 ]
