@@ -173,6 +173,38 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter. Founder
   // decision 9 Oct 2026: 11 hours by default, company-configurable.
   'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },
+  // TIM-05 (founder decision 29 Oct 2026): employees see their team's published roster read-only; off: their own shifts only.
+  'roster.staff_see_team': { label: "Employees can see their team's published roster", scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Working-hours limits the roster checks (Factories Act 1948 s.51 / 54 / 56, OSH Code 2020 s.25; a state's shops act
+  // may be stricter, so each is per location): hours a day and a week, and the spread-over from start to end of a day.
+  'roster.max_daily_hours': { label: 'Most hours of shifts in a day', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['8', '9', '10', '11', '12'], default: '9' },
+  'roster.max_weekly_hours': { label: 'Most hours of shifts in a week', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['40', '45', '48', '54', '60'], default: '48' },
+  'roster.max_spread_over_hours': { label: 'Longest working day from start to end, breaks included (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['10.5', '12', '13'], default: '10.5' },
+  // Factories Act s.52 / shops acts: a weekly off in every week (Monday to Sunday) of the roster.
+  'roster.min_weekly_offs': { label: 'Weekly offs each week at least', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2'], default: '1' },
+  // YX-AT-07: a published day that starts within this many hours changes only with a reason, and the person is told at once.
+  'roster.change_notice_hours': { label: 'Notice before a published shift changes (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '12', '24', '48', '72'], default: '24' },
+  // TIM-35: how an open shift is given: the manager picks from the bids (fair order suggested), or the first eligible claim wins.
+  'roster.open_shift_rule': { label: 'Open shifts go to', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['manager_picks', 'first_come'], default: 'manager_picks' },
+  // TIM-38: a call-out is paid at least this long, however short the work.
+  'standby.call_out_minimum_hours': { label: 'A call-out is paid for at least (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4'], default: '2' },
+  // TIM-41: office days a week (0: no hybrid rule), the days everyone is in, and what counts as being in the office.
+  'hybrid.office_days': { label: 'Office days a week', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, values: ['0', '1', '2', '3', '4', '5'], default: '0' },
+  'hybrid.anchor_days': { label: 'Days everyone is in the office', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, multi: true, values: ['mon', 'tue', 'wed', 'thu', 'fri'], default: '' },
+  'hybrid.evidence': { label: 'An office day counts with', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, multi: true, values: ['geofence', 'network', 'kiosk'], default: 'geofence,network,kiosk' },
+  // TIM-12 / TIM-14: phone check-in only from the one phone HR approved for the person.
+  'attendance.phone_binding': { label: 'Phone check-in only from an approved phone', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off', guard: 'access.role.manage' },
+  // TIM-13: how people identify themselves at a kiosk, and wrong PIN tries before a 15-minute lock.
+  'kiosk.methods': { label: 'At a kiosk people sign in with', scopes: ['tenant', 'legal_entity', 'location'], dated: false, multi: true, values: ['pin', 'qr', 'face'], default: 'pin,qr' },
+  'kiosk.pin_tries': { label: 'Wrong kiosk PIN tries before a 15-minute lock', scopes: ['tenant'], dated: false, values: ['3', '5', '10'], default: '5', guard: 'access.role.manage' },
+  // TIM-32 (DPDP Act 2023): location tracking of field staff, only on duty and with consent; how long the trail is kept,
+  // how often a moving phone reports, and the least accurate fix kept on the trail.
+  'field.tracking': { label: 'Track field staff on duty (with their consent)', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, values: ['off', 'on'], default: 'off' },
+  'field.trail_retention_days': { label: 'Keep the location trail for (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30', '45', '90', '180'], default: '30' },
+  'field.ping_minutes': { label: 'A moving phone reports its place every (minutes)', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, values: ['1', '2', '5', '10', '15'], default: '5' },
+  'field.max_accuracy_m': { label: 'Ignore places less accurate than (metres)', scopes: ['tenant'], dated: false, values: ['50', '100', '200', '500'], default: '100' },
+  // TIM-43: people may connect their calendar or work tools so the timesheet suggests lines (each person opts in).
+  'timesheet.tool_suggestions': { label: 'People may connect calendars and work tools for timesheet suggestions', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
   // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.
   // P08 Q4 / YX-LOCK-02: how late an employee may still ask to correct a day of a frozen or locked month (then only HR).

@@ -496,6 +496,72 @@ TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 1 (TIM-31 IpError).
 
 ## D. Rosters and shifts
 
+### Feature sheet: rosters, devices and field (builder "roster", 29 Oct 2026, BUILD-STANDARD §1)
+
+Design groups made live by this work: TIM-05, 06, 08, 12 (API only), 13, 14, 32, 33 (web/API only), 34, 35, 38, 40, 41, 43.
+Phone stories stay "phone view". Each rule: source · setting (default) · where it is enforced.
+
+Rules (law is per location: the location's state picks the statute values; company choices are settings with a default
+and a per-company / entity / location HR override, PUT /org/settings):
+
+1. Minimum rest between two shifts of one person: Factories Act s.55/56 practice, founder 9 Oct 2026 · `attendance.min_rest_hours` (11) ·
+   roster check (blocks publish), swap request and swap approval, open-shift claim and award, auto-roster, call-out (flags the next shift).
+2. Hours a day, hours a week, spread-over: Factories Act 1948 s.54 (9 h), s.51 (48 h), s.56 (10.5 h); OSH Code 2020 s.25; a state
+   shops act may be stricter · `roster.max_daily_hours` (9), `roster.max_weekly_hours` (48), `roster.max_spread_over_hours` (10.5) ·
+   same places as rule 1. Hours = shift length less its break; spread-over = start to end.
+3. Women's night work: OSH Code 2020 s.43 and state rules (the night window and the safeguards checklist come from P07 IN.OSH per
+   state): consent on record, confirmed by the worker with a one-time code, and the location's safeguards in date · no setting
+   (law) · every path that puts a person on a shift: draft, publish, pattern, swap (request and approval), open-shift claim/award,
+   auto-roster. Withdrawing consent is never a ground for adverse action.
+4. Weekly off: Factories Act s.52, shops acts · `roster.min_weekly_offs` (1) per Monday–Sunday week · roster check (blocks publish),
+   swap, open shift, auto-roster.
+5. Published roster changes: YX-AT-07 · `roster.change_notice_hours` (24) · a change to a published day that starts within the notice
+   needs a reason (kept on the day and in the audit, before → after), and the person is told at once; past days and locked months never change here.
+6. Staff see the team roster: founder decision 29 Oct 2026 · `roster.staff_see_team` (off) · off: an employee sees only their own
+   shifts; on: their team's (same manager) published roster read-only, colleagues' leave shown only as "Away", no drafts, no conflicts.
+7. Swaps: same manager, the colleague agrees, then the manager approves (P03); no swap that breaks rules 1–4 or 8 for either person,
+   checked when asked and again when approved (codes REST_GUARD, HOURS_GUARD, NIGHT_GUARD, LICENCE_GUARD, WEEKLY_OFF_GUARD).
+8. Licences: a shift (at all or one location) needs a licence type (forklift, boiler attendant…); a person is placed on it only with
+   a licence of that type valid on that day (valid_from ≤ day ≤ expires_on). Expired = blocked, no override. Reminders at the type's
+   lead days (60/30/7 by default), once each (job safe to re-run).
+9. Open shifts: `roster.open_shift_rule` (manager_picks). Eligible = employed at that location that day, not working an overlapping
+   shift, passes rules 1–4 and 8, not on approved leave. First come: the first eligible claim wins (row lock; a second claim gets 409).
+   Manager picks: fair order suggested = fewest open shifts won in the last 30 days, then fewest rostered hours that week, then the
+   earliest bid, then employee code. The award writes the published roster (source "open").
+10. Standby and call-out: a standby slot (≤ 24 h) per person; a call-out is paid at least `standby.call_out_minimum_hours` (2)
+    whatever was worked; logging it shows the rest left before the next shift (rule 1) so the manager can move that shift (a published
+    change with reason, rule 5). The standby allowance and call-out pay rates belong to payroll (PAY on-call rules).
+11. Auto-roster: demand per location, shift and weekday; fills only empty days of the week as drafts (never overwrites a draft or a
+    published day), people ordered by fewest hours, then fewest nights (fair spread); each unfilled slot says why each candidate
+    was skipped; one run per location week at a time; the manager reviews and publishes through the normal publish (rules re-checked).
+12. Hybrid office days: `hybrid.office_days` (0 = no rule), `hybrid.anchor_days` (none), `hybrid.evidence` (geofence, network, kiosk)
+    · each person plans office / home days for the week; the week counts as met when the office days with evidence (an accepted punch
+    inside a geofence, from the office network, or at a kiosk) reach the target. No pay link (Question).
+13. Devices (TIM-14): kiosks are registered by HR (`leave.settings.manage`) and set up with a one-time code (30 min); the kiosk then
+    holds a secret the server keeps only as a SHA-256 hash; revoke stops it at once. Phones: `attendance.phone_binding` (off); a person
+    asks to bind a phone, HR approves or refuses with a reason; one approved phone per person; a lost phone is revoked and its sessions
+    signed out.
+14. Kiosk (TIM-13): `kiosk.methods` (pin, qr), `kiosk.pin_tries` (5) then a 15-minute lock; PINs stored as argon2 hashes; the ID-card QR
+    is a signed token (jose) that a rotated nonce voids; face match through a provider adapter (dev-fake; provider: to decide), only with
+    the person's consent on record. The screen shows a first name only and clears itself. Offline punches carry the device's own id
+    for each punch: a repeat returns the first result and never makes a second punch; punches older than 72 h or in the future are refused.
+15. Field force (TIM-32/33, DPDP Act 2023 s.4–6, s.8(7)): `field.tracking` (off), `field.ping_minutes` (5), `field.max_accuracy_m` (100),
+    `field.trail_retention_days` (30). Tracking only with the person's consent (notice version kept; withdraw any time), only while on
+    duty (checked in, not checked out), only for their own manager or attendance.view in scope; the trail is deleted after the retention
+    (daily job, safe to re-run). Integrity flags (mock location, impossible speed, poor accuracy) are shown, never a penalty by themselves.
+    Map tiles and place names through a provider adapter (dev-fake; provider: to decide).
+16. Timesheet suggestions (TIM-43): `timesheet.tool_suggestions` (off); each person connects their own calendar / work tool (adapter,
+    dev-fake; providers: to decide); suggestions are only suggestions: nothing is added until the person accepts a line.
+17. Time zones: every roster day is the location's local date (Facts.zone); standby, call-outs, pings and punches are stored as instants.
+
+Who: planning (roster, open shifts, standby, auto-roster, demand) = a manager for their own team (implicit) or `roster.manage` in scope,
+never one's own row; licence types and shift requirements, devices and kiosks = `leave.settings.manage` (company-wide set-up);
+a person's licences = `roster.manage` in scope; field map = the manager's own team or `attendance.view` in scope; everything "me" = the
+signed-in person only, never while acting for someone else. Another company's ids answer 404.
+
+States: empty, loading, error, no access, not set up (no demand / no licence types / tracking off), too early (bid window closed, past
+day), over the limit (rules 1–4), already done (claimed, awarded, revoked), someone else first (409), offline / retry (device receipts).
+
 ### Live pages
 
 | page | live screen today | design story | verdict |
