@@ -52,6 +52,8 @@ export { FnfCalculator, type LiveFnf } from '../people/exits';
 export { VrsScheme, type LiveVrs } from '../people/relations';
 export { ReverificationCycles, type ReverifData, type ReverifRow, type ReverifRule, type ReverifRuleInput } from '../people/reverification';
 export { UpcomingExits } from '../people/upcoming';
+// PPL-50 Team pay access: the manager's request (from the Pay tab) and HR's two approvals.
+export { PAY_ACCESS_DAYS, PayAccessDialog, PayAccessNote, PayAccessRequests, type PayAccessAskInput, type PayAccessDecision, type PayAccessRow } from '../people/pay-access';
 export { DocumentVerificationQueue, type LiveDocQueue } from '../people/documents';
 export { BulkLetterWizard, IssuedLettersRegister, type LiveBulkLetters, type LiveLetters } from '../people/documents';
 export { LetterTemplatesList, type LiveLetterTemplates, type TemplateSpec } from '../people/documents';

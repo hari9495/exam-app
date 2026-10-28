@@ -111,6 +111,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('employee.change.manage'), L('import', 'Import', '/yx/people/import')),
         ...when(hr || n.history, L('job-history', 'Job history', '/yx/people/history')),
         ...when(any('employee.identity.approve', 'employee.identity.manage'), L('profile-requests', 'Identity and bank changes', '/yx/people/profile-requests')),
+        // PPL-50: HR decides managers' requests to see their team's pay (two HR people each).
+        ...when(has('employee.pay_access.approve'), L('pay-access', 'Team pay access', '/yx/people/pay-access')),
       ]),
       ...sec('Exits', [
         ...when(!team && (exitView || manager), L('exits', 'Exit cases', '/yx/people/exits', 'exitCases')),

@@ -97,6 +97,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
+  // Founder 28 Oct 2026: a manager's access to their team's pay lasts this long, and covers the whole team or the one person
+  // asked about, unless the approving HR person changes it on the request. HR decides (org.settings.manage).
+  'pay_access.days': { label: 'Team pay access lasts (days)', scopes: ['tenant'], dated: false, values: ['7', '15', '30', '60', '90'], default: '30' },
+  'pay_access.scope': { label: 'Team pay access covers', scopes: ['tenant'], dated: false, values: ['team', 'person'], default: 'team' },
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.
   'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
   // P02 §7 / P08: employees see who viewed their Confidential and Special data (every view is recorded either way).

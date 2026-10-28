@@ -2,7 +2,7 @@
 // (P02 §4.2–4.6, §7): the shapes the API returns and accepts.
 export type { LoadState } from '../org/types';
 
-export type ScopeType = 'tenant' | 'legal_entity' | 'location' | 'department_subtree' | 'all_reports' | 'direct_reports';
+export type ScopeType = 'tenant' | 'legal_entity' | 'location' | 'department_subtree' | 'all_reports' | 'direct_reports' | 'one_report';
 
 export interface Choice {
   value: string;

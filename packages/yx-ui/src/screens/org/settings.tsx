@@ -55,6 +55,8 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'transfer.service': { keep: 'Continue from original joining date', restart: 'Restart' },
   'transfer.code': { keep: 'Keep', new: 'New in target series' },
   'transfer.salary': { keep: 'Keep', new: 'Assign new' },
+  'pay_access.scope': { team: 'Their whole team', person: 'Only the person asked about' },
+  'pay_access.days': { '7': '7 days', '15': '15 days', '30': '30 days', '60': '60 days', '90': '90 days' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
@@ -75,6 +77,7 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
     { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
+    { title: 'Team pay access', description: 'A manager can ask to see the pay of their team, with a reason. Two different HR people approve; the access ends by itself. The approving HR person can change the length and who it covers on each request.', keys: ['pay_access.days', 'pay_access.scope'] },
     { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },
     { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
     { title: 'Regulated declarations', description: 'For designated persons (BFSI): when each financial year’s holdings, related persons and conflicts are due, and the trading pre-clearance rules.', keys: ['bfsi.declaration_due', 'bfsi.preclearance_threshold', 'bfsi.preclearance_valid_days', 'bfsi.preclearance_decide_days'] },

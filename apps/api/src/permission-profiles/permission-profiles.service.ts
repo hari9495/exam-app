@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { PAY_ACCESS_ROLE } from '../access/role-templates';
 import { Prisma, PermissionProfile } from '@prisma/client';
 import {
   PrismaService,
@@ -98,6 +99,10 @@ export class PermissionProfilesService {
         if (!existing) throw new NotFoundException(`Permission profile ${id} not found`);
         // P02 §4.6: adding Confidential access to a role people already hold would hand it out without the
         // second admin's approval a grant needs. Make a new role and grant it instead.
+        // The role team pay access grants use holds employee.salary.view only, whatever a later edit would add.
+        if (dto.permissions !== undefined && existing.templateKey === PAY_ACCESS_ROLE) {
+          throw new ConflictException('This role is kept by YukthiX for team pay access that two HR people approve; its permissions cannot be changed.');
+        }
         if (dto.permissions !== undefined) {
           const before = new Set(JSON.parse(existing.permissionsJson) as string[]);
           const added = dto.permissions.filter((k) => !before.has(k));

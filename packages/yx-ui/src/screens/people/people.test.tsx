@@ -28,6 +28,7 @@ import {
   withinWindow,
   workingDaysUntil,
 } from './people-logic';
+import { ToastProvider } from '../../components/notify';
 import { d, HOLIDAYS, MATCHES, MEERA_FNF, ONBOARDING_TASKS, SPLITS, TODAY, WORKFORCE } from './people-data';
 import { BulkChangesWizard, ChangeActionSheet, EmployeeImportWizard, RestructureWizard, incrementPreview, SAMPLE_IMPORT, ScheduledChangesScreen } from './changes';
 import { DirectoryScreen } from './directory';
@@ -242,14 +243,15 @@ describe('screens', () => {
   });
 });
 
-// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook).
+// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook, which mounts the
+// ToastProvider for every story, as the app does).
 const STORY_MODULES = import.meta.glob('./*.stories.tsx', { eager: true }) as Record<string, Record<string, { render?: () => JSX.Element; name?: string }>>;
 describe('all People stories render', () => {
   for (const [file, mod] of Object.entries(STORY_MODULES)) {
     for (const [key, story] of Object.entries(mod)) {
       if (key === 'default' || !story?.render) continue;
       it(`${file} · ${story.name ?? key}`, () => {
-        const { unmount } = render(story.render!());
+        const { unmount } = render(<ToastProvider>{story.render!()}</ToastProvider>);
         unmount();
       });
     }

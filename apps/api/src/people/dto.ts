@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { MAX_BULK_CSV_LENGTH } from './bulk-csv';
+import { SETTINGS } from '../org-structure/settings-registry';
 
 // Request bodies and queries for the people core. Every field is whitelisted (the global pipe refuses
 // anything else).
@@ -251,5 +252,45 @@ export class BatchApproveDto {
   @IsOptional()
   @IsString()
   @MaxLength(1000)
+  note?: string;
+}
+
+/** Founder 28 Oct 2026: a manager asks to see the pay of their whole team or of one person in it. */
+export class PayAccessAskDto {
+  @IsIn(['team', 'person'])
+  scope!: 'team' | 'person';
+
+  /** The one person (scope 'person'); left out for the whole team. */
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** An HR person approves (step 1 or 2 of 2) or refuses; on approval they may change how long and who it covers. */
+export class PayAccessDecisionDto {
+  @IsIn(['approve', 'refuse'])
+  decision!: 'approve' | 'refuse';
+
+  @IsOptional()
+  @IsIn(SETTINGS['pay_access.days'].values)
+  days?: string;
+
+  @IsOptional()
+  @IsIn(['team', 'person'])
+  scope?: 'team' | 'person';
+
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  /** Required to refuse. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   note?: string;
 }

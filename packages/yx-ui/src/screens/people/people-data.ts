@@ -2,6 +2,7 @@
 import { DEPARTMENT_HEADS, EMPLOYEES, HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
 import type { OrgPerson } from '../../components/orgchart';
 import type { FieldClass, FnfLine, JourneyTask, PaySplit } from './people-logic';
+import type { PayAccessRow } from './pay-access';
 
 export { EMPLOYEES, ME, TODAY };
 export const HOLIDAYS = HOLIDAYS_2026.map((h) => h.date);
@@ -665,4 +666,31 @@ export const UPCOMING_EXITS = [
   { employeeId: 'u2', name: 'Manoj Patil', kind: 'retirement' as const, on: '2026-10-31' },
   { employeeId: 'u3', name: 'Sana Menon', kind: 'contract_end' as const, on: '2026-12-15' },
   { employeeId: 'u4', name: 'Lakshmanan Durai', kind: 'retirement' as const, on: '2027-06-30' },
+];
+
+/* ------------------------------------------------------------------ PPL-50 team pay access */
+
+const TEAM: { id: string; name: string }[] = ['Arjun Kulkarni', 'Kavya Reddy', 'Meera Krishnan', 'Pradeep Nair', 'Sneha Iyer', 'Vikram Rao'].map((name, i) => ({ id: `t${i + 1}`, name }));
+const asked = (r: Partial<PayAccessRow> & Pick<PayAccessRow, 'id' | 'state'>): PayAccessRow => ({
+  manager: { id: 'o7', name: 'Divya Raghunathan' },
+  scope: 'person',
+  person: TEAM[0],
+  covers: TEAM[0].name,
+  reason: 'Retention case: Arjun has an outside offer and I need his current pay to propose a counter.',
+  days: 30,
+  askedAt: '2026-10-27T09:40:00Z',
+  first: null,
+  decided: null,
+  validTo: null,
+  canDecide: false,
+  ...r,
+});
+/** Sample requests in each state; the HR person (Lakshmi) may decide the first two. */
+export const PAY_ACCESS_ROWS: PayAccessRow[] = [
+  asked({ id: 'pa1', state: 'first', canDecide: true, team: TEAM }),
+  asked({ id: 'pa2', state: 'second', manager: { id: 'o12', name: 'Ramesh Gowda' }, scope: 'team', person: null, covers: 'their whole team (6 people)', reason: 'Annual increment planning for the Hosur line.', days: 15, askedAt: '2026-10-26T11:05:00Z', first: { by: 'Karthik Subramanian', at: '2026-10-27T10:15:00Z', note: 'Only for the increment cycle.' }, canDecide: true, team: TEAM }),
+  asked({ id: 'pa3', state: 'second', manager: { id: 'o14', name: 'Neha Joshi' }, person: TEAM[3], covers: TEAM[3].name, reason: 'Promotion case for the staffing desk.', askedAt: '2026-10-25T08:20:00Z', first: { by: 'Lakshmi Venkatesan', at: '2026-10-26T09:00:00Z', note: null } }),
+  asked({ id: 'pa4', state: 'active', manager: { id: 'o9', name: 'Vikram Rao' }, scope: 'team', person: null, covers: 'their whole team (4 people)', reason: 'Budget for next year.', askedAt: '2026-10-01T07:30:00Z', first: { by: 'Lakshmi Venkatesan', at: '2026-10-01T10:00:00Z', note: null }, decided: { by: 'Karthik Subramanian', at: '2026-10-02T06:45:00Z', note: null }, validTo: '2026-10-31' }),
+  asked({ id: 'pa5', state: 'ended', manager: { id: 'o11', name: 'Anjali Iyer' }, person: { id: 't9', name: 'Ritu Sharma' }, covers: 'Ritu Sharma', reason: 'Counter-offer.', days: 15, askedAt: '2026-08-04T07:30:00Z', first: { by: 'Karthik Subramanian', at: '2026-08-04T09:00:00Z', note: null }, decided: { by: 'Lakshmi Venkatesan', at: '2026-08-05T06:45:00Z', note: null }, validTo: '2026-08-19' }),
+  asked({ id: 'pa6', state: 'refused', manager: { id: 'o13', name: 'Prakash Menon' }, scope: 'team', person: null, covers: 'their whole team (12 people)', reason: 'Want to compare pay across the plant.', askedAt: '2026-09-12T07:30:00Z', decided: { by: 'Lakshmi Venkatesan', at: '2026-09-12T12:10:00Z', note: 'Pay across the plant is a payroll report, not team access.' } }),
 ];

@@ -54,6 +54,7 @@ const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentI
   department_subtree: 'departmentId',
   all_reports: null,
   direct_reports: null,
+  one_report: null,
 };
 
 @Injectable()
@@ -126,15 +127,20 @@ export class AccessService {
   private async views(tx: Tx, c: CompanyContext, rows: GrantRow[]) {
     const org = { organizationId: c.organizationId };
     const ids = (f: (r: GrantRow) => (string | null)[]) => [...new Set(rows.flatMap(f).filter((x): x is string => Boolean(x)))];
-    const [users, profiles, entities, locations, departments] = await Promise.all([
+    const [users, profiles, entities, locations, departments, people] = await Promise.all([
       tx.user.findMany({ where: { ...org, id: { in: ids((r) => [r.userId, r.grantedBy, r.decidedBy, r.revokedBy]) } }, select: { id: true, name: true, email: true } }),
       tx.permissionProfile.findMany({ where: { ...org, id: { in: ids((r) => [r.permissionProfileId]) } }, select: { id: true, name: true, permissionsJson: true } }),
       tx.legalEntity.findMany({ where: { ...org, id: { in: ids((r) => [r.legalEntityId]) } }, select: { id: true, name: true } }),
       tx.location.findMany({ where: { ...org, id: { in: ids((r) => [r.locationId]) } }, select: { id: true, name: true } }),
       tx.department.findMany({ where: { ...org, id: { in: ids((r) => [r.departmentId]) } }, select: { id: true, name: true } }),
+      tx.employee.findMany({ where: { ...org, id: { in: ids((r) => [r.employeeId]) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
     ]);
     const who = (id: string | null) => (id ? (users.find((u) => u.id === id)?.name || users.find((u) => u.id === id)?.email || null) : null);
-    const target = (r: GrantRow) => entities.find((x) => x.id === r.legalEntityId) ?? locations.find((x) => x.id === r.locationId) ?? departments.find((x) => x.id === r.departmentId) ?? null;
+    const person = (r: GrantRow) => {
+      const p = people.find((x) => x.id === r.employeeId);
+      return p ? { id: p.id, name: p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ') } : null;
+    };
+    const target = (r: GrantRow) => entities.find((x) => x.id === r.legalEntityId) ?? locations.find((x) => x.id === r.locationId) ?? departments.find((x) => x.id === r.departmentId) ?? person(r);
     return rows.map((r) => {
       const profile = profiles.find((p) => p.id === r.permissionProfileId);
       const t = target(r);
