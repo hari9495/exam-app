@@ -1,9 +1,9 @@
 // PPL-04 Change action · PPL-05 Scheduled changes · PPL-06 Bulk changes wizard · PPL-07 Employee import
-// PPL-09 Bulk transfer / restructure wizard · PPL-10 Inter-entity continuity checklist (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
+// PPL-09 Bulk transfer / restructure wizard (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
 import { useMemo, useState, type ReactNode } from 'react';
 import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
 import { Button } from '../../components/button';
-import { Card, ObjectHeader, PageHeader } from '../../components/shell';
+import { Card, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
@@ -26,7 +26,7 @@ import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import
 import { LiveRestructureWizard, type LiveRestructure } from './restructure';
 import { applyIncrement, daysBetween, validateImport, withinWindow, type ImportRow, type Persona } from './people-logic';
 import { GRADE_BANDS, INCREMENT_LEFT_OUT, INCREMENT_LETTER_PDF, INCREMENT_PCT, INCREMENT_ROWS, SCHEDULED } from './people-data';
-import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusChecklist, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-04 change action */
 
@@ -1424,35 +1424,6 @@ function SampleRestructureWizard({ current = 'scope', payrollLocked = true, conf
           </FormField>
         </div>
       </Dialog>
-    </PeopleFrame>
-  );
-}
-
-/* ================================================================== PPL-10 continuity checklist */
-
-// PPL-10
-export function ContinuityChecklistPanel({ allDone = false, today }: { allDone?: boolean; today: Date }) {
-  const [open, setOpen] = useState(true);
-  const st = (s: string) => (allDone ? 'Done' : s);
-  const rows: ChecklistRow[] = [
-    { id: 'u', title: 'PF UAN transfer (same UAN, Form 13 or EPFO auto-transfer)', owner: 'Payroll · Suresh Pillai', due: new Date(2026, 9, 20), status: st('In progress'), note: 'Claim ID 13-TN-2026-88412 submitted 6 Oct' },
-    { id: 'e', title: 'ESI IP number carried (same IP)', owner: 'Payroll', due: new Date(2026, 9, 10), status: st('Done') },
-    { id: 'f', title: 'Form 12B auto-filled from old employment YTD (₹4,12,000 income, ₹18,400 TDS)', owner: 'Payroll', due: new Date(2026, 9, 10), status: st('Done') },
-    { id: 'd', title: 'Declarations and proofs copied to the new tax workspace', owner: 'Payroll', due: new Date(2026, 9, 15), status: st('Pending') },
-    { id: 'l', title: 'Salary advance ADV-2026-0031 re-parented (option: no F&F)', owner: 'Finance · Deepa Rao', due: new Date(2026, 9, 10), status: st('Pending') },
-    { id: 'v', title: 'Leave-ledger transfer entries (out 11.5 PL, in 11.5 PL)', owner: 'HR', due: new Date(2026, 9, 5), status: st('Done') },
-    { id: 'g', title: 'Gratuity: service continues, one payout at final exit', owner: 'Payroll', status: st('Done') },
-  ];
-  const open_ = rows.filter((r) => r.status !== 'Done').length;
-  return (
-    <PeopleFrame active="Change action">
-      <ObjectHeader name="Inter-entity transfer · Rahul Sharma" icon={Pencil} secondary="Kaveri Foods Pvt Ltd → Kaveri Foods Pvt Ltd (Tamil Nadu) · effective 5 Oct 2026" status={<StatusBadge status="Approved" />} actions={<Button onClick={() => setOpen(true)}>Continuity checklist</Button>} />
-      <Drawer open={open} onOpenChange={setOpen} title="Continuity checklist" subtitle={open_ ? `${open_} items open · shown in payroll pre-flight` : 'All items done'} footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
-        <div className="yx-ppl__stack">
-          {open_ > 0 && <InlineAlert tone="warning">Open items show in October payroll pre-flight for the new entity.</InlineAlert>}
-          <StatusChecklist label="Continuity items" rows={rows} today={today} />
-        </div>
-      </Drawer>
     </PeopleFrame>
   );
 }
