@@ -295,7 +295,8 @@ describe('ScopePicker', () => {
   const periods = [{ value: 's', label: 'Sep 2026' }, { value: 'a', label: 'Aug 2026', locked: true }];
   it('shows nothing when there is one entity and no period to choose', () => {
     const { container } = render(<ScopePicker entities={two.slice(0, 1)} entity="a" onEntityChange={() => {}} />);
-    expect(container).toBeEmptyDOMElement();
+    // Only the test set-up's toast host (empty live regions and stack) is there.
+    expect(container.querySelectorAll(':scope > :not([aria-live]):not(.yx-toasts)')).toHaveLength(0);
   });
   it('shows only the period for a single-entity company', () => {
     render(<ScopePicker entities={two.slice(0, 1)} entity="a" onEntityChange={() => {}} periods={periods} period="s" />);

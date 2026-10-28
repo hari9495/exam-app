@@ -280,7 +280,8 @@ describe('Brand placeholders', () => {
     render(<Logo />);
     expect(screen.getByRole('img', { name: 'YukthiX' })).toBeInTheDocument();
     const { container } = render(<PoweredBy whiteLabel />);
-    expect(container).toBeEmptyDOMElement();
+    // Only the test set-up's toast host (empty live regions and stack) is there.
+    expect(container.querySelectorAll(':scope > :not([aria-live]):not(.yx-toasts)')).toHaveLength(0);
     render(<PoweredBy />);
     expect(screen.getByRole('link', { name: 'Powered by YukthiX' })).toBeInTheDocument();
   });

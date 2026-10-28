@@ -66,8 +66,13 @@ export function useToast(): ToastApi {
   return api;
 }
 
-/** Bottom-left stack, at most 3 on screen; extra toasts wait in a queue until a slot frees (§25). */
+/** Bottom-left stack, at most 3 on screen; extra toasts wait in a queue until a slot frees (§25). Inside another
+ * ToastProvider it adds nothing: the outer one shows the toasts (one stack per page). */
 export function ToastProvider({ children }: { children: ReactNode }) {
+  return useContext(ToastContext) ? <>{children}</> : <ToastHost>{children}</ToastHost>;
+}
+
+function ToastHost({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<ToastItem[]>([]);
   const [announce, setAnnounce] = useState({ polite: '', assertive: '' });
   const nextId = useRef(1);
@@ -101,10 +106,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
       {children}
-      <div className="yx-visually-hidden" aria-live="polite" role="status">
+      {/* Plain live regions (no status/alert role), so a page's own status and alert messages stay the only ones. */}
+      <div className="yx-visually-hidden" aria-live="polite" aria-atomic="true" data-toast-announce="polite">
         {announce.polite}
       </div>
-      <div className="yx-visually-hidden" aria-live="assertive" role="alert">
+      <div className="yx-visually-hidden" aria-live="assertive" aria-atomic="true" data-toast-announce="assertive">
         {announce.assertive}
       </div>
       <section

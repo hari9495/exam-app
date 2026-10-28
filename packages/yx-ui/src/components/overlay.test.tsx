@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './button';
 import { ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from './overlay';
@@ -50,7 +50,7 @@ describe('Toasts', () => {
     act(() => void vi.advanceTimersByTime(60_000));
     expect(stack().getByText("We couldn't approve the expense. Try again.")).toBeInTheDocument();
     // errors are announced assertively
-    expect(screen.getByRole('alert')).toHaveTextContent("We couldn't approve the expense");
+    expect(document.querySelector('[aria-live="assertive"]')).toHaveTextContent("We couldn't approve the expense");
   });
 
   it('shows at most 3; the 4th waits in the queue until a slot frees', () => {
@@ -78,7 +78,8 @@ describe('Toasts', () => {
 
   it('useToast outside the provider explains the fix', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<Grab />)).toThrow(/ToastProvider/);
+    // renderHook is not wrapped in the test set-up's ToastProvider.
+    expect(() => renderHook(() => useToast())).toThrow(/ToastProvider/);
   });
 });
 
