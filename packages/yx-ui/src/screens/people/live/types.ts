@@ -386,6 +386,8 @@ export interface ExitCase {
   initiatedBy: 'employee' | 'company';
   reasonCode: string | null;
   reasonText: string | null;
+  /** Why HR or the employee withdrew it (HR and the leaver only). */
+  withdrawalReason?: string | null;
   submittedOn: string;
   requestedLwd: string | null;
   noticePeriod: string;

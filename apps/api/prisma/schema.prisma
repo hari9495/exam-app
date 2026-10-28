@@ -6379,6 +6379,8 @@ model ExitCase {
   changePayload        Json?     @map("change_payload")
   acceptedAt           DateTime? @map("accepted_at") @db.Timestamptz(3)
   withdrawnAt          DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  withdrawnBy          String?   @map("withdrawn_by") @db.Uuid
+  withdrawalReason     String?   @map("withdrawal_reason") @db.VarChar(500)
   lettersHeld          Boolean   @default(false) @map("letters_held")
   lwdNotifiedOn        DateTime? @map("lwd_notified_on") @db.Date
   settledOutsideOn     DateTime? @map("settled_outside_on") @db.Date

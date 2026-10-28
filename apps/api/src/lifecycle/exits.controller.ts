@@ -14,7 +14,7 @@ import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
 //   lifecycle.exit.view                 exit cases of the people in scope (the manager sees their team's without a key)
-//   lifecycle.exit.manage               company exits, notice changes, the HR step of a resignation, any clearance item
+//   lifecycle.exit.manage               company exits (and withdrawing them), notice changes, the HR step of a resignation, any clearance item
 //   lifecycle.exit.confidential.view    HR-only facts and the exit interview answers (with manage to change the facts)
 //   asset.view / asset.manage           the asset list per legal entity or location
 //   no key (self)                       my resignation and withdrawal, my exit interview, my assets, my clearance items,
@@ -101,6 +101,13 @@ export class ExitsController {
   @RequirePermissions('lifecycle.exit.manage')
   notice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NoticeChangeDto) {
     return this.exits.requestNoticeChange(ctx, this.user(req), id, dto);
+  }
+
+  @Post('exits/:id/withdraw')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  withdrawExit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+    return this.exits.withdrawCompanyExit(ctx, this.user(req), id, dto.reason);
   }
 
   @Put('exits/:id/hr')
