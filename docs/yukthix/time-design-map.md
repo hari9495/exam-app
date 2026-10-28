@@ -126,45 +126,52 @@ Question: an HR "open again" for a month HR froze exists in the API (POST /time/
 
 ### TIM-12 · Mobile check-in sheet
 
+API ready for the phone app (/time/devices/me, me/bind, me/bind/withdraw, me/punch, me/sync): with
+`attendance.phone_binding` on only the approved phone punches; every phone punch carries its own client_ref and is
+made once (offline sync safe, 72 h back / 2 min ahead).
+
 | story (sub-page) | where it shows live |
 |---|---|
-| Inside · ready | phone view, mobile app not built |
-| Outside · blocked | phone view, mobile app not built |
+| Inside · ready | phone view, mobile app not built (API: POST /time/devices/me/punch) |
+| Outside · blocked | phone view, mobile app not built (API: the punch's refusal) |
 | Coarse · retry | phone view, mobile app not built |
 | Early · shift not started | phone view, mobile app not built |
 | Offline · before check-in | phone view, mobile app not built |
-| OfflineSaved · waiting to sync | phone view, mobile app not built |
+| OfflineSaved · waiting to sync | phone view, mobile app not built (API: POST /time/devices/me/sync, a result per punch) |
 | Field · recorded, not restricted | phone view, mobile app not built |
 | CheckedIn · check out | phone view, mobile app not built |
-| Device · not bound | phone view, mobile app not built |
+| Device · not bound | phone view, mobile app not built (API: GET /time/devices/me binding + request; PHONE_NOT_APPROVED refusal) |
 | Selfie · not on yet | phone view, mobile app not built |
 
 ### TIM-13 · Kiosk
 
+Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Face sign-in: API only (kiosk.methods
+"face", consent on record), provider: to decide (dev-fake adapter `KIOSK_FACE_PROVIDER`), no design story for it.
+
 | story (sub-page) | where it shows live |
 |---|---|
-| Code · Employee code | feature not built (no kiosk API) |
-| UnknownCode | feature not built |
-| Qr · Scan ID card QR | feature not built |
-| Pin | feature not built |
-| WrongPin | feature not built |
-| Menu | feature not built |
-| CheckedIn | feature not built |
-| Training | feature not built |
-| Leave · Apply leave | feature not built |
-| Status · Request status | feature not built |
+| Code · Employee code | /yx/kiosk: keypad with the company's code prefix ("KF-____") |
+| UnknownCode | gap: an unknown code is told apart from a wrong PIN on purpose (same answer, so codes cannot be probed); it shows as WrongPin |
+| Qr · Scan ID card QR | /yx/kiosk → Scan ID card (the tablet camera, where the browser can read QR codes) |
+| Pin | /yx/kiosk after Next: "Enter your PIN" (no name before the PIN, same reason as UnknownCode) |
+| WrongPin | /yx/kiosk: "Code or PIN didn't match. After 5 wrong tries a code locks for 15 minutes…" with Scan ID card |
+| Menu | /yx/kiosk after the PIN: "Hello, <first name>", Check in / Check out, My requests, signing out in 30 s (the balance tiles and supervisor banner: gap, no kiosk API for balances yet) |
+| CheckedIn | /yx/kiosk after Check in / out: badge, time, location, shift; clears itself |
+| Training | feature not built (no training attendance API; hidden in live) |
+| Leave · Apply leave | feature not built (leave at the kiosk; hidden in live) |
+| Status · Request status | /yx/kiosk → My requests: leave and attendance requests of the last 30 days with status |
 
 ### TIM-14 · Devices and kiosks
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Kiosks · HR · kiosks and last seen | feature not built (no device API) |
-| Binds · New phone requests | feature not built |
-| Phones · Employee phones | feature not built |
-| SignOut · Remote sign-out | feature not built |
-| SystemAdmin | feature not built |
-| Empty | feature not built |
-| Loading | feature not built |
+| Kiosks · HR · kiosks and last seen | /yx/time/setup/devices, Kiosks tab: health (stale 15 min, offline 1 h), check-ins today, Register kiosk (the one-time set-up key stays on screen until Done), Reset kiosk key |
+| Binds · New phone requests | /yx/time/setup/devices, New phone requests tab: approve (the old phone is signed out in the same step) or reject with a reason |
+| Phones · Employee phones | /yx/time/setup/devices, Employee phones tab (inactive: not seen for 30 days) |
+| SignOut · Remote sign-out | /yx/time/setup/devices → Sign out remotely / Sign out phone: the phone stops and every sign-in of the person ends |
+| SystemAdmin | /yx/time/setup/devices: the Entity column shows when the company has more than one legal entity (set-up is company-wide) |
+| Empty | /yx/time/setup/devices with no kiosks: "No kiosks registered" |
+| Loading | /yx/time/setup/devices while loading |
 
 ### TIM-36 · Presence-based attendance
 
