@@ -34,7 +34,10 @@ describe('3b-2 batch 3 screens', () => {
     const onAdd = vi.fn(async () => ({ webhookUrl: 'https://api.test/x', secret: 's3cret-value' }));
     render(<MessagingAdmin deskId="d1" setup={setup} onAdd={onAdd} onSave={vi.fn()} onRotate={vi.fn()} />);
     await ue.click(screen.getByRole('radio', { name: 'SMS' }));
-    expect(screen.getByRole('button', { name: 'Add the line' })).toBeDisabled();
+    // Never disabled: pressed with nothing filled, it says what is missing and adds nothing.
+    await ue.click(screen.getByRole('button', { name: 'Add the line' }));
+    expect(screen.getByText('Name the line.')).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Name/ }), 'IT by SMS');
     await ue.type(screen.getByRole('textbox', { name: /Registered reply template/ }), 'You have a reply on {{#var#}. Read it: {{#var#}');
     await ue.click(screen.getByRole('button', { name: 'Add the line' }));

@@ -3,7 +3,7 @@ import { BellRing, Eye, GitMerge, Link2, ListChecks, MessagesSquare, Moon, Sciss
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -583,6 +583,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
   const [group, setGroup] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
+  const escEarly = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'esc-reason', message: 'Say why it moves (at least 3 letters).' }] : []);
   const groups = detail.groups.filter((g) => g.active && (!g.tier || g.tier === tier));
   return (
     <Dialog
@@ -593,7 +594,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={reason.trim().length < 3} loading={busy === 'esc'} onClick={() => void run('esc', async () => { await onEscalate({ tier, ...(group ? { groupId: group } : {}), reason: reason.trim() }); onOpenChange(false); })}>
+          <Button variant="primary" loading={busy === 'esc'} onClick={() => !escEarly.stop() && void run('esc', async () => { await onEscalate({ tier, ...(group ? { groupId: group } : {}), reason: reason.trim() }); onOpenChange(false); })}>
             Move to {tier}
           </Button>
         </>
@@ -607,7 +608,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
         <FormField label="Hand to group" optional>
           <Select value={group} onChange={setGroup} clearable options={groups.map((g) => ({ value: g.id, label: g.name }))} placeholder="Keep the group" />
         </FormField>
-        <FormField label="Reason" required>
+        <FormField id="esc-reason" label="Reason" required error={escEarly.errorOf('esc-reason')}>
           <TextField value={reason} onChange={setReason} maxLength={500} />
         </FormField>
       </div>

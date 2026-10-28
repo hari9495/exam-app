@@ -46,12 +46,17 @@ describe('3b-2 batch 2 screens', () => {
     const onSendCode = vi.fn(async () => ({ to: 'ar****@kaveri.test', minutes: 5 }));
     render(<MyDocumentsCard documents={[{ id: 'd', title: 'Hand-over', status: 'pending', sha256: 'x', signedAt: null, createdAt: '', needsMe: true, text: 'I received it.' }]} onSendCode={onSendCode} onSign={onSign} onDecline={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Read and sign' }));
-    expect(screen.getByRole('button', { name: 'Send me a code' })).toBeDisabled();
+    // Never disabled: pressed too early, it says what is missing and sends no code.
+    await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
+    expect(screen.getByText('Type your full name.')).toBeInTheDocument();
+    expect(onSendCode).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Type your full name/ }), 'Arjun Kulkarni');
     await ue.click(screen.getByRole('checkbox', { name: /I have read this document/ }));
     await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
     expect(screen.getByText(/We sent a 6-digit code to ar\*\*\*\*@kaveri.test/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Sign' }));
+    expect(screen.getByText('Type the 6-digit code from the email.')).toBeInTheDocument();
+    expect(onSign).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /6-digit code/ }), '12a3456');
     await ue.click(screen.getByRole('button', { name: 'Sign' }));
     expect(onSign).toHaveBeenCalledWith(expect.objectContaining({ id: 'd' }), 'Arjun Kulkarni', '123456');

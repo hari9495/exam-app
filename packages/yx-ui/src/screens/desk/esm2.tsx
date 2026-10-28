@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
@@ -88,6 +88,9 @@ function MoveShareCard(p: TicketEsmRailProps) {
   const [reason, setReason] = useState('');
   const [level, setLevel] = useState<'view' | 'comment'>('view');
   const { busy, error, run } = useRun();
+  const noDesk = !deskId ? [{ fieldId: 'esm-desk', message: 'Choose the desk.' }] : [];
+  const shareEarly = useTooEarly(noDesk);
+  const moveEarly = useTooEarly([...noDesk, ...(reason.trim().length < 3 ? [{ fieldId: 'esm-why', message: 'Say why it moves (at least 3 letters).' }] : [])]);
   const others = p.desks.filter((d) => d.id !== p.currentDeskId);
   const cats = deskId ? p.categories(deskId).filter((c) => !p.sensitive || c.sensitive) : [];
   return (
@@ -108,7 +111,7 @@ function MoveShareCard(p: TicketEsmRailProps) {
           </ul>
         )}
         <Segment label="What to do" value={mode} onChange={setMode} options={[{ value: 'share', label: 'Share' }, { value: 'move', label: 'Move' }]} />
-        <FormField label="Desk" required>
+        <FormField id="esm-desk" label="Desk" required error={(mode === 'share' ? shareEarly : moveEarly).errorOf('esm-desk')}>
           <Select value={deskId} onChange={setDeskId} options={others.map((d) => ({ value: d.id, label: d.name }))} />
         </FormField>
         {mode === 'share' ? (
@@ -121,7 +124,7 @@ function MoveShareCard(p: TicketEsmRailProps) {
             <FormField label="Category there" required={p.sensitive} optional={!p.sensitive} helper={p.sensitive ? 'This ticket is sensitive: it goes only into a sensitive category.' : undefined}>
               <Select value={categoryId} onChange={setCategoryId} options={cats.map((c) => ({ value: c.id, label: c.name }))} />
             </FormField>
-            <FormField label="Why" required>
+            <FormField id="esm-why" label="Why" required error={moveEarly.errorOf('esm-why')}>
               <TextField value={reason} onChange={setReason} maxLength={500} />
             </FormField>
           </>
@@ -129,11 +132,11 @@ function MoveShareCard(p: TicketEsmRailProps) {
         <Problem error={error} />
         <div className="yx-ops-row">
           {mode === 'share' ? (
-            <Button icon={Share2} disabled={!deskId} loading={busy === 'share'} onClick={() => void run('share', () => p.onShare(deskId!, level))}>
+            <Button icon={Share2} loading={busy === 'share'} onClick={() => !shareEarly.stop() && void run('share', () => p.onShare(deskId!, level))}>
               Share
             </Button>
           ) : (
-            <Button icon={Truck} disabled={!deskId || reason.trim().length < 3} loading={busy === 'move'} onClick={() => void run('move', () => p.onMove({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), reason: reason.trim() }))}>
+            <Button icon={Truck} loading={busy === 'move'} onClick={() => !moveEarly.stop() && void run('move', () => p.onMove({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), reason: reason.trim() }))}>
               Move ticket
             </Button>
           )}
@@ -257,6 +260,10 @@ export function MyDocumentsCard({
   const [sent, setSent] = useState<{ to: string; minutes: number } | null>(null);
   const [mode, setMode] = useState<'sign' | 'decline'>('sign');
   const { busy, error, run } = useRun();
+  const nameOk = [...(!name.trim() ? [{ fieldId: `doc-name-${open}`, message: 'Type your full name.' }] : []), ...(!agree ? [{ fieldId: `doc-agree-${open}`, message: 'Tick that you have read the document.' }] : [])];
+  const codeEarly = useTooEarly(nameOk);
+  const signEarly = useTooEarly([...nameOk, ...(code.length !== 6 ? [{ fieldId: `doc-code-${open}`, message: 'Type the 6-digit code from the email.' }] : [])]);
+  const declineEarly = useTooEarly(!reason.trim() ? [{ fieldId: `doc-why-${open}`, message: 'Say why you do not sign.' }] : []);
   if (!documents.length) return null;
   const close = () => {
     setOpen(null);
@@ -285,14 +292,15 @@ export function MyDocumentsCard({
                 <Segment label="Your answer" value={mode} onChange={setMode} options={[{ value: 'sign', label: 'Sign' }, { value: 'decline', label: 'Do not sign' }]} />
                 {mode === 'sign' ? (
                   <>
-                    <FormField label="Type your full name" required helper="As it appears on the document.">
+                    <FormField id={`doc-name-${d.id}`} label="Type your full name" required helper="As it appears on the document." error={(sent ? signEarly : codeEarly).errorOf(`doc-name-${d.id}`)}>
                       <TextField value={name} onChange={setName} maxLength={150} />
                     </FormField>
-                    <Checkbox checked={agree} onChange={setAgree} label="I have read this document and I sign it." />
+                    <Checkbox id={`doc-agree-${d.id}`} checked={agree} onChange={setAgree} label="I have read this document and I sign it." />
+                    {(sent ? signEarly : codeEarly).errorOf(`doc-agree-${d.id}`) && <p className="yx-field__error">{(sent ? signEarly : codeEarly).errorOf(`doc-agree-${d.id}`)}</p>}
                     {sent ? (
                       <>
                         <InlineAlert tone="info">{`We sent a 6-digit code to ${sent.to}. It works for ${sent.minutes} minutes.`}</InlineAlert>
-                        <FormField label="6-digit code" required helper="From the email we just sent you.">
+                        <FormField id={`doc-code-${d.id}`} label="6-digit code" required helper="From the email we just sent you." error={signEarly.errorOf(`doc-code-${d.id}`)}>
                           <TextField value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} />
                         </FormField>
                       </>
@@ -301,22 +309,22 @@ export function MyDocumentsCard({
                     )}
                   </>
                 ) : (
-                  <FormField label="Why not?" required>
+                  <FormField id={`doc-why-${d.id}`} label="Why not?" required error={declineEarly.errorOf(`doc-why-${d.id}`)}>
                     <TextField value={reason} onChange={setReason} maxLength={500} />
                   </FormField>
                 )}
                 <Problem error={error} />
                 <div className="yx-ops-row">
                   {mode === 'sign' && !sent ? (
-                    <Button variant="primary" disabled={!agree || !name.trim()} loading={busy === `code-${d.id}`} onClick={() => void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
+                    <Button variant="primary" loading={busy === `code-${d.id}`} onClick={() => !codeEarly.stop() && void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
                       Send me a code
                     </Button>
                   ) : (
                     <Button
                       variant={mode === 'sign' ? 'primary' : 'danger'}
-                      disabled={mode === 'sign' ? !agree || !name.trim() || code.length !== 6 : !reason.trim()}
                       loading={busy === d.id}
                       onClick={() =>
+                        !(mode === 'sign' ? signEarly : declineEarly).stop() &&
                         void run(d.id, async () => {
                           await (mode === 'sign' ? onSign(d, name.trim(), code) : onDecline(d, reason.trim()));
                           close();

@@ -3,7 +3,7 @@ import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { FormField, useSaveErrors } from '../../../components/field';
+import { FormField, useTooEarly } from '../../../components/field';
 import { TextArea, TextField } from '../../../components/inputs';
 import { Checkbox } from '../../../components/choice';
 import { Segment } from '../../../components/segment';
@@ -45,21 +45,6 @@ export function EntityPicker({ entities, value, onChange, id = 'pay-entity', err
       <Select value={value} onChange={onChange} placeholder="Choose a legal entity" options={entities.map((e) => ({ value: e.id, label: e.name }))} />
     </FormField>
   );
-}
-
-/** Never a disabled confirm button (founder rule): pressed too early, the errors show and the first field takes focus. */
-export function useTooEarly(errors: { fieldId: string; message: string }[]) {
-  const shown = useSaveErrors(errors);
-  return {
-    errorOf: shown.errorOf,
-    /** True when something is missing (and now shown); the caller stops there. */
-    stop: () => {
-      if (!errors.length) return false;
-      shown.reveal();
-      document.getElementById(errors[0]!.fieldId)?.focus();
-      return true;
-    },
-  };
 }
 
 const STATUTE: Record<string, string> = {

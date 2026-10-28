@@ -86,8 +86,11 @@ describe('knowledge on a ticket', () => {
     expect(p.onSolvedBy).toHaveBeenCalledWith('a1');
     await ue.click(screen.getByRole('button', { name: 'Out of date' }));
     const flag = screen.getByRole('button', { name: 'Flag it' });
-    expect(flag).toBeDisabled();
-    await ue.type(screen.getByRole('textbox', { name: 'What is wrong?' }), 'Menu moved');
+    // Never disabled: pressed with no reason, it says what is missing and flags nothing.
+    await ue.click(flag);
+    expect(screen.getByText('Say what is wrong (at least 3 letters).')).toBeInTheDocument();
+    expect(p.onFlag).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /What is wrong/ }), 'Menu moved');
     await ue.click(flag);
     expect(p.onFlag).toHaveBeenCalledWith('a1', 'Menu moved');
     rerender(<TicketKbCard {...p} solved />);

@@ -3,7 +3,7 @@ import { MessageCircle, Plus, RefreshCw, Send, Unlink } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -52,6 +52,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
   const [smsBody, setSmsBody] = useState('');
   const [shown, setShown] = useState<LineSecret | null>(null);
   const { busy, error, run } = useRun();
+  const lineEarly = useTooEarly([...(!name.trim() ? [{ fieldId: 'ml-name', message: 'Name the line.' }] : []), ...(kind === 'sms' && smsBody.split('{#var#}').length !== 3 ? [{ fieldId: 'ml-sms', message: 'Paste the registered text with exactly two {#var#}.' }] : [])]);
   const lines = p.setup?.channels ?? [];
   const accounts = (p.setup?.accounts ?? []).filter((a) => a.channel === kind && a.active);
   const taken = new Set(lines.map((l) => l.kind));
@@ -111,7 +112,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
             <InlineAlert tone="info">Your company already has a {KIND_LABEL[kind]} line. Bring it to this desk above.</InlineAlert>
           ) : (
             <>
-              <FormField label="Name" required>
+              <FormField id="ml-name" label="Name" required error={lineEarly.errorOf('ml-name')}>
                 <TextField value={name} onChange={setName} maxLength={100} placeholder={`IT help on ${KIND_LABEL[kind]}`} />
               </FormField>
               {(kind === 'whatsapp' || kind === 'sms') && (
@@ -126,7 +127,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
               )}
               {kind === 'sms' && (
                 <>
-                  <FormField label="Registered reply template (DLT)" helper="The text exactly as registered, with two {#var#}: the request number, then the link to read the reply (e.g. “You have a reply on {#var#}. Read it: {#var#}”). The reply itself never goes by SMS.">
+                  <FormField id="ml-sms" error={lineEarly.errorOf('ml-sms')} label="Registered reply template (DLT)" helper="The text exactly as registered, with two {#var#}: the request number, then the link to read the reply (e.g. “You have a reply on {#var#}. Read it: {#var#}”). The reply itself never goes by SMS.">
                     <TextArea value={smsBody} onChange={setSmsBody} rows={2} maxLength={500} />
                   </FormField>
                   <FormField label="DLT template id">
@@ -138,9 +139,9 @@ export function MessagingAdmin(p: MessagingAdminProps) {
                 <Button
                   variant="primary"
                   icon={Plus}
-                  disabled={!name.trim() || (kind === 'sms' && smsBody.split('{#var#}').length !== 3)}
                   loading={busy === 'add'}
                   onClick={() =>
+                    !lineEarly.stop() &&
                     void run('add', async () => {
                       const templates = kind === 'whatsapp' && tplName.trim() ? { reply_notice: { name: tplName.trim(), language: 'en', status: 'approved' } } : kind === 'sms' ? { reply_notice: { body: smsBody.trim(), dltTemplateId: dltId.trim() || null, status: 'approved' } } : {};
                       setShown(await p.onAdd({ kind, name: name.trim(), accountId: account, templates }));

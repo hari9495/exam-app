@@ -169,6 +169,21 @@ export function useSaveErrors(errors: FormErrorItem[], initiallyShown = false) {
   };
 }
 
+/** Never a disabled confirm button (founder rule): pressed too early, the errors show and the first field takes focus. */
+export function useTooEarly(errors: { fieldId: string; message: string }[]) {
+  const shown = useSaveErrors(errors);
+  return {
+    errorOf: shown.errorOf,
+    /** True when something is missing (and now shown); the caller stops there. */
+    stop: () => {
+      if (!errors.length) return false;
+      shown.reveal();
+      document.getElementById(errors[0]!.fieldId)?.focus();
+      return true;
+    },
+  };
+}
+
 /** Top-of-form summary for long forms; each item links to its field (§16). Receives focus when it appears. */
 export function ErrorSummary({ errors, title = 'Fix these before saving' }: { errors: FormErrorItem[]; title?: string }) {
   const ref = useRef<HTMLDivElement>(null);
