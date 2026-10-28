@@ -6,7 +6,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
-import { Badge } from '../../components/display';
+import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField } from '../../components/field';
 import { Select } from '../../components/select';
@@ -20,45 +20,87 @@ import { ConfirmDialog } from '../../components/overlay';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
-import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, noticeOutcome, splitByShares, type FnfLine, type Persona } from './people-logic';
+import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
 import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, InterviewDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
-import { PayeesDialog } from './live/special';
-import type { AbscondingRow, Choice, ClearanceItem, ExitStep, ExitWorkspace, MyClearanceItem, Payee, Payees } from './live/types';
+import { PayeesDialog, VrsCard } from './live/special';
+import { dayKey } from '../../lib/dates';
+import type { AbscondingRow, Choice, ClearanceItem, ExitStatus, ExitStep, ExitWorkspace, LoadState, MyClearanceItem, MyResignation, MyVrsScheme, Payee, Payees } from './live/types';
 import { Segment } from './people-kit';
 import { useRun } from '../org/org-kit';
 import type { FnfSettlementView, FnfSlipLine } from '../pay/live/types-5j';
 
 /* ================================================================== PPL-18 resignation */
 
-const REASONS = ['Higher studies', 'Better role elsewhere', 'Relocation', 'Family reasons', 'Health', 'Other'].map((x) => ({ value: x, label: x }));
+/** The API's resignation reasons in plain words. */
+const REASONS: Record<string, string> = {
+  better_opportunity: 'A better opportunity',
+  higher_studies: 'Higher studies',
+  relocation: 'Moving to another city',
+  family: 'Family reasons',
+  health: 'Health',
+  career_change: 'A change of career',
+  manager: 'My manager',
+  work_environment: 'The work or the team',
+  compensation: 'Pay and benefits',
+  other: 'Something else',
+};
+const RESIGN_STATUS: Record<ExitStatus, { label: string; tone: BadgeTone }> = {
+  submitted: { label: 'Waiting for acceptance', tone: 'warning' },
+  accepted: { label: 'Serving notice', tone: 'info' },
+  rejected: { label: 'Not accepted', tone: 'neutral' },
+  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
+  cleared: { label: 'Cleared', tone: 'success' },
+  exited: { label: 'Left', tone: 'neutral' },
+  closed: { label: 'Closed', tone: 'neutral' },
+};
+const RESIGN_TEXT = 'Your notice comes from the company policy. Your manager, then HR, accept it in the app. You can withdraw it until it is accepted, and after that with approval.';
 
-function ResignationFields({ today, lwd, setLwd }: { today: Date; lwd: Date | null; setLwd: (d: Date | null) => void }) {
-  const n = noticeOutcome(today, 60, lwd, 23000);
+/** Me › Resign, live (PPL-18): my notice from the company policy, my resignation and its withdrawal. */
+export interface LiveResignation {
+  state: LoadState;
+  onRetry: () => void;
+  data: MyResignation | null;
+  onResign: (input: { reasonCode: string; reasonText: string; requestedLwd: string | null }) => Promise<unknown>;
+  onWithdraw: (reason: string) => Promise<unknown>;
+  interviewHref: string;
+  /** Voluntary retirement schemes open to me (6e). */
+  vrs?: { schemes: MyVrsScheme[]; onApply: (s: MyVrsScheme, input: { requestedLwd: string; reasonText: string | null }) => Promise<unknown> };
+}
+type MyExit = NonNullable<MyResignation['current']>;
+type ResignDraft = { reason: string | null; text: string; lwd: Date | null };
+const NO_DRAFT: ResignDraft = { reason: null, text: '', lwd: null };
+
+function ResignationFields({ data, draft, setDraft, tried = false }: { data: MyResignation; draft: ResignDraft; setDraft: (d: ResignDraft) => void; tried?: boolean }) {
+  const n = data.notice!;
+  const standard = isoDay(n.standardLwd);
+  const asked = draft.lwd ?? standard;
+  const shortfall = Math.max(0, daysBetween(asked, standard));
+  const set = (patch: Partial<ResignDraft>) => setDraft({ ...draft, ...patch });
   return (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__form">
-        <FormField label="Reason" required>
-          <Select options={REASONS} value="Better role elsewhere" onChange={() => {}} />
+        <FormField label="Reason" required error={tried && !draft.reason ? 'Choose the main reason.' : null}>
+          <Select aria-label="Reason" options={data.reasons.map((r) => ({ value: r, label: REASONS[r] ?? r }))} value={draft.reason} onChange={(reason) => set({ reason })} />
         </FormField>
-        <FormField label="Proposed last working day" required helper="Your notice is 60 days (confirmed, grade G5), counted from today.">
-          <DatePicker value={lwd} onChange={setLwd} min={today} />
+        <FormField label="Proposed last working day" optional helper={`Your notice is ${n.label}${n.onProbation ? ' (during probation)' : ''}, counted from today. Leave it empty to go by the notice.`}>
+          <DatePicker value={draft.lwd} onChange={(lwd) => set({ lwd })} min={isoDay(data.today)} aria-label="Proposed last working day" />
         </FormField>
-        <FormField label="Anything you want your manager and HR to know" optional>
-          <TextArea rows={3} />
+        <FormField label="Anything you want your manager and HR to know" required error={tried && draft.text.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
+          <TextArea rows={3} value={draft.text} onChange={(text) => set({ text })} maxLength={1000} />
         </FormField>
       </div>
       <Card title="What this means">
         <dl className="yx-ppl__rail-facts">
-          <div><dt>Standard last working day</dt><dd>{formatDate(n.standardLwd)}</dd></div>
-          <div><dt>You asked for</dt><dd>{formatDate(n.requestedLwd)}</dd></div>
+          <div><dt>Standard last working day</dt><dd>{formatDate(standard)}</dd></div>
+          <div><dt>You asked for</dt><dd>{formatDate(asked)}</dd></div>
           <div>
             <dt>Notice shortfall</dt>
-            <dd>{n.shortfallDays ? `${n.shortfallDays} days · about ${formatINR(n.shortfallAmount)} recovered in your F&F unless your manager waives it or you adjust earned leave` : 'None'}</dd>
+            <dd>{shortfall ? `${plural(shortfall, 'day')} · recovered in your F&F unless your manager waives it or you adjust earned leave` : 'None'}</dd>
           </div>
         </dl>
-        {n.shortfallDays > 0 && <InlineAlert tone="warning">An early release needs your manager's and HR's approval.</InlineAlert>}
+        {shortfall > 0 && <InlineAlert tone="warning">An early release needs your manager's and HR's approval.</InlineAlert>}
         <Text size="sm" tone="secondary" as="p">
           Leave during notice follows each leave type's notice rule. Sick leave extends your last day; casual leave is allowed.
         </Text>
@@ -67,53 +109,201 @@ function ResignationFields({ today, lwd, setLwd }: { today: Date; lwd: Date | nu
   );
 }
 
-// PPL-18
-export function ResignationSheet({ today, requested = null, submitted = false, accepted = false }: { today: Date; requested?: Date | null; submitted?: boolean; accepted?: boolean }) {
-  const [lwd, setLwd] = useState<Date | null>(requested);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
-  if (submitted)
-    return (
-      <MeFrame active="My exit">
-        <PageHeader title="Your resignation" status={<StatusBadge status={accepted ? 'Approved' : 'Pending approval'} />} description={`Submitted ${formatDate(today)} · last working day ${formatDate(lwd ?? noticeOutcome(today, 60, null, 0).standardLwd)}`} actions={<Button onClick={() => setWithdrawOpen(true)}>Withdraw resignation</Button>} />
-        <Card title="Approval">
-          <ApprovalTimeline
-            now={today}
-            steps={[
-              { id: 's', label: 'Submitted', status: 'done', approver: 'Divya Raghunathan (you)', at: today },
-              { id: 'm', label: 'Manager', status: accepted ? 'done' : 'current', approver: 'Karthik Subramanian', at: accepted ? today : undefined },
-              { id: 'h', label: 'HR', status: accepted ? 'done' : 'pending', approver: 'Lakshmi Venkatesan', at: accepted ? today : undefined },
-            ]}
-          />
-        </Card>
-        <ConfirmDialog
-          open={withdrawOpen}
-          onOpenChange={setWithdrawOpen}
-          title="Withdraw your resignation?"
-          consequence={accepted ? 'It has been accepted, so your manager and HR must approve the withdrawal.' : 'It has not been accepted yet, so it is withdrawn now and your manager is told.'}
-          confirmLabel={accepted ? 'Ask to withdraw' : 'Withdraw resignation'}
-          cancelLabel="Keep resignation"
-          onConfirm={() => setWithdrawOpen(false)}
-        />
-      </MeFrame>
-    );
+function ResignationForm({ data, live, initial }: { data: MyResignation; live: LiveResignation; initial: ResignDraft }) {
+  const [draft, setDraft] = useState(initial);
+  const [tried, setTried] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const n = data.notice;
+  const wanted = draft.lwd ? dayKey(draft.lwd) : null;
   return (
     <MeFrame active="My exit">
-      <PageHeader title="Resign" description="Your manager and HR accept it in the app. You can withdraw it until it is accepted, and after that with approval." />
-      <ResignationFields today={today} lwd={lwd} setLwd={setLwd} />
-      <div className="yx-ppl__row">
-        <Button>Cancel</Button>
-        <Button variant="primary">Send resignation</Button>
-      </div>
+      <PageHeader title="Resign" description={RESIGN_TEXT} />
+      {live.vrs && <VrsCard schemes={live.vrs.schemes} today={data.today} onApply={live.vrs.onApply} />}
+      {n ? (
+        <>
+          <ResignationFields data={data} draft={draft} setDraft={setDraft} tried={tried} />
+          <div className="yx-ppl__row">
+            <Button
+              onClick={() => {
+                setDraft(NO_DRAFT);
+                setTried(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setTried(true);
+                if (draft.reason && draft.text.trim().length >= 3) setAsking(true);
+              }}
+            >
+              Send resignation
+            </Button>
+          </div>
+        </>
+      ) : (
+        <EmptyState title="You have no open employment to resign from." />
+      )}
+      {asking && n && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setAsking(false)}
+          title="Send your resignation?"
+          consequence={`Your manager, then HR, are asked to accept it. Your last working day would be ${formatDate(isoDay(wanted && wanted > n.standardLwd ? wanted : n.standardLwd))}. You can withdraw it until it is accepted.`}
+          confirmLabel="Send resignation"
+          onConfirm={async () => {
+            await live.onResign({ reasonCode: draft.reason!, reasonText: draft.text.trim(), requestedLwd: wanted });
+            setAsking(false);
+          }}
+        />
+      )}
     </MeFrame>
   );
 }
 
+function WithdrawResignationDialog({ accepted, onClose, onWithdraw }: { accepted: boolean; onClose: () => void; onWithdraw: (reason: string) => Promise<unknown> }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const short = reason.trim().length < 3;
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Withdraw your resignation?"
+      consequence={accepted ? 'It has been accepted, so your manager and HR must approve the withdrawal. You keep serving notice until they agree.' : 'It has not been accepted yet, so it is withdrawn now and your manager is told.'}
+      confirmLabel={accepted ? 'Ask to withdraw' : 'Withdraw resignation'}
+      cancelLabel="Keep resignation"
+      onConfirm={async () => {
+        setTried(true);
+        if (short) return false;
+        await onWithdraw(reason.trim());
+        onClose();
+      }}
+    >
+      <FormField label="Why" required error={tried && short ? 'Enter a reason of at least 3 characters.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function ResignationStatus({ k, today, live }: { k: MyExit; today: string; live: LiveResignation }) {
+  const [withdrawing, setWithdrawing] = useState(false);
+  const s = RESIGN_STATUS[k.status];
+  const canWithdraw = (k.status === 'submitted' || k.status === 'accepted') && !k.pendingChange && k.initiatedBy === 'employee';
+  const day = (iso: string) => formatDate(isoDay(iso));
+  const facts = [`Submitted ${day(k.submittedOn)}`, `notice ${k.noticeLabel}`, `last working day ${day(k.lastDay)}${k.status === 'submitted' ? ' (by notice)' : ''}`, ...(k.requestedLwd ? [`you asked to leave on ${day(k.requestedLwd)}`] : [])];
+  return (
+    <MeFrame active="My exit">
+      <PageHeader title="Your resignation" status={<Badge tone={s.tone}>{s.label}</Badge>} description={facts.join(' · ')} actions={canWithdraw ? <Button onClick={() => setWithdrawing(true)}>Withdraw resignation</Button> : undefined} />
+      {k.pendingChange?.kind === 'withdrawal' && (
+        <InlineAlert tone="info" title="Withdrawal asked for">
+          Your manager and HR decide on it.
+        </InlineAlert>
+      )}
+      {k.lettersHeld && (
+        <InlineAlert tone="warning" title="Your relieving letter is on hold">
+          HR will contact you.
+        </InlineAlert>
+      )}
+      {k.interview === 'sent' && (
+        <InlineAlert
+          tone="info"
+          title="Your exit interview is ready"
+          actions={
+            <Button asChild size="sm" variant="primary">
+              <a href={live.interviewHref}>Answer the exit interview</a>
+            </Button>
+          }
+        >
+          Answer it before your last day. Only HR reads your answers.
+        </InlineAlert>
+      )}
+      <Card title="Approval">
+        <ApprovalTimeline
+          now={isoDay(today)}
+          steps={[
+            { id: 's', label: 'Submitted', status: 'done', approver: 'You', at: isoDay(k.submittedOn) },
+            // The API gives the outcome, not each step: the manager and HR accept it as one route.
+            { id: 'a', label: 'Your manager, then HR', status: k.status === 'submitted' ? 'current' : k.status === 'rejected' ? 'rejected' : k.status === 'withdrawn' ? 'skipped' : 'done' },
+          ]}
+        />
+      </Card>
+      {withdrawing && <WithdrawResignationDialog accepted={k.status === 'accepted'} onClose={() => setWithdrawing(false)} onWithdraw={live.onWithdraw} />}
+    </MeFrame>
+  );
+}
+
+function LiveResignationSheet({ live, initial }: { live: LiveResignation; initial: ResignDraft }) {
+  const d = live.data;
+  if (live.state !== 'ready' || !d)
+    return (
+      <MeFrame active="My exit">
+        <PageHeader title="Resign" description={RESIGN_TEXT} />
+        {live.state === 'error' ? (
+          <ErrorState title="We couldn't load your resignation" description="Check your connection and try again." onRetry={live.onRetry} />
+        ) : live.state === 'no-access' ? (
+          <NoAccessState what="your resignation" grantedBy="HR" />
+        ) : (
+          <ListSkeleton label="Loading your resignation" />
+        )}
+      </MeFrame>
+    );
+  return d.current ? <ResignationStatus k={d.current} today={d.today} live={live} /> : <ResignationForm data={d} live={live} initial={initial} />;
+}
+
+const plusDays = (date: Date, n: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+
+/** The design's sample: 60 days' notice from today, with the API's shapes. */
+function sampleResignation(today: Date, current: Partial<MyExit> | null, vrs: boolean): LiveResignation {
+  const standardLwd = dayKey(plusDays(today, 60));
+  const k: MyExit | null = current && {
+    id: 'k1',
+    employeeId: 'e1',
+    exitType: 'resignation',
+    typeLabel: 'Resignation',
+    initiatedBy: 'employee',
+    reasonCode: 'better_opportunity',
+    reasonText: 'A lead role closer to home.',
+    submittedOn: dayKey(today),
+    requestedLwd: null,
+    noticePeriod: '60d',
+    noticeLabel: '60 days',
+    standardLwd,
+    approvedLwd: null,
+    lastDay: standardLwd,
+    noticeArrangement: null,
+    status: 'submitted',
+    pendingChange: null,
+    lettersHeld: false,
+    version: 1,
+    interview: null,
+    ...current,
+  };
+  const none = async () => {};
+  return {
+    state: 'ready',
+    onRetry: () => {},
+    data: { today: dayKey(today), notice: { period: '60d', label: '60 days', standardLwd, onProbation: false }, reasons: Object.keys(REASONS), current: k, last: null },
+    onResign: none,
+    onWithdraw: none,
+    interviewHref: '#exit-interview',
+    ...(vrs ? { vrs: { schemes: [{ id: 'v1', name: 'Voluntary retirement 2026', closesOn: dayKey(plusDays(today, 45)), minAge: 50, minServiceYears: 10, eligible: true }], onApply: none } } : {}),
+  };
+}
+
+// PPL-18: the story shows the sample (`current`: the resignation as sent); the app passes `live`.
+export function ResignationSheet({ today = TODAY, requested = null, current = null, vrs = false, live }: { today?: Date; requested?: Date | null; current?: Partial<MyExit> | null; vrs?: boolean; live?: LiveResignation }) {
+  return <LiveResignationSheet live={live ?? sampleResignation(today, current, vrs)} initial={live ? NO_DRAFT : { reason: 'better_opportunity', text: '', lwd: requested }} />;
+}
+
 // PPL-18 · phone
 export function ResignationPhone({ today, requested = null }: { today: Date; requested?: Date | null }) {
-  const [lwd, setLwd] = useState<Date | null>(requested);
+  const [draft, setDraft] = useState<ResignDraft>({ reason: 'better_opportunity', text: '', lwd: requested });
   return (
     <PhoneFrame tab="me" title="Resign">
-      <ResignationFields today={today} lwd={lwd} setLwd={setLwd} />
+      <ResignationFields data={sampleResignation(today, null, false).data!} draft={draft} setDraft={setDraft} />
       <Button variant="primary" fullWidth>
         Send resignation
       </Button>

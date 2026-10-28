@@ -75,22 +75,6 @@ export function workingDaysUntil(today: Date, due: Date, holidays: Date[] = []):
   return n;
 }
 
-/* ------------------------------------------------------------------ resignation (YX-LC-04) */
-
-export interface NoticeResult {
-  standardLwd: Date;
-  requestedLwd: Date;
-  shortfallDays: number;
-  /** Recovery for the shortfall on the monthly basic (30-day month), unless waived. */
-  shortfallAmount: number;
-}
-export function noticeOutcome(submittedOn: Date, noticeDays: number, requestedLwd: Date | null, monthlyBasic: number): NoticeResult {
-  const standardLwd = addDays(submittedOn, noticeDays);
-  const req = requestedLwd ?? standardLwd;
-  const shortfallDays = Math.max(0, daysBetween(req, standardLwd));
-  return { standardLwd, requestedLwd: req, shortfallDays, shortfallAmount: Math.round((monthlyBasic / 30) * shortfallDays) };
-}
-
 /* ------------------------------------------------------------------ F&F (M01 §3.8, YX-LC-06) */
 
 export interface FnfLine {

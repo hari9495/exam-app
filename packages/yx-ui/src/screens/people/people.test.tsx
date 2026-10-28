@@ -15,7 +15,6 @@ import {
   isIfsc,
   isPan,
   matchPersons,
-  noticeOutcome,
   preclearanceState,
   probationState,
   reanchor,
@@ -64,13 +63,6 @@ describe('dates and deadlines', () => {
     expect(addWorkingDays(d(2026, 10, 3), 2, HOLIDAYS)).toEqual(d(2026, 10, 6));
     expect(workingDaysUntil(d(2026, 10, 21), d(2026, 10, 22), HOLIDAYS)).toBe(1);
     expect(workingDaysUntil(d(2026, 10, 26), d(2026, 10, 22), HOLIDAYS)).toBe(-3);
-  });
-  it('computes notice shortfall from the policy on the submission date', () => {
-    const n = noticeOutcome(TODAY, 60, d(2026, 11, 6), 30000);
-    expect(n.standardLwd).toEqual(d(2026, 11, 28));
-    expect(n.shortfallDays).toBe(22);
-    expect(n.shortfallAmount).toBe(22000);
-    expect(noticeOutcome(TODAY, 60, null, 30000).shortfallDays).toBe(0);
   });
 });
 

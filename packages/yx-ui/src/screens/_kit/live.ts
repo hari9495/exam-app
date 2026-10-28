@@ -42,6 +42,7 @@ export { BulkChangesWizard, ChangeActionSheet, ScheduledChangesScreen, type Live
 export type { IncrementInput, IncrementResult, LiveIncrement } from '../people/increment';
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
+export { ResignationSheet, type LiveResignation } from '../people/exits';
 export { DeathInServiceFlow, type LiveDeath } from '../people/exits';
 export { ProfileChangeRequest, type LiveProfileChange } from '../people/selfservice';
 export { MyDataScreen, type LiveMyData } from '../people/selfservice';
