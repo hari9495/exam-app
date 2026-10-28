@@ -30,6 +30,8 @@ type Alias = (typeof ALIASES)[number];
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+/** The start of today in India (IST), as an instant. */
+const istDayStart = () => new Date(Date.parse(`${todayIn('Asia/Kolkata')}T00:00:00+05:30`));
 const name = (alias: string) => Prisma.raw(`concat_ws(' ', coalesce(${alias}.preferred_name, ${alias}.given_name), ${alias}.family_name)`);
 /** The tax note shown with every encashment (Income-tax Act 1961). */
 export const ENCASH_TAX_NOTE = 'Cashed-in leave while you work is taxed as salary in the month it is paid. At retirement or resignation it is tax-free up to the limit under section 10(10AA).';
@@ -237,12 +239,12 @@ export class LeaveV2Service implements OnModuleInit {
         const f = await factsOn(tx, org, p.employeeId, today);
         if (!f) continue;
         const expiry = await this.expiryDays(tx, c, f, today);
-        const lapsed = new Map(rows.filter((r) => r.periodKey?.startsWith('coexp:')).map((r) => [r.periodKey!.slice(6), -num(r.days)]));
+        const lapsed = new Map(rows.filter((r) => r.periodKey?.startsWith('ce:')).map((r) => [r.periodKey!.slice(3), -num(r.days)]));
         const credits: CompOffCredit[] = rows.filter((r) => r.kind === 'comp_off').map((r) => ({ key: r.id, on: dateOf(r.entryOn), days: num(r.days), lapsed: lapsed.get(r.id) ?? 0 }));
-        const used = -rows.filter((r) => r.kind !== 'comp_off' && !r.periodKey?.startsWith('coexp:')).reduce((s, r) => s + num(r.days), 0);
+        const used = -rows.filter((r) => r.kind !== 'comp_off' && !r.periodKey?.startsWith('ce:')).reduce((s, r) => s + num(r.days), 0);
         const due = compOffExpiries(credits, used, expiry, today);
         if (!due.length) continue;
-        n += (await tx.leaveLedgerEntry.createMany({ data: due.map((d) => ({ organizationId: org, employeeId: p.employeeId, leaveTypeId: t.id, entryOn: asDate(today), kind: 'lapse', days: -d.days, periodKey: `coexp:${d.key}`, reason: `Comp-off for work on ${fmt(d.on)} not used by ${fmt(compOffUseBy(d.on, expiry)!)}` })), skipDuplicates: true })).count;
+        n += (await tx.leaveLedgerEntry.createMany({ data: due.map((d) => ({ organizationId: org, employeeId: p.employeeId, leaveTypeId: t.id, entryOn: asDate(today), kind: 'lapse', days: -d.days, periodKey: `ce:${d.key}`, reason: `Comp-off for work on ${fmt(d.on)} not used by ${fmt(compOffUseBy(d.on, expiry)!)}` })), skipDuplicates: true })).count;
       }
       if (n) await audit(tx, c, 'leave.comp_off.expired', 'leave_ledger', org, { entries: n });
       return n;
@@ -597,7 +599,7 @@ export class LeaveV2Service implements OnModuleInit {
         WHERE r.organization_id = ${c.organizationId}::uuid AND r.id = ${requestId}::uuid AND r.status = 'pending' AND ${scope('r.employee_id')}`;
       if (!r || !r.wf) throw new NotFoundException('No waiting request in your scope.');
       const key = `leave.remind:${r.id}:${todayIn('Asia/Kolkata')}`;
-      const done = await tx.auditLog.findFirst({ where: { organizationId: c.organizationId, action: 'leave.request.reminded', entityId: r.id, createdAt: { gte: asDate(todayIn('Asia/Kolkata')) } }, select: { id: true } });
+      const done = await tx.auditLog.findFirst({ where: { organizationId: c.organizationId, action: 'leave.request.reminded', entityId: r.id, createdAt: { gte: istDayStart() } }, select: { id: true } });
       if (done) throw new ConflictException('The approver was already reminded today.');
       const to = (await tx.wfTask.findMany({ where: { organizationId: c.organizationId, requestId: r.wf, status: 'open' }, select: { assigneeUserId: true } })).map((t) => t.assigneeUserId);
       if (!to.length) throw new ConflictException('No one is waiting to approve this request.');
@@ -813,7 +815,7 @@ export class LeaveV2Service implements OnModuleInit {
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { f, today, year, need } = await this.blockTarget(tx, c, v, employeeId);
       const plan = await tx.blockLeavePlan.findFirst({ where: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start) } });
-      if (plan?.nudgedAt && dateOf(plan.nudgedAt) === today) throw new ConflictException('Already nudged today.');
+      if (plan?.nudgedAt && todayIn('Asia/Kolkata', plan.nudgedAt) === today) throw new ConflictException('Already nudged today.');
       if (plan) await tx.blockLeavePlan.update({ where: { id: plan.id }, data: { nudgedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       else await tx.blockLeavePlan.create({ data: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start), nudgedAt: new Date(), createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.block.nudged', 'block_leave_plan', employeeId, {});
@@ -964,7 +966,7 @@ export class LeaveV2Service implements OnModuleInit {
       if (rows.length !== ids.length) throw new NotFoundException('Some of those changes were not found.');
       if (rows.some((r) => r.status !== 'waiting')) throw new ConflictException('Some of those changes were already decided. Reload to see the latest.');
       const today = todayIn('Asia/Kolkata');
-      const told: { userId: string; on: string }[] = [];
+      const told: { userId: string; on: string; requestId: string }[] = [];
       let returned = 0;
       for (const r of rows) {
         const accept = dto.accept.includes(r.id);
@@ -978,14 +980,21 @@ export class LeaveV2Service implements OnModuleInit {
           await tx.holiday.create({ data: { organizationId: org, calendarId: r.calendarId, holidayOn: r.holidayOn, name: r.name, kind: 'state', createdBy: c.userId ?? null } });
           for (const d of await this.leaveOnDate(tx, org, r.calendarId, on)) {
             await tx.leaveRequestDay.update({ where: { organizationId_requestId_leaveOn: { organizationId: org, requestId: d.requestId, leaveOn: r.holidayOn } }, data: { portion: 0, countedAs: 'holiday' } });
-            await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { decrement: d.portion }, version: { increment: 1 }, updatedAt: new Date() } });
+            const before = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
+            if (num(before.days) - d.portion > 0) await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { decrement: d.portion }, version: { increment: 1 }, updatedAt: new Date() } });
+            else {
+              // Every day of the request is now a holiday: nothing is left to take, so it ends (a waiting one is withdrawn).
+              if (d.status === 'pending' && before.wfRequestId) await this.engine.withdraw(tx, c, before.wfRequestId, c.userId ?? null, 'Every day of this leave is now a public holiday');
+              await tx.leaveRequest.update({ where: { id: d.requestId }, data: { status: d.status === 'pending' ? 'withdrawn' : 'cancelled', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+              await tx.leaveRequestDay.updateMany({ where: { organizationId: org, requestId: d.requestId }, data: { active: false } });
+            }
             if (d.status !== 'pending' && hasBalance(d.kind)) {
               const req = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
-              await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: r.holidayOn, kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `hol:${d.requestId}:${on}`, reason: `${r.name} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
+              await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: r.holidayOn, kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `h:${on}:${d.requestId.slice(0, 24)}`, reason: `${r.name} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
             }
             await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
             returned += 1;
-            if (d.userId) told.push({ userId: d.userId, on });
+            if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
           }
         }
         await audit(tx, c, accept ? 'holiday.feed.accepted' : 'holiday.feed.ignored', 'holiday_feed_change', r.id, { calendarId: r.calendarId, action: r.action, on, name: r.name });
@@ -994,7 +1003,7 @@ export class LeaveV2Service implements OnModuleInit {
     });
     for (const t of out.told) {
       const text = `${fmt(t.on)} is now a public holiday, so your leave that day went back to your balance.`;
-      await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_added', { entityType: 'holiday', entityId: t.on, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is now a holiday', html: `<p>${escapeHtml(text)}</p>` });
+      await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_added', { entityType: 'leave_request', entityId: t.requestId, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is now a holiday', html: `<p>${escapeHtml(text)}</p>` });
     }
     return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned };
   }
