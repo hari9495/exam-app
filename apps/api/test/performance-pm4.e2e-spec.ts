@@ -69,7 +69,8 @@ describe('Performance batch PM4', () => {
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
-      ['admin2', 'A', 'org_admin', null],
+      // Founder 28 Oct 2026: only HR approves job changes, so the second admin also holds an HR approver role.
+      ['admin2', 'A', 'org_admin', ['employee.profile.view', 'employee.change.approve']],
       ['adminB', 'B', 'org_admin', null],
       ['head', 'A', 'panel', []],
       ['priya', 'A', 'panel', []],

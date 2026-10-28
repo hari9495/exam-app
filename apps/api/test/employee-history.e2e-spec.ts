@@ -5,6 +5,8 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { ROLE_PERMISSIONS } from '../prisma/seed';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { EmployeeHistoryService } from '../src/employee-history/employee-history.service';
@@ -109,8 +111,9 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } }))).id;
     const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro']);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']);
-    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage']);
-    const payApprover = await profile('Payroll Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
+    // Founder 28 Oct 2026: job changes (pay included) are approved by HR only; payroll holds no approve key.
+    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage']);
+    const payApprover = await profile('HR Pay Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     const clerk = await profile('HR Clerk', ['employee.change.manage']);
     const passwordHash = await argon2.hash(PASSWORD);
     const people: [Who, 'A' | 'B', string, string | null][] = [
@@ -680,14 +683,31 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
 
     it('the route names who decides, never the raiser; with pay only those who see pay; a waiting change says who it waits for', async () => {
       const route = (who: Who, q: string) => api(who, 'get', `/people/changes/route?employeeId=${ids.nisha}${q}`);
-      expect((await route('hrA', '').expect(200)).body.approvers).toEqual(['Asha Approver', 'Pavan Payroll', 'Priya Payapprover']);
-      expect((await route('hrA', '&pay=true').expect(200)).body.approvers).toEqual(['Pavan Payroll', 'Priya Payapprover']);
+      expect((await route('hrA', '').expect(200)).body.approvers).toEqual(['Asha Approver', 'Priya Payapprover']);
+      expect((await route('hrA', '&pay=true').expect(200)).body.approvers).toEqual(['Priya Payapprover']);
       await route('outsiderA', '').expect(403);
       await api('adminB', 'get', `/people/changes/route?employeeId=${ids.nisha}`).expect(404);
       const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
       const row = (who: Who) => api(who, 'get', '/people/changes?status=pending').expect(200).then((r) => r.body.find((x: { id: string }) => x.id === raised.id));
-      expect(await row('hrA')).toMatchObject({ waitingFor: ['Asha Approver', 'Pavan Payroll', 'Priya Payapprover'], requestedByName: 'Hema HR', newValues: ['Chennai'] });
-      expect((await row('approverA')).waitingFor).toEqual(['you', 'Pavan Payroll', 'Priya Payapprover']);
+      expect(await row('hrA')).toMatchObject({ waitingFor: ['Asha Approver', 'Priya Payapprover'], requestedByName: 'Hema HR', newValues: ['Chennai'] });
+      expect((await row('approverA')).waitingFor).toEqual(['you', 'Priya Payapprover']);
+      await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
+    });
+
+    it('founder 28 Oct 2026: job changes are approved by HR only: payroll and the System Admin are refused and never named', async () => {
+      for (const t of ['payroll_admin', 'payroll_approver']) expect(ROLE_TEMPLATES.find((x) => x.key === t)!.permissions).not.toContain('employee.change.approve');
+      expect(ROLE_PERMISSIONS.org_admin).not.toContain('employee.change.approve');
+      const raised = (await api('hrA', 'post', '/people/changes').send(change({})).expect(201)).body;
+      expect((await api('hrA', 'get', `/people/changes/route?employeeId=${ids.nisha}&pay=true`).expect(200)).body.approvers).not.toContain('Pavan Payroll');
+      expect((await api('hrA', 'get', '/people/changes?status=pending').expect(200)).body.find((x: { id: string }) => x.id === raised.id).waitingFor).not.toContain('Pavan Payroll');
+      for (const who of ['payrollA', 'adminA'] as const) {
+        await markSteppedUp(tenantPrisma, token[who]);
+        await api(who, 'post', `/people/changes/${raised.id}/approve`).send({}).expect(403);
+        await api(who, 'post', `/people/changes/${raised.id}/reject`).send({ reason: 'No' }).expect(403);
+      }
+      // HR still approves.
+      await markSteppedUp(tenantPrisma, token.approverA);
+      await api('approverA', 'post', `/people/changes/${raised.id}/approve`).send({}).expect(201);
       await api('hrA', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test done' }).expect(201);
     });
 

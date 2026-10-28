@@ -521,7 +521,8 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       await api('payrollA', 'post', `/people/change-batches/${ids.batch}/approve`).send({}).expect(403); // no step-up
       await api('adminB', 'get', `/people/change-batches/${ids.batch}`).expect(404);
       await markSteppedUp(tenantPrisma, token.adminB);
-      await api('adminB', 'post', `/people/change-batches/${ids.batch}/approve`).send({}).expect(404);
+      // Founder 28 Oct 2026: a System Admin does not approve job changes at all (only HR), so the key check refuses first.
+      await api('adminB', 'post', `/people/change-batches/${ids.batch}/approve`).send({}).expect(403);
       // All or nothing: an archived designation stops the whole batch, nothing is applied.
       await tenantPrisma.forTenant(asA(), (tx) => tx.designation.update({ where: { id: ids.lead }, data: { archivedAt: new Date() } }));
       const stopped = await api('approverA', 'post', `/people/change-batches/${ids.batch}/approve`).send({}).expect(400);

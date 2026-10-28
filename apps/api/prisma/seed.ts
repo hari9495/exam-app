@@ -133,9 +133,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org.structure.view',
     'org.settings.manage',
     // P06: the System Admin runs job history (Internal facts) and is the YX-HIS-12 override; no pay (Q1).
+    // Founder 28 Oct 2026: job changes are approved by HR only, so not by the System Admin.
     'employee.profile.view',
     'employee.change.manage',
-    'employee.change.approve',
     'employee.change.retro',
     'employee.change.retro_override',
     // P02 §4.2 System Admin: hands out roles; Personal data (not Confidential) like the rest of the record.
