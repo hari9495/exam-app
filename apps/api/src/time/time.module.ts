@@ -34,12 +34,16 @@ import { DevicesService } from './devices.service';
 import { KioskController } from './kiosk.controller';
 import { KioskService } from './kiosk.service';
 import { FACE_MATCH, faceMatchFromEnv } from './providers/face-match';
+import { HybridPrefillController } from './hybrid-prefill.controller';
+import { HybridService } from './hybrid.service';
+import { PrefillService } from './prefill.service';
+import { WORK_TOOLS, workToolsFromEnv } from './providers/work-tools';
 
 // M02 Time and leave (step 4, batches 1 and 2) on the shared P03 approvals engine and P19 conditions.
 @Module({
   imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule, CryptoModule],
-  controllers: [TimeController, TimeOpsController, LeaveV2Controller, AttendanceOpsController, DevicesController, KioskController, FieldController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }],
+  controllers: [TimeController, TimeOpsController, LeaveV2Controller, AttendanceOpsController, DevicesController, KioskController, FieldController, HybridPrefillController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }, HybridService, PrefillService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).
   // LeaveV2Service.creditCompOff: the one comp-off ledger, for overtime settled as comp-off (TIM-09).
   exports: [LeaveService, PeriodsService, LeaveV2Service],
