@@ -116,52 +116,72 @@ export class AttendanceService implements OnModuleInit {
     const pinGiven = dto.lat !== undefined && dto.lng !== undefined;
     if ((dto.lat === undefined) !== (dto.lng === undefined)) throw new BadRequestException('Send both latitude and longitude, or neither.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
       const { f } = await this.meFacts(tx, c);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${f.employeeId}`}))`;
-      const now = new Date();
-      const today = todayIn(f.zone, now);
-      const rule = (await rulesFor(tx, org, f.locationId, today))(today);
-      // A night shift's morning punch belongs to the day the shift started (YX-AT-13).
-      const book = await ScheduleBook.load(tx, org);
-      await book.prime([f.employeeId], addDays(today, -1), today);
-      const shifts = new Map<string, Awaited<ReturnType<ScheduleBook['day']>>['shift']>();
-      for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
-      const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true }, orderBy: { punchedAt: 'desc' } });
-      if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[dto.kind], distanceM: last.distanceM };
-      // A break belongs to the day a check-out now would close (a break across midnight stays on the night shift's
-      // day). It starts while working that day and ends while on it.
-      const workOn = workOnForPunch(now, f.zone, dto.kind === 'in' ? 'in' : 'out', (d) => shifts.get(d) ?? null);
-      const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
-      if (dto.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
-      if (dto.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
-      // An approved work-from-home day: the punch records where the person is and is never refused for the place.
-      const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
-      const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: wfh ? 'field' : rule.checkIn });
-      if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
-      await tx.punch.create({
-        data: {
-          organizationId: org,
-          employeeId: f.employeeId,
-          punchedAt: now,
-          workOn: asDate(workOn),
-          kind: dto.kind,
-          source: 'web',
-          accepted: v.accepted,
-          refusal: v.accepted ? null : v.message,
-          lat: pinGiven ? dto.lat : null,
-          lng: pinGiven ? dto.lng : null,
-          accuracyM: dto.accuracyM === undefined ? null : Math.round(dto.accuracyM),
-          distanceM: v.distanceM,
-          verdict: v.verdict,
-          locationId: v.locationId,
-          ip: ip?.slice(0, 45) ?? null,
-          device: device?.slice(0, 200) ?? null,
-        },
-      });
-      if (v.accepted) await this.days.evaluate(tx, c, f.employeeId, workOn, workOn, now);
-      return { accepted: v.accepted, duplicate: false, kind: dto.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[dto.kind]}. ${v.message}` : v.message, distanceM: v.distanceM };
+      const { punchId: _id, ...out } = await this.record(tx, c, f, { kind: dto.kind, at: new Date(), source: 'web', pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM } : null, ip, device });
+      return out;
     });
+  }
+
+  /**
+   * One punch of a person through the shared day, shift and break rules: the web punch (now), and the kiosk and phone
+   * punches of TIM-12 / 13 (`at` may be up to 72 h old when a device syncs; a locked month is refused). A kiosk's
+   * place decides where it was (its location must be one of the person's places, unless they work in the field).
+   */
+  async record(tx: Tx, c: CompanyContext, f: Facts, p: { kind: PunchDto['kind']; at: Date; source: 'web' | 'kiosk' | 'mobile'; pin: { lat: number; lng: number; accuracyM?: number } | null; ip: string | null; device: string | null; kioskLocationId?: string }) {
+    const org = c.organizationId;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${f.employeeId}`}))`;
+    const now = p.at;
+    const today = todayIn(f.zone, now);
+    const rule = (await rulesFor(tx, org, f.locationId, today))(today);
+    // A night shift's morning punch belongs to the day the shift started (YX-AT-13).
+    const book = await ScheduleBook.load(tx, org);
+    await book.prime([f.employeeId], addDays(today, -1), today);
+    const shifts = new Map<string, Awaited<ReturnType<ScheduleBook['day']>>['shift']>();
+    for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
+    // The latest punch up to this one (a device's offline punch may arrive after later ones).
+    const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true, punchedAt: { lte: now } }, orderBy: { punchedAt: 'desc' } });
+    if (last && last.kind === p.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: p.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[p.kind], distanceM: last.distanceM, punchId: last.id };
+    // A break belongs to the day a check-out now would close (a break across midnight stays on the night shift's
+    // day). It starts while working that day and ends while on it.
+    const workOn = workOnForPunch(now, f.zone, p.kind === 'in' ? 'in' : 'out', (d) => shifts.get(d) ?? null);
+    if (p.source !== 'web') await assertOpen(tx, org, f.employeeId, workOn);
+    const state = last && dateOf(last.workOn) === workOn ? last.kind : null;
+    if (p.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
+    if (p.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
+    // An approved work-from-home day: the punch records where the person is and is never refused for the place.
+    const wfh = Boolean(await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(workOn), kind: 'wfh', status: 'approved' }, select: { id: true } }));
+    const fences = await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]);
+    let v: ReturnType<typeof checkInVerdict>;
+    if (p.kioskLocationId) {
+      const here = (await this.fences(tx, org, [p.kioskLocationId]))[0];
+      const ok = fences.some((x) => x.locationId === p.kioskLocationId) || rule.checkIn === 'field' || wfh;
+      v = ok ? { accepted: true, verdict: 'inside', distanceM: null, locationId: p.kioskLocationId, message: `At the ${here?.name ?? 'site'} kiosk` } : { accepted: false, verdict: 'outside', distanceM: null, locationId: p.kioskLocationId, message: `This kiosk is not at one of your work places. Check in at ${fences[0]?.name ?? 'your own site'}.` };
+    } else {
+      v = checkInVerdict({ fences, pin: p.pin ? { lat: p.pin.lat, lng: p.pin.lng, accuracyM: p.pin.accuracyM ?? 9999 } : null, ip: p.ip, mode: wfh ? 'field' : rule.checkIn });
+      if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
+    }
+    const row = await tx.punch.create({
+      data: {
+        organizationId: org,
+        employeeId: f.employeeId,
+        punchedAt: now,
+        workOn: asDate(workOn),
+        kind: p.kind,
+        source: p.source,
+        accepted: v.accepted,
+        refusal: v.accepted ? null : v.message,
+        lat: p.pin ? p.pin.lat : null,
+        lng: p.pin ? p.pin.lng : null,
+        accuracyM: p.pin?.accuracyM === undefined ? null : Math.round(p.pin.accuracyM),
+        distanceM: v.distanceM,
+        verdict: v.verdict,
+        locationId: v.locationId,
+        ip: p.ip?.slice(0, 45) ?? null,
+        device: p.device?.slice(0, 200) ?? null,
+      },
+    });
+    if (v.accepted) await this.days.evaluate(tx, c, f.employeeId, workOn, workOn, new Date());
+    return { accepted: v.accepted, duplicate: false, kind: p.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[p.kind]}. ${v.message}` : v.message, distanceM: v.distanceM, punchId: row.id };
   }
 
   /** A fix for a day (M02 §B4, Q5), through P03: the manager, and HR too beyond the monthly limit. */
