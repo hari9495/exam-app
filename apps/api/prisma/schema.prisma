@@ -5014,6 +5014,135 @@ model LeaveRequestDay {
   @@map("leave_request_days")
 }
 
+/// Leave v2: dates the company asks people not to take planned leave (TIM-18 company block date).
+model LeaveBlockDate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime  @map("to_on") @db.Date
+  reason         String    @db.VarChar(200)
+  scopeType      String    @default("tenant") @map("scope_type") @db.VarChar(20)
+  scopeId        String?   @map("scope_id") @db.Uuid
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("leave_block_dates")
+}
+
+/// TIM-22: a claim for working on a weekly off or holiday; approved claims credit the leave ledger (kind comp_off).
+model CompOffClaim {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  workedOn       DateTime  @map("worked_on") @db.Date
+  dayKind        String    @map("day_kind") @db.VarChar(10)
+  workedMinutes  Int       @map("worked_minutes") @db.SmallInt
+  days           Decimal   @db.Decimal(3, 1)
+  reason         String    @db.VarChar(500)
+  status         String    @default("pending") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("comp_off_claims")
+}
+
+/// TIM-24: earned leave cashed in while in service; approved requests become a payroll one-time pay.
+model LeaveEncashment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  leaveTypeId    String    @map("leave_type_id") @db.Uuid
+  days           Decimal   @db.Decimal(5, 1)
+  dailyRate      Decimal?  @map("daily_rate") @db.Decimal(12, 2)
+  amount         Decimal?  @db.Decimal(14, 2)
+  status         String    @default("pending") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  oneTimePayId   String?   @map("one_time_pay_id") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("leave_encashments")
+}
+
+/// TIM-25: maternity, sabbatical or long leave without pay, with its effect on accrual.
+model LongAbsence {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  kind            String    @db.VarChar(12)
+  fromOn          DateTime  @map("from_on") @db.Date
+  toOn            DateTime  @map("to_on") @db.Date
+  plannedToOn     DateTime  @map("planned_to_on") @db.Date
+  accrues         Boolean
+  requestId       String?   @map("request_id") @db.Uuid
+  returnAskedOn   DateTime? @map("return_asked_on") @db.Date
+  returnAskedNote String?   @map("return_asked_note") @db.VarChar(500)
+  note            String    @db.VarChar(500)
+  version         Int       @default(1)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("long_absences")
+}
+
+/// TIM-39: one block-leave plan per person and leave year.
+model BlockLeavePlan {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  yearStart      DateTime  @map("year_start") @db.Date
+  fromOn         DateTime? @map("from_on") @db.Date
+  toOn           DateTime? @map("to_on") @db.Date
+  accessPause    String    @default("none") @map("access_pause") @db.VarChar(10)
+  nudgedAt       DateTime? @map("nudged_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("block_leave_plans")
+}
+
+/// TIM-42: a state's public-holiday feed (provider behind an adapter; provider: to decide).
+model HolidayFeed {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  state          String    @db.VarChar(10)
+  provider       String    @db.VarChar(20)
+  checkedAt      DateTime? @map("checked_at") @db.Timestamptz(3)
+  checkError     String?   @map("check_error") @db.VarChar(300)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("holiday_feeds")
+}
+
+/// TIM-42: a change a feed found for one calendar, waiting for HR before employees see it.
+model HolidayFeedChange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  feedId         String    @map("feed_id") @db.Uuid
+  calendarId     String    @map("calendar_id") @db.Uuid
+  action         String    @db.VarChar(6)
+  holidayOn      DateTime  @map("holiday_on") @db.Date
+  name           String    @db.VarChar(100)
+  holidayId      String?   @map("holiday_id") @db.Uuid
+  status         String    @default("waiting") @db.VarChar(8)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("holiday_feed_changes")
+}
+
 model LocationAttendanceRule {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId    String   @map("organization_id") @db.Uuid
