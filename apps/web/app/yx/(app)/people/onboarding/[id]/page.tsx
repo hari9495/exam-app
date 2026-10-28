@@ -86,29 +86,29 @@ export default function YxJourneyPage() {
           places={places}
           plan={{ departmentId: pb.departmentId, designationId: pb.designationId, employmentTypeId: pb.employmentTypeId }}
           canJoin={perms.has('lifecycle.onboarding.manage') && perms.has('employee.change.manage')}
-          onPlan={(patch) => write('PUT', `${base}/plan`, { ...patch, version: pb.version })}
-          onJoin={(x) => write('POST', `${base}/join`, { ...x, version: pb.version })}
+          onPlan={async (patch) => { await write('PUT', `${base}/plan`, { ...patch, version: pb.version }); toast({ tone: 'success', title: `Job details saved for ${who}` }); }}
+          onJoin={async (x) => { await write('POST', `${base}/join`, { ...x, version: pb.version }); toast({ tone: 'success', title: `${who} marked joined`, description: 'Their employee record is made.' }); }}
           bgv={
             perms.has('lifecycle.bgv.manage')
               ? {
-                  onAsk: () => write('POST', `${base}/bgv/ask`),
-                  onAdd: (checkType, gate) => write('POST', `${base}/bgv/checks`, { checkType, gate }),
+                  onAsk: async () => { await write('POST', `${base}/bgv/ask`); toast({ tone: 'success', title: `${who} asked for background check consent` }); },
+                  onAdd: async (checkType, gate) => { await write('POST', `${base}/bgv/checks`, { checkType, gate }); toast({ tone: 'success', title: `${checkType[0].toUpperCase()}${checkType.slice(1)} check added for ${who}` }); },
                   onUpdate: (checkId, version, x) => {
                     const form = new FormData();
                     form.append('status', x.status);
                     form.append('version', String(version));
                     if (x.note) form.append('note', x.note);
                     if (x.file) form.append('file', x.file);
-                    return write('POST', `/lifecycle/bgv/checks/${encodeURIComponent(checkId)}`, form);
+                    return write('POST', `/lifecycle/bgv/checks/${encodeURIComponent(checkId)}`, form).then(() => toast({ tone: 'success', title: `Check result saved for ${who}` }));
                   },
                 }
               : undefined
           }
         />
       )}
-      {hrJoiner && pb && pb.status === 'invited' && rehire.data && <RehireCard data={rehire.data} onSave={(overrides, version) => write('PUT', `${base}/rehire`, { overrides, version })} />}
+      {hrJoiner && pb && pb.status === 'invited' && rehire.data && <RehireCard data={rehire.data} onSave={async (overrides, version) => { await write('PUT', `${base}/rehire`, { overrides, version }); toast({ tone: 'success', title: `Rehire choices saved for ${who}` }); }} />}
       {hrJoiner && pb && pb.status === 'invited' && (
-        <BuddyCard people={places.managers} current={pb.buddyEmployeeId ?? null} managerEmployeeId={pb.managerEmployeeId ?? null} onSave={(employeeId) => write('PUT', `${base}/buddy`, { employeeId, version: pb.version })} />
+        <BuddyCard people={places.managers} current={pb.buddyEmployeeId ?? null} managerEmployeeId={pb.managerEmployeeId ?? null} onSave={async (employeeId) => { await write('PUT', `${base}/buddy`, { employeeId, version: pb.version }); toast({ tone: 'success', title: employeeId ? `Buddy saved for ${who}` : `Buddy removed for ${who}` }); }} />
       )}
           </>
         ),

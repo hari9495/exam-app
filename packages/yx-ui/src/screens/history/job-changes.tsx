@@ -21,6 +21,7 @@ export type ChangeAsk = { kind: 'reject' | 'cancel' | 'reschedule'; row: ChangeR
 export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: ChangeRecord; onPreview: (id: string) => Promise<Impact>; onApprove: (confirm: boolean) => Promise<void>; onReject: () => void; onClose: () => void }) {
   const [impact, setImpact] = useState<Impact | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [early, setEarly] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
     onPreview(row.id).then(setImpact, (e) => setLoadError(errorText(e)));
@@ -38,7 +39,7 @@ export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: 
         <>
           <Button onClick={onClose} disabled={busy !== null}>Close</Button>
           <Button variant="danger" onClick={onReject} disabled={busy !== null}>Reject</Button>
-          <Button variant="approve" loading={busy === 'approve'} disabled={!impact} onClick={() => void run('approve', () => onApprove(rebased > 0)).then((ok) => ok && onClose())}>
+          <Button variant="approve" loading={busy === 'approve'} onClick={() => (impact ? void run('approve', () => onApprove(rebased > 0)).then((ok) => ok && onClose()) : setEarly(true))}>
             {rebased ? 'Approve and recalculate' : 'Approve'}
           </Button>
         </>
@@ -50,6 +51,7 @@ export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: 
         {loadError && <ErrorState title="We couldn't work out the impact." description={loadError} />}
         {!impact && !loadError && <Skeleton height={160} />}
         {impact && <ImpactPanel impact={impact} />}
+        {early && !impact && <InlineAlert tone="warning" title="Approve once the impact shows">{loadError ? 'Close this and open the change again to work out its impact.' : 'It is still being worked out.'}</InlineAlert>}
         {error && <InlineAlert tone="danger" title="Not approved">{error}</InlineAlert>}
       </div>
     </Drawer>

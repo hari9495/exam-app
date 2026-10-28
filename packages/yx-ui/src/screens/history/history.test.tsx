@@ -253,7 +253,10 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
     expect(box.closest('.yx-drawer__notice')).not.toBeNull(); // above the buttons, not scrolled away at the top of the form
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('personId');
     const link = within(dialog).getByRole('button', { name: 'Link and add' });
-    expect(link).toBeDisabled();
+    // Never disabled: pressed without the check, it says what is missing and sends nothing.
+    await u.click(link);
+    expect(within(dialog).getByText('Tick that you checked it is the same person, or change the email or phone.')).toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
     await u.click(within(dialog).getByRole('checkbox', { name: 'I checked: this is the same person' }));
     await u.click(link);
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('e-new'));

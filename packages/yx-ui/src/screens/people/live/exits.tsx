@@ -406,7 +406,14 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
   const [cost, setCost] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ready = category.trim() && name.trim() && /^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$/.test(tag.trim()) && (!cost || MONEY.test(cost));
+  const [tried, setTried] = useState(false);
+  const problems = {
+    category: category.trim() ? null : 'Enter the kind, for example Laptop.',
+    name: name.trim() ? null : 'Enter the name.',
+    tag: !tag.trim() ? 'Enter the asset tag.' : /^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$/.test(tag.trim()) ? null : 'Use letters, digits, dot, dash or slash, starting with a letter or digit.',
+    cost: !cost || MONEY.test(cost) ? null : 'Enter an amount like 54000 or 54000.50.',
+  };
+  const shown = (k: keyof typeof problems) => (tried ? problems[k] : null);
   return (
     <Drawer
       open
@@ -418,9 +425,10 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ready}
             loading={busy}
             onClick={async () => {
+              setTried(true);
+              if (Object.values(problems).some(Boolean)) return;
               setBusy(true);
               setError(null);
               try {
@@ -444,13 +452,13 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
         </InlineAlert>
       )}
       <div className="yx-lif-grid">
-        <FormField id="as-cat" label="Kind" required helper="For example Laptop, Phone, Access card.">
+        <FormField id="as-cat" label="Kind" required helper="For example Laptop, Phone, Access card." error={shown('category')}>
           <TextField value={category} onChange={setCategory} maxLength={40} />
         </FormField>
-        <FormField id="as-name" label="Name" required>
+        <FormField id="as-name" label="Name" required error={shown('name')}>
           <TextField value={name} onChange={setName} maxLength={150} />
         </FormField>
-        <FormField id="as-tag" label="Asset tag" required helper="Unique in the company: letters, digits, dot, dash, slash.">
+        <FormField id="as-tag" label="Asset tag" required helper="Unique in the company: letters, digits, dot, dash, slash." error={shown('tag')}>
           <TextField value={tag} onChange={setTag} maxLength={60} />
         </FormField>
         <FormField id="as-serial" label="Serial number" optional>
@@ -462,7 +470,7 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
         <FormField id="as-location" label="Location" optional>
           <Select aria-label="Location" value={location} onChange={setLocation} options={locations.filter((l) => l.entityId === entity)} disabled={!entity} clearable />
         </FormField>
-        <FormField id="as-cost" label="Cost (₹)" optional helper="Used as the recovery when it is not returned.">
+        <FormField id="as-cost" label="Cost (₹)" optional helper="Used as the recovery when it is not returned." error={shown('cost')}>
           <TextField value={cost} onChange={setCost} inputMode="decimal" maxLength={15} />
         </FormField>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
 import { DatePicker } from '../../../components/date';
@@ -70,7 +70,7 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
           }}
         >
           {data.options.map((o) => (
-            <div key={o.key}>
+            <Fragment key={o.key}>
               <FormField id={`rh-${o.key}`} label={o.label} helper={`Policy: ${choiceLabel(o.policy)}`}>
                 <Select aria-label={o.label} value={values[o.key]} onChange={(x) => setValues({ ...values, [o.key]: x ?? o.policy })} options={o.choices.map((c) => ({ value: c, label: choiceLabel(c) }))} />
               </FormField>
@@ -79,7 +79,7 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
                   <TextField value={reasons[o.key] ?? ''} onChange={(x) => setReasons({ ...reasons, [o.key]: x })} maxLength={300} />
                 </FormField>
               )}
-            </div>
+            </Fragment>
           ))}
         </ConfirmDialog>
       )}
@@ -91,6 +91,7 @@ export function RehireCard({ data, onSave }: { data: RehireView; onSave: (overri
 
 export function BuddyCard({ people, current, managerEmployeeId, onSave }: { people: Choice[]; current: string | null; managerEmployeeId: string | null; onSave: (employeeId: string | null) => Promise<unknown> }) {
   const [pick, setPick] = useState<string | null>(current);
+  const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -103,18 +104,20 @@ export function BuddyCard({ people, current, managerEmployeeId, onSave }: { peop
           {error}
         </InlineAlert>
       )}
-      <FormField id="bd-who" label="Buddy" optional>
+      <FormField id="bd-who" label="Buddy" optional error={tried && pick === current ? (current ? 'This is already their buddy. Choose someone else, or clear it to remove the buddy.' : 'Choose a buddy.') : null}>
         <Select aria-label="Buddy" value={pick} onChange={setPick} options={people.filter((x) => x.value !== managerEmployeeId)} clearable searchable />
       </FormField>
       <Button
         size="sm"
-        disabled={pick === current}
         loading={busy}
         onClick={async () => {
+          setTried(true);
+          if (pick === current) return;
           setBusy(true);
           setError(null);
           try {
             await onSave(pick);
+            setTried(false);
           } catch (e) {
             setError((e as Error).message);
           } finally {
@@ -199,14 +202,15 @@ export function AddMembersDialog({ batch, joiners, onClose, onAdd }: { batch: Ba
   const [picked, setPicked] = useState<string[]>([]);
   const [tried, setTried] = useState(false);
   return (
-    // confirmDisabled kept only when nobody is waiting: nothing in this dialog can fix that.
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" confirmDisabled={!joiners.length} onConfirm={async () => { setTried(true); if (!picked.length) return false; await onAdd(batch, picked); onClose(); }}>
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Add joiners to ${batch.name}`} consequence="They move to the batch's joining day." confirmLabel="Add joiners" onConfirm={async () => { setTried(true); if (!picked.length) return false; await onAdd(batch, picked); onClose(); }}>
       {joiners.length ? (
         <FormField id="am-joiners" label="Joiners" required error={tried && !picked.length ? 'Choose at least one joiner.' : null}>
           {joiners.map((j) => <Checkbox key={j.value} checked={picked.includes(j.value)} onChange={(c) => setPicked(c ? [...picked, j.value] : picked.filter((x) => x !== j.value))} label={j.label} />)}
         </FormField>
       ) : (
-        <Text as="p">No joiners of this legal entity are waiting outside a batch.</Text>
+        <FormField id="am-joiners" label="Joiners" error={tried ? 'Nobody to add yet. Add joiners of this legal entity first, then come back.' : null}>
+          <Text as="p">No joiners of this legal entity are waiting outside a batch.</Text>
+        </FormField>
       )}
     </ConfirmDialog>
   );

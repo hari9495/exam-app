@@ -156,7 +156,7 @@ export default function YxDirectoryPage() {
         <HireDrawer
           options={options}
           legalEntities={(entities.data ?? []).map((e) => ({ value: e.id, label: e.name }))}
-          onSubmit={(input: HireInput) => write<{ id: string }>('POST', '/employees', input)}
+          onSubmit={async (input: HireInput) => { const made = await write<{ id: string }>('POST', '/employees', input); toast({ tone: 'success', title: `${input.givenName} added` }); return made; }}
           onCreated={(personId) => router.push(`/yx/people/history?person=${id(personId)}`)}
           onClose={() => setAdding(false)}
         />

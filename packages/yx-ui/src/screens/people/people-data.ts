@@ -3,6 +3,7 @@ import { DEPARTMENT_HEADS, EMPLOYEES, HOLIDAYS_2026, ME, TODAY } from '../_kit/d
 import type { OrgPerson } from '../../components/orgchart';
 import type { FieldClass, FnfLine, JourneyTask, PaySplit } from './people-logic';
 import type { PayAccessRow } from './pay-access';
+import type { Batch, Choice, ImportResult, JoinerForms, JoinerPlaces, RehireView } from './live/types';
 
 export { EMPLOYEES, ME, TODAY };
 export const HOLIDAYS = HOLIDAYS_2026.map((h) => h.date);
@@ -696,3 +697,85 @@ export const PAY_ACCESS_ROWS: PayAccessRow[] = [
   asked({ id: 'pa5', state: 'ended', manager: { id: 'o11', name: 'Anjali Iyer' }, person: { id: 't9', name: 'Ritu Sharma' }, covers: 'Ritu Sharma', reason: 'Counter-offer.', days: 15, askedAt: '2026-08-04T07:30:00Z', first: { by: 'Karthik Subramanian', at: '2026-08-04T09:00:00Z', note: null }, decided: { by: 'Lakshmi Venkatesan', at: '2026-08-05T06:45:00Z', note: null }, validTo: '2026-08-19' }),
   asked({ id: 'pa6', state: 'refused', manager: { id: 'o13', name: 'Prakash Menon' }, scope: 'team', person: null, covers: 'their whole team (12 people)', reason: 'Want to compare pay across the plant.', askedAt: '2026-09-12T07:30:00Z', decided: { by: 'Lakshmi Venkatesan', at: '2026-09-12T12:10:00Z', note: 'Pay across the plant is a payroll report, not team access.' } }),
 ];
+
+/* ------------------------------------------------------------------ People popups (design stories for the live dialogs) */
+
+/** The live popups take the day as yyyy-mm-dd: the sample's TODAY (29 Sep 2026). */
+export const TODAY_KEY = '2026-09-29';
+export const ENTITY_CHOICES: Choice[] = [
+  { value: 'le-ka', label: 'Kaveri Foods Pvt Ltd' },
+  { value: 'le-tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },
+];
+export const JOINER_PLACES: JoinerPlaces = {
+  entities: ENTITY_CHOICES,
+  locations: [
+    { value: 'loc-blr', label: 'Bengaluru head office', entityId: 'le-ka' },
+    { value: 'loc-hsr', label: 'Hosur plant', entityId: 'le-tn' },
+    { value: 'loc-che', label: 'Chennai office', entityId: 'le-tn' },
+  ],
+  departments: [{ value: 'd-qa', label: 'Quality' }, { value: 'd-prod', label: 'Production' }, { value: 'd-sales', label: 'Sales' }, { value: 'd-ppl', label: 'People' }],
+  designations: [{ value: 'g-qa', label: 'Quality Analyst' }, { value: 'g-ps', label: 'Production Supervisor' }, { value: 'g-st', label: 'Sales Trainee' }],
+  employmentTypes: [{ value: 't-perm', label: 'Permanent' }, { value: 't-ftc', label: 'Fixed-term contract' }, { value: 't-trn', label: 'Trainee' }],
+  managers: [{ value: 'm-divya', label: 'Divya Raghunathan, Quality' }, { value: 'm-ramesh', label: 'Ramesh Gowda, Production' }, { value: 'm-joseph', label: 'Joseph Mathew, Sales' }],
+};
+export const PERSON_CHOICES: Choice[] = [
+  { value: 'e-arjun', label: 'Arjun Kulkarni · KF-0142' },
+  { value: 'e-imran', label: 'Imran Qureshi · KF-0388' },
+  { value: 'e-rohit', label: 'Rohit Menon · KF-0415' },
+  { value: 'e-sana', label: 'Sana Menon · KF-0502' },
+];
+export const IR_PERMISSION_CHOICES: Choice[] = [{ value: 'ir-1', label: 'Hosur plant retrenchment · applied 2 Sep 2026' }];
+export const IMPORT_PREVIEW: ImportResult = {
+  committed: false,
+  added: 0,
+  rows: [
+    { line: 2, name: 'Kavya Reddy', joiningOn: '2026-10-05', ok: true, problem: null },
+    { line: 3, name: 'Ananya Das', joiningOn: '2026-11-02', ok: true, problem: null },
+    { line: 4, name: 'Mohan Kumar', joiningOn: '2026-09-01', ok: false, problem: 'The joining day is in the past.' },
+  ],
+};
+export const IMPORT_CSV = 'given_name,family_name,email,phone,joining_on,legal_entity,location\nKavya,Reddy,kavya.r@mail.test,+919845022233,2026-10-05,KFPL-TN,Hosur plant';
+export const JOINER_FORMS: JoinerForms = {
+  id: 'pb-kavya',
+  status: 'invited',
+  outcome: null,
+  completion: 67,
+  sections: { personal: 'done', identity: 'done', bank: 'done', emergency: 'done', nominees: 'to_do', tax: 'to_do' },
+  answers: {
+    personal: { dateOfBirth: '1999-02-11', gender: 'female', addressLine1: '22, Gandhi Nagar', city: 'Hosur', stateCode: 'IN-TN', postalCode: '635109' },
+    identity: { legalName: 'Kavya Reddy', pan: '••••••481K', aadhaar: '•••• 7712', uan: null },
+    bank: { holderName: 'Kavya Reddy', account: '•••• 5521', ifsc: 'CNRB0001234' },
+    emergency: { name: 'Lakshmi Reddy', relation: 'Mother', phone: '+91 98450 33344' },
+    nominees: null,
+    tax: null,
+  },
+  identityAttested: false,
+  bgv: {
+    requested: true,
+    consent: { givenAt: '2026-09-24T06:00:00Z', withdrawnAt: null },
+    checks: [
+      { id: 'bc-1', checkType: 'education', status: 'clear', gate: 'none', note: 'B.Tech Food Technology, 2021, confirmed by the university.', resultDocumentId: null, version: 2 },
+      { id: 'bc-2', checkType: 'employment', status: 'in_progress', gate: 'before_joining', note: null, resultDocumentId: null, version: 1 },
+    ],
+  },
+  version: 4,
+};
+export const REHIRE_VIEW: RehireView = {
+  previous: { employeeCode: 'KF-0277', joinedOn: '2022-06-01', exitedOn: '2026-03-31', exitType: 'resignation', rehireEligible: true, breakMonths: 6, sameEntityFy: false },
+  options: [
+    { key: 'gratuity', label: 'Gratuity service', choices: ['fresh', 'add_prior'], policy: 'fresh', value: 'fresh', overridden: false, reason: null, meaning: 'Gratuity service starts fresh.' },
+    { key: 'leave', label: 'Leave balance', choices: ['fresh', 'carry_lt_6m'], policy: 'carry_lt_6m', value: 'carry_lt_6m', overridden: false, reason: null, meaning: 'Earned leave carries over if the break was under 6 months.' },
+  ],
+  version: 3,
+};
+export const LIVE_BATCH: Batch = {
+  id: 'b3',
+  name: 'Campus 2026 · Sales trainees',
+  legalEntityId: 'le-ka',
+  joiningOn: '2026-10-19',
+  touchpoints: [{ on: '2026-10-05', title: 'Welcome call' }, { on: '2026-10-12', title: 'Plant visit' }],
+  status: 'open',
+  version: 2,
+  members: [{ id: 'bm1', personId: 'p-ananya', name: 'Ananya Das', status: 'invited', joiningOn: '2026-10-19' }],
+};
+export const WAITING_JOINERS: Choice[] = [{ value: 'pb-rahul', label: 'Rahul Verma, joins 26 Oct 2026' }, { value: 'pb-meena', label: 'Meena Iyer, joins 2 Nov 2026' }];

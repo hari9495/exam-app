@@ -115,6 +115,7 @@ export function JoinerPanel(p: JoinerPanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [tried, setTried] = useState(false);
   const [triedResult, setTriedResult] = useState(false);
+  const [triedJoin, setTriedJoin] = useState(false);
   const closeAsk = () => {
     setAsk(null);
     setTried(false);
@@ -142,7 +143,7 @@ export function JoinerPanel(p: JoinerPanelProps) {
           p.canJoin ? (
             <>
               {missingPlan && <Button onClick={() => setAsk('plan')}>Add job details</Button>}
-              <Button variant="primary" disabled={!dayReached || missingPlan} onClick={() => setAsk('join')}>
+              <Button variant="primary" onClick={() => (dayReached && !missingPlan ? setAsk('join') : setTriedJoin(true))}>
                 Mark joined
               </Button>
             </>
@@ -150,8 +151,8 @@ export function JoinerPanel(p: JoinerPanelProps) {
         }
       >
         <Meter value={f.completion} max={100} label="Pre-boarding done" warnAt={101} dangerAt={101} valueText={`${f.completion}% done by the joiner`} />
-        {!dayReached && p.canJoin && <Text as="p" tone="secondary" size="sm">{`Mark joined becomes available on ${dateText(p.joiningOn)}, the joining day.`}</Text>}
-        {missingPlan && p.canJoin && <Text as="p" tone="secondary" size="sm">Add the department, designation and employment type before the joining day.</Text>}
+        {!dayReached && p.canJoin && <Text as="p" tone={triedJoin ? 'danger' : 'secondary'} size="sm">{`Mark joined becomes available on ${dateText(p.joiningOn)}, the joining day.`}</Text>}
+        {missingPlan && p.canJoin && <Text as="p" tone={triedJoin ? 'danger' : 'secondary'} size="sm">Add the department, designation and employment type before the joining day.</Text>}
         <div className="yx-lif-grid">
           <SectionsList sections={f.sections} />
           <AnswersList a={f.answers} />
@@ -200,7 +201,9 @@ export function JoinerPanel(p: JoinerPanelProps) {
       )}
       {ask === 'join' && (
         <ConfirmDialog open onOpenChange={(o) => !o && closeAsk()} size="md" title="Mark as joined?" consequence="The employee record is made today with the planned job. PAN, Aadhaar and bank details go to someone else for approval. The joining portal closes." confirmLabel="Mark joined" onConfirm={async () => { setTried(true); if (!attested) return false; await p.onJoin({ identityAttested: attested, status }); }}>
-          <Segment label="Starts on" value={status} onChange={setStatus} options={[{ value: 'probation', label: 'Probation' }, { value: 'confirmed', label: 'Confirmed' }]} />
+          <FormField id="jn-status" label="Starts on">
+            <Segment label="Starts on" value={status} onChange={setStatus} options={[{ value: 'probation', label: 'Probation' }, { value: 'confirmed', label: 'Confirmed' }]} />
+          </FormField>
           <FormField id="jn-id" label="Identity check" hideLabel required error={tried && !attested ? "Tick that you checked the joiner's original ID today." : null}>
             <Checkbox checked={attested} onChange={setAttested} label="I checked the joiner's original ID today" description="Required. YukthiX records who checked and when." />
           </FormField>
@@ -224,7 +227,9 @@ export function JoinerPanel(p: JoinerPanelProps) {
           <FormField id="bg-type" label="What to check" required error={tried && !checkType ? 'Choose what to check.' : null}>
             <Select aria-label="What to check" value={checkType} onChange={setCheckType} options={CHECKS} />
           </FormField>
-          <Segment label="Joining" value={gate} onChange={setGate} options={[{ value: 'none', label: 'Can join before the result' }, { value: 'before_joining', label: 'Must be clear first' }]} />
+          <FormField id="bg-gate" label="Joining">
+            <Segment label="Joining" value={gate} onChange={setGate} options={[{ value: 'none', label: 'Can join before the result' }, { value: 'before_joining', label: 'Must be clear first' }]} />
+          </FormField>
         </ConfirmDialog>
       )}
       {result && p.bgv && (

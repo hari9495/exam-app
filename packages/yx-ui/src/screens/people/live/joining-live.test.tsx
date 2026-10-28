@@ -17,7 +17,10 @@ describe('Joiner panel (6b)', () => {
   it('Mark joined waits for the joining day and needs the identity check', async () => {
     const onJoin = vi.fn(async () => ({}));
     const { rerender } = render(<JoinerPanel {...base} onJoin={onJoin} today="2026-10-09" joiningOn="2026-10-19" />);
-    expect(screen.getByRole('button', { name: 'Mark joined' })).toBeDisabled();
+    // Never disabled: pressed before the day, the reason turns red and no dialog opens.
+    await ue.click(screen.getByRole('button', { name: 'Mark joined' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/Mark joined becomes available on/)).toHaveAttribute('data-tone', 'danger');
     expect(screen.getByText('••••••234F')).toBeInTheDocument();
     rerender(<JoinerPanel {...base} onJoin={onJoin} today="2026-10-19" joiningOn="2026-10-19" />);
     await ue.click(screen.getByRole('button', { name: 'Mark joined' }));

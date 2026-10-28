@@ -154,6 +154,7 @@ const IMPORT_HEADER = 'given_name,family_name,email,phone,joining_on,legal_entit
 export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: (csv: string, commit: boolean) => Promise<ImportResult>; onDone: (n: number) => void }) {
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<ImportResult | null>(null);
+  const [tried, setTried] = useState(false);
   const { busy, error, run } = useRun();
   const read = async (f: File) => {
     setCsv(await f.text());
@@ -176,7 +177,14 @@ export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => voi
               {`Add ${good} ${good === 1 ? 'joiner' : 'joiners'}`}
             </Button>
           ) : (
-            <Button variant="primary" disabled={!csv.trim()} loading={busy === 'preview'} onClick={() => void run('preview', async () => setPreview(await onImport(csv, false)))}>
+            <Button
+              variant="primary"
+              loading={busy === 'preview'}
+              onClick={() => {
+                setTried(true);
+                if (csv.trim()) void run('preview', async () => setPreview(await onImport(csv, false)));
+              }}
+            >
               Check the file
             </Button>
           )}
@@ -194,7 +202,7 @@ export function ImportDrawer({ onClose, onImport, onDone }: { onClose: () => voi
       <FormField id="imp-file" label="CSV file">
         <FileUpload id="imp-file" upload={read} accept={['.csv']} multiple={false} maxSize={2 * 1024 * 1024} />
       </FormField>
-      <FormField id="imp-text" label="Or paste the rows" optional>
+      <FormField id="imp-text" label="Or paste the rows" optional error={tried && !csv.trim() ? 'Choose a CSV file or paste the rows.' : null}>
         <TextArea
           value={csv}
           onChange={(x) => {
