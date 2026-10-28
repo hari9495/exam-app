@@ -3510,5 +3510,76 @@
       "TIM-34"
     ],
     "note": "Publish is the roster's own publish: a change inside the notice window (24 h by default) asks for a reason on the Roster page."
+  },
+  {
+    "id": "MT-TIM-40-01",
+    "area": "Time · Licences",
+    "url": "http://localhost:3000/yx/time/setup/licences",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "stories": [
+      "TIM-40"
+    ],
+    "screen": "Licence requirements · empty, add requirement",
+    "steps": [
+      "Open Time settings › Licences.",
+      "Click \"Add requirement\". Without typing anything click \"Save requirement\".",
+      "Type \"Forklift licence\" in Licence, leave Code empty, Note \"LMV endorsement\", Type Legal, keep 60 / 30 / 7. Required for: Role, pick any role (for example a driver or operator role), leave Location as All locations. Click \"Save requirement\".",
+      "Click \"Add requirement\" again, type \"Forklift licence\" again with Code FORKLIFT-LICENCE, pick a role, click \"Save requirement\".",
+      "Open \"Add requirement\", set the reminders to 30, 30, 7 and click Save."
+    ],
+    "expected": "Step 1: the header \"Licence requirements\" and, with no licences yet, \"No licence requirements yet\" with an \"Add requirement\" button; no page scroll at 1278 x 635. Step 2: field errors \"Enter the licence name (at least 2 letters).\" and \"Choose the role.\", the cursor goes to Licence, nothing is saved. Step 3: toast \"Added Forklift licence\"; a warning box \"Forklift licence: no one holds this licence yet\" says the roster blocks everyone in that role until licences are recorded; the row shows the role, \"Role\", \"Forklift licence / LMV endorsement\", Legal, Holders 0. Step 4: under Code \"The code FORKLIFT-LICENCE is already used.\" and the dialog stays open. Step 5: \"Each reminder is on a different day.\" under the reminder and nothing is saved."
+  },
+  {
+    "id": "MT-TIM-40-02",
+    "area": "Time · Licences",
+    "url": "http://localhost:3000/yx/time/setup/licences",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "stories": [
+      "TIM-40"
+    ],
+    "screen": "Licence requirements · record a licence",
+    "steps": [
+      "On the Forklift licence row click \"Who needs action\". Read the drawer.",
+      "Click \"Record licence\". Click the \"Record licence\" button in the dialog without filling anything.",
+      "Pick a person (for example a Hosur plant operator), number TN-FL-2026-0412, Valid from 1 Jan 2025, Expires on 31 Dec 2024. Click \"Record licence\".",
+      "Change Expires on to 10 Nov 2026 and click \"Record licence\".",
+      "Record the same person again with the same Valid from 1 Jan 2025."
+    ],
+    "expected": "Step 1: \"No holders yet.\" and a \"Record licence\" button. Step 2: \"Choose the person.\" and \"Enter the date the licence is valid from.\"; the cursor goes to Person. Step 3: \"The expiry is after the valid-from date.\" and nothing is saved. Step 4: toast \"Licence recorded for <name>\" with \"Valid until 10 Nov 2026.\"; the row now shows \"1 expiring\" under Needs action (inside the 60-day first reminder) and the person is listed in the drawer with an amber due badge. Step 5: the dialog shows \"This licence is already recorded from that date.\" and stays open."
+  },
+  {
+    "id": "MT-TIM-40-03",
+    "area": "Time · Licences",
+    "url": "http://localhost:3000/yx/time/setup/licences",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "stories": [
+      "TIM-40"
+    ],
+    "screen": "Licence requirements · ask to renew, override (company) and legal refusal",
+    "steps": [
+      "Add a company licence: \"First aid\", Note \"Company certificate\", Type Company, Required for: Shift, pick Morning. Record it for one person with Valid from 1 Jan 2024 and Expires on 10 Oct 2026 (already expired).",
+      "On the First aid row click \"Who needs action\". Click \"Ask to renew\" on the person, then click it again.",
+      "Click \"Override…\". Click \"Override\" without a reason. Then type \"Course\" (4 letters) and click \"Override\".",
+      "Type \"Renewal course booked for 6 Nov\", Until = a date 100 days ahead, click Override. Then Until = 20 Nov 2026, click Override.",
+      "Open the Forklift licence (Legal) drawer for a person whose licence has expired (record one with Expires on 1 Oct 2026)."
+    ],
+    "expected": "Step 2: toast \"<name> asked to renew\" (the person gets a bell notice and an email); the button reads \"Reminder sent\" and a second click says \"Reminder already sent today\". Step 3: \"Enter a reason of at least 5 letters.\" with the cursor in Reason, both times; nothing is saved. Step 4: 100 days ahead cannot be picked or shows \"Choose a day from today up to 90 days ahead.\"; with 20 Nov 2026 the toast says \"<name> can be rostered until 20 Nov 2026\" and the row shows \"1 overridden\" instead of \"1 expired\". Step 5: no \"Override…\" button on a legal licence (only Ask to renew and Record licence). If the API is called directly for a legal licence it answers 409 LEGAL_LICENCE \"… is required by law. No one can override it; the person needs a valid licence.\""
+  },
+  {
+    "id": "MT-TIM-40-04",
+    "area": "Time · Licences",
+    "url": "http://localhost:3000/yx/time/setup/licences",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "stories": [
+      "TIM-40"
+    ],
+    "screen": "Licence requirements · edit, version conflict, expired licence blocks the roster",
+    "steps": [
+      "Click Edit on First aid. Remove the Morning requirement with the bin button, then add Shift Morning at one location with \"Add shift\". Change the note and click \"Save requirement\".",
+      "Open Edit on First aid in two browser windows (a second sign-in as another HR admin, or the same account in a private window). Save a change in the first, then click \"Save requirement\" in the second.",
+      "Open /yx/time/roster for the week with the person whose Forklift licence expired (MT-TIM-40-03 step 5) and who holds the role that needs it. Put them on any shift on a day after the expiry and publish.",
+      "Sign in as an employee without Time settings (for example arjun@demo-org.test) and open /yx/time/setup/licences."
+    ],
+    "expected": "Step 1: toasts \"Morning no longer needs First aid\", \"Morning at <location> now needs First aid\", \"Saved First aid\" with \"Reminders go out 60, 30 and 7 days before expiry.\"; the row shows \"Morning at <location>\". Step 2: the second window shows \"Someone else changed this licence. Reload to see their change.\" in the dialog, which stays open. Step 3: the roster shows a Licence conflict under Law and rule checks and refuses the placement / publish (LICENCE_GUARD) with the person's name, the licence and the date. Step 4: the no-access page (no table); the Licences link is not in the menu."
   }
 ]
