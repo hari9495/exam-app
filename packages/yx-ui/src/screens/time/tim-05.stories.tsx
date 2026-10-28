@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { MyShiftsPhone, RosterScreen } from './roster';
 
-const meta: Meta<typeof RosterScreen> = { title: 'Screens/Time/TIM-05 · Roster', component: RosterScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof RosterScreen> = { title: 'Screens/Time/TIM-05 · Roster', component: RosterScreen, render: (args) => <RosterScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof RosterScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

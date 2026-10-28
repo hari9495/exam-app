@@ -1,12 +1,12 @@
 // Attendance requests, OT review, device backfill, periods, industrial action.
 // TIM-07, TIM-08, TIM-09, TIM-10, TIM-11, TIM-37.
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Download, Lock, Send, Unlock, X } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -18,11 +18,21 @@ import { DatePicker } from '../../components/date';
 import { Stepper } from '../../components/stepper';
 import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
+import { useToast } from '../../components/notify';
+import { useTooEarly } from '../../components/field';
+import { useRun } from '../org/org-kit';
+import type { DayRow, FixInput, FixKind as LiveFixKind, MyAttendance, WfhInput } from './live/types';
 import { Segment } from '../people/people-kit';
 import { EXCEPTIONS, HOLIDAYS, HR_ADMIN, LATE_PAYROLL, LEAVE_REQUESTS, ME, OT_ROWS, PAYROLL_ADMIN, SEPTEMBER, TEAM, TODAY, isMyReport, timeCounts, type OtRow, type TimeUser } from './time-data';
 import { DueBadge, Kpis, TimePage } from './time-kit';
 import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRoute, type PeriodStage } from './time-logic';
 import type { ViewState } from './attendance';
+// useToast, useTooEarly and useRun come from the import lines above (shared with the TIM-07 region).
+import { LiveGate, isoDate, liveTable, monthText, shiftMonth } from './ops';
+import type { LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
+// TIM-08 live (Me › My shifts).
+import { useSaveErrors } from '../../components/field';
+import type { MyShifts } from './live/types';
 import './time.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -156,6 +166,8 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const [otHours, setOtHours] = useState<number | null>(2);
   const [takeAs, setTakeAs] = useState<'pay' | 'comp'>('pay');
   const [reason, setReason] = useState(defaultReason(t0, lockedStart));
+  // Send pressed too early: the missing field says so (never a disabled Send).
+  const [tried, setTried] = useState(false);
   // A new day starts from that day's own punches, never from another day's.
   const pickDate = (d: Date | null) => { setDate(d); const r = recordedTimes(d); setIn(r.in); setOut(r.out); };
   const setType = (t: AttReqType) => { setTypeRaw(t); pickDate(defaultDate(t, false)); setReason(''); };
@@ -198,7 +210,7 @@ function useAttendanceRequest({ type: t0 = 'regularise', used = 1, wfhUsed = SEP
   const blocked = !date
     ? 'Pick a date'
     : dateErr ?? outErr ?? odErr ?? otErr ?? (!reason.trim() ? 'Enter a reason' : null);
-  return { type, setType, date, setDate: pickDate, day, recIn, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut, where, setWhere, odFrom, setOdFrom, odTo, setOdTo, otHours, setOtHours, otMin, otErr, takeAs, setTakeAs, reason, setReason, route, steps, hr, locked, used, wfhUsed, wfhThisMonth, wfhOver, dateErr, outErr, odErr, blocked };
+  return { tried, setTried, type, setType, date, setDate: pickDate, day, recIn, nothing, off, fix: fixNow, setFix, fixOptions, punched, inT, setIn, outT, setOut, where, setWhere, odFrom, setOdFrom, odTo, setOdTo, otHours, setOtHours, otMin, otErr, takeAs, setTakeAs, reason, setReason, route, steps, hr, locked, used, wfhUsed, wfhThisMonth, wfhOver, dateErr, outErr, odErr, blocked };
 }
 type ReqState = ReturnType<typeof useAttendanceRequest>;
 
@@ -247,7 +259,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
           <Segment label="Request type" value={type} onChange={s.setType} options={TYPE_SHORT} />
         )}
       </FormField>
-      <FormField label="Date" required error={s.dateErr} helper={helper}>
+      <FormField id="ar-date" label="Date" required error={s.dateErr ?? (s.tried && !date ? 'Pick a date' : null)} helper={helper}>
         <DatePicker value={date} onChange={s.setDate} min={min} max={max} />
       </FormField>
       {type === 'regularise' && !s.nothing && (
@@ -265,7 +277,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
                 <TimeField value={s.inT} onChange={s.setIn} placeholder="--:--" />
               </FormField>
             )}
-            <FormField label="Check-out" error={s.outErr}>
+            <FormField id="ar-out" label="Check-out" error={s.outErr}>
               <TimeField value={s.outT} onChange={s.setOut} placeholder="--:--" />
             </FormField>
           </FieldRow>
@@ -273,7 +285,7 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
       )}
       {type === 'on_duty' && (
         <>
-          <FormField label="Where" required><TextField value={s.where} onChange={s.setWhere} /></FormField>
+          <FormField id="ar-where" label="Where" required><TextField value={s.where} onChange={s.setWhere} /></FormField>
           <FieldRow>
             <FormField label="From" required><TimeField value={s.odFrom} onChange={s.setOdFrom} placeholder="--:--" /></FormField>
             <FormField label="To" required error={s.odFrom && s.odTo && s.odTo <= s.odFrom ? 'Enter a To time after From' : null}><TimeField value={s.odTo} onChange={s.setOdTo} placeholder="--:--" /></FormField>
@@ -282,13 +294,13 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
       )}
       {type === 'ot' && (
         <FieldRow>
-          <FormField label="Planned OT (hours)" required error={s.otHours ? s.otErr : null} helper="Min 0.5 h, in quarter hours"><NumberField decimals value={s.otHours} onChange={s.setOtHours} placeholder="e.g. 1.25" /></FormField>
+          <FormField id="ar-ot" label="Planned OT (hours)" required error={s.otHours || s.tried ? s.otErr : null} helper="Min 0.5 h, in quarter hours"><NumberField decimals value={s.otHours} onChange={s.setOtHours} placeholder="e.g. 1.25" /></FormField>
           <FormField label="Take as">
             <Select value={s.takeAs} onChange={(v) => v && s.setTakeAs(v)} options={[{ value: 'pay', label: 'Paid overtime' }, { value: 'comp', label: 'Comp-off credit' }]} />
           </FormField>
         </FieldRow>
       )}
-      <FormField label="Reason" required>
+      <FormField id="ar-reason" label="Reason" required error={s.tried && !s.reason.trim() ? 'Enter a reason' : null}>
         <TextArea rows={2} value={s.reason} onChange={s.setReason} />
       </FormField>
       <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
@@ -322,14 +334,21 @@ function AttendanceRequestForm({ s, surface }: { s: ReqState; surface?: 'desk' |
   );
 }
 
-export function AttendanceRequestSheet(p: AttendanceRequestProps) {
+export function AttendanceRequestSheet(p: AttendanceRequestProps & { live?: LiveAttendanceRequest }) {
+  if (p.live) return <LiveAttendanceRequestDrawer live={p.live} />;
+  return <SampleAttendanceRequestSheet {...p} />;
+}
+
+function SampleAttendanceRequestSheet(p: AttendanceRequestProps) {
   const [open, setOpen] = useState(true);
   const [sent, setSent] = useState(!!p.submitted);
   const [withdrawn, setWithdrawn] = useState(false);
   const [askWithdraw, setAskWithdraw] = useState(false);
   const s = useAttendanceRequest(p);
   const close = () => setOpen(false);
-  const send = <Button variant="primary" disabled={!!s.blocked} onClick={() => setSent(true)}>Send request</Button>;
+  // Pressed too early: the field that is missing shows its error and takes focus.
+  const firstField = !s.date || s.dateErr ? 'ar-date' : s.outErr ? 'ar-out' : s.odErr ? 'ar-where' : s.otErr ? 'ar-ot' : 'ar-reason';
+  const send = <Button variant="primary" onClick={() => { if (!s.blocked) return setSent(true); s.setTried(true); document.getElementById(firstField)?.focus(); }}>Send request</Button>;
   const typeLabel = TYPE_OPTIONS.find((o) => o.value === s.type)?.label ?? '';
   const summary = `${typeLabel} · ${s.date ? dm(s.date) : ''}`;
   const title = withdrawn ? 'Request withdrawn' : sent ? 'Request sent' : p.surface === 'phone' ? 'Attendance request' : 'New attendance request';
@@ -398,11 +417,149 @@ function SentState({ s, withdrawn }: { s: ReqState; withdrawn: boolean }) {
   if (s.hr) steps.push({ id: 's3', label: 'HR approval', status: 'pending', approver: HR_ADMIN.name });
   return (
     <div className="yx-tim-stack">
-      <InlineAlert tone="success" title={`Sent to ${ME.manager}${s.hr ? ', then HR' : ''}`}>
+      <InlineAlert tone="info" title={`Sent to ${ME.manager}${s.hr ? ', then HR' : ''}`}>
         {day} shows "{s.type === 'regularise' ? 'Regularisation pending' : 'Request pending'}" until it's decided. You'll get a notification.
       </InlineAlert>
       <ApprovalTimeline now={TODAY} steps={steps} />
     </div>
+  );
+}
+
+/* ---------- TIM-07 live: the same sheet on the person's real month (Me › Attendance) ---------- */
+
+/** What the live sheet needs: my month from the server, and the two requests it can send. */
+export interface LiveAttendanceRequest {
+  data: MyAttendance;
+  type: 'regularise' | 'wfh';
+  /** The day to start on (a day picked on the calendar), else today. */
+  on?: string | null;
+  onFix: (input: FixInput) => Promise<unknown>;
+  /** Work from home; without it the sheet only regularises. */
+  onWfh?: (input: WfhInput) => Promise<unknown>;
+  onClose: () => void;
+}
+
+const isoDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const minuteOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
+const LIVE_FIX: Record<string, LiveFixKind> = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' };
+const STATUS_NOW: Record<DayRow['status'], string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', missing_in: 'Missing check-in', missing_out: 'Missing check-out', no_timesheet: 'No timesheet yet', not_started: 'Not worked out yet' };
+/** The time of day in the person's zone as "HH:MM". */
+const zoneHm = (iso: string | null | undefined, zone: string) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: zone }) : null);
+
+function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) {
+  const d = live.data;
+  const today = isoDay(d.today);
+  const [type, setTypeRaw] = useState<'regularise' | 'wfh'>(live.onWfh ? live.type : 'regularise');
+  const [date, setDate] = useState<Date | null>(live.on ? isoDay(live.on) : today);
+  const on = date ? isoOf(date) : null;
+  const day = on ? d.days.find((x) => x.on === on) : undefined;
+  const recIn = zoneHm(day?.firstIn, d.zone);
+  const recOut = zoneHm(day?.lastOut, d.zone);
+  // The fixes that fit the day: a recorded check-in can't be "missed".
+  const options = day?.status === 'missing_out' ? FIX_OPTIONS.filter((o) => o.value === 'out' || o.value === 'wrong') : day?.status === 'missing_in' ? FIX_OPTIONS.filter((o) => o.value === 'in' || o.value === 'wrong') : day?.status === 'present' ? FIX_OPTIONS.filter((o) => o.value === 'wrong') : FIX_OPTIONS;
+  const [picked, setFix] = useState<string>(day?.status === 'missing_out' ? 'out' : day?.status === 'missing_in' ? 'in' : day?.status === 'absent' ? 'full' : 'wrong');
+  const fix = options.some((o) => o.value === picked) ? picked : options[0].value;
+  const [inT, setIn] = useState<string | null>(null);
+  const [outT, setOut] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const setType = (t: 'regularise' | 'wfh') => { setTypeRaw(t); setDate(today); };
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const needIn = type === 'regularise' && (fix === 'in' || fix === 'wrong');
+  const needOut = type === 'regularise' && (fix === 'out' || fix === 'wrong');
+  const when = date ? dm(date) : '';
+  const pending = on ? d.requests.some((r) => r.on === on && r.status === 'pending' && (type === 'wfh') === (r.kind === 'wfh')) : false;
+  const nothing = type !== 'regularise' || !day ? null : pending ? `${when} already has a request waiting` : ['weekly_off', 'holiday', 'leave'].includes(day.status) ? `${when} is ${day.status === 'leave' ? 'on approved leave' : day.status === 'holiday' ? 'a holiday' : 'a weekly off'}: nothing to fix` : null;
+  const dateErr = !on ? null : type === 'regularise' ? (on > d.today ? 'Pick today or an earlier date' : nothing) : on < d.today ? 'Pick today or a later date' : pending ? `${when} already has a request waiting` : null;
+  const errors = [
+    ...(!on ? [{ fieldId: 'ar-date', message: 'Pick a date' }] : dateErr ? [{ fieldId: 'ar-date', message: dateErr }] : []),
+    ...(!nothing && needIn && !inT ? [{ fieldId: 'ar-in', message: 'Enter the check-in time' }] : []),
+    ...(!nothing && needOut && !outT ? [{ fieldId: 'ar-out', message: 'Enter the check-out time' }] : []),
+    ...(!nothing && needIn && needOut && inT && outT && outT <= inT ? [{ fieldId: 'ar-out', message: 'Enter a check-out time after check-in' }] : []),
+    ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : []),
+  ];
+  const early = useTooEarly(errors);
+  const regLeft = Math.max(0, d.regularise.limit - d.regularise.used);
+  const wfhThen = on && on.slice(0, 7) === d.today.slice(0, 7) ? d.wfh.used : 0;
+  const hr = type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit;
+  const send = () => {
+    if (early.stop() || !on) return;
+    void run('send', async () => {
+      if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
+      else await live.onFix({ on, kind: LIVE_FIX[fix], ...(needIn ? { inMinute: minuteOf(inT)! } : {}), ...(needOut ? { outMinute: minuteOf(outT)! } : {}), reason: reason.trim() });
+      toast({ tone: 'success', title: hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'wfh' ? 'Work from home' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
+      live.onClose();
+    });
+  };
+  const timeText = (t: string | null) => (t ? fmt12(t) : '…');
+  const after = type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
+  const monthName = date ? MONTH[date.getMonth()] : '';
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && live.onClose()}
+      title={type === 'wfh' ? 'Request work from home' : 'New attendance request'}
+      subtitle={hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
+      dirty={Boolean(reason)}
+      footer={
+        <>
+          {errors[0] && <FootReason>{errors[0].message}</FootReason>}
+          <Button onClick={live.onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'send'} onClick={send}>Send request</Button>
+        </>
+      }
+    >
+      <div className="yx-tim-form">
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        {/* On duty and OT pre-approval are not in the app yet: only the requests it can send. */}
+        {live.onWfh && (
+          <FormField label="Request type" required>
+            <Segment label="Request type" value={type} onChange={setType} options={[{ value: 'regularise' as const, label: 'Regularise' }, { value: 'wfh' as const, label: 'WFH' }]} />
+          </FormField>
+        )}
+        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'wfh' ? 'Pick the day you will work from home.' : 'Pick the day to fix.'}>
+          <DatePicker value={date} onChange={setDate} min={type === 'wfh' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
+        </FormField>
+        {type === 'regularise' && !nothing && (
+          <>
+            <FormField label="What needs fixing" required helper={recIn ? `Recorded check-in on this day: ${fmt12(recIn)}.` : undefined}>
+              <RadioGroup aria-label="What needs fixing" value={fix} onChange={setFix} options={options} />
+            </FormField>
+            {(needIn || needOut) && (
+              <FieldRow>
+                {needIn && (
+                  <FormField id="ar-in" label="Check-in" required error={early.errorOf('ar-in')}>
+                    <TimeField value={inT} onChange={setIn} placeholder="--:--" />
+                  </FormField>
+                )}
+                {needOut && (
+                  <FormField id="ar-out" label="Check-out" required error={early.errorOf('ar-out')}>
+                    <TimeField value={outT} onChange={setOut} placeholder="--:--" />
+                  </FormField>
+                )}
+              </FieldRow>
+            )}
+          </>
+        )}
+        <FormField id="ar-reason" label="Reason" required error={early.errorOf('ar-reason')}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+        <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
+          <strong>Effect on {date ? dmy(date) : 'the day'}</strong>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone="neutral">{type === 'wfh' ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          {type === 'wfh' && on && (
+            <p className="yx-tim-muted">
+              {hr ? `This would be work-from-home day ${wfhThen + 1} in ${monthName}, over the ${d.wfh.limit} your manager approves alone, so HR approves too.` : `This will be work-from-home day ${wfhThen + 1} of ${d.wfh.limit} in ${monthName}.`}
+            </p>
+          )}
+          {type === 'wfh' && <p className="yx-tim-muted">On the day you can check in from anywhere: your location is recorded, not checked.</p>}
+          <p className="yx-tim-muted">Approval: {hr ? 'Your manager → HR' : 'Your manager'}</p>
+          {type === 'regularise' && <p className="yx-tim-muted">{regLeft === 0 ? `Limit reached (${d.regularise.used} of ${d.regularise.limit}): HR approves too.` : `${regLeft} of ${d.regularise.limit} regularisations left this month.`}</p>}
+        </section>
+      </div>
+    </Drawer>
   );
 }
 
@@ -498,7 +655,13 @@ function swapPlan(c: SwapPerson, give: number, base: ShiftCode[] = REQUESTER.wee
 }
 const hours = (week: ShiftCode[]) => week.filter((x) => x !== 'OFF').length * SHIFT_H;
 
-export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: { view?: 'request' | 'consent' | 'accepted'; surface?: 'desk' | 'phone'; blocked?: 'rest' | 'night' }) {
+// TIM-08: the story shows the Hosur plant sample; the app's Me › My shifts passes `live` (my published shifts and swaps).
+export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked, live }: { view?: 'request' | 'consent' | 'accepted'; surface?: 'desk' | 'phone'; blocked?: 'rest' | 'night'; live?: LiveMyShifts }) {
+  return live ? <LiveMyShiftsPage live={live} /> : <SampleShiftSwap view={view} surface={surface} blocked={blocked} />;
+}
+
+function SampleShiftSwap({ view, surface, blocked }: { view: 'request' | 'consent' | 'accepted'; surface: 'desk' | 'phone'; blocked?: 'rest' | 'night' }) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(true);
   const [kind, setKind] = useState('swap');
   const [give, setGive] = useState(2); // Sat 3 Oct
@@ -558,9 +721,9 @@ export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: 
   const sentAlert = sent.map((x) => (
     <InlineAlert
       key={x.give}
-      tone="success"
+      tone="info"
       title={`Sent to ${firstName(x.take >= 0 ? x.name : APPROVER)} · ${dayName(x.give)}`}
-      actions={<Button size="sm" onClick={() => setSent(sent.filter((y) => y.give !== x.give))}>Withdraw</Button>}
+      actions={<Button size="sm" onClick={() => { setSent(sent.filter((y) => y.give !== x.give)); toast({ tone: 'success', title: 'Request withdrawn' }); }}>Withdraw</Button>}
     >
       {x.take >= 0
         ? <>Next: {firstName(x.name)} agrees, then {APPROVER} decides by {dayName(approverDay(firstDay(x.give, x.take)))}.</>
@@ -649,7 +812,7 @@ export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: 
           <span className="yx-tim-muted">Reply by {WD[replyBy.getDay()]} {dm(replyBy)}</span>
           <DueBadge date={replyBy} />
         </div>
-        {agreed && <InlineAlert tone="success" title="You agreed">{APPROVER} decides next. Your roster changes only after approval.</InlineAlert>}
+        {agreed && <InlineAlert tone="info" title="You agreed">{APPROVER} decides next. Your roster changes only after approval.</InlineAlert>}
         {!agreed && <p className="yx-tim-note">Saying no has no effect on you. {firstName(REQUESTER.name)} only sees "declined".</p>}
       </div>
     );
@@ -657,11 +820,13 @@ export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: 
   const sendButton = (
     <Button
       variant="primary"
-      disabled={!!sendBlock}
       onClick={() => {
+        // Never greyed out: pressed too early it says what to fix.
+        if (sendBlock) return void toast({ tone: 'warning', title: sendBlock });
         if (kind === 'swap' && c && plan) setSent([...sent, { give, take: plan.take, name: c.name }]);
         else if (kind === 'change') setSent([...sent, { give, take: -1, name: APPROVER, shift: newShift }]);
         setOpen(false);
+        toast({ tone: 'success', title: `Request sent to ${firstName(kind === 'swap' && c ? c.name : APPROVER)}` });
       }}
     >
       Send request
@@ -674,7 +839,7 @@ export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: 
         ? <><Button onClick={() => setOpen(false)}>Cancel</Button>{sendButton}{sendBlock && <span className="yx-tim-muted">{sendBlock}</span>}</>
         : <>{sendBlock && <FootReason>{sendBlock}</FootReason>}<Button onClick={() => setOpen(false)}>Cancel</Button>{sendButton}</>
     ) : !agreed ? (
-      <><Button icon={X} onClick={() => setOpen(false)}>Decline</Button><Button variant="approve" icon={Check} onClick={() => setAgreed(true)}>Agree to swap</Button></>
+      <><Button icon={X} onClick={() => setOpen(false)}>Decline</Button><Button variant="approve" icon={Check} onClick={() => { setAgreed(true); toast({ tone: 'success', title: 'You agreed to the swap' }); }}>Agree to swap</Button></>
     ) : (
       <Button onClick={() => setOpen(false)}>Close</Button>
     );
@@ -700,6 +865,140 @@ export function ShiftSwapSheet({ view = 'request', surface = 'desk', blocked }: 
   );
 }
 
+/* ---------------- TIM-08 live: Me › My shifts (my published shifts and swaps with a teammate) ---------------- */
+
+/** The person's own published shifts and swaps; a swap goes to the colleague first, then to the manager (P03). */
+export interface LiveMyShifts {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyShifts | null;
+  today: string;
+  onSwap: (input: { on: string; colleagueEmployeeId: string; reason: string }) => Promise<unknown>;
+  onWithdrawSwap: (id: string) => Promise<unknown>;
+}
+
+const SWAP_STATUS: Record<MyShifts['swaps'][number]['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting', tone: 'info' }, approved: { label: 'Approved', tone: 'success' }, rejected: { label: 'Not approved', tone: 'danger' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } };
+const swapDay = (iso: string) => {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  return `${WD[d.getDay()]} ${dm(d)}`;
+};
+const minText = (m: number) => fmt12(`${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`).replace(':00', '');
+const swapShift = (s: MyShifts['days'][number]['shift']) => (s ? `${s.name} ${minText(s.start)} – ${minText(s.end)}` : 'Weekly off');
+
+function LiveMyShiftsPage({ live: p }: { live: LiveMyShifts }) {
+  const d = p.data;
+  const { busy, error, run } = useRun();
+  const send = useRun();
+  const [open, setOpen] = useState(false);
+  const [on, setOn] = useState<string | null>(null);
+  const [who, setWho] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const days = (d?.days ?? []).filter((x) => x.employed);
+  const swappable = days.filter((x) => x.on >= p.today && x.shift);
+  const pendingOn = (iso: string) => d?.swaps.find((s) => s.on === iso && s.status === 'pending');
+  const errors = [...(!on ? [{ fieldId: 'sw-day', message: 'Choose the day.' }] : []), ...(!who ? [{ fieldId: 'sw-who', message: 'Choose the colleague.' }] : []), ...(!reason.trim() ? [{ fieldId: 'sw-why', message: 'Say why you want to swap.' }] : [])];
+  const shown = useSaveErrors(errors);
+  const ask = (iso: string) => {
+    setOn(iso);
+    setWho(null);
+    setReason('');
+    shown.reset();
+    setOpen(true);
+  };
+  const day = days.find((x) => x.on === on);
+  const mate = d?.colleagues.find((c) => c.id === who);
+  const sendNow = () => {
+    if (errors.length) {
+      shown.reveal();
+      return document.getElementById(errors[0]!.fieldId)?.focus();
+    }
+    void send.run('swap', async () => {
+      await p.onSwap({ on: on!, colleagueEmployeeId: who!, reason: reason.trim() });
+      setOpen(false);
+    });
+  };
+  const pending = (d?.swaps ?? []).filter((s) => s.status === 'pending');
+  const decided = (d?.swaps ?? []).filter((s) => s.status !== 'pending');
+  return (
+    <TimePage active="My shifts">
+      <PageHeader title="My shifts" description="Your shifts for the next two weeks, as published. Swap one with a teammate who has the same manager." />
+      <LiveGate state={p.state} onRetry={p.onRetry} what="your shifts">
+        {d && (
+          <div className="yx-tim-stack">
+            {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+            {pending.map((s) => (
+              <InlineAlert
+                key={s.id}
+                tone="info"
+                title={s.mine ? `Sent to ${s.with} · ${swapDay(s.on)}` : `${s.with} asks to swap · ${swapDay(s.on)}`}
+                actions={s.mine ? <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onWithdrawSwap(s.id))}>Withdraw</Button> : undefined}
+              >
+                {s.mine ? <>Next: {s.with} agrees, then your manager decides.</> : <>Agree or decline it in Approvals. Saying no has no effect on you.</>}
+              </InlineAlert>
+            ))}
+            <Card title="Next two weeks">
+              <ul className="yx-tim-list" aria-label="My shifts">
+                {days.map((x) => (
+                  <li key={x.on}>
+                    <span className="yx-tim-row">{swapDay(x.on)} · {swapShift(x.shift)}{x.on === p.today && <Badge tone="info">Today</Badge>}</span>
+                    {pendingOn(x.on) ? <Badge tone="neutral">Swap pending</Badge> : x.on >= p.today && x.shift && d.colleagues.length > 0 && <Button size="sm" onClick={() => ask(x.on)}>Ask to swap</Button>}
+                  </li>
+                ))}
+              </ul>
+              {!days.length && <p className="yx-tim-muted">No shifts published for you yet.</p>}
+              {days.length > 0 && !d.colleagues.length && <p className="yx-tim-note">No teammate to swap with: a swap is with someone who has the same manager.</p>}
+            </Card>
+            {decided.length > 0 && (
+              <Card title="Earlier swaps">
+                <ul className="yx-tim-list" aria-label="Swaps">
+                  {decided.map((s) => (
+                    <li key={s.id}>
+                      <span>{swapDay(s.on)} with {s.with}{s.mine ? '' : ' (they asked you)'}</span>
+                      <Badge tone={SWAP_STATUS[s.status].tone}>{SWAP_STATUS[s.status].label}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+            <Drawer
+              open={open}
+              onOpenChange={setOpen}
+              title="Shift change or swap"
+              subtitle="A swap with a teammate who has the same manager"
+              footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" loading={send.busy === 'swap'} onClick={sendNow}>Send request</Button></>}
+            >
+              <div className="yx-tim-form">
+                {send.error && <InlineAlert tone="danger" title="Not sent">{send.error}</InlineAlert>}
+                <FormField id="sw-day" label="My shift" required error={shown.errorOf('sw-day')}>
+                  <Select value={on} onChange={setOn} options={swappable.map((x) => ({ value: x.on, label: `${swapDay(x.on)} · ${swapShift(x.shift)}` }))} />
+                </FormField>
+                <FormField id="sw-who" label="Swap with" required helper="Someone with the same manager. A swap that breaks the rest or night-work rules can't be sent." error={shown.errorOf('sw-who')}>
+                  <Select value={who} onChange={setWho} options={d.colleagues.map((c) => ({ value: c.id, label: c.name }))} />
+                </FormField>
+                <FormField id="sw-why" label="Reason" required error={shown.errorOf('sw-why')}>
+                  <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+                </FormField>
+                <section className="yx-tim-effect">
+                  <strong>Effect</strong>
+                  {day && mate ? (
+                    <>
+                      <div className="yx-tim-effect__line">You: work {mate.name}'s shift on {swapDay(day.on)} instead of {swapShift(day.shift)}</div>
+                      <div className="yx-tim-effect__line">{mate.name}: works your {swapShift(day.shift)}</div>
+                    </>
+                  ) : (
+                    <p className="yx-tim-muted">Pick the day and a colleague to see the effect.</p>
+                  )}
+                  <p className="yx-tim-muted">Approval: {mate?.name ?? 'your colleague'}'s consent → your manager.</p>
+                </section>
+              </div>
+            </Drawer>
+          </div>
+        )}
+      </LiveGate>
+    </TimePage>
+  );
+}
+
 /* =====================================================================
    TIM-09 · OT review (after the fact, statutory-cap flags, comp-off option)
    ===================================================================== */
@@ -721,7 +1020,261 @@ const minus = (hhmm: string, min: number) => {
 const otFacts = (r: OtRow) => `${dm(r.date)} · ${fmtDuration(r.otMin)} OT · ${r.preApproved ? 'pre-approved' : 'not pre-approved'}`;
 const OT_STATUS_TONE: Record<OtRow['status'], BadgeTone> = { Pending: 'warning', Approved: 'success', Rejected: 'danger', 'Comp-off': 'info' };
 
-export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 'ready', action }: { persona?: 'mgr' | 'hr'; /** Manager whose reports are shown (default the signed-in manager). */ manager?: string; state?: ViewState; action?: 'override' | 'comp' }) {
+/* ---------- live: /time/overtime-review (TIM-09) and /time/overtime (Me › Overtime, shown with TIM-09's parts) ---------- */
+
+/** Team / HR › Overtime: the month's claims in the viewer's scope; minutes over a limit are paid only with a reason. */
+export interface LiveOtReview {
+  state: LoadState;
+  onRetry?: () => void;
+  data: OtReview | null;
+  month: string;
+  onMonth: (month: string) => void;
+  onOverride: (id: string, reason: string) => Promise<unknown>;
+}
+/** Me › Overtime: my own claims. It has no design of its own, so it uses this screen's parts (Question: founder). */
+export interface LiveMyOvertime {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyOvertime | null;
+  onClaim: (input: { on: string; reason: string }) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+type OtOpenDay = MyOvertime['open'][number];
+
+const OT_CATEGORY: Record<OtCategory, string> = { normal: 'Working day', weekly_off: 'Weekly off', holiday: 'Holiday' };
+const CLAIM_STATUS: Record<OtClaim['status'], { label: string; tone: BadgeTone }> = {
+  pending: { label: 'Waiting for approval', tone: 'warning' },
+  approved: { label: 'Approved', tone: 'success' },
+  rejected: { label: 'Rejected', tone: 'danger' },
+  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
+};
+type OtFigures = { payableMinutes: number; settle: 'pay' | 'comp_off'; compOffDays?: number; rate?: number; factoriesAct?: boolean };
+const settledAs = (c: OtFigures) =>
+  c.settle === 'comp_off' ? (c.compOffDays ? `Comp-off ${plural(c.compOffDays, 'day')}` : 'Comp-off') : c.rate ? `Paid at ${c.rate}×` : c.factoriesAct ? 'Paid at the legal overtime rate' : 'Paid in payroll';
+const workedText = (c: { category: OtCategory; workedMinutes: number; scheduledMinutes: number }) =>
+  c.category === 'normal' ? `Worked ${fmtDuration(c.workedMinutes)} of ${fmtDuration(c.scheduledMinutes)}` : `${OT_CATEGORY[c.category]} · worked ${fmtDuration(c.workedMinutes)}`;
+const capCell = (c: { overCapMinutes: number; overridden?: boolean }) =>
+  c.overCapMinutes ? (
+    <span className="yx-tim-list__main" style={{ alignItems: 'flex-start' }}>
+      <Badge tone={c.overridden ? 'warning' : 'danger'} style={NOWRAP}>{c.overridden ? 'Paid over the limit' : 'Over the limit'}</Badge>
+      <span className="yx-tim-muted" style={NOWRAP}>{fmtDuration(c.overCapMinutes)} over</span>
+    </span>
+  ) : (
+    <Badge tone="success" style={NOWRAP}>Within limit</Badge>
+  );
+const otCell = (c: OtFigures) => (
+  <span className="yx-tim-list__main">
+    <span>{fmtDuration(c.payableMinutes)}</span>
+    <span className="yx-tim-muted" style={NOWRAP}>{settledAs(c)}</span>
+  </span>
+);
+const claimBadge = (c: OtClaim) => <Badge tone={CLAIM_STATUS[c.status].tone}>{CLAIM_STATUS[c.status].label}</Badge>;
+
+function LiveOtReviewScreen({ live }: { live: LiveOtReview }) {
+  const claims = live.data?.claims ?? [];
+  const [over, setOver] = useState<OtClaim | null>(null);
+  const pending = claims.filter((c) => c.status === 'pending');
+  const scope = live.data?.scope === 'team' ? 'Your team' : live.data?.scope === 'company' ? 'Everyone' : 'The people in your scope';
+  const cols: TableColumn<OtClaim>[] = [
+    { key: 'person', header: 'Employee', type: 'person', width: 200, value: (c) => c.name ?? '', person: (c) => ({ name: c.name ?? '', secondary: isoDate(c.on) }) },
+    { key: 'worked', header: 'Worked', optional: true, width: 220, value: (c) => c.workedMinutes, render: workedText },
+    { key: 'ot', header: 'OT', type: 'number', value: (c) => c.payableMinutes / 60, render: otCell },
+    { key: 'cap', header: 'Legal limit', hideable: false, width: 150, value: (c) => c.overCapMinutes, render: capCell },
+  ];
+  return (
+    <TimePage active="Requests">
+      <PageHeader
+        title="Overtime review"
+        description={`${scope}. Approve or reject claims in Approvals; HR can pay minutes over the legal limit with a recorded reason.`}
+        facts={
+          <span className="yx-tim-row">
+            <strong>{monthText(live.month)}</strong>
+            {pending.length > 0 && <span className="yx-tim-muted">{pending.length} waiting · {fmtDuration(pending.reduce((a, c) => a + c.payableMinutes, 0))} of overtime</span>}
+          </span>
+        }
+        actions={
+          <div className="yx-tim-row">
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, -1))}>Previous month</Button>
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, 1))}>Next month</Button>
+          </div>
+        }
+      />
+      {live.state === 'no-access' ? (
+        <LiveGate state="no-access" what="overtime" />
+      ) : (
+        <DataTable
+          label="Overtime to review"
+          columns={cols}
+          rows={claims}
+          getRowId={(c) => c.id}
+          state={liveTable(live.state)}
+          onRetry={live.onRetry}
+          empty={<EmptyState title="No overtime to review" description="Claims show here once someone claims overtime for a day in this month." />}
+          rowButtons={(c) => (c.canOverride ? <Button size="sm" onClick={() => setOver(c)}>Override limit</Button> : claimBadge(c))}
+        />
+      )}
+      {over && <OverrideDialog claim={over} onClose={() => setOver(null)} onOverride={live.onOverride} />}
+    </TimePage>
+  );
+}
+
+function OverrideDialog({ claim, onClose, onOverride }: { claim: OtClaim; onClose: () => void; onOverride: LiveOtReview['onOverride'] }) {
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(reason.trim().length < 10 ? [{ fieldId: 'ot-override-why', message: 'Give the reason in a sentence (at least 10 letters).' }] : []);
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Pay over the limit · ${claim.name ?? ''}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="approve"
+            loading={busy === 'ov'}
+            onClick={() => {
+              if (early.stop()) return;
+              void run('ov', async () => {
+                await onOverride(claim.id, reason.trim());
+                onClose();
+              });
+            }}
+          >
+            Pay over the limit
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        <p className="yx-tim-muted">{isoDate(claim.on)} · {fmtDuration(claim.payableMinutes)} OT · {fmtDuration(claim.overCapMinutes)} over the limit</p>
+        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+        <InlineAlert tone="warning" title="This goes past a legal or company limit">Paying over the limit is recorded against your name in the audit log.</InlineAlert>
+        <FormField id="ot-override-why" label="Reason" required error={early.errorOf('ot-override-why')}>
+          <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} placeholder="For example: emergency line breakdown, plant head approved" />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+function LiveMyOvertimeScreen({ mine }: { mine: LiveMyOvertime }) {
+  const d = mine.data;
+  const [claiming, setClaiming] = useState<OtOpenDay | null>(null);
+  const { busy, error, run } = useRun();
+  const openCols: TableColumn<OtOpenDay>[] = [
+    { key: 'day', header: 'Day', width: 140, value: (x) => x.on, render: (x) => isoDate(x.on) },
+    { key: 'worked', header: 'Worked', optional: true, width: 220, value: (x) => x.workedMinutes, render: workedText },
+    { key: 'ot', header: 'OT', type: 'number', value: (x) => x.payableMinutes / 60, render: otCell },
+    { key: 'cap', header: 'Legal limit', hideable: false, width: 150, value: (x) => x.overCapMinutes, render: capCell },
+  ];
+  const claimCols: TableColumn<OtClaim>[] = [
+    { key: 'day', header: 'Day', width: 140, value: (c) => c.on, render: (c) => isoDate(c.on) },
+    { key: 'ot', header: 'OT', type: 'number', value: (c) => c.payableMinutes / 60, render: otCell },
+    { key: 'cap', header: 'Legal limit', hideable: false, width: 150, value: (c) => c.overCapMinutes, render: capCell },
+  ];
+  return (
+    <TimePage active="My attendance">
+      <PageHeader title="My overtime" description="Overtime counts past the minimum, in 15-min steps, within the legal limits. Your manager approves it." />
+      <LiveGate state={mine.state} onRetry={mine.onRetry} what="your overtime">
+        {d && (
+          <div className="yx-tim-stack">
+            {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+            <DataTable
+              label="Days you can claim"
+              columns={openCols}
+              rows={d.open}
+              getRowId={(x) => x.on}
+              empty={<EmptyState compact title="No days with overtime to claim" description="Days from the last month with time past the minimum show here." />}
+              rowButtons={(x) => <Button size="sm" onClick={() => setClaiming(x)}>Claim overtime</Button>}
+            />
+            <DataTable
+              label="My claims"
+              columns={claimCols}
+              rows={d.claims}
+              getRowId={(c) => c.id}
+              empty={<EmptyState compact title="No claims yet" />}
+              rowButtons={(c) =>
+                c.status === 'pending' ? (
+                  <span className="yx-tim-row">
+                    {claimBadge(c)}
+                    <Button size="sm" loading={busy === c.id} onClick={() => void run(c.id, () => mine.onWithdraw(c.id))}>Withdraw</Button>
+                  </span>
+                ) : (
+                  claimBadge(c)
+                )
+              }
+            />
+          </div>
+        )}
+      </LiveGate>
+      {claiming && <ClaimDialog day={claiming} onClose={() => setClaiming(null)} onClaim={mine.onClaim} />}
+    </TimePage>
+  );
+}
+
+function ClaimDialog({ day, onClose, onClaim }: { day: OtOpenDay; onClose: () => void; onClaim: LiveMyOvertime['onClaim'] }) {
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(!reason.trim() ? [{ fieldId: 'ot-claim-why', message: 'Say what the extra time was for.' }] : []);
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Claim overtime · ${isoDate(day.on)}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'claim'}
+            onClick={() => {
+              if (early.stop()) return;
+              void run('claim', async () => {
+                await onClaim({ on: day.on, reason: reason.trim() });
+                onClose();
+              });
+            }}
+          >
+            {day.needsApproval ? 'Send for approval' : 'Claim'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        <ul className="yx-tim-check">
+          <li><span>Worked</span><span>{fmtDuration(day.workedMinutes)}</span></li>
+          <li><span>Expected</span><span>{day.category === 'normal' ? fmtDuration(day.scheduledMinutes) : `${OT_CATEGORY[day.category]}: every minute counts`}</span></li>
+          <li><span>Overtime</span><span>{fmtDuration(day.payableMinutes)}</span></li>
+          <li><span>Settled as</span><span>{day.settle === 'comp_off' ? 'Comp-off, added to your leave balance when approved' : day.factoriesAct ? 'Paid in payroll at the legal overtime rate (Factories Act)' : 'Paid in payroll'}</span></li>
+        </ul>
+        {day.overCapMinutes > 0 && <InlineAlert tone="warning" title={`${fmtDuration(day.overCapMinutes)} more is over the legal limit`}>HR decides whether that part is paid.</InlineAlert>}
+        <FormField id="ot-claim-why" label="What was it for" required error={early.errorOf('ot-claim-why')}>
+          <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 'ready', action, live, mine }: {
+  persona?: 'mgr' | 'hr';
+  /** Manager whose reports are shown (default the signed-in manager). */
+  manager?: string;
+  state?: ViewState;
+  action?: 'override' | 'comp';
+  /** The live app's /time/overtime-review. */
+  live?: LiveOtReview;
+  /** The live app's /time/overtime (my own claims). */
+  mine?: LiveMyOvertime;
+}) {
+  if (live) return <LiveOtReviewScreen live={live} />;
+  if (mine) return <LiveMyOvertimeScreen mine={mine} />;
+  return <SampleOtReview persona={persona} manager={manager} state={state} action={action} />;
+}
+
+function SampleOtReview({ persona, manager, state, action }: { persona: 'mgr' | 'hr'; manager: string; state: ViewState; action?: 'override' | 'comp' }) {
   const scoped = persona === 'hr' ? OT_ROWS : OT_ROWS.filter((r) => isMyReport(r.person, manager));
   const capped = (r: OtRow) => !!otCapFlag(r.weekHours, r.quarterHours);
   const [rows, setRows] = useState<OtRow[]>(scoped);
@@ -733,10 +1286,12 @@ export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 're
   const [reason, setReason] = useState('');
   const [rej, setRej] = useState<string[] | null>(null);
   const [rejReason, setRejReason] = useState('');
+  // Pressed without a reason: the field says so (never a disabled button).
+  const [tried, setTried] = useState(false);
   const user = persona === 'hr' ? HR_ADMIN : manager === PLANT_HEAD.name ? PLANT_HEAD : ME;
   const setStatus = (ids: string[], status: OtRow['status']) => { setRows(rows.map((r) => (ids.includes(r.id) ? { ...r, status } : r))); setSel([]); };
-  const open = (r: OtRow, m: 'override' | 'comp') => { setMode(m); setReason(''); setDlg(r); };
-  const askReject = (ids: string[]) => { setRejReason(''); setRej(ids); };
+  const open = (r: OtRow, m: 'override' | 'comp') => { setMode(m); setReason(''); setTried(false); setDlg(r); };
+  const askReject = (ids: string[]) => { setRejReason(''); setTried(false); setRej(ids); };
   // Bulk decisions only for pending rows within the legal limit; over-limit rows need a decision one by one.
   const bulkOk = new Set(rows.filter((r) => r.status === 'Pending' && !capped(r)).map((r) => r.id));
   const ready = state === 'ready';
@@ -873,8 +1428,11 @@ export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 're
             <Button onClick={() => setDlg(null)}>Cancel</Button>
             <Button
               variant={mode === 'override' ? 'approve' : 'primary'}
-              disabled={needReason && !reason.trim()}
-              onClick={() => { if (dlg) setStatus([dlg.id], mode === 'comp' ? 'Comp-off' : 'Approved'); setDlg(null); }}
+              onClick={() => {
+                if (needReason && !reason.trim()) return setTried(true);
+                if (dlg) setStatus([dlg.id], mode === 'comp' ? 'Comp-off' : 'Approved');
+                setDlg(null);
+              }}
             >
               {mode === 'override' ? 'Approve with override' : 'Give comp-off'}
             </Button>
@@ -892,7 +1450,7 @@ export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 're
               <InlineAlert tone="warning" title={dlg ? capShort(dlg) ?? '' : ''}>
                 {mode === 'override' ? 'Paying' : 'Giving comp-off for hours'} over the legal limit is recorded against your name in the audit log.
               </InlineAlert>
-              <FormField label="Reason" required><TextArea rows={3} value={reason} onChange={setReason} placeholder="For example: emergency line breakdown, plant head approved" /></FormField>
+              <FormField label="Reason" required error={tried && !reason.trim() ? 'Enter a reason' : null}><TextArea rows={3} value={reason} onChange={setReason} placeholder="For example: emergency line breakdown, plant head approved" /></FormField>
             </>
           )}
         </div>
@@ -905,14 +1463,14 @@ export function OtReviewScreen({ persona = 'mgr', manager = ME.name, state = 're
           <>
             {!rejReason.trim() && <FootReason>Enter a reason</FootReason>}
             <Button onClick={() => setRej(null)}>Cancel</Button>
-            <Button variant="danger" disabled={!rejReason.trim()} onClick={() => { if (rej) setStatus(rej, 'Rejected'); setRej(null); }}>Reject overtime</Button>
+            <Button variant="danger" onClick={() => { if (!rejReason.trim()) return setTried(true); if (rej) setStatus(rej, 'Rejected'); setRej(null); }}>Reject overtime</Button>
           </>
         }
       >
         <div className="yx-tim-stack">
           <p className="yx-tim-muted">{rejRows.length === 1 ? otFacts(rejRows[0]) : `${rejRows.length} entries · ${fmtDuration(rejRows.reduce((a, r) => a + r.otMin, 0))} of overtime`}</p>
           <p>These hours are not paid. The employee sees your reason.</p>
-          <FormField label="Reason" required><TextArea rows={3} value={rejReason} onChange={setRejReason} placeholder="For example: work could wait until the next shift" /></FormField>
+          <FormField label="Reason" required error={tried && !rejReason.trim() ? 'Enter a reason' : null}><TextArea rows={3} value={rejReason} onChange={setRejReason} placeholder="For example: work could wait until the next shift" /></FormField>
         </div>
       </Dialog>
     </TimePage>
@@ -957,6 +1515,7 @@ function downloadChanges() {
 }
 
 export function DeviceBackfillWizard({ current = 'batch', done = false }: { current?: string; done?: boolean }) {
+  const { toast } = useToast();
   const [applied, setApplied] = useState(done);
   const [reason, setReason] = useState('Gate 1 kiosk lost network 14–17 Sep; the network was restored on 18 Sep and the stored punches synced on 28 Sep.');
   const effects = '6 absent → present · 2 late marks removed · 1 new late mark';
@@ -966,8 +1525,9 @@ export function DeviceBackfillWizard({ current = 'batch', done = false }: { curr
     return (
       <TimePage active="Periods" user={HR_ADMIN}>
         <PageHeader title="Device punches applied" />
+        {/* Done is said by the toast; this stays as the record of what changed and where to go next. */}
         <InlineAlert
-          tone="success"
+          tone="info"
           title="412 punches applied for 38 people"
           actions={
             <>
@@ -986,7 +1546,7 @@ export function DeviceBackfillWizard({ current = 'batch', done = false }: { curr
         title="Device punches correction"
         defaultCurrent={current}
         finishLabel="Apply punches"
-        onFinish={() => setApplied(true)}
+        onFinish={() => { toast({ tone: 'success', title: '412 punches applied for 38 people' }); setApplied(true); }}
         finishBlocked={!reason.trim() ? 'Enter a reason' : undefined}
         review={{ title: 'Review', note: '412 punches for 38 people are applied as one audited correction. Effects go to September payroll.' }}
         steps={[
@@ -1088,13 +1648,207 @@ const FIX_STORY = {
   timesheets: 'screens-time-tim-15-·-timesheets--submitted',
 };
 
-export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false }: {
+/* ---------- live: /time/periods (TIM-11) ---------- */
+
+/** HR › Attendance periods: attendance.lock for a legal entity; lock and the reopen request ask for a fresh second step. */
+export interface LivePeriods {
+  state: LoadState;
+  onRetry?: () => void;
+  data: Periods | null;
+  year: string;
+  onYear: (year: string) => void;
+  onPreflight: (legalEntityId: string, month: string) => Promise<Preflight>;
+  onLock: (legalEntityId: string, month: string) => Promise<unknown>;
+  onUnlock: (legalEntityId: string, month: string, reason: string) => Promise<unknown>;
+}
+type LiveMonth = Periods['entities'][number]['months'][number];
+type LiveTarget = { entity: { id: string; name: string }; m: LiveMonth; view: 'checklist' | 'reopen' };
+const liveOpen = (m: LiveMonth) => m.stage === 'open' || m.stage === 'frozen';
+const changeText = (m: LiveMonth) => (m.changedAt ? `${isoDate(m.changedAt)}${m.changedBy ? ` by ${m.changedBy}` : ''}` : '');
+/** First year the app keeps attendance periods for (nav limit). */
+const FIRST_PERIOD_YEAR = 2025;
+
+function LivePeriodsScreen({ live }: { live: LivePeriods }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [target, setTarget] = useState<LiveTarget | null>(null);
+  const thisYear = d?.today.slice(0, 4) ?? live.year;
+  const go = (n: number) => {
+    const y = Number(live.year) + n;
+    if (n > 0 && String(y) > thisYear) return toast({ title: `There is no ${y} yet. Its months open as they start.` });
+    if (y < FIRST_PERIOD_YEAR) return toast({ title: `There are no periods before ${FIRST_PERIOD_YEAR}.` });
+    live.onYear(String(y));
+  };
+  return (
+    <TimePage active="Periods">
+      <PageHeader
+        title="Periods"
+        description="Lock a month once its attendance and leave are final. Locked months refuse changes; payroll reads their frozen figures."
+        facts={<span className="yx-tim-muted">{live.year}. After a month is locked, people can still ask for fixes; they are paid in the next payroll.</span>}
+        actions={
+          <div className="yx-tim-row">
+            <Button size="sm" onClick={() => go(-1)}>Previous year</Button>
+            <Button size="sm" onClick={() => go(1)}>Next year</Button>
+          </div>
+        }
+      />
+      <LiveGate state={live.state} onRetry={live.onRetry} what="attendance periods">
+        {d && !d.entities.length && <EmptyState title="No legal entity to lock" description="Locking attendance needs attendance.lock for a legal entity." />}
+        {d?.entities.map((e) => (
+          <section key={e.id} className="yx-tim-stack" aria-label={`${e.name} periods`}>
+            {d.entities.length > 1 && <h2 className="yx-tim-h2">{e.name}</h2>}
+            <div className="yx-tim-cards">
+              {e.months
+                .filter((m) => m.month <= d.today.slice(0, 7))
+                .slice()
+                .reverse()
+                .map((m) => (
+                  <Card key={m.month} title={monthText(m.month)} actions={m.reopenAsked ? <Badge tone="info">Reopen asked</Badge> : <Badge tone={STAGE[m.stage].tone}>{STAGE[m.stage].label}</Badge>}>
+                    {liveOpen(m) ? (
+                      <p className="yx-tim-muted">{m.lockable ? 'Ready for the pre-lock checks' : 'Can be locked from the 2nd of the next month'}{m.changedAt ? ` · reopened ${changeText(m)}${m.reason ? `: ${m.reason}` : ''}` : ''}</p>
+                    ) : (
+                      <p className="yx-tim-muted">Locked {changeText(m)}</p>
+                    )}
+                    <div className="yx-tim-row">
+                      <Button size="sm" onClick={() => setTarget({ entity: e, m, view: 'checklist' })}>{liveOpen(m) ? 'Pre-lock checklist' : 'Lock summary'}</Button>
+                      {m.stage === 'locked' && !m.reopenAsked && <Button size="sm" icon={Unlock} onClick={() => setTarget({ entity: e, m, view: 'reopen' })}>Request reopen</Button>}
+                      {m.stage === 'locked' && m.reopenAsked && <span className="yx-tim-muted">Waiting for two approvals</span>}
+                      {m.stage === 'filed' && <span className="yx-tim-muted">Filed: corrections only</span>}
+                    </div>
+                  </Card>
+                ))}
+            </div>
+          </section>
+        ))}
+      </LiveGate>
+      {target?.view === 'checklist' && (liveOpen(target.m) ? <LiveLockDrawer target={target} live={live} onClose={() => setTarget(null)} /> : <LiveLockSummary target={target} onClose={() => setTarget(null)} onReopen={() => setTarget({ ...target, view: 'reopen' })} />)}
+      {target?.view === 'reopen' && (
+        <ReopenDialog name={`${monthText(target.m.month)} · ${target.entity.name}`} check={{ ok: true }} minLength={10} onClose={() => setTarget(null)} onSend={(reason) => live.onUnlock(target.entity.id, target.m.month, reason)} />
+      )}
+    </TimePage>
+  );
+}
+
+function LiveLockDrawer({ target, live, onClose }: { target: LiveTarget; live: LivePeriods; onClose: () => void }) {
+  const [pre, setPre] = useState<Preflight | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const { busy, error, run } = useRun();
+  const load = () => void run('pre', async () => setPre(await live.onPreflight(target.entity.id, target.m.month)));
+  useEffect(load, [target.entity.id, target.m.month]); // eslint-disable-line react-hooks/exhaustive-deps
+  const blocked = !!pre && (pre.pending.length > 0 || pre.exceptions > 0);
+  // Never disabled (founder rule): pressed too early, the reason shows and the checklist takes focus.
+  const why = !target.m.lockable
+    ? `${monthText(target.m.month)} can be locked from ${pre ? isoDate(pre.lockableFrom) : 'the 2nd of the next month'}.`
+    : !pre
+      ? 'Wait a moment: the checks of the month are still running.'
+      : blocked
+        ? 'Settle what is still waiting (listed above) before locking.'
+        : null;
+  const early = useTooEarly(why ? [{ fieldId: 'lock-checklist', message: why }] : []);
+  const name = monthText(target.m.month);
+  return (
+    <>
+      <Drawer
+        open
+        onOpenChange={(o) => !o && onClose()}
+        size="lg"
+        title={`${name} · pre-lock checklist`}
+        subtitle={target.entity.name}
+        footer={
+          <>
+            {early.errorOf('lock-checklist') && <FootReason>{early.errorOf('lock-checklist')}</FootReason>}
+            <Button onClick={onClose}>Close</Button>
+            <Button variant="primary" icon={Lock} onClick={() => !early.stop() && setConfirm(true)}>Lock the month</Button>
+          </>
+        }
+      >
+        <div className="yx-tim-stack">
+          {busy === 'pre' && <Skeleton height={80} />}
+          {error && <InlineAlert tone="danger" title="The checks did not run" actions={<Button size="sm" onClick={load}>Try again</Button>}>{error}</InlineAlert>}
+          {pre && (
+            <>
+              <p className="yx-tim-muted">{plural(pre.people, 'person', 'people')} in {target.entity.name} during the month. Every day is worked out again before the lock.</p>
+              <ul id="lock-checklist" tabIndex={-1} className="yx-tim-check" aria-label="Pre-lock checklist">
+                <li>
+                  <span>Attendance exceptions resolved</span>
+                  {pre.exceptions ? <Badge tone="danger">{pre.exceptions} open</Badge> : <Badge tone="success">Done</Badge>}
+                </li>
+                {pre.pending.map((x) => (
+                  <li key={x.kind}>
+                    <span>{x.kind} decided</span>
+                    <Badge tone="danger">{x.count} waiting</Badge>
+                  </li>
+                ))}
+                {!pre.pending.length && (
+                  <li>
+                    <span>Requests decided (leave, attendance, overtime, timesheets)</span>
+                    <Badge tone="success">Done</Badge>
+                  </li>
+                )}
+              </ul>
+              <p className="yx-tim-muted">After the lock, attendance, leave, overtime, rosters and timesheets of the month can't change, and its payroll figures are frozen.</p>
+            </>
+          )}
+        </div>
+      </Drawer>
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={`Lock ${name} for ${target.entity.name}?`}
+        consequence={`Attendance and pay-affecting leave for ${name} can't be changed after this; fixes become late requests paid in the next payroll. You'll be asked to confirm it's you.`}
+        confirmLabel="Lock the month"
+        onConfirm={async () => {
+          await live.onLock(target.entity.id, target.m.month);
+          onClose();
+        }}
+      />
+    </>
+  );
+}
+
+function LiveLockSummary({ target, onClose, onReopen }: { target: LiveTarget; onClose: () => void; onReopen: () => void }) {
+  const m = target.m;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="lg"
+      title={`${monthText(m.month)} · lock summary`}
+      subtitle={target.entity.name}
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          {m.stage === 'locked' && !m.reopenAsked && <Button icon={Unlock} onClick={onReopen}>Request reopen</Button>}
+        </>
+      }
+    >
+      <ul className="yx-tim-check">
+        <li><span>Lock</span><span>{changeText(m) || 'Locked'}</span></li>
+        <li><span>Stage</span><Badge tone={STAGE[m.stage].tone}>{STAGE[m.stage].label}</Badge></li>
+        <li>
+          <span>Reopen</span>
+          <span className="yx-tim-muted">{m.stage === 'filed' ? 'Not allowed. The month is filed: corrections only.' : m.reopenAsked ? 'Asked: waiting for two approvals' : 'Allowed until its bank file is released and its payslips are issued'}</span>
+        </li>
+      </ul>
+    </Drawer>
+  );
+}
+
+export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false, live }: {
   persona?: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen';
   /** September locked on 1 Oct with payroll not yet run, so it can still be reopened. Use with `after`. */
   reopenable?: boolean;
   /** 1 Oct: September's inputs are frozen and every item is done, so it can be locked. */
   after?: boolean;
+  /** The live app's /time/periods. */
+  live?: LivePeriods;
 }) {
+  if (live) return <LivePeriodsScreen live={live} />;
+  return <SamplePeriods persona={persona} openId={openId} dialog={dialog} reopenable={reopenable} after={after} />;
+}
+
+function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen'; reopenable: boolean; after: boolean }) {
+  const { toast } = useToast();
   const today = after ? new Date(2026, 9, 1, 10, 0) : TODAY;
   const [lockedIds, setLockedIds] = useState<string[]>([]);
   const periods = PERIODS.map((p) =>
@@ -1181,9 +1935,9 @@ export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = fal
               )}
               <div className="yx-tim-row">
                 <Button size="sm" onClick={() => setOpen(p)}>{live(p) ? 'Pre-lock checklist' : 'Lock summary'}</Button>
-                {p.stage === 'locked' && (reopen.ok
-                  ? <Button size="sm" icon={Unlock} onClick={() => { setOpen(p); setDlg('reopen'); }}>Request reopen</Button>
-                  : <><Button size="sm" icon={Unlock} disabled>Request reopen</Button><span className="yx-tim-muted">{reopen.reason}</span></>)}
+                {/* Never disabled: when it can't be reopened, the dialog says why. */}
+                {p.stage === 'locked' && <Button size="sm" icon={Unlock} onClick={() => { setOpen(p); setDlg('reopen'); }}>Request reopen</Button>}
+                {p.stage === 'locked' && !reopen.ok && <span className="yx-tim-muted">{reopen.reason}</span>}
               </div>
             </Card>
           );
@@ -1199,18 +1953,19 @@ export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = fal
           <>
             {block && <FootReason>{block}</FootReason>}
             <Button onClick={() => setOpen(null)}>Close</Button>
+            {/* Pressed while blocked, the checklist takes focus; the reason is above the buttons. */}
             {persona === 'pa'
-              ? <Button variant="approve" icon={Lock} disabled={!!block} onClick={() => setDlg('lock')}>Approve lock</Button>
+              ? <Button variant="approve" icon={Lock} onClick={() => (block ? document.getElementById('prelock-checklist')?.focus() : setDlg('lock'))}>Approve lock</Button>
               : waiting(open)
-                ? <Button icon={Send} disabled>Sent for approval</Button>
-                : <Button variant="primary" icon={Send} disabled={!!block} onClick={() => setDlg('send')}>Send for approval</Button>}
+                ? <Badge tone="info">Sent for approval</Badge>
+                : <Button variant="primary" icon={Send} onClick={() => (block ? document.getElementById('prelock-checklist')?.focus() : setDlg('send'))}>Send for approval</Button>}
           </>
         ) : undefined}
       >
         {open && (live(open) ? (
           <div className="yx-tim-stack">
             {waiting(open) && sentOn && <p className="yx-tim-muted">Sent for approval by {HR_ADMIN.name} on {dm(sentOn)}.</p>}
-            <ul className="yx-tim-check">
+            <ul id="prelock-checklist" tabIndex={-1} className="yx-tim-check">
               <CheckRow label="Attendance exceptions resolved">{fixRow(open, c.exceptions, `${c.exceptions} open`, 'danger', 'Resolve exceptions', FIX_STORY.exceptions, onePerson(open.m, (x) => x.blocking && x.status === 'Open'))}</CheckRow>
               <CheckRow label="Attendance requests decided">{fixRow(open, c.attReq, `${c.attReq} pending`, 'danger', 'Open in exceptions', FIX_STORY.exceptions, onePerson(open.m, (x) => x.status === 'Request pending'))}</CheckRow>
               <CheckRow label="Leave requests for the month decided (does not block)">{fixRow(open, c.leave, `${c.leave} pending`, 'warning', 'Open leave calendar', FIX_STORY.leave)}</CheckRow>
@@ -1260,32 +2015,51 @@ export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = fal
           onConfirm={() => { setLockedIds([...lockedIds, open.id]); setDlg(undefined); setOpen(null); }}
         />
       )}
-      {open && dlg === 'reopen' && <ReopenDialog period={open} onClose={() => { setDlg(undefined); setOpen(null); }} />}
+      {open && dlg === 'reopen' && (
+        <ReopenDialog
+          name={monthName(open)}
+          check={canReopen(open)}
+          onClose={() => { setDlg(undefined); setOpen(null); }}
+          onSend={() => toast({ tone: 'success', title: 'Reopen request sent', description: `${PAYROLL_ADMIN.name} and the System Admin decide next. ${MONTH[open.m]} stays locked until both approve.` })}
+        />
+      )}
     </TimePage>
   );
 }
 
-function ReopenDialog({ period, onClose }: { period: Period; onClose: () => void }) {
-  const check = canReopen(period);
+/** Sent, it closes and says so with a toast (the live page's write toasts; the story toasts here). */
+function ReopenDialog({ name, check, minLength = 1, onSend, onClose }: { name: string; check: { ok: boolean; reason?: string }; minLength?: number; onSend: (reason: string) => unknown; onClose: () => void }) {
   const [reason, setReason] = useState('');
-  const [sent, setSent] = useState(false);
-  const footer = check.ok && !sent ? (
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(reason.trim().length < minLength ? [{ fieldId: 'reopen-why', message: minLength > 1 ? `Give the reason in a sentence (at least ${minLength} letters).` : 'Enter a reason' }] : []);
+  const footer = check.ok ? (
     <>
-      {!reason.trim() && <FootReason>Enter a reason</FootReason>}
       <Button onClick={onClose}>Cancel</Button>
-      <Button variant="danger" icon={Unlock} disabled={!reason.trim()} onClick={() => setSent(true)}>Send reopen request</Button>
+      <Button
+        variant="danger"
+        icon={Unlock}
+        loading={busy === 'send'}
+        onClick={() => {
+          if (early.stop()) return;
+          void run('send', async () => {
+            await onSend(reason.trim());
+            onClose();
+          });
+        }}
+      >
+        Send reopen request
+      </Button>
     </>
   ) : <Button onClick={onClose}>Close</Button>;
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Request reopen · ${monthName(period)}`} footer={footer}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Request reopen · ${name}`} footer={footer}>
       {!check.ok ? (
         <InlineAlert tone="danger" title="This period can't be reopened">{check.reason}</InlineAlert>
-      ) : sent ? (
-        <InlineAlert tone="success" title="Reopen request sent">{PAYROLL_ADMIN.name} and the System Admin decide next. {MONTH[period.m]} stays locked until both approve.</InlineAlert>
       ) : (
         <div className="yx-tim-stack">
-          <p>Reopen is a high-risk request. It needs Payroll Admin and System Admin approval, and you can't approve your own request.</p>
-          <FormField label="Reason" required><TextArea rows={3} value={reason} onChange={setReason} /></FormField>
+          {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+          <p>Reopen is a high-risk request. It needs a payroll check, then Finance or a System Admin, and you can't approve your own request. Once approved, the month's frozen payroll figures are set aside (kept for the record).</p>
+          <FormField id="reopen-why" label="Reason" required error={early.errorOf('reopen-why')}><TextArea rows={3} value={reason} onChange={setReason} maxLength={500} /></FormField>
         </div>
       )}
     </Dialog>
@@ -1334,6 +2108,8 @@ export function IndustrialActionScreen({ view = 'form', legality = 'undetermined
   const [notice, setNotice] = useState(view === 'record' ? 'Lay-off notice dated 28 Sep 2026' : '');
   const [confirm, setConfirm] = useState(false);
   const [recorded, setRecorded] = useState(view === 'record');
+  // Pressed too early, the missing part says so (never a disabled button).
+  const [tried, setTried] = useState(false);
   const g = IA_GROUPS.find((x) => x.value === group) ?? IA_GROUPS[0];
   const count = g.count;
   const days = iaDays(from, to);
@@ -1365,7 +2141,7 @@ export function IndustrialActionScreen({ view = 'form', legality = 'undetermined
         <FormField label="Legality" required>
           <Segment label="Legality" value={leg} onChange={setLeg} options={LEGALITY} />
         </FormField>
-        <FormField label="Notice reference" required><TextField value={notice} onChange={setNotice} placeholder="For example: notice dated 21 Sep 2026" /></FormField>
+        <FormField label="Notice reference" required error={tried && !notice.trim() ? 'Enter the notice reference' : null}><TextField value={notice} onChange={setNotice} placeholder="For example: notice dated 21 Sep 2026" /></FormField>
         <section className="yx-tim-effect" aria-live="polite">
           <strong>Effect</strong>
           <p className="yx-tim-muted">
@@ -1377,7 +2153,7 @@ export function IndustrialActionScreen({ view = 'form', legality = 'undetermined
           <div className="yx-tim-row">
             {/* Cancel leaves the form for Time > Requests. */}
             <Button asChild><a href={storyHref('screens-time-tim-09-·-ot-review--hr')} target="_top">Cancel</a></Button>
-            <Button variant="primary" disabled={!!block} onClick={() => setConfirm(true)}>Record event</Button>
+            <Button variant="primary" onClick={() => (block ? setTried(true) : setConfirm(true))}>Record event</Button>
           </div>
         </div>
       </div>
@@ -1497,7 +2273,8 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
           <>
             {editErr && <FootReason>{editErr}</FootReason>}
             <Button onClick={() => setEditing(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!!editErr} onClick={() => { if (eFrom && eTo) onDates(eFrom, eTo); setEditing(false); }}>Save dates</Button>
+            {/* Never disabled: the reason shows beside the buttons. */}
+            <Button variant="primary" onClick={() => { if (editErr) return; if (eFrom && eTo) onDates(eFrom, eTo); setEditing(false); }}>Save dates</Button>
           </>
         }
       >

@@ -1,5 +1,5 @@
 // Devices, timesheets, reports, timesheet pre-fill. TIM-14, TIM-15, TIM-16, TIM-30, TIM-43.
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, Check, Download, Link2, LogOut, Plus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { EMPLOYEES, ENTITIES } from '../_kit/data';
@@ -7,8 +7,9 @@ import { Segment } from '../people/people-kit';
 import { Button, IconButton } from '../../components/button';
 import { AiBadge, Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { Icon } from '../../components/foundations';
 import { NumberField, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -26,6 +27,8 @@ import { DueBadge, Kpis, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
+import type { LoadState, MyTimesheet, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import { useRun } from '../org/org-kit';
 import './time.css';
 
 /** End of the open period (September freezes after 30 Sep). */
@@ -39,6 +42,35 @@ const STORY = {
   periodsHr: 'screens-time-tim-11-·-periods--hr',
   leaveCardHr: 'screens-time-tim-21-·-leave-card--hr',
 };
+
+/* ---------- live pages (the designed screens with the API's data) ---------- */
+
+/** A live page's load states around a designed screen part: loading, error with retry, no access. */
+export function LiveGate({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children?: ReactNode }) {
+  if (state === 'loading')
+    return (
+      <div className="yx-tim-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}>
+        <Skeleton height={96} />
+        <Skeleton height={240} />
+      </div>
+    );
+  if (state === 'error') return <ErrorState title={`We couldn't load ${what}.`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />;
+  if (state === 'no-access') return <NoAccessState grantedBy="HR" what={what} />;
+  return <>{children}</>;
+}
+/** DataTable shows loading and error itself; no access is a LiveGate. */
+export const liveTable = (s: LoadState) => (s === 'loading' ? 'loading' : s === 'error' ? 'error' : 'ready');
+/** "12 Oct 2026" from an API date (yyyy-mm-dd, or an ISO time). */
+export const isoDate = (iso: string) => formatDate(new Date(`${iso.slice(0, 10)}T00:00:00`));
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** "September 2026" from yyyy-mm. */
+export const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+export const shiftMonth = (month: string, n: number) => {
+  const d = new Date(`${month}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d.toISOString().slice(0, 7);
+};
+
 const multi = (f: FilterValue[], key: string) => {
   const v = f.find((x) => x.key === key);
   return v && v.type === 'multi' && v.values.length ? v.values : null;
@@ -96,8 +128,10 @@ export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false,
   const [resetting, setResetting] = useState<Kiosk | null>(null);
   const [registering, setRegistering] = useState(false);
   const [reg, setReg] = useState<{ place: string; location: string | null; mode: Kiosk['mode'] }>({ place: '', location: null, mode: 'Attendance' });
-  const [kioskNote, setKioskNote] = useState<string | null>(null);
-  const [bindNote, setBindNote] = useState<string | null>(null);
+  // Done is said with a toast (founder rule).
+  const { toast } = useToast();
+  const setKioskNote = (title: string) => toast({ tone: 'success', title });
+  const setBindNote = setKioskNote;
   const [added, setAdded] = useState<Phone[]>([]);
   const [q, setQ] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(false);
@@ -201,7 +235,6 @@ export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false,
         </TabsList>
         <TabsContent value="kiosks">
           <div className="yx-tim-stack">
-            {kioskNote && <InlineAlert tone="success" title={kioskNote} />}
             {offline.map((k) => (
               <InlineAlert
                 key={k.id}
@@ -227,7 +260,6 @@ export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false,
         </TabsContent>
         <TabsContent value="binds">
           <div className="yx-tim-stack">
-            {bindNote && <InlineAlert tone="success" title={bindNote} />}
             <DataTable
               label="New phone requests"
               columns={bcols}
@@ -282,7 +314,8 @@ export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false,
           <>
             {(!reg.place.trim() || !reg.location) && <span className="yx-tim-muted">Enter the place and location</span>}
             <Button onClick={() => setRegistering(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!reg.place.trim() || !reg.location} onClick={register}>Register kiosk</Button>
+            {/* Never disabled: the note beside it says what is missing. */}
+            <Button variant="primary" onClick={register}>Register kiosk</Button>
           </>
         }
       >
@@ -309,9 +342,8 @@ export function DevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false,
             <Button onClick={() => setRejecting(null)}>Cancel</Button>
             <Button
               variant="danger"
-              disabled={!rejectWhy}
               onClick={() => {
-                if (!rejecting) return;
+                if (!rejecting || !rejectWhy) return;
                 drop(rejecting.id);
                 if (rejecting.lost) signOutOld(rejecting);
                 setBindNote(`Rejected · ${first(rejecting.person)} is told why: ${rejectWhy?.toLowerCase()}.${rejecting.lost ? ` The lost ${rejecting.from} is signed out.` : ''}`);
@@ -436,7 +468,113 @@ function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   return [out, [...changed].sort()];
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[] }) {
+/* ---------- live: /time/timesheet (TIM-15) ---------- */
+
+/** Me › Timesheet: the person's own weeks, saved as a draft and sent to the project manager (P03). */
+export interface LiveTimesheet {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyTimesheet | null;
+  /** Monday of the week shown (yyyy-mm-dd). */
+  week: string;
+  today: string;
+  onWeek: (week: string) => void;
+  onSave: (week: string, lines: TimesheetLineInput[]) => Promise<unknown>;
+  onSubmit: (week: string) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+}
+const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
+const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoPlus = (iso: string, n: number) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + n)).toISOString().slice(0, 10);
+const weekRange = (iso: string) => `${dayMonth(localDay(iso))} – ${dayMonth(localDay(isoPlus(iso, 6)))}`;
+
+function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [lines, setLines] = useState<TimesheetLine[]>([]);
+  const [problems, setProblems] = useState<string[]>([]);
+  const { busy, error, run } = useRun();
+  useEffect(() => {
+    if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) })));
+    setProblems([]);
+  }, [d]);
+  const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)) }));
+  const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : { expected: 0, kind: 'workday' }));
+  const locked = (d?.days ?? []).filter((x) => x.locked);
+  const allLocked = !!d && locked.length === d.days.length;
+  const st: TimesheetStatus = allLocked ? 'locked' : d?.sheet ? LIVE_STATUS[d.sheet.status] : 'draft';
+  const editable = st === 'draft' || st === 'sent_back';
+  const thisWeek = isoPlus(live.today, -((localDay(live.today).getDay() + 6) % 7));
+  const go = (week: string) => {
+    setProblems([]);
+    live.onWeek(week);
+  };
+  const send = () => {
+    const p = checkTimesheet(lines).map((x) => x.message);
+    setProblems(p);
+    if (p.length || !d) return;
+    void run('submit', async () => {
+      await live.onSave(d.week, input());
+      await live.onSubmit(d.week);
+    });
+  };
+  return (
+    <TimePage active="My timesheet">
+      <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} />
+      <LiveGate state={live.state} onRetry={live.onRetry} what="your timesheet">
+        {d && (
+          <div className="yx-tim-stack">
+            {locked.length > 0 && !allLocked && (
+              <InlineAlert tone="warning" title="Part of this week is locked">
+                {locked.map((x) => isoDate(x.on)).join(', ')}: the month is closed, so those hours can't change.
+              </InlineAlert>
+            )}
+            {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+            <TimesheetGrid
+              weekStart={localDay(d.week)}
+              days={days}
+              status={st}
+              lines={lines}
+              onLinesChange={setLines}
+              projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
+              onPrevWeek={() => go(isoPlus(d.week, -7))}
+              // At this week the arrow stays and says why.
+              onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
+              onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
+              onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
+              saving={busy === 'save'}
+              today={localDay(live.today)}
+            />
+            {st === 'submitted' && (
+              <div className="yx-tim-row">
+                <span className="yx-tim-muted">Waiting for the project manager.</span>
+                <Button size="sm" loading={busy === 'withdraw'} onClick={() => void run('withdraw', () => live.onWithdraw(d.sheet!.id))}>Recall to edit</Button>
+              </div>
+            )}
+            {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
+            {editable && (
+              <div className="yx-tim-stack">
+                {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
+                <div className="yx-tim-row">
+                  <Button variant="primary" loading={busy === 'submit'} onClick={send}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button>
+                  <span className="yx-tim-muted">Goes {st === 'sent_back' ? 'back ' : ''}to the project manager.</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </LiveGate>
+    </TimePage>
+  );
+}
+
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+  if (live) return <LiveTimesheetScreen live={live} />;
+  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} />;
+}
+
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[] }) {
+  const { toast } = useToast();
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
@@ -444,15 +582,12 @@ export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen
   const [problems, setProblems] = useState<string[]>([]);
   const [pf, setPf] = useState(prefillOpen);
   const [correctionFor, setCorrectionFor] = useState<string | null>(null);
-  const [copyNote, setCopyNote] = useState<string | null>(null);
   const base = weekData(offset, status);
   const onThis = offset === 0;
   const st: TimesheetStatus = statusOver[offset] ?? base.status;
   const weekStart = addWeeks(THIS_MONDAY, offset);
   const lines = edits[offset] ?? base.lines;
-  // The week whose draft was last saved; any edit clears the note.
-  const [savedWeek, setSavedWeek] = useState<number | null>(null);
-  const setLines = (ls: TimesheetLine[]) => { setEdits((e) => ({ ...e, [offset]: ls })); setSavedWeek(null); };
+  const setLines = (ls: TimesheetLine[]) => setEdits((e) => ({ ...e, [offset]: ls }));
   const thisLines = edits[0] ?? TS_LINES;
   const setThisLines = (ls: TimesheetLine[]) => setEdits((e) => ({ ...e, 0: ls }));
   const editable = st === 'draft' || st === 'sent_back';
@@ -468,11 +603,12 @@ export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen
   const copyLast = () => {
     const [ls, days] = copyLastWeek(thisLines);
     setThisLines(ls);
-    setCopyNote(
-      days.length
+    toast({
+      tone: days.length ? 'success' : 'default',
+      title: days.length
         ? `Copied ${days.map((d) => DAY_NAMES[d]).join(' and ')} from ${range(addWeeks(THIS_MONDAY, -1))} into empty cells. Days from ${dayMonth(LOCK_FROM)} fill in on the day.`
         : `Nothing to copy: the days up to today already have hours. Days from ${dayMonth(LOCK_FROM)} fill in on the day.`,
-    );
+    });
   };
   const addCorrection = () => {
     setCorrectionFor(range(weekStart));
@@ -493,7 +629,7 @@ export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen
       onThisWeek={offset < -1 ? () => go(0) : undefined}
       // Copying last week would overwrite hours fixed for a sent-back week.
       onCopyLastWeek={onThis ? copyLast : undefined}
-      onSaveDraft={() => setSavedWeek(offset)}
+      onSaveDraft={() => toast({ tone: 'success', title: `Draft saved for ${range(weekStart)}.` })}
       sentBackReason={st === 'sent_back' ? 'SRF-24 audit visits on Tue 22 Sep look high: 3 h for a 1 h visit. Move the travel time to Internal.' : undefined}
       sentBackCell={st === 'sent_back' ? { lineId: QUERIED.lineId, day: QUERIED.day, by: ME.manager } : undefined}
       // Days from tomorrow (Wed 30 Sep) are filled on the day.
@@ -507,7 +643,6 @@ export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen
   const correctionAlert = onThis && (
     <>
       {correctionFor && <InlineAlert tone="info" title={`Correction for ${correctionFor}`}>Pick the project and task in the new row at the end, and enter the hours you missed. Your manager sees it with this week.</InlineAlert>}
-      {copyNote && <InlineAlert tone="success" title={copyNote} />}
     </>
   );
   // Weeks are sent on the Monday after they end; the approver acts the same day.
@@ -524,13 +659,13 @@ export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen
   // Submit sits after the hours (phone and desk), and is blocked until the last workday of the week.
   const submitRow = editable && (
     <div className="yx-tim-stack">
-      {savedWeek === offset && <InlineAlert tone="success" title={`Draft saved for ${range(weekStart)}.`} />}
       {problems.length > 0 && <InlineAlert tone="danger" title="Fix these before sending">{problems.join('. ')}.</InlineAlert>}
       <div className="yx-tim-row">
         {onThis ? (
-          <><Button variant="primary" disabled>Submit week</Button><span className="yx-tim-muted">Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).</span></>
+          // Never disabled: pressed too early, it says why.
+          <><Button variant="primary" onClick={() => setProblems(['Submit opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti)'])}>Submit week</Button><span className="yx-tim-muted">Opens Thu 1 Oct, your last workday this week (Fri 2 Oct is Gandhi Jayanti).</span></>
         ) : queriedUnchanged ? (
-          <><Button variant="primary" disabled>Resubmit week</Button><span className="yx-tim-muted">Change the SRF-24 hours on Tue 22 Sep first.</span></>
+          <><Button variant="primary" onClick={() => setProblems(['Change the SRF-24 hours on Tue 22 Sep first: your manager queried them'])}>Resubmit week</Button><span className="yx-tim-muted">Change the SRF-24 hours on Tue 22 Sep first.</span></>
         ) : (
           <><Button variant="primary" onClick={resubmit}>{st === 'sent_back' ? 'Resubmit week' : 'Submit week'}</Button><span className="yx-tim-muted">Goes {st === 'sent_back' ? 'back ' : ''}to {ME.manager}.</span></>
         )}
@@ -714,8 +849,11 @@ function SuggestionList({ api }: { api: ReturnType<typeof useSuggestions> }) {
                 <span className="yx-tim-row">
                   <NumberField aria-label={`Hours for ${projectLabel(r)}`} value={draft} onChange={setDraft} min={0} max={24} decimals size="sm" />
                   <Button size="sm" onClick={() => setEditing(null)}>Cancel</Button>
-                  <Button size="sm" variant="primary" disabled={!draft || total > 24} onClick={() => { if (draft) api.setHours(r, draft); setEditing(null); }}>Save hours</Button>
-                  {total > 24 ? (
+                  {/* Never disabled: the reason shows beside it. */}
+                  <Button size="sm" variant="primary" onClick={() => { if (!draft || total > 24) return; api.setHours(r, draft); setEditing(null); }}>Save hours</Button>
+                  {!draft ? (
+                    <span className="yx-tim-muted">Enter the hours first.</span>
+                  ) : total > 24 ? (
                     <span className="yx-tim-muted">{dayShort} would be {total} h. A day can have at most 24 h.</span>
                   ) : total > DAY_EXPECTED ? (
                     <Badge tone="warning">{dayShort} would be {total} h</Badge>
@@ -886,11 +1024,147 @@ const NIGHT: NightRow[] = [
   { id: 'n2', name: 'Selvi Arumugam', code: 'KF-0186', consent: 'NWC-2026-021', validTo: '28 Feb 2027', sep: 6, aug: 8, transport: { sep: 6, aug: 8 } },
 ];
 
-export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready' }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState }) {
+/* ---------- live: /time/registers and /time/payroll-feed (TIM-16's statutory register card and report table) ---------- */
+
+interface LiveReportBase {
+  state: LoadState;
+  onRetry?: () => void;
+  /** yyyy-mm */
+  month: string;
+  onMonth: (month: string) => void;
+}
+/** HR › Registers (P07): each establishment's muster and leave registers in its state's format; every download is audited. */
+export interface LiveRegisters extends LiveReportBase {
+  report: 'registers';
+  data: Registers | null;
+  onDownload: (type: 'muster' | 'leave', locationId: string, format: 'pdf' | 'xlsx') => Promise<unknown>;
+}
+/** HR › Payroll feed, read only: what payroll reads per person and month; frozen at the period lock. */
+export interface LivePayrollFeed extends LiveReportBase {
+  report: 'feed';
+  data: PayrollFeed | null;
+  entities: { id: string; name: string }[];
+  entityId: string | null;
+  onEntity: (id: string) => void;
+}
+export type LiveReports = LiveRegisters | LivePayrollFeed;
+
+const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
+const MODE_LABEL: Record<string, string> = { punch: 'Check in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' };
+const hoursOf = (m: number) => Math.round((m / 60) * 100) / 100;
+/** The 12 months up to this one, newest first, plus the month shown if it is older. */
+function monthOptions(month: string) {
+  const now = new Date().toISOString().slice(0, 7);
+  const list = Array.from({ length: 12 }, (_, i) => shiftMonth(now, -i));
+  if (!list.includes(month)) list.push(month);
+  return list.map((m) => ({ value: m, label: monthText(m) }));
+}
+type FeedRow = PayrollFeed['rows'][number];
+
+function LiveReportsScreen({ live }: { live: LiveReports }) {
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const regs = live.report === 'registers';
+  const feedCols: TableColumn<FeedRow>[] = [
+    { key: 'name', header: 'Person', type: 'person', width: 200, value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code ?? undefined }) },
+    { key: 'mode', header: 'Mode', optional: true, value: (r) => MODE_LABEL[r.mode] ?? r.mode },
+    { key: 'days', header: 'Days', type: 'number', value: (r) => r.calendarDays, render: (r) => (r.unevaluatedDays ? <span className="yx-tim-list__main"><span>{r.calendarDays}</span><Badge tone="warning">{r.unevaluatedDays} not worked out</Badge></span> : r.calendarDays) },
+    { key: 'paid', header: 'Paid days', type: 'number', value: (r) => r.paidDays, total: 'sum' },
+    { key: 'lop', header: 'Unpaid days (LOP)', type: 'number', value: (r) => r.lopDays, total: 'sum' },
+    { key: 'otN', header: 'OT working day (h)', type: 'number', value: (r) => hoursOf(r.otNormalMinutes), total: 'sum', optional: true },
+    { key: 'otW', header: 'OT weekly off (h)', type: 'number', value: (r) => hoursOf(r.otWeeklyOffMinutes), total: 'sum', optional: true },
+    { key: 'otH', header: 'OT holiday (h)', type: 'number', value: (r) => hoursOf(r.otHolidayMinutes), total: 'sum', optional: true },
+    { key: 'night', header: 'Night shifts', type: 'number', value: (r) => r.nightShifts, total: 'sum', optional: true },
+    { key: 'comp', header: 'Comp-off', type: 'number', value: (r) => r.compOffDays, total: 'sum', optional: true },
+    { key: 'ts', header: 'Timesheet (h)', type: 'number', value: (r) => hoursOf(r.timesheetMinutes), total: 'sum', optional: true },
+  ];
+  const download = (l: Registers['locations'][number], f: Registers['locations'][number]['formats'][number], fmt: 'pdf' | 'xlsx') =>
+    void run(`${l.id}-${f.type}-${fmt}`, async () => {
+      if (live.report !== 'registers') return;
+      await live.onDownload(f.type, l.id, fmt);
+      toast({ tone: 'success', title: `${f.title} · ${l.name} · ${monthText(live.month)} downloaded.${l.locked ? '' : ' Draft: the month is not locked yet.'}` });
+    });
+  const feed = live.report === 'feed' ? live : null;
+  const frozen = feed?.data?.frozen;
+  return (
+    <TimePage active="Reports">
+      <PageHeader
+        title={regs ? 'Registers' : 'Payroll feed'}
+        description={regs ? "The muster and leave registers each establishment keeps, in its state's format. Every column the law asks for is always there." : 'What payroll reads for each person and month. Read only: it is frozen when the month is locked.'}
+        facts={
+          feed?.data ? (
+            <span className="yx-tim-row"><span>{monthText(feed.data.month)}</span>{frozen ? <Badge tone="neutral">Frozen{feed.data.lockedAt ? ` ${isoDate(feed.data.lockedAt)}` : ''}</Badge> : <Badge tone="warning">Preview: the month is open</Badge>}</span>
+          ) : undefined
+        }
+        actions={
+          <div className="yx-tim-row">
+            {feed && feed.entities.length > 0 && <div className="yx-tim-picker"><Select aria-label="Legal entity" value={feed.entityId} onChange={(v) => v && feed.onEntity(v)} options={feed.entities.map((e) => ({ value: e.id, label: e.name }))} /></div>}
+            <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={monthOptions(live.month)} /></div>
+          </div>
+        }
+      />
+      {error && <InlineAlert tone="danger" title="Not downloaded">{error}</InlineAlert>}
+      {live.report === 'registers' ? (
+        <LiveGate state={live.state} onRetry={live.onRetry} what="registers">
+          {live.data && !live.data.locations.length && <EmptyState title="No establishments in your scope this month" description="Registers are kept per establishment for the people working there." />}
+          {live.data?.locations.map((l) => (
+            <Card key={l.id} title={`${l.name} · ${monthText(live.data!.month)}`} actions={l.locked ? <Badge tone="neutral">Month locked</Badge> : <Badge tone="warning">Draft: month not locked</Badge>}>
+              <div className="yx-tim-stack">
+                <p className="yx-tim-muted">
+                  {l.entity} · {STATE_TEXT[l.state] ?? l.state} · {plural(l.people, 'person', 'people')}
+                  {l.verify ? ' · formats to be confirmed by your compliance adviser' : ''}
+                </p>
+                {l.formats.length ? (
+                  <ul className="yx-tim-list" aria-label={`${l.name} registers`}>
+                    {l.formats.map((f) => (
+                      <li key={f.type}>
+                        <span className="yx-tim-list__main">
+                          <span>{f.title}</span>
+                          <span className="yx-tim-muted">{f.form}</span>
+                        </span>
+                        <span className="yx-tim-row">
+                          <Button size="sm" icon={Download} loading={busy === `${l.id}-${f.type}-pdf`} onClick={() => download(l, f, 'pdf')}>Download PDF</Button>
+                          <Button size="sm" icon={Download} loading={busy === `${l.id}-${f.type}-xlsx`} onClick={() => download(l, f, 'xlsx')}>Download Excel</Button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="yx-tim-muted">No register format for this state yet.</p>
+                )}
+              </div>
+            </Card>
+          ))}
+        </LiveGate>
+      ) : !live.entityId && live.state === 'ready' ? (
+        <EmptyState title="No legal entity in your scope this month" description="The payroll feed is kept per legal entity for the people you can see." />
+      ) : live.state === 'no-access' ? (
+        <LiveGate state="no-access" what="the payroll feed" />
+      ) : (
+        <DataTable
+          label="Payroll feed"
+          columns={feedCols}
+          rows={live.data?.rows ?? []}
+          getRowId={(r) => r.employeeId}
+          state={liveTable(live.state)}
+          onRetry={live.onRetry}
+          empty={<EmptyState title="No one in your scope for this month" description="The feed lists the people of this legal entity you can see." />}
+        />
+      )}
+    </TimePage>
+  );
+}
+
+export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
+  if (live) return <LiveReportsScreen live={live} />;
+  return <SampleAttendanceReports report={report} persona={persona} month={startMonth} filters={startFilters} state={state} />;
+}
+
+function SampleAttendanceReports({ report, persona, month: startMonth, filters: startFilters, state }: { report: 'late' | 'ot' | 'form25' | 'night'; persona: 'hr' | 'manager'; month: Month; filters: FilterValue[]; state: ViewState }) {
+  const { toast } = useToast();
   const [r, setR] = useState(report);
   const [month, setMonth] = useState<Month>(startMonth);
   const [filters, setFilters] = useState<FilterValue[]>(startFilters);
-  const [downloaded, setDownloaded] = useState<string | null>(null);
   const mgr = persona === 'manager';
   const sep = month === 'sep';
   const days = sep ? SEP_DAYS : 31;
@@ -955,7 +1229,7 @@ export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month
     <span className="yx-tim-row"><span>August 2026</span><Badge tone="neutral">Locked</Badge></span>
   );
   const draftNote = sep ? ' Draft: September is not locked yet.' : '';
-  const download = (file: string) => setDownloaded(`${file} downloaded.${draftNote}`);
+  const download = (file: string) => toast({ tone: 'success', title: `${file} downloaded.${draftNote}` });
   const statTitle = r === 'form25' ? 'Form 25 · muster roll · Hosur plant' : 'Register of women night-shift workers · Hosur plant';
   const tableState = state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready';
   const reportName = r === 'ot' ? 'Overtime' : 'Late and early';
@@ -984,12 +1258,11 @@ export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month
         facts={period}
         actions={
           <div className="yx-tim-row">
-            <div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => { if (v) { setR(v as typeof r); setDownloaded(null); } }} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : [{ value: 'form25', label: 'Form 25 muster roll' }, { value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
-            <div className="yx-tim-picker"><Select aria-label="Month" value={month} onChange={(v) => { if (v) { setMonth(v as Month); setDownloaded(null); } }} options={[{ value: 'sep', label: 'September 2026' }, { value: 'aug', label: 'August 2026' }]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as typeof r)} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : [{ value: 'form25', label: 'Form 25 muster roll' }, { value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Month" value={month} onChange={(v) => v && setMonth(v as Month)} options={[{ value: 'sep', label: 'September 2026' }, { value: 'aug', label: 'August 2026' }]} /></div>
           </div>
         }
       />
-      {downloaded && <InlineAlert tone="success" title={downloaded} />}
       {unexplainedAlert}
       {statutory ? (
         <Card
@@ -1102,12 +1375,12 @@ const LOP: LopRow[] = [
 
 type LeaveReport = 'balances' | 'ledger' | 'taken' | 'lop' | 'liability' | 'negative';
 export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state = 'ready' }: { report?: LeaveReport; persona?: 'hr' | 'fin'; state?: ViewState }) {
+  const { toast } = useToast();
   const fin = persona === 'fin';
   const [r, setR] = useState<LeaveReport>(fin ? 'liability' : report);
   const narrow = useNarrow(599);
   // Retry reloads the list; Export only works once the list has loaded.
   const [loadState, setLoadState] = useState(state);
-  const [exported, setExported] = useState<string | null>(null);
   const tableState = loadState === 'loading' ? 'loading' : loadState === 'error' ? 'error' : 'ready';
   const asOf = formatDate(TODAY);
   const people = r === 'negative' ? NEGATIVE_ROWS : PERSON_ROWS;
@@ -1176,16 +1449,15 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
     getRowId: (x: { id: string }) => x.id,
     state: tableState,
     onRetry: () => setLoadState('ready'),
-    onExport: tableState === 'ready' ? (format: 'csv' | 'xlsx') => setExported(`${reportLabel} · ${asOf}.${format} downloaded.`) : undefined,
+    onExport: tableState === 'ready' ? (format: 'csv' | 'xlsx') => toast({ tone: 'success', title: `${reportLabel} · ${asOf}.${format} downloaded.` }) : undefined,
   } as const;
   return (
     <TimePage active="Reports" user={fin ? PAYROLL_ADMIN : HR_ADMIN}>
       <PageHeader
         title="Leave reports"
         description={description}
-        actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => { if (v) { setR(v as LeaveReport); setExported(null); } }} options={options} /></div>}
+        actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as LeaveReport)} options={options} /></div>}
       />
-      {exported && <InlineAlert tone="success" title={exported} />}
       {r === 'liability' && (
         <>
           <Kpis items={[{ label: 'Earned leave liability (all entities)', value: formatINR(4812600) }, { label: 'People', value: EMPLOYEES.length }, { label: 'Change vs August', value: '+₹1,12,400' }]} />

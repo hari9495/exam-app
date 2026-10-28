@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PeriodsScreen } from './requests';
 
-const meta: Meta<typeof PeriodsScreen> = { title: 'Screens/Time/TIM-11 · Periods', component: PeriodsScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof PeriodsScreen> = { title: 'Screens/Time/TIM-11 · Periods', component: PeriodsScreen, render: (args) => <PeriodsScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof PeriodsScreen>;
 
