@@ -34,3 +34,6 @@ export type { LivePrefill, PrefillTools, PrefillSuggestions, ToolProvider } from
 export { OpenShiftsScreen, StandbyScreen } from '../roster';
 export { OpenShiftsPanel, type LiveOpenShifts, type OpenShiftsData, type OpenShiftRow, type OpenShiftBid, type OpenShiftInput, type OpenShiftRule, type OpenShiftShift } from '../open-shifts-live';
 export type { LiveStandby, StandbyData, StandbyCallOut, StandbySlot, StandbyShift } from '../standby-live';
+// Auto-roster (TIM-34): the designed screen with `live`.
+export { AutoRosterScreen } from '../roster';
+export type { LiveAutoRoster, AutoRosterData, AutoRosterResult, AutoRosterSlot, AutoRosterSkip, AutoRosterShift } from '../auto-roster-live';

@@ -45,6 +45,7 @@ import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup } from
 import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
 import { type LiveOpenShifts, LiveOpenShiftsScreen } from './open-shifts-live';
 import { type LiveStandby, LiveStandbyScreen } from './standby-live';
+import { type LiveAutoRoster, LiveAutoRosterScreen } from './auto-roster-live';
 import './time.css';
 
 /** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
@@ -1522,7 +1523,7 @@ const NIGHTS_MIN = Math.min(...NIGHTS.map((x) => x.n));
 const NIGHTS_MAX = Math.max(...NIGHTS.map((x) => x.n));
 
 /** Two-column fact list with a fixed label width, so the reasons line up. */
-function FactList({ rows }: { rows: [string, ReactNode][] }) {
+export function FactList({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <ul className="yx-tim-days">
       {rows.map(([k, v], i) => (
@@ -1535,7 +1536,10 @@ function FactList({ rows }: { rows: [string, ReactNode][] }) {
   );
 }
 
-export function AutoRosterScreen({ step = 'draft', explainOpen = false, approved: approvedProp = false }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean }) {
+export function AutoRosterScreen({ live, ...story }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean; /** The live app's /time/auto-roster. */ live?: LiveAutoRoster }) {
+  return live ? <LiveAutoRosterScreen live={live} /> : <SampleAutoRosterScreen {...story} />;
+}
+function SampleAutoRosterScreen({ step = 'draft', explainOpen = false, approved: approvedProp = false }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean }) {
   const [tab, setTab] = useState(step === 'demand' ? 'demand' : 'draft');
   const [explain, setExplain] = useState<string | null>(explainOpen ? 'Night:2' : null);
   const [approved, setApproved] = useState(approvedProp);
