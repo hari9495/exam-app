@@ -424,7 +424,7 @@ export class RosterService implements OnModuleInit {
           if (row) await tx.rosterEntry.delete({ where: key });
           continue;
         }
-        await tx.rosterEntry.upsert({ where: key, create: { organizationId: org, employeeId: cell.employeeId, workOn: asDate(cell.on), draft: cell.value, updatedBy: c.userId ?? null }, update: { draft: cell.value, updatedBy: c.userId ?? null, updatedAt: new Date() } });
+        await tx.rosterEntry.upsert({ where: key, create: { organizationId: org, employeeId: cell.employeeId, workOn: asDate(cell.on), draft: cell.value, source: 'manual', updatedBy: c.userId ?? null }, update: { draft: cell.value, source: 'manual', updatedBy: c.userId ?? null, updatedAt: new Date() } });
       }
       await audit(tx, c, 'time.roster.drafted', 'roster', org, { cells: cells.length, changes: changed.slice(0, 200) });
       return { saved: cells.length };
@@ -512,7 +512,7 @@ export class RosterService implements OnModuleInit {
             const reason = f ? await nightGuard(tx, org, f, on, book.shiftOn(shiftId, on)) : null;
             if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason} (${fmt(on)}). Nothing was published.` });
           }
-          await tx.rosterEntry.update({ where: key, data: { shiftId, isOff: shiftId === null, published: true, draft: null, source: 'manual', publishedAt: new Date(), publishedBy: c.userId ?? null, changeReason: late.has(`${e.employeeId}|${on}`) ? reason!.trim().slice(0, 300) : null, updatedAt: new Date() } });
+          await tx.rosterEntry.update({ where: key, data: { shiftId, isOff: shiftId === null, published: true, draft: null, source: e.source === 'auto' ? 'auto' : 'manual', publishedAt: new Date(), publishedBy: c.userId ?? null, changeReason: late.has(`${e.employeeId}|${on}`) ? reason!.trim().slice(0, 300) : null, updatedAt: new Date() } });
         }
         told.add(e.employeeId);
         n++;

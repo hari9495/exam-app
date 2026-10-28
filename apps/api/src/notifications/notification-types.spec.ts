@@ -40,6 +40,7 @@ describe('notification catalog', () => {
       'helpdesk.rule.failed',
       'helpdesk.msg.link_ended',
       'time.roster.published',
+      'time.licence.expiring',
       'lifecycle.joiner.added',
       'journey.task.assigned',
       'journey.task.due',

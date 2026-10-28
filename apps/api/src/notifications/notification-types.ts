@@ -43,6 +43,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.msg.link_ended', group: 'reminders', label: 'A phone linked to your desk was linked in another company' },
   // M02 step 4 batch 2 (YX-AT-07).
   { type: 'time.roster.published', group: 'assignments', label: 'Your shifts for the coming days were published or changed' },
+  // TIM-40: a licence your work needs expires soon, or HR asked you to renew it.
+  { type: 'time.licence.expiring', group: 'reminders', label: 'A licence your work needs expires soon or must be renewed' },
   // M01 lifecycle batches 6a / 6b.
   { type: 'lifecycle.joiner.added', group: 'assignments', label: 'Someone is joining your team' },
   { type: 'journey.task.assigned', group: 'assignments', label: 'An onboarding or offboarding task was given to you or your team' },

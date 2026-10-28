@@ -108,3 +108,34 @@ export class RenewAskDto {
   @IsUUID()
   licenceTypeId!: string;
 }
+
+export class LicenceTypeUpdateDto {
+  @IsString()
+  @Transform(trim)
+  @MinLength(2)
+  @MaxLength(100)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trim)
+  @MaxLength(100)
+  note?: string;
+
+  @IsBoolean()
+  legal!: boolean;
+
+  @IsBoolean()
+  active!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(365, { each: true })
+  remindDays!: number[];
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
