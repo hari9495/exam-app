@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LeavePoliciesScreen } from './leave-admin';
 
-const meta: Meta<typeof LeavePoliciesScreen> = { title: 'Screens/Time/TIM-28 · Leave policies', component: LeavePoliciesScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof LeavePoliciesScreen> = { title: 'Screens/Time/TIM-28 · Leave policies', component: LeavePoliciesScreen, render: (args) => <LeavePoliciesScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof LeavePoliciesScreen>;
 

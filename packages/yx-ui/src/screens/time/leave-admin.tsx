@@ -1,24 +1,29 @@
 // Leave and location set-up for HR. TIM-26, TIM-27, TIM-28, TIM-29, TIM-31, TIM-42.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Check, Copy, Plus, RefreshCw } from 'lucide-react';
 import { Icon } from '../../components/foundations';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { useToast } from '../../components/notify';
+import { Segment } from '../../components/segment';
 import { ConfirmDialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Breadcrumbs, Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
-import { NumberField, TextArea, TextField } from '../../components/inputs';
-import { FieldRow, FormField, FormSection } from '../../components/field';
+import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
+import { ErrorSummary, FieldRow, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { PersonPicker, Select, type SelectOption } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Stepper, useNarrow } from '../../components/stepper';
-import { MenuItem } from '../../components/menu';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
 import { FilterBar } from '../../components/filters';
 import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } from '../_kit/data';
-import { DueBadge, GeoMap, Kpis, TimePage } from './time-kit';
+import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
+import { formatDate } from '../../lib/format';
+import { errorText, useRun } from '../org/org-kit';
+import type { HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -40,10 +45,9 @@ function Num({ initial, onDirty, label }: { initial: number | null; onDirty?: ()
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const weekday = (d: Date) => d.toLocaleDateString('en-IN', { weekday: 'short' });
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** "1 Jan 2027", no leading zero. ponytail: local until formatDate drops its zero padding. */
-const day = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-const dayShort = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+/** "1 Jan 2027". */
+const day = formatDate;
+const dayShort = (d: Date) => formatDate(d).replace(/ \d{4}$/, '');
 /** 1.25, 1.5, 4.5: at most two decimals, no trailing zeros. */
 const num = (n: number) => String(Number(n.toFixed(2)));
 const daysFromToday = (d: Date) => Math.round((d.getTime() - TODAY.getTime()) / 86_400_000);
@@ -160,7 +164,12 @@ interface CalendarPanelProps {
   onTemplate: () => void;
 }
 
-function CalendarPanel({ loc, rows, rules, saved, onRules, onSaveRules, draft, published, onPublish, onAdd, onEdit, onRemove, onTemplate }: CalendarPanelProps) {
+/** One location's calendar: the sample (stories), or `live` (the app). */
+function CalendarPanel(p: CalendarPanelProps | { live: LiveCalendarPanelProps }) {
+  return 'live' in p ? <LiveCalendarPanel {...p.live} /> : <SampleCalendarPanel {...p} />;
+}
+
+function SampleCalendarPanel({ loc, rows, rules, saved, onRules, onSaveRules, draft, published, onPublish, onAdd, onEdit, onRemove, onTemplate }: CalendarPanelProps) {
   const optionalCount = rows.filter((h) => h.optional).length;
   const optionalOff = rows.filter((h) => h.optional && h.date >= TODAY && isWeeklyOff(h.date));
   const dirty = !sameRules(rules, saved);
@@ -238,7 +247,8 @@ function CalendarPanel({ loc, rows, rules, saved, onRules, onSaveRules, draft, p
                 <Select value={rules.transfer} onChange={(v) => onRules({ ...rules, transfer: v })} options={[{ value: 'share', label: 'Split by months at each office' }, { value: 'reset', label: 'New office calendar from the move' }]} />
               </FormField>
               <div className="yx-tim-row">
-                <Button variant="primary" disabled={!dirty} onClick={onSaveRules}>Save rules</Button>
+                {/* Never greyed out: with nothing changed it does nothing, and the note beside it says so. */}
+                <Button variant="primary" onClick={() => dirty && onSaveRules()}>Save rules</Button>
                 {!dirty && <span className="yx-tim-muted">No changes to save</span>}
               </div>
             </div>
@@ -261,7 +271,13 @@ function CalendarPanel({ loc, rows, rules, saved, onRules, onSaveRules, draft, p
 
 const byLoc = <T,>(f: (l: CalLoc) => T) => Object.fromEntries(CAL_LOCS.map((l) => [l.key, f(l)])) as Record<LocKey, T>;
 
-export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }: { loc?: LocKey; dialog?: 'clone' | 'template'; state?: ViewState }) {
+/** TIM-26. Stories show the sample; the app passes `live` (the company's calendars per location). */
+export function HolidayCalendarsScreen({ live, ...sample }: { loc?: LocKey; dialog?: 'clone' | 'template'; state?: ViewState; live?: LiveHolidayCalendars }) {
+  return live ? <LiveHolidays live={live} /> : <SampleHolidayCalendars {...sample} />;
+}
+
+function SampleHolidayCalendars({ loc = 'maa', dialog, state = 'ready' }: { loc?: LocKey; dialog?: 'clone' | 'template'; state?: ViewState }) {
+  const { toast } = useToast();
   const [tab, setTab] = useState<LocKey>(loc);
   const [dlg, setDlg] = useState(dialog);
   const [rows, setRows] = useState<Record<LocKey, Holiday[]>>(() => ({
@@ -319,7 +335,7 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
           ) : curRows.length > 0 && !nextRows ? (
             <div className="yx-tim-row">
               {pendingFeed > 0 && <span className="yx-tim-muted">Review the feed changes first</span>}
-              <Button variant="primary" icon={Copy} disabled={pendingFeed > 0} onClick={() => setDlg('clone')}>Clone {cur.name} to 2027</Button>
+              <Button variant="primary" icon={Copy} onClick={() => pendingFeed === 0 && setDlg('clone')}>Clone {cur.name} to 2027</Button>
             </div>
           ) : undefined
         }
@@ -327,7 +343,7 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
       {year === 2027 && nextRows ? (
         <div className="yx-tim-stack">
           {nextPublished[tab] ? (
-            <InlineAlert tone="success" title={`${cur.name} 2027 calendar published`}>Employees at {cur.name} now see the 2027 holidays.</InlineAlert>
+            <div className="yx-tim-row"><Badge tone="success">Published</Badge><span className="yx-tim-muted">Employees at {cur.name} now see the 2027 holidays.</span></div>
           ) : (
             <div className="yx-tim-row">
               <Badge tone="neutral">Draft · not published</Badge>
@@ -348,7 +364,7 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
           />
           {!nextPublished[tab] && (
             <div className="yx-tim-row">
-              <Button variant="primary" disabled={toConfirm > 0} onClick={() => setNextPublished((p) => ({ ...p, [tab]: true }))}>Publish {cur.name} 2027 calendar</Button>
+              <Button variant="primary" onClick={() => { if (toConfirm > 0) return; setNextPublished((p) => ({ ...p, [tab]: true })); toast({ tone: 'success', title: `${cur.name} 2027 calendar published` }); }}>Publish {cur.name} 2027 calendar</Button>
               <span className="yx-tim-muted">{toConfirm > 0 ? `Confirm the ${plural(toConfirm, 'festival date')} first` : 'Employees see these holidays only after you publish'}</span>
             </div>
           )}
@@ -356,7 +372,7 @@ export function HolidayCalendarsScreen({ loc = 'maa', dialog, state = 'ready' }:
       ) : (
       <>
       {nextRows && (
-        <InlineAlert tone="success" title={`2027 draft created for ${cur.name}`} actions={<Button size="sm" onClick={() => setYear(2027)}>Open 2027 draft</Button>}>
+        <InlineAlert tone="info" title={`2027 draft created for ${cur.name}`} actions={<Button size="sm" onClick={() => setYear(2027)}>Open 2027 draft</Button>}>
           {nextPublished[tab] ? 'The 2027 calendar is published.' : `${plural(toConfirm, 'festival date')} to confirm. Employees see nothing until you publish the 2027 calendar.`}
         </InlineAlert>
       )}
@@ -570,7 +586,12 @@ const SECTIONS = { basics: 'Basics', eligibility: 'Eligibility', crediting: 'Cre
 
 interface BlockedDates { id: string; from: Date; to: Date; reason: string }
 
-export function LeaveTypeEditorScreen({ section = 'counting', statutory = false }: { section?: string; statutory?: boolean }) {
+/** TIM-27. Stories show the sample; the app passes `live` (one leave type, or a new one). */
+export function LeaveTypeEditorScreen({ live, ...sample }: { section?: string; statutory?: boolean; live?: LiveLeaveTypeEditor }) {
+  return live ? <LiveTypeEditor live={live} /> : <SampleLeaveTypeEditor {...sample} />;
+}
+
+function SampleLeaveTypeEditor({ section = 'counting', statutory = false }: { section?: string; statutory?: boolean }) {
   const [sandwich, setSandwich] = useState<'none' | 'sandwich' | 'always'>('sandwich');
   const [dirty, setDirty] = useState(false);
   const [colourSaved, setColourSaved] = useState(false);
@@ -617,12 +638,12 @@ export function LeaveTypeEditorScreen({ section = 'counting', statutory = false 
           statutory ? (
             <div className="yx-tim-row">
               {colourSaved ? <span className="yx-tim-muted">Colour saved</span> : !dirty && <span className="yx-tim-muted">No changes yet</span>}
-              <Button variant="primary" disabled={!dirty} onClick={() => { setDirty(false); setColourSaved(true); }}>Save colour</Button>
+              <Button variant="primary" onClick={() => { if (!dirty) return; setDirty(false); setColourSaved(true); }}>Save colour</Button>
             </div>
           ) : (
             <div className="yx-tim-row">
               {!dirty ? <span className="yx-tim-muted">No changes yet</span> : saveBlocked && <span className="yx-tim-muted">{saveBlocked}</span>}
-              <Button variant="primary" disabled={!dirty || !!saveBlocked} onClick={() => (setTriedFrom(false), setSaveOpen(true))}>Save as version 5</Button>
+              <Button variant="primary" onClick={() => { if (!dirty || saveBlocked) return; setTriedFrom(false); setSaveOpen(true); }}>Save as version 5</Button>
             </div>
           )
         }
@@ -972,7 +993,13 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
   );
 }
 
-export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewState; openId?: string }) {
+/** TIM-28. Stories show the sample; the app passes `live` (the company's policies and where they apply). */
+export function LeavePoliciesScreen({ live, ...sample }: { state?: ViewState; openId?: string; live?: LiveLeavePolicies }) {
+  return live ? <LivePolicies live={live} /> : <SampleLeavePolicies {...sample} />;
+}
+
+function SampleLeavePolicies({ state = 'ready', openId }: { state?: ViewState; openId?: string }) {
+  const { toast } = useToast();
   const [rows, setRows] = useState<PolicyRow[]>(POLICIES);
   const [draft, setDraft] = useState<PolicyRow | null>(openId ? POLICIES.find((p) => p.id === openId) ?? null : null);
   const [isNew, setIsNew] = useState(false);
@@ -1037,8 +1064,9 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
             <strong style={{ flex: 1, minWidth: 0 }}>{r.name}</strong>
             {/* Arrows reorder; they must not also open the drawer. */}
             <span className="yx-tim-row" style={{ flexWrap: 'nowrap', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-              <IconButton icon={ArrowUp} label={`Move ${r.name} up`} size="sm" disabled={i === 0} onClick={() => move(r.id, -1)} />
-              <IconButton icon={ArrowDown} label={`Move ${r.name} down`} size="sm" disabled={i === shown.length - 1} onClick={() => move(r.id, 1)} />
+              {/* At the top or bottom the arrow still works and says why nothing moved. */}
+              <IconButton icon={ArrowUp} label={`Move ${r.name} up`} size="sm" onClick={() => (i === 0 ? toast({ title: `${r.name} is already first.` }) : move(r.id, -1))} />
+              <IconButton icon={ArrowDown} label={`Move ${r.name} down`} size="sm" onClick={() => (i === shown.length - 1 ? toast({ title: `${r.name} is already last.` }) : move(r.id, 1))} />
             </span>
           </span>
         );
@@ -1146,7 +1174,7 @@ export function LeavePoliciesScreen({ state = 'ready', openId }: { state?: ViewS
             {/* flexBasis auto: the shared phone rule's 100% basis is a full height in the stacked footer and pushed the buttons into a second column off-screen. */}
             {draft && !canSave && <span className="yx-tim-muted" style={{ flexBasis: 'auto' }}>{isNew && !draft.name.trim() ? 'Name the policy to save it.' : !from ? 'Choose the date the change applies from.' : 'No changes yet'}</span>}
             <Button style={{ flexBasis: 'auto' }} onClick={() => openPolicy(null)}>Cancel</Button>
-            <Button style={{ flexBasis: 'auto' }} variant="primary" disabled={!canSave} onClick={save}>{from ? `Save from ${day(from)}` : 'Save'}</Button>
+            <Button style={{ flexBasis: 'auto' }} variant="primary" onClick={() => canSave && save()}>{from ? `Save from ${day(from)}` : 'Save'}</Button>
           </>
         }
       >
@@ -1198,7 +1226,29 @@ const thousands = (n: number) => n.toLocaleString('en-IN');
 type YeRow = YeSample & { carry: number; encash: number; lapse: number };
 type SyRow = { name: string; jan: number; credit: number; mar: number; carry: number; lapse: number };
 
-export function YearEndWizard({ mode = 'yearend', current = 'scope', confirm = false, asOf = TODAY, pendingAcknowledged = false, posted: postedInitially = false }: {
+type YearEndSampleProps = {
+  /** Stories: open on the posted result. */
+  posted?: boolean;
+  mode?: 'yearend' | 'transition';
+  current?: string;
+  confirm?: boolean;
+  /** The date the wizard runs on (stories). Year-end can be posted from 1 Jan 2027. */
+  asOf?: Date;
+  /** The admin ticked "post anyway" for the pending leave requests. */
+  pendingAcknowledged?: boolean;
+};
+
+/** TIM-29. Stories show the sample; the app passes `live` (preview from the ledger, then post). */
+export function YearEndWizard({ live, ...sample }: YearEndSampleProps & { live?: LiveYearEnd }) {
+  return live ? <LiveYearEndWizard live={live} /> : <SampleYearEndWizard {...sample} />;
+}
+
+/** The posted year end stays on the page: it runs in the background until the balances update (founder approved). */
+function YearEndPosted({ title: postedTitle, actions: postedActions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  return <InlineAlert tone="success" title={postedTitle} actions={postedActions}>{children}</InlineAlert>;
+}
+
+function SampleYearEndWizard({ mode = 'yearend', current = 'scope', confirm = false, asOf = TODAY, pendingAcknowledged = false, posted: postedInitially = false }: {
   /** Stories: open on the posted result. */
   posted?: boolean;
   mode?: 'yearend' | 'transition';
@@ -1355,15 +1405,14 @@ export function YearEndWizard({ mode = 'yearend', current = 'scope', confirm = f
       <TimePage active="Year-end" user={HR_ADMIN}>
         <PageHeader title={title} />
         {mode === 'yearend' ? (
-          <InlineAlert
-            tone="success"
+          <YearEndPosted
             title={`Year-end 2026 posted on ${day(asOf)}`}
             actions={<>{drafts && <StoryLink to={STORY.payrollInputs}>Open payroll drafts</StoryLink>}{ackText && <StoryLink to={STORY.pendingRequests}>{`Open ${plural(pendingLeave, 'pending request')}`}</StoryLink>}<StoryLink to={STORY.leaveCard}>View leave card</StoryLink></>}
           >
             {yeLabel} · {tot.people} people · {thousands(tot.carried)} days carried forward · {thousands(tot.lapse)} days lapse{drafts ? ` · ${tot.drafts} pay-out drafts added to January payroll` : ''}{ackText ? ` · ${ackText}` : ''}.
-          </InlineAlert>
+          </YearEndPosted>
         ) : (
-          <InlineAlert tone="success" title={`Leave-year change scheduled on ${day(asOf)}`} actions={<StoryLink to={STORY.policies}>View leave policies</StoryLink>}>
+          <InlineAlert tone="info" title={`Leave-year change scheduled on ${day(asOf)}`} actions={<StoryLink to={STORY.policies}>View leave policies</StoryLink>}>
             {entPeople} people at {ent.label} move to a short year from 1 Jan 2027. Leave entries are posted on 1 Jan 2027.
           </InlineAlert>
         )}
@@ -1477,7 +1526,12 @@ export function ipRangeError(text: string): string | null {
   return null;
 }
 
-export function GeofenceEditorScreen({ view = 'edit', ipError = false }: { view?: 'edit' | 'multi' | 'field'; ipError?: boolean }) {
+/** TIM-31. Stories show the sample; the app passes `live` (each location's check-in mode, shift and weekly offs). */
+export function GeofenceEditorScreen({ live, ...sample }: { view?: 'edit' | 'multi' | 'field'; ipError?: boolean; live?: LiveLocations }) {
+  return live ? <LiveLocationsScreen live={live} /> : <SampleGeofenceEditor {...sample} />;
+}
+
+function SampleGeofenceEditor({ view = 'edit', ipError = false }: { view?: 'edit' | 'multi' | 'field'; ipError?: boolean }) {
   const [points, setPoints] = useState<GeoPoint[]>(view === 'multi' ? [MAIN_POINT, ANNEXE_POINT] : [MAIN_POINT]);
   const [sel, setSel] = useState(points[0].id);
   const [ips, setIpsRaw] = useState(ipError ? '10.20.4.0/24\n10.20.300.0/24' : '10.20.4.0/24\n10.20.5.0/24');
@@ -1517,7 +1571,7 @@ export function GeofenceEditorScreen({ view = 'edit', ipError = false }: { view?
     <div className="yx-tim-row">
       {errors > 0 && <Button size="sm" onClick={jumpToError}>{plural(errors, 'error')} to fix</Button>}
       {saved && <span className="yx-tim-muted">Saved</span>}
-      <Button variant="primary" disabled={errors > 0} onClick={() => setSaved(true)}>Save location</Button>
+      <Button variant="primary" onClick={() => (errors > 0 ? jumpToError() : setSaved(true))}>Save location</Button>
     </div>
   );
 
@@ -1534,7 +1588,7 @@ export function GeofenceEditorScreen({ view = 'edit', ipError = false }: { view?
               <span className="yx-tim-row">
                 {pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
                 {/* Same two buttons on every row so Remove lines up (R9). */}
-                <Button size="sm" disabled={p.id === cur.id} onClick={() => setSel(p.id)}>{p.id === cur.id ? 'Editing' : 'Edit'}</Button>
+                <Button size="sm" onClick={() => setSel(p.id)}>{p.id === cur.id ? 'Editing' : 'Edit'}</Button>
                 <Button size="sm" onClick={() => { setPoints((ps) => ps.filter((x) => x.id !== p.id)); if (p.id === cur.id) setSel(points.find((x) => x.id !== p.id)!.id); setSaved(false); }}>Remove</Button>
               </span>
             )}
@@ -1627,6 +1681,7 @@ const FEED_STATES = ['Karnataka', 'Tamil Nadu', 'Kerala', 'Maharashtra'];
 const locsIn = (state: string | null) => CAL_LOCS.filter((l) => l.state === state).map((l) => l.name);
 
 export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | 'review' | 'off' }) {
+  const { toast } = useToast();
   const [on, setOn] = useState(view !== 'off');
   const [feeds, setFeeds] = useState(FEEDS);
   const [review, setReview] = useState(view === 'review');
@@ -1656,14 +1711,15 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
     const cals = [...new Set(accepted.flatMap((c) => c.locs))].map(locName);
     setWaitingIds((ids) => ids.filter((id) => !decisions[id]));
     const dismissed = ignored.length > 0 ? `${plural(ignored.length, 'change')} dismissed; calendars keep their dates for ${ignored.length === 1 ? 'it' : 'them'}.` : '';
-    setPublishedMsg(
+    const msg =
       accepted.length === 0
         ? { title: 'Changes dismissed', body: dismissed }
         : {
             title: 'Published',
             body: `Published ${plural(accepted.length, 'change')} to the ${cals.join(' and ')} ${cals.length === 1 ? 'calendar' : 'calendars'}.${back > 0 ? ` ${plural(back, 'person gets', 'people get')} their leave day back and ${back === 1 ? 'is' : 'are'} notified.` : ''}${dismissed ? ` ${dismissed}` : ''}`,
-          },
-    );
+          };
+    setPublishedMsg(msg);
+    toast({ tone: 'success', title: msg.title });
   };
   const openAdd = () => {
     const free = FEED_STATES.find((s) => !subscribed.includes(s)) ?? null;
@@ -1724,7 +1780,7 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
       {on && review && hasTn && (waiting.length > 0 || publishedMsg) && (
         <Card title="Changes from the Tamil Nadu feed · review before publishing">
           <div className="yx-tim-stack">
-            {publishedMsg && <InlineAlert tone="success" title={publishedMsg.title}>{publishedMsg.body}</InlineAlert>}
+            {publishedMsg && <p className="yx-tim-muted">{publishedMsg.body}</p>}
             {waiting.length > 0 && (
               <>
                 <ul className="yx-tim-list">
@@ -1764,7 +1820,7 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
                   })}
                 </ul>
                 <div className="yx-tim-row">
-                  <Button variant="primary" disabled={undecided > 0} onClick={publish}>
+                  <Button variant="primary" onClick={() => undecided === 0 && publish()}>
                     {accepted.length > 0 ? `Publish ${plural(accepted.length, 'change')}` : ignored.length > 0 ? `Dismiss ${plural(ignored.length, 'change')}` : 'Publish changes'}
                   </Button>
                   {undecided > 0 && <span className="yx-tim-muted">Accept or ignore {undecided === waiting.length ? 'each change' : `the ${plural(undecided, 'change')} left`}</span>}
@@ -1841,4 +1897,994 @@ export function HolidayFeedScreen({ view = 'settings' }: { view?: 'settings' | '
       </ConfirmDialog>
     </TimePage>
   );
+}
+
+/* =====================================================================
+   Live (the app): TIM-26, 27, 28, 29 and 31 filled with the company's set-up (GET /time/setup).
+   The page's API glue (toasts after a save, refetch) stays in apps/web; errors show here.
+   ===================================================================== */
+
+export interface SetupLive {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TimeSetup | null;
+}
+export type LeaveTypeInput = { code: string; name: string; kind: string; paid: boolean; colour: string; active: boolean; rules: LeaveRules };
+export type LocationRuleInput = { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field' };
+export interface LiveLeavePolicies extends SetupLive {
+  /** Resolves to the new policy (`{ id }`), so its drawer stays open on it. */
+  onCreatePolicy: (name: string) => Promise<unknown>;
+  onAddVersion: (policyId: string, input: { validFrom: string; lines: PolicyLine[] }) => Promise<unknown>;
+  onAssign: (policyId: string, input: { scopeType: string; scopeId?: string; validFrom: string }) => Promise<unknown>;
+  onRemoveAssignment: (id: string) => Promise<unknown>;
+  /** Opens TIM-27 for a type, or 'new'. */
+  onOpenType: (id: string) => void;
+}
+export interface LiveLeaveTypeEditor extends SetupLive {
+  /** A leave type's id, or 'new'. */
+  typeId: string;
+  onSaveType: (id: string | null, input: LeaveTypeInput) => Promise<unknown>;
+  /** After a new type is added (`{ id }` from the API). */
+  onAdded?: (id: string) => void;
+  policiesHref: string;
+}
+export interface LiveHolidayCalendars extends SetupLive {
+  onCreateCalendar: (input: { name: string; locationId?: string; optionalLimit: number }) => Promise<unknown>;
+  onUpdateCalendar: (id: string, input: { name: string; optionalLimit: number; halfDayOpenHalf: 'first' | 'second' }) => Promise<unknown>;
+  onAddHoliday: (calendarId: string, input: { on: string; name: string; kind: string; halfDay: boolean }) => Promise<unknown>;
+  onRemoveHoliday: (id: string) => Promise<unknown>;
+}
+export interface LiveYearEnd extends SetupLive {
+  onYearEndPreview: (yearEnd: string) => Promise<YearEndPreview>;
+  onYearEndRun: (yearEnd: string) => Promise<unknown>;
+}
+export interface LiveLocations extends SetupLive {
+  onSetRule: (locationId: string, input: LocationRuleInput) => Promise<unknown>;
+  /** Settings › Locations, where the point, radius and office networks are set. */
+  settingsHref: string;
+}
+
+type SetupPolicy = TimeSetup['policies'][number];
+type SetupLocation = TimeSetup['locations'][number];
+type SetupCalendar = TimeSetup['calendars'][number];
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const isoOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const dateOfIso = (iso: string) => new Date(`${iso}T00:00:00`);
+const isoDay = (iso: string) => day(dateOfIso(iso));
+const isoWeekday = (iso: string) => weekday(dateOfIso(iso));
+
+const KINDS = [
+  { value: 'earned', label: 'Earned' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'sick', label: 'Sick' },
+  { value: 'lop', label: 'Leave without pay' },
+  { value: 'comp_off', label: 'Comp-off' },
+  { value: 'maternity', label: 'Maternity' },
+  { value: 'paternity', label: 'Paternity' },
+  { value: 'other', label: 'Other' },
+];
+const kindText = (k: string) => KINDS.find((x) => x.value === k)?.label ?? k;
+const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
+const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
+const HOLIDAY_KINDS = [
+  { value: 'national', label: 'National holiday' },
+  { value: 'state', label: 'State holiday' },
+  { value: 'festival', label: 'Festival' },
+  { value: 'optional', label: 'Optional (each person chooses)' },
+  { value: 'restricted', label: 'Restricted (each person chooses)' },
+];
+const choosable = (kind: string | null) => kind === 'optional' || kind === 'restricted';
+/** The version in force today (the API sends the newest first). */
+const versionToday = (p: SetupPolicy, today: string) => p.versions.find((v) => v.validFrom <= today) ?? p.versions[p.versions.length - 1];
+/** Types a policy credits days of; leave without pay, comp-off and the statutory ones carry no yearly days. */
+const creditedTypes = (d: TimeSetup) => d.types.filter((t) => t.active && !['lop', 'maternity', 'paternity', 'comp_off'].includes(t.kind));
+const blankLine = (leaveTypeId: string): PolicyLine => ({ leaveTypeId, annualDays: 0, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0 });
+const typeShort = (d: TimeSetup, id: string) => (d.types.find((t) => t.id === id)?.name ?? 'Unknown type').replace(/ leave$/, '');
+const lineText = (l: PolicyLine) => `${num(l.annualDays)} days a year, ${l.frequency === 'monthly' ? 'credited every month' : 'all at the start of the year'}${l.proRata ? ', a share for joiners' : ''}`;
+const carryText = (l: PolicyLine) => (l.carryForwardMax === null ? 'carries forward in full' : l.carryForwardMax === 0 ? 'lapses at year end' : `carries forward up to ${num(l.carryForwardMax)} days`);
+/** Is the day a weekly off under the location's rule (weekday 1 = Monday … 7 = Sunday; nth = which ones in the month)? */
+const offUnder = (iso: string, offs: LocationRule['weeklyOffs']) => {
+  const dt = dateOfIso(iso);
+  const wd = dt.getDay() === 0 ? 7 : dt.getDay();
+  return offs.some((o) => o.weekday === wd && (!o.nth?.length || o.nth.includes(Math.ceil(dt.getDate() / 7))));
+};
+
+/** Loading, could not load and no access around a live set-up screen; when ready the screen draws its own header. */
+function SetupGate({ live, active, header, children }: { live: SetupLive; active: TimeNav; header: ReactNode; children: (d: TimeSetup) => ReactNode }) {
+  const d = live.state === 'ready' ? live.data : null;
+  return (
+    <TimePage active={active} user={HR_ADMIN}>
+      {d ? (
+        children(d)
+      ) : (
+        <>
+          {header}
+          {live.state === 'error' ? (
+            <ErrorState title="We couldn't load the leave set-up." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+          ) : live.state === 'no-access' ? (
+            <NoAccessState grantedBy="your HR admin" what="the leave set-up" />
+          ) : (
+            <div className="yx-tim-stack" role="status" aria-busy="true" aria-label="Loading the leave set-up">
+              <Skeleton height={96} />
+              <Skeleton height={240} />
+            </div>
+          )}
+        </>
+      )}
+    </TimePage>
+  );
+}
+
+/** The minimums the law sets for the company's states (P07); a policy below them is raised when credits are made. */
+function Statutory({ d }: { d: TimeSetup }) {
+  if (!d.statutory.length) return null;
+  return (
+    <InlineAlert tone="info" title="Minimums set by law">
+      {d.statutory.map((s) => (
+        <span key={s.jurisdiction}>
+          {STATE_TEXT[s.jurisdiction] ?? s.jurisdiction}: {(s.values.floors ?? []).map((f) => `${f.kinds.map(kindText).join(' and ')} ${f.days} days a year`).join(', ')}
+          {s.values.carry?.earned ? `; earned leave carries forward up to at least ${s.values.carry.earned} days` : ''}. {s.verify ? 'Being confirmed with our compliance partner.' : ''}{' '}
+        </span>
+      ))}
+      A policy below the minimum is raised to it when credits are made.
+    </InlineAlert>
+  );
+}
+
+/* ---------------- TIM-28 live ---------------- */
+
+const POLICIES_TEXT = 'Each policy gives leave types to the people where it applies: the whole company, a legal entity or a location. The most specific one wins: a location over its legal entity, an entity over the whole company.';
+
+function LivePolicies({ live }: { live: LiveLeavePolicies }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <SetupGate live={live} active="Leave types & policies" header={<PageHeader title="Leave policies" description={POLICIES_TEXT} />}>
+      {(d) => {
+        const policy = openId && openId !== 'new' ? d.policies.find((p) => p.id === openId) ?? null : null;
+        const cols: TableColumn<SetupPolicy>[] = [
+          { key: 'name', header: 'Policy', value: (r) => r.name, render: (r) => <strong>{r.name}</strong> },
+          {
+            key: 'types', header: 'Leave types',
+            value: (r) => versionToday(r, d.today)?.lines.map((l) => `${typeShort(d, l.leaveTypeId)} ${num(l.annualDays)}`).join(' · ') || 'No leave types yet',
+          },
+          {
+            key: 'rule', header: 'Who gets it',
+            value: (r) => r.assignments.map((a) => a.scopeName).join(', ') || 'No one yet',
+            render: (r) => {
+              const v = versionToday(r, d.today);
+              const later = r.versions.find((x) => x.validFrom > d.today);
+              return (
+                <span className="yx-tim-list__main" style={{ flex: 'none' }}>
+                  <span>{r.assignments.length ? r.assignments.map((a) => `${a.scopeName} from ${isoDay(a.validFrom)}`).join(' · ') : 'Not applied to anyone yet'}</span>
+                  {v && <span className="yx-tim-muted">Entitlements from {isoDay(v.validFrom)}</span>}
+                  {later && <span><Badge tone="neutral">Changes from {isoDay(later.validFrom)}</Badge></span>}
+                </span>
+              );
+            },
+          },
+        ];
+        const newPolicy = <Button variant="primary" icon={Plus} onClick={() => setOpenId('new')}>New policy</Button>;
+        return (
+          <>
+            <PageHeader
+              title="Leave policies"
+              description={POLICIES_TEXT}
+              actions={
+                <div className="yx-tim-row">
+                  {/* Question: the design has no list of leave types; each opens TIM-27 from this menu. */}
+                  <Menu>
+                    <MenuTrigger asChild>
+                      <Button>Leave types</Button>
+                    </MenuTrigger>
+                    <MenuContent>
+                      {d.types.map((t) => (
+                        <MenuItem key={t.id} onSelect={() => live.onOpenType(t.id)}>
+                          {t.name}
+                          {t.active ? '' : ' (not in use)'}
+                        </MenuItem>
+                      ))}
+                      {d.types.length > 0 && <MenuSeparator />}
+                      <MenuItem onSelect={() => live.onOpenType('new')}>New leave type</MenuItem>
+                    </MenuContent>
+                  </Menu>
+                  {newPolicy}
+                </div>
+              }
+            />
+            <Statutory d={d} />
+            <DataTable
+              label="Leave policies"
+              columns={cols}
+              rows={d.policies.filter((p) => !p.archived)}
+              getRowId={(r) => r.id}
+              rowNoun={['policy', 'policies']}
+              onRowClick={(r) => setOpenId(r.id)}
+              activeRowId={openId}
+              empty={<EmptyState title="No leave policies yet" description="No one gets leave until you add a policy and apply it." action={newPolicy} />}
+            />
+            {openId && (openId === 'new' || policy) && (
+              <LivePolicyDrawer key={openId} d={d} policy={policy} live={live} onOpen={setOpenId} onClose={() => setOpenId(null)} />
+            )}
+          </>
+        );
+      }}
+    </SetupGate>
+  );
+}
+
+function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; policy: SetupPolicy | null; live: LiveLeavePolicies; onOpen: (id: string) => void; onClose: () => void }) {
+  const types = creditedTypes(d);
+  const latest = policy?.versions[0];
+  const [name, setName] = useState('');
+  const [lines, setLines] = useState<PolicyLine[]>(() => types.map((t) => latest?.lines.find((l) => l.leaveTypeId === t.id) ?? blankLine(t.id)));
+  const [from, setFrom] = useState<Date | null>(dateOfIso(d.today));
+  const [editing, setEditing] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(!policy);
+  const [assigning, setAssigning] = useState<{ scopeType: 'tenant' | 'legal_entity' | 'location'; scopeId: string | null; from: Date | null } | null>(null);
+  const [triedAssign, setTriedAssign] = useState(false);
+  const { busy, error, run } = useRun();
+  const errors = [...(!policy && !name.trim() ? [{ fieldId: 'pol-name', message: 'Name the policy.' }] : []), ...(!from ? [{ fieldId: 'pol-from', message: 'Choose the date the entitlements apply from.' }] : [])];
+  const saveErrors = useSaveErrors(errors);
+  const setLine = (id: string, patch: Partial<PolicyLine>) => {
+    setLines((ls) => ls.map((l) => (l.leaveTypeId === id ? { ...l, ...patch } : l)));
+    setDirty(true);
+  };
+  const save = () => {
+    if (errors.length) {
+      saveErrors.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    if (!dirty) return;
+    void run('save', async () => {
+      let id = policy?.id;
+      if (!id) {
+        id = ((await live.onCreatePolicy(name.trim())) as { id?: string } | undefined)?.id;
+        if (!id) throw new Error('The policy was added. Reload the page to open it.');
+      }
+      const kept = lines.filter((l) => l.annualDays > 0);
+      if (kept.length) await live.onAddVersion(id, { validFrom: isoOf(from!), lines: kept });
+      // A new policy stays open so it can be applied; a change closes.
+      if (policy) onClose();
+      else onOpen(id);
+    });
+  };
+  const scopeOptions = assigning?.scopeType === 'legal_entity' ? d.entities.map((e) => ({ value: e.id, label: e.name })) : d.locations.map((l) => ({ value: l.id, label: l.name }));
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={policy?.name ?? 'New policy'}
+      subtitle={policy ? (policy.assignments.map((a) => a.scopeName).join(', ') || 'Not applied to anyone yet') : undefined}
+      size="lg"
+      footer={
+        <>
+          {!dirty && <span className="yx-tim-muted" style={{ flexBasis: 'auto' }}>No changes yet</span>}
+          <Button style={{ flexBasis: 'auto' }} onClick={onClose}>Cancel</Button>
+          <Button style={{ flexBasis: 'auto' }} variant="primary" loading={busy === 'save'} onClick={save}>{from ? `Save from ${day(from)}` : 'Save'}</Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        <ErrorSummary errors={saveErrors.shownErrors} />
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {!policy && (
+          <FormField id="pol-name" label="Policy name" required error={saveErrors.errorOf('pol-name')}>
+            <TextField value={name} onChange={setName} maxLength={100} />
+          </FormField>
+        )}
+        <FormSection title="Entitlements">
+          {types.length === 0 ? (
+            <p className="yx-tim-muted">No leave types with a yearly balance yet. Add earned, casual and sick leave from Leave types first.</p>
+          ) : (
+            <ul className="yx-tim-check">
+              {lines.map((l) => {
+                const t = types.find((x) => x.id === l.leaveTypeId)!;
+                return (
+                  <li key={l.leaveTypeId}>
+                    {editing === l.leaveTypeId ? (
+                      <div className="yx-tim-form">
+                        <FieldRow>
+                          <FormField label={`${t.name}: days a year`} helper="0 leaves it out.">
+                            <NumberField value={l.annualDays} onChange={(v) => setLine(l.leaveTypeId, { annualDays: v ?? 0 })} decimals min={0} max={366} />
+                          </FormField>
+                          <FormField label="Carry forward up to (days)" optional helper="Empty: all of it.">
+                            <NumberField value={l.carryForwardMax} onChange={(v) => setLine(l.leaveTypeId, { carryForwardMax: v })} decimals min={0} max={366} />
+                          </FormField>
+                        </FieldRow>
+                        <FormField label="Credited">
+                          <Segment label={`${t.name} credited`} value={l.frequency} onChange={(v) => setLine(l.leaveTypeId, { frequency: v })} options={[{ value: 'monthly', label: 'Every month' }, { value: 'yearly', label: 'All at the start of the year' }]} />
+                        </FormField>
+                        <Checkbox label="Joiners get a share for the part of the year they work" checked={l.proRata} onChange={(v) => setLine(l.leaveTypeId, { proRata: v })} />
+                        <span><Button size="sm" onClick={() => setEditing(null)}>Done</Button></span>
+                      </div>
+                    ) : (
+                      <>
+                        <span>{t.name} · {l.annualDays > 0 ? `${lineText(l)} · ${carryText(l)}` : 'not given'}</span>
+                        <Button size="sm" onClick={() => setEditing(l.leaveTypeId)}>Edit</Button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <FormField id="pol-from" label="Applies from" required helper="Changes start on this date; earlier months stay as they were." error={saveErrors.errorOf('pol-from')}>
+            <DatePicker value={from} onChange={(v) => { setFrom(v); setDirty(true); }} min={dateOfIso(d.today)} />
+          </FormField>
+        </FormSection>
+        {policy && (
+          <FormSection title="Who gets this policy">
+            {policy.assignments.length === 0 ? (
+              <p className="yx-tim-muted">Not applied to anyone yet. No one gets these entitlements until you apply it.</p>
+            ) : (
+              <ul className="yx-tim-list">
+                {policy.assignments.map((a) => (
+                  <li key={a.id}>
+                    <span className="yx-tim-list__main">
+                      <strong>{a.scopeName}</strong>
+                      <span className="yx-tim-muted">from {isoDay(a.validFrom)}</span>
+                    </span>
+                    {a.removable && (
+                      <Button size="sm" loading={busy === a.id} onClick={() => void run(a.id, () => live.onRemoveAssignment(a.id))}>Remove</Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <span><Button icon={Plus} onClick={() => (setTriedAssign(false), setAssigning({ scopeType: 'legal_entity', scopeId: null, from: dateOfIso(d.today) }))}>Apply to</Button></span>
+          </FormSection>
+        )}
+        <ConfirmDialog
+          open={!!assigning}
+          onOpenChange={(o) => !o && setAssigning(null)}
+          title={`Apply ${policy?.name ?? 'this policy'}`}
+          consequence="The most specific rule wins: a location over its legal entity, an entity over the whole company."
+          confirmLabel="Apply"
+          onConfirm={async () => {
+            setTriedAssign(true);
+            if (!assigning || !policy || !assigning.from || (assigning.scopeType !== 'tenant' && !assigning.scopeId)) return false;
+            await live.onAssign(policy.id, { scopeType: assigning.scopeType, ...(assigning.scopeType === 'tenant' ? {} : { scopeId: assigning.scopeId! }), validFrom: isoOf(assigning.from) });
+          }}
+        >
+          {assigning && (
+            <div className="yx-tim-form">
+              <FormField label="Apply to">
+                <Segment label="Apply to" value={assigning.scopeType} onChange={(v) => setAssigning({ ...assigning, scopeType: v, scopeId: null })} options={[{ value: 'tenant', label: 'Whole company' }, { value: 'legal_entity', label: 'A legal entity' }, { value: 'location', label: 'A location' }]} />
+              </FormField>
+              {assigning.scopeType !== 'tenant' && (
+                <FormField label={assigning.scopeType === 'legal_entity' ? 'Legal entity' : 'Location'} required error={triedAssign && !assigning.scopeId ? 'Choose one.' : null}>
+                  <Select value={assigning.scopeId} onChange={(v) => setAssigning({ ...assigning, scopeId: v })} options={scopeOptions} />
+                </FormField>
+              )}
+              <FormField label="From" required error={triedAssign && !assigning.from ? 'Choose the start date.' : null}>
+                <DatePicker value={assigning.from} onChange={(v) => setAssigning({ ...assigning, from: v })} min={dateOfIso(d.today)} />
+              </FormField>
+            </div>
+          )}
+        </ConfirmDialog>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ---------------- TIM-27 live ---------------- */
+
+const LIVE_SECTIONS = { basics: 'Basics', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end' } as const;
+const FIELD_SECTION: Record<string, keyof typeof LIVE_SECTIONS> = { 'lt-code': 'basics', 'lt-name': 'basics', 'lt-paid': 'basics' };
+
+function LiveTypeEditor({ live }: { live: LiveLeaveTypeEditor }) {
+  const crumbs = (name: string) => <Breadcrumbs items={[{ label: 'Leave types & policies', href: live.policiesHref }, { label: name }]} />;
+  return (
+    <SetupGate live={live} active="Leave types & policies" header={<PageHeader breadcrumbs={crumbs('Leave type')} title="Leave type" />}>
+      {(d) => {
+        const row = live.typeId === 'new' ? null : d.types.find((t) => t.id === live.typeId);
+        if (row === undefined)
+          return (
+            <>
+              <PageHeader breadcrumbs={crumbs('Leave type')} title="Leave type" />
+              <EmptyState title="This leave type is not there" description="It may have been opened from an old link." action={<Button asChild><a href={live.policiesHref}>Back to leave policies</a></Button>} />
+            </>
+          );
+        return <LiveTypeForm key={row?.id ?? 'new'} d={d} row={row} live={live} crumbs={crumbs} />;
+      }}
+    </SetupGate>
+  );
+}
+
+function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRow | null; live: LiveLeaveTypeEditor; crumbs: (name: string) => ReactNode }) {
+  const [code, setCode] = useState(row?.code ?? '');
+  const [name, setName] = useState(row?.name ?? '');
+  const [kind, setKind] = useState<string | null>(row?.kind ?? 'earned');
+  const [pay, setPay] = useState(row && !row.paid ? 'unpaid' : 'paid');
+  const [colour, setColour] = useState<string | null>(row?.colour ?? 'blue');
+  const [active, setActive] = useState(row?.active ?? true);
+  const [r, setR] = useState<LeaveRules>(row?.rules ?? DEFAULT_RULES);
+  const [sec, setSec] = useState<string>('basics');
+  const narrow = useNarrow();
+  const { busy, error, run } = useRun();
+  const set = <K extends keyof LeaveRules>(k: K, v: LeaveRules[K]) => setR((x) => ({ ...x, [k]: v }));
+  const errors = [
+    ...(!/^[A-Z][A-Z0-9]{0,7}$/.test(code) ? [{ fieldId: 'lt-code', message: 'Use 1 to 8 capital letters or digits, starting with a letter (EL, CL, SL).' }] : []),
+    ...(!name.trim() ? [{ fieldId: 'lt-name', message: 'Name the leave type.' }] : []),
+    ...(kind === 'lop' && pay === 'paid' ? [{ fieldId: 'lt-paid', message: 'Leave without pay is unpaid.' }] : []),
+  ];
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
+  // Policies that give this type today, for the description, Crediting and Year end.
+  const inPolicies = row ? d.policies.flatMap((p) => { const l = versionToday(p, d.today)?.lines.find((x) => x.leaveTypeId === row.id); return l ? [{ p, l }] : []; }) : [];
+  const save = () => {
+    if (errors.length) {
+      saveErrors.reveal();
+      setSec(FIELD_SECTION[errors[0].fieldId] ?? 'basics');
+      requestAnimationFrame(() => document.getElementById(errors[0].fieldId)?.focus());
+      return;
+    }
+    void run('save', async () => {
+      const res = await live.onSaveType(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: pay === 'paid', colour: colour ?? 'blue', active, rules: kind === 'lop' ? { ...r, negativeLimit: 0 } : r });
+      const id = (res as { id?: string } | undefined)?.id;
+      if (!row && id) live.onAdded?.(id);
+    });
+  };
+  const numField = (k: 'minDays' | 'maxDays' | 'certificateAfterDays' | 'hrApprovalAboveDays', label: string, helper: string) => (
+    <FormField id={`lt-${k}`} label={label} optional helper={helper}>
+      <NumberField value={r[k]} onChange={(v) => set(k, v)} decimals min={0} max={366} />
+    </FormField>
+  );
+  // Fri to Mon over the next weekend, so the counting rule shows on real dates.
+  const fri = dateOfIso(d.today);
+  fri.setDate(fri.getDate() + ((5 - fri.getDay() + 7) % 7 || 7));
+  const mon = new Date(fri.getFullYear(), fri.getMonth(), fri.getDate() + 3);
+  const ex = countLeaveDays({ from: fri, to: mon, holidays: [], weeklyOffDays: [0, 6], sandwich: r.sandwich });
+  const title = row?.name ?? 'New leave type';
+  return (
+    <>
+      <PageHeader
+        breadcrumbs={crumbs(title)}
+        title={title}
+        description={`${pay === 'paid' ? 'Paid' : 'Unpaid'} · ${kindText(kind ?? '')}${row ? ` · used in ${plural(inPolicies.length, 'policy', 'policies')}${inPolicies.length ? ` (${inPolicies.map((x) => x.p.name).join('; ')})` : ''}` : ''}.`}
+        status={row ? <Badge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Active' : 'Not in use'}</Badge> : undefined}
+        actions={<Button variant="primary" loading={busy === 'save'} onClick={save}>{row ? 'Save' : 'Add leave type'}</Button>}
+      />
+      <div className="yx-tim-editor">
+        <div className="yx-tim-form">
+          <ErrorSummary errors={saveErrors.shownErrors} />
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          <Tabs value={sec} onValueChange={setSec}>
+            {narrow ? (
+              <FormField label="Section">
+                <Select value={sec} onChange={(v) => v && setSec(v)} options={Object.entries(LIVE_SECTIONS).map(([value, label]) => ({ value, label }))} />
+              </FormField>
+            ) : (
+              <TabsList aria-label="Sections">
+                {Object.entries(LIVE_SECTIONS).map(([s, label]) => <TabsTrigger key={s} value={s}>{label}</TabsTrigger>)}
+              </TabsList>
+            )}
+            <TabsContent value="basics">
+              <FormSection title="Basics">
+                <FieldRow>
+                  <FormField id="lt-name" label="Name" required error={errorOf('lt-name')}><TextField value={name} onChange={setName} maxLength={60} /></FormField>
+                  <FormField id="lt-code" label="Code" required helper={row ? 'A code never changes.' : undefined} error={errorOf('lt-code')}>
+                    <TextField value={code} onChange={(v) => setCode(v.toUpperCase())} disabled={Boolean(row)} maxLength={8} />
+                  </FormField>
+                </FieldRow>
+                {/* Question: not in the design; the law's minimums apply by kind, so it stays. */}
+                <FormField id="lt-kind" label="Kind" required helper={row ? 'A kind never changes.' : 'The law’s minimums apply by kind.'}>
+                  <Select value={kind} onChange={setKind} options={KINDS} disabled={Boolean(row)} />
+                </FormField>
+                <FormField id="lt-paid" label="Pay" error={errorOf('lt-paid')}>
+                  <RadioGroup aria-label="Pay" value={pay} onChange={setPay} orientation="horizontal" options={[{ value: 'paid', label: 'Paid' }, { value: 'unpaid', label: 'Unpaid (shows days taken, no balance)' }]} />
+                </FormField>
+                <FormField label="Colour"><Select value={colour} onChange={setColour} options={COLOURS} /></FormField>
+                {row && <Switch label="In use" description="A type not in use cannot be applied for; its history stays." checked={active} onChange={setActive} />}
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="crediting">
+              <FormSection title="Crediting">
+                <p className="yx-tim-muted">Each policy credits it its own way. The yearly days are set in the policy.</p>
+                {inPolicies.length ? (
+                  <ul className="yx-tim-list">{inPolicies.map(({ p, l }) => <li key={p.id}><span className="yx-tim-list__main"><strong>{p.name}</strong><span className="yx-tim-muted">{lineText(l)}</span></span></li>)}</ul>
+                ) : (
+                  <p className="yx-tim-muted">{row ? 'Not in any policy yet.' : 'Save the type first.'} Add it to a policy in Leave policies.</p>
+                )}
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="counting">
+              <FormSection title="Counting">
+                <FormField label="Weekly offs and holidays inside the leave" helper="For example, a Saturday and Sunday between Friday and Monday leave">
+                  <RadioGroup aria-label="Weekly offs and holidays inside the leave" value={r.sandwich} onChange={(v) => set('sandwich', v as LeaveRules['sandwich'])} options={[{ value: 'none', label: 'Never count them' }, { value: 'sandwich', label: 'Count them when they fall between leave days' }, { value: 'always', label: 'Always count them' }]} />
+                </FormField>
+                <FormField label="Applies to" disabled={r.sandwich === 'none'} helper={r.sandwich === 'none' ? 'Not used when weekly offs and holidays are never counted' : undefined}>
+                  <Select value={r.sandwichOn} disabled={r.sandwich === 'none'} onChange={(v) => v && set('sandwichOn', v as LeaveRules['sandwichOn'])} options={[{ value: 'both', label: 'Weekly offs and holidays' }, { value: 'weekly_offs', label: 'Weekly offs only' }, { value: 'holidays', label: 'Holidays only' }]} />
+                </FormField>
+                <Switch label="Half days (first or second half)" checked={r.halfDays} onChange={(v) => set('halfDays', v)} />
+                {r.sandwich === 'sandwich' && <Checkbox label="A half day next to a weekend still counts the weekend" checked={r.sandwichHalfDays} onChange={(v) => set('sandwichHalfDays', v)} />}
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="rules">
+              <FormSection title="Rules">
+                <FieldRow>
+                  <FormField id="lt-notice" label="Apply at least (days ahead)" helper="0 for none."><NumberField value={r.noticeDays} onChange={(v) => set('noticeDays', v ?? 0)} min={0} max={90} /></FormField>
+                  {numField('minDays', 'Least days in one request', 'Leave empty for no minimum.')}
+                  {numField('maxDays', 'Most days in one request', 'Leave empty for no maximum.')}
+                </FieldRow>
+                <FieldRow>
+                  {numField('certificateAfterDays', 'Ask for a document when leave is longer than (days)', 'Leave blank to never ask')}
+                  <FormField id="lt-negative" label="Balance may go below zero by (days)" helper="0 for never. Future credits repay it first.">
+                    <NumberField value={r.negativeLimit} onChange={(v) => set('negativeLimit', v ?? 0)} decimals min={0} max={30} />
+                  </FormField>
+                </FieldRow>
+                {numField('hrApprovalAboveDays', 'HR approves after the manager above (days)', '0: always. Empty: never.')}
+                <Checkbox label="Medical: the reason and certificate are private to HR" description="Managers and approvers see only the dates and the certificate’s status." checked={r.medical} onChange={(v) => set('medical', v)} />
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="yearend">
+              <FormSection title="Year end">
+                {inPolicies.length > 0 && <ul className="yx-tim-list">{inPolicies.map(({ p, l }) => <li key={p.id}><span className="yx-tim-list__main"><strong>{p.name}</strong><span className="yx-tim-muted">{carryText(l)}</span></span></li>)}</ul>}
+                <p className="yx-tim-muted">The carry-forward limit is set in each policy.</p>
+                <Switch label="Can be cashed in (payroll pays it later)" checked={r.encashable} onChange={(v) => set('encashable', v)} />
+              </FormSection>
+            </TabsContent>
+          </Tabs>
+        </div>
+        <div className="yx-tim-sticky">
+          <Card title="Live example">
+            <div className="yx-tim-stack">
+              <p className="yx-tim-muted">Someone applies {weekday(fri)} {day(fri)} – {weekday(mon)} {day(mon)} with Saturday and Sunday off</p>
+              <ul className="yx-tim-days">{ex.days.map((x) => <li key={x.date.getTime()}><span>{weekday(x.date)} {day(x.date)}</span><strong>{x.kind === 'counted' ? '1' : x.kind === 'sandwich' ? '1 (between leave days)' : '0 (off)'}</strong></li>)}</ul>
+              <Kpis items={[{ label: 'Days counted', value: ex.total }]} />
+            </div>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- TIM-26 live ---------------- */
+
+const CALENDARS_TEXT = 'People get the holidays of the office they work at, including people sent to another office for a while.';
+
+function LiveHolidays({ live }: { live: LiveHolidayCalendars }) {
+  return (
+    <SetupGate live={live} active="Holiday calendars" header={<PageHeader title="Holiday calendars" description={CALENDARS_TEXT} />}>
+      {(d) => <LiveHolidayTabs d={d} live={live} />}
+    </SetupGate>
+  );
+}
+
+type CalTab = { key: string; name: string; loc?: SetupLocation; cal?: SetupCalendar };
+
+function LiveHolidayTabs({ d, live }: { d: TimeSetup; live: LiveHolidayCalendars }) {
+  const year = d.today.slice(0, 4);
+  // One tab per location, then any calendar not tied to one (the company calendar for locations without their own).
+  const tabs: CalTab[] = [
+    ...d.locations.map((l) => ({ key: l.id, name: l.name, loc: l, cal: d.calendars.find((c) => c.locationId === l.id) })),
+    ...d.calendars.filter((c) => !c.locationId || !d.locations.some((l) => l.id === c.locationId)).map((c) => ({ key: c.id, name: c.name, cal: c })),
+  ];
+  const [tab, setTab] = useState(tabs[0]?.key ?? '');
+  const shown = (c?: SetupCalendar) => (c?.holidays ?? []).filter((h) => h.on >= `${year}-01-01`);
+  return (
+    <>
+      <PageHeader title={`Holiday calendars · ${year}`} description={CALENDARS_TEXT} />
+      {tabs.length === 0 ? (
+        <EmptyState title="No locations yet" description="Each location gets its own holiday calendar. Add your offices in Settings › Locations first." />
+      ) : (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList aria-label="Locations">
+            {tabs.map((t) => <TabsTrigger key={t.key} value={t.key} count={shown(t.cal).length}>{t.name}</TabsTrigger>)}
+          </TabsList>
+          {tabs.map((t) => (
+            <TabsContent key={t.key} value={t.key}>
+              <CalendarPanel key={t.cal?.id ?? t.key} live={{ d, t, rows: shown(t.cal), live }} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
+    </>
+  );
+}
+
+type LiveCalendarPanelProps = { d: TimeSetup; t: CalTab; rows: HolidayRow[]; live: LiveHolidayCalendars };
+
+function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
+  const cal = t.cal;
+  const [choose, setChoose] = useState<number | null>(cal?.optionalLimit ?? 2);
+  const [half, setHalf] = useState<string | null>(cal?.halfDayOpenHalf ?? 'first');
+  const [hol, setHol] = useState<{ name: string; date: Date | null; kind: string | null; halfDay: boolean } | null>(null);
+  const [triedHol, setTriedHol] = useState(false);
+  const [removing, setRemoving] = useState<HolidayRow | null>(null);
+  const { busy, error, run } = useRun();
+  const offs = t.loc?.rule.weeklyOffs ?? [];
+  const isOff = (iso: string) => offUnder(iso, offs);
+  if (!cal) {
+    return (
+      <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {/* Question: the design starts from a state template; templates are not built, so the calendar starts empty. */}
+        <EmptyState
+          title={`${t.name} has no holiday calendar`}
+          description="People there see no holidays until you add a calendar and its holidays."
+          action={<Button variant="primary" loading={busy === 'cal'} onClick={() => void run('cal', () => live.onCreateCalendar({ name: `${t.name} holidays`, locationId: t.loc?.id, optionalLimit: 2 }))}>Add a calendar for {t.name}</Button>}
+        />
+      </div>
+    );
+  }
+  const optionalCount = rows.filter((h) => choosable(h.kind)).length;
+  const dirty = choose !== cal.optionalLimit || half !== cal.halfDayOpenHalf;
+  const onOff = rows.filter((h) => isOff(h.on));
+  const cols: TableColumn<HolidayRow>[] = [
+    { key: 'name', header: 'Holiday', value: (h) => `${h.name}${h.halfDay ? ' (half day)' : ''}` },
+    {
+      key: 'date', header: 'Date', type: 'date', value: (h) => dateOfIso(h.on),
+      render: (h) => (
+        <span className="yx-tim-row">
+          <span>{isoWeekday(h.on)} {isoDay(h.on)}</span>
+          {h.on >= d.today && daysBetween(d.today, h.on) <= 30 && <DueBadge date={dateOfIso(h.on)} today={dateOfIso(d.today)} />}
+        </span>
+      ),
+    },
+    {
+      key: 'kind', header: 'Type', type: 'status',
+      value: (h) => `${choosable(h.kind) ? 'Optional' : HOLIDAY_KINDS.find((k) => k.value === h.kind)?.label ?? 'Holiday'}${isOff(h.on) ? ' · on a weekly off' : ''}`,
+      statusTone: (v) => (String(v).startsWith('Optional') ? 'info' : 'neutral'),
+    },
+  ];
+  return (
+    <div className="yx-tim-stack">
+      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+      <div className="yx-tim-row">
+        <Button icon={Plus} onClick={() => (setTriedHol(false), setHol({ name: '', date: null, kind: 'festival', halfDay: false }))}>Add holiday</Button>
+      </div>
+      {rows.some((h) => h.on < d.today) && <p className="yx-tim-muted">Holidays before today are locked: they are already in attendance records.</p>}
+      <div className="yx-tim-editor">
+        <DataTable
+          cardSummary
+          label={`${t.name} holidays`}
+          columns={cols}
+          rows={rows}
+          getRowId={(h) => h.id}
+          defaultSort={{ key: 'date', dir: 'asc' }}
+          rowActions={(h) => (h.on < d.today ? null : <MenuItem destructive onSelect={() => setRemoving(h)}>Remove holiday</MenuItem>)}
+          empty={<EmptyState compact title="No holidays yet" description="Add each holiday of the year with Add holiday." />}
+        />
+        <div className="yx-tim-stack">
+          <Card title="Rules for this calendar">
+            <div className="yx-tim-form">
+              <FormField label="Optional holidays each person chooses" helper={`People choose ${choose ?? 0} of the ${plural(optionalCount, 'optional holiday')} this year.`}>
+                <NumberField value={choose} onChange={setChoose} min={0} max={20} />
+              </FormField>
+              {/* Question: not in the design; the calendar's half-day rule is kept from the set-up page. */}
+              <FormField label="On a half-day holiday">
+                <Select value={half} onChange={setHalf} options={[{ value: 'first', label: 'The morning is worked' }, { value: 'second', label: 'The afternoon is worked' }]} />
+              </FormField>
+              <div className="yx-tim-row">
+                <Button variant="primary" loading={busy === 'rules'} onClick={() => dirty && void run('rules', () => live.onUpdateCalendar(cal.id, { name: cal.name, optionalLimit: choose ?? 0, halfDayOpenHalf: half === 'second' ? 'second' : 'first' }))}>Save rules</Button>
+                {!dirty && <span className="yx-tim-muted">No changes to save</span>}
+              </div>
+            </div>
+          </Card>
+          <p className="yx-tim-note">
+            {onOff.length === 0 ? 'No holiday falls on a weekly off this year.' : `${plural(onOff.length, 'holiday')} ${onOff.length === 1 ? 'falls' : 'fall'} on a weekly off this year (${onOff.map((h) => h.name).join(', ')}).`}
+          </p>
+        </div>
+      </div>
+      <ConfirmDialog
+        open={!!hol}
+        onOpenChange={(o) => !o && setHol(null)}
+        title={`Add a holiday to ${t.name}`}
+        consequence={`People with leave on ${hol?.date ? `${weekday(hol.date)} ${day(hol.date)}` : 'the new date'} get that day back.`}
+        confirmLabel="Add holiday"
+        onConfirm={async () => {
+          setTriedHol(true);
+          if (!hol?.name.trim() || !hol.date) return false;
+          await live.onAddHoliday(cal.id, { on: isoOf(hol.date), name: hol.name.trim(), kind: hol.kind ?? 'festival', halfDay: choosable(hol.kind) ? false : hol.halfDay });
+        }}
+      >
+        {hol && (
+          <div className="yx-tim-form">
+            <FormField label="Name" required error={triedHol && !hol.name.trim() ? 'Enter the holiday name.' : null}><TextField value={hol.name} onChange={(v) => setHol({ ...hol, name: v })} maxLength={100} /></FormField>
+            <FormField label="Date" required helper="Only today or later: earlier days are already in attendance records." error={triedHol && !hol.date ? 'Choose the date.' : null}>
+              <DatePicker value={hol.date} onChange={(v) => setHol({ ...hol, date: v })} min={dateOfIso(d.today)} />
+            </FormField>
+            {/* Question: the design has an "Optional holiday" tick; the API also knows national, state, festival and restricted. */}
+            <FormField label="Type"><Select value={hol.kind} onChange={(v) => setHol({ ...hol, kind: v })} options={HOLIDAY_KINDS} /></FormField>
+            {!choosable(hol.kind) && <Checkbox label="Half day" checked={hol.halfDay} onChange={(v) => setHol({ ...hol, halfDay: v })} />}
+          </div>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.name ?? ''} from the ${t.name} calendar?`}
+        consequence={removing ? `${isoWeekday(removing.on)} ${isoDay(removing.on)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
+        confirmLabel="Remove holiday"
+        destructive
+        onConfirm={async () => {
+          if (removing) await live.onRemoveHoliday(removing.id);
+        }}
+      />
+    </div>
+  );
+}
+
+const daysBetween = (a: string, b: string) => Math.round((dateOfIso(b).getTime() - dateOfIso(a).getTime()) / 86_400_000);
+
+/* ---------------- TIM-29 live ---------------- */
+
+function LiveYearEndWizard({ live }: { live: LiveYearEnd }) {
+  return (
+    <SetupGate live={live} active="Year-end" header={<PageHeader title="Leave year-end" />}>
+      {(d) => <LiveYearEndBody d={d} live={live} />}
+    </SetupGate>
+  );
+}
+
+function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
+  const [yearEnd, setYearEnd] = useState<Date | null>(dateOfIso(`${Number(d.today.slice(0, 4)) - 1}-12-31`));
+  const [preview, setPreview] = useState<YearEndPreview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [q, setQ] = useState('');
+  const [onlyLosing, setOnlyLosing] = useState(false);
+  const [c, setC] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const iso = yearEnd ? isoOf(yearEnd) : null;
+  useEffect(() => {
+    if (!iso) return;
+    let stale = false;
+    setPreview(null);
+    setLoadError(null);
+    live.onYearEndPreview(iso).then(
+      (p) => !stale && setPreview(p),
+      (e) => !stale && setLoadError(errorText(e)),
+    );
+    return () => {
+      stale = true;
+    };
+    // Reload on a new date or Try again; the handler changes identity on every render of the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iso, attempt]);
+  const yr = yearEnd ? String(yearEnd.getFullYear()) : '';
+  const start = yearEnd ? new Date(yearEnd.getFullYear() - 1, yearEnd.getMonth(), yearEnd.getDate() + 1) : null;
+  const title = yr ? `Leave year-end ${yr}` : 'Leave year-end';
+  const rows = preview?.rows ?? [];
+  const people = new Set(rows.map((r) => r.employeeId)).size;
+  const carried = rows.reduce((s, r) => s + r.carry, 0);
+  const lapsed = rows.reduce((s, r) => s + r.lapse, 0);
+  const losing = rows.filter((r) => r.lapse > 0);
+  const shownRows = rows.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()) && (!onlyLosing || r.lapse > 0));
+  type Row = YearEndPreview['rows'][number];
+  const cols: TableColumn<Row>[] = [
+    { key: 'name', header: 'Employee', value: (r) => r.name, render: (r) => <span className="yx-tim-list__main"><strong>{r.name}</strong><span className="yx-tim-muted">{r.type}{r.encashable && r.lapse > 0 ? ' · can be cashed in' : ''}</span></span> },
+    {
+      key: 'split', header: `Balance ${yearEnd ? dayShort(yearEnd) : ''} → carried`, value: (r) => r.lapse,
+      render: (r) => (
+        <span className="yx-tim-row">
+          <span>{r.balance !== r.carry ? `${num(r.balance)} → ` : ''}{num(r.carry)} carried</span>
+          {r.lapse > 0 && <Badge tone="warning">{num(r.lapse)} lapse</Badge>}
+        </span>
+      ),
+    },
+  ];
+  if (posted) {
+    return (
+      <>
+        <PageHeader title={title} />
+        <YearEndPosted title="Year end is being posted">
+          It runs in the background and is recorded in the audit log. Balances update in a few moments.
+        </YearEndPosted>
+      </>
+    );
+  }
+  const blocked = !yearEnd
+    ? 'Choose the last day of the leave year in Scope'
+    : loadError
+      ? 'The preview did not load. Open Preview and try again'
+      : !preview
+        ? 'The preview is still loading'
+        : preview.lapses === 0
+          ? 'Nothing lapses on that date, so there is nothing to post'
+          : undefined;
+  return (
+    <>
+      <PageHeader title={title} description={start && yearEnd ? `Carry forward and lapse each person’s leave for ${day(start)} – ${day(yearEnd)}, up to each policy’s limit (never below the legal minimum).` : undefined} />
+      <Stepper
+        title={title}
+        finishLabel="Post year-end"
+        finishBlocked={blocked}
+        onFinish={() => setC(true)}
+        review={{ note: 'Posting writes carry-forward and lapse entries for every person. Entries can be reversed only by new adjustments.' }}
+        steps={[
+          {
+            id: 'scope', title: 'Scope', description: 'Leave year',
+            content: (
+              <div className="yx-tim-form">
+                <FormField label="Last day of the leave year" required error={yearEnd ? null : 'Choose the last day of the leave year.'}>
+                  <DatePicker value={yearEnd} onChange={setYearEnd} max={dateOfIso(d.today)} />
+                </FormField>
+                {start && yearEnd && <DescriptionList items={[{ label: 'Leave year', value: `${day(start)} – ${day(yearEnd)}` }]} />}
+              </div>
+            ),
+            summary: start && yearEnd ? `${day(start)} – ${day(yearEnd)}` : 'No date chosen',
+          },
+          {
+            id: 'preview', title: 'Preview', description: 'Per employee',
+            content: loadError ? (
+              <InlineAlert tone="danger" title="The preview did not load" actions={<Button size="sm" onClick={() => setAttempt((a) => a + 1)}>Try again</Button>}>{loadError}</InlineAlert>
+            ) : !preview ? (
+              <div className="yx-tim-stack" role="status" aria-busy="true" aria-label="Loading the preview"><Skeleton height={64} /><Skeleton height={160} /></div>
+            ) : rows.length === 0 ? (
+              <EmptyState compact title="Nothing to process" description="No one’s leave year ends on that date." />
+            ) : (
+              <div className="yx-tim-stack">
+                <Kpis items={[{ label: 'People', value: people }, { label: 'Carried forward', value: `${thousands(Number(num(carried)))} days` }, { label: 'Lapse', value: `${thousands(Number(num(lapsed)))} days` }]} />
+                <DataTable
+                  cardSummary
+                  label="Year-end preview per employee"
+                  columns={cols}
+                  rows={shownRows}
+                  getRowId={(r) => r.employeeId + r.type}
+                  filtered={q !== '' || onlyLosing}
+                  onClearFilters={() => { setQ(''); setOnlyLosing(false); }}
+                  toolbar={
+                    <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search by name">
+                      <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyLosing} onClick={() => setOnlyLosing(!onlyLosing)}>
+                        {onlyLosing && <Icon icon={Check} size="sm" />}
+                        Only people losing days ({losing.length})
+                      </button>
+                    </FilterBar>
+                  }
+                />
+              </div>
+            ),
+            summary: preview ? `${plural(people, 'person', 'people')} · ${num(carried)} days carried forward · ${num(lapsed)} days lapse` : 'Not loaded',
+          },
+        ]}
+      />
+      <TypeToConfirmDialog
+        open={c}
+        onOpenChange={setC}
+        title={`Post year-end ${yr}`}
+        consequence={`${plural(people, 'person', 'people')} · ${num(carried)} days carried forward · ${num(lapsed)} days lapse. They are not removed later; a correction is a new adjustment.`}
+        objectName={`LEAVE YEAR ${yr}`}
+        confirmLabel="Post entries"
+        onConfirm={async () => {
+          await live.onYearEndRun(iso!);
+          setPosted(true);
+        }}
+      />
+    </>
+  );
+}
+
+/* ---------------- TIM-31 live ---------------- */
+
+const hhmm = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+const minuteOf = (t: string | null) => (t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : null);
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function LiveLocationsScreen({ live }: { live: LiveLocations }) {
+  return (
+    <SetupGate live={live} active="Locations & geofences" header={<PageHeader title="Locations" />}>
+      {(d) => <LiveLocationPicker d={d} live={live} />}
+    </SetupGate>
+  );
+}
+
+function LiveLocationPicker({ d, live }: { d: TimeSetup; live: LiveLocations }) {
+  const [id, setId] = useState<string | null>(d.locations[0]?.id ?? null);
+  const loc = d.locations.find((l) => l.id === id) ?? d.locations[0];
+  if (!loc)
+    return (
+      <>
+        <PageHeader title="Locations" />
+        <EmptyState title="No locations yet" description="Add your offices and sites in Settings › Locations first." action={<Button asChild><a href={live.settingsHref}>Open Settings › Locations</a></Button>} />
+      </>
+    );
+  return <LiveLocationForm key={loc.id} d={d} loc={loc} live={live} picker={<Select aria-label="Location" value={loc.id} onChange={setId} options={d.locations.map((l) => ({ value: l.id, label: l.name }))} />} />;
+}
+
+function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLocation; live: LiveLocations; picker: ReactNode }) {
+  const r = loc.rule;
+  const [from, setFrom] = useState<Date | null>(dateOfIso(d.today));
+  const [mode, setMode] = useState<string>(r.checkIn);
+  const [shiftName, setShiftName] = useState(r.shiftName);
+  const [start, setStart] = useState<string | null>(hhmm(r.shiftStart));
+  const [end, setEnd] = useState<string | null>(hhmm(r.shiftEnd));
+  const [grace, setGrace] = useState<number | null>(r.graceMinutes);
+  const [offs, setOffs] = useState(r.weeklyOffs);
+  const { busy, error, run } = useRun();
+  const toggle = (wd: number, on: boolean) => setOffs((x) => (on ? [...x.filter((o) => o.weekday !== wd), { weekday: wd }] : x.filter((o) => o.weekday !== wd)));
+  const sat = offs.find((o) => o.weekday === 6);
+  const errors = [
+    ...(!from ? [{ fieldId: 'rl-from', message: 'Choose the date the change starts.' }] : from && isoOf(from) < d.today ? [{ fieldId: 'rl-from', message: 'Changes start today or later.' }] : []),
+    ...(!start || !end ? [{ fieldId: 'rl-start', message: 'Give the shift start and end.' }] : start === end ? [{ fieldId: 'rl-start', message: 'The shift ends at a different time from when it starts.' }] : []),
+  ];
+  const saveErrors = useSaveErrors(errors);
+  const save = () => {
+    if (errors.length) {
+      saveErrors.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    void run('save', () => live.onSetRule(loc.id, { validFrom: isoOf(from!), shiftName: shiftName.trim() || 'General', shiftStart: minuteOf(start)!, shiftEnd: minuteOf(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn: mode === 'field' ? 'field' : 'restricted' }));
+  };
+  const field = mode === 'field';
+  const g = loc.geofence;
+  return (
+    <>
+      <PageHeader
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Locations', href: live.settingsHref }, { label: loc.name }]} />}
+        title={loc.name}
+        description={`${STATE_TEXT[loc.state] ?? loc.state} · ${loc.timezone}`}
+        status={r.checkIn === 'field' ? <Badge tone="info">Field check-in</Badge> : <Badge tone="success">Restricted check-in</Badge>}
+        actions={picker}
+      />
+      <div className="yx-tim-editor">
+        {g ? (
+          <GeoMap height={300} fences={[{ id: 'site', label: `${loc.name} · ${g.radiusM} m`, x: 160, y: 100, r: g.radiusM / 5 }]} pins={[]} caption={field ? 'Used to label check-ins as at office' : 'Check-ins must be inside this circle or on the office network'} />
+        ) : (
+          <EmptyState compact title="No check-in point yet" description="Set the point and radius in Settings › Locations." />
+        )}
+        <div className="yx-tim-form">
+          <ErrorSummary errors={saveErrors.shownErrors} />
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          <FormSection title="Check-in mode">
+            <RadioGroup aria-label="Check-in mode" value={mode} onChange={setMode} options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside the point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]} />
+          </FormSection>
+          {/* Question: no design shows a location's shift and weekly offs; they stay here, next to its check-in mode. */}
+          <FormSection title="Shift and weekly offs">
+            {r.starter && <p className="yx-tim-muted">Not set yet: these are the starting values.</p>}
+            {loc.upcoming.length > 0 && <p className="yx-tim-muted">A change is waiting from {isoDay(loc.upcoming[0].validFrom!)}: {loc.upcoming[0].shiftName} {clockText(loc.upcoming[0].shiftStart)} to {clockText(loc.upcoming[0].shiftEnd)}.</p>}
+            <FieldRow>
+              <FormField id="rl-name" label="Shift name"><TextField value={shiftName} onChange={setShiftName} maxLength={60} /></FormField>
+              <FormField id="rl-start" label="Starts" required error={saveErrors.errorOf('rl-start')}><TimeField value={start} onChange={setStart} /></FormField>
+              <FormField id="rl-end" label="Ends" required helper="Before the start for a night shift."><TimeField value={end} onChange={setEnd} /></FormField>
+              <FormField id="rl-grace" label="Grace (minutes)"><NumberField value={grace} onChange={setGrace} min={0} max={120} /></FormField>
+            </FieldRow>
+            <fieldset className="yx-tim-stack" data-gap="sm">
+              <legend className="yx-tim-h3">Weekly offs</legend>
+              {WEEK_DAYS.map((w, i) => <Checkbox key={w} label={w} checked={offs.some((o) => o.weekday === i + 1)} onChange={(v) => toggle(i + 1, v)} />)}
+              {sat && (
+                <Segment
+                  label="Which Saturdays"
+                  value={sat.nth?.join(',') === '2,4' ? 'alt' : 'all'}
+                  onChange={(v) => setOffs((x) => x.map((o) => (o.weekday === 6 ? (v === 'alt' ? { weekday: 6, nth: [2, 4] } : { weekday: 6 }) : o)))}
+                  options={[{ value: 'all', label: 'Every Saturday' }, { value: 'alt', label: '2nd and 4th Saturday' }]}
+                />
+              )}
+            </fieldset>
+          </FormSection>
+          <FormSection title="Allowed points">
+            {g ? (
+              <ul className="yx-tim-list"><li><span className="yx-tim-list__main"><strong>{loc.name}</strong><span className="yx-tim-muted">{g.lat}, {g.lng} · {g.radiusM} m</span></span></li></ul>
+            ) : (
+              <p className="yx-tim-muted">No point yet.</p>
+            )}
+          </FormSection>
+          <FormSection title="Office network (web check-in)">
+            <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}</p>
+            {/* The point, radius and networks belong to the location record (Settings › Locations), which payroll and people also use. */}
+            <span><Button size="sm" asChild><a href={live.settingsHref}>Change the point and network in Settings › Locations</a></Button></span>
+          </FormSection>
+          <FormField id="rl-from" label="Changes apply from" required error={saveErrors.errorOf('rl-from')}>
+            <DatePicker value={from} onChange={setFrom} min={dateOfIso(d.today)} />
+          </FormField>
+          <div className="yx-tim-row">
+            <Button variant="primary" loading={busy === 'save'} onClick={save}>{from ? `Save from ${day(from)}` : 'Save location'}</Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Minutes after midnight as "9:30 am". */
+function clockText(minute: number): string {
+  const m = ((minute % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  return `${h % 12 === 0 ? 12 : h % 12}:${pad2(m % 60)} ${h < 12 ? 'am' : 'pm'}`;
 }

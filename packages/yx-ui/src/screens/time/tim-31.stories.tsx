@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { GeofenceEditorScreen } from './leave-admin';
 
-const meta: Meta<typeof GeofenceEditorScreen> = { title: 'Screens/Time/TIM-31 · Locations and geofence editor', component: GeofenceEditorScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof GeofenceEditorScreen> = { title: 'Screens/Time/TIM-31 · Locations and geofence editor', component: GeofenceEditorScreen, render: (args) => <GeofenceEditorScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof GeofenceEditorScreen>;
 
