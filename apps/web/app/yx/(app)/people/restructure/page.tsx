@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
-import { RestructureWizard, type RestructureDraftState, type RestructurePreview, type RestructureSetup } from '@yukthix/ui/frame';
+import { RestructureWizard, type FinishedRestructure, type RestructureDraftState, type RestructurePreview, type RestructureSetup } from '@yukthix/ui/frame';
 import type { LetterTemplates } from '@yukthix/ui/lifecycle';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
@@ -13,8 +13,8 @@ const id = encodeURIComponent;
 
 // People › Restructure (PPL-09): HR plans a bulk move inside a legal entity or between legal entities; every person is
 // checked by the API (a dry run through the change engine) and the plan goes for one approval by another HR person
-// (founder decision 21 Oct 2026: payroll does no HR work). Open restructures and the person's saved drafts are listed
-// at the top; ?draft= continues a saved draft.
+// (founder decision 21 Oct 2026: payroll does no HR work). Open restructures, the person's saved drafts and the finished
+// restructures (done, rejected, cancelled: back to the record) are listed at the top; ?draft= continues a saved draft.
 function Restructure() {
   const router = useRouter();
   const { toast } = useToast();
@@ -23,6 +23,7 @@ function Restructure() {
   const draftId = useSearchParams()?.get('draft') ?? null;
   const setup = usePeople<RestructureSetup>(canPlan ? '/restructures/setup' : null);
   const drafts = usePeople<{ id: string; title: string; updatedAt: string }[]>(canPlan ? '/restructures/drafts' : null);
+  const finished = usePeople<FinishedRestructure[]>(canPlan ? '/restructures?status=finished' : null);
   const draft = usePeople<{ id: string; state: RestructureDraftState }>(canPlan && draftId ? `/restructures/drafts/${id(draftId)}` : null);
   const templates = useLife<LetterTemplates>(canPlan ? '/letters/templates' : null);
   const letterTypes = [...new Map((templates.data?.templates ?? []).filter((t) => t.status === 'active').map((t) => [t.letterType, { value: t.letterType, label: t.name }])).values()];
@@ -41,6 +42,8 @@ function Restructure() {
         people: places.managers.map((m) => ({ id: m.value, name: m.label.split(',')[0], role: m.label.split(', ').slice(1).join(', ') || undefined })),
         letterTypes,
         drafts: drafts.data ?? [],
+        // Hidden if it cannot load (the wizard still works).
+        finished: finished.isError ? undefined : (finished.data ?? null),
         draft: draft.data ?? null,
         // "Pick people": the entity's employees from the directory (People › Directory reads the same list).
         onEntityPeople: async (e) =>

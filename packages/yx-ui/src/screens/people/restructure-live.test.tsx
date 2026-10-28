@@ -255,6 +255,29 @@ describe('Restructure wizard (PPL-09)', () => {
     expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0]).toMatchObject({ kind: 'within', employeeIds: ['imran'], locationIds: [], departmentIds: [] });
   });
 
+  it('finished restructures: done, rejected and cancelled ones; Open goes to the record; an empty list says so', async () => {
+    const row = (id: string, status: 'done' | 'rejected' | 'cancelled', o: object = {}) => ({ id, kind: 'demerge' as const, title: `Move ${id} from Kaveri TN to Kaveri Foods`, effectiveDate: '2026-10-01', status, count: 1, moved: 0, failed: 0, requestedBy: null, mine: false, openItems: 0, ...o });
+    const l = live({ finished: [row('Divya', 'done', { moved: 1, openItems: 3 }), row('Imran', 'rejected'), row('Arjun', 'cancelled')] });
+    const { unmount } = wrap(<RestructureWizard live={l} />);
+    const table = screen.getByRole('table', { name: 'Finished restructures' });
+    const divya = within(table).getByText('Move Divya from Kaveri TN to Kaveri Foods').closest('tr')!;
+    expect(divya).toHaveTextContent('1 moved');
+    expect(divya).toHaveTextContent('3 open items');
+    expect(divya).toHaveTextContent('Done');
+    expect(within(table).getByText('Move Imran from Kaveri TN to Kaveri Foods').closest('tr')).toHaveTextContent(/1 person · none moved.*Rejected/);
+    expect(within(table).getByText('Move Arjun from Kaveri TN to Kaveri Foods').closest('tr')).toHaveTextContent('Cancelled');
+    await ue.click(within(divya).getByRole('button', { name: 'Open' }));
+    expect(l.onOpen).toHaveBeenCalledWith('Divya');
+    unmount();
+    wrap(<RestructureWizard live={live({ finished: [] })} />);
+    expect(screen.getByText('No finished restructures yet')).toBeInTheDocument();
+  });
+
+  it('no finished list without the data (no access, or it could not load)', () => {
+    wrap(<RestructureWizard live={live()} />);
+    expect(screen.queryByText('Finished restructures')).not.toBeInTheDocument();
+  });
+
   it('names the financial-year quarter of a day', () => {
     expect(quarterOf(new Date(2026, 9, 31))).toBe('Q3 (Oct–Dec)');
     expect(quarterOf(new Date(2026, 8, 30))).toBe('Q2 (Jul–Sep)');

@@ -346,4 +346,41 @@ describe('People: restructure and continuity (PPL-09, PPL-10)', () => {
     await api('payrollA', 'get', '/people/restructures/pending-transfers').expect(403);
     expect((await api('adminB', 'get', '/people/restructures/pending-transfers').expect((r) => expect([200, 403]).toContain(r.status))).body).not.toContainEqual(expect.objectContaining({ id: waiting }));
   });
+
+  it('finished restructures: done, rejected and cancelled, newest first, with open continuity items; only plans naming someone the viewer reaches (founder 28 Oct 2026)', async () => {
+    type Row = { id: string; status: string; effectiveDate: string; moved: number; failed: number; openItems: number };
+    const list = (await api('hrA', 'get', '/people/restructures?status=finished').expect(200)).body as Row[];
+    const all = await asSuper((tx) => tx.restructure.findMany({ where: { organizationId: org.A.id }, select: { id: true, status: true } }));
+    // Pending and scheduled ones stay in the open banner, never here.
+    expect(all.some((r) => r.status === 'pending') && all.some((r) => r.status === 'scheduled')).toBe(true);
+    expect(list.map((r) => r.id).sort()).toEqual(all.filter((r) => ['done', 'rejected', 'cancelled'].includes(r.status)).map((r) => r.id).sort());
+    expect(new Set(list.map((r) => r.status))).toEqual(new Set(['done', 'rejected', 'cancelled']));
+    expect(list.map((r) => r.effectiveDate)).toEqual([...list.map((r) => r.effectiveDate)].sort().reverse());
+    const open = await asSuper((tx) => tx.continuityItem.count({ where: { restructureId: ids.merge, status: 'open' } }));
+    expect(open).toBeGreaterThan(0);
+    expect(list.find((r) => r.id === ids.merge)).toMatchObject({ status: 'done', moved: 3, failed: 1, openItems: open });
+    // Open goes to the record (letters and the checklist).
+    expect((await api('hrA', 'get', `/people/restructures/${ids.merge}`).expect(200)).body).toMatchObject({ id: ids.merge, status: 'done' });
+    // No restructure access, another company, or an unknown filter: nothing.
+    await api('empA', 'get', '/people/restructures?status=finished').expect(403);
+    await api('payrollA', 'get', '/people/restructures?status=finished').expect(403);
+    await api('hrA', 'get', '/people/restructures?status=pending').expect(400);
+    const b = await api('adminB', 'get', '/people/restructures?status=finished');
+    expect([200, 403]).toContain(b.status);
+    if (b.status === 200) expect(b.body).toEqual([]);
+    // HR for one legal entity only: just the plans naming someone there today (none for an entity nobody moved in or out of).
+    const empty = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'Entity XX', shortName: 'XX', isDefault: false, employeeCodePrefix: 'XX' } }));
+    const role = await tenantPrisma.forTenant(ctx('A'), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: 'Entity HR', permissionsJson: JSON.stringify(['employee.profile.view', 'employee.change.manage']) } }));
+    const passwordHash = await argon2.hash(PASSWORD);
+    const scoped = async (who: string, legalEntityId: string) => {
+      const userId = (await tenantPrisma.forTenant(ctx('A'), (tx) => tx.user.create({ data: { organizationId: org.A.id, email: email(who), passwordHash, role: 'panel' } }))).id;
+      users[who] = userId;
+      await tenantPrisma.forTenant(ctx('A'), (tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId, permissionProfileId: role.id, scopeType: 'legal_entity', legalEntityId, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Entity HR', grantedBy: users.hrA } }));
+      const t = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: email(who), password: PASSWORD }).expect(200)).body.accessToken;
+      return (await request(server()).get('/api/v1/people/restructures?status=finished').set('Authorization', `Bearer ${t}`).expect(200)).body as Row[];
+    };
+    expect(await scoped('hrXX', empty.id)).toEqual([]);
+    // Imran stayed in Tamil Nadu: HR there sees the merge he was part of.
+    expect((await scoped('hrTN', ids.leTN)).map((r) => r.id)).toContain(ids.merge);
+  });
 });
