@@ -4955,5 +4955,338 @@
       "PAY-51 UsW9"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-E-01",
+    "area": "Pay · Employee",
+    "screen": "Me › Payslips (PAY-21, PAY-40)",
+    "url": "http://localhost:3000/yx/me/payslips",
+    "account": "arjun@demo-org.test (Employee, at least two published regular payslips). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Payslips.",
+      "2. Open a line under How your pay was worked out.",
+      "3. Press Why is my pay different?",
+      "4. Close it. Press Raise a query, then Send query with the question empty.",
+      "5. Type a question of 5 letters or more, pick a line in About, press Send query.",
+      "6. Press Download PDF.",
+      "7. Open an earlier payslip from Other payslips."
+    ],
+    "expected": "Step 1: the latest payslip, net pay first, gross and deductions, its payment status, and Year to date that equals the sum of the payslips from April. Step 2: the line shows How (the payroll explanation) and the rule. Step 3: each changed line with its amount and its cause; the two months are named. Step 4 (negative): Write your question (at least 5 letters) shows under the box and the box has focus; nothing is sent. Step 5: a toast Query sent to payroll for 5 seconds. Step 6: the PDF downloads and a toast says so. Step 7: that month opens; an off-cycle payslip has no Why is my pay different?",
+    "stories": [
+      "PAY-21 Desktop",
+      "PAY-21 RaiseQuery",
+      "PAY-40 Explained"
+    ],
+    "note": "Positive and negative. Negative: a person with no published payslip sees No payslips yet; a held salary shows Your net pay is on hold."
+  },
+  {
+    "id": "MT-PAY-E-02",
+    "area": "Pay · Employee",
+    "screen": "Me › Tax: overview, compare, regime (PAY-22, PAY-41)",
+    "url": "http://localhost:3000/yx/me/tax",
+    "account": "arjun@demo-org.test (Employee with a payslip this tax year). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Tax.",
+      "2. Open Compare regimes and press Compare the two regimes.",
+      "3. Open Declarations. Press Save my regime without changing it.",
+      "4. Choose the other regime in the joined control and press Save my regime.",
+      "5. Choose the first regime again and save it (before the cut-off).",
+      "6. As a person after the regime cut-off, open Declarations."
+    ],
+    "expected": "Step 1: How your monthly tax is worked out lists income, deductions, tax and the monthly TDS, the same as the latest payslip's TDS line. Step 2: both regimes with taxable income, yearly tax and this month's tax; the lower one is marked; nothing is chosen for you. Step 3 (negative): the message says it is already your regime; nothing is saved. Step 4: toast saved; the header shows the new regime. Step 6 (negative): Regime locked on <date>; no Save button.",
+    "stories": [
+      "PAY-22 Overview",
+      "PAY-41 InWorkspace",
+      "PAY-22 Locked"
+    ],
+    "note": "Positive and negative. A person before their first payslip sees No tax sheet yet."
+  },
+  {
+    "id": "MT-PAY-E-03",
+    "area": "Pay · Employee",
+    "screen": "Me › Tax declarations: lines and proofs (PAY-22)",
+    "url": "http://localhost:3000/yx/me/tax-declarations",
+    "account": "arjun@demo-org.test (old regime, inside the proof window). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Tax declarations.",
+      "2. Press Add declaration, choose Rent paid (HRA), type 18000 in Rent a month, press Save declaration.",
+      "3. Fill Rent paid from 2026-04 and to 2027-03, choose Delhi, Mumbai, Kolkata or Chennai, save.",
+      "4. Open Proofs and upload a PDF for the rent line.",
+      "5. Upload a .docx file for another line."
+    ],
+    "expected": "Step 1: the workspace opens on Declarations. Step 2 (negative): Rent paid from is in red and has focus; nothing is saved. Step 3: toast Declaration saved; the line shows ₹18,000.00 a month. Step 4: the file is sent; the line says Proof being checked after refresh. Step 5 (negative): This file type is not allowed. In the new regime, Proofs says no proofs are needed.",
+    "stories": [
+      "PAY-22 Declarations",
+      "PAY-22 Proofs"
+    ],
+    "note": "Positive and negative. Rent is a monthly amount (the API works out the year)."
+  },
+  {
+    "id": "MT-PAY-E-04",
+    "area": "Pay · Employee and Payroll",
+    "screen": "Form 12B: employee sends, payroll checks (founder decision 6; PAY-22, PAY-23)",
+    "url": "http://localhost:3000/yx/me/tax-declarations",
+    "account": "arjun@demo-org.test, then payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open Previous employer and press Send to payroll with nothing filled.",
+      "2. Type TAN BLRA12345B, salary 300000, tax deducted 300001, attach a PDF, press Send to payroll.",
+      "3. Change tax deducted to 12000 and send.",
+      "4. As Suresh open Payroll › Proof checking; open Arjun's Form 12B; open the PDF.",
+      "5. Choose Reject and press Reject Form 12B with no comment; then type a comment and reject.",
+      "6. As Arjun send it again; as Suresh approve it.",
+      "7. As Arjun open Previous employer; check the next payslip's tax sheet."
+    ],
+    "expected": "Step 1 (negative): TAN, salary, tax and the PDF each show their message; the TAN box has focus. Step 2 (negative): The tax deducted cannot be more than the gross salary. Step 3: toast Form 12B sent; the box says Payroll is checking it. Step 4: the row Previous employer (Form 12B) with the figures; the PDF downloads. Step 5 (negative): the comment is required and focused; then rejected with a toast. Step 6: approved with a toast. Step 7: Checked: counted in your tax; no Send button; the next projection's income includes the previous employer's salary.",
+    "stories": [
+      "PAY-22 Previous",
+      "PAY-23 Line"
+    ],
+    "note": "Positive and negative. Suresh never sees his own Form 12B in the queue."
+  },
+  {
+    "id": "MT-PAY-E-05",
+    "area": "Pay · Employee",
+    "screen": "Me › Loans and advances: within and over the limit (PAY-18, founder decision 8)",
+    "url": "http://localhost:3000/yx/me/loans",
+    "account": "arjun@demo-org.test (confirmed, pay set). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Loans and advances.",
+      "2. Press Send request with the form empty.",
+      "3. Type an amount ₹1 more than Most you can ask for now, 6 instalments, a reason; press Send request.",
+      "4. Change the amount to exactly Most you can ask for now and send.",
+      "5. Look at Your loans and advances."
+    ],
+    "expected": "Step 1: Effect on your pay shows the company limit (2 months' gross pay by default), what is still to repay and the most you can ask for now. Step 2 (negative): Amount has focus and every missing field shows its message. Step 3 (negative): Enter ₹X or less and Over the limit; nothing is sent. Step 4: toast Request sent; it goes to the approver in Approvals. Step 5: the new line says Waiting for approval.",
+    "stories": [
+      "PAY-18 Advance",
+      "PAY-18 OverLimit",
+      "PAY-18 Submitted"
+    ],
+    "note": "Positive and negative. The server checks the same rule again (try it with two tabs open)."
+  },
+  {
+    "id": "MT-PAY-E-06",
+    "area": "Pay · Employee and HR",
+    "screen": "Loans: probation rule and the two company settings (founder decision 8)",
+    "url": "http://localhost:3000/yx/me/loans",
+    "account": "a new joiner on probation (HR makes one with status Probation), then hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the new joiner open Me › Loans and advances.",
+      "2. As Lakshmi open Settings and set Who may ask for a loan or advance = everyone for the company.",
+      "3. As the new joiner refresh the page and ask for an amount within the limit.",
+      "4. As Lakshmi set A loan or advance may be at most = 1 month of gross pay for one legal entity; refresh as Arjun of that entity.",
+      "5. Put both settings back to the defaults."
+    ],
+    "expected": "Step 1 (negative): no form; the page says loans open after probation and gives the day probation ends. Step 3: the form shows and the request is sent. Step 4: the limit shown halves; an amount above it is refused with the reason. Step 5: defaults are 2 months and confirmed only.",
+    "stories": [
+      "PAY-18 NotEligible",
+      "PAY-18 OverLimit"
+    ],
+    "note": "Positive and negative. The entity value wins over the company value."
+  },
+  {
+    "id": "MT-PAY-E-07",
+    "area": "Pay · Payroll",
+    "screen": "Payroll › Loans and advances (PAY-17)",
+    "url": "http://localhost:3000/yx/payroll/loans",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh, payroll.loan.manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Loans and advances; filter Status = Being repaid; search a name.",
+      "2. Press Add loan, then Send for approval with nothing filled.",
+      "3. Search a person, fill amount, instalments, reason; send.",
+      "4. Open an active loan of someone else; press Change instalment; type more than Left to repay; save.",
+      "5. Type a smaller instalment; save. Pause EMIs with no reason, then with a reason.",
+      "6. Open Suresh's own loan (if any).",
+      "7. Sign in as hr@demo-org.test without payroll.loan.manage and open the page."
+    ],
+    "expected": "Step 1: the table filters and searches; facts show open loans and the exact amount left to repay. Step 2 (negative): Choose the person is shown first. Step 3: toast Sent for approval; the row says Waiting for approval. Step 4 (negative): the message gives the most allowed; nothing saved. Step 5: toasts; pause without a reason is refused with focus on Reason. Step 6 (negative): This is your own loan; no Change buttons. Step 7: no Add loan and no Change (or No access).",
+    "stories": [
+      "PAY-17 List",
+      "PAY-17 PauseDialog",
+      "PAY-17 Record"
+    ],
+    "note": "Positive and negative. The company loan rules also apply when payroll asks on someone's behalf."
+  },
+  {
+    "id": "MT-PAY-E-08",
+    "area": "Pay · Payroll",
+    "screen": "Payroll › Proof checking (PAY-23)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (tax.proof.verify). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Proof checking.",
+      "2. Press Decide on a line; choose Approve part; type an amount equal to what was declared; press Approve part.",
+      "3. Type a smaller amount and a comment; approve.",
+      "4. Decide on another line; choose Reject and press Reject line with no comment.",
+      "5. Switch the joined control to Rejected."
+    ],
+    "expected": "Step 1: waiting lines and any Form 12B, with files to open. Step 2 (negative): the amount must be below what was declared. Step 3: toast; the line leaves Waiting. Step 4 (negative): the comment is required and focused. Step 5: the rejected lines with their comments. Suresh's own proofs never show.",
+    "stories": [
+      "PAY-23 Queue",
+      "PAY-23 Partial",
+      "PAY-23 Reject"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-09",
+    "area": "Pay · Employee",
+    "screen": "Me › Get paid early (PAY-26 desktop)",
+    "url": "http://localhost:3000/yx/me/earned-pay",
+    "account": "arjun@demo-org.test (pay group with an EWA policy on). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Get paid early.",
+      "2. Type more than You can take up to; press Continue.",
+      "3. Type an allowed amount; Continue; press Get ₹… without ticking the box.",
+      "4. Tick the box and press Get ₹…",
+      "5. As a person in a pay group with EWA off, open the page."
+    ],
+    "expected": "Step 1: You can take up to and how it is worked out. Step 2 (negative): Enter ₹X or less. Step 3 (negative): Tick the box to accept the fee and the recovery. The text shows the exact amount taken back (draw + fee when the person pays it). Step 4: toast; the draw appears under Your draws. Step 5: Not available right now with the reason.",
+    "stories": [
+      "PAY-26 Desktop",
+      "PAY-26 DesktopConfirm",
+      "PAY-26 Off"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-10",
+    "area": "Pay · Payroll",
+    "screen": "Payroll › Earned wage access (PAY-27)",
+    "url": "http://localhost:3000/yx/payroll/ewa",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Earned wage access; pick the legal entity and month.",
+      "2. On a draw To pay press Record payment, then Record payment with no reference.",
+      "3. Type a bank reference and record.",
+      "4. Press Failed on another draw and record a reason.",
+      "5. Open Policy; press Change from a date; Save policy with no date; then a date.",
+      "6. Open Partner and Recoveries in payroll."
+    ],
+    "expected": "Step 1: draws with amount, fee, who pays it, status. Step 2 (negative): the reference message shows and has focus. Step 3: toast; the draw says Paid, recovered in payroll. Step 4: toast; Failed with the reason. Step 5 (negative then positive): From is required; then saved with a toast. Step 6: No EWA partner connected (the true state); recoveries add draws and people's fees exactly.",
+    "stories": [
+      "PAY-27 Draws",
+      "PAY-27 Policy",
+      "PAY-27 NoPartner",
+      "PAY-27 Recoveries"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-11",
+    "area": "Pay · Employee",
+    "screen": "Me › My incentives (PAY-33) and My pay band (PAY-39)",
+    "url": "http://localhost:3000/yx/me/incentives",
+    "account": "a sales employee on an incentive plan; arjun@demo-org.test for the pay band. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › My incentives as the sales employee.",
+      "2. Open it as a person on no plan.",
+      "3. Open Performance › My pay band as Arjun.",
+      "4. Have HR turn pay bands off; open it again."
+    ],
+    "expected": "Step 1: Earned, Sent to payroll, Being checked and any clawback, with the results by month; totals add up exactly. Step 2: No incentive results yet. Step 3: the band, its midpoint and where Arjun sits (never his own figure or anyone else's). Step 4 (negative): Your company doesn't share pay bands.",
+    "stories": [
+      "PAY-33 Default",
+      "PAY-33 Clawback",
+      "PAY-33 Empty",
+      "PAY-39 InBand",
+      "PAY-39 Off"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-12",
+    "area": "Pay · Employee and Payroll",
+    "screen": "Me › Pay documents (PAY-54) and Add a nominee",
+    "url": "http://localhost:3000/yx/me/pay-documents",
+    "account": "arjun@demo-org.test, then payroll@demo-org.test (payroll.document.issue). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open Me › Pay documents; press Download PDF on a document; open its verify code.",
+      "2. As Suresh open Payroll › Pay documents; press Add a nominee; press Add nominee with nothing filled.",
+      "3. Search Arjun, type a name, an email without a dot after @, a past day; Add nominee.",
+      "4. Fix the email and the day; add."
+    ],
+    "expected": "Step 1: only Arjun's own documents with reference, status (superseded ones marked) and verify code; the PDF downloads with a toast; the verify page says whether it is current. Step 2 (negative): Choose whose documents first. Step 3 (negative): the email and the day are refused. Step 4: toast Nominee added (after the second factor).",
+    "stories": [
+      "PAY-54 Documents",
+      "PAY-54 Nominee"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-13",
+    "area": "Pay · Payroll",
+    "screen": "Payroll › Consultants (PAY-55)",
+    "url": "http://localhost:3000/yx/payroll/consultants",
+    "account": "payroll@demo-org.test (consultant.manage), then a second person with payroll.bankfile.release. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Consultants; open Register; press Add consultant and save with nothing filled.",
+      "2. Add a consultant with PAN and bank account; record the bank check as the same person.",
+      "3. Enter an invoice; make a bank file of approved invoices.",
+      "4. As the maker, look for Release; as the second person release it with the typed phrase, first with a wrong phrase."
+    ],
+    "expected": "Step 1 (negative): each required field shows its message; the first has focus. Step 2 (negative): the person who changed the account cannot check it. Step 3: TDS and to pay are worked out exactly. Step 4: the maker never sees Release; a wrong phrase is refused; the right phrase releases with a toast.",
+    "stories": [
+      "PAY-55 Invoices",
+      "PAY-55 Register",
+      "PAY-55 Release bank file"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-14",
+    "area": "Pay · Consultant portal",
+    "screen": "Consultant portal (PAY-56)",
+    "url": "http://localhost:3000/yx/consultant/demo-org",
+    "account": "a consultant's email (one-time code). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Sign in with the code sent to the consultant's email.",
+      "2. Press Send an invoice and send with nothing filled.",
+      "3. Fill every field and attach a PDF; send.",
+      "4. Download a payment advice and a TDS certificate; sign out."
+    ],
+    "expected": "Step 1: only that consultant's invoices. Step 2 (negative): every field and the PDF are required. Step 3: the invoice appears. Step 4: the files download; sign out returns to sign-in.",
+    "stories": [
+      "PAY-56 Your invoices",
+      "PAY-56 Send an invoice"
+    ],
+    "note": "Positive and negative. Never sign in from the built-in browser pane."
+  },
+  {
+    "id": "MT-PAY-E-15",
+    "area": "Pay · Payroll",
+    "screen": "Payroll › Equity (PAY-57)",
+    "url": "http://localhost:3000/yx/payroll/equity",
+    "account": "payroll@demo-org.test (payroll.equity.manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Equity; pick the legal entity.",
+      "2. Add a plan; add a valuation; make a grant with more units than the pool has left.",
+      "3. Make a grant within the pool.",
+      "4. Confirm a milestone vesting; record an exercise price received; download the cap table."
+    ],
+    "expected": "Step 2 (negative): the units are refused with the pool left. Step 3: the grant waits for another equity admin in Approvals. Step 4: each action asks first and ends with a toast; the cap table downloads.",
+    "stories": [
+      "PAY-57 Grants",
+      "PAY-57 Make a grant"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-E-16",
+    "area": "Pay · Employee",
+    "screen": "Me › My equity (PAY-58)",
+    "url": "http://localhost:3000/yx/me/equity",
+    "account": "an employee with a vested grant. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › My equity.",
+      "2. Press Exercise and ask for more units than are exercisable.",
+      "3. Ask for an allowed number."
+    ],
+    "expected": "Step 1: each grant with vested, unvested and exercisable units. Step 2 (negative): refused with the most you can exercise. Step 3: the exact price payable is shown; the exercise waits for approval.",
+    "stories": [
+      "PAY-58 My grants",
+      "PAY-58 Exercise units"
+    ],
+    "note": "Positive and negative. A person with no grants sees the empty state."
   }
 ]
