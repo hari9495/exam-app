@@ -5,7 +5,7 @@ import { PeriodsScreen, type Periods, type Preflight } from '@yukthix/ui/time';
 import { timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
-// HR › Attendance periods (P08, TIM-11): attendance.lock for the legal entity, or payroll.correction.approve in the
+// HR › Attendance periods (P08, TIM-11): attendance.lock for the legal entity, or attendance.lock.approve in the
 // two-step flow; lock, approve and unlock ask for a fresh second step.
 export default function YxPeriodsPage() {
   const sp = useScopeParams();

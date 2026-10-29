@@ -60,6 +60,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.period.reopen',
   'payroll.period.reopen.approve',
   'payroll.correction.approve',
+  // Founder decision 5 (29 Oct 2026): approving an attendance lock (TIM-11 two-step flow).
+  'attendance.lock.approve',
   'payroll.document.view',
   'payroll.document.issue',
   'payroll.file.view',

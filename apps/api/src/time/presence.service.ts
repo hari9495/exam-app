@@ -62,17 +62,20 @@ export class PresenceService {
       const web = punches.filter((x) => x.employeeId === w.employeeId && dateOf(x.workOn) === on);
       const webIn = web.find((x) => x.kind === 'in');
       const webOut = [...web].reverse().find((x) => x.kind === 'out');
+      // Decision 6: the trail was deleted at the withdrawal; the day keeps what presence decided (attendance_days).
+      const kept = consent?.withdrawnAt && !p && !webIn && d?.firstIn && d.workedMinutes !== null ? d : null;
       out.push({
         id: `${w.employeeId}|${on}`,
         employeeId: w.employeeId,
         person: f.name,
         on,
         status: d?.status ?? null,
-        byPresence: Boolean(consent && p && !webIn),
-        activeMinutes: p?.activeMinutes ?? null,
+        byPresence: Boolean(consent && (p || kept) && !webIn),
+        activeMinutes: p?.activeMinutes ?? kept?.workedMinutes ?? null,
         // First and last active are the person's own to see.
-        first: own && p ? hhmm(minutesInto(on, f.zone, p.first)) : null,
-        last: own && p ? hhmm(minutesInto(on, f.zone, p.last)) : null,
+        first: own && p ? hhmm(minutesInto(on, f.zone, p.first)) : own && kept?.firstIn ? hhmm(minutesInto(on, f.zone, kept.firstIn)) : null,
+        last: own && p ? hhmm(minutesInto(on, f.zone, p.last)) : own && kept?.lastOut ? hhmm(minutesInto(on, f.zone, kept.lastOut)) : null,
+        trailDeleted: Boolean(kept),
         webIn: webIn ? hhmm(minutesInto(on, f.zone, webIn.punchedAt)) : null,
         webOut: webOut ? hhmm(minutesInto(on, f.zone, webOut.punchedAt)) : null,
         consent: consent ? { givenAt: consent.givenAt, version: consent.noticeVersion } : null,
@@ -114,7 +117,10 @@ export class PresenceService {
     );
   }
 
-  /** Gives or withdraws my consent (audited). Giving needs the company's switch on; a withdrawal holds from now on. */
+  /**
+   * Gives or withdraws my consent (audited). Giving needs the company's switch on. Withdrawing (founder decision 6, DPDP
+   * Act 2023 s.6(4): as easy as giving) stops recording at once and deletes my presence trail; my attendance days stay.
+   */
   consent(ctx: TenantContext, user: ScopeUser, action: 'give' | 'withdraw') {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Only the person can give or withdraw their own consent.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -129,9 +135,12 @@ export class PresenceService {
         return { id: row.id, given: true, repeat: false };
       }
       if (!open) throw new ConflictException('You have not given consent, so there is nothing to withdraw.');
-      await tx.presenceConsent.update({ where: { id: open.id }, data: { withdrawnAt: new Date() } });
-      await audit(tx, c, 'attendance.presence.consent_withdrawn', 'employee', f.employeeId, { notice: open.noticeVersion });
-      return { id: open.id, given: false, repeat: false };
+      const withdrawnAt = new Date();
+      await tx.presenceConsent.update({ where: { id: open.id }, data: { withdrawnAt } });
+      // The database lets the trail go only once no consent is in force (the update above, same transaction).
+      const erased = await tx.presenceSignal.deleteMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId } });
+      await audit(tx, c, 'attendance.presence.consent_withdrawn', 'employee', f.employeeId, { notice: open.noticeVersion, withdrawnAt, erasedSignals: erased.count });
+      return { id: open.id, given: false, repeat: false, erasedSignals: erased.count };
     });
   }
 
@@ -144,6 +153,8 @@ export class PresenceService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const f = await this.me(tx, c);
+      // Serialised with a withdrawal: states never land after the trail was deleted.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`presence:${org}:${f.employeeId}`}))`;
       if ((await settingOn(tx, c, 'attendance.presence', f, todayIn(f.zone))) !== 'on') throw new ConflictException('Your company has not turned on presence-based attendance.');
       if (!(await tx.presenceConsent.findFirst({ where: { organizationId: org, employeeId: f.employeeId, withdrawnAt: null }, select: { id: true } }))) throw new ForbiddenException('Give consent first: without it, no presence is recorded.');
       const now = Date.now();

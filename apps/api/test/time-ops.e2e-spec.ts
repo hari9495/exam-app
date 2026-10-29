@@ -77,8 +77,8 @@ describe('Time ops: attendance, overtime, periods', () => {
       ['adminB', 'B', 'org_admin', null],
       ['hrAdmin', 'A', 'panel', ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions],
       ['hrExec', 'A', 'panel', ['leave.view', 'attendance.view']],
-      ['payroll', 'A', 'panel', ['payroll.period.view', 'payroll.correction.approve']],
-      ['both', 'A', 'panel', ['attendance.view', 'attendance.lock', 'payroll.correction.approve']],
+      ['payroll', 'A', 'panel', ['payroll.period.view', 'payroll.correction.approve', 'attendance.lock.approve']],
+      ['both', 'A', 'panel', ['attendance.view', 'attendance.lock', 'attendance.lock.approve']],
       ['mgr', 'A', 'panel', null],
       ['emp', 'A', 'panel', null],
       ['peer', 'A', 'panel', null],
@@ -132,7 +132,7 @@ describe('Time ops: attendance, overtime, periods', () => {
     await app.close();
   });
 
-  it('every new table has forced RLS; resolutions and presence states are never changed or removed', async () => {
+  it('every new table has forced RLS; resolutions and presence states are never changed (presence states are removed only on withdrawal)', async () => {
     const tables = ['attendance_resolutions', 'industrial_action_events', 'presence_consents', 'presence_signals'];
     const rows = await prisma.$queryRaw<{ relname: string; forced: boolean; policy: boolean }[]>`
       SELECT c.relname, c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policy
@@ -140,7 +140,7 @@ describe('Time ops: attendance, overtime, periods', () => {
     expect(rows).toHaveLength(tables.length);
     for (const r of rows) expect(r).toMatchObject({ forced: true, policy: true });
     await expect(prisma.$executeRaw`UPDATE attendance_resolutions SET reason = 'x'`).rejects.toThrow();
-    await expect(prisma.$executeRaw`DELETE FROM presence_signals`).rejects.toThrow();
+    await expect(prisma.$executeRaw`UPDATE presence_signals SET state = 'idle'`).rejects.toThrow();
   });
 
   it('my pages for a sign-in with no employee record say so with a code, not a retryable error', async () => {
@@ -351,6 +351,9 @@ describe('Time ops: attendance, overtime, periods', () => {
 
     it('unfreeze needs a reason; payroll can\'t; then two-step: HR sends, someone else in payroll approves with the second step', async () => {
       const body = { legalEntityId: ids.entityA, month: lockMonth };
+      // Founder decision 7a: opening a month again asks for the authenticator code first, like Lock.
+      expect([401, 403]).toContain((await api('hrAdmin', 'post', '/time/periods/unfreeze').send({ ...body, reason: 'Reopen for a missed fix' })).status);
+      await markSteppedUp(tenantPrisma, token.hrAdmin);
       await api('hrAdmin', 'post', '/time/periods/unfreeze').send({ ...body, reason: 'short' }).expect(400);
       await api('payroll', 'post', '/time/periods/unfreeze').send({ ...body, reason: 'Reopen for a missed fix' }).expect(403);
       expect((await api('hrAdmin', 'post', '/time/periods/unfreeze').send({ ...body, reason: 'Reopen for a missed fix' }).expect(200)).body.stage).toBe('open');

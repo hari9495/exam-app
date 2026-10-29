@@ -164,12 +164,15 @@ export class FieldService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const f = await this.meFacts(tx, c);
+      // The same lock as a reading upload: no reading lands after the trail is deleted, and a double press withdraws once.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`field-pings:${org}:${f.employeeId}`}))`;
       const x = await this.openConsent(tx, org, f.employeeId);
       if (!x) throw new ConflictException('You have not agreed to location tracking, so there is nothing to withdraw.');
       const withdrawnAt = new Date();
       await tx.fieldConsent.update({ where: { id: x.id }, data: { withdrawnAt } });
+      // Founder decision 6: the trail goes; attendance days and visit check-ins stay (pay and the visit log need them).
       const erased = await tx.locationPing.deleteMany({ where: { organizationId: org, employeeId: f.employeeId } });
-      await audit(tx, c, 'time.field.consent_withdrawn', 'employee', f.employeeId, { consentId: x.id, erasedPings: erased.count, by: 'employee' });
+      await audit(tx, c, 'time.field.consent_withdrawn', 'employee', f.employeeId, { consentId: x.id, withdrawnAt, erasedPings: erased.count, by: 'employee' });
       return { withdrawnAt, erasedPings: erased.count };
     });
   }

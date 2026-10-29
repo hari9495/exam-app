@@ -29,6 +29,7 @@ export const TIME_PERMISSIONS = [
   { key: 'attendance.view', description: 'View punches, days and the muster of the people in scope' },
   { key: 'roster.manage', description: 'Plan and publish rosters for the people in scope (managers plan their own team without it)' },
   { key: 'attendance.lock', description: 'Lock and unlock attendance periods of the legal entities in scope (needs a fresh second sign-in step)' },
+  { key: 'attendance.lock.approve', description: 'Approve the lock of an attendance month that HR sent (two-step lock, needs a fresh second sign-in step)' },
   { key: 'leave.eligibility.override', description: 'Let one person through a leave eligibility check (maternity, paternity) with a reason, for the people in scope' },
 ];
 

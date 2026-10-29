@@ -284,13 +284,13 @@ export class TimeOpsController {
   }
 
   @Get('periods')
-  @RequireAnyPermission('attendance.lock', 'payroll.correction.approve')
+  @RequireAnyPermission('attendance.lock', 'attendance.lock.approve')
   periodsOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearEntityQueryDto) {
     return this.periods.periods(ctx, this.user(req), q.year, q.legalEntityId);
   }
 
   @Get('periods/preflight')
-  @RequireAnyPermission('attendance.lock', 'payroll.correction.approve')
+  @RequireAnyPermission('attendance.lock', 'attendance.lock.approve')
   preflight(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodDto) {
     return this.periods.preflight(ctx, this.user(req), q.legalEntityId, q.month);
   }

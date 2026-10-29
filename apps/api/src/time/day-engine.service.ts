@@ -28,6 +28,8 @@ export class DayEngine {
     const events = await tx.industrialActionEvent.findMany({ where: { organizationId: org, status: 'active', fromOn: { lte: asDate(to) }, toOn: { gte: asDate(from) } } });
     const consents = wfh.size ? await tx.presenceConsent.findMany({ where: { organizationId: org, employeeId } }) : [];
     const signals = consents.length ? await tx.presenceSignal.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+    // Founder decision 6: a withdrawal deletes the presence trail, but the days it decided stay as they were worked out.
+    const before = consents.some((x) => x.withdrawnAt) ? new Map((await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId, workOn: { gte: asDate(from), lte: asDate(to) } } })).map((d) => [d.workOn.toISOString().slice(0, 10), d])) : null;
     const sched = book ?? (await ScheduleBook.load(tx, org));
     await sched.prime([employeeId], from, to);
     const holidays = new Map<string, Map<string, HolidayOn>>();
@@ -46,8 +48,12 @@ export class DayEngine {
       const event = events.find((e) => e.locationId === f.locationId && (!e.departmentId || e.departmentId === f.departmentId) && e.fromOn.toISOString().slice(0, 10) <= on && e.toOn.toISOString().slice(0, 10) >= on);
       // Presence counts only with consent in force all through the day and the company's switch on.
       const dayStart = new Date(`${on}T00:00:00.000Z`);
-      const consented = wfh.has(on) && consents.some((x) => x.givenAt <= new Date(dayStart.getTime() + 86_400_000) && (!x.withdrawnAt || x.withdrawnAt > new Date(dayStart.getTime() + 86_400_000))) && (await settingOn(tx, c, 'attendance.presence', f, on)) === 'on';
-      const presence = consented ? presenceDay(signals.filter((x) => x.workOn.toISOString().slice(0, 10) === on).map((x) => ({ at: x.at, state: x.state as 'active' }))) : null;
+      const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+      const inForce = wfh.has(on) ? consents.find((x) => x.givenAt <= dayEnd && (!x.withdrawnAt || x.withdrawnAt > dayEnd)) : undefined;
+      const consented = Boolean(inForce) && (await settingOn(tx, c, 'attendance.presence', f, on)) === 'on';
+      const daySignals = signals.filter((x) => x.workOn.toISOString().slice(0, 10) === on);
+      const kept = inForce?.withdrawnAt && !daySignals.length ? before?.get(on) : undefined;
+      const presence = !consented ? null : kept?.firstIn && kept.workedMinutes !== null ? { first: kept.firstIn, last: kept.lastOut ?? kept.firstIn, activeMinutes: kept.workedMinutes } : presenceDay(daySignals.map((x) => ({ at: x.at, state: x.state as 'active' })));
       const r = evaluateDay({
         on,
         zone: f.zone,

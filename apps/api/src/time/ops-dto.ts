@@ -200,6 +200,21 @@ export class DeviceRefQueryDto {
 const list = () => Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((x: string) => x.trim()).filter(Boolean) : value));
 
 /** TIM-04: one page of the month's exceptions, filtered on the server. */
+/** TIM-37 past events: a page of 25, 50 or 100 (like the exceptions list). */
+export class PageQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([25, 50, 100])
+  pageSize?: number;
+}
+
 export class ExceptionsQueryDto extends OpsMonthQueryDto {
   @IsOptional()
   @list()

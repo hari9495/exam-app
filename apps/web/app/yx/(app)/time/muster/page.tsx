@@ -7,7 +7,7 @@ import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 // Attendance muster (TIM-02): the designed muster on a manager's team, or HR's people in attendance.view scope
 // (YX-AT-14). Each cell opens the person's day card (TIM-03: HR resolves a past day, managers decide pending overtime).
 // The month's stage for its legal entity: freeze inputs and lock (attendance.lock), or in the two-step flow send it
-// (HR) and approve the lock (payroll.correction.approve); the lock asks for the second sign-in step. HR (leave.approve)
+// (HR) and approve the lock (attendance.lock.approve); the lock asks for the second sign-in step. HR (leave.approve)
 // marks ticked people present with a reason. Every action is checked again on the server.
 export default function YxMusterPage() {
   const { month, setMonth, entity } = useScopeParams();

@@ -14,7 +14,7 @@ import type { ScopeUser } from '../access/scope';
 import { AttendanceOpsService } from './attendance-ops.service';
 import { DeviceBackfillService } from './device-backfill.service';
 import { IndustrialActionService } from './industrial-action.service';
-import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
+import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PageQueryDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
 import { PresenceService } from './presence.service';
@@ -46,9 +46,10 @@ class ApplyBackfillDto {
 //                              overtime they hold the approval task for (TIM-09)
 //   attendance.view            HR: the same over the people in scope, and the women's night-shift register
 //   leave.approve              HR resolves exceptions and marks people present, over the person, never one's own day
-//   attendance.lock            freeze / open / send a month (TIM-02, TIM-11), industrial action (TIM-37), device
+//   attendance.lock            freeze / open again (second step) / send a month (TIM-02, TIM-11), industrial action and
+//                              its past events, paged (TIM-37), device
 //                              backfill (TIM-10, with the second sign-in step)
-//   payroll.correction.approve payroll approves the lock HR sent (two-step flow, second sign-in step)
+//   attendance.lock.approve    payroll approves the lock HR sent (two-step flow, second sign-in step)
 @Controller('time')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AttendanceOpsController {
@@ -102,9 +103,11 @@ export class AttendanceOpsController {
     return this.periods.freeze(ctx, this.user(req), dto.legalEntityId, dto.month);
   }
 
+  // Founder decision 7a (29 Oct 2026): opening a month again asks for a reason and the authenticator code, like Lock.
   @Post('periods/unfreeze')
   @HttpCode(200)
   @RequirePermissions('attendance.lock')
+  @RequireStepUp()
   unfreeze(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PeriodReasonDto) {
     return this.periods.unfreeze(ctx, this.user(req), dto.legalEntityId, dto.month, dto.reason);
   }
@@ -118,7 +121,7 @@ export class AttendanceOpsController {
 
   @Post('periods/approve-lock')
   @HttpCode(200)
-  @RequirePermissions('payroll.correction.approve')
+  @RequirePermissions('attendance.lock.approve')
   @RequireStepUp()
   approveLock(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PeriodRefDto) {
     return this.periods.approveLock(ctx, this.user(req), dto.legalEntityId, dto.month);
@@ -150,8 +153,8 @@ export class AttendanceOpsController {
 
   @Get('industrial-actions')
   @RequirePermissions('attendance.lock')
-  events(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.industrial.list(ctx, this.user(req));
+  events(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PageQueryDto) {
+    return this.industrial.list(ctx, this.user(req), q.page ?? 1, q.pageSize ?? 25);
   }
 
   @Get('industrial-actions/options')

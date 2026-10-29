@@ -95,11 +95,17 @@ export class IndustrialActionService {
     });
   }
 
-  async list(ctx: TenantContext, user: ScopeUser) {
+  /** Past and current events in scope, newest first, one page at a time (founder decision 7b: "Past strikes and lockouts"). */
+  async list(ctx: TenantContext, user: ScopeUser, page = 1, pageSize = 25) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = (await tx.industrialActionEvent.findMany({ where: { organizationId: c.organizationId }, orderBy: { fromOn: 'desc' }, take: 200 })).filter((e) => this.covers(v, e.legalEntityId));
-      return { events: await Promise.all(rows.map((e) => this.view(tx, c.organizationId, e))) };
+      const entities = tenantWide(v, 'attendance.lock') ? null : (v.scopes.get('attendance.lock') ?? []).flatMap((x) => (x.type === 'legal_entity' && x.id ? [x.id] : []));
+      const where = { organizationId: c.organizationId, ...(entities ? { legalEntityId: { in: entities } } : {}) };
+      const [total, rows] = await Promise.all([
+        tx.industrialActionEvent.count({ where }),
+        tx.industrialActionEvent.findMany({ where, orderBy: [{ fromOn: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      ]);
+      return { events: await Promise.all(rows.map((e) => this.view(tx, c.organizationId, e))), total, page, pageSize, today: todayIst() };
     });
   }
 

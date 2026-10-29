@@ -43,7 +43,7 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // may be granted per legal entity like org.settings.manage, but changing it needs the company-wide grant.
   if (key === 'leave.settings.manage') return ['tenant', 'legal_entity'];
   // Batch 2: an attendance month is locked per legal entity; rosters are planned for people, scoped like their records.
-  if (key === 'attendance.lock') return ['tenant', 'legal_entity'];
+  if (key === 'attendance.lock' || key === 'attendance.lock.approve') return ['tenant', 'legal_entity'];
   if (key === 'roster.manage') return GRANT_SCOPE_TYPES;
   if (key.startsWith('leave.') || key.startsWith('attendance.')) return GRANT_SCOPE_TYPES;
   // M01 lifecycle 6a: joiners (by planned place) and person documents are scoped like employee records; checklist

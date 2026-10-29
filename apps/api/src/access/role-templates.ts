@@ -50,6 +50,8 @@ const PAY_ADMIN_5H = ['consultant.manage'];
 const PAY_APPROVER_5H = ['consultant.invoice.approve'];
 // Batch 5i: special pay sent to payroll, earned wage access and equity plans (payroll); approvers approve postings with payroll.run.approve.
 const PAY_ADMIN_5I = ['payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
+// Founder decision 5 (29 Oct 2026): payroll approves the attendance lock HR sends (two-step flow, TIM-11).
+const PAY_ADMIN_TIME = ['attendance.lock.approve'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -94,7 +96,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     // changing pay) and does not approve bank or identity changes (HR does).
     // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
     cannot: 'HR settings, job changes or approving them, adding people, probation decisions, approving bank and identity changes.',
-    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I, ...PAY_ADMIN_TIME],
   },
   {
     key: 'payroll_approver',

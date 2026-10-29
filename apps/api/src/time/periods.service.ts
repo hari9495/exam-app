@@ -19,8 +19,8 @@ import { settingFor } from '../people/probation';
 // statutory muster and leave registers of an establishment (P07 IN.REGISTERS formats per state; the law's columns are
 // always there, YX-DOC-22), as PDF or XLSX.
 
-/** TIM-11 two-step lock: payroll approves the month HR sent (the Payroll Admin role holds this key). */
-const PAYROLL_APPROVE = 'payroll.correction.approve';
+/** TIM-11 two-step lock: payroll approves the month HR sent (founder decision 5, 29 Oct 2026: its own key, Payroll role by default). */
+const PAYROLL_APPROVE = 'attendance.lock.approve';
 const HR_FREEZE = 'Inputs frozen by HR';
 const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const PENDING = { leave: ['pending', 'cancel_pending'] };
@@ -89,7 +89,7 @@ export class PeriodsService {
   /** The year's months per legal entity the viewer may lock, with their stage. */
   async periods(ctx: TenantContext, user: ScopeUser, year: string, entityId?: string | null) {
     const v = await this.viewer(user);
-    if (!has(v, 'attendance.lock') && !has(v, PAYROLL_APPROVE)) throw new ForbiddenException('Attendance periods need attendance.lock (HR) or payroll.correction.approve (payroll).');
+    if (!has(v, 'attendance.lock') && !has(v, PAYROLL_APPROVE)) throw new ForbiddenException('Attendance periods need "Lock attendance" (HR) or "Approve attendance lock" (payroll). Ask your admin.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null, ...(entityId ? { id: entityId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id) || this.coversEntity(v, e.id, PAYROLL_APPROVE));
       const locks = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
@@ -207,7 +207,7 @@ export class PeriodsService {
     });
   }
 
-  /** TIM-11 two-step flow: payroll (payroll.correction.approve over the entity) approves the lock HR sent; never the sender. */
+  /** TIM-11 two-step flow: payroll (attendance.lock.approve over the entity) approves the lock HR sent; never the sender. */
   async approveLock(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
     const v = await this.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
@@ -287,8 +287,8 @@ export class PeriodsService {
   }
 
   /**
-   * Opens a month HR froze again, with a reason (attendance.lock). Not when payroll froze it for a run; a month sent for
-   * approval goes back to HR too.
+   * Opens a month HR froze again, with a reason (attendance.lock, and the second sign-in step: founder decision 7a,
+   * 29 Oct 2026). Not when payroll froze it for a run; a month sent for approval goes back to HR too.
    */
   async unfreeze(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, reason: string) {
     const v = await this.viewer(user);
@@ -296,6 +296,7 @@ export class PeriodsService {
     if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId }, select: { id: true } }))) throw new NotFoundException('Not found');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
       const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(monthRange(month).from) } });
       if (!p || p.stage !== 'frozen') throw new ConflictException(`${monthText(month)} is not frozen.`);

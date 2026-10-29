@@ -77,6 +77,8 @@ export const YX_KEYS = [
   // Step 4 batch 2: rosters in scope and locking attendance months.
   'roster.manage',
   'attendance.lock',
+  // Founder decision 5 (29 Oct 2026): payroll approves the lock HR sent (two-step flow).
+  'attendance.lock.approve',
   // M03 payroll batch 5a: pay periods and reopen, pay documents, payroll files, the audit log.
   'payroll.period.view',
   'payroll.period.reopen',
