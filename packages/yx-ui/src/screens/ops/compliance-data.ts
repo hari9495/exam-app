@@ -37,7 +37,10 @@ export interface PenaltyLine {
 }
 export interface SupplementaryFiling {
   id: string;
-  kind: 'Supplementary ECR' | 'ESI past-period contribution' | 'Excess remittance refund request';
+  /** 'Supplementary ECR', 'ESI past-period contribution', 'Excess remittance refund request' (live: also PT / LWF and adjustments). */
+  kind: string;
+  /** An excess record carries one amount instead of the shares (live). */
+  amount?: number;
   originMonth: string;
   reason: string;
   employees: number;

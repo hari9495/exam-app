@@ -34,6 +34,7 @@ import {
   LiveChallanSheet,
   LiveConsultantTdsScreen,
   LiveForm16Screen,
+  LiveMissingIdsScreen,
   LiveRegistersScreen,
   LiveRulesScreen,
   LiveStatutoryHubScreen,
@@ -41,6 +42,7 @@ import {
   type LiveChallanSheet as LiveChallan,
   type LiveConsultantTds,
   type LiveForm16,
+  type LiveMissingIds,
   type LiveRegisters,
   type LiveRules,
   type LiveStatutoryHub,
@@ -248,7 +250,7 @@ function SampleStatutoryHub({ items, today, state = 'ready', view = 'cards', ope
 }
 
 /** CMP-12 · Supplementary filing panel (T3 panel): origin month, reason, amounts, status, TRRN, interest and damages lines. */
-export function SupplementaryFilingPanel({ filing, onClose }: { filing: SupplementaryFiling | null; onClose: () => void }) {
+export function SupplementaryFilingPanel({ filing, onClose, footer, refundNote }: { filing: SupplementaryFiling | null; onClose: () => void; /** Live: the filing's real actions. */ footer?: ReactNode; /** Live: what happens to a refund, in place of the sample text. */ refundNote?: ReactNode }) {
   const total = filing ? filing.penalties.reduce((s, p) => s + p.amount, 0) : 0;
   const refund = filing?.kind === 'Excess remittance refund request';
   return (
@@ -259,10 +261,12 @@ export function SupplementaryFilingPanel({ filing, onClose }: { filing: Suppleme
       title={filing ? `${filing.kind} · ${filing.originMonth}` : ''}
       subtitle={filing ? `Corrects ${filing.originalRef}` : ''}
       footer={
-        <>
-          <Button onClick={onClose}>Close</Button>
-          <Button variant="primary">{filing?.step === 'generated' ? 'Download file' : filing?.step === 'uploaded' ? 'Record acknowledgement' : 'Check status'}</Button>
-        </>
+        footer ?? (
+          <>
+            <Button onClick={onClose}>Close</Button>
+            <Button variant="primary">{filing?.step === 'generated' ? 'Download file' : filing?.step === 'uploaded' ? 'Record acknowledgement' : 'Check status'}</Button>
+          </>
+        )
       }
     >
       {filing && (
@@ -271,23 +275,29 @@ export function SupplementaryFilingPanel({ filing, onClose }: { filing: Suppleme
           <DescriptionList
             items={[
               { label: 'Why', value: filing.reason },
-              { label: 'People', value: filing.employees },
-              { label: 'Employee share', value: formatINR(filing.employeeShare) },
-              { label: 'Employer share', value: formatINR(filing.employerShare) },
+              ...(filing.amount != null
+                ? [{ label: 'Amount', value: formatINR(filing.amount) }]
+                : [
+                    { label: 'People', value: filing.employees },
+                    { label: 'Employee share', value: formatINR(filing.employeeShare) },
+                    { label: 'Employer share', value: formatINR(filing.employerShare) },
+                  ]),
               ...(filing.trrn ? [{ label: 'Reference', value: filing.trrn, mono: true, copyValue: filing.trrn }] : []),
             ]}
           />
-          <Card title="Caused by">
-            <ul className="yx-ops-list">
-              {filing.payslipLines.map((l) => (
-                <li key={l} className="yx-ops-list__item">
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </Card>
+          {filing.payslipLines.length > 0 && (
+            <Card title="Caused by">
+              <ul className="yx-ops-list">
+                {filing.payslipLines.map((l) => (
+                  <li key={l} className="yx-ops-list__item">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {refund ? (
-            <InlineAlert tone="info">The over-deducted employee share ({formatINR(filing.employeeShare)}) goes back to the 3 employees as a named line in the next payroll run.</InlineAlert>
+            <InlineAlert tone="info">{refundNote ?? `The over-deducted employee share (${formatINR(filing.employeeShare)}) goes back to the 3 employees as a named line in the next payroll run.`}</InlineAlert>
           ) : (
             <Card title="Interest and damages (employer cost)">
               <DataTable
@@ -881,7 +891,10 @@ export interface MissingIdRow {
   detail: string;
   severity: string;
 }
-export function MissingIdsScreen({ rows, loading, persona = 'pa' }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr' }) {
+export function MissingIdsScreen({ live, ...story }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr'; /** The live app's /yx/payroll/missing-ids (compliance-live.tsx). */ live?: LiveMissingIds }) {
+  return live ? <LiveMissingIdsScreen live={live} /> : <SampleMissingIds {...story} />;
+}
+function SampleMissingIds({ rows, loading, persona = 'pa' }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr' }) {
   const count = (k: string) => rows.filter((r) => r.issue.startsWith(k)).length;
   const [selected, setSelected] = useState<string[]>([]);
   return (

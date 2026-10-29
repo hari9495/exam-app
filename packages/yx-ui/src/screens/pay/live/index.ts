@@ -91,5 +91,5 @@ export type { RunInputSources } from '../run-workspace-live';
 export type { QueryHandler } from '../payroll-inputs-live';
 export type { RepayInput, RepayRoute } from '../payments-live';
 // Compliance (CMP-01, 03, 04, 05, 06, 08, 13 · ops/compliance.tsx): designed screens with `live`.
-export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScreen, ConsultantTdsScreen } from '../../ops/compliance';
-export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport } from '../../ops/compliance-live';
+export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScreen, ConsultantTdsScreen, MissingIdsScreen } from '../../ops/compliance';
+export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport, LiveMissingIds, CorrectionInput } from '../../ops/compliance-live';

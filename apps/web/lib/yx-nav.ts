@@ -237,6 +237,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('statutory.filing.view'), L('pay-statutory', 'Statutory hub', '/yx/payroll/statutory')),
           ...when(has('payroll.setup.manage'), L('pay-rules', 'Statutory rules', '/yx/payroll/statutory-rules'), L('pay-coverage', 'Statutory coverage', '/yx/payroll/coverage')),
           ...when(has('statutory.filing.view'), L('pay-registers', 'Registers', '/yx/payroll/registers')),
+          // CMP-07 (founder answer 22): people missing a PAN, UAN, ESI IP number or a usable salary account.
+          ...when(has('statutory.filing.view'), L('pay-missing-ids', 'Missing IDs', '/yx/payroll/missing-ids')),
           ...when(has('payroll.document.issue'), L('pay-certificates', 'TDS & Form 16', '/yx/payroll/certificates')),
           ...when(any('statutory.filing.view', 'consultant.manage'), L('pay-consultant-tds', 'Consultant TDS returns', '/yx/payroll/consultant-tds')),
           ...when(has('statutory.advisory.review'), L('pay-advisories', 'Rules & updates', '/yx/payroll/advisories')),

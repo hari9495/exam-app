@@ -194,7 +194,6 @@
     "ops: IcConsoleScreen",
     "ops: KbEditorScreen",
     "ops: LoadingCase",
-    "ops: MissingIdsScreen",
     "ops: MyCasesScreen",
     "ops: OwnLicencesScreen",
     "ops: PolicyAdminScreen",

@@ -202,6 +202,43 @@ export interface HubCard {
   late: boolean;
   penaltyEstimate: string | null;
   verifyDueDate: boolean;
+  /** CMP-12 (founder answer 22): supplementary filings and excess records of this card's month. */
+  children?: HubChild[];
+}
+
+/** A supplementary filing or an excess record under the month's card (GET statutory/hub). */
+export interface HubChild {
+  id: string;
+  kind: 'supplementary' | 'excess_adjustment' | 'excess_refund';
+  status: string;
+  amount: string | null;
+  reason: string | null;
+  people: number | null;
+  employeeShare: string;
+  employerShare: string;
+  causedBy: string[];
+  reference: string | null;
+  fileId: string | null;
+  correctsId: string | null;
+  createdAt: string;
+  penalties: { kind: string; daysLate: number; base: string; rate: string; amount: string; ruleVersion: string }[];
+}
+
+/** GET statutory/missing-ids (CMP-07, founder answer 22). */
+export interface MissingIdView {
+  id: string;
+  employeeId: string;
+  name: string;
+  code: string;
+  department: string | null;
+  issue: 'pan_missing' | 'pan_inoperative' | 'uan_missing' | 'esi_missing' | 'bank_missing' | 'bank_waiting';
+  blocks: boolean;
+}
+export interface MissingIds {
+  entityId: string;
+  people: number;
+  counts: { pan: number; uan: number; esi: number; bank: number };
+  rows: MissingIdView[];
 }
 
 export interface StatutoryHub {

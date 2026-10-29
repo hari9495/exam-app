@@ -1,8 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ConsultantTdsScreen, Form16BulkScreen, RegistersScreen, RulesBrowserScreen, StatutoryHubScreen } from './compliance';
-import { hubItem, monthChoices, taxYearOf, type LiveConsultantTds, type LiveForm16, type LiveRegisters, type LiveRules, type LiveStatutoryHub } from './compliance-live';
+import { ConsultantTdsScreen, Form16BulkScreen, MissingIdsScreen, RegistersScreen, RulesBrowserScreen, StatutoryHubScreen } from './compliance';
+import { hubItem, monthChoices, taxYearOf, type LiveConsultantTds, type LiveForm16, type LiveMissingIds, type LiveRegisters, type LiveRules, type LiveStatutoryHub } from './compliance-live';
 import { CONSULTANT_RETURNS } from './compliance-data';
 import { FILINGS, HUB, PEOPLE, RETURNS } from '../pay/live/fixtures-5j';
 import { ADVISORIES, CERTIFICATES, ENTITIES, REGISTERS } from '../pay/live/fixtures-ops';
@@ -113,6 +113,79 @@ describe('CMP-01 statutory hub (live)', () => {
     await ue.type(within(sheet).getByRole('textbox', { name: /Deposit date/ }), '06/10/2026{Enter}');
     await ue.click(within(sheet).getByRole('button', { name: 'Save challan' }));
     await waitFor(() => expect(onDeposit).toHaveBeenCalledWith('ch1', expect.objectContaining({ bsrCode: '0510308', challanNo: '11207' })));
+  });
+
+  it('CMP-04 founder answer 23: a changed amount needs a reason (focus there), then goes with the deposit; payroll\'s figure is shown', async () => {
+    const onDeposit = ok();
+    showHub({ onDeposit });
+    await ue.click(screen.getByRole('button', { name: 'Open challan sheet' }));
+    const sheet = await screen.findByRole('dialog', { name: /TDS challan/ });
+    const amount = within(sheet).getByRole('textbox', { name: /TDS deducted/ });
+    await ue.clear(amount);
+    await ue.type(amount, '11640');
+    expect(within(sheet).getByText('Payroll says ₹12,840.00')).toBeInTheDocument();
+    await ue.type(within(sheet).getByRole('textbox', { name: /BSR code/ }), '0510308');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Challan serial number/ }), '11207');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Deposit date/ }), '06/10/2026{Enter}');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save challan' }));
+    expect(onDeposit).not.toHaveBeenCalled();
+    expect(within(sheet).getByRole('textbox', { name: /Reason for changing the amount/ })).toHaveFocus();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason for changing the amount/ }), 'One person paid TDS by self-assessment');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save challan' }));
+    await waitFor(() => expect(onDeposit).toHaveBeenCalledWith('ch1', expect.objectContaining({ tds: '11640.00', reason: 'One person paid TDS by self-assessment', bsrCode: '0510308' })));
+  });
+
+  it('CMP-04: the server refusing one\'s own correction shows in plain words; the sheet stays open', async () => {
+    showHub({ onDeposit: refuse('You prepared this challan, so someone else in payroll corrects its amount.') });
+    await ue.click(screen.getByRole('button', { name: 'Open challan sheet' }));
+    const sheet = await screen.findByRole('dialog', { name: /TDS challan/ });
+    await ue.clear(within(sheet).getByRole('textbox', { name: /TDS deducted/ }));
+    await ue.type(within(sheet).getByRole('textbox', { name: /TDS deducted/ }), '100');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason for changing the amount/ }), 'Typing error in payroll');
+    await ue.type(within(sheet).getByRole('textbox', { name: /BSR code/ }), '0510308');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Challan serial number/ }), '11207');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Deposit date/ }), '06/10/2026{Enter}');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save challan' }));
+    expect(await within(sheet).findByText(/someone else in payroll corrects its amount/)).toBeInTheDocument();
+  });
+
+  it('CMP-12 founder answer 22: a filed PF month shows its supplementary filing as a child card; the panel lists interest and damages and its actions', async () => {
+    const onUploaded = ok();
+    const child = { id: 'sf1', kind: 'supplementary' as const, status: 'generated', amount: '1800.00', reason: 'Arrears paid in October', people: 2, employeeShare: '900.00', employerShare: '900.00', causedBy: ['Divya Raghunathan', 'Arjun Kulkarni'], reference: null, fileId: 'ff9', correctsId: 'fl1', createdAt: '2026-10-20T10:00:00Z', penalties: [{ kind: '7Q', daysLate: 5, base: '1800.00', rate: '12', amount: '3.00', ruleVersion: 'IN.PENALTY@2026.1' }] };
+    const pf = { ...HUB.cards[0], status: 'filed', children: [child] };
+    showHub({ hub: { ...HUB, cards: [pf] }, filings: [{ ...FILINGS[0], status: 'filed' }], onUploaded, onCorrect: ok() });
+    const childCard = screen.getByRole('article', { name: 'Supplementary ECR for September 2026' });
+    await ue.click(within(childCard).getByRole('button', { name: 'Open filing' }));
+    const panel = await screen.findByRole('dialog', { name: /Supplementary ECR · September 2026/ });
+    expect(within(panel).getByText('Arrears paid in October')).toBeInTheDocument();
+    expect(within(panel).getByText('Divya Raghunathan')).toBeInTheDocument();
+    expect(within(panel).getByText('7Q')).toBeInTheDocument();
+    await ue.click(within(panel).getByRole('button', { name: 'Mark uploaded' }));
+    const ref = await screen.findByRole('dialog', { name: 'Uploaded on the portal' });
+    await ue.type(within(ref).getByRole('textbox', { name: /Portal reference/ }), 'TRRN-99887');
+    await ue.click(within(ref).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith('sf1', 'TRRN-99887'));
+  });
+
+  it('CMP-12: "Correct this month" on a filed PF card: a supplementary filing needs a reason; an excess needs its amount', async () => {
+    const onCorrect = ok();
+    const pf = { ...HUB.cards[0], status: 'filed' };
+    showHub({ hub: { ...HUB, cards: [pf, HUB.cards[2]] }, filings: [{ ...FILINGS[0], status: 'filed' }, FILINGS[1]], onCorrect });
+    // Only PF and ESI are corrected here, as the design shows.
+    expect(screen.getAllByRole('button', { name: 'Correct this month' })).toHaveLength(1);
+    await ue.click(screen.getByRole('button', { name: 'Correct this month' }));
+    const d = await screen.findByRole('dialog', { name: /Correct Provident fund/ });
+    await ue.click(within(d).getByRole('button', { name: 'Make supplementary filing' }));
+    expect(onCorrect).not.toHaveBeenCalled();
+    expect(within(d).getAllByText('Say why, in at least 5 characters.').length).toBeGreaterThan(0);
+    await ue.click(within(d).getByRole('radio', { name: 'Paid too much · refund' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Why/ }), 'Paid twice for one person');
+    await ue.click(within(d).getByRole('button', { name: 'Record excess' }));
+    expect(onCorrect).not.toHaveBeenCalled();
+    expect(within(d).getAllByText('Enter the amount paid too much, in rupees.').length).toBeGreaterThan(0);
+    await ue.type(within(d).getByRole('textbox', { name: /Amount paid too much/ }), '1500');
+    await ue.click(within(d).getByRole('button', { name: 'Record excess' }));
+    await waitFor(() => expect(onCorrect).toHaveBeenCalledWith(pf, { kind: 'excess_refund', reason: 'Paid twice for one person', amount: '1500' }));
   });
 
   it('read only: no make, upload or file buttons; no entity shows the choose state', () => {
@@ -369,5 +442,40 @@ describe('CMP-13 consultant TDS (live)', () => {
     render(<ConsultantTdsScreen live={ctds({ can: { view: true, challans: false, file: false, certificates: false } })} />);
     expect(screen.queryByRole('tab', { name: 'Challans' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Start return' })).toBeNull();
+  });
+});
+
+describe('CMP-07 Missing IDs (live, founder answer 22)', () => {
+  const ROWS = [
+    { id: 'p1:uan_missing', employeeId: 'p1', name: 'Divya Raghunathan', code: 'KF-001', department: 'Quality', issue: 'uan_missing' as const, blocks: true },
+    { id: 'p2:pan_missing', employeeId: 'p2', name: 'Arjun Kulkarni', code: 'KF-002', department: null, issue: 'pan_missing' as const, blocks: false },
+    { id: 'p3:bank_waiting', employeeId: 'p3', name: 'Lakshmi V', code: 'KF-003', department: 'HR', issue: 'bank_waiting' as const, blocks: true },
+  ];
+  const live = (o: Partial<LiveMissingIds> = {}): LiveMissingIds => ({ state: 'ready', entities: ENTITIES, entityId: 'e1', onEntity: vi.fn(), data: { entityId: 'e1', people: 40, counts: { pan: 1, uan: 1, esi: 0, bank: 1 }, rows: ROWS }, onOpenPerson: vi.fn(), ...o });
+
+  it('counts per ID, drill-down to the people of one ID, and Fix opens the person', async () => {
+    const onOpenPerson = vi.fn();
+    render(<MissingIdsScreen rows={[]} live={live({ onOpenPerson })} />);
+    const table = screen.getByRole('table', { name: 'People with missing or invalid IDs' });
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    await ue.click(screen.getByRole('link', { name: /View uan missing/ }));
+    expect(screen.getByText('Showing: UAN missing')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: 'People with missing or invalid IDs' })).getAllByRole('row')).toHaveLength(2);
+    await ue.click(screen.getByRole('button', { name: 'Fix UAN missing for Divya Raghunathan' }));
+    expect(onOpenPerson).toHaveBeenCalledWith('p1');
+    await ue.click(screen.getByRole('button', { name: 'Show everyone' }));
+    expect(within(screen.getByRole('table', { name: 'People with missing or invalid IDs' })).getAllByRole('row')).toHaveLength(4);
+  });
+
+  it('all clear, choose an entity, and no access', () => {
+    const { unmount } = render(<MissingIdsScreen rows={[]} live={live({ data: { entityId: 'e1', people: 40, counts: { pan: 0, uan: 0, esi: 0, bank: 0 }, rows: [] } })} />);
+    expect(screen.getByText('Every statutory ID is in place.')).toBeInTheDocument();
+    expect(screen.getByText(/complete for all 40 people/)).toBeInTheDocument();
+    unmount();
+    const b = render(<MissingIdsScreen rows={[]} live={live({ entityId: null, data: null })} />);
+    expect(screen.getByText('Choose a legal entity.')).toBeInTheDocument();
+    b.unmount();
+    render(<MissingIdsScreen rows={[]} live={live({ state: 'no-access', data: null })} />);
+    expect(screen.getByText(/your compliance owner/)).toBeInTheDocument();
   });
 });

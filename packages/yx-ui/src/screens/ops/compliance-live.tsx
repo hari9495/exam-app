@@ -28,12 +28,13 @@ import { monthText } from '../pay/live/periods';
 import { rupees } from '../pay/live/runs';
 import type { Confirmation, LoadState } from '../pay/live/types';
 import type { RuleSetView, SetupEntity } from '../pay/live/types-5b';
-import type { FilingRow, HubCard, StatutoryHub, TdsReturnRow } from '../pay/live/types-5j';
+import type { FilingRow, HubCard, HubChild, MissingIds, MissingIdView, StatutoryHub, TdsReturnRow } from '../pay/live/types-5j';
+import { StatCard } from '../../components/charts';
 import type { AdvisoryView, CertificateRow, PartAImport, RegisterRow } from '../pay/live/types-ops';
 import type { ConsultantSection, NonSalaryReturn } from '../pay/live/types-5h';
 import { Actions, CardGrid, CheckList, DueMonth, type CheckRow, type DueItem } from './ops-kit';
-import { StatuteCard, TdsChallanScreen, TdsReturnWizardScreen } from './compliance';
-import type { FilingStep, StatuteItem } from './compliance-data';
+import { StatuteCard, SupplementaryFilingPanel, TdsChallanScreen, TdsReturnWizardScreen } from './compliance';
+import type { FilingStep, StatuteItem, SupplementaryFiling } from './compliance-data';
 
 const D = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -91,6 +92,35 @@ export interface LiveStatutoryHub {
   onReturnFile: (id: string) => Promise<unknown>;
   onUploadFvu: (id: string, file: File) => Promise<unknown>;
   onReturnFiled: (id: string, tokenNo: string, confirmation: Confirmation) => Promise<unknown>;
+  /** CMP-12 (founder answer 22): a filed PF or ESI month corrected by a supplementary filing, or an excess recorded. */
+  onCorrect?: (card: HubCard, x: CorrectionInput) => Promise<unknown>;
+}
+
+export interface CorrectionInput {
+  kind: 'supplementary' | 'excess_refund' | 'excess_adjustment';
+  reason: string;
+  amount?: string;
+}
+
+const CHILD_KIND: Record<string, string> = { 'IN.PF': 'Supplementary ECR', 'IN.ESI': 'ESI past-period contribution', 'IN.PT': 'Supplementary PT return', 'IN.LWF': 'Supplementary LWF return' };
+/** A supplementary filing or excess record as the design's child card and panel (CMP-12). */
+export function childFiling(c: HubCard, x: HubChild, month: string): SupplementaryFiling {
+  const excess = x.kind !== 'supplementary';
+  return {
+    id: x.id,
+    kind: x.kind === 'excess_refund' ? 'Excess remittance refund request' : x.kind === 'excess_adjustment' ? 'Excess remittance adjustment' : (CHILD_KIND[c.statute] ?? 'Supplementary filing'),
+    originMonth: monthText(month),
+    reason: x.reason ?? '—',
+    employees: x.people ?? 0,
+    employeeShare: Number(x.employeeShare),
+    employerShare: Number(x.employerShare),
+    ...(excess ? { amount: Number(x.amount ?? 0) } : {}),
+    step: x.status === 'filed' ? 'filed' : x.status === 'uploaded' ? 'uploaded' : 'generated',
+    trrn: x.reference ?? undefined,
+    payslipLines: x.causedBy,
+    penalties: x.penalties.map((p) => ({ kind: p.kind, daysLate: p.daysLate, base: Number(p.base), rate: p.rate, amount: Number(p.amount), ruleVersion: p.ruleVersion })),
+    originalRef: `the filed ${c.label} return for ${monthText(month)}`,
+  };
 }
 
 const SHORT: Record<string, StatuteItem['statute']> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', 'IN.PT': 'PT', 'IN.LWF': 'LWF' };
@@ -112,6 +142,7 @@ export function hubItem(c: HubCard, f: FilingRow | null, month: string, entity: 
     reference: f?.reference ? `Portal reference ${f.reference}` : undefined,
     estimatedPenalty: c.late && Number(c.penaltyEstimate) > 0 ? Number(c.penaltyEstimate) : undefined,
     penaltyRule: c.late && Number(c.penaltyEstimate) > 0 ? 'the published interest rule' : undefined,
+    children: (c.children ?? []).map((x) => childFiling(c, x, month)),
   };
 }
 
@@ -123,6 +154,8 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
   const [filing, setFiling] = useState<FilingRow | null>(null);
   const [depositing, setDepositing] = useState(false);
   const [tab, setTab] = useState('cards');
+  const [correcting, setCorrecting] = useState<HubCard | null>(null);
+  const [child, setChild] = useState<{ card: HubCard; row: HubChild } | null>(null);
   const entity = p.entities.find((e) => e.id === p.entityId)?.name ?? '';
   const today = p.hub ? D(p.hub.today) : new Date();
   const fileOf = (c: HubCard) => p.filings?.find((f) => f.id === c.filingId) ?? null;
@@ -177,9 +210,18 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
           Mark filed
         </Button>
       )}
+      {c.status === 'filed' && (c.statute === 'IN.PF' || c.statute === 'IN.ESI') && p.can.generate && p.onCorrect && (
+        <Button size="sm" onClick={() => setCorrecting(c)}>
+          Correct this month
+        </Button>
+      )}
       {c.verifyDueDate && <span className="yx-ops-muted">Check the due date: the rule is marked verify.</span>}
     </>
   );
+  const openChild = (card: HubCard) => (f: SupplementaryFiling) => {
+    const row = card.children?.find((x) => x.id === f.id);
+    if (row) setChild({ card, row });
+  };
 
   return (
     <LivePage
@@ -227,7 +269,7 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
                 <CardGrid min="lg">
                   {items.map((x) => (
                     <div key={x.item.id} className="yx-ops-stack">
-                      <StatuteCard item={x.item} today={today} actions={cardActions(x)} />
+                      <StatuteCard item={x.item} today={today} actions={cardActions(x)} onOpenChild={openChild(x.card)} />
                     </div>
                   ))}
                   {tdsItem && tds && (
@@ -292,6 +334,56 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
         />
       )}
       {uploading && <ReferenceForm onClose={() => setUploading(null)} onSave={async (ref) => (await p.onUploaded(uploading.id, ref), toast({ tone: 'success', title: 'Marked uploaded.' }))} />}
+      {correcting && p.onCorrect && (
+        <CorrectForm
+          card={correcting}
+          month={p.month}
+          onClose={() => setCorrecting(null)}
+          onSave={async (x) => {
+            await p.onCorrect!(correcting, x);
+            toast({ tone: 'success', title: x.kind === 'supplementary' ? `Supplementary filing made for ${correcting.label}, ${monthText(p.month)}.` : 'Excess recorded against the filed return.' });
+          }}
+        />
+      )}
+      {child && (
+        <SupplementaryFilingPanel
+          filing={childFiling(child.card, child.row, p.month)}
+          onClose={() => setChild(null)}
+          refundNote={`A refund of ${rupees(child.row.amount ?? '0')} is asked from the portal for the filed return. Record it when the refund is received; nothing goes back through payroll.`}
+          footer={
+            <>
+              <Button onClick={() => setChild(null)}>Close</Button>
+              {child.row.fileId && (
+                <Button icon={Download} loading={busy === `dc-${child.row.id}`} onClick={() => void run(`dc-${child.row.id}`, () => p.onDownload(child.row.fileId!, `${child.card.label}-supplementary-${p.month}`))}>
+                  Download file
+                </Button>
+              )}
+              {child.row.status === 'generated' && child.row.kind === 'supplementary' && p.can.markFiled && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setUploading({ id: child.row.id, statute: child.card.statute, reference: null } as FilingRow);
+                    setChild(null);
+                  }}
+                >
+                  Mark uploaded
+                </Button>
+              )}
+              {child.row.status === 'uploaded' && p.can.markFiled && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setFiling({ id: child.row.id, statute: child.card.statute, reference: child.row.reference } as FilingRow);
+                    setChild(null);
+                  }}
+                >
+                  Mark filed
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
       {depositing && p.challan && p.onDeposit && (
         <TdsChallanScreen
           challan={{ section: '192 salary', tan: '', deductionMonth: monthText(p.month), tds: Number(p.challan.tds), surcharge: 0, cess: 0, deductedOn: today, dueOn: tdsItem?.due ?? today }}
@@ -344,6 +436,54 @@ function ReasonForm({ title, subtitle, confirm, label = 'Why', onClose, onSave }
   );
 }
 
+/** CMP-12: what changed after the month was filed: more was due (a supplementary filing with interest and damages), or too much was paid (a refund asked from the portal, or adjusted next month). */
+function CorrectForm({ card, month, onClose, onSave }: { card: HubCard; month: string; onClose: () => void; onSave: (x: CorrectionInput) => Promise<unknown> }) {
+  const [kind, setKind] = useState<CorrectionInput['kind']>('supplementary');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const excess = kind !== 'supplementary';
+  const errors = [
+    ...(excess && !/^\d{1,12}(\.\d{1,2})?$/.test(amount.trim()) ? [{ fieldId: 'cr-amount', message: 'Enter the amount paid too much, in rupees.' }] : excess && Number(amount) <= 0 ? [{ fieldId: 'cr-amount', message: 'Enter an amount above zero.' }] : []),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'cr-why', message: 'Say why, in at least 5 characters.' }] : []),
+  ];
+  return (
+    <FormDrawer
+      title={`Correct ${card.label}, ${monthText(month)}`}
+      subtitle="The filed return is not changed. A correction is filed on its own, linked to it."
+      confirm={excess ? 'Record excess' : 'Make supplementary filing'}
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ kind, reason: reason.trim(), ...(excess ? { amount: amount.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          <FormField id="cr-kind" label="What changed" required>
+            <Segment
+              label="What changed"
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: 'supplementary', label: 'More was due' },
+                { value: 'excess_refund', label: 'Paid too much · refund' },
+                { value: 'excess_adjustment', label: 'Paid too much · adjust' },
+              ]}
+            />
+          </FormField>
+          {!excess && <p className="yx-ops-muted">Made from the payslips changed since the return was filed. Interest and damages for the late part are worked out from the original due date; they are the employer's cost.</p>}
+          {excess && (
+            <FormField id="cr-amount" label="Amount paid too much" required error={errorOf('cr-amount')}>
+              <TextField id="cr-amount" value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={15} />
+            </FormField>
+          )}
+          <FormField id="cr-why" label="Why" required error={errorOf('cr-why')}>
+            <TextArea id="cr-why" value={reason} onChange={setReason} rows={3} />
+          </FormField>
+        </>
+      )}
+    </FormDrawer>
+  );
+}
+
 function ReferenceForm({ onClose, onSave }: { onClose: () => void; onSave: (ref: string) => Promise<unknown> }) {
   const [ref, setRef] = useState('');
   const errors = !/^[A-Za-z0-9/-]{4,60}$/.test(ref.trim()) ? [{ fieldId: 'up-ref', message: 'Enter the portal reference (TRRN or challan number).' }] : [];
@@ -363,12 +503,15 @@ function ReferenceForm({ onClose, onSave }: { onClose: () => void; onSave: (ref:
  * ======================================================================================= */
 
 export interface LiveChallanSheet {
-  challan: { id: string; status: string; tds: string; interest: string };
+  /** payrollTds: what the payslips say; a corrected amount differs from it (founder answer 23). */
+  challan: { id: string; status: string; tds: string; interest: string; payrollTds?: string | null; editReason?: string | null };
   month: string;
   dueOn: string | null;
   onClose: () => void;
-  onSave: (d: { challanNo: string; bsrCode: string; depositDate: string }) => Promise<unknown>;
+  onSave: (d: { challanNo: string; bsrCode: string; depositDate: string; tds?: string; reason?: string }) => Promise<unknown>;
 }
+
+const AMOUNT_RE = /^\d{1,12}(\.\d{1,2})?$/;
 
 export function LiveChallanSheet({ live }: { live: LiveChallanSheet }) {
   const { toast } = useToast();
@@ -376,7 +519,14 @@ export function LiveChallanSheet({ live }: { live: LiveChallanSheet }) {
   const [deposit, setDeposit] = useState<Date | null>(null);
   const [bsr, setBsr] = useState('');
   const [serial, setSerial] = useState('');
+  // Founder answer 23: payroll may correct the amount with a reason; the server refuses the person who prepared it.
+  const [amount, setAmount] = useState(live.challan.tds);
+  const [reason, setReason] = useState('');
+  const changed = AMOUNT_RE.test(amount.trim()) && Number(amount) !== Number(live.challan.tds);
+  const payroll = live.challan.payrollTds ?? live.challan.tds;
   const check = useTooEarly([
+    ...(!AMOUNT_RE.test(amount.trim()) ? [{ fieldId: 'ch-tds', message: 'Enter the TDS to deposit, in rupees.' }] : []),
+    ...(changed && reason.trim().length < 5 ? [{ fieldId: 'ch-reason', message: 'Say why the amount differs from payroll. The change is audited.' }] : []),
     ...(!/^\d{7}$/.test(bsr.trim()) ? [{ fieldId: 'ch-bsr', message: 'The BSR code is 7 digits.' }] : []),
     ...(!/^\d{5}$/.test(serial.trim()) ? [{ fieldId: 'ch-no', message: 'The challan serial number is 5 digits.' }] : []),
     ...(!deposit ? [{ fieldId: 'ch-date', message: 'Choose the deposit date.' }] : []),
@@ -398,8 +548,8 @@ export function LiveChallanSheet({ live }: { live: LiveChallanSheet }) {
             onClick={() => {
               if (check.stop()) return;
               void run('save', async () => {
-                await live.onSave({ challanNo: serial.trim(), bsrCode: bsr.trim(), depositDate: isoDay(deposit!) });
-                toast({ tone: 'success', title: 'Challan deposit recorded.' });
+                await live.onSave({ challanNo: serial.trim(), bsrCode: bsr.trim(), depositDate: isoDay(deposit!), ...(changed ? { tds: Number(amount).toFixed(2), reason: reason.trim() } : {}) });
+                toast({ tone: 'success', title: changed ? 'Challan deposit recorded with the corrected amount.' : 'Challan deposit recorded.' });
                 live.onClose();
               });
             }}
@@ -412,11 +562,21 @@ export function LiveChallanSheet({ live }: { live: LiveChallanSheet }) {
       <div className="yx-ops-stack">
         <RefusedLine error={error} />
         <InlineAlert tone="info">Worked out from the approved payroll for the month. Deposit on the tax portal, then record the challan here.</InlineAlert>
+        <FieldRow>
+          <FormField id="ch-tds" label="TDS deducted" required helper={Number(amount) !== Number(payroll) ? `Payroll says ${rupees(payroll)}` : 'From the approved run'} error={check.errorOf('ch-tds')}>
+            <TextField id="ch-tds" value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={15} />
+          </FormField>
+        </FieldRow>
+        {live.challan.editReason && !changed && <p className="yx-ops-muted">Corrected from {rupees(payroll)}: {live.challan.editReason}</p>}
+        {changed && (
+          <FormField id="ch-reason" label="Reason for changing the amount" required helper="Say why the amount differs from payroll. The change is audited." error={check.errorOf('ch-reason')}>
+            <TextArea id="ch-reason" value={reason} onChange={setReason} rows={2} />
+          </FormField>
+        )}
         <DescriptionList
           items={[
-            { label: 'TDS deducted', value: rupees(live.challan.tds) },
             { label: 'Interest for late deposit', value: interest ? `${rupees(live.challan.interest)} · 1.5 % a month or part` : 'None: deposited by the due date' },
-            { label: 'Total to deposit', value: <strong>{rupees(String(Number(live.challan.tds) + interest))}</strong> },
+            { label: 'Total to deposit', value: <strong>{rupees(String((AMOUNT_RE.test(amount.trim()) ? Number(amount) : Number(live.challan.tds)) + interest))}</strong> },
           ]}
         />
         <FieldRow>
@@ -432,6 +592,94 @@ export function LiveChallanSheet({ live }: { live: LiveChallanSheet }) {
         </FormField>
       </div>
     </Drawer>
+  );
+}
+
+/* =========================================================================================
+ * CMP-07 · Missing IDs (founder answer 22)
+ * ======================================================================================= */
+
+export interface LiveMissingIds {
+  state: LoadState;
+  onRetry?: () => void;
+  entities: SetupEntity[];
+  entityId: string | null;
+  onEntity: (id: string | null) => void;
+  data: MissingIds | null;
+  /** Opens the person's profile, where HR fixes the ID or bank account. */
+  onOpenPerson: (employeeId: string) => void;
+  /** The payroll pre-run check (Payroll home). */
+  onOpenChecks?: () => void;
+}
+
+type IdGroup = 'uan' | 'esi' | 'pan' | 'bank';
+const ISSUE: Record<MissingIdView['issue'], { group: IdGroup; label: string; detail: string; impact: string }> = {
+  pan_missing: { group: 'pan', label: 'PAN missing', detail: 'Tax is deducted at the higher rate (20%) and the TDS return shows no PAN.', impact: 'Changes tax' },
+  pan_inoperative: { group: 'pan', label: 'PAN inoperative', detail: 'PAN not linked with Aadhaar: tax at the higher rate until it works again.', impact: 'Changes tax' },
+  uan_missing: { group: 'uan', label: 'UAN missing', detail: 'Left out of the PF return (ECR) until the UAN is on file.', impact: 'Blocks filing' },
+  esi_missing: { group: 'esi', label: 'ESI IP number missing', detail: 'Left out of the ESI return until the IP number is on file.', impact: 'Blocks filing' },
+  bank_missing: { group: 'bank', label: 'Bank account missing', detail: 'Net pay is held: there is no salary account to pay into.', impact: 'Blocks pay' },
+  bank_waiting: { group: 'bank', label: 'Bank account not usable yet', detail: 'A new salary account is in its waiting time; pay into it starts after that.', impact: 'Blocks pay' },
+};
+const GROUP_TEXT: Record<IdGroup, string> = { uan: 'UAN missing', esi: 'ESI IP missing', pan: 'PAN missing or inoperative', bank: 'Bank account missing or not usable yet' };
+
+/** CMP-07 with the live app's data: who in the entity lacks a statutory ID or a usable bank account, with drill-down to the people. */
+export function LiveMissingIdsScreen({ live: p }: { live: LiveMissingIds }) {
+  const [group, setGroup] = useState<IdGroup | null>(null);
+  const d = p.data;
+  const rows = (d?.rows ?? []).filter((r) => !group || ISSUE[r.issue].group === group);
+  const drill = (g: IdGroup) => ({ label: `View ${GROUP_TEXT[g].toLowerCase()}`, href: `#${g}`, onClick: (e: { preventDefault: () => void }) => (e.preventDefault(), setGroup(g)) });
+  return (
+    <LivePage
+      title="Missing IDs"
+      description="Statutory IDs and bank details that block filing or change tax. Also shown as warnings on the payroll pre-run check."
+      state={p.state}
+      onRetry={p.onRetry}
+      what="missing IDs"
+      grantedBy="your compliance owner"
+      actions={
+        <div className="yx-ops-row">
+          <Select aria-label="Legal entity" size="sm" value={p.entityId} onChange={p.onEntity} placeholder="Choose a legal entity" options={p.entities.map((e) => ({ value: e.id, label: e.name }))} />
+          {p.onOpenChecks && <Button onClick={p.onOpenChecks}>Open pre-run check</Button>}
+        </div>
+      }
+    >
+      {!p.entityId ? (
+        <EmptyState title="Choose a legal entity." description="IDs are checked for the people working in each legal entity." />
+      ) : d && d.rows.length === 0 ? (
+        <EmptyState title="Every statutory ID is in place." description={`PAN, UAN, ESI IP numbers and bank accounts are complete for all ${d.people} ${d.people === 1 ? 'person' : 'people'}.`} />
+      ) : (
+        <div className="yx-ops-stack">
+          <CardGrid min="sm">
+            {(['uan', 'esi', 'pan', 'bank'] as const).map((g) => (
+              <StatCard key={g} label={GROUP_TEXT[g]} value={d?.counts[g] ?? 0} drill={drill(g)} loading={!d} />
+            ))}
+          </CardGrid>
+          {group && (
+            <InlineAlert tone="info" title={`Showing: ${GROUP_TEXT[group]}`} actions={<Button size="sm" onClick={() => setGroup(null)}>Show everyone</Button>}>
+              {rows.length} {rows.length === 1 ? 'person' : 'people'}.
+            </InlineAlert>
+          )}
+          <DataTable
+            label="People with missing or invalid IDs"
+            columns={[
+              { key: 'n', header: 'Employee', type: 'person', value: (r: MissingIdView) => r.name, person: (r) => ({ name: r.name, secondary: [r.code, r.department].filter(Boolean).join(' · ') }), width: 220 },
+              { key: 'i', header: 'Issue', value: (r) => ISSUE[r.issue].label, groupable: true },
+              { key: 'd', header: 'What it affects', value: (r) => ISSUE[r.issue].detail, width: 360 },
+              { key: 's', header: 'Impact', type: 'status', value: (r) => ISSUE[r.issue].impact, statusTone: (v) => (String(v).startsWith('Blocks') ? 'danger' : 'warning') },
+            ]}
+            rows={rows}
+            getRowId={(r) => r.id}
+            state={d ? 'ready' : 'loading'}
+            rowButtons={(r) => (
+              <Button size="sm" onClick={() => p.onOpenPerson(r.employeeId)} aria-label={`Fix ${ISSUE[r.issue].label} for ${r.name}`}>
+                Fix
+              </Button>
+            )}
+          />
+        </div>
+      )}
+    </LivePage>
   );
 }
 

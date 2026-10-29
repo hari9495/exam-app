@@ -24,7 +24,7 @@ export default function YxPayStatutoryPage() {
   const hub = useApi<StatutoryHub>(q ? `/statutory/hub?${q}&month=${month}` : null);
   const filings = useApi<FilingRow[]>(q ? `/statutory/filings?${q}&month=${month}` : null);
   const returns = useApi<TdsReturnRow[]>(q ? `/statutory/tds-returns?${q}` : null);
-  const challans = useApi<{ id: string; month: string; status: string; tds: string; interest: string }[]>(q ? `/statutory/challans?${q}` : null);
+  const challans = useApi<{ id: string; month: string; status: string; tds: string; interest: string; payrollTds: string | null; editReason: string | null }[]>(q ? `/statutory/challans?${q}` : null);
   const write = useApiWrite();
   const payWrite = usePayWrite();
   const download = usePayDownload();
@@ -49,6 +49,8 @@ export default function YxPayStatutoryPage() {
         onPrepareChallan: () => write('/statutory/challans', { entityId, month }),
         onDeposit: (cid, d) => write(`/statutory/challans/${id(cid)}`, d, 'PATCH'),
         onGenerate: (c, reason) => write('/statutory/filings', { legalEntityId: entityId, statute: c.statute, ...(c.state ? { state: c.state } : {}), month, ...(reason ? { reason } : {}) }),
+        // CMP-12 (founder answer 22): a supplementary filing, or an excess, against the filed month.
+        onCorrect: (c, x) => write('/statutory/filings', { legalEntityId: entityId, statute: c.statute, ...(c.state ? { state: c.state } : {}), month, kind: x.kind, reason: x.reason, ...(x.amount ? { amount: x.amount } : {}) }),
         onUploaded: (fid, reference) => write(`/statutory/filings/${id(fid)}/uploaded`, { reference }),
         onFiled: (fid, confirmation) => write(`/statutory/filings/${id(fid)}/filed`, { confirmation }),
         onDownload: async (fileId, name) => {
