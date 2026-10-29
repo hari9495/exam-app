@@ -1,100 +1,10 @@
 // Fictional, deterministic sample data for the payroll batch 5a / 5b screens' design stories. Kaveri Foods Pvt Ltd, 28 Oct 2026.
-import type { AuditPage, ChainStatus, ExchangeFiles, PayDocuments, PayPeriods, PeriodHistory, ReopenRequest } from './types';
+import type { ExchangeFiles, PayDocuments } from './types';
 import type { Breakup, CompensationInForce, CoverageRow, GoLiveCheck, ImportBatch, LegalOption, PayCalendarMonth, PayComponent, PayGroup, PayGroupMember, PayslipLayouts, Registrations, RuleSetView, SalaryTemplate, SetupEntity, SetupState, StatutoryProfile } from './types-5b';
 
 export const TODAY = '2026-10-28';
 
 // ------------------------------------------------------------------ 5a: periods, reopen, audit, documents, files
-export const PAY_PERIODS: PayPeriods = {
-  year: '2026',
-  today: TODAY,
-  entities: [
-    {
-      id: 'le-kfpl',
-      name: 'Kaveri Foods Pvt Ltd',
-      shortName: 'KFPL',
-      canRequestReopen: true,
-      months: [
-        { month: '2026-07', periodId: 'p7', stage: 'filed', lockedAt: '2026-08-02T05:00:00Z', lockedBy: 'Lakshmi Venkatesan', changedAt: '2026-08-12T05:00:00Z', changedBy: 'Lakshmi Venkatesan', reason: null, reopenRequestId: null, corrections: { pending: 0, approved: 0 } },
-        { month: '2026-08', periodId: 'p8', stage: 'locked', lockedAt: '2026-09-02T05:00:00Z', lockedBy: 'Lakshmi Venkatesan', changedAt: '2026-09-02T05:00:00Z', changedBy: 'Lakshmi Venkatesan', reason: null, reopenRequestId: null, corrections: { pending: 0, approved: 1 } },
-        { month: '2026-09', periodId: 'p9', stage: 'locked', lockedAt: '2026-10-02T05:00:00Z', lockedBy: 'Lakshmi Venkatesan', changedAt: '2026-10-02T05:00:00Z', changedBy: 'Lakshmi Venkatesan', reason: null, reopenRequestId: null, corrections: { pending: 1, approved: 2 } },
-        { month: '2026-10', periodId: null, stage: 'open', lockedAt: null, lockedBy: null, changedAt: null, changedBy: null, reason: null, reopenRequestId: null, corrections: { pending: 0, approved: 0 } },
-      ],
-    },
-    {
-      id: 'le-tn',
-      name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)',
-      shortName: 'KFPL-TN',
-      canRequestReopen: false,
-      months: [
-        { month: '2026-09', periodId: 'pt9', stage: 'locked', lockedAt: '2026-10-02T05:00:00Z', lockedBy: 'Lakshmi Venkatesan', changedAt: '2026-10-09T05:00:00Z', changedBy: 'Suresh Pillai', reason: null, reopenRequestId: 'r1', corrections: { pending: 0, approved: 0 } },
-        { month: '2026-10', periodId: null, stage: 'open', lockedAt: null, lockedBy: null, changedAt: null, changedBy: null, reason: null, reopenRequestId: null, corrections: { pending: 0, approved: 0 } },
-      ],
-    },
-  ],
-};
-export const PERIOD_HISTORY: PeriodHistory = {
-  id: 'p9',
-  month: '2026-09',
-  stage: 'locked',
-  events: [
-    { at: '2026-10-02T05:00:00Z', from: 'open', to: 'frozen', by: 'Lakshmi Venkatesan', reason: null },
-    { at: '2026-10-02T05:10:00Z', from: 'frozen', to: 'locked', by: 'Lakshmi Venkatesan', reason: null },
-  ],
-  reopenRequests: [],
-  corrections: [
-    { id: 'c1', person: 'Rekha Balan', on: '2026-09-18', kind: 'attendance', source: 'regularisation', change: { shouldBe: 'present' }, reason: 'Biometric reader was down at the Hosur gate', status: 'approved', paidIn: '2026-10' },
-    { id: 'c2', person: 'Anil Kumar', on: '2026-09-27', kind: 'overtime', source: 'overtime claim', change: {}, reason: 'Boiler breakdown call-out approved late', status: 'pending', paidIn: null },
-  ],
-};
-export const REOPEN_REQUESTS: ReopenRequest[] = [
-  {
-    id: 'r1',
-    entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)',
-    legalEntityId: 'le-tn',
-    month: '2026-09',
-    stage: 'locked',
-    reason: 'A late overtime claim of Anil Kumar was approved after the lock',
-    status: 'pending',
-    requestedBy: 'Suresh Pillai',
-    requestedByMe: false,
-    at: '2026-10-09T05:00:00Z',
-    decidedAt: null,
-    steps: [
-      { name: 'Payroll check', state: 'approved', approvers: ['Meena Raghavan'], decidedBy: [{ who: 'Meena Raghavan', action: 'approved', reason: null, at: '2026-10-09T06:00:00Z' }] },
-      { name: 'Finance or System Admin', state: 'open', approvers: ['Neha Joshi'], decidedBy: [] },
-    ],
-    canDecide: true,
-    phrase: 'REOPEN KFPL-TN 2026-09',
-  },
-  {
-    id: 'r0',
-    entity: 'Kaveri Foods Pvt Ltd',
-    legalEntityId: 'le-kfpl',
-    month: '2026-06',
-    stage: 'locked',
-    reason: 'Arrears for the June wage revision were missed',
-    status: 'rejected',
-    requestedBy: 'Neha Joshi',
-    requestedByMe: true,
-    at: '2026-07-10T05:00:00Z',
-    decidedAt: '2026-07-10T09:00:00Z',
-    steps: [{ name: 'Payroll check', state: 'rejected', approvers: ['Meena Raghavan'], decidedBy: [{ who: 'Meena Raghavan', action: 'rejected', reason: 'Pay the arrears as a correction in July', at: '2026-07-10T09:00:00Z' }] }],
-    canDecide: false,
-    phrase: null,
-  },
-];
-export const AUDIT_PAGE: AuditPage = {
-  entries: [
-    { id: 'a3', seq: '1042', at: '2026-10-09T06:00:00Z', action: 'payroll.reopen.approved', entityType: 'reopen_request', entityId: 'r1', actor: 'Meena Raghavan', actorRole: 'Payroll lead', details: { step: 'Payroll check' } },
-    { id: 'a2', seq: '1041', at: '2026-10-09T05:00:00Z', action: 'payroll.reopen.requested', entityType: 'reopen_request', entityId: 'r1', actor: 'Suresh Pillai', actorRole: 'Payroll executive', details: { month: '2026-09' } },
-    { id: 'a1', seq: '1040', at: '2026-10-02T05:10:00Z', action: 'payroll.period.locked', entityType: 'pay_period', entityId: 'p9', actor: 'Lakshmi Venkatesan', actorRole: 'Payroll admin', details: { month: '2026-09' } },
-  ],
-  next: 'cursor-1040',
-};
-export const CHAIN_OK: ChainStatus = { canVerify: true, checks: [{ at: '2026-10-28T00:30:00Z', result: 'ok', lastSeq: '1042', rows: '1042', problem: null }] };
-export const CHAIN_BROKEN: ChainStatus = { canVerify: true, checks: [{ at: '2026-10-28T00:30:00Z', result: 'broken', lastSeq: '1042', rows: '1042', problem: 'Row 1017 does not match the hash of row 1016.' }] };
-
 const SHA = 'f3a9c2e17b4d5a8e9f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a';
 export const PAY_DOCUMENTS: PayDocuments = {
   entities: [{ id: 'le-kfpl', name: 'Kaveri Foods Pvt Ltd', canIssue: true }, { id: 'le-tn', name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', canIssue: false }],

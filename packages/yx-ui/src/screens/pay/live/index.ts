@@ -2,15 +2,10 @@
 // record timelines, pay documents (with the public verify page and the alumni / nominee portal) and payroll files.
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { PayPeriodsScreen, ReopenRequestsScreen, StageBadge, monthText, type PayPeriodsScreenProps, type ReopenRequestsScreenProps } from './periods';
-export { AuditScreen, actionText, type AuditScreenProps } from './audit';
+export { monthText } from './periods';
 export {
-  PayDocumentsScreen,
   MyPayDocumentsScreen,
-  ExchangeFilesScreen,
-  type PayDocumentsScreenProps,
   type MyPayDocumentsScreenProps,
-  type ExchangeFilesScreenProps,
 } from './documents';
 // The public verify page (T9-08), the pay documents portal (T9-02 tabs, nominee page) and its sign-in: designed screens with live paths.
 export { VerifyPageScreen, AlumniPortalScreen, NomineePortalScreen, type LiveVerifyPage, type LiveAlumniPortal, type LivePortalDoc } from '../../portals/t9-workforce';
@@ -23,7 +18,6 @@ export {
   PayGroupsScreen,
   PayslipLayoutLiveScreen,
   StatutoryRulesScreen,
-  CoverageLiveScreen,
   PayImportsScreen,
   EntityPicker,
   parseCsv,
@@ -41,30 +35,22 @@ export * from './types-5j';
 // advisories, certificates and nominees.
 export * from './types-ops';
 export {
-  RunPaymentsScreen,
-  PaymentModesScreen,
   LoansScreen,
-  PayslipQueriesScreen,
   MyDeclarationsScreen,
   ProofCheckScreen,
   RegistersScreen,
   AdvisoriesScreen,
   TaxCertificatesScreen,
-  NomineeDrawer,
   subjectText,
-  type RunPaymentsScreenProps,
-  type PaymentModesScreenProps,
   type LoansScreenProps,
-  type PayslipQueriesScreenProps,
   type MyDeclarationsScreenProps,
   type ProofCheckScreenProps,
   type RegistersScreenProps,
   type AdvisoriesScreenProps,
   type TaxCertificatesScreenProps,
-  type NomineeInput,
 } from './operations';
-export { PayRunsScreen, PayRunScreen, PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName, type PayRunsScreenProps, type PayRunScreenProps } from './runs';
-export { PayInputsScreen, PersonPicker, type PayInputsScreenProps, type PersonHit, type LopRow, type HoldRow } from './inputs';
+export { PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName } from './runs';
+export { PersonPicker, type PersonHit, type LopRow, type HoldRow } from './inputs';
 export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
 export { StatutoryHubScreen, ArrearsScreen, type StatutoryHubScreenProps, type ArrearsScreenProps } from './compliance';
 export { GoLiveScreen, type GoLiveScreenProps, type GoLiveReadiness, type ReadinessItem, type ParallelRunView } from './golive';
@@ -74,3 +60,15 @@ export { ConsultantsScreen, ConsultantTaxScreen, ConsultantPortalScreen, Invoice
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
 export { SpecialPayScreen, MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, ActuarialScreen, CountryPacksScreen, type SpecialPayScreenProps, type EwaAdminScreenProps, type EquityScreenProps, type ActuarialScreenProps, type CountryPacksScreenProps } from './special';
+export { RunWorkspaceScreen } from '../payroll-run';
+export type { LiveRunWorkspaceData } from '../run-workspace-live';
+export { PayrollHomeScreen, CoverageMonitorPanel } from '../payroll-run';
+export type { LivePayrollHome, LiveCoverage } from '../payroll-home-live';
+// PAY-46 audit log, PAY-48 pay documents, PAY-49 pay periods and reopen requests: designed screens with `live`.
+export { PayPeriodsScreen, ReopenRequestsScreen, PayAuditScreen, PayDocumentsScreen, actionText, type LivePayPeriods, type LiveReopenRequests, type LivePayAudit, type LivePayDocuments, type NomineeInput } from '../payroll-records';
+// PAY-04 … 06 inputs, PAY-19 court orders and recoveries (tabs on the arrears page), PAY-20 payslip queries: designed screens with `live`.
+export { LopInputScreen, OneTimePayScreen, SalaryHoldsScreen, QueryQueueScreen, RecoveriesScreen } from '../payroll-inputs';
+export type { LiveInputs, LiveQueries, LiveRecoveriesData, LiveCourtOrder, CourtOrderInput } from '../payroll-inputs-live';
+// PAY-10 · Payments and files (design with `live`): a run's payments, every payroll file and the payment modes.
+export { PaymentsScreen, type PaymentsProps } from '../payroll-inputs';
+export { PaymentModesPanel, type LivePayments, type LiveRunPayments, type LivePayrollFiles, type LivePaymentModes, type RunJournal, type JournalFormat, type PaymentModeRequest } from '../payments-live';
