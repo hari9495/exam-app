@@ -364,6 +364,16 @@ describe('Payroll batch 5d', () => {
       account: '•••• 2444',
       usableNow: true,
     });
+    // Pay it again (founder 29 Oct 2026): next bank file, with a reason; audited; once only.
+    await api('auditor', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Account fixed' }).expect(403);
+    await api('payAdminB', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Account fixed' }).expect(404);
+    await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'by_pigeon', reason: 'Account fixed' }).expect(400);
+    await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'ok' }).expect(400);
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s2.id}/repay`).send({ route: 'next_bank_file', reason: 'Account fixed' }).expect(409)).body.message).toMatch(/already waiting to be paid/);
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Account fixed' }).expect(200)).body).toMatchObject({ paymentStatus: 'pending', route: 'next_bank_file', bankFile: null });
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Account fixed' }).expect(409)).body.message).toMatch(/already waiting to be paid/);
+    const repaid = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.payment.repay', entityId: s1.id } }));
+    expect(repaid.map((a) => JSON.parse(a.metadataJson ?? '{}'))).toEqual([expect.objectContaining({ route: 'next_bank_file', reason: 'Account fixed', amount: s1.net.toFixed(2), was: 'failed' })]);
     const g3 = (await api('payAdmin', 'post', `/payroll/runs/${ids.run}/bank-files`).send({ debitAccount: '0050200012345678', reason: 'Pay the failed salary again' }).expect(201)).body;
     expect(g3.rows).toBe(1);
     expect((await release('approver2', g3.id, 1)).status).toBe(200);
@@ -372,6 +382,7 @@ describe('Payroll batch 5d', () => {
       .attach('file', Buffer.from('employee_code,status,reference,reason\nP5D-001,paid,UTR-2,\n'), 'response.csv')
       .expect(200);
     expect((await slipOf(ids.emp1)).paymentStatus).toBe('paid');
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Pay twice' }).expect(409)).body.message).toMatch(/failed or came back/);
   });
 
   it('cash register and the run paid once nobody waits', async () => {
@@ -389,6 +400,17 @@ describe('Payroll batch 5d', () => {
     const g4 = (await api('payAdmin', 'post', `/payroll/runs/${ids.run}/bank-files`).send({ debitAccount: '0050200012345678', reason: 'Cooling period over' }).expect(201)).body;
     expect(g4.rows).toBe(1);
     expect((await release('approver1', g4.id, 1)).status).toBe(200);
+    // It comes back; paid again now in its own bank file (off-cycle route), released by someone else.
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`).send({ rows: [{ employeeCode: 'P5D-002', status: 'returned', reason: 'Beneficiary name mismatch' }] }).expect(200);
+    const s2 = await slipOf(ids.emp2);
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s2.id}/repay`).send({ route: 'offcycle', reason: 'Name fixed by the bank' }).expect(400)).body.message).toMatch(/debits/);
+    // No reimbursement account on file: the file cannot be made; nothing changes.
+    await api('payAdmin', 'post', `/payroll/payslips/${s2.id}/repay`).send({ route: 'reimbursement_account', reason: 'Interim', debitAccount: '0050200012345678' }).expect(409);
+    expect((await slipOf(ids.emp2)).paymentStatus).toBe('returned');
+    const re = (await api('payAdmin', 'post', `/payroll/payslips/${s2.id}/repay`).send({ route: 'offcycle', reason: 'Name fixed by the bank', debitAccount: '0050200012345678' }).expect(200)).body;
+    expect(re).toMatchObject({ paymentStatus: 'pending', route: 'offcycle', bankFile: { total: s2.net.toFixed(2) } });
+    await api('payAdmin', 'post', `/payroll/payslips/${s2.id}/repay`).send({ route: 'offcycle', reason: 'Again', debitAccount: '0050200012345678' }).expect(409);
+    expect((await release('approver1', re.bankFile.id, 1)).status).toBe(200);
     expect(
       (
         await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`)
@@ -516,7 +538,28 @@ describe('Payroll batch 5d', () => {
     await api('emp1', 'patch', `/payroll/queries/${q.id}`).send({ assigneeUserId: users.payAdmin }).expect(403);
     const mine = (await api('emp1', 'get', '/payroll/queries').expect(200)).body;
     expect(mine[0].replies).toEqual([expect.objectContaining({ side: 'payroll' })]);
+    // Founder 29 Oct 2026: payroll closes only after a reply; reassign only to someone who handles queries (never the asker).
+    const q2 = (await api('emp1', 'post', `/payroll/me/payslips/${s1.id}/queries`).send({ lineCode: 'basic', text: 'And the arrears?' }).expect(201)).body;
+    expect((await api('payAdmin', 'get', '/payroll/queries?status=open').expect(200)).body[0]).toMatchObject({ id: q2.id, line: { amount: expect.stringMatching(/^\d+\.\d{2}$/) } });
+    expect((await api('payAdmin', 'patch', `/payroll/queries/${q2.id}`).send({ status: 'closed' }).expect(409)).body.message).toBe('Reply to the employee before closing the query.');
+    const hs = (await api('payAdmin', 'get', `/payroll/queries/${q2.id}/handlers`).expect(200)).body as { userId: string; me: boolean }[];
+    expect(hs).toEqual(expect.arrayContaining([expect.objectContaining({ userId: users.payAdmin, me: true })]));
+    expect(hs.map((h) => h.userId)).not.toContain(users.emp1);
+    await api('payAdminB', 'get', `/payroll/queries/${q2.id}/handlers`).expect(404);
+    await api('emp2', 'get', `/payroll/queries/${q2.id}/handlers`).expect(403);
+    await api('payAdmin', 'patch', `/payroll/queries/${q2.id}`).send({ assigneeUserId: users.emp1 }).expect(400);
+    await api('payAdmin', 'patch', `/payroll/queries/${q2.id}`).send({ assigneeUserId: 'not-a-uuid' }).expect(400);
+    expect((await api('payAdmin', 'patch', `/payroll/queries/${q2.id}`).send({ assigneeUserId: users.payAdmin }).expect(200)).body.assigneeUserId).toBe(users.payAdmin);
+    expect((await api('payAdmin', 'patch', `/payroll/queries/${q2.id}`).send({ reply: 'Arrears come next month.', status: 'closed' }).expect(200)).body.status).toBe('closed');
     expect((await api('emp1', 'patch', `/payroll/queries/${q.id}`).send({ status: 'closed' }).expect(200)).body.status).toBe('closed');
     await api('payAdmin', 'patch', `/payroll/queries/${q.id}`).send({ reply: 'Late' }).expect(409);
+  });
+
+  it('"Show pay" on the payments page is recorded each time; only for people who may open the run', async () => {
+    await api('auditor', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(204);
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(204);
+    await api('payAdminB', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(404);
+    await api('emp1', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(403);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.pay.shown', entityId: ids.run } }))).toBe(2);
   });
 });

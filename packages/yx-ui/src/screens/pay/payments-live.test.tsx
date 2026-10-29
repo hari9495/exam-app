@@ -77,6 +77,64 @@ describe('PAY-10 live · a run’s payments', () => {
     expect(onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'paid', reason: 'Seen on the statement' }]);
   });
 
+  it('Show pay is recorded once per press; hiding records nothing (positive)', async () => {
+    const onShowPay = fn();
+    render(<PaymentsScreen live={runLive({ onShowPay })} />);
+    await ue.click(screen.getByRole('button', { name: 'Show pay' }));
+    expect(screen.getByText('Pay is showing. Each time you show it is recorded.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Hide pay' }));
+    await ue.click(screen.getByRole('button', { name: 'Show pay' }));
+    expect(onShowPay).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-pay a returned payment: reason first (negative), then the next bank file (positive)', async () => {
+    const onRepay = fn();
+    const failed = PAYSLIPS.map((x) => (x.id === 's1' ? { ...x, paymentStatus: 'returned' } : x));
+    render(<PaymentsScreen live={runLive({ payslips: failed, onRepay, disbursements: [] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Pay Arjun Kulkarni again' }));
+    await ue.click(screen.getByRole('button', { name: 'Add to the next bank file' }));
+    expect(screen.getByText('Say why, in a few words (at least 5 characters).')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+    expect(onRepay).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Account fixed by HR');
+    await ue.click(screen.getByRole('button', { name: 'Add to the next bank file' }));
+    await waitFor(() => expect(onRepay).toHaveBeenCalledWith('s1', { route: 'next_bank_file', reason: 'Account fixed by HR' }));
+    expect((await screen.findAllByText('Arjun Kulkarni is paid in the next bank file')).length).toBeGreaterThan(0);
+  });
+
+  it('re-pay now needs the debit account; without the bank file key only the next bank file is offered (negative, then positive)', async () => {
+    const onRepay = fn();
+    const failed = PAYSLIPS.map((x) => (x.id === 's1' ? { ...x, paymentStatus: 'failed' } : x));
+    const { unmount } = render(<PaymentsScreen live={runLive({ payslips: failed, onRepay, disbursements: [], can: { record: true, journal: false, bankFile: false } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Pay Arjun Kulkarni again' }));
+    expect(screen.queryByRole('radio', { name: 'Off-cycle payment now' })).not.toBeInTheDocument();
+    unmount();
+    render(<PaymentsScreen live={runLive({ payslips: failed, onRepay, disbursements: [] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Pay Arjun Kulkarni again' }));
+    await ue.click(screen.getByRole('radio', { name: 'Off-cycle payment now' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Bank fixed the name');
+    await ue.click(screen.getByRole('button', { name: 'Create off-cycle payment' }));
+    expect(screen.getByText('Enter the account the bank debits (6 to 20 digits).')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Account the bank debits/ })).toHaveFocus();
+    expect(onRepay).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Account the bank debits/ }), '0050200012345678');
+    await ue.click(screen.getByRole('button', { name: 'Create off-cycle payment' }));
+    await waitFor(() => expect(onRepay).toHaveBeenCalledWith('s1', { route: 'offcycle', reason: 'Bank fixed the name', debitAccount: '0050200012345678' }));
+  });
+
+  it('a refused re-pay keeps the drawer open with the reason (negative)', async () => {
+    const onRepay = vi.fn(async () => {
+      throw new Error('This payment is already waiting to be paid; nothing to pay again.');
+    });
+    const failed = PAYSLIPS.map((x) => (x.id === 's1' ? { ...x, paymentStatus: 'failed' } : x));
+    render(<PaymentsScreen live={runLive({ payslips: failed, onRepay, disbursements: [] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Pay Arjun Kulkarni again' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Account fixed by HR');
+    await ue.click(screen.getByRole('button', { name: 'Add to the next bank file' }));
+    expect(await screen.findByText(/already waiting to be paid/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to the next bank file' })).toBeInTheDocument();
+  });
+
   it('cash and cheque: a cheque needs its number; then the day is recorded', async () => {
     const live = runLive();
     render(<PaymentsScreen live={live} />);

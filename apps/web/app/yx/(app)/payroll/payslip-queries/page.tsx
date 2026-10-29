@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { QueryQueueScreen, type PayslipQueryView } from '@yukthix/ui/pay';
+import { QueryQueueScreen, type PayslipQueryView, type QueryHandler } from '@yukthix/ui/pay';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
-import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
+import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx-pay';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
 
@@ -14,6 +14,7 @@ export default function YxPayslipQueriesPage() {
   const me = useCurrentUser();
   const queries = usePay<PayslipQueryView[]>(`/queries?status=${status}`);
   const write = usePayWrite();
+  const read = usePayRead();
   const nameOf = useNames();
   const patch = (q: PayslipQueryView, body: object) => write(`/queries/${encodeURIComponent(q.id)}`, body, 'PATCH');
   return (
@@ -30,6 +31,7 @@ export default function YxPayslipQueriesPage() {
         onReply: (q, reply) => patch(q, { reply }),
         onClose: (q) => patch(q, { status: 'closed' }),
         onAssign: (q, userId) => patch(q, { assigneeUserId: userId }),
+        onHandlers: (q) => read<QueryHandler[]>(`/queries/${encodeURIComponent(q.id)}/handlers`),
       }}
     />
   );

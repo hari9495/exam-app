@@ -320,8 +320,9 @@ export class PayslipsService {
     return { id: out.id, status: 'open' };
   }
 
-  private view(q: Prisma.PayslipQueryGetPayload<object>, mine: boolean) {
+  private view(q: Prisma.PayslipQueryGetPayload<object>, mine: boolean, line: { name: string; amount: string; explanation: string | null } | null = null) {
     return {
+      line,
       id: q.id,
       payslipId: q.payslipId,
       employeeId: q.employeeId,
@@ -348,7 +349,35 @@ export class PayslipsService {
         orderBy: { updatedAt: 'desc' },
         take: 300,
       });
-      return rows.map((q) => this.view(q, me.includes(q.employeeId)));
+      // The line the query is about (PAY-20 thread): its name, amount and the explanation the calculation saved.
+      const lines = await tx.payslipLine.findMany({
+        where: { organizationId: c.organizationId, OR: rows.filter((q) => q.lineCode).map((q) => ({ payslipId: q.payslipId, componentCode: q.lineCode! })) },
+        select: { payslipId: true, componentCode: true, name: true, amount: true, explanation: true },
+      });
+      const lineOf = (q: (typeof rows)[number]) => {
+        const l = q.lineCode ? lines.find((x) => x.payslipId === q.payslipId && x.componentCode === q.lineCode) : undefined;
+        return l ? { name: l.name, amount: l.amount.toFixed(2), explanation: l.explanation } : null;
+      };
+      return rows.map((q) => this.view(q, me.includes(q.employeeId), lineOf(q)));
+    });
+  }
+
+  private async askerUser(tx: Tx, org: string, employeeId: string) {
+    return (await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } }))?.userId ?? null;
+  }
+
+  /** People a query can be assigned to: they handle payslip queries for its legal entity; never the person who asked. */
+  async handlers(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.query.handle');
+      await payScope(tx, ids);
+      const q = await tx.payslipQuery.findFirst({ where: { organizationId: org, id } });
+      if (!q || !ids.includes(q.legalEntityId)) throw new NotFoundException('Not found');
+      const asker = await this.askerUser(tx, org, q.employeeId);
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: (await payHolders(tx, org, 'payroll.query.handle', q.legalEntityId, todayIst())).filter((u) => u !== asker) } }, select: { id: true, name: true, email: true } });
+      return users.map((u) => ({ userId: u.id, name: u.name || u.email, me: u.id === v.userId })).sort((a, b) => a.name.localeCompare(b.name));
     });
   }
 
@@ -372,6 +401,10 @@ export class PayslipsService {
       if (dto.reply && ((q.replies as Reply[]) ?? []).length >= 50) throw new ConflictException('This query has 50 replies; close it and raise a new one.');
       if (dto.assigneeUserId && !(await payHolders(tx, org, 'payroll.query.handle', q.legalEntityId, todayIst())).includes(dto.assigneeUserId))
         throw new BadRequestException('Assign the query to someone who handles payslip queries for this entity.');
+      if (dto.assigneeUserId && dto.assigneeUserId === (await this.askerUser(tx, org, q.employeeId))) throw new BadRequestException('A query cannot be assigned to the person who asked it.');
+      // Founder 29 Oct 2026: payroll closes a query only after answering it (the employee may close their own).
+      if (staff && dto.status === 'closed' && !dto.reply && !((q.replies as Reply[]) ?? []).some((r) => r.side === 'payroll'))
+        throw new ConflictException('Reply to the employee before closing the query.');
       const name = (await tx.user.findFirst({ where: { organizationId: org, id: v.userId! }, select: { name: true, email: true } })) ?? { name: '', email: '' };
       const replies = [
         ...((q.replies as Reply[]) ?? []),

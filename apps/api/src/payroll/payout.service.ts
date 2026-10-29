@@ -12,7 +12,7 @@ import { writeBankFile, type BankLayout, type BankRow } from '../statutory/bank-
 import { asDate, dateOf } from '../time/time-core';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import type { ConfirmationDto } from './dto';
-import type { DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultRowDto } from './dto-5d';
+import type { DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultRowDto, RepayDto } from './dto-5d';
 import { ExchangeFilesService } from './exchange-files.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 
@@ -135,6 +135,14 @@ export class PayoutService implements OnModuleInit {
       const run = await this.runFor(tx, c, v, runId, ['payroll.bankfile.generate']);
       this.requireApproved(run);
       await tx.$queryRaw`SELECT id FROM payroll_runs WHERE organization_id = ${org}::uuid AND id = ${run.id}::uuid FOR UPDATE`;
+      return this.writeBank(tx, c, v, run, dto);
+    });
+  }
+
+  /** The bank file itself; `only` makes a file for one payslip (a re-pay now), to its salary or reimbursement account. */
+  private async writeBank(tx: Tx, c: CompanyContext, v: Viewer, run: Run, dto: GenerateBankFileDto, only?: { payslipId: string; purpose: 'salary' | 'reimbursement' }) {
+    {
+      const org = c.organizationId;
       const before = await tx.bankFile.count({ where: { organizationId: org, runId: run.id } });
       if (before && !dto.reason) throw new BadRequestException('This run already has a bank file. Say why a new one is needed.');
       const payDate = dto.payDate ?? todayIst();
@@ -143,7 +151,7 @@ export class PayoutService implements OnModuleInit {
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', [key], payDate);
       // Founder decision 5d-D1 (9 Oct 2026): only the generic format for now; the pilot's bank format is loaded as data (a bank-format rule set) once a real sample file is checked (M03 §19.4).
       if (!fmt) throw new ConflictException(`No published bank format "${key}" is in force on ${payDate}.`);
-      const slips = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 } });
+      const slips = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 }, ...(only ? { id: only.payslipId } : {}) });
       const employments = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
       const modeOf = await this.modesOn(
         tx,
@@ -151,7 +159,7 @@ export class PayoutService implements OnModuleInit {
         slips.map((s) => s.employmentId),
         payDate,
       );
-      const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: slips.map((s) => s.employeeId) }, purpose: 'salary', validTo: null } });
+      const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: slips.map((s) => s.employeeId) }, purpose: only?.purpose ?? 'salary', validTo: null } });
       const now = new Date();
       const rows: (BankRow & { slip: Slip })[] = [];
       const excluded: { employeeId: string; reason: string }[] = [];
@@ -177,7 +185,7 @@ export class PayoutService implements OnModuleInit {
         const a = accounts.find((x) => x.employeeId === s.employeeId);
         const mode = modeOf(s.employmentId);
         if (mode !== 'bank') excluded.push({ employeeId: s.employeeId, reason: `Paid by ${mode} (disbursement register).` });
-        else if (!a) excluded.push({ employeeId: s.employeeId, reason: 'No salary bank account.' });
+        else if (!a) excluded.push({ employeeId: s.employeeId, reason: `No ${only?.purpose ?? 'salary'} bank account.` });
         else if (a.usableFrom > now) excluded.push({ employeeId: s.employeeId, reason: `A new bank account is in its cooling period until ${a.usableFrom.toISOString()}.` });
         else
           rows.push({
@@ -247,7 +255,7 @@ export class PayoutService implements OnModuleInit {
         format: { key, version: fmt.version, label: (fmt.values as unknown as BankLayout).label },
         excluded,
       };
-    });
+    }
   }
 
   async bankFiles(ctx: TenantContext, user: ScopeUser, runId: string) {
@@ -434,6 +442,47 @@ export class PayoutService implements OnModuleInit {
       await tx.$queryRaw`SELECT bank_account_use_now(${org}::uuid, ${a.id}::uuid)`;
       await audit(tx, c, 'payroll.bank.expedited', 'payslip', s.id, { employeeId: s.employeeId, account: `•••• ${a.accountLast4}`, pennyDropReference: dto.pennyDropReference, reason: dto.reason });
       return { payslipId: s.id, account: `•••• ${a.accountLast4}`, usableNow: true };
+    });
+  }
+
+  /**
+   * Pay a failed or returned payment again (founder 29 Oct 2026). The payslip goes back to "pending" (so a second call
+   * is refused: 409). Next bank file: the run's next file picks it up. Off-cycle or reimbursement account: a bank file for
+   * this one payslip is made now (needs the bank file key too) and someone else releases it, as for any bank file.
+   */
+  async repay(ctx: TenantContext, user: ScopeUser, payslipId: string, dto: RepayDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.payment.record');
+      await payScope(tx, ids);
+      await tx.$queryRaw`SELECT id FROM payslips WHERE organization_id = ${org}::uuid AND id = ${payslipId}::uuid FOR UPDATE`;
+      const s = await tx.payslip.findFirst({ where: { organizationId: org, id: payslipId } });
+      if (!s || !s.runId || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
+      if ((await this.ownEmployeeIds(tx)).has(s.employeeId)) throw new ForbiddenException('Someone else arranges your own pay.');
+      if (s.status !== 'approved' || !['failed', 'returned'].includes(s.paymentStatus))
+        throw new ConflictException(s.paymentStatus === 'pending' ? 'This payment is already waiting to be paid; nothing to pay again.' : 'Only a payment that failed or came back can be paid again.');
+      let file: Awaited<ReturnType<PayoutService['writeBank']>> | null = null;
+      if (dto.route !== 'next_bank_file') {
+        if (!(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).includes(s.legalEntityId))
+          throw new ForbiddenException('Paying now makes a bank file, which needs the bank file key. Choose Next bank file, or ask someone who makes bank files.');
+        if (!dto.debitAccount) throw new BadRequestException('Enter the account the bank debits (6 to 20 digits).');
+        const run = await tx.payrollRun.findFirstOrThrow({ where: { organizationId: org, id: s.runId } });
+        this.requireApproved(run);
+        file = await this.writeBank(tx, c, v, run, { debitAccount: dto.debitAccount, reason: `Pay again: ${dto.reason}` }, { payslipId: s.id, purpose: dto.route === 'reimbursement_account' ? 'reimbursement' : 'salary' });
+      }
+      await tx.payslip.update({ where: { id: s.id }, data: { paymentStatus: 'pending' } });
+      await audit(tx, c, 'payroll.payment.repay', 'payslip', s.id, { employeeId: s.employeeId, runId: s.runId, route: dto.route, reason: dto.reason, amount: s.net.toFixed(2), was: s.paymentStatus, bankFileId: file?.id ?? null });
+      return { payslipId: s.id, paymentStatus: 'pending', route: dto.route, bankFile: file ? { id: file.id, fileId: file.fileId, total: file.total } : null };
+    });
+  }
+
+  /** "Show pay" on the payments page (founder 29 Oct 2026): each time is recorded, nothing else changes. */
+  async payViewed(ctx: TenantContext, user: ScopeUser, runId: string) {
+    const v = await this.viewer(user);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const run = await this.runFor(tx, c, v, runId, ['payroll.payment.record', 'payroll.run.view', 'payroll.bankfile.generate', 'payroll.bankfile.release']);
+      await audit(tx, c, 'payroll.pay.shown', 'payroll_run', run.id, { page: 'payments' });
     });
   }
 

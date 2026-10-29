@@ -153,3 +153,20 @@ export class QueryListDto {
   status?: 'open' | 'answered' | 'closed';
 }
 
+
+/** Pay a failed or returned payment again (PAY-10 "Returned payment · re-pay route"). */
+export class RepayDto {
+  @IsIn(['next_bank_file', 'offcycle', 'reimbursement_account'], { message: 'Choose how to pay: next bank file, off-cycle payment now, or the reimbursement account.' })
+  route!: 'next_bank_file' | 'offcycle' | 'reimbursement_account';
+
+  @trim()
+  @IsString()
+  @MinLength(5, { message: 'Say why, in a few words (at least 5 characters).' })
+  @MaxLength(300)
+  reason!: string;
+
+  /** The company's account the bank debits; needed for a file made now (off-cycle or reimbursement account). */
+  @IsOptional()
+  @Matches(/^\d{6,20}$/, { message: 'The debit account is 6 to 20 digits.' })
+  debitAccount?: string;
+}

@@ -190,6 +190,8 @@ export interface RunJournal {
   exports: { format: string; at: string; by: string }[];
 }
 export type JournalFormat = 'tally' | 'csv' | 'zoho';
+export type RepayRoute = 'next_bank_file' | 'offcycle' | 'reimbursement_account';
+export type RepayInput = { route: RepayRoute; reason: string; debitAccount?: string };
 
 interface LiveBase {
   state: LoadState;
@@ -205,8 +207,13 @@ export interface LiveRunPayments extends LiveBase {
   /** null while it loads or when the person may not export it (`can.journal`). */
   journal: RunJournal | null;
   nameOf: (employeeId: string) => string;
-  can: { record: boolean; journal: boolean };
+  /** `bankFile`: may make a bank file now (re-pay off-cycle or to the reimbursement account). */
+  can: { record: boolean; journal: boolean; bankFile?: boolean };
   onBack: () => void;
+  /** Pay a failed or returned payment again (PAY-10 "Returned payment · re-pay route"). */
+  onRepay?: (payslipId: string, x: RepayInput) => Promise<unknown>;
+  /** Each "Show pay" is recorded (an audit event). */
+  onShowPay?: () => Promise<unknown>;
   onResults: (rows: PaymentResultRow[]) => Promise<unknown>;
   onUploadResults: (file: File) => Promise<{ recorded: number }>;
   onDisburse: (d: DisbursementInput) => Promise<unknown>;
@@ -386,6 +393,7 @@ const FORMAT_TEXT: Record<JournalFormat, string> = { tally: 'Tally (XML)', csv: 
 
 function LiveRun({ live }: { live: LiveRunPayments }) {
   const [result, setResult] = useState<RunPayslip | null>(null);
+  const [repaying, setRepaying] = useState<RunPayslip | null>(null);
   const [paying, setPaying] = useState<Disbursement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showPay, setShowPay] = useState(false);
@@ -469,7 +477,15 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
               Back to the run
             </Button>
             {live.state === 'ready' && (
-              <Button icon={showPay ? EyeOff : Eye} aria-pressed={showPay} onClick={() => setShowPay(!showPay)}>
+              <Button
+                icon={showPay ? EyeOff : Eye}
+                aria-pressed={showPay}
+                onClick={() => {
+                  // Each show is recorded; a failed record never blocks the person (the API logs what reaches it).
+                  if (!showPay) void live.onShowPay?.().catch(() => undefined);
+                  setShowPay(!showPay);
+                }}
+              >
                 {showPay ? 'Hide pay' : 'Show pay'}
               </Button>
             )}
@@ -483,6 +499,7 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
       />
       <LiveStates state={live.state} onRetry={live.onRetry} what="payments">
         {!approved && <InlineAlert tone="info" title="Payments are recorded once the run is approved." />}
+        {showPay && <p className="yx-pay-muted">Pay is showing. Each time you show it is recorded.</p>}
         <Tabs defaultValue="status">
           <TabsList aria-label="Payments">
             <TabsTrigger value="status" count={bank.length}>
@@ -506,7 +523,11 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                   getRowId={(s) => s.id}
                   pageSize={25}
                   rowButtons={(s) =>
-                    record && !s.held && s.paymentStatus !== 'paid' ? (
+                    record && live.onRepay && ['failed', 'returned'].includes(s.paymentStatus) ? (
+                      <Button size="sm" onClick={() => setRepaying(s)} aria-label={`Pay ${live.nameOf(s.employeeId)} again`}>
+                        Re-pay
+                      </Button>
+                    ) : record && !s.held && s.paymentStatus !== 'paid' ? (
                       <Button size="sm" onClick={() => setResult(s)} aria-label={`Record the bank result for ${live.nameOf(s.employeeId)}`}>
                         Record result
                       </Button>
@@ -514,7 +535,7 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                   }
                 />
                 <p className="yx-pay-muted">
-                  Paid {showPay ? formatINR(paidSum) : '₹ •••'} · not paid yet {showPay ? formatINR(allSum - paidSum) : '₹ •••'} (held, failed, returned or not sent yet). A failed payment is paid again from the run once the bank details are fixed.
+                  Paid {showPay ? formatINR(paidSum) : '₹ •••'} · not paid yet {showPay ? formatINR(allSum - paidSum) : '₹ •••'} (held, failed, returned or not sent yet). Re-pay a failed or returned payment: in the next bank file, or now in its own file.
                 </p>
               </div>
             ) : (
@@ -663,6 +684,19 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
           }}
         />
       )}
+      {repaying && live.onRepay && (
+        <RepayDrawer
+          slip={repaying}
+          who={live.nameOf(repaying.employeeId)}
+          amount={showPay ? money(repaying.net) : '₹ •••'}
+          canFileNow={live.can.bankFile !== false}
+          onClose={() => setRepaying(null)}
+          onSave={async (x) => {
+            await live.onRepay!(repaying.id, x);
+            say(x.route === 'next_bank_file' ? `${live.nameOf(repaying.employeeId)} is paid in the next bank file` : `Bank file made for ${live.nameOf(repaying.employeeId)}; someone else releases it`);
+          }}
+        />
+      )}
       {paying && (
         <DisburseDrawer
           d={paying}
@@ -675,6 +709,52 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
         />
       )}
     </div>
+  );
+}
+
+const REPAY: Record<RepayRoute, { label: string; description: string; button: string }> = {
+  next_bank_file: { label: 'Next bank file', description: 'Paid with the run’s next bank file.', button: 'Add to the next bank file' },
+  offcycle: { label: 'Off-cycle payment now', description: 'Its own bank file today; someone else releases it.', button: 'Create off-cycle payment' },
+  reimbursement_account: { label: 'Reimbursement account', description: 'Interim payment to the person’s verified reimbursement account; audited.', button: 'Pay to reimbursement account' },
+};
+
+/** PAY-10 "Returned payment · re-pay route": how to pay again, with a reason (saved in the audit trail). */
+function RepayDrawer({ slip, who, amount, canFileNow, onClose, onSave }: { slip: RunPayslip; who: string; amount: string; canFileNow: boolean; onClose: () => void; onSave: (x: RepayInput) => Promise<unknown> }) {
+  const [route, setRoute] = useState<RepayRoute>('next_bank_file');
+  const [reason, setReason] = useState('');
+  const [debit, setDebit] = useState('');
+  const now = route !== 'next_bank_file';
+  const errors: FormErrorItem[] = [
+    ...(now && !/^\d{6,20}$/.test(debit.trim()) ? [{ fieldId: 'rp-debit', message: 'Enter the account the bank debits (6 to 20 digits).' }] : []),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'rp-why', message: 'Say why, in a few words (at least 5 characters).' }] : []),
+  ];
+  const routes = (Object.keys(REPAY) as RepayRoute[]).filter((r) => canFileNow || r === 'next_bank_file');
+  return (
+    <FormDrawer
+      title={`Payment ${slip.paymentStatus === 'returned' ? 'returned' : 'failed'}: ${who}`}
+      subtitle="Fix the bank details in the person’s profile first if the bank said the account is wrong."
+      confirm={REPAY[route].button}
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ route, reason: reason.trim(), ...(now ? { debitAccount: debit.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          <FactRow items={[{ label: 'Amount', value: amount }, { label: 'Status', value: payment(slip.paymentStatus).label }]} />
+          <FormField id="rp-route" label="Pay through" required helper={REPAY[route].description}>
+            <Segment label="Pay through" value={route} onChange={setRoute} options={routes.map((r) => ({ value: r, label: REPAY[r].label }))} />
+          </FormField>
+          {now && (
+            <FormField id="rp-debit" label="Account the bank debits" required error={errorOf('rp-debit')}>
+              <TextField value={debit} onChange={setDebit} inputMode="numeric" maxLength={20} />
+            </FormField>
+          )}
+          <FormField id="rp-why" label="Reason" required helper="Saved in the audit trail." error={errorOf('rp-why')}>
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
+          </FormField>
+        </>
+      )}
+    </FormDrawer>
   );
 }
 

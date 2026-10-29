@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { PaymentsScreen, type BankFileRow, type Disbursement, type PayRun, type RunJournal, type RunPayslip } from '@yukthix/ui/pay';
-import { apiFetchBlob } from '../../../../../../../lib/api-client';
+import { apiFetch, apiFetchBlob } from '../../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../../../lib/yx-org';
 import { payState, saveBlob, usePay, usePayDownload, usePayWrite } from '../../../../../../../lib/yx-pay';
@@ -40,7 +40,10 @@ export default function YxPayRunPaymentsPage() {
         bankFiles: bankFiles.data ?? null,
         journal: journal.data ?? null,
         nameOf,
-        can: { record, journal: journalOk },
+        can: { record, journal: journalOk, bankFile: perms.has('payroll.bankfile.generate') },
+        onRepay: (payslipId, x) => write(`/payslips/${encodeURIComponent(payslipId)}/repay`, x),
+        // A light audit record only: no cache to refresh.
+        onShowPay: () => apiFetch(`/payroll${base}/pay-views`, { method: 'POST' }, accessToken ?? undefined),
         onBack: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}`),
         onResults: (rows) => write(`${base}/payment-results`, { rows }),
         onUploadResults: (file) => {

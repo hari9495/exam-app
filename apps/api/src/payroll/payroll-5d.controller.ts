@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto } from './dto-5d';
+import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto, RepayDto } from './dto-5d';
 import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
 
@@ -22,7 +22,7 @@ import { PayslipsService } from './payslips.service';
 //   payroll.payment.record           bank results (file or rows), cash / cheque register, ask for a payment mode
 //   payroll.payment_mode.approve     approves payment modes through P03 (the generic approvals inbox)
 //   payroll.payslip.publish ⚡        publish an approved run's payslips
-//   payroll.query.handle             answer payslip queries
+//   payroll.query.handle             answer payslip queries, assign them to a colleague who also handles them
 
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -82,6 +82,22 @@ export class Payroll5dController {
   @RequireStepUp()
   expedite(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExpediteBankDto) {
     return this.payout.expedite(ctx, this.user(req), id, dto);
+  }
+
+  /** Pay a failed or returned payment again: next bank file, or a file made now (off-cycle / reimbursement account). */
+  @Post('payslips/:id/repay')
+  @HttpCode(200)
+  @RequirePermissions('payroll.payment.record')
+  repay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RepayDto) {
+    return this.payout.repay(ctx, this.user(req), id, dto);
+  }
+
+  /** Each "Show pay" on the payments page is recorded (an audit event; nothing else changes). */
+  @Post('runs/:id/pay-views')
+  @HttpCode(204)
+  @RequireAnyPermission('payroll.payment.record', 'payroll.run.view', 'payroll.bankfile.generate', 'payroll.bankfile.release')
+  payViewed(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.payout.payViewed(ctx, this.user(req), id);
   }
 
   @Get('payment-modes')
@@ -161,6 +177,13 @@ export class Payroll5dController {
   @Get('queries')
   queries(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: QueryListDto) {
     return this.payslips.list(ctx, this.user(req), q.status);
+  }
+
+  /** Who a query can be assigned to: people who handle payslip queries for its legal entity (never the asker). */
+  @Get('queries/:id/handlers')
+  @RequirePermissions('payroll.query.handle')
+  handlers(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.payslips.handlers(ctx, this.user(req), id);
   }
 
   @Patch('queries/:id')
