@@ -358,4 +358,10 @@ describe('TIM-05 rules, notice and Staff, live (feature sheet rules 1–6)', () 
     await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
     expect(onRetry).toHaveBeenCalled();
   });
+
+  it('someone with no employee record (Payroll) is told so, with no swap button', () => {
+    render(<RosterScreen staffLive={staff({ state: 'no-record', data: null })} />);
+    expect(screen.getByText('You have no employee record here')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ask to swap a shift' })).toBeNull();
+  });
 });

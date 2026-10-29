@@ -2003,7 +2003,7 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
       <PageHeader
         title="Periods"
         description="Lock a month once its attendance and leave are final. Locked months refuse changes; payroll reads their frozen figures."
-        facts={<span className="yx-tim-muted">{live.year}. After a month is locked, people can still ask for fixes; they are paid in the next payroll.</span>}
+        facts={<span className="yx-tim-muted">Year {live.year}. After a month is locked, people can still ask for fixes; they are paid in the next payroll.</span>}
         actions={
           <div className="yx-tim-row">
             <Button size="sm" onClick={() => go(-1)}>Previous year</Button>

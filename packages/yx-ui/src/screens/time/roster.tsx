@@ -36,7 +36,7 @@ import {
   type Shift,
 } from '../../components/roster';
 import { Segment } from '../people/people-kit';
-import { DueBadge, Kpis, ShiftBar, TimePage } from './time-kit';
+import { DueBadge, Kpis, NoRecordState, ShiftBar, TimePage } from './time-kit';
 import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './time-logic';
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
@@ -712,7 +712,7 @@ function LiveStaffRosterScreen({ live: p }: { live: LiveStaffRoster }) {
           <div className="yx-tim-row">
             <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, -7))} />
             <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, 7))} />
-            <Button asChild><a href={p.swapHref}>Ask to swap a shift</a></Button>
+            {p.state !== 'no-record' && <Button asChild><a href={p.swapHref}>Ask to swap a shift</a></Button>}
           </div>
         }
       />
@@ -722,6 +722,8 @@ function LiveStaffRosterScreen({ live: p }: { live: LiveStaffRoster }) {
         <ErrorState title="The roster didn't load" description="Check your connection and try again." onRetry={p.onRetry} />
       ) : p.state === 'no-access' ? (
         <NoAccessState what="the roster" grantedBy="HR" />
+      ) : p.state === 'no-record' ? (
+        <NoRecordState />
       ) : d && me && narrow ? (
         <div className="yx-tim-stack">
           <ul className="yx-tim-list">{me.cells.map((c) => <li key={c.on}><DayDate date={isoDate(c.on)} /><strong>{text(c)}</strong></li>)}</ul>

@@ -544,7 +544,7 @@ export class RosterService implements OnModuleInit {
       const me = await myEmployeeId(tx, org, c.userId);
       const today = todayIst();
       const f = (await factsOn(tx, org, me, today < week ? week : today > to ? to : today)) ?? (await factsOn(tx, org, me, today));
-      if (!f) throw new NotFoundException('You are not working here this week.');
+      if (!f) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no job assignment this week. Ask HR to check your record.' });
       const open = (await settingOn(tx, c, 'roster.staff_see_team', f, week)) === 'on';
       const mates =
         open && f.managerEmployeeId
