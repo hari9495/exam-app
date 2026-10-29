@@ -261,6 +261,12 @@ export class Payroll5bController {
     return this.structures.compensation(ctx, this.user(req), id, q.asOn);
   }
 
+  /** PAY-12 history: self (implicit) or employee.salary.view over the person: checked in the service. */
+  @Get('employees/:id/compensation-history')
+  compensationHistory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: AsOnDto) {
+    return this.structures.compensationHistory(ctx, this.user(req), id, q.asOn);
+  }
+
   @Get('employees/:id/statutory-profile')
   @RequireAnyPermission('employee.salary.view', 'employee.salary.manage')
   statutoryProfile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

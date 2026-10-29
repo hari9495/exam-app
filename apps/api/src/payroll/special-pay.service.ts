@@ -263,34 +263,60 @@ export class SpecialPayService implements OnModuleInit {
   }
 
   /** The month's piece pay per person, topped up to the minimum wage for the days worked (P07 IN.MW at the work place). */
+  private async pieceMonth(tx: Tx, org: string, entityId: string, month: string) {
+    const { from, to } = monthRange(month);
+    const outputs = await tx.pieceOutput.findMany({ where: { organizationId: org, legalEntityId: entityId, workDate: { gte: asDate(from), lte: asDate(to) } } });
+    const cards = (await tx.pieceRateCard.findMany({ where: { organizationId: org, legalEntityId: entityId } })).map((x) => ({ operationCode: x.operationCode, rate: x.rate.toString(), validFrom: dateOf(x.validFrom), validTo: x.validTo ? dateOf(x.validTo) : null }));
+    const rules = await this.rules.published();
+    const people: { employeeId: string; daysWorked: number; minimumDaily: string; earnings: Prisma.Decimal; minimum: Prisma.Decimal; topUp: Prisma.Decimal }[] = [];
+    for (const employmentId of [...new Set(outputs.map((o) => o.employmentId))]) {
+      const mine = outputs.filter((o) => o.employmentId === employmentId);
+      const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' } });
+      const loc = asg ? await tx.location.findFirst({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } }) : null;
+      const mwRs = inForce(rules, 'IN.MW', ['IN'], to);
+      const daily = mwRs && loc ? minWage(mwRs, { table: minWageTableFor(rules, loc.state, to), zone: loc.minWageZone, skill: asg?.skillClass ?? null }).daily.toFixed(2) : '0';
+      let r: ReturnType<typeof pieceRate>;
+      try {
+        r = pieceRate(cards, mine.map((o) => ({ workDate: dateOf(o.workDate), operationCode: o.operationCode, quantity: o.quantity.toString() })), daily);
+      } catch (e) {
+        this.fail(e);
+      }
+      people.push({ employeeId: mine[0].employeeId, daysWorked: r.daysWorked, minimumDaily: daily, earnings: r.earnings, minimum: r.minimum, topUp: r.topUp });
+    }
+    return { outputs: outputs.length, people };
+  }
+
   async postPiece(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
     const v = await this.viewer(user);
     return this.posting(ctx, async (tx, c) => {
-      const org = c.organizationId;
       await this.entity(tx, c, v, entityId);
-      const { from, to } = monthRange(month);
-      const outputs = await tx.pieceOutput.findMany({ where: { organizationId: org, legalEntityId: entityId, workDate: { gte: asDate(from), lte: asDate(to) } } });
-      if (!outputs.length) throw new BadRequestException(`No output is keyed for ${month}.`);
-      const cards = (await tx.pieceRateCard.findMany({ where: { organizationId: org, legalEntityId: entityId } })).map((x) => ({ operationCode: x.operationCode, rate: x.rate.toString(), validFrom: dateOf(x.validFrom), validTo: x.validTo ? dateOf(x.validTo) : null }));
-      const rules = await this.rules.published();
+      const m = await this.pieceMonth(tx, c.organizationId, entityId, month);
+      if (!m.outputs) throw new BadRequestException(`No output is keyed for ${month}.`);
       const lines: Line[] = [];
-      for (const employmentId of [...new Set(outputs.map((o) => o.employmentId))]) {
-        const mine = outputs.filter((o) => o.employmentId === employmentId);
-        const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' } });
-        const loc = asg ? await tx.location.findFirst({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } }) : null;
-        const mwRs = inForce(rules, 'IN.MW', ['IN'], to);
-        const daily = mwRs && loc ? minWage(mwRs, { table: minWageTableFor(rules, loc.state, to), zone: loc.minWageZone, skill: asg?.skillClass ?? null }).daily.toFixed(2) : '0';
-        let r: ReturnType<typeof pieceRate>;
-        try {
-          r = pieceRate(cards, mine.map((o) => ({ workDate: dateOf(o.workDate), operationCode: o.operationCode, quantity: o.quantity.toString() })), daily);
-        } catch (e) {
-          this.fail(e);
-        }
-        const who = mine[0].employeeId;
-        lines.push({ employeeId: who, componentCode: 'piece_pay', amount: r.earnings.toFixed(2), label: `Piece-rate pay for ${r.daysWorked} days in ${month}.`, meta: { days: String(r.daysWorked) } });
-        if (r.topUp.gt(0)) lines.push({ employeeId: who, componentCode: 'min_wage_topup', amount: r.topUp.toFixed(2), label: `Top-up to the minimum wage of ₹${daily} a day for ${r.daysWorked} days worked.`, meta: { minimum: r.minimum.toFixed(2) } });
+      for (const r of m.people) {
+        lines.push({ employeeId: r.employeeId, componentCode: 'piece_pay', amount: r.earnings.toFixed(2), label: `Piece-rate pay for ${r.daysWorked} days in ${month}.`, meta: { days: String(r.daysWorked) } });
+        if (r.topUp.gt(0)) lines.push({ employeeId: r.employeeId, componentCode: 'min_wage_topup', amount: r.topUp.toFixed(2), label: `Top-up to the minimum wage of ₹${r.minimumDaily} a day for ${r.daysWorked} days worked.`, meta: { minimum: r.minimum.toFixed(2) } });
       }
       return this.post(tx, c, v, { kind: 'piece', entityId, month, sourceRef: `piece:${entityId}:${month}`, lines, title: month });
+    });
+  }
+
+  /**
+   * PAY-31 earnings check: the same piece pay and minimum-wage top-up the month would send, read before it is sent.
+   * Nothing is kept. An output with no rate in force is refused (400) as on sending, so the page shows what to fix.
+   */
+  async pieceCheck(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.entity(tx, c, v, entityId);
+      const m = await this.pieceMonth(tx, c.organizationId, entityId, month);
+      const sent = await tx.specialPosting.findFirst({ where: { organizationId: c.organizationId, kind: 'piece', sourceRef: `piece:${entityId}:${month}`, status: { in: ['pending', 'approved'] } }, select: { status: true } });
+      return {
+        month,
+        sent: sent?.status ?? null,
+        people: m.people.map((r) => ({ employeeId: r.employeeId, daysWorked: r.daysWorked, minimumDaily: r.minimumDaily, earnings: r.earnings.toFixed(2), minimum: r.minimum.toFixed(2), topUp: r.topUp.toFixed(2) })),
+        totalTopUp: m.people.reduce((t, r) => t.add(r.topUp), ZERO).toFixed(2),
+      };
     });
   }
 
@@ -673,7 +699,44 @@ export class SpecialPayService implements OnModuleInit {
       if (!u || !ids.includes(u.legalEntityId)) throw new NotFoundException('Not found');
       const p = await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'union', sourceRef: `union:${u.legalEntityId}:${month}`, status: 'approved' } });
       const lines = ((p?.lines ?? []) as unknown as Line[]).filter((l) => l.meta?.unionId === u.id);
-      return { union: u.name, month, approved: Boolean(p), members: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount })), total: lines.reduce((t, l) => t.add(l.amount), ZERO).toFixed(2) };
+      const r = await tx.unionRemittance.findFirst({ where: { organizationId: org, unionId: u.id, month: monthStart(month) } });
+      return {
+        union: u.name,
+        month,
+        approved: Boolean(p),
+        members: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount })),
+        total: lines.reduce((t, l) => t.add(l.amount), ZERO).toFixed(2),
+        remitted: r ? { amount: r.amount.toFixed(2), paidOn: dateOf(r.paidOn), reference: r.reference, recordedBy: r.recordedBy, recordedAt: r.createdAt } : null,
+      };
+    });
+  }
+
+  /**
+   * PAY-36 "Mark remitted": the union was paid its dues for the month. Only an approved check-off can be remitted; the
+   * amount is that check-off's total for the union (never typed); once per union and month; audited (money).
+   */
+  async markRemitted(ctx: TenantContext, user: ScopeUser, unionId: string, dto: { month: string; paidOn: string; reference: string }) {
+    const v = await this.viewer(user);
+    if (dto.paidOn > todayIst()) throw new BadRequestException('The payment date cannot be in the future.');
+    if (dto.paidOn < `${dto.month}-01`) throw new BadRequestException('The dues are paid on or after the first day of their month.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
+      await payScope(tx, ids);
+      const u = await tx.union.findFirst({ where: { organizationId: org, id: unionId } });
+      if (!u || !ids.includes(u.legalEntityId)) throw new NotFoundException('Not found');
+      const p = await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'union', sourceRef: `union:${u.legalEntityId}:${dto.month}`, status: 'approved' } });
+      if (!p) throw new ConflictException(`The union dues for ${dto.month} are not approved yet. Send them to payroll and get them approved first.`);
+      const amount = (p.lines as unknown as Line[]).filter((l) => l.meta?.unionId === u.id).reduce((t, l) => t.add(l.amount), ZERO);
+      if (amount.lte(0)) throw new ConflictException('No dues were deducted for this union that month.');
+      try {
+        const r = await tx.unionRemittance.create({ data: { organizationId: org, legalEntityId: u.legalEntityId, unionId: u.id, month: monthStart(dto.month), amount, paidOn: asDate(dto.paidOn), reference: dto.reference, recordedBy: v.userId! } });
+        await audit(tx, c, 'payroll.union.remitted', 'union_remittance', r.id, { unionId: u.id, month: dto.month, amount: amount.toFixed(2), paidOn: dto.paidOn, reference: dto.reference });
+        return { id: r.id, amount: amount.toFixed(2), paidOn: dto.paidOn, reference: dto.reference };
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This month is already marked as remitted to this union.');
+        throw e;
+      }
     });
   }
 

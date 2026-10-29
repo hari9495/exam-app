@@ -9622,6 +9622,22 @@ model UnionAuthorisation {
   @@map("union_authorisations")
 }
 
+/// PAY-36: a month's union check-off paid to the union (once per union and month).
+model UnionRemittance {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  unionId        String   @map("union_id") @db.Uuid
+  month          DateTime @db.Date
+  amount         Decimal  @db.Decimal(14, 2)
+  paidOn         DateTime @map("paid_on") @db.Date
+  reference      String   @db.VarChar(60)
+  recordedBy     String   @map("recorded_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("union_remittances")
+}
+
 model WageSettlement {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

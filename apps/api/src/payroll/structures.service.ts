@@ -313,6 +313,8 @@ export class PayStructuresService {
         const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
         if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
         const templates = await tx.salaryTemplate.findMany({ where: { organizationId: c.organizationId, status: 'active', OR: [{ legalEntityId: null }, { legalEntityId: e.legalEntityId }] } });
+        // PAY-42: when the options were worked out; POST compensations/suggest/check says if a law changed since.
+        const madeAt = new Date().toISOString();
         const out = [];
         for (const t of templates) {
           const ver = await tx.salaryTemplateVersion.findFirst({ where: { organizationId: c.organizationId, templateId: t.id, validFrom: { lte: new Date(`${dto.effectiveDate}T00:00:00Z`) } }, orderBy: { validFrom: 'desc' } });
@@ -320,12 +322,34 @@ export class PayStructuresService {
           try {
             const { b, components } = await this.work(tx, c.organizationId, e, { employeeId: dto.employeeId, effectiveDate: dto.effectiveDate, templateVersionId: ver.id, entryMode: 'ctc', annualCtc: dto.annualCtc } as CompensationInputDto);
             const deductions = b.lines.filter((l) => components.find((x) => x.code === l.code)?.kind === 'deduction').reduce((sum, l) => sum.add(l.monthly), new Prisma.Decimal(0));
-            out.push({ templateVersionId: ver.id, template: t.name, monthlyGross: b.monthlyGross.toFixed(2), takeHomeBeforeTax: b.monthlyGross.sub(deductions).toFixed(2), codeWageAddBack: b.codeWageAddBack.toFixed(2), belowMinimumWage: !!b.minWage?.below, warnings: mwWarnings(b), lines: breakupJson(b).lines });
+            out.push({ templateVersionId: ver.id, template: t.name, madeAt, monthlyGross: b.monthlyGross.toFixed(2), takeHomeBeforeTax: b.monthlyGross.sub(deductions).toFixed(2), codeWageAddBack: b.codeWageAddBack.toFixed(2), belowMinimumWage: !!b.minWage?.below, warnings: mwWarnings(b), lines: breakupJson(b).lines });
           } catch (err) {
-            out.push({ templateVersionId: ver.id, template: t.name, problem: (err as Error).message });
+            out.push({ templateVersionId: ver.id, template: t.name, madeAt, problem: (err as Error).message });
           }
         }
         return out;
+      }),
+    );
+  }
+
+  /**
+   * PAY-42 "stale after a law change": statutory rules (all-India, or the state of the person's place of work) that were
+   * published after the options were made and are in force on the effective date. Nothing is kept; a change sent later
+   * is worked out again on today's rules anyway, so this only tells HR to refresh before choosing.
+   */
+  suggestCheck(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; effectiveDate: string; madeAt: string }) {
+    const since = new Date(dto.madeAt);
+    if (Number.isNaN(since.getTime()) || since.getTime() > Date.now() + 60_000) throw new BadRequestException('madeAt is the time the options were made.');
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
+        const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
+        if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
+        const a = await tx.employeeAssignment.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(dto.effectiveDate) }, OR: [{ validTo: null }, { validTo: { gte: asDate(dto.effectiveDate) } }] }, select: { locationId: true } });
+        const state = a ? (await tx.location.findFirst({ where: { organizationId: c.organizationId, id: a.locationId }, select: { state: true } }))?.state ?? null : null;
+        const applies = (j: string) => j === 'IN' || (!!state && (j === state || j.endsWith(`-${state}`)));
+        const changes = (await this.rules.publishedSince(since)).filter((r) => applies(r.jurisdiction) && r.validFrom <= dto.effectiveDate && (!r.validTo || r.validTo >= dto.effectiveDate));
+        return { stale: changes.length > 0, changes: changes.map((r) => ({ statute: r.statute, jurisdiction: r.jurisdiction, version: r.version, validFrom: r.validFrom, publishedAt: r.publishedAt.toISOString() })) };
       }),
     );
   }
@@ -412,6 +436,51 @@ export class PayStructuresService {
             return { code: k?.code, name: k?.name, kind: k?.kind, monthly: l.monthly.toFixed(2), annual: l.annual.toFixed(2), citation: l.citation, inCtc: def && ver ? inCtcOf(def, ver.options) : k?.kind !== 'deduction', basis: def && ver ? lineBasis(def, ver.components, rules, iso(comp.validFrom)!) : null };
           }),
         };
+      }),
+    );
+  }
+
+  /**
+   * PAY-12 history: every salary of the person's employment (newest first, corrected ones left out) with who asked for
+   * it, who approved it and why, plus pay changes still waiting or turned down. Same access as the salary in force:
+   * the person themselves, or employee.salary.view over them; a view by someone else is audited (no amounts logged).
+   */
+  compensationHistory(ctx: TenantContext, user: ScopeUser, employeeId: string, asOn = todayIst()) {
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
+        const org = c.organizationId;
+        const own = await this.history.ownEmployeeId(tx, c, v);
+        const e = await this.employmentOn(tx, org, employeeId, asOn);
+        if (own !== employeeId) {
+          if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.view', e, asOn))) throw new NotFoundException('Not found');
+          await payScope(tx, [e.legalEntityId]);
+        }
+        const comps = await tx.compensation.findMany({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, take: 100 });
+        const changes = await tx.employeeChange.findMany({ where: { organizationId: org, employmentId: e.id, OR: [{ id: { in: comps.map((x) => x.changeId) } }, { status: { in: ['pending', 'rejected'] }, changeType: 'salary_revision' }] }, orderBy: { requestedAt: 'desc' }, take: 200 });
+        const pkgs = await tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: changes.map((x) => x.id) } }, select: { changeId: true, templateVersionId: true, payBasis: true } });
+        const vers = await tx.salaryTemplateVersion.findMany({ where: { organizationId: org, id: { in: pkgs.map((x) => x.templateVersionId).filter((x): x is string => !!x) } }, select: { id: true, templateId: true, version: true } });
+        const tpls = await tx.salaryTemplate.findMany({ where: { organizationId: org, id: { in: vers.map((x) => x.templateId) } }, select: { id: true, name: true } });
+        const userIds = [...new Set(changes.flatMap((x) => [x.requestedBy, x.decidedBy]).filter((x): x is string => !!x))];
+        const users = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
+        const who = (id: string | null) => (id ? { userId: id, name: users.find((u) => u.id === id)?.name ?? null } : null);
+        const template = (changeId: string) => {
+          const ver = vers.find((x) => x.id === pkgs.find((k) => k.changeId === changeId)?.templateVersionId);
+          return ver ? { name: tpls.find((t) => t.id === ver.templateId)?.name ?? null, version: ver.version } : null;
+        };
+        const ctcOf = (x: { payload: Prisma.JsonValue }) => (x.payload as { compensation?: { annualCtc?: string } } | null)?.compensation?.annualCtc ?? null;
+        const items = [
+          ...comps.map((x, i) => {
+            const ch = changes.find((k) => k.id === x.changeId);
+            const before = comps[i + 1];
+            return { kind: 'salary' as const, changeId: x.changeId, status: 'approved', validFrom: iso(x.validFrom), validTo: iso(x.validTo), annualCtc: x.annualCtc.toFixed(2), previousCtc: before ? before.annualCtc.toFixed(2) : null, changeType: ch?.changeType ?? null, reason: ch?.reason ?? null, requestedBy: who(ch?.requestedBy ?? null), requestedAt: ch?.requestedAt ?? null, decidedBy: who(ch?.decidedBy ?? null), decidedAt: ch?.decidedAt ?? null, template: template(x.changeId) };
+          }),
+          ...changes
+            .filter((k) => !comps.some((x) => x.changeId === k.id) && ['pending', 'rejected'].includes(k.status))
+            .map((k) => ({ kind: 'request' as const, changeId: k.id, status: k.status, validFrom: iso(k.effectiveDate), validTo: null, annualCtc: ctcOf(k), previousCtc: null, changeType: k.changeType, reason: k.reason, requestedBy: who(k.requestedBy), requestedAt: k.requestedAt, decidedBy: who(k.decidedBy), decidedAt: k.decidedAt, template: template(k.id), decisionNote: k.decisionNote })),
+        ].sort((x, y) => (y.validFrom ?? '').localeCompare(x.validFrom ?? ''));
+        if (own !== employeeId) await audit(tx, c, 'payroll.compensation.history_viewed', 'employee', employeeId, { asOn, items: items.length });
+        return items;
       }),
     );
   }

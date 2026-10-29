@@ -323,6 +323,44 @@ describe('Payroll batch 5b', () => {
     await api('payAdmin', 'post', `/payroll/compensation-changes/${ch.changeId}/letter`).send({ signatory: 'Asha Rao', confirmation: { phrase: 'ISSUE RL', impact: [] } }).expect(409);
   });
 
+  it('compensation history (PAY-12): the approved salary with who asked and approved; self and payroll read it, others cannot; audited', async () => {
+    const h = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body;
+    expect(h[0]).toMatchObject({ kind: 'salary', status: 'approved', annualCtc: '726000.00', reason: 'Annual review', requestedBy: { userId: users.payAdmin }, decidedBy: { userId: users.payApprover } });
+    expect((await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body).toHaveLength(h.length);
+    await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
+    await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
+    await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation-history`).expect(404);
+    await api('payAdmin', 'get', '/payroll/employees/not-a-uuid/compensation-history').expect(400);
+    // Viewed by someone else: audited, with no amounts.
+    const logged = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.compensation.history_viewed', entityId: ids.empEmp } }));
+    expect(logged.length).toBe(1);
+    expect(JSON.stringify(logged[0], (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toMatch(/726000/);
+  });
+
+  it('suggest split stale flag (PAY-42): fresh until a rule for the place of work is published after the options were made', async () => {
+    const on = '2099-04-02';
+    const opts = (await api('payAdmin', 'post', '/payroll/compensations/suggest').send({ employeeId: ids.empEmp, effectiveDate: today, annualCtc: '726000' }).expect(200)).body as { madeAt: string }[];
+    expect(opts.length).toBeGreaterThan(0);
+    const madeAt = opts[0].madeAt;
+    expect(new Date(madeAt).getTime()).toBeLessThanOrEqual(Date.now());
+    const check = (who: Who, body: Record<string, string>) => api(who, 'post', '/payroll/compensations/suggest/check').send(body);
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(200)).body).toEqual({ stale: false, changes: [] });
+    // A Karnataka rule (the place of work) in force on the date, published after madeAt: stale, naming the rule.
+    const rule = { ...ptRule(goodSlabs), jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' };
+    const { id } = (await api('staff', 'post', '/platform/statutory/rule-sets').send(rule).expect(201)).body;
+    await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(200);
+    const stale = (await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(200)).body;
+    expect(stale).toMatchObject({ stale: true, changes: [{ statute: 'IN.PT', jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' }] });
+    // Options made after the publish are fresh; a date before the rule starts is not affected.
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: new Date().toISOString() }).expect(200)).body.stale).toBe(false);
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: today, madeAt }).expect(200)).body.stale).toBe(false);
+    // Negative: no salary-manage key, another company, bad input.
+    await check('hrAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(403);
+    await check('payAdminB', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(404);
+    await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: 'yesterday' }).expect(400);
+    await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: '2999-01-01T00:00:00Z' }).expect(400);
+  });
+
   // ------------------------------------------------------------------------------------------ statutory profile (PAY-2.10)
 
   it('statutory profile: defaults from the employment type; only what the law leaves open can differ; dated rows', async () => {

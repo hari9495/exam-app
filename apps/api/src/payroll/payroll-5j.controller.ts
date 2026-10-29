@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -32,6 +32,18 @@ export class SuggestDto {
 
   @Matches(/^(?!0+(\.0+)?$)\d{1,12}(\.\d{1,2})?$/)
   annualCtc!: string;
+}
+
+export class SuggestCheckDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  effectiveDate!: string;
+
+  /** The madeAt the suggestions came back with (an ISO time). */
+  @IsISO8601({ strict: true })
+  madeAt!: string;
 }
 
 export class ParallelDecisionDto {
@@ -67,6 +79,14 @@ export class Payroll5jController {
   @RequirePermissions('employee.salary.manage')
   suggest(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SuggestDto) {
     return this.structures.suggest(ctx, this.user(req), dto);
+  }
+
+  /** PAY-42: did a law change after the options were made? (nothing is kept) */
+  @Post('compensations/suggest/check')
+  @HttpCode(200)
+  @RequirePermissions('employee.salary.manage')
+  suggestCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SuggestCheckDto) {
+    return this.structures.suggestCheck(ctx, this.user(req), dto);
   }
 
   @Post('runs/:id/parallel')

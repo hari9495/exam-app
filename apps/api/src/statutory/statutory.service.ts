@@ -40,6 +40,12 @@ export class StatutoryRulesService {
     return sets;
   }
 
+  /** Rule sets published after a moment (PAY-42: suggestions made before a law change are stale). Not cached. */
+  async publishedSince(since: Date) {
+    const rows = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: false }, (tx) => tx.statutoryRuleSet.findMany({ where: { status: 'published', publishedAt: { gt: since } }, orderBy: { publishedAt: 'asc' } }));
+    return rows.map((r) => ({ statute: r.statute, jurisdiction: r.jurisdiction, version: r.version, validFrom: iso(r.validFrom), validTo: r.validTo ? iso(r.validTo) : null, publishedAt: r.publishedAt! }));
+  }
+
   /** The console list: every version with its status, drafter and reviewer (YukthiX staff). */
   async list() {
     return this.tenantPrisma.forTenant(SUPER, async (tx) => {

@@ -22,6 +22,7 @@ import {
   OutputsDto,
   PostMonthDto,
   RateCardDto,
+  RemittedDto,
   RevokeDto,
   SettlementDto,
   SettlementPostDto,
@@ -85,6 +86,13 @@ export class Payroll5iController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
   importOutputs(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OutputImportDto, @UploadedFile() f?: Express.Multer.File) {
     return this.special.importOutputs(ctx, this.user(req), dto.legalEntityId, f?.buffer);
+  }
+
+  /** PAY-31: the month's piece pay and minimum-wage top-up per person, before it is sent (nothing is kept). */
+  @Get('piece/check')
+  @RequirePermissions('payroll.special.manage')
+  pieceCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PostMonthDto) {
+    return this.special.pieceCheck(ctx, this.user(req), q.legalEntityId, q.month);
   }
 
   @Post('piece/post')
@@ -231,6 +239,13 @@ export class Payroll5iController {
   @RequirePermissions('payroll.special.manage')
   remittance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: SettlementPostDto) {
     return this.special.remittance(ctx, this.user(req), id, q.month);
+  }
+
+  /** PAY-36: mark a month's approved check-off as paid to the union (once; audited). */
+  @Post('unions/:id/remittance')
+  @RequirePermissions('payroll.special.manage')
+  markRemitted(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemittedDto) {
+    return this.special.markRemitted(ctx, this.user(req), id, dto);
   }
 
   @Post('settlements')

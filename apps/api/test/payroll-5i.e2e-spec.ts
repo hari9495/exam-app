@@ -180,7 +180,7 @@ describe('Payroll batch 5i', () => {
   });
 
   it('every 5i table has forced RLS, tenant isolation, the support exclusion and the pay guard', async () => {
-    const tables = ['special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms'];
+    const tables = ['special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms', 'union_remittances'];
     const rows = await prisma.$queryRaw<{ t: string; ok: boolean }[]>`
       SELECT c.relname AS t, (c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation')
@@ -199,12 +199,27 @@ describe('Payroll batch 5i', () => {
     await api('payAdmin', 'post', '/payroll/special/rate-cards').send({ legalEntityId: ids.entity, operationCode: 'stitch', name: 'Stitch a shirt', unit: 'piece', rate: '2.50', validFrom: `${prevMonth}-01` }).expect(201);
     await api('payAdmin', 'post', '/payroll/special/outputs').send({ legalEntityId: ids.entity, rows: [{ employeeId: ids.emp1, workDate: first, operationCode: 'STITCH', quantity: '10' }, { employeeId: ids.emp2, workDate: first, operationCode: 'STITCH', quantity: '400' }] }).expect(201);
     await api('payAdmin', 'post', '/payroll/special/outputs').send({ legalEntityId: ids.entity, rows: [{ employeeId: ids.emp1, workDate: first, operationCode: 'NOPE', quantity: '1' }] }).expect(201);
-    // An output with no rate card in force is never paid at a guess.
+    // An output with no rate card in force is never paid at a guess (the earnings check says so too).
     await api('payAdmin', 'post', '/payroll/special/piece/post').send({ legalEntityId: ids.entity, month }).expect(400);
+    expect((await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(400)).body.message).toMatch(/NOPE/);
     await scoped((tx) => tx.pieceOutput.deleteMany({ where: { organizationId: org.A.id, operationCode: 'NOPE' } }));
+    // PAY-31 earnings check before sending: the same top-up the month would send; nothing kept; payroll.special.manage only.
+    const check = (await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(200)).body;
+    expect(check).toMatchObject({ month, sent: null });
+    const c1 = check.people.find((x: { employeeId: string }) => x.employeeId === ids.emp1);
+    expect(c1).toMatchObject({ earnings: '25.00', daysWorked: 1 });
+    expect(Number(c1.topUp)).toBeGreaterThan(0);
+    expect(check.people.find((x: { employeeId: string }) => x.employeeId === ids.emp2).topUp).toBe('0.00');
+    expect(await scoped((tx) => tx.specialPosting.count({ where: { kind: 'piece' } }))).toBe(0);
+    await api('approver1', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(403);
+    await api('payAdminB', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(404);
+    await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month: '2026-13' }).expect(400);
     const p = (await api('payAdmin', 'post', '/payroll/special/piece/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
     const lines = p.lines as { employeeId: string; componentCode: string; amount: string }[];
     expect(lines.find((l) => l.employeeId === ids.emp1 && l.componentCode === 'piece_pay')!.amount).toBe('25.00');
+    const topUp = lines.find((l) => l.employeeId === ids.emp1 && l.componentCode === 'min_wage_topup')!.amount;
+    expect(topUp).toBe(c1.topUp);
+    expect((await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(200)).body.sent).toBe('pending');
     expect(lines.some((l) => l.employeeId === ids.emp1 && l.componentCode === 'min_wage_topup')).toBe(true);
     expect(lines.some((l) => l.employeeId === ids.emp2 && l.componentCode === 'min_wage_topup')).toBe(false);
     // The same month again is refused while this one is live; the maker is not an approver.
@@ -236,7 +251,21 @@ describe('Payroll batch 5i', () => {
     const p = (await api('payAdmin', 'post', '/payroll/special/union/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
     expect(p.lines).toEqual([expect.objectContaining({ employeeId: ids.emp1, componentCode: 'union_dues', amount: '50.00' })]);
     await decide('approver1', /Union dues/);
-    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body).toMatchObject({ approved: true, total: '50.00', members: [{ employeeId: ids.emp1, amount: '50.00' }] });
+    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body).toMatchObject({ approved: true, total: '50.00', members: [{ employeeId: ids.emp1, amount: '50.00' }], remitted: null });
+    // PAY-36 "Mark remitted": only an approved month, the amount from the check-off, once, audited; payroll.special.manage.
+    const remit = (body: Record<string, string>, who: Who = 'payAdmin') => api(who, 'post', `/payroll/special/unions/${union}/remittance`).send(body);
+    expect((await remit({ month: prevMonth, paidOn: today, reference: 'NEFT-1' }).expect(409)).body.message).toMatch(/not approved/);
+    await remit({ month, paidOn: '2999-01-01', reference: 'NEFT-1' }).expect(400);
+    await remit({ month, paidOn: `${prevMonth}-28`, reference: 'NEFT-1' }).expect(400);
+    await remit({ month, paidOn: today, reference: '<x>' }).expect(400);
+    await remit({ month, paidOn: today, reference: 'NEFT-1', amount: '1' } as Record<string, string>).expect(400);
+    await remit({ month, paidOn: today, reference: 'NEFT-1' }, 'approver1').expect(403);
+    await remit({ month, paidOn: today, reference: 'NEFT-1' }, 'payAdminB').expect(404);
+    const done = (await remit({ month, paidOn: today, reference: 'NEFT 20261030-01' }).expect(201)).body;
+    expect(done).toMatchObject({ amount: '50.00', paidOn: today, reference: 'NEFT 20261030-01' });
+    await remit({ month, paidOn: today, reference: 'NEFT-2' }).expect(409);
+    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body.remitted).toMatchObject({ amount: '50.00', paidOn: today, reference: 'NEFT 20261030-01', recordedBy: users.payAdmin });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.union.remitted', entityId: done.id } }))).toBe(1);
     // VRS: 8,00,000 with 2,00,000 claimed before → what is left of the limit is exempt, the rest taxed.
     const vrs = (await api('payAdmin', 'post', `/payroll/special/entities/${ids.entity}/vrs`).send({ employeeId: ids.emp2, month, amount: '800000', priorExemption: '200000' }).expect(201)).body.posting;
     expect(vrs.lines.map((l: { componentCode: string; amount: string }) => [l.componentCode, l.amount])).toEqual([['vrs_exempt', '300000.00'], ['vrs_taxable', '500000.00']]);

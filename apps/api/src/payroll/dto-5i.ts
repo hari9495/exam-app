@@ -636,3 +636,19 @@ export class TaxYearDto {
   @Max(2100)
   year!: number;
 }
+
+/** PAY-36: the union was paid the month's check-off (the amount comes from the approved check-off). */
+export class RemittedDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @Matches(DAY)
+  paidOn!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(60)
+  @Matches(/^[\w\-/. ]+$/, { message: 'The bank or cheque reference uses letters, digits, spaces and - / . only.' })
+  reference!: string;
+}
