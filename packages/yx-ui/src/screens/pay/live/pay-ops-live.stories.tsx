@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AdvisoriesScreen, LoansScreen, MyDeclarationsScreen, ProofCheckScreen, RegistersScreen, TaxCertificatesScreen } from './operations';
+import { AdvisoriesScreen, RegistersScreen, TaxCertificatesScreen } from './operations';
 import { PEOPLE } from './fixtures-5j';
 import { ADVISORIES, CERTIFICATES, DECLARATIONS, ENTITIES, LOANS, PROOFS, REGISTERS } from './fixtures-ops';
 
@@ -10,11 +10,6 @@ const search = async () => PEOPLE.map((p) => ({ id: p.employeeId, name: p.name, 
 const meta: Meta = { title: 'Screens/Pay/Live ops', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
-
-
-
-};
-
 
 export const Registers: S = {
   name: 'CMP-09 · Statutory registers',

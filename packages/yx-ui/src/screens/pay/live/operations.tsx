@@ -6,6 +6,7 @@ import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../../components/field';
 import { TextArea, TextField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
+import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
@@ -20,14 +21,18 @@ import type { SetupEntity } from './types-5b';
 import type {
   AdvisoryView,
   CertificateRow,
+  DeclarationInput,
+  DeclarationLine,
+  LoanChangeInput,
+  LoanRequestInput,
+  LoanView,
+  MyCertificate,
+  MyDeclarations,
   PartAImport,
+  ProofDecision,
+  ProofQueueLine,
   RegisterRow,
 } from './types-ops';
-
-// Payroll operations, wired (PAY-10.09 … 10.16; batch 5d, 5c, 5e and 5f APIs): a run's payment results and the cash and
-// cheque register, payment modes, loans and advances, payslip queries for payroll, tax declarations with proofs and their
-// checking, statutory registers, advisories, Part A and the year-end certificates, and adding a nominee for the pay portal.
-
 const MONTH = /^\d{4}-\d{2}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,13 +46,16 @@ function Failed({ error }: { error: string | null }) {
 
 /** A drawer with a form: errors show only after Save is pressed (no red while typing). */
 export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+  const { busy, error, run } = useRun();
   const save = useSaveErrors(errors);
+  return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
       title={title}
       subtitle={subtitle}
       footer={
+        <>
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
@@ -66,7 +74,9 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
           >
             {confirm}
           </Button>
+        </>
       }
+    >
       <div className="yx-tim-form">
         <ErrorSummary errors={save.shownErrors} />
         <Failed error={error} />
@@ -78,73 +88,26 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
 
 /** Asks before a step that cannot be undone and has nothing to type (freezing a register). */
 function ConfirmDrawer({ title, children, confirm, onClose, onConfirm }: { title: string; children: ReactNode; confirm: string; onClose: () => void; onConfirm: () => Promise<unknown> }) {
+  const { busy, error, run } = useRun();
+  return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
       title={title}
       footer={
+        <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={busy === 'go'} onClick={() => void run('go', async () => (await onConfirm(), onClose()))}>
             {confirm}
           </Button>
+        </>
       }
+    >
       <div className="yx-tim-stack">
         <Failed error={error} />
         {children}
       </div>
     </Drawer>
-  );
-}
-
-
-
-};
-
-}
-
-  );
-}
-
-      }
-              />
-            />
-  );
-}
-
-            />
-  );
-}
-
-
-};
-
-};
-
-}
-
-  const { busy, error, run } = useRun();
-        />
-  );
-}
-
-      }
-    >
-                />
-  );
-}
-
-}
-
-  const { busy, error, run } = useRun();
-      />
-  );
-}
-
-  return (
-    >
-        <>
-            />
-        </>
   );
 }
 
@@ -252,6 +215,7 @@ export function RegistersScreen(p: RegistersScreenProps) {
             </table>
           )}
         </>
+      )}
       {remaking && <ReasonDrawer title="Make a new version?" subtitle="The earlier version stays as it is; the new one replaces it for signing." label="Why" confirm="Make new version" onClose={() => setRemaking(false)} onSave={(why) => p.onGenerate(why)} />}
       {freezing && (
         <ConfirmDrawer title={`Freeze the ${registerName(freezing.registerType)} register?`} confirm="Freeze" onClose={() => setFreezing(null)} onConfirm={() => p.onFreeze(freezing)}>

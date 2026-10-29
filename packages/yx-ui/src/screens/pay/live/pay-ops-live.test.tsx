@@ -1,21 +1,16 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AdvisoriesScreen, LoansScreen, MyDeclarationsScreen, ProofCheckScreen, RegistersScreen, TaxCertificatesScreen } from './operations';
+import { AdvisoriesScreen, RegistersScreen, TaxCertificatesScreen } from './operations';
 import { PEOPLE } from './fixtures-5j';
 import { ADVISORIES, CERTIFICATES, DECLARATIONS, ENTITIES, LOANS, PROOFS, REGISTERS } from './fixtures-ops';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const fn = () => vi.fn(async () => ({}) as never);
 const nameOf = (id: string) => PEOPLE.find((p) => p.employeeId === id)?.name ?? 'Someone';
+const search = async () => PEOPLE.map((p) => ({ id: p.employeeId, name: p.name, employeeCode: p.employeeCode ?? undefined }));
 
 describe('payroll operations screens', () => {
-
-
-
-
-
-
 
   it('registers: freezing asks first; a signed register only downloads', async () => {
     const onFreeze = fn();
@@ -27,6 +22,7 @@ describe('payroll operations screens', () => {
     expect(onFreeze).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Freeze' }));
     await waitFor(() => expect(onFreeze).toHaveBeenCalledWith(REGISTERS[1]));
+  });
 
   it('advisories: marked reviewed with what was done', async () => {
     const onReview = fn();

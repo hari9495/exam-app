@@ -25,6 +25,7 @@ const DOC_STATUS: Record<PayDocument['status'], { label: string; tone: BadgeTone
 // ------------------------------------------------------------------------------------------ documents (the payroll list is the PAY-48 design: ../payroll-records.tsx)
 
 function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: PayDocument[]; showPerson?: boolean; busy: string | null; onDownload: (d: PayDocument) => void; verifyUrl: (code: string) => string }) {
+  return (
     <table className="yx-tim-table" aria-label="Pay documents">
       <thead>
         <tr>
@@ -71,11 +72,5 @@ function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: Pay
         ))}
       </tbody>
     </table>
-  );
-}
-
-}
-
-  return (
   );
 }

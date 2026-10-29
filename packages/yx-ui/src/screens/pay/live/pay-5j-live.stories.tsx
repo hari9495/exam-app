@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator } from '../../people/exits';
-import { DETAIL, FILINGS, FNF, HUB, PEOPLE, RETURNS, RUN } from './fixtures-5j';
+import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
 
 // Batch 5j wired payroll screens with sample data (the affordance guard opens these in light and dark).
 const ok = async () => ({}) as never;
@@ -9,11 +9,6 @@ const nameOf = (id: string) => PEOPLE.find((p) => p.employeeId === id)?.name ?? 
 const meta: Meta = { title: 'Screens/Pay/Live 5j', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
-
-};
-    />
-  ),
-};
 export const Statutory: S = {
   name: 'CMP-01 · Statutory filings',
   render: () => (

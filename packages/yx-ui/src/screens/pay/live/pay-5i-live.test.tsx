@@ -1,9 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { periodsOf } from './types-5j';
 
-const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
 describe('batch 5i screens', () => {
   it('weekly periods match the API calendar: from the anchor, cut at month ends', () => {
@@ -14,6 +11,5 @@ describe('batch 5i screens', () => {
       ['2026-10-19', '2026-10-25'],
       ['2026-10-26', '2026-10-31'],
     ]);
-
   });
 });

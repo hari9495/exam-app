@@ -18,6 +18,7 @@ import { rupees } from './runs';
 import { EntityPicker } from './setup';
 import type { LoadState } from './types';
 import type { SetupEntity } from './types-5b';
+import type { ActuarialView, EquityOverview, EwaDrawView, EwaPolicyView, GrantView, IncentivePlanView, MyEwa, MyIncentives, NecSummary, OncallRuleView, PackStatus, RateCard, SpecialKind, SpecialPosting, UnionsView } from './types-5i';
 
 // Batch 5i, wired (PAY-9.01 … 9.12): special pay sent to payroll for approval (piece-rate, incentives, tips, on-call,
 // union dues, settlements, lay-off, VRS), earned wage access, equity, the actuarial census and valuations, and country
@@ -33,27 +34,4 @@ function Failed({ error }: { error: string | null }) {
       {error}
     </InlineAlert>
   ) : null;
-}
-
-
-  );
-}
-
-
-}
-
-
-  );
-}
-
-  );
-}
-
-  );
-}
-
-  );
-}
-
-  );
 }

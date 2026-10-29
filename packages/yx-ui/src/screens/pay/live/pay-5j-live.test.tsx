@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator, type LiveFnf } from '../../people/exits';
 import { rupees } from './runs';
-import { DETAIL, FILINGS, FNF, HUB, PEOPLE, RETURNS, RUN } from './fixtures-5j';
+import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = vi.fn(async () => ({}) as never);
@@ -12,7 +12,6 @@ describe('batch 5j payroll screens', () => {
   it('rupees: Indian grouping from the API string', () => {
     expect(rupees('1234567.5')).toBe('₹12,34,567.50');
     expect(rupees('-200.00')).toBe('−₹200.00');
-
   });
 
   it('statutory hub: an uploaded filing is marked filed with its phrase; the TDS return waits for the filer’s .fvu', async () => {
