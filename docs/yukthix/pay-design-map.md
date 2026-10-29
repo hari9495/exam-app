@@ -28,10 +28,13 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 28 | 10 | 0 | 0 | 1 | 9 | 0 | 48 |
 | E. Special pay, earned wage access, actuarial, benefits | 14 | 76 | 8 | 0 | 0 | 6 | 8 | 0 | 98 |
-| F. Reports | 1 | 0 | 0 | 0 | 0 | 13 | 0 | 0 | 13 |
+| F. Reports | 1 | 13 | 1 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 46 | 3 | 0 | 0 | 0 | 0 | 0 | 49 |
-| **All** | **53** | **333** | **40** | **0** | **0** | **20** | **19** | **0** | **412** |
+| **All** | **53** | **346** | **41** | **0** | **0** | **7** | **19** | **0** | **413** |
+
+Reports builder (30 Oct 2026, branch `feat/yukthix-pay-reports`): PAY-25 is live (13 stories made live, 1 state story
+added first; No access is live with a gap); F and All recounted from the PAY-25 rows below.
 
 Bonus builder (29 Oct 2026, branch `feat/yukthix-pay-bonus`): PAY-24 is live (4 stories made live, 6 state stories added
 first); E and All recounted from the PAY-24 rows below.
@@ -189,7 +192,7 @@ Until then they stay in `known.json`.
 | design | what it needs | size |
 |---|---|---|
 | ~~PAY-24 Bonus computation (4)~~ | Built (bonus builder, 29 Oct 2026): see "Bonus builder status" at the end. | — |
-| PAY-25 Payroll reports (13) | `GET payroll/reports/:kind` with filters and export, read only, behind the pay guard and a new `payroll.report.view` key: salary register, reconciliation, variance, CTC by department, arrears, YTD, bank advice, hold ageing, gratuity provision, loan ledger. The data is already in payslips, holds, loans, journal and actuarial | L |
+| ~~PAY-25 Payroll reports (13)~~ | Built (reports builder, 30 Oct 2026): see "Reports builder status" at the end. Was: `GET payroll/reports/:kind` with filters and export, read only, behind the pay guard and a new `payroll.report.view` key: salary register, reconciliation, variance, CTC by department, arrears, YTD, bank advice, hold ageing, gratuity provision, loan ledger. The data is already in payslips, holds, loans, journal and actuarial | L |
 | PAY-43 Group health (5) | an insurance broker partner (licensed), quotes, disclosure acknowledgement, policy and endorsements, minimum headcount rule; new tables. Blocked on choosing a partner | L |
 | PAY-27 "Partner connection" (1) | partner-funded earned wage access (connector P10); today draws are employer-funded only | M |
 | PAY-40 "Chat panel" (1) | a chat about one's own payslip (wave 5); nothing in the API | M |
@@ -827,23 +830,26 @@ Live page: /yx/payroll/country-packs (`CountryPacksScreen`, country-packs.tsx). 
 
 #### PAY-25 · Payroll reports
 
-Live page: none
+Live page: /yx/payroll/reports
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Salary register | design only, feature not built |  |
-| Reconciliation · Reconciliation (finance approver) | design only, feature not built |  |
-| Variance · Variance · chart and table | design only, feature not built |  |
-| Ctc · CTC by department | design only, feature not built |  |
-| Arrears · Arrears | design only, feature not built |  |
-| Ytd · Year to date | design only, feature not built |  |
-| BankAdvice · Bank advice | design only, feature not built |  |
-| HoldAgeing · Hold ageing | design only, feature not built |  |
-| Gratuity · Gratuity provision | design only, feature not built |  |
-| LoanLedger · Loan ledger | design only, feature not built |  |
-| Empty · Empty · no data for filters | design only, feature not built |  |
-| Loading · Loading | design only, feature not built |  |
-| NoAccess · No access (HR without payroll scope) | design only, feature not built |  |
+| Register · Salary register | live | one column per pay component (the design's combined "PF, ESI, PT" column is one column each) |
+| Reconciliation · Reconciliation (finance approver) | live | Finance Approver holds the key |
+| Variance · Variance · chart and table | live | the limit is the company setting `payroll.variance_threshold_pct` |
+| Ctc · CTC by department | live |  |
+| Arrears · Arrears | live |  |
+| Ytd · Year to date | live |  |
+| BankAdvice · Bank advice | live |  |
+| HoldAgeing · Hold ageing | live |  |
+| Gratuity · Gratuity provision | live | "Provision to date" is the sum of the payslips' gratuity lines (not an actuarial liability) |
+| LoanLedger · Loan ledger | live |  |
+| Empty · Empty · no data for filters | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error · the report did not load | live | new state story |
+| NoAccess · No access (HR without payroll scope) | live (gap) | "Request access" is not built: the live page says whom to ask |
+
+The design's "Schedule" button and dialog stay in the stories only: scheduled reports are not built.
 
 ### G. Records (new designs, founder decision 3; builder 1)
 
@@ -1418,3 +1424,29 @@ stories feed the same screen with sample data. Menu: Pay › Statutory bonus (`p
   `no_compensation` check (pay them through F&F for now); no bonus register (Form C) export or approver notification yet;
   bonus for employees under 15 (₹60) and the new-establishment exemption (s.16) are not modelled.
 
+## Reports builder status (PAY-25 payroll reports; branch `feat/yukthix-pay-reports`, 30 Oct 2026)
+
+Founder decision: bonus first, then reports. `/yx/payroll/reports` renders the designed `PayrollReportsScreen` with `live`; the
+design stories feed the same view (`reports-live.tsx`) with sample data in the API's shape. Menu: Pay › Reports › Payroll
+reports (`payroll.reports.view`).
+
+- **Key:** `payroll.reports.view` (Payroll Admin, Payroll Approver and Finance Approver templates; migration
+  `20261309000100_pay_reports_grant` adds it to hand-edited roles that hold `payroll.run.prepare` or `payroll.run.approve`).
+  Scoped to legal entities; the database pay guard is opened to exactly those entities. HR without payroll keys sees no access.
+- **Reports (read only, approved payslips only):** salary register (one column per component); reconciliation (the month
+  against the month before, regular runs; gross bridge: joiners, leavers, changes; six-month trend); variance (against each
+  person's last paid month within 12 months, the company limit); CTC by department; arrears (approved worksheets by the
+  month paid); year to date (April to the month; TDS from the components mapped to TDS); bank advice (unheld, bank-mode
+  payslips; IFSC and the last four digits only); hold ageing (as on today: 0–30, 31–60, over 60 days, and by reason);
+  gratuity provision (the month's and the to-date provision lines; payable after the gratuity rule's minimum service);
+  loan ledger (opening, recovered, closing, worked back from each loan's own balance).
+- **Filters:** legal entity, month or month range (at most 36), department (with its sub-departments), location; a
+  person's department and location are the ones on the last day of each month.
+- **API:** `GET payroll/reports` (filter choices), `GET payroll/reports/:kind?legalEntityId&from&to&departmentId&locationId&page&pageSize`
+  (at most 200 rows a page; totals over every row), `…&format=csv` (every row, up to 50,000; formula-safe; audited as
+  `payroll.report.exported` with the filters and the row count). Sums in SQL numeric, sent as decimal strings; a fixed
+  number of queries per report (no per-row queries).
+- **Migrations:** `20261309000000_pay_reports` (key, three indexes), `20261309000100_pay_reports_grant`.
+- **Gaps:** scheduled reports and "Request access" are design only; CSV only (no XLSX or PDF); the reconciliation bridge
+  does not yet split revisions, unpaid leave, arrears and statutory changes (APX-C RPT-PAY-02); year to date has one row per
+  employment (a rehired person's employments are not combined).

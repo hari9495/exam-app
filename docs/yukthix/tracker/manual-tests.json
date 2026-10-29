@@ -5891,5 +5891,150 @@
       "PAY-24 Minimum"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-01",
+    "area": "Pay · Reports",
+    "screen": "Payroll reports: menu, filters on one row, salary register (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Pay in the menu; under Reports find Payroll reports. Open it.",
+      "2. Look at the filter row: Report, Legal entity, From month, To month, Department, Location.",
+      "3. With Salary register chosen, read the figures above the table (Payslips, Gross, Deductions, Net, Cost to company), then open the latest approved run in Payroll home and compare its totals.",
+      "4. Choose a department, then a location, then clear both with the x in each field.",
+      "5. Choose From month later than To month."
+    ],
+    "expected": "Step 1: \"Payroll reports\" is under Pay > Reports. Step 2: all filters sit on one row, each looks clickable (border, pointer, focus ring). Step 3: the register has one column per pay component; Gross and Net match the run to the paisa. Step 4: rows and totals shrink to the department or location and come back when cleared. Step 5 (negative): the other month moves so the range is never backwards; no error page. No page scroll at 1278 x 635 except the long table.",
+    "stories": [
+      "PAY-25 Register",
+      "PAY-25 Loading"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-02",
+    "area": "Pay · Reports",
+    "screen": "Reconciliation and variance (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "finance-approver@demo-org.test (Finance Approver). Then payroll@demo-org.test.",
+    "steps": [
+      "1. As the finance approver open Payroll reports, choose Payroll reconciliation and the latest month.",
+      "2. Read the sentence under the table: gross change, joiners, leavers, changes for people paid in both months.",
+      "3. Choose Variance for the same month.",
+      "4. As Lakshmi (HR) change Settings > Payroll \"Ask to confirm a net pay change above (%)\" to 25 for the entity, then reload Variance as Suresh."
+    ],
+    "expected": "Step 1: the finance approver can open the page; the table shows Employees, Gross, Deductions, Net, Cost to company for both months and the difference; the line chart shows up to six months. Step 2: last month gross + joiners + leavers + changes = this month gross exactly. Step 3: the chart buckets use the company limit (10% by default); the table lists only people above it, with the cause or \"Not explained yet\". Step 4: the labels and the list follow 25%. Negative: a month with no earlier approved run shows \"No data for these filters.\" with Clear filters.",
+    "stories": [
+      "PAY-25 Reconciliation",
+      "PAY-25 Variance"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-03",
+    "area": "Pay · Reports",
+    "screen": "CTC, arrears and year to date (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Choose CTC report for the latest month, then for a three-month range.",
+      "2. Choose Arrears for the month an arrears worksheet was paid in (Pay > Arrears and recoveries shows it).",
+      "3. Choose Year to date with the latest month."
+    ],
+    "expected": "Step 1: a stacked bar per department (gross and employer contributions); a department with fewer than 3 people is not shown on its own; the totals under the chart add up. Step 2: one row per approved worksheet with its cause and amount. Step 3: the line chart is cumulative from April; each row has months paid, gross, TDS, all deductions and net. Negative: a month with no arrears shows \"No data for these filters.\"",
+    "stories": [
+      "PAY-25 Ctc",
+      "PAY-25 Arrears",
+      "PAY-25 Ytd"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-04",
+    "area": "Pay · Reports",
+    "screen": "Bank advice and hold ageing (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Choose Bank advice for the latest month.",
+      "2. Compare the count and amount with the run's bank file (Payroll files).",
+      "3. Choose Hold ageing."
+    ],
+    "expected": "Step 1: only the last four digits of each account are shown (••••1234), never the full number; the line above says how many are not in the file (held, cash or cheque). Step 2: count and amount match the bank file. Step 3: there is no month filter and the text says \"As on\" today; the age table (0–30, 31–60, over 60 days) and the reason chart match Pay > Inputs > Holds. Negative: the Tamil Nadu entity with no holds shows \"No data for these filters.\" and Export CSV is off.",
+    "stories": [
+      "PAY-25 BankAdvice",
+      "PAY-25 HoldAgeing",
+      "PAY-25 Empty"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-05",
+    "area": "Pay · Reports",
+    "screen": "Gratuity provision and loan ledger (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Choose Gratuity provision for the latest month.",
+      "2. Choose Loan ledger for the latest month, then for the month before."
+    ],
+    "expected": "Step 1: each person has service (years and months), Payable now (Yes after the gratuity rule's minimum years, else Not yet), the month's provision and the provision to date. Step 2: opening − recovered = closing on every row; the earlier month's closing equals the later month's opening. Negative: a loan still waiting for approval is not in the ledger.",
+    "stories": [
+      "PAY-25 Gratuity",
+      "PAY-25 LoanLedger"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-06",
+    "area": "Pay · Reports",
+    "screen": "Export CSV (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. With Salary register and a department chosen, press Export CSV.",
+      "2. Open the file in a spreadsheet.",
+      "3. As Lakshmi (HR Admin with audit access) open Pay > Audit log and search for \"payroll.report.exported\"."
+    ],
+    "expected": "Step 1: a green toast \"Salary register downloaded as CSV.\" for 5 seconds; no pop-up. Step 2: every row of the filters (not only the page shown), only that department, money with two decimals. Step 3: one entry with Suresh, the report and the filters. Negative: with filters that have no data the button is off and the page says \"Nothing to export for these filters\".",
+    "stories": [
+      "PAY-25 Register"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-07",
+    "area": "Pay · Reports",
+    "screen": "Who may see payroll reports (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, no payroll keys); panel@demo-org.test (employee).",
+    "steps": [
+      "1. As Lakshmi look for Payroll reports under Pay.",
+      "2. As Lakshmi open http://localhost:3000/yx/payroll/reports directly.",
+      "3. As the employee open the same address."
+    ],
+    "expected": "Step 1: no menu item. Step 2: \"You don't have access to payroll reports\" with whom to ask; no figures. Step 3: the same. Negative (developer check): GET /api/v1/payroll/reports/register with Lakshmi's token answers 403.",
+    "stories": [
+      "PAY-25 NoAccess"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-RP-08",
+    "area": "Pay · Reports",
+    "screen": "Payroll for one legal entity only (PAY-25)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "A payroll person whose role grant covers the Tamil Nadu entity only (Settings > Roles: grant \"Payroll Admin\" on Kaveri Foods Pvt Ltd (Tamil Nadu)).",
+    "steps": [
+      "1. Open Payroll reports and look at the Legal entity filter and the Location filter.",
+      "2. Open Salary register for the latest month.",
+      "3. (Developer) call GET /api/v1/payroll/reports/register?legalEntityId=<Karnataka entity id> with this person's token."
+    ],
+    "expected": "Step 1: no Legal entity filter (one entity only); locations are the Tamil Nadu ones. Step 2: only Tamil Nadu payslips. Step 3 (negative): 404 Not found; nothing about Karnataka is shown.",
+    "stories": [
+      "PAY-25 Register"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
