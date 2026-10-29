@@ -5493,5 +5493,123 @@
       "PAY-06 Release · Release sheet"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-S-20",
+    "area": "Forms · every drawer",
+    "screen": "Typing after a failed Save is never lost (shared form fix)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Special pay › On-call; press Add rule.",
+      "2. Press Save with everything empty.",
+      "3. Click into Multiplier and type 1.5 at normal speed.",
+      "4. Clear the field and type 2.5.",
+      "5. Open Payroll › Special pay › Piece-rate › Add rate card; press Save empty, then type 2.50 in Rate."
+    ],
+    "expected": "Step 2: field errors show and focus moves to the first bad field. Step 3: the field shows exactly 1.5; no key is lost and focus stays in the field. Step 4: the field shows 2.5. Step 5: the field shows 2.50. Negative: focus jumping to the red summary box at the top while typing, or a missing digit, is a fail.",
+    "stories": [
+      "TIM-17 Apply for someone (too early)",
+      "PAY-31 Cards"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-21",
+    "area": "Pay · Compensation",
+    "screen": "Compensation history (PAY-12)",
+    "url": "http://localhost:3000/yx/payroll/compensation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test (Employee).",
+    "steps": [
+      "1. Open Payroll › Compensation and choose Arjun.",
+      "2. Look at the History panel under the breakup.",
+      "3. Send a revision for approval (reason \"Annual review\") and look again.",
+      "4. Sign in as arjun@demo-org.test and open /yx/payroll/compensation for another person (change the person id in the URL to someone else)."
+    ],
+    "expected": "Step 2: each salary shows who set it, the amount, from date, reason, the change in per cent, the template and who approved it, newest first. Step 3: a new line \"asked for CTC … waiting for approval\". Step 4: nothing about the other person is shown (not found). Negative: amounts of another person visible to an employee is a fail.",
+    "stories": [
+      "PAY-12 Tab"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-22",
+    "area": "Pay · Compensation",
+    "screen": "Suggest split goes stale after a law change (PAY-42)",
+    "url": "http://localhost:3000/yx/payroll/compensation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. A YukthiX staff member publishes a test rule (console) during step 3.",
+    "steps": [
+      "1. Open Payroll › Compensation, choose Arjun, press Revise compensation, enter an annual CTC and press Suggest split.",
+      "2. Pick an option and press Use: it fills the template (positive).",
+      "3. Press Suggest split again. While the drawer is open, have staff publish a statutory rule for Karnataka in force on the effective date.",
+      "4. Pick an option and press Use.",
+      "5. Press Refresh, pick an option and press Use."
+    ],
+    "expected": "Step 2: the drawer closes and the template is set. Step 4: the drawer stays open with \"These suggestions are out of date\" naming the rule and its date; nothing is filled. Step 5: new options load and Use works. Negative: a stale option filling the form is a fail.",
+    "stories": [
+      "PAY-42 Options",
+      "PAY-42 Stale"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-23",
+    "area": "Pay · Special pay",
+    "screen": "Piece-rate earnings check before sending (PAY-31)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Then hr@demo-org.test (no special-pay key) for the negative.",
+    "steps": [
+      "1. Open Payroll › Special pay › Piece-rate; choose the Hosur entity and this month.",
+      "2. Key output of 10 pieces for one worker on one day (a low amount).",
+      "3. Open the Earnings check tab.",
+      "4. Key output for an operation with no rate card, open Earnings check again.",
+      "5. Sign in as hr@demo-org.test and open the page."
+    ],
+    "expected": "Step 3: the worker shows piece earnings, the time-rate minimum and a minimum-wage top-up; totals at the foot; Export works. Nothing is sent. Step 4: a red message names the operation without a rate, with Try again. Step 5: no access. Negative: a top-up differing from the line sent to payroll later is a fail.",
+    "stories": [
+      "PAY-31 Check"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-24",
+    "area": "Pay · Special pay",
+    "screen": "Mark union dues remitted (PAY-36)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Approval of the dues by payroll-approver (Approvals).",
+    "steps": [
+      "1. Open Special pay › Union dues › Remittance for a month whose dues are not approved yet.",
+      "2. Send the dues to payroll and approve them in Approvals; reopen Remittance.",
+      "3. Press Mark remitted, then press Mark remitted in the dialog with nothing filled.",
+      "4. Enter a paid-on date in the future and a reference; confirm.",
+      "5. Enter yesterday and reference NEFT 123; confirm.",
+      "6. Look at the row; try Mark remitted again."
+    ],
+    "expected": "Step 1: status \"Not approved yet\", no Mark remitted button. Step 2: \"Not remitted\" with the amount and a Mark remitted button. Step 3: field errors, focus on Paid on. Step 4: \"cannot be in the future\". Step 5: a 5-second toast. Step 6: \"Remitted\" with the date and reference; no button. Negative: the amount is never typed; marking the same month twice is refused.",
+    "stories": [
+      "PAY-36 Remittance"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-25",
+    "area": "Pay · Special pay",
+    "screen": "New wage settlement (PAY-37, new drawer)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Special pay › Settlements (no settlement yet).",
+      "2. Press New settlement, then Save settlement with nothing filled.",
+      "3. Fill the name, Signed on tomorrow, Increase from 1 Apr; add two rows both \"Skilled\"; Save.",
+      "4. Fix: Signed on yesterday, second row \"Unskilled\" ₹1,200; Save.",
+      "5. Look at the tab."
+    ],
+    "expected": "Step 1: the empty state offers New settlement. Step 2: field errors and focus on Name. Step 3: \"cannot be in the future\" and \"Row 2: each category once.\" Step 4: a 5-second toast; the drawer closes. Step 5: the new settlement with its categories; Send arrears works as before. Negative: a server refusal must stay inside the drawer.",
+    "stories": [
+      "PAY-37 NewSettlement",
+      "PAY-37 NewSettlementTooEarly",
+      "PAY-37 NewSettlementRefused"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
